@@ -120,10 +120,28 @@ class TestCrew:
 
     @pytest.mark.asyncio
     async def test_member_budget_fraction(self):
+        from vincio.core.types import BudgetUsage
+
         crew = Crew("team")
         crew.add(AgentRole(name="a", budget_fraction=0.25), direct_agent("a"))
-        member_budget = crew._member_budget(crew._members["a"].role, Budget(max_input_tokens=1000))
+        role = crew._members["a"].role
+        member_budget = crew._member_budget(role, Budget(max_input_tokens=1000), BudgetUsage())
         assert member_budget.max_input_tokens == 250
+        # shares are clamped to what remains of the crew budget
+        spent = BudgetUsage(input_tokens=900, cost_usd=0.9)
+        clamped = crew._member_budget(role, Budget(max_input_tokens=1000, max_cost_usd=1.0), spent)
+        assert clamped.max_input_tokens == 100
+        assert clamped.max_cost_usd <= 0.1 + 1e-9
+        # an explicit 0.0 fraction is honored, not swallowed by an equal split
+        crew.add(AgentRole(name="b", budget_fraction=0.0), direct_agent("b"))
+        starved = crew._member_budget(
+            crew._members["b"].role, Budget(max_input_tokens=1000), BudgetUsage()
+        )
+        assert starved.max_input_tokens == 1
+
+    def test_unknown_process_rejected(self):
+        with pytest.raises(AgentEngineError):
+            Crew("typo", process="paralel")
 
     @pytest.mark.asyncio
     async def test_hierarchical_delegation_with_manager(self):
@@ -374,6 +392,49 @@ class TestStateGraph:
         done = await compiled.ainvoke({"x": 1})
         with pytest.raises(GraphError):
             await compiled.aresume(done.thread_id)  # already completed
+        with pytest.raises(GraphError):
+            await compiled.ainvoke({"x": 1}, thread_id=done.thread_id)  # reuse: fork instead
+
+    @pytest.mark.asyncio
+    async def test_max_steps_thread_resumes_from_checkpoint(self):
+        graph = StateGraph("loop")
+        graph.add_node("a", lambda s: {"n": s["n"] + 1})
+        graph.add_edge("a", "a")
+        capped = graph.compile(max_steps=3)
+        stopped = await capped.ainvoke({"n": 0})
+        assert stopped.status == "max_steps" and stopped.state["n"] == 3
+        # a recompile with a higher bound continues from the checkpoint, not from scratch
+        roomier = graph.compile(checkpointer=capped.checkpointer, max_steps=5)
+        resumed = await roomier.aresume(stopped.thread_id)
+        assert resumed.state["n"] == 5
+
+    @pytest.mark.asyncio
+    async def test_mid_frontier_interrupt_keeps_sibling_successors(self):
+        import operator
+
+        graph = StateGraph("fan_interrupt", reducers={"log": operator.add})
+        graph.add_node("s", lambda s: {"log": ["s"]})
+        graph.add_node("a", lambda s: {"log": ["a"]})
+        graph.add_node("b", lambda s: {"log": ["b"], "ok": interrupt(s, "go?")})
+        graph.add_node("x", lambda s: {"log": ["x"]})
+        graph.add_edge("s", "a")
+        graph.add_edge("s", "b")
+        graph.add_edge("a", "x")
+        compiled = graph.compile()
+        paused = await compiled.ainvoke({"log": []})
+        assert paused.status == "interrupted"
+        done = await compiled.aresume(paused.thread_id, value=True)
+        # x (successor of the sibling that ran before the interrupt) must still execute
+        assert "x" in done.state["log"]
+
+    @pytest.mark.asyncio
+    async def test_abandoned_astream_does_not_corrupt_tracer(self):
+        compiled = self.build_linear().compile()
+        stream = compiled.astream({"x": 1})
+        async for event in stream:
+            if event.type == "node_end":
+                break
+        await stream.aclose()  # must not raise from contextvar reset
 
 
 class TestCompose:
@@ -590,6 +651,38 @@ class TestWorkflowInterrupts:
         assert result.status == "failed"
         assert "approval denied" in result.context.results["dangerous"].error
 
+    @pytest.mark.asyncio
+    async def test_approvals_map_cannot_bypass_approval_fn(self):
+        async def deny(step, context):
+            return False
+
+        workflow = Workflow("appr", approval_fn=deny)
+        workflow.step("dangerous", lambda input: "done", approval=True)
+        result = await workflow.arun(1, approvals={"dangerous": True})
+        assert result.status == "failed"  # the configured gate still decides
+
+    @pytest.mark.asyncio
+    async def test_unknown_approval_names_rejected(self):
+        workflow = Workflow("appr")
+        workflow.step("ship", lambda input: "done", approval=True)
+        from vincio.core.errors import WorkflowError
+
+        with pytest.raises(WorkflowError):
+            await workflow.arun(1, approvals={"shp": True})
+
+    @pytest.mark.asyncio
+    async def test_failure_beside_pause_is_terminal_and_compensates(self):
+        undone = []
+        workflow = Workflow("mixed")
+        workflow.step("reserve", lambda input: "reserved", compensation=lambda ctx: undone.append("reserve"))
+        workflow.step("boom", lambda reserve: 1 / 0, depends_on=["reserve"])
+        workflow.step("gate", lambda reserve: "gated", depends_on=["reserve"], approval=True)
+        result = await workflow.arun(1)
+        # the failure wins: the run is terminal, compensated, and not resumable-paused
+        assert result.status == "partial"
+        assert result.pending_approvals == []
+        assert undone == ["reserve"]
+
 
 class TestAppIntegration:
     def make_app(self):
@@ -622,6 +715,55 @@ class TestAppIntegration:
         pipeline = compose(app.agent(planner="direct")) | (lambda answer: f"wrapped:{answer}")
         out = await pipeline.acall("hi")
         assert out.startswith("wrapped:")
+        # non-string upstream values (e.g. a parallel() dict) are coerced for agents
+        fan_in = compose(parallel(a=lambda v: v, b=lambda v: v)) | app.agent(planner="direct")
+        assert await fan_in.acall("q") is not None
+
+    @pytest.mark.asyncio
+    async def test_crew_members_get_only_their_tools(self):
+        app = self.make_app()
+
+        def web_search(query: str) -> dict:
+            """Search the web."""
+            return {"hits": [query]}
+
+        def send_email(to: str) -> dict:
+            """Send an email."""
+            return {"sent": to}
+
+        crew = app.crew(
+            members=[
+                {"name": "researcher", "tools": [web_search]},
+                {"name": "writer", "tools": [send_email]},
+                {"name": "reviewer"},
+            ]
+        )
+        specs = {
+            name: [t.name for t in crew._members[name].executor.tool_specs]
+            for name in crew.names
+        }
+        assert specs == {"researcher": ["web_search"], "writer": ["send_email"], "reviewer": []}
+
+    def test_unknown_member_fields_rejected(self):
+        app = self.make_app()
+        with pytest.raises(AgentEngineError):
+            app.crew(members=[{"name": "researcher", "keyword": ["find"]}])
+
+    @pytest.mark.asyncio
+    async def test_langgraph_export_router_precedence(self):
+        # a node with both a static edge and a router exports only the router,
+        # matching the native engine's precedence
+        graph = StateGraph("both")
+        graph.add_node("a", lambda s: {})
+        graph.add_node("b", lambda s: {})
+        graph.add_edge("a", "b")
+        graph.add_conditional_edge("a", lambda s: END)
+        backend = LangGraphBackend(
+            SimpleNamespace(StateGraph=_FakeLangGraphBuilder, END="__lg_end__", START="__lg_start__")
+        )
+        builder = backend.export(graph)
+        assert ("a", "b") not in builder.edges
+        assert builder.conditional == ["a"]
 
     @pytest.mark.asyncio
     async def test_parallel_crew_members_run_concurrently(self):

@@ -71,6 +71,8 @@ class LangGraphBackend:
             raise ConfigError(f"graph {graph.name!r} has no entry node")
         builder.set_entry_point(graph.entry)
         for source, targets in graph.edges.items():
+            if source in graph.routers:
+                continue  # the router has exclusive precedence, as in the native engine
             for target in targets:
                 builder.add_edge(source, module.END if target == END else target)
         for source, (router, mapping) in graph.routers.items():

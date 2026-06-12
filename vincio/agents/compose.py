@@ -95,9 +95,11 @@ def _wrap(step: Any) -> tuple[str, Callable[[Any], Any]]:
         return str(name), run_engine
     if hasattr(step, "arun"):  # Workflow, app handles, custom engines
         engine = step
+        # App agent handles wrap an AgentExecutor and take a string objective.
+        takes_objective = isinstance(getattr(engine, "_executor", None), AgentExecutor)
 
         async def run_arun(value: Any) -> Any:
-            return _normalize(await engine.arun(value))
+            return _normalize(await engine.arun(str(value) if takes_objective else value))
 
         return str(getattr(engine, "name", None) or type(engine).__name__.lower()), run_arun
     if callable(step):
@@ -156,6 +158,9 @@ class Composable(Generic[TIn, TOut]):
         for index, (name, runner) in enumerate(self._nodes):
             yield NodeEvent(type="node_start", node=name, index=index)
             started = time.monotonic()
+            error: str | None = None
+            # The span closes before any yield: abandoning the generator must
+            # not finalize an open span in a foreign context.
             with self.tracer.span(name, type="compose_node") as span:
                 span.set(pipeline=self.name, index=index)
                 try:
@@ -163,15 +168,11 @@ class Composable(Generic[TIn, TOut]):
                 except Exception as exc:  # noqa: BLE001 - surfaced as an event
                     error = f"{type(exc).__name__}: {exc}"
                     span.set(status="error")
-                    yield NodeEvent(
-                        type="error", node=name, index=index, error=error,
-                        duration_ms=int((time.monotonic() - started) * 1000),
-                    )
-                    return
-            yield NodeEvent(
-                type="node_end", node=name, index=index, value=value,
-                duration_ms=int((time.monotonic() - started) * 1000),
-            )
+            duration_ms = int((time.monotonic() - started) * 1000)
+            if error is not None:
+                yield NodeEvent(type="error", node=name, index=index, error=error, duration_ms=duration_ms)
+                return
+            yield NodeEvent(type="node_end", node=name, index=index, value=value, duration_ms=duration_ms)
         yield NodeEvent(type="done", node=self.name, index=len(self._nodes), value=value)
 
 

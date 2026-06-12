@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-416%20passing-2ea44f" alt="416 tests passing">
+  <img src="https://img.shields.io/badge/tests-426%20passing-2ea44f" alt="426 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -334,7 +334,7 @@ data, experiments with statistical significance, a prompt registry, sessions and
 traces, OTel GenAI export, and a local trace viewer; 0.6.0 made orchestration expressive *and*
 safe — multi-agent crews with delegation and a shared blackboard, durable stateful graphs with
 checkpoint/resume/time-travel, first-class human-in-the-loop, declarative composition with
-streaming node events, and LangGraph / OpenAI Agents SDK backends — with 416 offline tests,
+streaming node events, and LangGraph / OpenAI Agents SDK backends — with 426 offline tests,
 sixteen runnable examples, and full documentation. The public roadmap — what's
 shipped, what's next, and what's intentionally out of scope — lives in **[ROADMAP.md](ROADMAP.md)**.
 
@@ -370,7 +370,7 @@ green:
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 416 tests, no network or API keys required
+python -m pytest tests/ -q     # 426 tests, no network or API keys required
 ruff check vincio/ tests/
 ```
 

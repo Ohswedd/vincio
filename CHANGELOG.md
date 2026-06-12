@@ -96,7 +96,24 @@ runtime backends that export to LangGraph and the OpenAI Agents SDK.
   overrides); public behavior is unchanged.
 - New error type `GraphError` (subclass of `AgentEngineError`) for graph
   definition and execution failures.
-- **416 tests passing offline in ~2s; ruff clean**; sixteen runnable
+- **Pre-merge review hardening** — crew members built by `app.crew()`
+  receive only their own (or the crew-level) tools, never the app-wide
+  enabled set; per-member budget shares are clamped to what remains of the
+  crew budget, and an explicit `budget_fraction=0.0` is honored; an
+  approvals map can never bypass a configured `approval_fn`, and unknown
+  approval names raise; a step failure beside a paused gate in the same
+  level is terminal (compensation runs, the run is not reported paused);
+  resumed workflow segments rebuild every non-`done` step result so
+  compensated/failed steps never leak stale outputs; graph threads that
+  ended at `max_steps` resume from their checkpoint (recompile with a
+  higher bound), re-invoking a finished thread raises `GraphError` (fork it
+  instead), and a dynamic interrupt mid-frontier re-queues the successors
+  of siblings that already ran; `Crew` rejects unknown `process` values and
+  `app.crew()` rejects unknown member fields; the LangGraph export gives
+  routers exclusive edge precedence like the native engine; tracer
+  trace/span cleanup tolerates abandoned streaming generators
+  (`break` out of `astream`) without contextvar corruption.
+- **426 tests passing offline in ~2s; ruff clean**; sixteen runnable
   examples; the VincioBench `agent` family holds the new orchestration
   guarantees under six additional CI-gated budgets.
 

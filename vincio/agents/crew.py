@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from ..core.concurrency import gather_bounded
 from ..core.errors import AgentEngineError
 from ..core.types import Budget, BudgetUsage, Message, ModelRequest, Objective
+from ..observability.costs import CostTracker
 from ..observability.traces import Tracer
 from ..providers.base import ModelProvider, run_sync
 from .blackboard import Blackboard
@@ -142,9 +143,15 @@ class Crew:
         manager_model: str | None = None,
         max_rounds: int = 4,
         concurrency: int = 4,
+        cost_tracker: CostTracker | None = None,
     ) -> None:
+        if process not in ("sequential", "parallel", "hierarchical"):
+            raise AgentEngineError(
+                f"unknown crew process {process!r}; expected sequential | parallel | hierarchical"
+            )
         self.name = name
         self.process = process
+        self.costs = cost_tracker or CostTracker()
         self.blackboard = blackboard or Blackboard()
         self.tracer = tracer or Tracer()
         self.manager_provider = manager_provider
@@ -183,9 +190,28 @@ class Crew:
 
     # -- member execution -------------------------------------------------------
 
-    def _member_budget(self, role: AgentRole, budget: Budget) -> Budget:
-        fraction = role.budget_fraction or (1.0 / max(1, len(self._members)))
-        return budget.scaled(fraction)
+    def _member_budget(self, role: AgentRole, budget: Budget, usage: BudgetUsage) -> Budget:
+        """The member's share of the crew budget, clamped to what remains —
+        later delegations can never re-grant tokens/cost already spent."""
+        fraction = (
+            role.budget_fraction
+            if role.budget_fraction is not None
+            else 1.0 / max(1, len(self._members))
+        )
+        share = budget.scaled(fraction)
+        return share.model_copy(
+            update={
+                "max_input_tokens": max(
+                    1, min(share.max_input_tokens, budget.max_input_tokens - usage.input_tokens)
+                ),
+                "max_latency_ms": max(
+                    1, min(share.max_latency_ms, budget.max_latency_ms - usage.latency_ms)
+                ),
+                "max_cost_usd": max(
+                    0.0, min(share.max_cost_usd, budget.max_cost_usd - usage.cost_usd)
+                ),
+            }
+        )
 
     def _member_objective(self, role: AgentRole, task: str) -> str:
         parts = [task]
@@ -203,7 +229,8 @@ class Crew:
         with self.tracer.span(role.name, type="crew_agent") as span:
             span.set(crew=self.name, task=task[:300])
             state: AgentState = await member.executor.run(
-                self._member_objective(role, task), budget=self._member_budget(role, budget)
+                self._member_objective(role, task),
+                budget=self._member_budget(role, budget, usage),
             )
             span.set(termination_reason=state.termination_reason)
         usage.add(state.usage)
@@ -263,9 +290,10 @@ class Crew:
             with self.tracer.span("manager", type="crew_agent") as span:
                 span.set(crew=self.name)
                 response = await self.manager_provider.generate(request)
+            cost = self.costs.record_model_call(self.manager_model, response.usage)
             usage.input_tokens += response.usage.input_tokens
             usage.output_tokens += response.usage.output_tokens
-            usage.cost_usd += response.cost_usd
+            usage.cost_usd += cost if cost else response.cost_usd
             return response.structured or json.loads(response.text)
         except Exception:  # noqa: BLE001 - manager degrades to the heuristic
             return None

@@ -364,8 +364,16 @@ class CompiledGraph:
                     yield GraphEvent(type="node_end", node=name, step=step, thread_id=thread_id)
                 state.pop(_RESUME_KEY, None)  # consumed (or unused) once the step ran
                 if interrupted is not None:
-                    # Re-queue the interrupting node so resume re-runs it.
-                    pending = [interrupted_node] + [n for n in frontier if n not in ran and n != interrupted_node]
+                    # Re-queue the interrupting node and the rest of the frontier,
+                    # and carry the successors of siblings that already ran this
+                    # super-step — otherwise their branches would be lost on resume.
+                    carried = [
+                        t for t in (self._next_frontier(ran, state) if ran else []) if t != END
+                    ]
+                    pending = [interrupted_node] + [
+                        n for n in frontier if n not in ran and n != interrupted_node
+                    ]
+                    pending += [t for t in carried if t not in pending]
                     ckpt = self._checkpoint(
                         thread_id, step, state, pending, status="interrupted",
                         interrupt_payload=interrupted.payload, parent_id=parent_id,
@@ -413,7 +421,14 @@ class CompiledGraph:
     ) -> tuple[dict[str, Any], list[str], int, str, str | None, bool]:
         thread_id = thread_id or new_id("thread")
         latest = self.checkpointer.latest(thread_id)
-        if latest is not None and latest.status in ("running", "interrupted"):
+        if latest is not None and latest.status == "done":
+            # Re-running a finished thread would interleave checkpoints with
+            # the completed history and break resume — branch instead.
+            raise GraphError(
+                f"thread {thread_id!r} already completed; fork() one of its "
+                "checkpoints or use a new thread_id"
+            )
+        if latest is not None:  # running (crashed), interrupted, or max_steps
             state = dict(latest.state)
             state.update(input or {})
             return state, list(latest.next_nodes), latest.step, thread_id, latest.id, True

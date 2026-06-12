@@ -189,10 +189,12 @@ class Workflow:
             result.status = "skipped"
             return result
         if step.approval:
-            if approvals is not None and step.name in approvals:
-                approved = approvals[step.name]
-            elif self.approval_fn is not None:
+            if self.approval_fn is not None:
+                # A configured approver is always consulted; an approvals map
+                # never bypasses it.
                 approved = await self.approval_fn(step.name, context)
+            elif approvals is not None and step.name in approvals:
+                approved = approvals[step.name]
             else:
                 # First-class interrupt: pause here; resume with an approvals map.
                 result.status = "waiting_approval"
@@ -283,10 +285,19 @@ class Workflow:
         that paused at an approval gate."""
         if not self._steps:
             raise WorkflowError(f"workflow {self.name!r} has no steps")
+        if approvals:
+            gated = {n for n, s in self._steps.items() if s.approval}
+            unknown = set(approvals) - gated
+            if unknown:
+                raise WorkflowError(
+                    f"approvals reference steps without an approval gate: {sorted(unknown)}"
+                )
         context = context or WorkflowContext(input=input)
         for name in self._steps:
             existing = context.results.get(name)
-            if existing is None or existing.status in ("waiting_approval", "running"):
+            # Only finished work survives a resume; anything else re-runs fresh
+            # (a compensated/failed step must not leak its stale output).
+            if existing is None or existing.status != "done":
                 context.results[name] = StepResult(name=name)
         started = time.monotonic()
         # Steps completed in earlier segments still compensate (in order) on failure.
@@ -326,8 +337,14 @@ class Workflow:
                 if failed or waiting:
                     break
         compensated: list[str] = []
-        if failed and compensate_on_failure:
-            compensated = await self._compensate(context, completed)
+        if failed:
+            # A failure is terminal even when a sibling paused at a gate in the
+            # same level: never report a compensated run as resumable-paused.
+            for name in waiting:
+                context.results[name] = StepResult(name=name)
+            waiting = []
+            if compensate_on_failure:
+                compensated = await self._compensate(context, completed)
         if waiting:
             status = "paused"
         else:

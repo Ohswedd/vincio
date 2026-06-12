@@ -62,7 +62,7 @@ from ..tools.registry import ToolRegistry
 from ..tools.runtime import ToolRuntime
 from ..workflows.engine import Workflow
 from .config import VincioConfig, load_config
-from .errors import ConfigError, ToolNotFoundError
+from .errors import AgentEngineError, ConfigError, ToolNotFoundError
 from .events import EventBus
 from .runtime import VincioRuntime
 from .types import (
@@ -750,9 +750,12 @@ class ContextApp:
         max_steps: int = 8,
         model: str | None = None,
         system_prompt_extra: str = "",
+        restrict_tools: bool = False,
     ) -> AgentExecutor:
+        tool_names: list[str] = []
         for tool in tools or []:
             self.add_tool(tool)
+            tool_names.append(tool if isinstance(tool, str) else getattr(tool, "__name__", str(tool)))
         planner_mode = {"dag": "static", "static": "static", "dynamic": "dynamic", "react": "react", "direct": "direct"}.get(planner, "static")
         provider = self.resolve_provider()
         agent_model = model or self.model
@@ -787,12 +790,15 @@ class ContextApp:
             system_prompt = (
                 f"{system_prompt}\n\n{system_prompt_extra}" if system_prompt else system_prompt_extra
             )
+        # restrict_tools (crew members): least privilege — only the tools named
+        # for this executor, never the app-wide enabled set.
+        enabled = tool_names if restrict_tools else self.enabled_tools
         return AgentExecutor(
             provider,
             model=agent_model,
             planner=planner_obj,
-            tool_runtime=self.tool_runtime if self.enabled_tools else None,
-            tool_specs=self.tool_registry.specs(self.enabled_tools) if self.enabled_tools else [],
+            tool_runtime=self.tool_runtime if enabled else None,
+            tool_specs=self.tool_registry.specs(enabled) if enabled else [],
             retrieve_fn=retrieve_fn,
             output_validator=validator,
             tracer=self.tracer,
@@ -852,11 +858,19 @@ class ContextApp:
             manager_provider=self.resolve_provider() if process == "hierarchical" else None,
             manager_model=model or self.model,
             max_rounds=max_rounds,
+            cost_tracker=self.cost_tracker,
         )
         role_fields = set(AgentRole.model_fields)
+        override_fields = {"tools", "planner", "model", "max_steps"}
         for spec in members:
             overrides: dict[str, Any] = {}
             if isinstance(spec, dict):
+                unknown = set(spec) - role_fields - override_fields
+                if unknown:
+                    raise AgentEngineError(
+                        f"unknown crew member fields {sorted(unknown)}; "
+                        f"expected {sorted(role_fields | override_fields)}"
+                    )
                 overrides = spec
                 role = AgentRole(**{k: v for k, v in spec.items() if k in role_fields})
             else:
@@ -867,6 +881,7 @@ class ContextApp:
                 max_steps=overrides.get("max_steps", max_steps),
                 model=overrides.get("model", model),
                 system_prompt_extra=f"You are {role.name}. {role.description}".strip(),
+                restrict_tools=True,
             )
             crew.add(role, executor)
         return crew

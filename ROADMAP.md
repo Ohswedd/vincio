@@ -439,7 +439,7 @@ See the [CHANGELOG](CHANGELOG.md) for the complete 0.5.0 notes.
   **bounded, traced, eval-gated, and budget-aware** by construction — see
   [docs/comparisons/crewai.md](docs/comparisons/crewai.md) and
   [openai-agents-sdk.md](docs/comparisons/openai-agents-sdk.md).
-- **416 tests passing offline in ~2s; ruff clean**; sixteen runnable examples; the VincioBench
+- **426 tests passing offline in ~2s; ruff clean**; sixteen runnable examples; the VincioBench
   `agent` family holds crew termination, delegation recording, interrupt→resume and fork-replay
   determinism, and composition streaming coverage under six new CI-gated budgets.
 
