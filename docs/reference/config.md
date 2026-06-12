@@ -51,6 +51,12 @@ memory:
   min_confidence: 0.25
   max_items_per_run: 8
   write_policy: guarded      # guarded | open | off
+  hybrid_recall: true        # fuse lexical + vector + graph signals per query
+  vector_weight: 0.5         # vector share of fused relevance
+  retention_weight: 0.5      # importance-weighted retention strength
+  ttl_days:                  # default TTL per scope; unlisted scopes never expire
+    session: 30
+  write_back: [input]        # input | evidence | tools
 
 cache:
   response_cache: false

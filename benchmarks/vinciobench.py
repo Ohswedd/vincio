@@ -284,9 +284,15 @@ async def bench_output() -> dict[str, Any]:
 
 
 async def bench_memory() -> dict[str, Any]:
-    """MemoryBench: usefulness (recall of stored preferences) and staleness
-    handling (contradictions supersede)."""
-    engine = MemoryEngine()
+    """MemoryBench: the 0.4 memory eval harness (recall precision/recall,
+    contradiction rate, staleness, personalization lift) over a hybrid
+    vector+graph engine, plus consolidation provenance and hygiene checks."""
+    from datetime import timedelta
+
+    from vincio.core.utils import utcnow
+    from vincio.memory import evaluate_memory, personalization_dataset
+
+    engine = MemoryEngine(embedder=LocalHashEmbedder())
     facts = [
         ("u1", "User prefers concise technical answers", "preference"),
         ("u1", "User works in the compliance department", "fact"),
@@ -304,16 +310,40 @@ async def bench_memory() -> dict[str, Any]:
         results = engine.search(query, user_id=owner, top_k=2)
         if any(needle in r.item.content for r in results):
             recall_hits += 1
-    # contradiction handling
+    # contradiction handling: the confident correction supersedes.
     old = engine.write_fact("User timezone is UTC+1", scope="user", owner_id="u3", confidence=0.6)
     new = engine.write_fact("User timezone is UTC-5", scope="user", owner_id="u3", confidence=0.9)
     isolation_ok = not any(
         "compliance" in r.item.content for r in engine.search("department", user_id="u2")
     )
+    # Hygiene: expired TTL items never surface.
+    ttl_item = engine.write_fact(
+        "User prefers invoices in EUR currency", scope="user", owner_id="u4", type="preference"
+    )
+    ttl_item.expires_at = utcnow() - timedelta(days=1)
+    engine.store.put(ttl_item)
+    ttl_excluded = not engine.search("invoice currency", user_id="u4")
+    # Eval harness over the personalization dataset.
+    harness = await evaluate_memory(engine, personalization_dataset(), top_k=3)
+    # Consolidation: episodic session memories promote with provenance.
+    engine.remember("We agreed to migrate the billing stack to Postgres", session_id="s1")
+    engine.remember("The rollout deadline is March 15 next quarter", session_id="s1")
+    report = await engine.consolidate("s1", user_id="u1")
+    provenance_retained = bool(report.items) and all(
+        item.metadata.get("consolidated_from") for item in report.items
+    )
     return {
         "preference_recall": round(recall_hits / len(queries), 4),
         "contradiction_superseded": new.supersedes == old.id,
         "cross_user_isolation": isolation_ok,
+        "ttl_expired_excluded": ttl_excluded,
+        "recall_precision": harness.metrics["recall_precision"],
+        "recall_at_k": harness.metrics["recall_at_k"],
+        "contradiction_rate": harness.metrics["contradiction_rate"],
+        "staleness": harness.metrics["staleness"],
+        "personalization_lift": harness.metrics["personalization_lift"],
+        "consolidation_promoted": report.promoted,
+        "consolidation_provenance_retained": provenance_retained,
     }
 
 

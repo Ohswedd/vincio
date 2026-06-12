@@ -36,4 +36,24 @@ vincio index build PATH [--db FILE] [--chunking STRATEGY] [--chunk-size N]
 
 vincio memory inspect [--user U] [--db FILE] [--limit N]
     List stored memories.
+
+vincio memory remember CONTENT [--user U] [--agent A] [--session S] [--tenant T]
+        [--scope SCOPE] [--type TYPE] [--db FILE]
+    Write one memory; scope and type are inferred when omitted.
+
+vincio memory recall QUERY [--user U] [--agent A] [--session S] [--tenant T]
+        [--top-k N] [--db FILE]
+    Scored hybrid (lexical + vector + graph) recall.
+
+vincio memory forget MEMORY_ID [--reason R] [--db FILE]
+    Delete one memory; the reason lands in the audit log.
+
+vincio memory export --owner OWNER [--output FILE] [--db FILE]
+    GDPR-style export of every memory an owner has (audited).
+
+vincio memory consolidate SESSION_ID [--user U] [--db FILE]
+    Episodic→semantic consolidation for a session, with provenance.
+
+vincio memory decay [--db FILE]
+    Run a decay/TTL pass (importance-weighted retention).
 ```

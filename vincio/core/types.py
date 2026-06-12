@@ -301,6 +301,7 @@ class EvidenceItem(BaseModel):
 class MemoryScope(StrEnum):
     SESSION = "session"
     USER = "user"
+    AGENT = "agent"
     TENANT = "tenant"
     ORGANIZATION = "organization"
     GLOBAL = "global"

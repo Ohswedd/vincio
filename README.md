@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-277%20passing-2ea44f" alt="277 tests passing">
+  <img src="https://img.shields.io/badge/tests-301%20passing-2ea44f" alt="301 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -140,7 +140,7 @@ for any engine directly.
 | **Prompt compiler** | Typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, diffing, variant generation. |
 | **Context compiler** | Scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget — with an *excluded-context report* explaining every omission. |
 | **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; citations. |
-| **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping. |
+| **Memory (0.4)** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. |
 | **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, sandboxing, reliability scoring, idempotent write-action guardrails with approval callbacks. |
 | **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates. |
@@ -225,6 +225,7 @@ a Ragas metric with `@register_metric`. See the in-depth write-ups in
 | Tune prompts/context against an eval suite | optimization + gated promotion | [`10_optimization_run.py`](examples/10_optimization_run.py) |
 | Stream answers token-by-token through the full pipeline | `astream` + partial-JSON + compile caches | [`11_streaming_performance.py`](examples/11_streaming_performance.py) |
 | Push retrieval quality with the full 0.3 toolkit | sparse+late-interaction fusion, HyDE, auto-merge, GraphRAG, connectors | [`12_advanced_rag.py`](examples/12_advanced_rag.py) |
+| Personalize an app with governed memory | scoped remember/recall, consolidation, hygiene, memory evals | [`13_memory_personalization.py`](examples/13_memory_personalization.py) |
 
 ## More examples
 
@@ -247,6 +248,7 @@ vincio trace show trace_123      # inspect a run's full trace
 vincio optimize run --target groundedness
 vincio index build ./docs        # build a retrieval index
 vincio memory inspect --user u1  # inspect a user's memory
+vincio memory recall "answer style" --user u1  # scored hybrid recall
 ```
 
 A FastAPI server (API-key + JWT auth, real-token SSE streaming) is available via
@@ -285,8 +287,10 @@ of each engine.
 Vincio 0.1.0 shipped every in-scope subsystem above; 0.2.0 made the spine fast — streaming,
 concurrency, compilation caches, and CI-gated performance budgets; 0.3.0 made retrieval
 best-in-field — learned sparse + late interaction fused with BM25/dense/graph, query understanding,
-auto-merging and contextual indexing, GraphRAG, live indexes, and a connector hub — with 277
-offline tests, twelve runnable examples, and full documentation. The public roadmap — what's
+auto-merging and contextual indexing, GraphRAG, live indexes, and a connector hub; 0.4.0 made
+memory personal and governed — scoped remember/recall, hybrid vector+graph recall,
+episodic→semantic consolidation with provenance, audited forgetting, and a CI-gated memory eval
+harness — with 301 offline tests, thirteen runnable examples, and full documentation. The public roadmap — what's
 shipped, what's next, and what's intentionally out of scope — lives in **[ROADMAP.md](ROADMAP.md)**.
 
 Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
@@ -308,7 +312,8 @@ infrastructure. Hosted services and managed control planes are not part of this 
 - **Reference** — [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
   [config](docs/reference/config.md)
 - **Comparisons** — [LangChain](docs/comparisons/langchain.md) ·
-  [LlamaIndex](docs/comparisons/llamaindex.md) · [DSPy](docs/comparisons/dspy.md) ·
+  [LlamaIndex](docs/comparisons/llamaindex.md) · [RAGatouille](docs/comparisons/ragatouille.md) ·
+  [Mem0](docs/comparisons/mem0.md) · [DSPy](docs/comparisons/dspy.md) ·
   [Ragas](docs/comparisons/ragas.md)
 
 ## Contributing
@@ -318,7 +323,7 @@ green:
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 277 tests, no network or API keys required
+python -m pytest tests/ -q     # 301 tests, no network or API keys required
 ruff check vincio/ tests/
 ```
 

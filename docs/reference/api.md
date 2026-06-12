@@ -11,7 +11,9 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 |---|---|
 | `configure(objective=, role=, rules=, examples=, citation_policy=, ...)` | declarative prompt setup |
 | `add_source(name, path=, documents=, connector=, chunking=, retrieval=)` | load + chunk + index a knowledge source (local files, in-memory documents, or any connector) |
-| `add_memory(scope=, strategy=, store=)` | enable the memory engine |
+| `add_memory(scope=, strategy=, store=, embedder=)` | enable the memory engine (hybrid recall by default) |
+| `remember(content, user_id=, agent_id=, session_id=, ...)` | ergonomic policy-checked memory write |
+| `recall(query, user_id=, agent_id=, session_id=, top_k=)` | scored hybrid memory recall |
 | `add_tool(fn_or_name, permissions=, approval_required=, side_effects=)` | enable a tool |
 | `add_evaluator(name_or_fn)` | score every run with a metric |
 | `add_validator(name, fn, blocking=)` | semantic output validator |
@@ -47,7 +49,7 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.context` | `ContextCompiler`, `ContextPacket`, `ContextIR`, `ContextScorer`, `BudgetAllocator` |
 | `vincio.retrieval` | `RetrievalEngine`, `BM25Index`, `VectorIndex`, `SparseIndex`, `LateInteractionIndex`, `AutoMergingIndex`, `LiveIndex`, `QueryUnderstanding`, `EntityGraph`, `GraphRAG`, `ReasoningRetriever`, `chunk_document`, `contextualize_chunks` |
 | `vincio.connectors` | `connect`, `register_connector`, `WebConnector`, `GitHubConnector`, `SQLConnector`, `S3Connector`, `GCSConnector`, `NotionConnector`, `ConfluenceConnector`, `SlackConnector` |
-| `vincio.memory` | `MemoryEngine`, `MemoryGraph`, `SessionSummarizer`, `SQLiteMemoryStore` |
+| `vincio.memory` | `MemoryEngine`, `ScopedMemory`, `MemoryConsolidator`, `MemoryGraph`, `SessionSummarizer`, `SQLiteMemoryStore`, `evaluate_memory` |
 | `vincio.tools` | `ToolRegistry`, `ToolRuntime`, `ToolPermissionChecker`, `SandboxedPython` |
 | `vincio.agents` | `AgentExecutor`, `Planner`, `StepDAG`, `HandoffRouter` |
 | `vincio.workflows` | `Workflow` |

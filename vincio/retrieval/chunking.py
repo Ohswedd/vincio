@@ -18,7 +18,7 @@ from ..core.types import Chunk, Document
 from ..core.utils import new_id
 from ..documents.parsers import TableData, extract_code_symbols
 
-__all__ = ["chunk_document", "ChunkingStrategy", "CHUNKERS"]
+__all__ = ["chunk_document", "extract_entities", "ChunkingStrategy", "CHUNKERS"]
 
 ChunkingStrategy = Callable[[Document, int, int], list[Chunk]]
 
@@ -393,7 +393,7 @@ def chunk_document(
     chunks = CHUNKERS[strategy](document, size, overlap)
     # Annotate entities (capitalized multiword phrases + ids) for graph retrieval.
     for chunk in chunks:
-        chunk.entities = _extract_entities(chunk.text)
+        chunk.entities = extract_entities(chunk.text)
     if cache is not None and cache_key is not None:
         cache.set(cache_key, [chunk.model_dump(mode="json") for chunk in chunks])
     return chunks
@@ -407,7 +407,9 @@ _ENTITY_STOP = frozenset(
 )
 
 
-def _extract_entities(text: str) -> list[str]:
+def extract_entities(text: str) -> list[str]:
+    """Capitalized multiword phrases, ticket ids, and dates — the same
+    entity vocabulary the memory graph and graph retrieval index."""
     entities: list[str] = []
     for match in _ENTITY_RE.finditer(text):
         value = match.group(0).strip()

@@ -14,6 +14,8 @@ from .core.types import (
     Example,
     Instruction,
     MemoryItem,
+    MemoryScope,
+    MemoryType,
     Objective,
     PolicySet,
     RunConfig,
@@ -23,11 +25,12 @@ from .core.types import (
     UserInput,
 )
 from .evals.datasets import Dataset
+from .memory.engine import MemoryEngine, ScopedMemory
 from .output.schemas import OutputContract, OutputSchema
 from .prompts.templates import PromptSpec
 from .workflows.engine import Workflow
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 
 __all__ = [
     "ContextApp",
@@ -40,6 +43,10 @@ __all__ = [
     "Example",
     "Instruction",
     "MemoryItem",
+    "MemoryScope",
+    "MemoryType",
+    "MemoryEngine",
+    "ScopedMemory",
     "Objective",
     "PolicySet",
     "RunConfig",

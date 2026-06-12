@@ -69,10 +69,22 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - Connectors: `from vincio.connectors import connect` — web, github, sql,
   s3, gcs, notion, confluence, slack, custom via `register_connector`;
   `app.add_source("kb", connector=connect("web", urls=[...]))`.
+- Memory (0.4): `app.remember(content, user_id=...)` / `app.recall(query,
+  user_id=...)`; scopes session | user | agent | tenant | organization |
+  global; scoped handles `app.memory.for_user("u1").remember(...)`; hybrid
+  lexical+vector+graph recall (`memory.hybrid_recall`, on by default);
+  consolidation `await app.memory.consolidate(session_id, user_id=...)`
+  (episodic→semantic, provenance in `consolidated_from`); hygiene: per-scope
+  `memory.ttl_days`, importance-weighted `decay_pass()`, audited
+  `edit`/`forget`/`export_owner_data`/`erase_owner_data`; run write-back via
+  `memory.write_back: [input, evidence, tools]`; eval harness
+  `vincio.memory.evaluate_memory` (recall precision, contradiction rate,
+  staleness, personalization lift) gated in VincioBench.
 - Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
   is a validated instance.
 - Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,
   gates like `{"groundedness": ">= 0.95"}`; CLI `vincio eval run`.
 - CLI: init, run, eval run/report, prompt lint/compile,
-  trace show/replay/diff, optimize run, index build, memory inspect.
+  trace show/replay/diff, optimize run, index build, memory
+  inspect/remember/recall/forget/export/consolidate/decay.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).

@@ -10,6 +10,10 @@ Endpoints::
     POST /v1/indexes/{index_id}/documents
     GET  /v1/memory/search
     POST /v1/memory/write
+    POST /v1/memory/consolidate
+    GET  /v1/memory/export
+    GET  /v1/memory/stats
+    DELETE /v1/memory/{memory_id}
 
 Usage::
 
@@ -37,7 +41,7 @@ from ..evals.runners import EvalRunner
 from ..observability.exporters import JSONLExporter
 from .auth import AuthContext, Authenticator
 
-__all__ = ["create_app", "RunRequest", "MemoryWriteRequest", "EvalRunRequest"]
+__all__ = ["create_app", "RunRequest", "MemoryWriteRequest", "MemoryConsolidateRequest", "EvalRunRequest"]
 
 
 class RunRequest(BaseModel):
@@ -56,6 +60,11 @@ class MemoryWriteRequest(BaseModel):
     owner_id: str | None = None
     type: str = "fact"
     confidence: float = 0.8
+
+
+class MemoryConsolidateRequest(BaseModel):
+    session_id: str
+    user_id: str | None = None
 
 
 class EvalRunRequest(BaseModel):
@@ -94,7 +103,11 @@ def create_app(
         api_keys=config.server.api_keys, jwt_secret=config.server.jwt_secret
     )
 
-    api = FastAPI(title="Vincio", version="0.3.0", description="Context engineering platform API")
+    from .. import __version__
+
+    api = FastAPI(
+        title="Vincio", version=__version__, description="Context engineering platform API"
+    )
 
     if config.server.cors_origins:
         from fastapi.middleware.cors import CORSMiddleware
@@ -270,6 +283,46 @@ def create_app(
         except VincioError as exc:
             raise HTTPException(status_code=422, detail=exc.message) from exc
         return {"id": item.id, "status": item.status}
+
+    @api.post("/v1/memory/consolidate")
+    async def memory_consolidate(
+        request: MemoryConsolidateRequest, app_id: str, context: AuthContext = Depends(auth)
+    ):
+        app = get_app(app_id)
+        if app.memory is None:
+            raise HTTPException(status_code=400, detail="memory is not enabled for this app")
+        report = await app.memory.consolidate(
+            request.session_id, user_id=request.user_id or context.subject
+        )
+        return report.model_dump(mode="json", exclude={"items"}) | {
+            "promoted_ids": [item.id for item in report.items]
+        }
+
+    @api.get("/v1/memory/export")
+    def memory_export(app_id: str, owner_id: str | None = None, context: AuthContext = Depends(auth)):
+        app = get_app(app_id)
+        if app.memory is None:
+            raise HTTPException(status_code=400, detail="memory is not enabled for this app")
+        owner = owner_id or context.subject
+        if owner is None:
+            raise HTTPException(status_code=422, detail="owner_id is required")
+        return app.memory.export_owner_data(owner)
+
+    @api.get("/v1/memory/stats")
+    def memory_stats(app_id: str, context: AuthContext = Depends(auth)):
+        app = get_app(app_id)
+        if app.memory is None:
+            raise HTTPException(status_code=400, detail="memory is not enabled for this app")
+        return app.memory.stats()
+
+    @api.delete("/v1/memory/{memory_id}")
+    def memory_forget(memory_id: str, app_id: str, context: AuthContext = Depends(auth)):
+        app = get_app(app_id)
+        if app.memory is None:
+            raise HTTPException(status_code=400, detail="memory is not enabled for this app")
+        if not app.memory.forget(memory_id):
+            raise HTTPException(status_code=404, detail=f"memory not found: {memory_id}")
+        return {"id": memory_id, "status": "deleted"}
 
     api.state.registry = registry
     api.state.config = config

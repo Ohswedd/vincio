@@ -4,6 +4,76 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0] - 2026-06-12
+
+Memory & personalization — the 0.4 roadmap milestone. Personalization
+without the failure mode of stale, ungrounded memories: every memory
+carries confidence, provenance, decay, and conflict resolution, and is
+utility-scored against the task before it ever enters a packet.
+
+### Added
+
+- **Personalization APIs** — `remember()` / `recall()` ergonomics over the
+  L0–L5 layers, on both `MemoryEngine` and `ContextApp` (`app.remember(...,
+  user_id="u1")` auto-creates the engine). Scope and memory type are
+  inferred (session > agent > user > tenant; preference/goal/decision/fact
+  classification). New `MemoryScope.AGENT` gives every agent durable memory
+  of its own, and `ScopedMemory` handles (`memory.for_user("u1")`,
+  `for_agent`, `for_session`, `for_tenant`) bind one owner for
+  `remember` / `recall` / `forget` / `items` / `export`.
+- **Hybrid memory recall** — `MemoryEngine.asearch()` fuses lexical and
+  vector relevance (`(1−w)·lexical + w·cosine` over any `Embedder`, offline
+  hash embedder by default, content-addressed vector cache) with graph
+  adjacency (memories linked to the task's entities get a boost) in one
+  scored, scope- and privacy-filtered query; `search()` stays as the sync
+  wrapper. The runtime's memory step extracts task entities and recalls
+  hybrid by default (`memory.hybrid_recall`, `memory.vector_weight`).
+- **Consolidation tiers** — `MemoryConsolidator` (and
+  `await memory.consolidate(session_id, user_id=...)`): episodic session
+  memories summarize into semantic memories promoted to user/agent scope,
+  deduplicate (the survivor absorbs confirmations and records
+  `merged_from`), and retain full provenance — promoted items carry
+  `consolidated_from`, episodes are archived with `consolidated_into`,
+  never silently dropped. `promote_aged_episodes()` runs the background
+  tier transition.
+- **Forgetting & hygiene** — per-scope TTL defaults applied on write
+  (`memory.ttl_days`, sessions default to 30 days) with expired items
+  excluded from recall; importance-weighted retention in `decay_pass()`
+  (heavily used, confirmed, stable preferences/decisions survive longer —
+  `importance_score`, `memory.retention_weight`); and user-driven
+  `edit` / `forget` / `export_owner_data` / `erase_owner_data`
+  (GDPR-style access, rectification, portability, erasure) flowing through
+  the hash-chained audit log as `memory_edit` / `memory_delete` /
+  `memory_export` / `memory_erase` entries.
+- **Memory eval harness** — `vincio.memory.evaluate_memory` measures recall
+  precision, recall@k, contradiction rate, staleness, and personalization
+  lift (owner-scoped vs anonymous recall) against labeled
+  `MemoryEvalCase`s; the VincioBench `memory` family runs it plus
+  consolidation/TTL checks, gated in CI by eleven new `budgets.json`
+  entries.
+- **Run write-back** — step 16 is now governed by `memory.write_back`
+  (`input` | `evidence` | `tools`): cited evidence and successful tool
+  results write back as *candidate* memories with provenance
+  (`origin` / `source_id` / `tool_name`), carrying a status penalty in
+  recall until confirmed (restatement or `confirm()` promotes them to
+  active).
+- **Surface** — CLI `vincio memory remember | recall | forget | export |
+  consolidate | decay`; server endpoints `POST /v1/memory/consolidate`,
+  `GET /v1/memory/export`, `GET /v1/memory/stats`,
+  `DELETE /v1/memory/{id}`; `extract_entities` is now public in
+  `vincio.retrieval.chunking`; new docs (rewritten memory concepts page, a
+  Mem0 comparison) and `examples/13_memory_personalization.py` (offline).
+
+### Changed
+
+- `MemoryEngine` accepts `embedder`, `vector_weight`, `retention_weight`,
+  `ttl_days`, and `audit`; `app.add_memory()` wires the app's embedder and
+  audit log automatically. Search components now report `lexical`,
+  `vector`, `graph`, and `status` alongside the existing factors.
+- `MemoryEngine.search()` includes `candidate`-status memories with a 0.7
+  status weight, and restatements re-activate confirmed candidates.
+- 301 tests passing offline (~2s); ruff clean.
+
 ## [0.3.0] - 2026-06-12
 
 Retrieval & RAG superiority — the 0.3 roadmap milestone. Every advanced
