@@ -33,6 +33,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Connect data sources](docs/guides/connectors.md)
 - [Structured output](docs/guides/structured-output.md)
 - [Add tools](docs/guides/add-tools.md)
+- [Orchestrate multi-agent systems](docs/guides/orchestrate-agents.md)
 - [Run evals](docs/guides/run-evals.md)
 - [Test LLM apps with pytest](docs/guides/test-llm-apps.md)
 - [Optimize](docs/guides/optimize-context.md)
@@ -82,6 +83,30 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `memory.write_back: [input, evidence, tools]`; eval harness
   `vincio.memory.evaluate_memory` (recall precision, contradiction rate,
   staleness, personalization lift) gated in VincioBench.
+- Agents & orchestration (0.6): `app.agent(tools=..., planner="dag|dynamic|
+  react|direct", max_steps=...)` → bounded `AgentState` with `metrics()`;
+  crews `app.crew(members=[{"name", "description", "goal", "keywords",
+  "budget_fraction", ...}], process="sequential|parallel|hierarchical",
+  max_rounds=...)` → `CrewResult` (output, reports, delegations, blackboard
+  snapshot) — members share a versioned `Blackboard`, run under scaled
+  budget shares, and always terminate; durable graphs `app.graph(name)` →
+  `StateGraph.add_node(name, fn)` (fn: dict state → dict updates) /
+  `add_edge` / `add_conditional_edge(source, router, targets=)` /
+  `compile(interrupt_before=, interrupt_after=, max_steps=)`; checkpoints
+  persist per step in the app metadata store; `invoke`/`ainvoke` returns
+  `GraphResult(status="done|interrupted|max_steps", state, thread_id)`;
+  `resume(thread_id, value=...)` (a node-level `interrupt(state, payload)`
+  re-runs and receives the value), `update_state(thread_id, values)` for
+  edit-and-resume, `history(thread_id)` + `fork(checkpoint_id)` for
+  time-travel replay; composition `compose(a) | b | c` (functions, agents,
+  crews, workflows, graphs; results normalized), `parallel(name=step, ...)`,
+  `branch(router, routes)`, streaming via `pipeline.astream(value)` →
+  NodeEvents; workflow approval gates with no `approval_fn` pause
+  (`status == "paused"`, `pending_approvals`) and
+  `workflow.resume(result, approvals={"step": True})` continues without
+  re-running done steps; backends `LangGraphBackend().compile(graph)` and
+  `OpenAIAgentsBackend().export_crew(crew)` export to those runtimes
+  (lazy imports, no lock-in).
 - Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
   is a validated instance.
 - Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,

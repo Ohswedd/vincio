@@ -22,7 +22,11 @@ and governed: scoped remember/recall, hybrid vector+graph recall, episodic→sem
 with provenance, audited forgetting, and a CI-gated memory eval harness. 0.5.0 made evaluation and
 observability platform-grade in-process: quality/safety/conversational metrics, G-Eval judging with
 calibration, a pytest plugin, red-teaming, synthetic data, experiments with significance, a prompt
-registry, sessions and feedback on traces, OTel GenAI export, and a local trace viewer.
+registry, sessions and feedback on traces, OTel GenAI export, and a local trace viewer. 0.6.0 made
+orchestration expressive and safe: multi-agent crews with roles, delegation, and a shared
+blackboard; durable stateful graphs with checkpoint/resume/time-travel; first-class
+human-in-the-loop; declarative composition with streaming node events; and runtime backends for
+LangGraph and the OpenAI Agents SDK.
 
 ---
 
@@ -398,24 +402,48 @@ provider-neutral and dependency-free.*
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 0.5.0 notes.
 
-### 🔭 0.6 — Agents & orchestration (vs LangChain/LangGraph, CrewAI, OpenAI Agents SDK)
+### ✅ 0.6 — Agents & orchestration (vs LangChain/LangGraph, CrewAI, OpenAI Agents SDK) (shipped)
 
 *Match the orchestration frameworks on expressiveness, beat them on safety and observability.*
 
-- **Multi-agent teams** — roles, crews, delegation, and a shared blackboard/working memory, with
-  per-agent budgets and termination guarantees.
-- **Durable stateful graphs** — checkpointing, resume, time-travel/replay, and persistent run state
-  on the existing storage layer; deterministic re-execution from any step.
-- **Human-in-the-loop** — first-class interrupts, approval gates, and edit-and-resume on the agent
-  and workflow graphs.
-- **Declarative composition** — a small, typed composition API (compose/pipe) so chains and graphs
-  read like data, with streaming events for every node.
-- **Runtime backends** — adapters that can target LangGraph or the OpenAI Agents SDK underneath the
-  provider-neutral compiler layer, so Vincio orchestrates without lock-in.
-- *Interconnection:* every agent step emits the same spans and can be eval-scored and optimized;
-  agents read context through the compiler, so budgeting and guardrails apply automatically.
-- *Edge over specialists:* CrewAI gives you a crew; Vincio gives you a crew that is **bounded,
-  traced, eval-gated, and budget-aware** by construction.
+- ✅ **Multi-agent teams** — `Crew` / `app.crew()`: named roles (`AgentRole` with description,
+  goal, keywords, `budget_fraction`) bound to bounded executors over a shared, versioned,
+  author-attributed `Blackboard` (JSON snapshot/restore, event-bus posts); sequential, parallel,
+  and hierarchical processes — the manager delegates with a schema-validated LLM plan and a
+  deterministic keyword-routing offline fallback, every delegation is recorded, and termination is
+  guaranteed (scaled per-member budgets, a crew-level budget check before each delegation, and
+  `max_rounds` on review).
+- ✅ **Durable stateful graphs** — `StateGraph` / `app.graph()`: dict-state nodes, conditional
+  edges, per-key reducers, optional Pydantic state schema; a `Checkpointer` persists every
+  super-step on the existing metadata stores (memory/SQLite/Postgres), giving `resume(thread_id)`,
+  `history()`, and `fork(checkpoint_id)` — deterministic re-execution from any step — with
+  `max_steps` bounding cyclic graphs.
+- ✅ **Human-in-the-loop** — static (`interrupt_before` / `interrupt_after`) and dynamic
+  (`interrupt(state, payload)`) graph interrupts; resume with a value re-runs the paused node with
+  the answer; `update_state()` edits state as a new checkpoint (edit-and-resume). Workflow approval
+  gates with no `approval_fn` now pause (`status="paused"`, `pending_approvals`) and
+  `workflow.resume(result, approvals={...})` continues without re-running done steps.
+- ✅ **Declarative composition** — `compose()` and the `|` operator pipe functions, agents, crews,
+  workflows, and compiled graphs with results normalized between steps; `parallel()` and
+  `branch()` combinators; `astream()` yields `NodeEvent`s and every node emits a span.
+- ✅ **Runtime backends** — `LangGraphBackend` (StateGraph → LangGraph builder; nodes transfer
+  as-is, edges/conditional edges/entry/END translated) and `OpenAIAgentsBackend` (agents and crews
+  → SDK `Agent`s; a crew becomes a manager with handoffs) with lazy imports and injectable modules
+  for offline tests — Vincio orchestrates without lock-in.
+- *Interconnection (held):* crews, graph nodes, and composed steps emit `crew` / `crew_agent` /
+  `graph_node` / `compose_node` spans on the shared tracer; `CrewResult.metrics()` aggregates the
+  same per-agent metrics the eval runner gates; `app.graph()` checkpoints persist in the same
+  metadata store as runs and packets; crew members built by `app.crew()` read context through the
+  compiler, so budgeting and guardrails apply automatically.
+- *Edge over specialists (delivered):* CrewAI gives you a crew; Vincio gives you a crew that is
+  **bounded, traced, eval-gated, and budget-aware** by construction — see
+  [docs/comparisons/crewai.md](docs/comparisons/crewai.md) and
+  [openai-agents-sdk.md](docs/comparisons/openai-agents-sdk.md).
+- **416 tests passing offline in ~2s; ruff clean**; sixteen runnable examples; the VincioBench
+  `agent` family holds crew termination, delegation recording, interrupt→resume and fork-replay
+  determinism, and composition streaming coverage under six new CI-gated budgets.
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.6.0 notes.
 
 ### 🔭 0.7 — Structured output, guardrails & reliability (vs Pydantic AI, Guardrails, NeMo, DSPy)
 

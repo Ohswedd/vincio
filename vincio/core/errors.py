@@ -286,6 +286,12 @@ class AgentMaxStepsError(AgentEngineError):
     code = "AGENT_MAX_STEPS"
 
 
+class GraphError(AgentEngineError):
+    """Stateful-graph definition or execution error."""
+
+    code = "GRAPH_ERROR"
+
+
 # --- workflows ---------------------------------------------------------------
 
 

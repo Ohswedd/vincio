@@ -4,6 +4,7 @@ Compiles prompts, memory, retrieval, tools, schemas, and policies into
 optimized, validated, observable, provider-neutral context packets.
 """
 
+from .agents import AgentRole, Blackboard, Crew, StateGraph, compose
 from .core.app import ContextApp
 from .core.config import VincioConfig, load_config
 from .core.errors import VincioError
@@ -30,10 +31,15 @@ from .output.schemas import OutputContract, OutputSchema
 from .prompts.templates import PromptSpec
 from .workflows.engine import Workflow
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "ContextApp",
+    "AgentRole",
+    "Blackboard",
+    "Crew",
+    "StateGraph",
+    "compose",
     "VincioConfig",
     "load_config",
     "VincioError",

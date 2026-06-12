@@ -97,6 +97,24 @@
     "families.agent.adversarial_terminated": {
       "eq": true
     },
+    "families.agent.crew_budget_terminated": {
+      "eq": true
+    },
+    "families.agent.crew_full_run_succeeded": {
+      "eq": true
+    },
+    "families.agent.crew_delegation_recorded": {
+      "eq": true
+    },
+    "families.agent.graph_resume_deterministic": {
+      "eq": true
+    },
+    "families.agent.graph_fork_replay_deterministic": {
+      "eq": true
+    },
+    "families.agent.compose_stream_coverage": {
+      "eq": true
+    },
     "families.security.injection_detection_rate": {
       "gte": 0.8
     },

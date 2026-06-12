@@ -17,7 +17,10 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from ..agents.blackboard import Blackboard
+from ..agents.crew import AgentRole, Crew
 from ..agents.executor import AgentExecutor
+from ..agents.graph import Checkpointer, StateGraph
 from ..agents.planner import Planner
 from ..caching.base import InMemoryCache
 from ..caching.compilation import ChunkCache, ContextCompileCache, PromptCompileCache
@@ -739,16 +742,15 @@ class ContextApp:
 
     # -- agents -------------------------------------------------------------------------------------------------
 
-    def agent(
+    def _build_executor(
         self,
         *,
-        name: str | None = None,
         tools: list[str | Callable] | None = None,
         planner: str = "dag",
         max_steps: int = 8,
-        evaluator: str | None = None,
         model: str | None = None,
-    ) -> _AgentHandle:
+        system_prompt_extra: str = "",
+    ) -> AgentExecutor:
         for tool in tools or []:
             self.add_tool(tool)
         planner_mode = {"dag": "static", "static": "static", "dynamic": "dynamic", "react": "react", "direct": "direct"}.get(planner, "static")
@@ -778,9 +780,14 @@ class ContextApp:
                 policy_engine=self.policy_engine,
                 repairer=self.repairer,
             )
-        if evaluator is not None:
-            self.add_evaluator(evaluator)
-        executor = AgentExecutor(
+        system_prompt = self.prompt_compiler.compile(
+            self.prompt_spec, variables=self.prompt_variables
+        ).system_text
+        if system_prompt_extra:
+            system_prompt = (
+                f"{system_prompt}\n\n{system_prompt_extra}" if system_prompt else system_prompt_extra
+            )
+        return AgentExecutor(
             provider,
             model=agent_model,
             planner=planner_obj,
@@ -790,11 +797,94 @@ class ContextApp:
             output_validator=validator,
             tracer=self.tracer,
             cost_tracker=self.cost_tracker,
-            system_prompt=self.prompt_compiler.compile(
-                self.prompt_spec, variables=self.prompt_variables
-            ).system_text,
+            system_prompt=system_prompt,
+        )
+
+    def agent(
+        self,
+        *,
+        name: str | None = None,
+        tools: list[str | Callable] | None = None,
+        planner: str = "dag",
+        max_steps: int = 8,
+        evaluator: str | None = None,
+        model: str | None = None,
+    ) -> _AgentHandle:
+        if evaluator is not None:
+            self.add_evaluator(evaluator)
+        executor = self._build_executor(
+            tools=tools, planner=planner, max_steps=max_steps, model=model
         )
         return _AgentHandle(self, executor, max_steps)
+
+    def crew(
+        self,
+        name: str = "crew",
+        *,
+        members: list[AgentRole | dict[str, Any]],
+        process: str = "sequential",
+        tools: list[str | Callable] | None = None,
+        planner: str = "direct",
+        max_steps: int = 8,
+        max_rounds: int = 4,
+        model: str | None = None,
+    ) -> Crew:
+        """Build a multi-agent crew over a shared blackboard.
+
+        ``members`` are :class:`AgentRole` objects or dicts with the role
+        fields (``name``, ``description``, ``goal``, ``keywords``,
+        ``budget_fraction``) plus optional per-member ``tools`` / ``planner``
+        / ``model`` / ``max_steps`` overrides. The hierarchical process uses
+        the app's provider as the crew manager (deterministic fallback when
+        offline)::
+
+            crew = app.crew(members=[
+                {"name": "researcher", "goal": "gather evidence", "keywords": ["find"]},
+                {"name": "writer", "goal": "draft the report"},
+            ])
+            result = crew.run("Summarize Q3 refund trends")
+        """
+        crew = Crew(
+            name,
+            process=process,  # type: ignore[arg-type]
+            blackboard=Blackboard(event_bus=self.events),
+            tracer=self.tracer,
+            manager_provider=self.resolve_provider() if process == "hierarchical" else None,
+            manager_model=model or self.model,
+            max_rounds=max_rounds,
+        )
+        role_fields = set(AgentRole.model_fields)
+        for spec in members:
+            overrides: dict[str, Any] = {}
+            if isinstance(spec, dict):
+                overrides = spec
+                role = AgentRole(**{k: v for k, v in spec.items() if k in role_fields})
+            else:
+                role = spec
+            executor = self._build_executor(
+                tools=overrides.get("tools", tools),
+                planner=overrides.get("planner", planner),
+                max_steps=overrides.get("max_steps", max_steps),
+                model=overrides.get("model", model),
+                system_prompt_extra=f"You are {role.name}. {role.description}".strip(),
+            )
+            crew.add(role, executor)
+        return crew
+
+    def graph(
+        self,
+        name: str = "graph",
+        *,
+        state_schema: type[BaseModel] | None = None,
+        reducers: dict[str, Callable[[Any, Any], Any]] | None = None,
+    ) -> StateGraph:
+        """A durable :class:`StateGraph` bound to the app's tracer and
+        metadata store: checkpoints persist wherever the app's runs do, so
+        threads survive restarts when the store is SQLite/Postgres."""
+        graph = StateGraph(name, state_schema=state_schema, reducers=reducers)
+        graph.default_tracer = self.tracer
+        graph.default_checkpointer = Checkpointer(self.store)
+        return graph
 
     # -- workflows ------------------------------------------------------------------------------------------------
 

@@ -4,6 +4,102 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] - 2026-06-12
+
+Agents & orchestration — the 0.6 roadmap milestone. Match the orchestration
+frameworks on expressiveness, beat them on safety and observability:
+multi-agent crews over a shared blackboard, durable stateful graphs with
+checkpoint/resume/time-travel, first-class human-in-the-loop on graphs and
+workflows, a declarative composition API with streaming node events, and
+runtime backends that export to LangGraph and the OpenAI Agents SDK.
+
+### Added
+
+- **Multi-agent crews** — `Crew` / `app.crew(members=[...], process=...)`
+  binds named `AgentRole`s (description, goal, keywords, `budget_fraction`)
+  to bounded `AgentExecutor`s and runs them as a team: `sequential` (each
+  member sees everything posted so far), `parallel` (bounded concurrent
+  fan-out, dict of answers), and `hierarchical` (a manager decomposes the
+  objective, delegates with a schema-validated plan, reviews the board, and
+  either finishes or delegates follow-ups — with a deterministic
+  keyword-routing fallback offline). Termination is guaranteed by
+  construction: members run under a scaled share of the crew budget, the
+  crew checks its budget before every delegation, and review rounds are
+  capped at `max_rounds`. `CrewResult` carries per-member reports,
+  `DelegationRecord`s, the blackboard snapshot, aggregated usage, and
+  eval-ready `metrics()`.
+- **Shared blackboard** — `Blackboard`: versioned, author-attributed shared
+  working memory with per-key history, optional `blackboard.posted` events
+  on the app event bus, prompt rendering (`as_context()`), and JSON
+  `snapshot()` / `restore()` so crew coordination persists and replays.
+- **Durable stateful graphs** — `StateGraph` / `app.graph()`: dict-state
+  nodes (sync or async), static and conditional edges, optional per-key
+  `reducers` for deterministic parallel-branch merges, and an optional
+  Pydantic `state_schema` validated after every merge. `compile()` produces
+  a `CompiledGraph` whose `Checkpointer` persists a checkpoint after every
+  super-step on any `MetadataStore` (in-memory/SQLite/Postgres — `app.graph()`
+  binds the app's store, so threads survive restarts): `resume(thread_id)`
+  continues an interrupted thread, `history()` lists every checkpoint,
+  `fork(checkpoint_id)` time-travels by branching a new thread that
+  re-executes deterministically from that step, and `max_steps` bounds
+  cyclic graphs. `astream()` yields node/checkpoint/interrupt/done events.
+- **Human-in-the-loop** — pause graphs statically (`interrupt_before` /
+  `interrupt_after` node lists) or dynamically from inside a node
+  (`interrupt(state, payload)`); resume with a value and the paused node
+  re-runs and receives it; `update_state(thread_id, values)` edits state as
+  a new checkpoint before resuming. Workflow approval gates pause too:
+  a gate with no `approval_fn` returns status `"paused"` with
+  `pending_approvals`, and `workflow.resume(result, approvals={...})`
+  continues without re-running done steps (edit the saved context to steer
+  the continuation).
+- **Declarative composition** — `compose(...)` / the `|` operator build
+  typed pipelines from any mix of functions, agents, crews, workflows, and
+  compiled graphs, normalizing results between steps (`AgentState` → final
+  answer, `WorkflowResult`/`CrewResult` → output, `GraphResult` → state);
+  `parallel(...)` fans out to named branches, `branch(router, routes)`
+  routes by a function. `astream()` yields `NodeEvent`s
+  (node_start/node_end/error/done) and every node emits a `compose_node`
+  span.
+- **Runtime backends** — `LangGraphBackend` exports a Vincio `StateGraph`
+  to a LangGraph builder (nodes transfer as-is; edges, conditional edges,
+  entry point, and `END` are translated) and `OpenAIAgentsBackend` exports
+  agents and crews to OpenAI Agents SDK `Agent` objects (a crew becomes a
+  manager agent with handoffs to every member; tools wrap via
+  `function_tool`). Both import their runtime lazily and accept an injected
+  module, so Vincio orchestrates without lock-in and the adapters test
+  offline.
+- **Observability** — new span types `crew`, `crew_agent`, `graph_node`,
+  and `compose_node`; every crew member, graph node, and composed step is
+  traced and scoreable like any other Vincio run.
+- **VincioBench** — the `agent` family now also measures crew over-budget
+  termination, full-crew success, delegation recording, interrupt→resume
+  and fork-replay determinism (state must equal the uninterrupted run), and
+  composition streaming coverage; six new `budgets.json` gates hold them in
+  CI.
+- **Docs & examples** — a new how-to guide
+  (`docs/guides/orchestrate-agents.md`), expanded
+  `docs/concepts/agents.md`, comparison write-ups for CrewAI and the OpenAI
+  Agents SDK, a durable-graphs section in the LangChain/LangGraph
+  comparison, and runnable examples `15_multi_agent_crew.py` and
+  `16_durable_graph.py`.
+
+### Changed
+
+- **Workflow approval gates without an `approval_fn` now pause instead of
+  failing** — `WorkflowResult.status` gains `"paused"` and
+  `pending_approvals`; `arun(context=..., approvals=...)` /
+  `aresume(previous, approvals=...)` continue a prior run, never re-running
+  steps already done. Gates answered by a configured `approval_fn` behave
+  exactly as before.
+- `ContextApp.agent()` executor construction was factored into a shared
+  builder reused by `app.crew()` (per-member tools/planner/model
+  overrides); public behavior is unchanged.
+- New error type `GraphError` (subclass of `AgentEngineError`) for graph
+  definition and execution failures.
+- **416 tests passing offline in ~2s; ruff clean**; sixteen runnable
+  examples; the VincioBench `agent` family holds the new orchestration
+  guarantees under six additional CI-gated budgets.
+
 ## [0.5.0] - 2026-06-12
 
 Evaluation, testing & observability — the 0.5 roadmap milestone. Make
