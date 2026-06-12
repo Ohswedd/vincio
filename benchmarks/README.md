@@ -24,6 +24,30 @@ Results are printed as JSON and saved to `benchmarks/results/`.
 | **OutputBench** | recovery rate over malformed model outputs; missing-required correctly rejected | raw `json.loads` |
 | **CostBench** | evidence-token reduction from the context compiler | stuff-everything context |
 | **SecurityBench** | injection detection rate, false-positive rate, PII coverage | — |
+| **PerfBench** | compile/retrieval/run latency (p50/p95), cache speedups, concurrent throughput, streaming TTFT | cold (uncached) paths |
+
+## Benchmark gates (CI)
+
+`budgets.json` defines hard budgets over the report (latency ceilings, cache
+speedup floors, token-efficiency and quality floors). CI runs the suite and
+gates the build:
+
+```bash
+python benchmarks/vinciobench.py      # produce the report
+python benchmarks/check_budgets.py    # exit 1 on any budget breach
+```
+
+Latency budgets are deliberately loose (shared CI runners) and exist to catch
+order-of-magnitude regressions; ratio and quality budgets are tight.
+
+## Per-stage profiling
+
+```bash
+python benchmarks/profile_stages.py                  # stage breakdown from trace spans
+python benchmarks/profile_stages.py --runs 50 --json
+python benchmarks/profile_stages.py --cprofile vincio.prof
+# flamegraph: snakeviz vincio.prof   (or: flameprof vincio.prof > flame.svg)
+```
 
 ## A note on claims
 

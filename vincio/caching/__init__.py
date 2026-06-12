@@ -1,6 +1,7 @@
 """Vincio caching system."""
 
 from .base import CacheBackend, InMemoryCache, SQLiteCache
+from .compilation import ChunkCache, ContextCompileCache, PromptCompileCache
 from .invalidation import InvalidationManager
 from .layers import (
     ContextPacketCache,
@@ -15,8 +16,11 @@ __all__ = [
     "InMemoryCache",
     "SQLiteCache",
     "InvalidationManager",
+    "ChunkCache",
+    "ContextCompileCache",
     "ContextPacketCache",
     "EvalResultCache",
+    "PromptCompileCache",
     "ResponseCache",
     "RetrievalCache",
     "SemanticCache",

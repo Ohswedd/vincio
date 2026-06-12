@@ -94,7 +94,7 @@ def create_app(
         api_keys=config.server.api_keys, jwt_secret=config.server.jwt_secret
     )
 
-    api = FastAPI(title="Vincio", version="0.1.0", description="Context engineering platform API")
+    api = FastAPI(title="Vincio", version="0.2.0", description="Context engineering platform API")
 
     if config.server.cors_origins:
         from fastapi.middleware.cors import CORSMiddleware
@@ -163,21 +163,26 @@ def create_app(
         tenant_id = scope_tenant(request.tenant_id, context)
 
         async def event_stream():
-            # Full pipeline run; final result streamed as SSE events so
-            # clients get a single consistent protocol.
-            result = await app.arun(
+            # End-to-end streaming (0.2): events arrive as the pipeline and
+            # the provider produce them — stage markers, real token deltas,
+            # partial structured output, tool activity, then the result.
+            async for event in app.astream(
                 request.input,
                 files=request.files or None,
                 tenant_id=tenant_id,
                 user_id=request.user_id or context.subject,
                 session_id=request.session_id,
                 config=RunConfig(model=request.model, temperature=request.temperature, stream=True),
-            )
-            text = result.raw_text or (result.output if isinstance(result.output, str) else "")
-            for start in range(0, len(text), 256):
-                yield f"data: {json.dumps({'type': 'text_delta', 'text': text[start:start+256]})}\n\n"
-            final = result.model_dump(mode="json", exclude={"evidence", "raw_text"})
-            yield f"data: {json.dumps({'type': 'done', 'result': final}, default=str)}\n\n"
+            ):
+                if event.type == "done" and event.result is not None:
+                    final = event.result.model_dump(mode="json", exclude={"evidence", "raw_text"})
+                    yield f"data: {json.dumps({'type': 'done', 'result': final}, default=str)}\n\n"
+                else:
+                    payload = event.model_dump(
+                        mode="json", exclude_none=True, exclude={"result"}, exclude_defaults=True
+                    )
+                    payload["type"] = event.type
+                    yield f"data: {json.dumps(payload, default=str)}\n\n"
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 

@@ -17,12 +17,15 @@ from .local import LocalProvider
 from .mistral import MistralProvider
 from .mock import MockProvider, instance_from_schema
 from .openai import OpenAIProvider
+from .transport import CoalescingProvider, build_pooled_client
 
 __all__ = [
     "ModelProvider",
     "HTTPProvider",
     "RetryingProvider",
     "FailoverChain",
+    "CoalescingProvider",
+    "build_pooled_client",
     "ProviderRegistry",
     "OpenAIProvider",
     "AnthropicProvider",

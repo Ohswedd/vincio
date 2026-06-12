@@ -113,10 +113,14 @@ class HTTPProvider(ModelProvider):
         base_url: str | None = None,
         timeout_s: float = 120.0,
         client: httpx.AsyncClient | None = None,
+        max_connections: int = 100,
+        max_keepalive_connections: int = 20,
     ) -> None:
         self.api_key = api_key
         self.base_url = (base_url or self.default_base_url).rstrip("/")
         self.timeout_s = timeout_s
+        self.max_connections = max_connections
+        self.max_keepalive_connections = max_keepalive_connections
         self._client = client
         self._owns_client = client is None
 
@@ -126,7 +130,13 @@ class HTTPProvider(ModelProvider):
     @property
     def client(self) -> httpx.AsyncClient:
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(timeout=self.timeout_s)
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout_s,
+                limits=httpx.Limits(
+                    max_connections=self.max_connections,
+                    max_keepalive_connections=self.max_keepalive_connections,
+                ),
+            )
             self._owns_client = True
         return self._client
 

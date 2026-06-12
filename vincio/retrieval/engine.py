@@ -7,7 +7,6 @@ deduplicate → context_score → return_evidence.
 
 from __future__ import annotations
 
-import asyncio
 import json
 import re
 from typing import Any
@@ -15,6 +14,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..context.scoring import lexical_similarity, near_duplicate_score
+from ..core.concurrency import gather_bounded
 from ..core.types import Chunk, EvidenceItem, Message, ModelRequest, TrustLevel
 from ..providers.base import ModelProvider
 from .indexes import Index, SearchFilter, SearchHit
@@ -83,6 +83,7 @@ class RetrievalEngine:
         planner_model: str | None = None,
         candidate_multiplier: int = 4,
         duplicate_threshold: float = 0.9,
+        max_concurrency: int = 8,
     ) -> None:
         if not indexes:
             raise ValueError("RetrievalEngine requires at least one index")
@@ -93,6 +94,7 @@ class RetrievalEngine:
         self.planner_model = planner_model
         self.candidate_multiplier = candidate_multiplier
         self.duplicate_threshold = duplicate_threshold
+        self.max_concurrency = max_concurrency
 
     # -- query planning ------------------------------------------------------------
 
@@ -147,11 +149,25 @@ class RetrievalEngine:
     async def _search_all(
         self, query: str, *, top_k: int, where: SearchFilter | None
     ) -> list[list[SearchHit]]:
-        return list(
-            await asyncio.gather(
-                *(index.search(query, top_k=top_k, where=where) for index in self.indexes)
-            )
+        return await gather_bounded(
+            (index.search(query, top_k=top_k, where=where) for index in self.indexes),
+            limit=self.max_concurrency,
         )
+
+    async def _search_many(
+        self, queries: list[str], *, top_k: int, where: SearchFilter | None
+    ) -> list[list[SearchHit]]:
+        """Fan out every (query, index) pair concurrently, preserving the
+        query-major ordering of the sequential implementation."""
+        results = await gather_bounded(
+            (
+                index.search(query, top_k=top_k, where=where)
+                for query in queries
+                for index in self.indexes
+            ),
+            limit=self.max_concurrency,
+        )
+        return results
 
     async def retrieve(
         self,
@@ -173,11 +189,10 @@ class RetrievalEngine:
         candidate_k = max(top_k * self.candidate_multiplier, top_k)
 
         queries = [plan.rewritten, *plan.subqueries]
-        result_lists: list[list[SearchHit]] = []
+        # All (query, index) searches run concurrently under one bound.
+        result_lists = await self._search_many(queries, top_k=candidate_k, where=where)
         weights: list[float] = []
-        for query_index, q in enumerate(queries):
-            lists = await self._search_all(q, top_k=candidate_k, where=where)
-            result_lists.extend(lists)
+        for query_index in range(len(queries)):
             # The main query counts more than subqueries.
             base = 1.0 if query_index == 0 else 0.6
             weights.extend(base * w for w in self.index_weights)
@@ -198,12 +213,9 @@ class RetrievalEngine:
                 ][:3]
                 if not hop_queries:
                     break
-                hop_lists: list[list[SearchHit]] = []
                 for hop_query in hop_queries:
                     seen_queries.add(hop_query.lower())
-                    hop_lists.extend(
-                        await self._search_all(hop_query, top_k=candidate_k, where=where)
-                    )
+                hop_lists = await self._search_many(hop_queries, top_k=candidate_k, where=where)
                 if not hop_lists:
                     break
                 merged = reciprocal_rank_fusion(

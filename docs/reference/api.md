@@ -18,6 +18,7 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | `add_optimizer(name)` | register an optimization dimension |
 | `set_policy(name, value)` | set a run policy (e.g. `answer_only_from_sources`) |
 | `run(input, files=, tenant_id=, user_id=, session_id=, config=)` / `arun` | execute the 17-step pipeline → `RunResult` |
+| `astream(input, ...)` / `stream` | the same pipeline with end-to-end streaming → `RunStreamEvent` iterator |
 | `agent(tools=, planner=, max_steps=, evaluator=)` | bounded agent handle |
 | `workflow(name)` | deterministic `Workflow` builder |
 | `evaluate(dataset, metrics=, concurrency=, gates=, judges=)` | `EvalReport` |
@@ -30,6 +31,13 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 `trace_id`, `context_packet_id`, `evidence`, `citations`, `tool_results`,
 `usage`, `cost_usd`, `latency_ms`, `validation`, `eval_scores`,
 `excluded_context`.
+
+## `RunStreamEvent`
+
+Yielded by `astream` / `stream`. `type` is one of `stage`, `text_delta`,
+`partial_output` (incremental partial-JSON parse for structured output,
+with `output_complete`), `tool_call`, `tool_result`, `usage`, `error`, or
+the terminal `done` (carrying `result: RunResult`).
 
 ## Key subsystem entry points
 
@@ -47,8 +55,9 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | `vincio.optimize` | `PromptOptimizer`, `ContextOptimizer`, `RoutingPolicy`, `evolution_loop`, `fitness` |
 | `vincio.observability` | `Tracer`, `JSONLExporter`, `OTelExporter`, `CostTracker`, `trace_diff` |
 | `vincio.security` | `PIIDetector`, `SecretScanner`, `InjectionDetector`, `AccessController`, `PolicyEngine`, `AuditLog` |
-| `vincio.caching` | `InMemoryCache`, `SQLiteCache`, `ResponseCache`, `SemanticCache`, `InvalidationManager` |
-| `vincio.providers` | `build_provider`, `MockProvider`, `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `MistralProvider`, `LocalProvider`, `FailoverChain` |
+| `vincio.caching` | `InMemoryCache`, `SQLiteCache`, `ResponseCache`, `SemanticCache`, `PromptCompileCache`, `ContextCompileCache`, `ChunkCache`, `InvalidationManager` |
+| `vincio.providers` | `build_provider`, `MockProvider`, `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `MistralProvider`, `LocalProvider`, `FailoverChain`, `CoalescingProvider` |
+| `vincio.core.concurrency` | `gather_bounded`, `map_bounded` (bounded, cancellation-correct fan-out) |
 | `vincio.storage` | `create_metadata_store`, `SQLiteMetadataStore`, Qdrant/pgvector/Neo4j/Redis adapters |
 | `vincio.server` | `create_app` (FastAPI) |
 

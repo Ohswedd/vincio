@@ -33,6 +33,7 @@ from ..core.types import (
     ToolSpec,
     UserInput,
 )
+from ..core.utils import new_id
 from .budgeting import BudgetAllocator
 from .compression import distill_evidence_ledger, extractive_compress
 from .ir import ContextIR, OutputContractRef
@@ -60,6 +61,7 @@ class ContextCompilerOptions(BaseModel):
     max_memory_items: int = 8
     ordering: Literal["relevance", "authority", "recency", "boundary_sandwich"] = "relevance"
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
+    slim_packets: bool = False  # packets reference evidence text by hash
 
 
 class CompiledContext(BaseModel):
@@ -69,6 +71,12 @@ class CompiledContext(BaseModel):
     budget_report: dict[str, Any] = Field(default_factory=dict)
     conflicts: list[dict[str, Any]] = Field(default_factory=list)
     token_count: int = 0
+    from_cache: bool = False
+    # Original (pre-selection) inputs, retained in memory for partial
+    # recompiles; excluded from dumps so packets and caches stay slim.
+    source_evidence: list[EvidenceItem] = Field(default_factory=list, exclude=True)
+    source_memory: list[MemoryItem] = Field(default_factory=list, exclude=True)
+    source_tool_results: list[ToolResult] = Field(default_factory=list, exclude=True)
 
 
 def _looks_negated(text: str) -> bool:
@@ -78,10 +86,61 @@ def _looks_negated(text: str) -> bool:
 
 
 class ContextCompiler:
-    def __init__(self, options: ContextCompilerOptions | None = None) -> None:
+    def __init__(self, options: ContextCompilerOptions | None = None, *, cache: Any | None = None) -> None:
         self.options = options or ContextCompilerOptions()
         self.scorer = ContextScorer(self.options.weights)
         self.allocator = BudgetAllocator()
+        self.cache = cache  # ContextCompileCache | None
+        self.cache_hits = 0
+
+    def _signature(
+        self,
+        *,
+        objective: Objective,
+        user_input: UserInput,
+        instructions: list[Instruction],
+        constraints: list[Constraint],
+        examples: list[Example],
+        evidence: list[EvidenceItem],
+        memory: list[MemoryItem],
+        tool_results: list[ToolResult],
+        tool_specs: list[ToolSpec],
+        output_contract: OutputContractRef | None,
+        budget: Budget,
+        policies: PolicySet,
+    ) -> dict[str, Any]:
+        """Content signature covering every input that affects compilation."""
+        return {
+            "objective": (objective.text, objective.task_type.value),
+            "input": (user_input.text, user_input.tenant_id),
+            "instructions": [i.text for i in instructions],
+            "constraints": [c.text for c in constraints],
+            "examples": [(e.input, e.output) for e in examples],
+            "evidence": [
+                (e.id, e.text, e.authority, e.provenance, e.relevance, e.token_cost, e.source_id)
+                for e in evidence
+            ],
+            "memory": [
+                (
+                    m.id,
+                    m.content,
+                    m.confidence,
+                    m.scope.value,
+                    m.privacy_class.value,
+                    m.owner_id,
+                    m.updated_at.isoformat() if m.updated_at else None,
+                )
+                for m in memory
+            ],
+            "tool_results": [
+                (t.id, t.tool_name, t.status, str(t.output), t.error) for t in tool_results
+            ],
+            "tool_specs": [t.model_dump(mode="json") for t in tool_specs],
+            "contract": output_contract.model_dump(mode="json") if output_contract else None,
+            "budget": budget.model_dump(mode="json"),
+            "policies": policies.model_dump(mode="json"),
+            "options": self.options.model_dump(mode="json"),
+        }
 
     # -- candidate collection -----------------------------------------------------
 
@@ -348,6 +407,38 @@ class ContextCompiler:
         query = (user_input.text or "") or objective.text
         excluded: list[dict[str, Any]] = []
 
+        cache_key: str | None = None
+        if self.cache is not None:
+            cache_key = self.cache.key(
+                self._signature(
+                    objective=objective,
+                    user_input=user_input,
+                    instructions=list(instructions or []),
+                    constraints=list(constraints or []),
+                    examples=list(examples or []),
+                    evidence=list(evidence or []),
+                    memory=list(memory or []),
+                    tool_results=list(tool_results or []),
+                    tool_specs=list(tool_specs or []),
+                    output_contract=output_contract,
+                    budget=budget,
+                    policies=policies,
+                )
+            )
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                self.cache_hits += 1
+                compiled = CompiledContext.model_validate(cached)
+                compiled.from_cache = True
+                # The compiled content is identical, but each run gets its
+                # own packet identity and trace linkage.
+                compiled.packet.id = new_id("ctx")
+                compiled.packet.trace_parent_id = trace_parent_id
+                compiled.source_evidence = list(evidence or [])
+                compiled.source_memory = list(memory or [])
+                compiled.source_tool_results = list(tool_results or [])
+                return compiled
+
         # 1-3. collect, normalize, classify (type is assigned at collection).
         candidates = self._collect(
             evidence=evidence or [], memory=memory or [], tool_results=tool_results or []
@@ -499,12 +590,66 @@ class ContextCompiler:
             memory_excluded=memory_excluded,
             trace_parent_id=trace_parent_id,
             token_count=token_count,
+            slim=self.options.slim_packets,
         )
-        return CompiledContext(
+        compiled = CompiledContext(
             ir=ir,
             packet=packet,
             excluded_report=excluded,
             budget_report=allocation.report(),
             conflicts=conflicts,
             token_count=token_count,
+            source_evidence=list(evidence or []),
+            source_memory=list(memory or []),
+            source_tool_results=list(tool_results or []),
+        )
+        if self.cache is not None and cache_key is not None:
+            self.cache.set(
+                cache_key,
+                compiled.model_dump(mode="json"),
+                source_ids=sorted({e.source_id for e in compiled.ir.evidence if e.source_id}),
+            )
+        return compiled
+
+    async def recompile(
+        self,
+        previous: CompiledContext,
+        *,
+        objective: Objective | None = None,
+        user_input: UserInput | None = None,
+        add_evidence: list[EvidenceItem] | None = None,
+        remove_evidence_ids: list[str] | None = None,
+        add_memory: list[MemoryItem] | None = None,
+        remove_memory_ids: list[str] | None = None,
+        budget: Budget | None = None,
+    ) -> CompiledContext:
+        """Partial recompile after a packet edit.
+
+        Re-runs the pipeline over the previous compile's *original* inputs
+        with the given edits applied, instead of re-collecting from scratch.
+        Unchanged texts hit the memoized tokenizers (and, when a compile
+        cache is attached, an unchanged edit set is a full cache hit), so
+        the cost is proportional to the edit, not the packet.
+        """
+        removed_evidence = set(remove_evidence_ids or [])
+        removed_memory = set(remove_memory_ids or [])
+        evidence = [e for e in previous.source_evidence if e.id not in removed_evidence]
+        evidence.extend(add_evidence or [])
+        memory = [m for m in previous.source_memory if m.id not in removed_memory]
+        memory.extend(add_memory or [])
+        ir = previous.ir
+        return await self.compile(
+            objective=objective or ir.objective,
+            user_input=user_input or ir.input,
+            instructions=ir.instructions,
+            constraints=ir.constraints,
+            examples=ir.examples,
+            evidence=evidence,
+            memory=memory,
+            tool_results=previous.source_tool_results,
+            tool_specs=ir.tool_specs,
+            output_contract=ir.output_contract,
+            budget=budget or ir.budgets,
+            policies=ir.policies,
+            trace_parent_id=previous.packet.trace_parent_id,
         )

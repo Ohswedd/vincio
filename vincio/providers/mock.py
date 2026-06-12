@@ -20,6 +20,7 @@ from typing import Any
 from ..core.tokens import count_tokens
 from ..core.types import (
     ModelCapabilities,
+    ModelEvent,
     ModelRequest,
     ModelResponse,
     TokenUsage,
@@ -175,6 +176,19 @@ class MockProvider(ModelProvider):
         if self.responder is not None:
             return self._coerce(self.responder(request), request)
         return self._default_response(request)
+
+    async def stream(self, request: ModelRequest):
+        """Real chunked streaming: the response text arrives in small deltas
+        (concatenating them reproduces the text exactly) so streaming
+        consumers are exercised meaningfully offline."""
+        response = await self.generate(request)
+        chunk_size = 16
+        for start in range(0, len(response.text), chunk_size):
+            yield ModelEvent(type="text_delta", text=response.text[start : start + chunk_size])
+        for tool_call in response.tool_calls:
+            yield ModelEvent(type="tool_call_delta", tool_call=tool_call)
+        yield ModelEvent(type="usage", usage=response.usage)
+        yield ModelEvent(type="done", response=response)
 
     async def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
         return [self._embed_one(text) for text in texts]

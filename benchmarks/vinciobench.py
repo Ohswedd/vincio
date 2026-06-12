@@ -1,7 +1,7 @@
 """VincioBench: benchmark suite for Vincio and baselines.
 
 Families: PromptBench, RAGBench, MemoryBench, AgentBench, ToolBench,
-OutputBench, CostBench, SecurityBench.
+OutputBench, CostBench, SecurityBench, PerfBench.
 
 Runs fully offline by default (deterministic mock provider + deterministic
 metrics) so results are reproducible; set VINCIO_PROVIDER / VINCIO_MODEL to
@@ -373,6 +373,132 @@ async def bench_security() -> dict[str, Any]:
     }
 
 
+async def bench_perf() -> dict[str, Any]:
+    """PerfBench (0.2): latency, throughput, streaming TTFT, and cache
+    speedups for the hot paths — measured offline so results gate CI
+    deterministically. Latencies are wall-clock medians over repeats."""
+    from vincio import ContextApp, VincioConfig
+    from vincio.caching import ContextCompileCache, PromptCompileCache
+    from vincio.providers import MockProvider
+
+    def percentile(values: list[float], p: float) -> float:
+        ordered = sorted(values)
+        index = min(len(ordered) - 1, int(len(ordered) * p))
+        return ordered[index]
+
+    results: dict[str, Any] = {}
+    evidence = [
+        EvidenceItem(id=f"doc_{name}:C0", source_id=f"doc_{name}", text=text, relevance=0.6)
+        for name, text in CORPUS
+    ]
+    objective = Objective("Answer policy questions", task_type=TaskType.DOCUMENT_QA)
+    budget = Budget(max_input_tokens=4000)
+
+    # Context compile: cold vs content-addressed cache hit.
+    compile_kwargs = dict(
+        objective=objective,
+        user_input=UserInput(text=QA_CASES[0][0]),
+        evidence=evidence,
+        budget=budget,
+    )
+    cold_compiler = ContextCompiler(ContextCompilerOptions())
+    cold_ms = []
+    for _ in range(20):
+        started = time.perf_counter()
+        await cold_compiler.compile(**compile_kwargs)
+        cold_ms.append((time.perf_counter() - started) * 1000)
+    cached_compiler = ContextCompiler(ContextCompilerOptions(), cache=ContextCompileCache())
+    await cached_compiler.compile(**compile_kwargs)  # warm
+    warm_ms = []
+    for _ in range(20):
+        started = time.perf_counter()
+        await cached_compiler.compile(**compile_kwargs)
+        warm_ms.append((time.perf_counter() - started) * 1000)
+    results["context_compile"] = {
+        "cold_p50_ms": round(statistics.median(cold_ms), 3),
+        "cold_p95_ms": round(percentile(cold_ms, 0.95), 3),
+        "cached_p50_ms": round(statistics.median(warm_ms), 3),
+        "cache_speedup": round(statistics.median(cold_ms) / max(1e-6, statistics.median(warm_ms)), 2),
+    }
+
+    # Prompt compile: cold vs cache hit.
+    spec = PromptSpec(
+        name="perf", role="answering engine", objective="Answer from documents",
+        rules=["Use only provided documents", "Cite evidence IDs"],
+    )
+    evidence_items = [{"id": f"E{i}", "text": text} for i, (_n, text) in enumerate(CORPUS)]
+    cold_prompt = PromptCompiler(CompilerOptions())
+    prompt_cold_ms = []
+    for _ in range(50):
+        started = time.perf_counter()
+        cold_prompt.compile(spec, user_task=QA_CASES[0][0], evidence_items=evidence_items)
+        prompt_cold_ms.append((time.perf_counter() - started) * 1000)
+    warm_prompt = PromptCompiler(CompilerOptions(), cache=PromptCompileCache())
+    warm_prompt.compile(spec, user_task=QA_CASES[0][0], evidence_items=evidence_items)
+    prompt_warm_ms = []
+    for _ in range(50):
+        started = time.perf_counter()
+        warm_prompt.compile(spec, user_task=QA_CASES[0][0], evidence_items=evidence_items)
+        prompt_warm_ms.append((time.perf_counter() - started) * 1000)
+    results["prompt_compile"] = {
+        "cold_p50_ms": round(statistics.median(prompt_cold_ms), 3),
+        "cached_p50_ms": round(statistics.median(prompt_warm_ms), 3),
+        "cache_speedup": round(
+            statistics.median(prompt_cold_ms) / max(1e-6, statistics.median(prompt_warm_ms)), 2
+        ),
+    }
+
+    # Retrieval latency over the hybrid index.
+    chunks = corpus_chunks()
+    bm25, vector = BM25Index(), VectorIndex(LocalHashEmbedder())
+    await bm25.add(chunks)
+    await vector.add(chunks)
+    engine = RetrievalEngine([bm25, vector])
+    retrieval_ms = []
+    for question, _expected, _source in QA_CASES * 4:
+        started = time.perf_counter()
+        await engine.retrieve(question, top_k=3, use_planner=False)
+        retrieval_ms.append((time.perf_counter() - started) * 1000)
+    results["retrieval"] = {
+        "p50_ms": round(statistics.median(retrieval_ms), 3),
+        "p95_ms": round(percentile(retrieval_ms, 0.95), 3),
+    }
+
+    # End-to-end run latency + concurrent throughput (offline mock provider).
+    config = VincioConfig()
+    config.storage.metadata = "memory://"
+    config.observability.exporter = "none"
+    config.security.audit_log = False
+    app = ContextApp(name="perfbench", provider=MockProvider(), model="mock-1", config=config)
+    run_ms = []
+    for question, _expected, _source in QA_CASES:
+        started = time.perf_counter()
+        await app.arun(question)
+        run_ms.append((time.perf_counter() - started) * 1000)
+    started = time.perf_counter()
+    await asyncio.gather(*(app.arun(q) for q, _e, _s in QA_CASES * 4))
+    concurrent_s = time.perf_counter() - started
+    results["run"] = {
+        "p50_ms": round(statistics.median(run_ms), 3),
+        "concurrent_runs_per_s": round(len(QA_CASES) * 4 / concurrent_s, 1),
+    }
+
+    # Streaming: time-to-first-token vs full completion (mock provider).
+    ttft_ms = full_ms = None
+    started = time.perf_counter()
+    async for event in app.astream(QA_CASES[0][0]):
+        if event.type == "text_delta" and ttft_ms is None:
+            ttft_ms = (time.perf_counter() - started) * 1000
+        if event.type == "done":
+            full_ms = (time.perf_counter() - started) * 1000
+    results["streaming"] = {
+        "ttft_ms": round(ttft_ms or 0.0, 3),
+        "full_ms": round(full_ms or 0.0, 3),
+        "ttft_before_done": bool(ttft_ms is not None and full_ms is not None and ttft_ms < full_ms),
+    }
+    return results
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -382,6 +508,7 @@ FAMILIES = {
     "output": bench_output,
     "cost": bench_cost,
     "security": bench_security,
+    "perf": bench_perf,
 }
 
 

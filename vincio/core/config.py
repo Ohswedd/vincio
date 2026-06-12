@@ -24,6 +24,7 @@ __all__ = [
     "RetrievalConfig",
     "MemoryConfig",
     "CacheConfig",
+    "PerformanceConfig",
     "ServerConfig",
     "VincioConfig",
     "load_config",
@@ -114,6 +115,26 @@ class CacheConfig(BaseModel):
     semantic_threshold: float = 0.97
     ttl_s: int = 3600
     max_entries: int = 10_000
+    # Content-addressed compilation caches (0.2): unchanged inputs are never
+    # recomputed. All keys cover every input that affects the output, so
+    # these are safe to leave on.
+    prompt_compile_cache: bool = True
+    chunk_cache: bool = True
+    context_compile_cache: bool = True
+
+
+class PerformanceConfig(BaseModel):
+    """Concurrency, streaming, and transport tuning (0.2)."""
+
+    max_concurrency: int = 8  # bound for retrieval/tool/embedding fan-out
+    tool_parallelism: int = 4  # concurrent tool calls within one model round
+    embed_batch_size: int = 64  # max texts per provider embedding call
+    embed_window_ms: float = 5.0  # micro-batch coalescing window
+    coalesce_requests: bool = True  # in-flight dedup of identical model calls
+    max_connections: int = 100  # provider HTTP pool size
+    max_keepalive_connections: int = 20
+    slim_packets: bool = False  # persist packets without duplicated evidence text
+    partial_parse_min_chars: int = 24  # min new chars between partial-JSON parses
 
 
 class ServerConfig(BaseModel):
@@ -135,6 +156,7 @@ class VincioConfig(BaseModel):
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)
+    performance: PerformanceConfig = Field(default_factory=PerformanceConfig)
     server: ServerConfig = Field(default_factory=ServerConfig)
     budget: Budget = Field(default_factory=Budget)
     policies: PolicySet = Field(default_factory=PolicySet)

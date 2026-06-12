@@ -11,7 +11,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
 
@@ -20,6 +20,7 @@ from pydantic import BaseModel
 from ..agents.executor import AgentExecutor
 from ..agents.planner import Planner
 from ..caching.base import InMemoryCache
+from ..caching.compilation import ChunkCache, ContextCompileCache, PromptCompileCache
 from ..caching.invalidation import InvalidationManager
 from ..caching.layers import ResponseCache
 from ..context.compiler import ContextCompiler, ContextCompilerOptions
@@ -70,6 +71,7 @@ from .types import (
     PolicySet,
     RunConfig,
     RunResult,
+    RunStreamEvent,
     TaskType,
     UserInput,
 )
@@ -164,6 +166,8 @@ class ContextApp:
         ) or self.config.provider.default
         self._provider_instance = provider if isinstance(provider, ModelProvider) else None
         self.model = model or self.config.provider.model
+        self._built_providers: dict[str, ModelProvider] = {}
+        self._coalesced_providers: dict[int, ModelProvider] = {}
 
         # caches
         self.cache_invalidation = InvalidationManager()
@@ -175,10 +179,30 @@ class ContextApp:
             )
             self.response_cache = ResponseCache(backend, ttl_s=self.config.cache.ttl_s)
             self.cache_invalidation.register(backend)
+        # Content-addressed compilation caches (0.2): unchanged inputs are
+        # never recompiled / re-chunked.
+        self.prompt_compile_cache: PromptCompileCache | None = None
+        if self.config.cache.prompt_compile_cache:
+            backend = InMemoryCache(max_entries=self.config.cache.max_entries)
+            self.prompt_compile_cache = PromptCompileCache(backend, ttl_s=self.config.cache.ttl_s)
+            self.cache_invalidation.register(backend)
+        self.context_compile_cache: ContextCompileCache | None = None
+        if self.config.cache.context_compile_cache:
+            backend = InMemoryCache(max_entries=self.config.cache.max_entries)
+            self.context_compile_cache = ContextCompileCache(backend, ttl_s=self.config.cache.ttl_s)
+            self.cache_invalidation.register(backend)
+        self.chunk_cache: ChunkCache | None = None
+        if self.config.cache.chunk_cache:
+            backend = InMemoryCache(max_entries=self.config.cache.max_entries, default_ttl_s=None)
+            self.chunk_cache = ChunkCache(backend)
+            self.cache_invalidation.register(backend)
 
         # context compiler
-        self.context_compiler = ContextCompiler(ContextCompilerOptions())
-        self.prompt_compiler = PromptCompiler(CompilerOptions())
+        self.context_compiler = ContextCompiler(
+            ContextCompilerOptions(slim_packets=self.config.performance.slim_packets),
+            cache=self.context_compile_cache,
+        )
+        self.prompt_compiler = PromptCompiler(CompilerOptions(), cache=self.prompt_compile_cache)
 
         # retrieval
         self.embedder = self._build_embedder()
@@ -241,8 +265,25 @@ class ContextApp:
         if self._provider_instance is not None and (
             run_config is None or run_config.provider is None
         ):
-            return self._provider_instance
-        return build_provider(name, self.config.provider)
+            return self._wrap_provider(self._provider_instance)
+        # Reuse built instances so connection pools and coalescing maps
+        # persist across runs.
+        if name not in self._built_providers:
+            self._built_providers[name] = self._wrap_provider(
+                build_provider(name, self.config.provider)
+            )
+        return self._built_providers[name]
+
+    def _wrap_provider(self, provider: ModelProvider) -> ModelProvider:
+        if not self.config.performance.coalesce_requests:
+            return provider
+        wrapped = self._coalesced_providers.get(id(provider))
+        if wrapped is None:
+            from ..providers.transport import CoalescingProvider
+
+            wrapped = CoalescingProvider(provider)
+            self._coalesced_providers[id(provider)] = wrapped
+        return wrapped
 
     def principal_for(self, user_input: UserInput) -> Principal:
         return Principal(
@@ -370,6 +411,7 @@ class ContextApp:
                 strategy=chunking,
                 size=self.config.retrieval.chunk_size_tokens,
                 overlap=self.config.retrieval.chunk_overlap_tokens,
+                cache=self.chunk_cache,
             )
             all_chunks.extend(chunks)
             self.store.save("documents", {"id": document.id, "title": document.title, "source": name, "uri": document.source_uri})
@@ -401,6 +443,7 @@ class ContextApp:
                 strategy=self.config.retrieval.chunking,
                 size=self.config.retrieval.chunk_size_tokens,
                 overlap=self.config.retrieval.chunk_overlap_tokens,
+                cache=self.chunk_cache,
             )
             if self.retrieval is None:
                 self._ensure_retrieval("hybrid")
@@ -597,6 +640,54 @@ class ContextApp:
     def run(self, user_input: str | UserInput, **kwargs: Any) -> RunResult:
         return run_sync(self.arun(user_input, **kwargs))
 
+    async def astream(
+        self,
+        user_input: str | UserInput,
+        *,
+        files: list[str] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        config: RunConfig | None = None,
+    ) -> AsyncIterator[RunStreamEvent]:
+        """Run the full pipeline with end-to-end streaming.
+
+        Yields :class:`RunStreamEvent` items — pipeline stages, model text
+        deltas, incremental partial-JSON output, tool activity — ending with
+        a ``done`` event that carries the final :class:`RunResult`::
+
+            async for event in app.astream("Summarize the refund policy"):
+                if event.type == "text_delta":
+                    print(event.text, end="", flush=True)
+                elif event.type == "done":
+                    result = event.result
+        """
+        if isinstance(user_input, str):
+            user_input = UserInput(text=user_input)
+        else:
+            user_input = user_input.model_copy(deep=True)
+        if files:
+            user_input.files.extend(FileRef(path=f) for f in files)
+        if tenant_id is not None:
+            user_input.tenant_id = tenant_id
+        if user_id is not None:
+            user_input.user_id = user_id
+        if session_id is not None:
+            user_input.session_id = session_id
+        config = config or RunConfig()
+        config = config.model_copy(update={"stream": True})
+        async for event in self._runtime.execute_stream(user_input, config):
+            yield event
+
+    def stream(self, user_input: str | UserInput, **kwargs: Any) -> Iterator[RunStreamEvent]:
+        """Synchronous streaming convenience: collects the async event
+        stream and yields the events in order (like provider.stream_sync)."""
+
+        async def collect() -> list[RunStreamEvent]:
+            return [event async for event in self.astream(user_input, **kwargs)]
+
+        yield from run_sync(collect())
+
     # -- agents -------------------------------------------------------------------------------------------------
 
     def agent(
@@ -703,6 +794,8 @@ class ContextApp:
     async def aclose(self) -> None:
         if self._provider_instance is not None:
             await self._provider_instance.aclose()
+        for provider in self._built_providers.values():
+            await provider.aclose()
 
     def stats(self) -> dict[str, Any]:
         return {
