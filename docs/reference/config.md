@@ -59,6 +59,20 @@ cache:
   semantic_threshold: 0.97
   ttl_s: 3600
   max_entries: 10000
+  prompt_compile_cache: true   # content-addressed; unchanged inputs never recompile
+  chunk_cache: true            # content-addressed; unchanged docs never re-chunk
+  context_compile_cache: true  # content-addressed; unchanged compile inputs hit
+
+performance:
+  max_concurrency: 8           # bound for retrieval/memory/ingest fan-out
+  tool_parallelism: 4          # concurrent tool calls within one model round
+  embed_batch_size: 64         # max texts per provider embedding call
+  embed_window_ms: 5.0         # BatchingEmbedder micro-batch window
+  coalesce_requests: true      # identical in-flight model calls share one request
+  max_connections: 100         # provider HTTP connection pool
+  max_keepalive_connections: 20
+  slim_packets: false          # packets reference evidence text by content hash
+  partial_parse_min_chars: 24  # min new chars between partial-JSON parses when streaming
 
 server:
   host: 127.0.0.1

@@ -1,17 +1,41 @@
 """Context Packet: the universal unit passed to models, tools,
-agents, evaluators, and traces."""
+agents, evaluators, and traces.
+
+0.2 adds the zero-copy paths: *slim* packets reference evidence text by
+content hash instead of duplicating it (lazy materialization from the held
+Context IR), and :meth:`ContextPacket.iter_json` streams the serialized
+packet chunk by chunk so persisting or shipping a large packet never builds
+the whole document in memory.
+"""
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Iterator
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from ..core.types import Budget, Objective, PolicySet, UserInput
-from ..core.utils import new_id, stable_hash, utcnow
+from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .ir import ContextIR
 
 __all__ = ["ContextPacket"]
+
+
+def _text_hash(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+
+
+_STREAMED_FIELDS = (
+    "evidence_items",
+    "evidence_ledger",
+    "memory_included",
+    "memory_excluded",
+    "excluded_report",
+    "conflicts",
+)
 
 
 class ContextPacket(BaseModel):
@@ -37,6 +61,11 @@ class ContextPacket(BaseModel):
     budget_report: dict[str, Any] = Field(default_factory=dict)
     conflicts: list[dict[str, Any]] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
+    slim: bool = False  # evidence entries hold text_hash refs, not text copies
+
+    # In-memory link back to the IR for lazy text materialization (slim
+    # packets). Never serialized.
+    _ir: ContextIR | None = PrivateAttr(default=None)
 
     @classmethod
     def from_ir(
@@ -49,7 +78,24 @@ class ContextPacket(BaseModel):
         memory_excluded: list[dict[str, Any]] | None = None,
         trace_parent_id: str | None = None,
         token_count: int = 0,
+        slim: bool = False,
     ) -> ContextPacket:
+        evidence_items: list[dict[str, Any]] = []
+        for e in ir.evidence:
+            entry: dict[str, Any] = {
+                "id": e.id,
+                "citation_ref": e.citation_ref,
+                "source_id": e.source_id,
+                "source_type": e.source_type,
+                "page": e.page,
+                "relevance": e.relevance,
+            }
+            if slim:
+                entry["text_hash"] = _text_hash(e.text or "")
+                entry["token_cost"] = e.token_cost
+            else:
+                entry["text"] = e.text
+            evidence_items.append(entry)
         packet = cls(
             objective=ir.objective,
             user_input=ir.input,
@@ -59,18 +105,7 @@ class ContextPacket(BaseModel):
                 for m in ir.memory
             ],
             memory_excluded=memory_excluded or [],
-            evidence_items=[
-                {
-                    "id": e.id,
-                    "citation_ref": e.citation_ref,
-                    "source_id": e.source_id,
-                    "source_type": e.source_type,
-                    "text": e.text,
-                    "page": e.page,
-                    "relevance": e.relevance,
-                }
-                for e in ir.evidence
-            ],
+            evidence_items=evidence_items,
             evidence_ledger=list(ir.evidence_ledger),
             tools_allowed=[t.name for t in ir.tool_specs],
             output_schema_ref=ir.output_contract.schema_ref,
@@ -82,7 +117,9 @@ class ContextPacket(BaseModel):
             budget_report=budget_report or {},
             conflicts=conflicts or [],
             metadata=dict(ir.metadata),
+            slim=slim,
         )
+        packet._ir = ir
         packet.spec_hash = stable_hash(
             {
                 "objective": packet.objective.text,
@@ -94,3 +131,65 @@ class ContextPacket(BaseModel):
             }
         )
         return packet
+
+    # -- lazy materialization (slim packets) ---------------------------------
+
+    def evidence_text(self, item_id: str) -> str | None:
+        """The text of an evidence entry, materialized lazily for slim
+        packets from the held IR (the text exists exactly once, on the IR's
+        evidence items — the packet holds a hash reference)."""
+        for entry in self.evidence_items:
+            if entry.get("id") == item_id or entry.get("citation_ref") == item_id:
+                text = entry.get("text")
+                if text is not None:
+                    return text
+                break
+        else:
+            return None
+        if self._ir is None:
+            return None
+        for item in self._ir.evidence:
+            if item.id == item_id or item.citation_ref == item_id:
+                return item.text
+        return None
+
+    def materialize(self) -> ContextPacket:
+        """Fill evidence text in place from the held IR (slim → full)."""
+        if not self.slim or self._ir is None:
+            return self
+        by_id = {item.id: item.text for item in self._ir.evidence}
+        for entry in self.evidence_items:
+            if "text" not in entry and entry.get("id") in by_id:
+                entry["text"] = by_id[entry["id"]]
+        self.slim = False
+        return self
+
+    # -- streaming assembly ----------------------------------------------------
+
+    def iter_json(self) -> Iterator[str]:
+        """Stream the packet as JSON chunks.
+
+        List-heavy fields are emitted item by item, so serializing a large
+        packet never holds more than one item's JSON in memory on top of the
+        packet itself. ``"".join(packet.iter_json())`` equals a full dump.
+        """
+        head = self.model_dump(mode="json", exclude=set(_STREAMED_FIELDS))
+        yield "{"
+        first = True
+        for key, value in head.items():
+            prefix = "" if first else ", "
+            yield f"{prefix}{json.dumps(key)}: {json.dumps(value, ensure_ascii=False)}"
+            first = False
+        for field_name in _STREAMED_FIELDS:
+            prefix = "" if first else ", "
+            yield f"{prefix}{json.dumps(field_name)}: ["
+            for index, item in enumerate(getattr(self, field_name)):
+                item_prefix = "" if index == 0 else ", "
+                yield item_prefix + json.dumps(to_jsonable(item), ensure_ascii=False)
+            yield "]"
+            first = False
+        yield "}"
+
+    def approx_size_bytes(self) -> int:
+        """Approximate serialized size, computed without building the blob."""
+        return sum(len(chunk.encode("utf-8")) for chunk in self.iter_json())

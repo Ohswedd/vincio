@@ -33,6 +33,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Add tools](docs/guides/add-tools.md)
 - [Run evals](docs/guides/run-evals.md)
 - [Optimize](docs/guides/optimize-context.md)
+- [Performance & streaming](docs/guides/performance.md)
 - [API reference](docs/reference/api.md)
 - [CLI reference](docs/reference/cli.md)
 - [Config reference](docs/reference/config.md)
@@ -47,6 +48,14 @@ result.output; result.citations; result.trace_id; result.cost_usd
   retrieve → compile context (score/dedupe/conflict/compress/budget) →
   compile prompt (cache-aware) → model (+bounded tool loop) → validate
   (schema/citations/policy, principled repair) → evaluate → trace → memory write.
+- Streaming: `async for event in app.astream("...")` — `stage`, `text_delta`,
+  `partial_output` (incremental partial-JSON), `tool_*`, then `done` with the
+  full `RunResult`; the server SSE endpoint emits the same events.
+- Performance (0.2): bounded concurrent fan-out (`vincio.core.concurrency`),
+  content-addressed compile/chunk/embedding caches (on by default),
+  request coalescing + pooled provider transport, slim (zero-copy) packets,
+  hard `max_latency_ms` deadline + cancellation propagation; VincioBench
+  budgets gate CI (`benchmarks/check_budgets.py`).
 - Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
   is a validated instance.
 - Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,

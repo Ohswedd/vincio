@@ -51,7 +51,7 @@ class InvalidationManager:
         return removed
 
     def prompt_version_changed(self, version: str | None = None) -> int:
-        tags = ["responses", "context_packets"]
+        tags = ["responses", "context_packets", "prompt_compile"]
         if version:
             tags.insert(0, f"prompt:{version}")
         return self._invalidate_tags(tags)

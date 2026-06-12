@@ -59,6 +59,19 @@ What happened under the hood (the 17-step runtime):
 8. Evaluators scored the run, memory was updated, an audit entry and a full
    trace were written.
 
+Prefer streaming? The same pipeline streams end to end:
+
+```python
+async for event in app.astream("How do I configure SSO?"):
+    if event.type == "text_delta":
+        print(event.text, end="", flush=True)
+    elif event.type == "done":
+        result = event.result
+```
+
+See the [performance & streaming guide](guides/performance.md) for stages,
+partial-JSON output, and the server SSE endpoint.
+
 ## Typed output
 
 ```python
@@ -100,4 +113,5 @@ vincio eval run golden/basic.jsonl --app app.py \
 - [Guide: build a RAG app](guides/build-rag-app.md)
 - [Guide: add tools](guides/add-tools.md)
 - [Guide: run evals](guides/run-evals.md)
+- [Guide: performance & streaming](guides/performance.md)
 - [Reference: configuration](reference/config.md)

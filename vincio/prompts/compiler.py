@@ -100,8 +100,10 @@ def _render_items(items: list[dict[str, Any]], kind: str) -> str:
 
 
 class PromptCompiler:
-    def __init__(self, options: CompilerOptions | None = None) -> None:
+    def __init__(self, options: CompilerOptions | None = None, *, cache: Any | None = None) -> None:
         self.options = options or CompilerOptions()
+        self.cache = cache  # PromptCompileCache | None
+        self.cache_hits = 0
 
     # -- passes -----------------------------------------------------------------
 
@@ -145,7 +147,9 @@ class PromptCompiler:
 
     # -- rendering ----------------------------------------------------------------
 
-    def _render_node_text(self, node: PromptNode) -> str:
+    def _render_node_text(self, node: PromptNode, *, include_schema: bool | None = None) -> str:
+        if include_schema is None:
+            include_schema = self.options.include_schema_in_prompt
         if node.kind in ("memory_block", "evidence_block", "tool_result_block"):
             return _render_items(getattr(node, "items", []), node.kind)
         if node.kind == "output_contract":
@@ -153,7 +157,7 @@ class PromptCompiler:
             if node.text:
                 parts.append(node.text)
             schema_def = getattr(node, "schema_def", None)
-            if schema_def is not None and self.options.include_schema_in_prompt:
+            if schema_def is not None and include_schema:
                 parts.append(
                     "Return output matching this JSON schema exactly:\n"
                     + json.dumps(schema_def, indent=2, ensure_ascii=False)
@@ -168,11 +172,13 @@ class PromptCompiler:
                 return text
         return node.text
 
-    def _render_sections(self, nodes: list[PromptNode], format: RenderFormat) -> str:
+    def _render_sections(
+        self, nodes: list[PromptNode], format: RenderFormat, *, include_schema: bool | None = None
+    ) -> str:
         # Group consecutive nodes by kind to form sections, preserving order.
         sections: list[tuple[str, list[str]]] = []
         for node in nodes:
-            text = self._render_node_text(node)
+            text = self._render_node_text(node, include_schema=include_schema)
             if not text:
                 continue
             if sections and sections[-1][0] == node.kind:
@@ -236,6 +242,27 @@ class PromptCompiler:
         provider_enforces_schema: bool = False,
     ) -> CompiledPrompt:
         resolved = spec.substitute(variables)
+
+        cache_key: str | None = None
+        if self.cache is not None:
+            cache_key = self.cache.key(
+                {
+                    "spec": resolved.spec_hash,
+                    "task": user_task,
+                    "memory": memory_items,
+                    "evidence": evidence_items,
+                    "tools": tool_results,
+                    "profile": model_profile.name if model_profile else None,
+                    "native_schema": provider_enforces_schema,
+                    "options": self.options.model_dump(mode="json"),
+                    "version": COMPILER_VERSION,
+                }
+            )
+            cached = self.cache.get(cache_key)
+            if cached is not None:
+                self.cache_hits += 1
+                return CompiledPrompt.model_validate(cached)
+
         lint_findings = lint_spec(resolved)
 
         ast = resolved.build_ast(
@@ -259,24 +286,27 @@ class PromptCompiler:
                     findings=errors,
                 )
 
+        # Schema inclusion is resolved per call (never by mutating shared
+        # options — compile() must be safe under concurrent use).
         include_schema = self.options.include_schema_in_prompt and not provider_enforces_schema
-        previous_include = self.options.include_schema_in_prompt
-        self.options.include_schema_in_prompt = include_schema
-        try:
-            ordered = ast.ordered()
-            stable_nodes = [n for n in ordered if n.stable]
-            volatile_nodes = [n for n in ordered if not n.stable]
-            # The user task is delivered as the user message; other volatile
-            # context blocks travel with it so the prefix stays stable.
-            user_task_nodes = [n for n in volatile_nodes if n.kind == "user_task"]
-            context_nodes = [n for n in volatile_nodes if n.kind != "user_task"]
+        ordered = ast.ordered()
+        stable_nodes = [n for n in ordered if n.stable]
+        volatile_nodes = [n for n in ordered if not n.stable]
+        # The user task is delivered as the user message; other volatile
+        # context blocks travel with it so the prefix stays stable.
+        user_task_nodes = [n for n in volatile_nodes if n.kind == "user_task"]
+        context_nodes = [n for n in volatile_nodes if n.kind != "user_task"]
 
-            system_text = self._render_sections(stable_nodes, self.options.format)
-            context_text = self._render_sections(context_nodes, self.options.format)
-            task_text = "\n".join(self._render_node_text(n) for n in user_task_nodes)
-            user_text = "\n\n".join(t for t in (context_text, task_text) if t)
-        finally:
-            self.options.include_schema_in_prompt = previous_include
+        system_text = self._render_sections(
+            stable_nodes, self.options.format, include_schema=include_schema
+        )
+        context_text = self._render_sections(
+            context_nodes, self.options.format, include_schema=include_schema
+        )
+        task_text = "\n".join(
+            self._render_node_text(n, include_schema=include_schema) for n in user_task_nodes
+        )
+        user_text = "\n\n".join(t for t in (context_text, task_text) if t)
 
         messages: list[Message] = []
         if system_text:
@@ -295,7 +325,7 @@ class PromptCompiler:
 
         spec_hash = resolved.spec_hash
         rendered_hash = stable_hash({"system": system_text, "user": user_text})
-        return CompiledPrompt(
+        compiled = CompiledPrompt(
             messages=messages,
             system_text=system_text,
             user_text=user_text,
@@ -309,3 +339,6 @@ class PromptCompiler:
             lint_findings=lint_findings,
             excluded_examples=excluded_examples,
         )
+        if self.cache is not None and cache_key is not None:
+            self.cache.set(cache_key, compiled.model_dump(mode="json"), spec_hash=spec_hash)
+        return compiled

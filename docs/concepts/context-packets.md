@@ -68,3 +68,24 @@ Enable with `ContextCompilerOptions(use_evidence_ledger=True)`.
 The `ContextIR` is the provider-neutral intermediate representation; the
 prompt compiler renders it into provider-specific messages (system blocks
 with cache hints for Anthropic, developer messages for OpenAI, etc.).
+
+## Caching, recompiles, and zero-copy packets (0.2)
+
+Compilation is a pure function of its inputs, so it caches
+content-addressed: with `cache.context_compile_cache` (on by default),
+identical compile inputs return the compiled result without re-running
+scoring, dedup, conflict resolution, or selection. Edits recompile
+incrementally:
+
+```python
+edited = await compiler.recompile(
+    compiled, add_evidence=[new_item], remove_evidence_ids=["D4:C9"]
+)
+```
+
+Large packets can also skip duplicating evidence text
+(`performance.slim_packets`): evidence entries carry a `text_hash`
+reference, the text lives once on the IR, and
+`packet.evidence_text(id)` / `packet.materialize()` resolve it lazily.
+`packet.iter_json()` streams the serialized packet chunk by chunk. See the
+[performance guide](../guides/performance.md).

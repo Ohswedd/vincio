@@ -1,0 +1,21 @@
+{
+  "_comment": "VincioBench budgets enforced in CI by check_budgets.py. Keys are dotted paths into the report; each entry sets gte/lte bounds. Latency bounds are deliberately loose (shared CI runners) — they catch order-of-magnitude regressions, while ratio and quality budgets are tight.",
+  "budgets": {
+    "families.perf.context_compile.cold_p95_ms": { "lte": 250 },
+    "families.perf.context_compile.cache_speedup": { "gte": 1.5 },
+    "families.perf.prompt_compile.cache_speedup": { "gte": 1.2 },
+    "families.perf.retrieval.p95_ms": { "lte": 100 },
+    "families.perf.run.p50_ms": { "lte": 250 },
+    "families.perf.run.concurrent_runs_per_s": { "gte": 50 },
+    "families.perf.streaming.ttft_before_done": { "eq": true },
+    "families.cost.token_reduction": { "gte": 0.2 },
+    "families.rag.recall_at_3.mean": { "gte": 0.8 },
+    "families.rag.mrr.mean": { "gte": 0.6 },
+    "families.output.missing_required_correctly_rejected": { "eq": true },
+    "families.tool.p50_overhead_ms": { "lte": 50 },
+    "families.agent.adversarial_terminated": { "eq": true },
+    "families.security.injection_detection_rate": { "gte": 0.8 },
+    "families.security.injection_false_positive_rate": { "lte": 0.2 },
+    "families.security.pii_coverage": { "gte": 0.8 }
+  }
+}

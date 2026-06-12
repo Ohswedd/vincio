@@ -12,9 +12,10 @@ and what is intentionally out of scope.
 
 ## What "done" means here
 
-Vincio 0.1.0 is feature-complete for its scope: a single, coherent context-engineering library with
+Vincio 0.1.0 was feature-complete for its scope: a single, coherent context-engineering library with
 every subsystem implemented, tested offline, documented, and demonstrated by a runnable example.
-Future work deepens and broadens the library — it does not change that scope.
+Future work deepens and broadens the library — it does not change that scope. 0.2.0 made the spine
+fast: streaming, concurrent, cached, and regression-gated.
 
 ---
 
@@ -142,6 +143,30 @@ Future work deepens and broadens the library — it does not change that scope.
 
 ---
 
+## ✅ Shipped — 0.2.0
+
+Performance & core hardening — the full milestone as specified below, delivered:
+
+- **Async-first hot paths** — concurrent memory/ingest/retrieval, (query × index) retrieval fan-out,
+  concurrent tool rounds, bounded worker pools (`vincio.core.concurrency`), cancellation
+  propagation, and `max_latency_ms` enforced as a hard deadline.
+- **Incremental & cached compilation** — content-addressed prompt-compile / chunk / context-compile
+  caches (on by default), content-addressed embedding cache with optional persistent backend, and
+  `ContextCompiler.recompile()` for partial recompiles on packet edits.
+- **Zero-copy Context Packet** — slim packets (evidence by content hash, lazy materialization) and
+  chunked streaming serialization (`packet.iter_json()`).
+- **Streaming end to end** — `ContextApp.astream` / server SSE with real token deltas, incremental
+  partial-JSON output, and TTFT recorded on the model span.
+- **Throughput primitives** — pooled provider transport with instance reuse, in-flight request
+  coalescing, batched and micro-batched embedding.
+- **Benchmark gates in CI** — the VincioBench `perf` family + `budgets.json` gates fail the build on
+  regression; per-stage profiling via trace spans and cProfile flamegraph output.
+- **229 tests passing offline in ~2s; ruff clean**; eleven runnable examples; performance guide.
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.2.0 notes.
+
+---
+
 ## Where this goes next
 
 0.1.0 made every subsystem real. The road to 1.0 makes each one **best-in-class on its own** *and*
@@ -187,25 +212,36 @@ Milestones are ordered by dependency: we make the engine fast first, then deepen
 (retrieval, memory), then the quality layers (eval, observability), then the orchestration and output
 layers, then close the loop that ties them together, then broaden reach and stabilize.
 
-### 🚧 0.2 — Performance & core hardening
+### ✅ 0.2 — Performance & core hardening (shipped)
 
 *The foundation everything else compounds on. A unified system only beats a pile of specialist
 libraries if the spine is fast.*
 
-- **Async-first hot paths** — fully concurrent retrieval, scoring, embedding, and tool fan-out;
-  bounded worker pools; cancellation propagation through the run flow.
-- **Incremental & cached compilation** — content-addressed caching of prompt-compile, chunking, and
-  embedding stages so unchanged inputs are never recomputed; partial recompile on packet edits.
-- **Zero-copy Context Packet** — slimmer in-memory representation, lazy field materialization, and
-  streaming assembly so large packets don't spike memory.
-- **Streaming end to end** — token streaming from providers through output parsing, partial-JSON
-  validation, and trace spans, exposed in `arun` and the server SSE path.
-- **Throughput primitives** — batch embedding/inference, request coalescing, and a connection-pooled
-  provider transport.
-- **Benchmark gates in CI** — VincioBench latency/throughput/token-efficiency budgets that fail the
-  build on regression; per-stage flamegraph tooling.
-- *Interconnection:* every optimization is measured by the same trace/cost model, so "faster" is a
-  number in the report, not a claim.
+- ✅ **Async-first hot paths** — memory recall, file ingestion, and retrieval run concurrently per
+  run; retrieval fans out every (query × index) pair; tool calls within a model round execute
+  concurrently. All fan-out goes through bounded, order-preserving worker pools
+  (`vincio.core.concurrency`), and cancelling a run cancels every in-flight subtask;
+  `Budget.max_latency_ms` is a hard deadline.
+- ✅ **Incremental & cached compilation** — content-addressed caches (on by default) for
+  prompt-compile, chunking, and context-compile; embedding caching is content-addressed with an
+  optional persistent backend. `ContextCompiler.recompile()` re-runs selection over retained inputs
+  for cheap packet edits, with memoized lexical scorers.
+- ✅ **Zero-copy Context Packet** — `slim_packets` mode references evidence text by content hash with
+  lazy materialization; `packet.iter_json()` streams serialization chunk by chunk so large packets
+  never build the whole blob in memory.
+- ✅ **Streaming end to end** — `ContextApp.astream` streams provider tokens through the full
+  pipeline with incremental partial-JSON parsing, TTFT recorded on the model span, and the same
+  events emitted over the server SSE path.
+- ✅ **Throughput primitives** — batched + micro-batched embedding (`ProviderEmbedder`,
+  `BatchingEmbedder`), in-flight request coalescing (`CoalescingProvider`), and a connection-pooled
+  provider transport with instances reused across runs.
+- ✅ **Benchmark gates in CI** — the VincioBench `perf` family measures compile/retrieval/run latency
+  percentiles, cache speedups, throughput, and streaming TTFT; `benchmarks/budgets.json` budgets
+  fail the build on regression; `benchmarks/profile_stages.py` gives per-stage breakdowns and
+  cProfile flamegraph input.
+- *Interconnection (held):* every optimization is measured by the same trace/cost model — cache hits,
+  TTFT, and per-stage timings are span attributes, and "faster" is a number in the VincioBench
+  report, gated in CI.
 
 ### 🚧 0.3 — Retrieval & RAG superiority (vs LlamaIndex, RAGatouille)
 

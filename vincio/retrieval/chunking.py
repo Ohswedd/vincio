@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
+from typing import Any
 
 from ..context.compression import split_sentences
 from ..context.scoring import lexical_similarity
 from ..core.tokens import count_tokens
 from ..core.types import Chunk, Document
+from ..core.utils import new_id
 from ..documents.parsers import TableData, extract_code_symbols
 
 __all__ = ["chunk_document", "ChunkingStrategy", "CHUNKERS"]
@@ -260,13 +262,34 @@ def chunk_document(
     strategy: str = "adaptive",
     size: int = 400,
     overlap: int = 50,
+    cache: Any | None = None,
 ) -> list[Chunk]:
+    """Chunk a document; with a :class:`~vincio.caching.compilation.ChunkCache`
+    the result is content-addressed, so unchanged content is never re-chunked."""
     if strategy not in CHUNKERS:
         raise ValueError(f"unknown chunking strategy {strategy!r}; known: {sorted(CHUNKERS)}")
+    cache_key: str | None = None
+    if cache is not None:
+        cache_key = cache.key(content=document.text, strategy=strategy, size=size, overlap=overlap)
+        cached = cache.get(cache_key)
+        if cached is not None:
+            restored = [Chunk.model_validate(dump) for dump in cached]
+            # Provenance belongs to the *requesting* document, not the one
+            # that originally populated the cache entry.
+            for chunk in restored:
+                chunk.id = new_id("chk")
+                chunk.document_id = document.id
+                chunk.source_uri = document.source_uri
+                chunk.tenant_id = document.tenant_id
+                chunk.permissions = list(document.permissions)
+                chunk.created_at = document.created_at
+            return restored
     chunks = CHUNKERS[strategy](document, size, overlap)
     # Annotate entities (capitalized multiword phrases + ids) for graph retrieval.
     for chunk in chunks:
         chunk.entities = _extract_entities(chunk.text)
+    if cache is not None and cache_key is not None:
+        cache.set(cache_key, [chunk.model_dump(mode="json") for chunk in chunks])
     return chunks
 
 

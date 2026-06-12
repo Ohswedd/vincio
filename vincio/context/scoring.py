@@ -17,6 +17,7 @@ import math
 import re
 from collections.abc import Callable
 from datetime import datetime
+from functools import lru_cache
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -59,12 +60,15 @@ def _stem(token: str) -> str:
     return token
 
 
-def _terms(text: str) -> set[str]:
-    return {
+@lru_cache(maxsize=4096)
+def _terms(text: str) -> frozenset[str]:
+    """Stemmed content terms. Memoized: the O(n²) dedupe/conflict loops and
+    incremental recompiles hit the same texts repeatedly."""
+    return frozenset(
         _stem(t)
         for t in _TOKEN_RE.findall(text.lower())
         if t not in _STOPWORDS and (len(t) > 1 or t.isdigit())
-    }
+    )
 
 
 def lexical_similarity(a: str, b: str) -> float:
@@ -76,11 +80,12 @@ def lexical_similarity(a: str, b: str) -> float:
     return overlap / math.sqrt(len(terms_a) * len(terms_b))
 
 
-def _shingles(text: str, size: int = 3) -> set[str]:
+@lru_cache(maxsize=4096)
+def _shingles(text: str, size: int = 3) -> frozenset[str]:
     tokens = _TOKEN_RE.findall(text.lower())
     if len(tokens) < size:
-        return {" ".join(tokens)} if tokens else set()
-    return {" ".join(tokens[i : i + size]) for i in range(len(tokens) - size + 1)}
+        return frozenset({" ".join(tokens)}) if tokens else frozenset()
+    return frozenset(" ".join(tokens[i : i + size]) for i in range(len(tokens) - size + 1))
 
 
 def shingle_similarity(a: str, b: str, *, size: int = 3) -> float:

@@ -5,15 +5,24 @@
 3. detect objective     9. plan tools             15. write trace
 4. resolve policy      10. compile Context IR     16. write memory updates
 5. memory candidates   11. render model request   17. return result
-6. plan retrieval      12. execute model/tools
+
+The flow is async-first (0.2): memory recall, retrieval, and file ingestion
+run concurrently; tool calls within a model round fan out under a bounded
+worker pool; cancellation propagates through every stage; and
+``execute_stream`` runs the same pipeline with token streaming, incremental
+partial-JSON parsing, and per-event trace spans.
 """
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
+from collections.abc import AsyncIterator
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from ..context.compiler import CompiledContext
 from ..context.ir import OutputContractRef
 from ..core.errors import VincioError
 from ..core.types import (
@@ -21,28 +30,108 @@ from ..core.types import (
     EvidenceItem,
     Message,
     ModelRequest,
+    ModelResponse,
     RunConfig,
     RunResult,
     RunStatus,
+    RunStreamEvent,
     ToolCall,
+    ToolResult,
     UserInput,
 )
 from ..core.utils import new_id, utcnow
 from ..evals.datasets import EvalCase
 from ..evals.metrics import METRICS, RunOutput
+from ..output.parsers import parse_partial_json
 from ..output.validators import OutputValidator
+from .concurrency import gather_bounded
 
 if TYPE_CHECKING:  # pragma: no cover
+    from ..prompts.compiler import CompiledPrompt
+    from ..providers.base import ModelProvider
     from .app import ContextApp
 
 __all__ = ["VincioRuntime"]
+
+
+@dataclass
+class _PreparedRun:
+    """Everything steps 1-11 produce, shared by both execution paths."""
+
+    routed: Any
+    compiled_context: CompiledContext
+    compiled_prompt: CompiledPrompt
+    provider: ModelProvider
+    model: str
+    tool_specs: list[Any]
+    messages: list[Message]
+    request_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
 class VincioRuntime:
     def __init__(self, app: ContextApp) -> None:
         self.app = app
 
+    # ------------------------------------------------------------------
+    # public entry points
+    # ------------------------------------------------------------------
+
     async def execute(self, user_input: UserInput, run_config: RunConfig | None = None) -> RunResult:
+        app = self.app
+        run_config = run_config or RunConfig()
+        run_id = new_id("run")
+        started = time.monotonic()
+        budget = run_config.budget or app.budget
+        policies = run_config.policies or app.policies
+        result = RunResult(run_id=run_id, status=RunStatus.RUNNING)
+        cancelled = False
+
+        with app.tracer.trace(
+            run_id=run_id,
+            user_id=user_input.user_id,
+            tenant_id=user_input.tenant_id,
+            input=(user_input.text or "")[:500],
+        ) as trace:
+            result.trace_id = trace.id
+            try:
+                # Budget-enforced deadline; cancellation propagates into
+                # every concurrent subtask (retrieval, tools, model call).
+                async with asyncio.timeout(budget.max_latency_ms / 1000):
+                    await self._execute_inner(
+                        user_input, run_config, budget, policies, result, run_id
+                    )
+            except VincioError as exc:
+                result.status = RunStatus.FAILED
+                result.error = exc.message
+            except TimeoutError:
+                result.status = RunStatus.FAILED
+                result.error = f"run exceeded max_latency_ms budget ({budget.max_latency_ms} ms)"
+            except asyncio.CancelledError:
+                result.status = RunStatus.CANCELLED
+                result.error = "run cancelled"
+                cancelled = True
+                trace.attributes["cancelled"] = True
+            result.latency_ms = int((time.monotonic() - started) * 1000)
+
+        # 15. persist run + packet (trace export happens in the tracer).
+        self._persist_run(result, run_id, user_input)
+        app.events.emit(
+            "run.completed", {"run_id": run_id, "status": result.status.value}, trace_id=result.trace_id
+        )
+        if cancelled:
+            raise asyncio.CancelledError
+        return result
+
+    async def execute_stream(
+        self, user_input: UserInput, run_config: RunConfig | None = None
+    ) -> AsyncIterator[RunStreamEvent]:
+        """The same 17-step flow with end-to-end streaming.
+
+        Yields :class:`RunStreamEvent` items: pipeline ``stage`` markers,
+        ``text_delta`` chunks as the provider streams, incremental
+        ``partial_output`` parses for structured output, tool activity, and
+        a terminal ``done`` event carrying the full :class:`RunResult`.
+        """
         app = self.app
         run_config = run_config or RunConfig()
         run_id = new_id("run")
@@ -56,37 +145,57 @@ class VincioRuntime:
             user_id=user_input.user_id,
             tenant_id=user_input.tenant_id,
             input=(user_input.text or "")[:500],
+            stream=True,
         ) as trace:
             result.trace_id = trace.id
             try:
-                await self._execute_inner(
+                prepared = await self._prepare(
                     user_input, run_config, budget, policies, result, run_id
                 )
+                if prepared is not None:
+                    yield RunStreamEvent(
+                        type="stage",
+                        stage="context_compiled",
+                        data={
+                            "packet_id": result.context_packet_id,
+                            "token_count": prepared.compiled_context.token_count,
+                            "evidence": len(prepared.compiled_context.ir.evidence),
+                        },
+                    )
+                    response: ModelResponse | None = None
+                    async for item in self._model_tool_loop_stream(
+                        prepared, budget, result, user_input, run_id
+                    ):
+                        if isinstance(item, RunStreamEvent):
+                            yield item
+                        else:
+                            response = item
+                    assert response is not None
+                    await self._finalize(
+                        prepared, response, result, run_id, user_input, policies
+                    )
+                    yield RunStreamEvent(
+                        type="stage",
+                        stage="validated",
+                        data={"valid": result.validation.get("valid")} if result.validation else {},
+                    )
             except VincioError as exc:
                 result.status = RunStatus.FAILED
                 result.error = exc.message
+                yield RunStreamEvent(type="error", error=result.error)
             result.latency_ms = int((time.monotonic() - started) * 1000)
 
-        # 15. persist run + packet (trace export happens in the tracer).
-        app.store.save(
-            "runs",
-            {
-                "id": run_id,
-                "app_id": app.name,
-                "user_id": user_input.user_id,
-                "tenant_id": user_input.tenant_id,
-                "objective": (user_input.text or "")[:300],
-                "status": result.status.value,
-                "started_at": utcnow().isoformat(),
-                "cost_usd": result.cost_usd,
-                "latency_ms": result.latency_ms,
-                "trace_id": result.trace_id,
-            },
+        self._persist_run(result, run_id, user_input)
+        app.events.emit(
+            "run.completed", {"run_id": run_id, "status": result.status.value}, trace_id=result.trace_id
         )
-        app.events.emit("run.completed", {"run_id": run_id, "status": result.status.value}, trace_id=result.trace_id)
-        return result
+        yield RunStreamEvent(type="done", result=result, usage=result.usage)
 
-    async def _execute_inner(
+    # ------------------------------------------------------------------
+    # steps 1-11: prepare (shared)
+    # ------------------------------------------------------------------
+
+    async def _prepare(
         self,
         user_input: UserInput,
         run_config: RunConfig,
@@ -94,7 +203,7 @@ class VincioRuntime:
         policies: Any,
         result: RunResult,
         run_id: str,
-    ) -> None:
+    ) -> _PreparedRun | None:
         app = self.app
 
         # 2-3. normalize input, detect objective/task type.
@@ -123,29 +232,37 @@ class VincioRuntime:
                     tenant_id=user_input.tenant_id, decision="deny",
                     details={"violations": [v.policy for v in check.violations]},
                 )
-                return
+                return None
             if check.transformed_text is not None:
                 routed.input.text = check.transformed_text
 
-        # 5. memory candidates.
-        memory_items = []
-        if app.memory_enabled and app.memory is not None:
+        # 5-7. memory recall, file ingestion, and retrieval run concurrently —
+        # they are independent reads. Each opens its own span; contextvars
+        # keep nesting correct per task.
+        async def memory_candidates() -> list[Any]:
+            if not (app.memory_enabled and app.memory is not None):
+                return []
             with app.tracer.span("memory", type="memory") as span:
-                memory_results = app.memory.search(
+                memory_results = await asyncio.to_thread(
+                    app.memory.search,
                     routed.input.text or routed.objective.text,
                     user_id=routed.input.user_id,
                     tenant_id=routed.input.tenant_id,
                     session_id=routed.input.session_id,
                     top_k=app.config.memory.max_items_per_run,
                 )
-                memory_items = [r.item for r in memory_results]
-                span.set(candidates=len(memory_items))
+                items = [r.item for r in memory_results]
+                span.set(candidates=len(items))
+                return items
 
-        # 6-7. retrieval planning + evidence retrieval.
-        evidence: list[EvidenceItem] = list(app.pending_evidence)
-        if user_input.files:
-            evidence.extend(await app.ingest_files([f.path for f in user_input.files]))
-        if app.retrieval is not None:
+        async def file_evidence() -> list[EvidenceItem]:
+            if not user_input.files:
+                return []
+            return await app.ingest_files([f.path for f in user_input.files])
+
+        async def retrieved_evidence() -> list[EvidenceItem]:
+            if app.retrieval is None:
+                return []
             with app.tracer.span("retrieval", type="retrieval") as span:
                 where = app.tenant_filter(routed.input.tenant_id)
                 retrieval = await app.retrieval.retrieve(
@@ -164,12 +281,20 @@ class VincioRuntime:
                         screened.append(item)
                     else:
                         span.add_event("evidence_blocked", id=item.id)
-                evidence.extend(screened)
                 span.set(
-                    evidence=len(evidence),
+                    evidence=len(screened),
                     subqueries=len(retrieval.plan.subqueries) if retrieval.plan else 0,
                     latency_ms=retrieval.latency_ms,
                 )
+                return screened
+
+        memory_items, ingested, retrieved = await gather_bounded(
+            (memory_candidates(), file_evidence(), retrieved_evidence()),
+            limit=app.config.performance.max_concurrency,
+        )
+        evidence: list[EvidenceItem] = list(app.pending_evidence)
+        evidence.extend(ingested)
+        evidence.extend(retrieved)
 
         # 9/12a. tool loop happens with the model below; collect tool specs.
         tool_specs = app.tool_registry.specs(app.enabled_tools) if app.enabled_tools else []
@@ -202,6 +327,7 @@ class VincioRuntime:
                 token_count=compiled_context.token_count,
                 evidence_kept=len(compiled_context.ir.evidence),
                 excluded=len(compiled_context.excluded_report),
+                cached=compiled_context.from_cache,
             )
             app.store.save(
                 "context_packets",
@@ -248,22 +374,108 @@ class VincioRuntime:
             request_kwargs["seed"] = run_config.seed
         request_kwargs["max_output_tokens"] = budget.max_output_tokens
 
-        # 12. execute model (with bounded tool loop when tools are enabled).
-        response = None
+        return _PreparedRun(
+            routed=routed,
+            compiled_context=compiled_context,
+            compiled_prompt=compiled_prompt,
+            provider=provider,
+            model=model,
+            tool_specs=tool_specs,
+            messages=messages,
+            request_kwargs=request_kwargs,
+        )
+
+    # ------------------------------------------------------------------
+    # step 12: model + tool loop
+    # ------------------------------------------------------------------
+
+    async def _run_tool_round(
+        self,
+        tool_calls: list[Any],
+        prepared: _PreparedRun,
+        budget: Budget,
+        result: RunResult,
+        user_input: UserInput,
+        run_id: str,
+    ) -> list[tuple[Any, ToolResult]]:
+        """Execute one round of tool calls concurrently (bounded fan-out).
+
+        Results come back in call order, so the transcript is deterministic
+        regardless of completion order.
+        """
+        app = self.app
+        remaining = budget.max_tool_calls - len(result.tool_results)
+        allowed_calls = tool_calls[: max(0, remaining)]
+        if not allowed_calls:
+            return []
+
+        async def run_one(tool_call: Any) -> ToolResult:
+            try:
+                return await app.tool_runtime.execute(
+                    ToolCall(tool_name=tool_call.name, arguments=tool_call.arguments),
+                    principal=app.principal_for(prepared.routed.input),
+                )
+            except VincioError as exc:
+                return ToolResult(
+                    call_id=tool_call.id, tool_name=tool_call.name, status="error", error=exc.message
+                )
+
+        tool_results = await gather_bounded(
+            (run_one(tool_call) for tool_call in allowed_calls),
+            limit=app.config.performance.tool_parallelism,
+        )
+        rounds: list[tuple[Any, ToolResult]] = []
+        for tool_call, tool_result in zip(allowed_calls, tool_results, strict=True):
+            result.tool_results.append(tool_result)
+            app.audit.record(
+                "tool_call", run_id=run_id, user_id=user_input.user_id,
+                tenant_id=user_input.tenant_id, resource=tool_call.name,
+                decision=tool_result.status,
+            )
+            rounds.append((tool_call, tool_result))
+        return rounds
+
+    @staticmethod
+    def _tool_message(tool_call: Any, tool_result: ToolResult) -> Message:
+        return Message(
+            role="tool",
+            content=json.dumps(tool_result.output, default=str)
+            if tool_result.status == "ok"
+            else f"error: {tool_result.error}",
+            tool_call_id=tool_call.id,
+            name=tool_call.name,
+        )
+
+    async def _model_tool_loop(
+        self,
+        prepared: _PreparedRun,
+        budget: Budget,
+        result: RunResult,
+        user_input: UserInput,
+        run_id: str,
+    ) -> ModelResponse:
+        app = self.app
+        messages = prepared.messages
+        response: ModelResponse | None = None
         for _round in range(budget.max_tool_calls + 1):
             request = ModelRequest(
-                model=model, messages=messages, tools=tool_specs, **request_kwargs
+                model=prepared.model,
+                messages=messages,
+                tools=prepared.tool_specs,
+                **prepared.request_kwargs,
             )
             cached = app.response_cache.get(request) if app.response_cache else None
             with app.tracer.span("model", type="model_call") as span:
-                span.set(model=model, request_hash=request.hash, cached=cached is not None)
+                span.set(model=prepared.model, request_hash=request.hash, cached=cached is not None)
                 if cached is not None:
                     response = cached
                 else:
-                    response = await provider.generate(request)
+                    response = await prepared.provider.generate(request)
                     if app.response_cache is not None and not response.tool_calls:
-                        app.response_cache.set(request, response, prompt_version=compiled_prompt.prompt_spec_hash)
-                cost = app.cost_tracker.record_model_call(model, response.usage)
+                        app.response_cache.set(
+                            request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
+                        )
+                cost = app.cost_tracker.record_model_call(prepared.model, response.usage)
                 result.usage.add(response.usage)
                 result.cost_usd += cost if cost else response.cost_usd
                 span.set(
@@ -272,44 +484,139 @@ class VincioRuntime:
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
                 )
-            if not response.tool_calls or not tool_specs:
+            if not response.tool_calls or not prepared.tool_specs:
                 break
-            # Tool execution round.
+            # Tool execution round (concurrent fan-out).
+            messages.append(
+                Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
+            )
+            executed = await self._run_tool_round(
+                response.tool_calls, prepared, budget, result, user_input, run_id
+            )
+            for tool_call, tool_result in executed:
+                messages.append(self._tool_message(tool_call, tool_result))
+        assert response is not None
+        return response
+
+    async def _model_tool_loop_stream(
+        self,
+        prepared: _PreparedRun,
+        budget: Budget,
+        result: RunResult,
+        user_input: UserInput,
+        run_id: str,
+    ) -> AsyncIterator[RunStreamEvent | ModelResponse]:
+        """Streaming model loop: yields RunStreamEvents and, finally, the
+        terminal ModelResponse (the caller filters by type)."""
+        app = self.app
+        messages = prepared.messages
+        expects_json = (
+            app.output_contract.schema_def is not None or app.output_contract.format == "json"
+        )
+        min_parse_chars = app.config.performance.partial_parse_min_chars
+        response: ModelResponse | None = None
+        for _round in range(budget.max_tool_calls + 1):
+            request = ModelRequest(
+                model=prepared.model,
+                messages=messages,
+                tools=prepared.tool_specs,
+                **prepared.request_kwargs,
+            )
+            cached = app.response_cache.get(request) if app.response_cache else None
+            with app.tracer.span("model", type="model_call") as span:
+                span.set(
+                    model=prepared.model,
+                    request_hash=request.hash,
+                    cached=cached is not None,
+                    stream=True,
+                )
+                if cached is not None:
+                    response = cached
+                    if response.text:
+                        yield RunStreamEvent(type="text_delta", text=response.text)
+                else:
+                    started = time.monotonic()
+                    first_token_ms: int | None = None
+                    accumulated: list[str] = []
+                    accumulated_len = 0
+                    last_parse_len = 0
+                    response = None
+                    async for event in prepared.provider.stream(request):
+                        if event.type == "text_delta" and event.text:
+                            if first_token_ms is None:
+                                first_token_ms = int((time.monotonic() - started) * 1000)
+                                span.set(ttft_ms=first_token_ms)
+                                span.add_event("first_token", ttft_ms=first_token_ms)
+                            accumulated.append(event.text)
+                            accumulated_len += len(event.text)
+                            yield RunStreamEvent(type="text_delta", text=event.text)
+                            if (
+                                expects_json
+                                and accumulated_len - last_parse_len >= min_parse_chars
+                            ):
+                                last_parse_len = accumulated_len
+                                partial, complete = parse_partial_json("".join(accumulated))
+                                if partial is not None:
+                                    yield RunStreamEvent(
+                                        type="partial_output",
+                                        partial_output=partial,
+                                        output_complete=complete,
+                                    )
+                        elif event.type == "usage" and event.usage is not None:
+                            yield RunStreamEvent(type="usage", usage=event.usage)
+                        elif event.type == "done" and event.response is not None:
+                            response = event.response
+                    if response is None:
+                        response = ModelResponse(
+                            model=prepared.model, text="".join(accumulated)
+                        )
+                    if app.response_cache is not None and not response.tool_calls:
+                        app.response_cache.set(
+                            request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
+                        )
+                cost = app.cost_tracker.record_model_call(prepared.model, response.usage)
+                result.usage.add(response.usage)
+                result.cost_usd += cost if cost else response.cost_usd
+                span.set(
+                    finish=response.finish_reason,
+                    output_tokens=response.usage.output_tokens,
+                    cost_usd=round(result.cost_usd, 8),
+                    response_text=response.text[:500],
+                )
+            if not response.tool_calls or not prepared.tool_specs:
+                break
             messages.append(
                 Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
             )
             for tool_call in response.tool_calls:
-                if len(result.tool_results) >= budget.max_tool_calls:
-                    break
-                try:
-                    tool_result = await app.tool_runtime.execute(
-                        ToolCall(tool_name=tool_call.name, arguments=tool_call.arguments),
-                        principal=app.principal_for(routed.input),
-                    )
-                except VincioError as exc:
-                    from ..core.types import ToolResult
-
-                    tool_result = ToolResult(
-                        call_id=tool_call.id, tool_name=tool_call.name, status="error", error=exc.message
-                    )
-                result.tool_results.append(tool_result)
-                app.audit.record(
-                    "tool_call", run_id=run_id, user_id=user_input.user_id,
-                    tenant_id=user_input.tenant_id, resource=tool_call.name,
-                    decision=tool_result.status,
+                yield RunStreamEvent(type="tool_call", tool_name=tool_call.name)
+            executed = await self._run_tool_round(
+                response.tool_calls, prepared, budget, result, user_input, run_id
+            )
+            for tool_call, tool_result in executed:
+                messages.append(self._tool_message(tool_call, tool_result))
+                yield RunStreamEvent(
+                    type="tool_result", tool_name=tool_call.name, tool_result=tool_result
                 )
-                messages.append(
-                    Message(
-                        role="tool",
-                        content=json.dumps(tool_result.output, default=str)
-                        if tool_result.status == "ok"
-                        else f"error: {tool_result.error}",
-                        tool_call_id=tool_call.id,
-                        name=tool_call.name,
-                    )
-                )
-
         assert response is not None
+        yield response
+
+    # ------------------------------------------------------------------
+    # steps 13-16: finalize (shared)
+    # ------------------------------------------------------------------
+
+    async def _finalize(
+        self,
+        prepared: _PreparedRun,
+        response: ModelResponse,
+        result: RunResult,
+        run_id: str,
+        user_input: UserInput,
+        policies: Any,
+    ) -> None:
+        app = self.app
+        compiled_context = prepared.compiled_context
+        routed = prepared.routed
         result.raw_text = response.text
 
         # 13. parse and validate output.
@@ -394,3 +701,39 @@ class VincioRuntime:
         )
         if result.status == RunStatus.RUNNING:
             result.status = RunStatus.SUCCEEDED
+
+    # ------------------------------------------------------------------
+    # internals
+    # ------------------------------------------------------------------
+
+    async def _execute_inner(
+        self,
+        user_input: UserInput,
+        run_config: RunConfig,
+        budget: Budget,
+        policies: Any,
+        result: RunResult,
+        run_id: str,
+    ) -> None:
+        prepared = await self._prepare(user_input, run_config, budget, policies, result, run_id)
+        if prepared is None:
+            return
+        response = await self._model_tool_loop(prepared, budget, result, user_input, run_id)
+        await self._finalize(prepared, response, result, run_id, user_input, policies)
+
+    def _persist_run(self, result: RunResult, run_id: str, user_input: UserInput) -> None:
+        self.app.store.save(
+            "runs",
+            {
+                "id": run_id,
+                "app_id": self.app.name,
+                "user_id": user_input.user_id,
+                "tenant_id": user_input.tenant_id,
+                "objective": (user_input.text or "")[:300],
+                "status": result.status.value,
+                "started_at": utcnow().isoformat(),
+                "cost_usd": result.cost_usd,
+                "latency_ms": result.latency_ms,
+                "trace_id": result.trace_id,
+            },
+        )

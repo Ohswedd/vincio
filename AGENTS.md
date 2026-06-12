@@ -9,7 +9,7 @@ traced context packets. Build status and the roadmap live in `ROADMAP.md`.
 ## Layout
 
 ```
-vincio/core         types, errors, events, config, tokens, ContextApp, 17-step runtime
+vincio/core         types, errors, events, config, tokens, concurrency, ContextApp, 17-step runtime (sync + streaming)
 vincio/prompts      PromptSpec, AST, compiler (cache-aware), lint, variants
 vincio/context      ContextIR/Packet, scoring, budgeting, compression, compiler
 vincio/input        normalization, language/task classification, routing
@@ -24,10 +24,10 @@ vincio/evals        datasets, metrics, judges, runner, gates, reports
 vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimization
 vincio/observability traces/spans, JSONL/OTel exporters, cost tracking
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, audit
-vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic caches, invalidation
+vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic + compile/chunk caches, invalidation
 vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/neo4j/redis/duckdb adapters
-vincio/providers    openai/anthropic/google/mistral/local over httpx + deterministic mock
-vincio/server       FastAPI app (API key + JWT auth)
+vincio/providers    openai/anthropic/google/mistral/local over pooled httpx + coalescing + deterministic mock
+vincio/server       FastAPI app (API key + JWT auth, real-token SSE streaming)
 vincio/cli          argparse CLI
 ```
 
@@ -53,4 +53,10 @@ vincio/cli          argparse CLI
 - **Repair never touches facts** — output repair fixes structure only.
 - **Every run must produce a trace**; spans nest via contextvars
   (`app.tracer.span(name, type=...)`).
+- **Bound every fan-out** — concurrent work goes through
+  `vincio.core.concurrency.gather_bounded` (order-preserving, cancellation-
+  correct), never a bare `asyncio.gather` over unbounded inputs.
+- **Performance is gated** — `python benchmarks/vinciobench.py` +
+  `python benchmarks/check_budgets.py` must pass; budgets live in
+  `benchmarks/budgets.json` and run in CI.
 - Update `ROADMAP.md` when adding subsystems or changing release status.

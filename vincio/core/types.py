@@ -52,6 +52,7 @@ __all__ = [
     "RunStatus",
     "RunConfig",
     "RunResult",
+    "RunStreamEvent",
 ]
 
 
@@ -638,3 +639,39 @@ class RunResult(BaseModel):
     excluded_context: list[dict[str, Any]] = Field(default_factory=list)
     error: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class RunStreamEvent(BaseModel):
+    """Event emitted by the streaming run flow (``ContextApp.astream``).
+
+    Types:
+
+    - ``stage`` — a pipeline stage finished (``stage`` + ``data``)
+    - ``text_delta`` — a chunk of model output text
+    - ``partial_output`` — best-effort parse of the structured output so far
+    - ``tool_call`` / ``tool_result`` — tool loop activity
+    - ``usage`` — token usage update
+    - ``done`` — terminal event carrying the final :class:`RunResult`
+    - ``error`` — terminal event carrying the failure message
+    """
+
+    type: Literal[
+        "stage",
+        "text_delta",
+        "partial_output",
+        "tool_call",
+        "tool_result",
+        "usage",
+        "done",
+        "error",
+    ] = "text_delta"
+    stage: str | None = None
+    text: str | None = None
+    partial_output: Any = None
+    output_complete: bool = False
+    tool_name: str | None = None
+    tool_result: ToolResult | None = None
+    usage: TokenUsage | None = None
+    result: RunResult | None = None
+    error: str | None = None
+    data: dict[str, Any] = Field(default_factory=dict)
