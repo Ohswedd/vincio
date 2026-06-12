@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from ..core.errors import EvalError
 from ..core.utils import new_id, utcnow
 from ..storage.base import MetadataStore
+from .metrics import LOWER_IS_BETTER
 from .reports import EvalReport
 
 __all__ = ["ExperimentRun", "ExperimentTracker", "ab_test"]
@@ -75,13 +76,11 @@ class ExperimentTracker:
         return run
 
     def runs(self, experiment: str, *, variant: str | None = None) -> list[ExperimentRun]:
-        records = self.store.query(self.KIND, limit=10_000)
-        runs = [
-            ExperimentRun.model_validate(record)
-            for record in records
-            if record.get("experiment") == experiment
-            and (variant is None or record.get("variant") == variant)
-        ]
+        where: dict[str, Any] = {"experiment": experiment}
+        if variant is not None:
+            where["variant"] = variant
+        records = self.store.query(self.KIND, where=where, limit=10_000)
+        runs = [ExperimentRun.model_validate(record) for record in records]
         runs.sort(key=lambda run: str(run.created_at))
         return runs
 
@@ -97,24 +96,32 @@ class ExperimentTracker:
 
     # -- analysis ---------------------------------------------------------------
 
-    def compare(self, experiment: str, *, metrics: list[str] | None = None) -> dict[str, Any]:
-        """Side-by-side comparison of each variant's latest run.
-
-        Returns per-metric means by variant plus the best variant per metric
-        (max for quality metrics; min for cost/latency/error-style metrics).
-        """
+    def _latest_per_variant(self, experiment: str) -> dict[str, ExperimentRun]:
         runs = self.runs(experiment)
         if not runs:
             raise EvalError(f"experiment {experiment!r} has no runs")
         latest: dict[str, ExperimentRun] = {}
         for run in runs:
             latest[run.variant] = run
+        return latest
+
+    def compare(
+        self,
+        experiment: str,
+        *,
+        metrics: list[str] | None = None,
+        latest: dict[str, ExperimentRun] | None = None,
+    ) -> dict[str, Any]:
+        """Side-by-side comparison of each variant's latest run.
+
+        Returns per-metric means by variant plus the best variant per metric
+        (max for quality metrics; min for cost/latency/error-style metrics).
+        """
+        latest = latest or self._latest_per_variant(experiment)
         metric_names = set(metrics or [])
         if not metric_names:
             for run in latest.values():
                 metric_names.update(run.report.summary().keys())
-        lower_is_better = {"cost", "latency", "input_tokens", "output_tokens", "retries",
-                           "hallucination", "toxicity", "bias", "unsupported_claim_rate"}
         table: dict[str, dict[str, float]] = {}
         best: dict[str, str] = {}
         for metric in sorted(metric_names):
@@ -126,7 +133,7 @@ class ExperimentTracker:
             if not row:
                 continue
             table[metric] = row
-            chooser = min if metric in lower_is_better else max
+            chooser = min if metric in LOWER_IS_BETTER else max
             best[metric] = chooser(row, key=row.get)
         return {
             "experiment": experiment,
@@ -140,15 +147,15 @@ class ExperimentTracker:
     ) -> dict[str, Any]:
         """Delta of every variant against the baseline variant, with
         significance per metric (latest run per variant, case-level test)."""
-        comparison = self.compare(experiment, metrics=metrics)
-        if baseline not in comparison["variants"]:
+        latest = self._latest_per_variant(experiment)
+        comparison = self.compare(experiment, metrics=metrics, latest=latest)
+        if baseline not in latest:
             raise EvalError(f"experiment {experiment!r} has no baseline variant {baseline!r}")
-        base_run = self.latest(experiment, baseline)
+        base_run = latest[baseline]
         deltas: dict[str, dict[str, Any]] = {}
-        for variant in comparison["variants"]:
+        for variant, run in latest.items():
             if variant == baseline:
                 continue
-            run = self.latest(experiment, variant)
             entry: dict[str, Any] = {}
             for metric, row in comparison["metrics"].items():
                 if baseline not in row or variant not in row:

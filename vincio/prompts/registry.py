@@ -16,7 +16,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..core.errors import PromptError
-from ..core.utils import utcnow
+from ..core.utils import slugify, utcnow
 from .optimizers import diff_rendered, diff_specs
 from .templates import PromptSpec
 
@@ -55,8 +55,7 @@ class PromptRegistry:
     # -- storage ---------------------------------------------------------------
 
     def _path(self, name: str) -> Path:
-        safe = "".join(c if c.isalnum() or c in "-_." else "_" for c in name)
-        return self.directory / f"{safe}.json"
+        return self.directory / f"{slugify(name)}.json"
 
     def _load(self, name: str) -> list[PromptVersion]:
         path = self._path(name)
@@ -93,21 +92,19 @@ class PromptRegistry:
         name = name or spec.name
         versions = self._load(name)
         if versions and versions[-1].spec_hash == spec.spec_hash:
-            head = versions[-1]
-            if tags:
-                return self.tag(name, head.version, *tags)
-            return head
-        version = PromptVersion(
-            name=name,
-            version=versions[-1].version + 1 if versions else 1,
-            spec=spec,
-            spec_hash=spec.spec_hash,
-            message=message,
-        )
-        versions.append(version)
-        self._save(name, versions)
+            version = versions[-1]
+        else:
+            version = PromptVersion(
+                name=name,
+                version=versions[-1].version + 1 if versions else 1,
+                spec=spec,
+                spec_hash=spec.spec_hash,
+                message=message,
+            )
+            versions.append(version)
         if tags:
-            return self.tag(name, version.version, *tags)
+            self._apply_tags(versions, version.version, *tags)
+        self._save(name, versions)
         return version
 
     def get(
@@ -132,9 +129,9 @@ class PromptRegistry:
 
     # -- tags, rollback, diffs, eval links --------------------------------------
 
-    def tag(self, name: str, version: int, *tags: str) -> PromptVersion:
-        """Apply tags to a version; a tag lives on one version per prompt."""
-        versions = self.versions(name)
+    @staticmethod
+    def _apply_tags(versions: list[PromptVersion], version: int, *tags: str) -> PromptVersion:
+        """Move tags onto one version of an in-memory history (no I/O)."""
         target: PromptVersion | None = None
         for item in versions:
             for label in tags:
@@ -143,10 +140,19 @@ class PromptRegistry:
             if item.version == version:
                 target = item
         if target is None:
-            raise PromptError(f"prompt {name!r} has no version {version}")
+            raise PromptError(f"no version {version} in history")
         for label in tags:
             if label not in target.tags:
                 target.tags.append(label)
+        return target
+
+    def tag(self, name: str, version: int, *tags: str) -> PromptVersion:
+        """Apply tags to a version; a tag lives on one version per prompt."""
+        versions = self.versions(name)
+        try:
+            target = self._apply_tags(versions, version, *tags)
+        except PromptError:
+            raise PromptError(f"prompt {name!r} has no version {version}") from None
         self._save(name, versions)
         return target
 

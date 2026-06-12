@@ -49,7 +49,7 @@ _SIGNALS: list[tuple[str, re.Pattern[str], float]] = [
     (
         "new_instructions",
         re.compile(
-            r"(?i)\b(?:new|updated|real|actual|true)\s+(?:instructions?|system prompt|rules?)\b.{0,40}[:\-]"
+            r"(?i)\b(?:new|updated|real|actual|true)\s+(?:instructions?|system prompt|rules?)\s*[:\-]"
         ),
         0.8,
     ),
@@ -69,14 +69,14 @@ _SIGNALS: list[tuple[str, re.Pattern[str], float]] = [
     (
         "fake_authority",
         re.compile(
-            r"(?i)\b(?:instructions?|message|directive|order)s?\s+from your\s+(?:developer|creator|admin|administrator|owner|maker)\b"
+            r"(?i)\b(?:new|secret|real|updated)?\s*(?:instructions?|message|directive|order)s?\s+from your\s+(?:developer|creator|owner|maker)s?\b"
         ),
         0.75,
     ),
     (
         "exfiltration",
         re.compile(
-            r"(?i)\b(?:reveal|show|print|repeat|output|send)\b.{0,80}\b(?:system prompt|hidden instructions|api key|secret|password|credentials|configuration)\b"
+            r"(?i)\b(?:reveal|show|print|repeat|output|send)\b.{0,80}\b(?:system prompt|(?:hidden |initial |your )instructions|api key|secret|password|credentials|configuration)\b"
         ),
         0.85,
     ),

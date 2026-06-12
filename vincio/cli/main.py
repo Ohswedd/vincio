@@ -316,6 +316,8 @@ def cmd_prompt_rollback(args: argparse.Namespace) -> int:
 
 
 def cmd_trace_show(args: argparse.Namespace) -> int:
+    from ..observability.viewer import _INTERESTING_ATTRIBUTES
+
     trace = _load_trace(args.trace_id, args.traces_dir)
     print(f"trace {trace.id}  app={trace.app_name}  status={trace.status}  duration={trace.duration_ms}ms")
     if trace.attributes:
@@ -326,8 +328,7 @@ def cmd_trace_show(args: argparse.Namespace) -> int:
             indent = "  " * depth
             print(f"{indent}├─ [{node['type']}] {node['name']}  {node['status']}  {node['duration_ms']}ms")
             interesting = {
-                k: v for k, v in node["attributes"].items()
-                if k in ("model", "tokens", "cacheability", "evidence", "cost_usd", "valid", "task_type")
+                k: v for k, v in node["attributes"].items() if k in _INTERESTING_ATTRIBUTES
             }
             if interesting:
                 print(f"{indent}│    {json_dumps(interesting)}")

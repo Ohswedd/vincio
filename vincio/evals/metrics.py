@@ -28,6 +28,7 @@ __all__ = [
     "MetricResult",
     "Metric",
     "METRICS",
+    "LOWER_IS_BETTER",
     "register_metric",
     "exact_match",
     "semantic_similarity",
@@ -103,6 +104,21 @@ class MetricResult(BaseModel):
 Metric = Callable[[EvalCase, RunOutput], MetricResult]
 
 METRICS: dict[str, Metric] = {}
+
+# Metrics where a LOWER value is better (rates, costs, counts). The single
+# source of truth for direction — report diffs, experiment comparison, and
+# test assertions all consult this set.
+LOWER_IS_BETTER: set[str] = {
+    "hallucination",
+    "toxicity",
+    "bias",
+    "unsupported_claim_rate",
+    "cost",
+    "latency",
+    "input_tokens",
+    "output_tokens",
+    "retries",
+}
 
 
 def register_metric(name: str):
@@ -333,12 +349,15 @@ def faithfulness(case: EvalCase, run: RunOutput) -> MetricResult:
     if not claims:
         return MetricResult(name="faithfulness", value=1.0, details={"claims": 0})
     evidence = _reference_evidence(case, run)
-    supported = [c for c in claims if _supported(c, evidence)]
+    supported: list[str] = []
+    unsupported: list[str] = []
+    for claim in claims:
+        (supported if _supported(claim, evidence) else unsupported).append(claim)
     value = len(supported) / len(claims)
-    unsupported = [c[:120] for c in claims if c not in supported]
     return MetricResult(
         name="faithfulness", value=round(value, 4),
-        details={"claims": len(claims), "supported": len(supported), "unsupported": unsupported[:5]},
+        details={"claims": len(claims), "supported": len(supported),
+                 "unsupported": [c[:120] for c in unsupported[:5]]},
     )
 
 
@@ -376,13 +395,14 @@ def _supported_strict(claim: str, evidence: list[EvidenceItem], threshold: float
     """Lexical support that also requires every number in the claim to appear
     in the supporting evidence — catches numeric contradictions ("90 days"
     against evidence saying "30 days") that bag-of-words similarity misses.
+    Numbers are compared as whole tokens ("30" does not match "130").
     Citation markers like ``[D1:C0]`` are stripped so their ids don't count
     as numbers."""
     claim = _CITATION_MARKER_RE.sub("", claim)
     numbers = _NUMBER_RE.findall(claim)
     return any(
         lexical_similarity(claim, item.text) >= threshold
-        and all(number in item.text for number in numbers)
+        and set(numbers) <= set(_NUMBER_RE.findall(item.text))
         for item in evidence
         if item.text
     )
@@ -414,23 +434,30 @@ _TOXIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 ]
 
 
-@register_metric("toxicity")
-def toxicity(case: EvalCase, run: RunOutput) -> MetricResult:
-    """Heuristic toxicity rate: fraction of sentences with toxic language
-    (lower is better). Pattern-based and offline; pair with a model judge for
-    nuanced cases."""
-    sentences = split_sentences(run.output_text) or [run.output_text]
+def _pattern_rate(
+    name: str, patterns: list[tuple[str, re.Pattern[str]]], text: str
+) -> MetricResult:
+    """Fraction of sentences matching any pattern (first match per sentence)."""
+    sentences = split_sentences(text) or [text]
     hits: list[dict[str, str]] = []
     for sentence in sentences:
-        for kind, pattern in _TOXIC_PATTERNS:
+        for kind, pattern in patterns:
             if pattern.search(sentence):
                 hits.append({"kind": kind, "excerpt": sentence[:120]})
                 break
     value = len(hits) / len(sentences) if sentences else 0.0
     return MetricResult(
-        name="toxicity", value=round(value, 4), passed=value == 0.0,
+        name=name, value=round(value, 4), passed=value == 0.0,
         details={"sentences": len(sentences), "hits": hits[:5]},
     )
+
+
+@register_metric("toxicity")
+def toxicity(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Heuristic toxicity rate: fraction of sentences with toxic language
+    (lower is better). Pattern-based and offline; pair with a model judge for
+    nuanced cases."""
+    return _pattern_rate("toxicity", _TOXIC_PATTERNS, run.output_text)
 
 
 _BIAS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
@@ -451,18 +478,7 @@ _BIAS_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
 def bias(case: EvalCase, run: RunOutput) -> MetricResult:
     """Heuristic bias rate: fraction of sentences with stereotyping or
     sweeping group generalizations (lower is better)."""
-    sentences = split_sentences(run.output_text) or [run.output_text]
-    hits: list[dict[str, str]] = []
-    for sentence in sentences:
-        for kind, pattern in _BIAS_PATTERNS:
-            if pattern.search(sentence):
-                hits.append({"kind": kind, "excerpt": sentence[:120]})
-                break
-    value = len(hits) / len(sentences) if sentences else 0.0
-    return MetricResult(
-        name="bias", value=round(value, 4), passed=value == 0.0,
-        details={"sentences": len(sentences), "hits": hits[:5]},
-    )
+    return _pattern_rate("bias", _BIAS_PATTERNS, run.output_text)
 
 
 @register_metric("summarization_quality")
@@ -495,9 +511,25 @@ def summarization_quality(case: EvalCase, run: RunOutput) -> MetricResult:
 # -- conversational metrics --------------------------------------------------
 
 
+def _message_text(content: Any) -> str:
+    """Coerce message content to text; supports content-block lists."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return " ".join(
+            str(block.get("text", "")) if isinstance(block, dict) else str(block)
+            for block in content
+        )
+    return str(content or "")
+
+
 def _conversation(case: EvalCase) -> list[dict[str, str]]:
     messages = case.context.get("messages") or case.context.get("conversation") or []
-    return [m for m in messages if isinstance(m, dict) and m.get("content")]
+    return [
+        {"role": str(m.get("role", "")), "content": _message_text(m.get("content"))}
+        for m in messages
+        if isinstance(m, dict) and m.get("content")
+    ]
 
 
 @register_metric("knowledge_retention")

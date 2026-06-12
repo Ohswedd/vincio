@@ -271,47 +271,57 @@ class SyntheticGenerator:
 
     # -- LLM-backed generation -------------------------------------------------------
 
+    def _llm_request(self, source: _Source, per_source: int) -> ModelRequest:
+        return ModelRequest(
+            model=self.model or "",
+            messages=[
+                Message(
+                    role="system",
+                    content=(
+                        "Write evaluation questions answerable strictly from the given "
+                        "source. easy = stated fact, medium = specific value, hard = "
+                        "requires combining facts. Answers must be verbatim-supported."
+                    ),
+                ),
+                Message(
+                    role="user",
+                    content=f"Source:\n{source.text[:6000]}\n\nWrite {per_source} question(s).",
+                ),
+            ],
+            output_schema=_QA_SCHEMA,
+            output_schema_name="synthetic_questions",
+            temperature=0.3,
+        )
+
     async def _generate_llm(
         self, sources: list[_Source], counts: dict[str, int]
     ) -> list[EvalCase]:
+        """LLM-written questions, concurrent per source, honoring the
+        difficulty mix: questions whose difficulty bucket is exhausted are
+        skipped instead of consuming the budget."""
+        from ..core.concurrency import map_bounded
+
         total = sum(counts.values())
         per_source = max(1, total // len(sources) + 1)
+
+        async def ask(source: _Source) -> dict[str, Any]:
+            response = await self.provider.generate(self._llm_request(source, per_source))
+            return response.structured or json.loads(response.text)
+
+        try:
+            payloads = await map_bounded(ask, sources, limit=8)
+        except Exception:  # noqa: BLE001 - fall back to offline templates
+            return []
         cases: list[EvalCase] = []
         wanted = dict(counts)
-        for source in sources:
-            if len(cases) >= total:
-                break
-            request = ModelRequest(
-                model=self.model or "",
-                messages=[
-                    Message(
-                        role="system",
-                        content=(
-                            "Write evaluation questions answerable strictly from the given "
-                            "source. easy = stated fact, medium = specific value, hard = "
-                            "requires combining facts. Answers must be verbatim-supported."
-                        ),
-                    ),
-                    Message(
-                        role="user",
-                        content=f"Source:\n{source.text[:6000]}\n\nWrite {per_source} question(s).",
-                    ),
-                ],
-                output_schema=_QA_SCHEMA,
-                output_schema_name="synthetic_questions",
-                temperature=0.3,
-            )
-            try:
-                response = await self.provider.generate(request)
-                payload = response.structured or json.loads(response.text)
-            except Exception:  # noqa: BLE001 - fall back to offline templates
-                return []
+        for source, payload in zip(sources, payloads, strict=True):
             for item in payload.get("questions", []):
-                difficulty = item.get("difficulty", "medium")
-                if wanted.get(difficulty, 0) <= 0 and sum(wanted.values()) <= 0:
+                if len(cases) >= total or sum(wanted.values()) <= 0:
                     break
-                if wanted.get(difficulty, 0) > 0:
-                    wanted[difficulty] -= 1
+                difficulty = item.get("difficulty", "medium")
+                if wanted.get(difficulty, 0) <= 0:
+                    continue  # bucket exhausted — don't let it eat the budget
+                wanted[difficulty] -= 1
                 facts = [
                     sentence
                     for sentence in source.sentences

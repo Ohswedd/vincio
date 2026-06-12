@@ -392,7 +392,7 @@ provider-neutral and dependency-free.*
   evals and traces live **in your process, in the same model as the runtime**, and gate releases
   offline — see [docs/comparisons/langsmith-langfuse.md](docs/comparisons/langsmith-langfuse.md),
   [ragas.md](docs/comparisons/ragas.md), and [deepeval.md](docs/comparisons/deepeval.md).
-- **358 tests passing offline in ~2s; ruff clean**; fourteen runnable examples; the VincioBench
+- **367 tests passing offline in ~2s; ruff clean**; fourteen runnable examples; the VincioBench
   `evals` family holds metric agreement, red-team judging, synthetic determinism/coverage,
   significance, sessions, viewer self-containment, and G-Eval calibration under 13 CI-gated budgets.
 

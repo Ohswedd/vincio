@@ -63,6 +63,26 @@ DEFAULT_RUBRIC = (
 )
 
 
+def _judgment_payload(response: Any) -> dict[str, Any] | None:
+    """Structured payload from a judge response, or None if unparseable."""
+    payload = response.structured
+    if payload is None:
+        try:
+            payload = json.loads(response.text)
+        except json.JSONDecodeError:
+            return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _judgment_score(payload: dict[str, Any], *, low: float, high: float) -> float | None:
+    """Clamped numeric score from a judge payload, or None if malformed."""
+    raw = payload.get("score")
+    try:
+        return max(low, min(high, float(raw)))
+    except (TypeError, ValueError):
+        return None
+
+
 class ModelJudge(Judge):
     def __init__(
         self,
@@ -113,15 +133,15 @@ class ModelJudge(Judge):
         failures: list[str] = []
         reasoning = ""
         for response in responses:
-            payload = response.structured
+            payload = _judgment_payload(response)
             if payload is None:
-                try:
-                    payload = json.loads(response.text)
-                except json.JSONDecodeError:
-                    continue
-            scores.append(max(0.0, min(1.0, float(payload.get("score", 0.0)))))
-            failures.extend(payload.get("failures", []))
-            reasoning = payload.get("reasoning", reasoning)
+                continue
+            score = _judgment_score(payload, low=0.0, high=1.0)
+            if score is None:
+                continue
+            scores.append(score)
+            failures.extend(payload.get("failures") or [])
+            reasoning = payload.get("reasoning") or reasoning
         if not scores:
             return MetricResult(name=self.name, value=0.0, details={"error": "judge returned no parseable score"})
         value = sum(scores) / len(scores)
@@ -214,12 +234,7 @@ class GEvalJudge(Judge):
             temperature=0.0,
         )
         response = await self.provider.generate(request)
-        payload = response.structured
-        if payload is None:
-            try:
-                payload = json.loads(response.text)
-            except json.JSONDecodeError:
-                payload = {}
+        payload = _judgment_payload(response) or {}
         steps = [str(s) for s in payload.get("steps", []) if str(s).strip()]
         self.steps = steps or [
             "Read the task input and the system output.",
@@ -264,17 +279,14 @@ class GEvalJudge(Judge):
         scores: list[float] = []
         reasoning = ""
         for response in responses:
-            payload = response.structured
+            payload = _judgment_payload(response)
             if payload is None:
-                try:
-                    payload = json.loads(response.text)
-                except json.JSONDecodeError:
-                    continue
-            raw = payload.get("score")
-            if raw is None:
                 continue
-            scores.append((max(1.0, min(5.0, float(raw))) - 1.0) / 4.0)
-            reasoning = payload.get("reasoning", reasoning)
+            score = _judgment_score(payload, low=1.0, high=5.0)
+            if score is None:
+                continue
+            scores.append((score - 1.0) / 4.0)
+            reasoning = payload.get("reasoning") or reasoning
         if not scores:
             return MetricResult(
                 name=self.name, value=0.0,

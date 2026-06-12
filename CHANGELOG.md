@@ -116,13 +116,25 @@ provider-neutral, offline, and in-process.
 
 ### Changed
 
+- **OTel span names for model/tool spans changed** to the GenAI semantic
+  conventions: `model_call:<name>` → `chat {model}`, `tool_call:<name>` →
+  `execute_tool {tool}`. Dashboards or alerts keyed on the old span-name
+  prefixes need updating; all `vincio.*` attributes (including
+  `vincio.span_id`) are unchanged, and non-model/tool spans keep the
+  `{type}:{name}` format.
 - Model spans now record `input_tokens` (alongside `output_tokens`), and
   completed runs store their output (truncated) and eval scores on the
   trace, so traces are curatable into datasets.
+- `JSONLExporter.load_all()` now returns the latest record per trace id
+  (re-exports act as updates, e.g. after `record_feedback`).
+- `EvalReport.diff()` is direction-aware: a rising `hallucination` /
+  `toxicity` / `bias` / `unsupported_claim_rate` now counts as a regressed
+  case (previously only falling scores did). Metric direction has a single
+  source of truth: `vincio.evals.metrics.LOWER_IS_BETTER`.
 - `EvidenceItem`-based grounding metrics accept reference context from
   `case.context["reference"]` / `["source"]` when a run carries no
   evidence.
-- **358 tests passing offline in ~2s; ruff clean**; fourteen runnable
+- **367 tests passing offline in ~2s; ruff clean**; fourteen runnable
   examples; 48 VincioBench budget gates.
 
 ## [0.4.0] - 2026-06-12

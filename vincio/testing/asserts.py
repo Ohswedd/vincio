@@ -12,7 +12,7 @@ from typing import Any
 
 from ..core.types import EvidenceItem
 from ..evals.datasets import EvalCase
-from ..evals.metrics import METRICS, MetricResult, RunOutput
+from ..evals.metrics import LOWER_IS_BETTER, METRICS, MetricResult, RunOutput
 
 __all__ = ["assert_eval", "assert_metric", "assert_grounded", "assert_safe"]
 
@@ -46,8 +46,7 @@ def _run_metric(name: str, case: EvalCase, run: RunOutput) -> MetricResult:
     return metric(case, run)
 
 
-_LOWER_IS_BETTER = {"hallucination", "toxicity", "bias", "unsupported_claim_rate",
-                    "cost", "latency", "retries"}
+_LOWER_IS_BETTER = LOWER_IS_BETTER
 
 
 def assert_metric(

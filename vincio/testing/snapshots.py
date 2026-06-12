@@ -14,6 +14,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from ..core.utils import to_jsonable
+
 __all__ = ["Snapshot", "SnapshotMismatch", "normalize_trace", "normalize_packet"]
 
 
@@ -102,15 +104,15 @@ class Snapshot:
         return self.directory / f"{self.test_name}{suffix}.json"
 
     def match(self, value: Any, *, name: str | None = None) -> None:
-        """Compare a JSON-able value against the stored snapshot."""
-        normalized = _normalize(value if isinstance(value, (dict, list)) else json.loads(json.dumps(value, default=str)))
+        """Compare a value against the stored snapshot (pydantic models,
+        datetimes, sets, etc. are coerced to JSON structure first)."""
+        normalized = _normalize(to_jsonable(value))
         rendered = json.dumps(normalized, indent=2, ensure_ascii=False, sort_keys=True)
         path = self._path(name)
         if self.update or not path.exists():
+            # First run records the snapshot; --vincio-update-snapshots rewrites.
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(rendered + "\n", encoding="utf-8")
-            if not self.update:
-                return  # first run records the snapshot
             return
         stored = path.read_text(encoding="utf-8").rstrip("\n")
         if stored != rendered:
