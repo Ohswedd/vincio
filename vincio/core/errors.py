@@ -1,0 +1,402 @@
+"""Vincio error hierarchy.
+
+Every error raised by Vincio derives from :class:`VincioError` so applications
+can catch the full family with one except clause. Subsystem errors carry
+structured details for tracing and programmatic handling.
+"""
+
+from __future__ import annotations
+
+from typing import Any
+
+__all__ = [
+    "VincioError",
+    "ConfigError",
+    "ProviderError",
+    "ProviderAuthError",
+    "ProviderRateLimitError",
+    "ProviderTimeoutError",
+    "ProviderUnavailableError",
+    "ProviderResponseError",
+    "PromptError",
+    "PromptLintError",
+    "PromptBudgetError",
+    "ContextError",
+    "ContextCompileError",
+    "BudgetExceededError",
+    "InputError",
+    "DocumentError",
+    "LoaderError",
+    "RetrievalError",
+    "IndexError_",
+    "MemoryEngineError",
+    "MemoryPolicyError",
+    "MemoryConflictError",
+    "ToolError",
+    "ToolNotFoundError",
+    "ToolPermissionError",
+    "ToolValidationError",
+    "ToolTimeoutError",
+    "ToolApprovalRequiredError",
+    "AgentEngineError",
+    "AgentStepError",
+    "AgentBudgetExhaustedError",
+    "AgentMaxStepsError",
+    "WorkflowError",
+    "WorkflowStepError",
+    "OutputError",
+    "OutputParseError",
+    "OutputSchemaError",
+    "OutputRepairForbiddenError",
+    "CitationValidationError",
+    "EvalError",
+    "DatasetError",
+    "GateFailedError",
+    "OptimizationError",
+    "CacheError",
+    "SecurityError",
+    "AccessDeniedError",
+    "TenantIsolationError",
+    "InjectionDetectedError",
+    "PIIPolicyError",
+    "StorageError",
+    "ServerError",
+    "AuthenticationError",
+]
+
+
+class VincioError(Exception):
+    """Base class for all Vincio errors."""
+
+    code: str = "VINCIO_ERROR"
+
+    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+        super().__init__(message)
+        self.message = message
+        self.details: dict[str, Any] = details or {}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"code": self.code, "message": self.message, "details": self.details}
+
+    def __repr__(self) -> str:  # pragma: no cover - cosmetic
+        return f"{type(self).__name__}({self.message!r})"
+
+
+# --- configuration ---------------------------------------------------------
+
+
+class ConfigError(VincioError):
+    code = "CONFIG_ERROR"
+
+
+# --- providers --------------------------------------------------------------
+
+
+class ProviderError(VincioError):
+    """Base error for model provider failures."""
+
+    code = "PROVIDER_ERROR"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider: str | None = None,
+        model: str | None = None,
+        retryable: bool = False,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+        self.provider = provider
+        self.model = model
+        self.retryable = retryable
+
+
+class ProviderAuthError(ProviderError):
+    code = "PROVIDER_AUTH"
+
+
+class ProviderRateLimitError(ProviderError):
+    code = "PROVIDER_RATE_LIMIT"
+
+    def __init__(self, message: str, *, retry_after_s: float | None = None, **kw: Any) -> None:
+        kw.setdefault("retryable", True)
+        super().__init__(message, **kw)
+        self.retry_after_s = retry_after_s
+
+
+class ProviderTimeoutError(ProviderError):
+    code = "PROVIDER_TIMEOUT"
+
+    def __init__(self, message: str, **kw: Any) -> None:
+        kw.setdefault("retryable", True)
+        super().__init__(message, **kw)
+
+
+class ProviderUnavailableError(ProviderError):
+    code = "PROVIDER_UNAVAILABLE"
+
+    def __init__(self, message: str, **kw: Any) -> None:
+        kw.setdefault("retryable", True)
+        super().__init__(message, **kw)
+
+
+class ProviderResponseError(ProviderError):
+    code = "PROVIDER_RESPONSE"
+
+
+# --- prompt engine ----------------------------------------------------------
+
+
+class PromptError(VincioError):
+    code = "PROMPT_ERROR"
+
+
+class PromptLintError(PromptError):
+    code = "PROMPT_LINT"
+
+    def __init__(self, message: str, *, findings: list[Any] | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.findings = findings or []
+
+
+class PromptBudgetError(PromptError):
+    code = "PROMPT_BUDGET"
+
+
+# --- context compiler -------------------------------------------------------
+
+
+class ContextError(VincioError):
+    code = "CONTEXT_ERROR"
+
+
+class ContextCompileError(ContextError):
+    code = "CONTEXT_COMPILE"
+
+
+class BudgetExceededError(ContextError):
+    code = "BUDGET_EXCEEDED"
+
+    def __init__(
+        self, message: str, *, used: int | float = 0, limit: int | float = 0, **kw: Any
+    ) -> None:
+        super().__init__(message, **kw)
+        self.used = used
+        self.limit = limit
+
+
+# --- input ------------------------------------------------------------------
+
+
+class InputError(VincioError):
+    code = "INPUT_ERROR"
+
+
+# --- documents --------------------------------------------------------------
+
+
+class DocumentError(VincioError):
+    code = "DOCUMENT_ERROR"
+
+
+class LoaderError(DocumentError):
+    code = "LOADER_ERROR"
+
+
+# --- retrieval --------------------------------------------------------------
+
+
+class RetrievalError(VincioError):
+    code = "RETRIEVAL_ERROR"
+
+
+class IndexError_(RetrievalError):
+    """Index failure (named with a trailing underscore to avoid shadowing builtins)."""
+
+    code = "INDEX_ERROR"
+
+
+# --- memory -----------------------------------------------------------------
+
+
+class MemoryEngineError(VincioError):
+    code = "MEMORY_ERROR"
+
+
+class MemoryPolicyError(MemoryEngineError):
+    code = "MEMORY_POLICY"
+
+
+class MemoryConflictError(MemoryEngineError):
+    code = "MEMORY_CONFLICT"
+
+
+# --- tools ------------------------------------------------------------------
+
+
+class ToolError(VincioError):
+    code = "TOOL_ERROR"
+
+    def __init__(self, message: str, *, tool: str | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.tool = tool
+
+
+class ToolNotFoundError(ToolError):
+    code = "TOOL_NOT_FOUND"
+
+
+class ToolPermissionError(ToolError):
+    code = "TOOL_PERMISSION"
+
+
+class ToolValidationError(ToolError):
+    code = "TOOL_VALIDATION"
+
+
+class ToolTimeoutError(ToolError):
+    code = "TOOL_TIMEOUT"
+
+
+class ToolApprovalRequiredError(ToolError):
+    code = "TOOL_APPROVAL_REQUIRED"
+
+
+# --- agents -----------------------------------------------------------------
+
+
+class AgentEngineError(VincioError):
+    code = "AGENT_ERROR"
+
+
+class AgentStepError(AgentEngineError):
+    code = "AGENT_STEP"
+
+    def __init__(self, message: str, *, step_id: str | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.step_id = step_id
+
+
+class AgentBudgetExhaustedError(AgentEngineError):
+    code = "AGENT_BUDGET_EXHAUSTED"
+
+
+class AgentMaxStepsError(AgentEngineError):
+    code = "AGENT_MAX_STEPS"
+
+
+# --- workflows ---------------------------------------------------------------
+
+
+class WorkflowError(VincioError):
+    code = "WORKFLOW_ERROR"
+
+
+class WorkflowStepError(WorkflowError):
+    code = "WORKFLOW_STEP"
+
+    def __init__(self, message: str, *, step: str | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.step = step
+
+
+# --- output ------------------------------------------------------------------
+
+
+class OutputError(VincioError):
+    code = "OUTPUT_ERROR"
+
+
+class OutputParseError(OutputError):
+    code = "OUTPUT_PARSE"
+
+
+class OutputSchemaError(OutputError):
+    code = "OUTPUT_SCHEMA"
+
+    def __init__(self, message: str, *, errors: list[Any] | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.errors = errors or []
+
+
+class OutputRepairForbiddenError(OutputError):
+    code = "OUTPUT_REPAIR_FORBIDDEN"
+
+
+class CitationValidationError(OutputError):
+    code = "CITATION_INVALID"
+
+
+# --- evals -------------------------------------------------------------------
+
+
+class EvalError(VincioError):
+    code = "EVAL_ERROR"
+
+
+class DatasetError(EvalError):
+    code = "DATASET_ERROR"
+
+
+class GateFailedError(EvalError):
+    code = "GATE_FAILED"
+
+    def __init__(self, message: str, *, failures: list[Any] | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.failures = failures or []
+
+
+# --- optimization ------------------------------------------------------------
+
+
+class OptimizationError(VincioError):
+    code = "OPTIMIZATION_ERROR"
+
+
+# --- caching -----------------------------------------------------------------
+
+
+class CacheError(VincioError):
+    code = "CACHE_ERROR"
+
+
+# --- security ----------------------------------------------------------------
+
+
+class SecurityError(VincioError):
+    code = "SECURITY_ERROR"
+
+
+class AccessDeniedError(SecurityError):
+    code = "ACCESS_DENIED"
+
+
+class TenantIsolationError(SecurityError):
+    code = "TENANT_ISOLATION"
+
+
+class InjectionDetectedError(SecurityError):
+    code = "INJECTION_DETECTED"
+
+
+class PIIPolicyError(SecurityError):
+    code = "PII_POLICY"
+
+
+# --- storage -----------------------------------------------------------------
+
+
+class StorageError(VincioError):
+    code = "STORAGE_ERROR"
+
+
+# --- server ------------------------------------------------------------------
+
+
+class ServerError(VincioError):
+    code = "SERVER_ERROR"
+
+
+class AuthenticationError(ServerError):
+    code = "AUTHENTICATION_ERROR"

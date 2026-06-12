@@ -1,0 +1,33 @@
+# VincioBench
+
+Benchmark suite for Vincio and baseline comparisons. Runs fully offline by
+default (deterministic mock provider + deterministic metrics) so results
+are reproducible; set `VINCIO_PROVIDER`/`VINCIO_MODEL` to benchmark a real
+model.
+
+```bash
+python benchmarks/vinciobench.py             # all families
+python benchmarks/vinciobench.py rag cost    # selected families
+```
+
+Results are printed as JSON and saved to `benchmarks/results/`.
+
+## Families
+
+| Family | Measures | Baseline |
+|---|---|---|
+| **PromptBench** | cacheability/tokens per render format, lint defect detection | naive string concatenation |
+| **RAGBench** | recall@3, MRR over a known-answer corpus | — |
+| **MemoryBench** | preference recall, contradiction supersede, cross-user isolation | — |
+| **AgentBench** | budget adherence under an adversarial looping model, DAG success | unbounded loop |
+| **ToolBench** | reliability, runtime overhead (p50 ms), invalid-arg rejection, cache hits | — |
+| **OutputBench** | recovery rate over malformed model outputs; missing-required correctly rejected | raw `json.loads` |
+| **CostBench** | evidence-token reduction from the context compiler | stuff-everything context |
+| **SecurityBench** | injection detection rate, false-positive rate, PII coverage | — |
+
+## A note on claims
+
+Vincio's design targets are stated as improvement *hypotheses* (e.g. a 20–40%
+token reduction through context compression). VincioBench measures them — the
+report states whether each hypothesis was met on the benchmark corpus. Do not
+market numbers beyond what a benchmark run on your own data shows.

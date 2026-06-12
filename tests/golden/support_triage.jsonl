@@ -1,0 +1,4 @@
+{"id": "triage_001", "input": "I was charged twice this month", "expected": {"label": "billing"}, "tags": ["billing"], "difficulty": "easy"}
+{"id": "triage_002", "input": "The dashboard crashes after login", "expected": {"label": "bug"}, "tags": ["bug"], "difficulty": "easy"}
+{"id": "triage_003", "input": "Please add dark mode to the editor", "expected": {"label": "feature"}, "tags": ["feature"], "difficulty": "easy"}
+{"id": "triage_004", "input": "How do I export my data?", "expected": {"label": "other"}, "tags": ["question"], "difficulty": "medium"}

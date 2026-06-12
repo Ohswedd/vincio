@@ -1,0 +1,3 @@
+{"id": "ext_001", "input": "Invoice INV-1001 dated 2026-01-15 for $250.00 from Acme Corp", "expected": ["invoice_id=inv 1001", "date=2026 01 15", "amount=250 00"], "tags": ["invoice"], "difficulty": "easy"}
+{"id": "ext_002", "input": "Invoice INV-2002 dated 2026-02-20 for $1,100.50 from Globex", "expected": ["invoice_id=inv 2002", "date=2026 02 20", "amount=1 100 50"], "tags": ["invoice"], "difficulty": "medium"}
+{"id": "ext_003", "input": "Credit note CN-77 issued 2026-03-01 refunding $40.00", "expected": ["invoice_id=cn 77", "date=2026 03 01", "amount=40 00"], "tags": ["credit"], "difficulty": "medium"}

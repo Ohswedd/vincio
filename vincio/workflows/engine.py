@@ -1,0 +1,311 @@
+"""Deterministic workflow engine.
+
+Features: DAG execution, retries with backoff, timeouts, compensation,
+branching (``when`` conditions), parallel steps, human approval gates,
+typed inputs/outputs, trace spans.
+
+Example::
+
+    workflow = Workflow("contract_review")
+    workflow.step("ingest", ingest_documents)
+    workflow.step("retrieve", retrieve_clauses, depends_on=["ingest"])
+    workflow.step("analyze", analyze_risk, depends_on=["retrieve"])
+    workflow.step("validate", validate_report, depends_on=["analyze"])
+    result = await workflow.arun({"files": ["msa.pdf"]})
+"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+import time
+from collections.abc import Awaitable, Callable
+from typing import Any
+
+from pydantic import BaseModel, Field
+
+from ..core.errors import WorkflowError, WorkflowStepError
+from ..observability.traces import Tracer
+from ..providers.base import run_sync
+
+__all__ = ["StepResult", "WorkflowContext", "WorkflowResult", "Workflow"]
+
+StepFn = Callable[..., Any]
+ConditionFn = Callable[["WorkflowContext"], bool]
+CompensationFn = Callable[["WorkflowContext"], Any]
+ApprovalFn = Callable[[str, "WorkflowContext"], Awaitable[bool]]
+
+
+class StepResult(BaseModel):
+    name: str
+    status: str = "pending"  # pending | running | done | failed | skipped | compensated
+    output: Any = None
+    error: str | None = None
+    attempts: int = 0
+    duration_ms: int = 0
+
+
+class WorkflowContext(BaseModel):
+    """State threaded through the workflow: initial input + step outputs."""
+
+    input: Any = None
+    results: dict[str, StepResult] = Field(default_factory=dict)
+    data: dict[str, Any] = Field(default_factory=dict)
+
+    def output_of(self, step: str) -> Any:
+        result = self.results.get(step)
+        return result.output if result else None
+
+    def __getitem__(self, step: str) -> Any:
+        return self.output_of(step)
+
+
+class WorkflowResult(BaseModel):
+    workflow: str
+    status: str  # succeeded | failed | partial
+    context: WorkflowContext
+    duration_ms: int = 0
+    failed_steps: list[str] = Field(default_factory=list)
+    compensated_steps: list[str] = Field(default_factory=list)
+
+    @property
+    def output(self) -> Any:
+        """Output of the terminal step(s): single value or dict by name."""
+        done = {name: r.output for name, r in self.context.results.items() if r.status == "done"}
+        if not done:
+            return None
+        return done[next(reversed(done))] if len(done) == 1 else done
+
+
+class _StepDef(BaseModel):
+    model_config = {"arbitrary_types_allowed": True}
+
+    name: str
+    fn: Any
+    depends_on: list[str] = Field(default_factory=list)
+    retries: int = 0
+    retry_delay_s: float = 0.5
+    timeout_s: float | None = None
+    when: Any = None  # ConditionFn
+    compensation: Any = None  # CompensationFn
+    approval: bool = False
+
+
+class Workflow:
+    def __init__(
+        self,
+        name: str,
+        *,
+        tracer: Tracer | None = None,
+        approval_fn: ApprovalFn | None = None,
+    ) -> None:
+        self.name = name
+        self.tracer = tracer or Tracer()
+        self.approval_fn = approval_fn
+        self._steps: dict[str, _StepDef] = {}
+
+    def step(
+        self,
+        name: str,
+        fn: StepFn,
+        *,
+        depends_on: list[str] | None = None,
+        retries: int = 0,
+        retry_delay_s: float = 0.5,
+        timeout_s: float | None = None,
+        when: ConditionFn | None = None,
+        compensation: CompensationFn | None = None,
+        approval: bool = False,
+    ) -> Workflow:
+        """Register a step. ``fn`` receives the WorkflowContext (or, when its
+        signature names match prior steps, those steps' outputs)."""
+        if name in self._steps:
+            raise WorkflowError(f"duplicate step {name!r}")
+        for dep in depends_on or []:
+            if dep not in self._steps:
+                raise WorkflowError(f"step {name!r} depends on unknown step {dep!r}")
+        self._steps[name] = _StepDef(
+            name=name,
+            fn=fn,
+            depends_on=list(depends_on or []),
+            retries=retries,
+            retry_delay_s=retry_delay_s,
+            timeout_s=timeout_s,
+            when=when,
+            compensation=compensation,
+            approval=approval,
+        )
+        return self
+
+    # -- invocation helpers -----------------------------------------------------------
+
+    @staticmethod
+    def _build_args(step: _StepDef, context: WorkflowContext) -> tuple[list[Any], dict[str, Any]]:
+        signature = inspect.signature(step.fn)
+        parameters = list(signature.parameters.values())
+        if len(parameters) == 1 and parameters[0].name in ("context", "ctx"):
+            return [context], {}
+        kwargs: dict[str, Any] = {}
+        for parameter in parameters:
+            if parameter.name in ("context", "ctx"):
+                kwargs[parameter.name] = context
+            elif parameter.name == "input":
+                kwargs[parameter.name] = context.input
+            elif parameter.name in context.results:
+                kwargs[parameter.name] = context.results[parameter.name].output
+            elif parameter.default is not inspect.Parameter.empty:
+                continue
+            else:
+                raise WorkflowStepError(
+                    f"cannot bind parameter {parameter.name!r}; it matches no prior step, "
+                    "'input', or 'context'",
+                    step=step.name,
+                )
+        return [], kwargs
+
+    async def _invoke(self, step: _StepDef, context: WorkflowContext) -> Any:
+        args, kwargs = self._build_args(step, context)
+        if inspect.iscoroutinefunction(step.fn):
+            coroutine = step.fn(*args, **kwargs)
+        else:
+            loop = asyncio.get_running_loop()
+            coroutine = loop.run_in_executor(None, lambda: step.fn(*args, **kwargs))
+        if step.timeout_s is not None:
+            return await asyncio.wait_for(coroutine, timeout=step.timeout_s)
+        return await coroutine
+
+    async def _run_step(self, step: _StepDef, context: WorkflowContext) -> StepResult:
+        result = context.results[step.name]
+        if step.when is not None and not step.when(context):
+            result.status = "skipped"
+            return result
+        if step.approval:
+            if self.approval_fn is None:
+                result.status = "failed"
+                result.error = "approval required but no approval_fn configured"
+                return result
+            approved = await self.approval_fn(step.name, context)
+            if not approved:
+                result.status = "failed"
+                result.error = "approval denied"
+                return result
+        started = time.monotonic()
+        result.status = "running"
+        last_error: str | None = None
+        for attempt in range(step.retries + 1):
+            result.attempts = attempt + 1
+            try:
+                with self.tracer.span(step.name, type="workflow_step") as span:
+                    span.set(workflow=self.name, attempt=attempt + 1)
+                    output = await self._invoke(step, context)
+                result.output = output
+                result.status = "done"
+                result.error = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_error = f"{type(exc).__name__}: {exc}"
+                result.error = last_error
+                if attempt < step.retries:
+                    await asyncio.sleep(step.retry_delay_s * (2**attempt))
+        else:
+            pass
+        if result.status != "done":
+            result.status = "failed"
+            result.error = last_error
+        result.duration_ms = int((time.monotonic() - started) * 1000)
+        return result
+
+    async def _compensate(self, context: WorkflowContext, completed: list[str]) -> list[str]:
+        """Run compensation handlers in reverse completion order."""
+        compensated: list[str] = []
+        for name in reversed(completed):
+            step = self._steps[name]
+            if step.compensation is None:
+                continue
+            try:
+                output = step.compensation(context)
+                if inspect.isawaitable(output):
+                    await output
+                context.results[name].status = "compensated"
+                compensated.append(name)
+            except Exception:  # noqa: BLE001 - compensation is best-effort
+                continue
+        return compensated
+
+    # -- execution ---------------------------------------------------------------------
+
+    def _levels(self) -> list[list[_StepDef]]:
+        in_degree = {name: len(s.depends_on) for name, s in self._steps.items()}
+        dependents: dict[str, list[str]] = {name: [] for name in self._steps}
+        for step in self._steps.values():
+            for dep in step.depends_on:
+                dependents[dep].append(step.name)
+        current = [self._steps[n] for n, d in in_degree.items() if d == 0]
+        levels: list[list[_StepDef]] = []
+        seen: set[str] = set()
+        while current:
+            levels.append(current)
+            seen.update(s.name for s in current)
+            next_level: list[_StepDef] = []
+            for step in current:
+                for dependent in dependents[step.name]:
+                    in_degree[dependent] -= 1
+                    if in_degree[dependent] == 0:
+                        next_level.append(self._steps[dependent])
+            current = next_level
+        if len(seen) != len(self._steps):
+            raise WorkflowError("workflow graph contains a cycle")
+        return levels
+
+    async def arun(self, input: Any = None, *, compensate_on_failure: bool = True) -> WorkflowResult:
+        if not self._steps:
+            raise WorkflowError(f"workflow {self.name!r} has no steps")
+        context = WorkflowContext(input=input)
+        for name in self._steps:
+            context.results[name] = StepResult(name=name)
+        started = time.monotonic()
+        completed: list[str] = []
+        failed: list[str] = []
+        with self.tracer.trace(run_id=None, workflow=self.name):
+            for level in self._levels():
+                runnable: list[_StepDef] = []
+                for step in level:
+                    upstream = [context.results[d] for d in step.depends_on]
+                    if any(u.status in ("failed", "skipped") for u in upstream):
+                        # Skipped-on-condition upstream is fine only if optional;
+                        # failed upstream always skips dependents.
+                        if any(u.status == "failed" for u in upstream):
+                            context.results[step.name].status = "skipped"
+                            context.results[step.name].error = "upstream failure"
+                            continue
+                        if any(u.status == "skipped" for u in upstream):
+                            context.results[step.name].status = "skipped"
+                            context.results[step.name].error = "upstream skipped"
+                            continue
+                    runnable.append(step)
+                if runnable:
+                    results = await asyncio.gather(
+                        *(self._run_step(step, context) for step in runnable)
+                    )
+                    for step, result in zip(runnable, results, strict=False):
+                        if result.status == "done":
+                            completed.append(step.name)
+                        elif result.status == "failed":
+                            failed.append(step.name)
+                if failed:
+                    break
+        compensated: list[str] = []
+        if failed and compensate_on_failure:
+            compensated = await self._compensate(context, completed)
+        status = "succeeded" if not failed else ("partial" if completed else "failed")
+        return WorkflowResult(
+            workflow=self.name,
+            status=status,
+            context=context,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            failed_steps=failed,
+            compensated_steps=compensated,
+        )
+
+    def run(self, input: Any = None, **kwargs: Any) -> WorkflowResult:
+        return run_sync(self.arun(input, **kwargs))

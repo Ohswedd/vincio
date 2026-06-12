@@ -1,0 +1,56 @@
+# Vincio
+
+> Vincio is a Python platform for context-engineered AI applications. It
+> compiles prompts, memory, retrieval, tools, schemas, and policies into
+> optimized, validated, observable, provider-neutral context packets, then
+> validates and evaluates every output.
+
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0
+Main entry point: `from vincio import ContextApp`
+
+## Quickstart
+
+```python
+from vincio import ContextApp
+app = ContextApp(name="docs_qa")
+app.add_source("docs", path="./docs", retrieval="hybrid")
+app.set_policy("answer_only_from_sources", True)
+result = app.run("How do I configure SSO?")
+result.output; result.citations; result.trace_id; result.cost_usd
+```
+
+## Docs
+
+- [Getting started](docs/getting-started.md)
+- [Context packets & compiler](docs/concepts/context-packets.md)
+- [Prompt compiler](docs/concepts/prompt-compiler.md)
+- [Memory](docs/concepts/memory.md)
+- [Retrieval](docs/concepts/retrieval.md)
+- [Agents & workflows](docs/concepts/agents.md)
+- [Evaluation](docs/concepts/evals.md)
+- [Build a RAG app](docs/guides/build-rag-app.md)
+- [Structured output](docs/guides/structured-output.md)
+- [Add tools](docs/guides/add-tools.md)
+- [Run evals](docs/guides/run-evals.md)
+- [Optimize](docs/guides/optimize-context.md)
+- [API reference](docs/reference/api.md)
+- [CLI reference](docs/reference/cli.md)
+- [Config reference](docs/reference/config.md)
+
+## Key facts for code generation
+
+- All public data contracts are Pydantic v2 models.
+- Async-first: every engine has `arun`/async methods plus sync wrappers.
+- Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
+  mock (deterministic, offline; generates schema-valid structured output).
+- `ContextApp.run()` executes: normalize → classify → policy → memory →
+  retrieve → compile context (score/dedupe/conflict/compress/budget) →
+  compile prompt (cache-aware) → model (+bounded tool loop) → validate
+  (schema/citations/policy, principled repair) → evaluate → trace → memory write.
+- Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
+  is a validated instance.
+- Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,
+  gates like `{"groundedness": ">= 0.95"}`; CLI `vincio eval run`.
+- CLI: init, run, eval run/report, prompt lint/compile,
+  trace show/replay/diff, optimize run, index build, memory inspect.
+- Server: `from vincio.server import create_app` (FastAPI; API key + JWT).

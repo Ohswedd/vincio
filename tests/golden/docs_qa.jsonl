@@ -1,0 +1,4 @@
+{"id": "qa_001", "input": "What is the refund window for the Pro plan?", "expected": "Refunds within 30 days for the Pro plan.", "rubric": {"facts": ["Pro plan refunds within 30 days"]}, "tags": ["refund", "policy"], "difficulty": "easy"}
+{"id": "qa_002", "input": "How long is the initial subscription term?", "expected": "The initial term is 24 months.", "rubric": {"facts": ["initial term is 24 months"]}, "tags": ["terms"], "difficulty": "easy"}
+{"id": "qa_003", "input": "How far in advance must the subscription be terminated to avoid renewal?", "expected": "60 days before renewal.", "rubric": {"facts": ["terminated 60 days before renewal"]}, "tags": ["terms", "renewal"], "difficulty": "medium"}
+{"id": "qa_004", "input": "What fee applies to Basic plan refunds?", "expected": "A $5 fee applies to Basic plan refunds.", "rubric": {"facts": ["Basic plan refund fee $5"]}, "tags": ["refund", "edge_case"], "difficulty": "medium"}

@@ -1,0 +1,63 @@
+# Guide: build a RAG app
+
+A grounded document-QA app in under 30 lines.
+
+```python
+from vincio import ContextApp
+
+app = ContextApp(name="docs_qa")
+
+# 1. Sources: load → chunk (adaptive) → index (BM25 + dense, RRF-merged).
+app.add_source("docs", path="./docs", chunking="adaptive", retrieval="hybrid")
+
+# 2. Grounding policy: adds citation rules, requires citations in output,
+#    and sets insufficient-evidence behavior.
+app.set_policy("answer_only_from_sources", True)
+
+# 3. Built-in evaluators score every run.
+app.add_evaluator("groundedness")
+app.add_evaluator("citation_accuracy")
+
+result = app.run("How do I configure SSO?")
+print(result.output)            # answer with [citation] refs
+print(result.citations)         # verified citation refs
+print(result.eval_scores)       # {"groundedness": 1.0, "citation_accuracy": 1.0}
+print(result.excluded_context)  # why items were excluded
+```
+
+## Tuning
+
+```yaml
+# vincio.yaml
+retrieval:
+  top_k: 8
+  chunk_size_tokens: 400
+  chunk_overlap_tokens: 50
+  chunking: adaptive          # fixed | recursive | semantic | heading_aware | table_aware | code_aware
+  reranker: heuristic         # heuristic | recency | authority | llm | null
+  embedder: local             # local (offline) | openai | google | mistral
+```
+
+## Per-run files
+
+```python
+result = app.run("Which termination clauses are risky?",
+                 files=["msa.pdf", "order_form.pdf"], tenant_id="acme")
+```
+
+Files are loaded (`pip install "vincio[pdf]"` for PDF), chunked, indexed,
+and offered to the context compiler alongside source evidence.
+
+## Multi-tenancy
+
+Pass `tenant_id=` on every run. With `security.tenant_isolation: true`
+(default), retrieval filters chunks by tenant, memory scopes are enforced,
+and cross-tenant access raises `TenantIsolationError`.
+
+## Hallucination defense in depth
+
+1. Retrieval only surfaces real chunks with provenance.
+2. The context compiler excludes low-relevance evidence (reported).
+3. The prompt carries the citation policy in the stable prefix.
+4. The output validator rejects citations that don't match real evidence ids.
+5. The `groundedness` evaluator measures supported-claim ratio per run.

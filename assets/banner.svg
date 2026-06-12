@@ -1,0 +1,42 @@
+<svg width="820" height="196" viewBox="0 0 820 196" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Vincio — the context engineering platform">
+  <title>Vincio — the context engineering platform</title>
+  <defs>
+    <radialGradient id="b_parchment" cx="42%" cy="36%" r="72%">
+      <stop offset="0%" stop-color="#FBF4E2"/>
+      <stop offset="62%" stop-color="#F2E6C8"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="b_gold" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E0C268"/>
+      <stop offset="50%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="b_ink" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3A2E1C"/>
+      <stop offset="100%" stop-color="#241B0F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- mark -->
+  <g transform="translate(28, 28) scale(0.6)">
+    <circle cx="120" cy="120" r="112" fill="url(#b_parchment)" stroke="url(#b_gold)" stroke-width="4"/>
+    <circle cx="120" cy="120" r="104" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.45"/>
+    <g stroke="#5B4A2E" fill="none" opacity="0.42">
+      <circle cx="120" cy="126" r="70" stroke-width="1.4"/>
+      <rect x="54" y="60" width="132" height="132" stroke-width="1.4"/>
+      <line x1="120" y1="40" x2="120" y2="200" stroke-width="0.9" opacity="0.7"/>
+      <line x1="48" y1="126" x2="192" y2="126" stroke-width="0.9" opacity="0.7"/>
+    </g>
+    <path d="M 70 70 L 120 178 L 170 70 L 150 70 L 120 138 L 90 70 Z" fill="url(#b_ink)"/>
+    <path d="M 70 70 L 120 178 L 170 70" fill="none" stroke="url(#b_gold)" stroke-width="2.2" stroke-linejoin="round" opacity="0.85"/>
+    <circle cx="120" cy="178" r="4.2" fill="url(#b_gold)"/>
+    <circle cx="70" cy="70" r="3.4" fill="#5B4A2E"/>
+    <circle cx="170" cy="70" r="3.4" fill="#5B4A2E"/>
+  </g>
+
+  <!-- wordmark -->
+  <text x="196" y="104" font-family="Georgia, 'Times New Roman', serif" font-size="76" font-weight="700" letter-spacing="6" fill="url(#b_gold)">VINCIO</text>
+  <text x="200" y="142" font-family="Georgia, 'Times New Roman', serif" font-size="20" letter-spacing="1.2" fill="#9A721C">The context engineering platform for AI applications</text>
+  <line x1="200" y1="156" x2="788" y2="156" stroke="#C49A3A" stroke-width="1.2" opacity="0.5"/>
+  <text x="200" y="178" font-family="Georgia, 'Times New Roman', serif" font-size="13.5" letter-spacing="2.6" fill="#B98B2E" opacity="0.85">PROMPTS · MEMORY · RETRIEVAL · TOOLS · EVALS · TRACES</text>
+</svg>

@@ -1,0 +1,276 @@
+"""Google Gemini provider (generateContent API) implemented over httpx."""
+
+from __future__ import annotations
+
+import json
+import time
+from collections.abc import AsyncIterator
+from typing import Any
+
+from ..core.errors import ProviderResponseError
+from ..core.types import (
+    ModelCapabilities,
+    ModelEvent,
+    ModelRequest,
+    ModelResponse,
+    TokenUsage,
+    ToolCallRequest,
+)
+from ..observability.costs import PriceTable, default_price_table
+from .base import HTTPProvider, parse_sse_lines
+
+__all__ = ["GoogleProvider"]
+
+
+def _strip_unsupported(schema: Any) -> Any:
+    """Gemini's schema dialect rejects some JSON Schema keywords."""
+    if isinstance(schema, dict):
+        return {
+            k: _strip_unsupported(v)
+            for k, v in schema.items()
+            if k not in ("additionalProperties", "$schema", "$defs", "title", "default")
+        }
+    if isinstance(schema, list):
+        return [_strip_unsupported(v) for v in schema]
+    return schema
+
+
+class GoogleProvider(HTTPProvider):
+    name = "google"
+    default_base_url = "https://generativelanguage.googleapis.com/v1beta"
+
+    def __init__(self, *args: Any, price_table: PriceTable | None = None, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.price_table = price_table or default_price_table()
+
+    def _headers(self) -> dict[str, str]:
+        return {"x-goog-api-key": self.api_key or "", "Content-Type": "application/json"}
+
+    # -- rendering -------------------------------------------------------------
+
+    def _render(self, request: ModelRequest) -> tuple[str, list[dict[str, Any]]]:
+        system_parts: list[str] = []
+        contents: list[dict[str, Any]] = []
+        for message in request.messages:
+            if message.role in ("system", "developer"):
+                system_parts.append(message.text)
+                continue
+            role = "model" if message.role == "assistant" else "user"
+            parts: list[dict[str, Any]] = []
+            if message.role == "tool":
+                parts.append(
+                    {
+                        "functionResponse": {
+                            "name": message.name or "tool",
+                            "response": {"output": message.text},
+                        }
+                    }
+                )
+            elif isinstance(message.content, str):
+                if message.content:
+                    parts.append({"text": message.content})
+            else:
+                for part in message.content:
+                    if part.type == "text" and part.text:
+                        parts.append({"text": part.text})
+                    elif part.type == "image" and part.image is not None and part.image.path:
+                        import base64
+                        from pathlib import Path
+
+                        parts.append(
+                            {
+                                "inlineData": {
+                                    "mimeType": part.image.media_type or "image/png",
+                                    "data": base64.standard_b64encode(
+                                        Path(part.image.path).read_bytes()
+                                    ).decode(),
+                                }
+                            }
+                        )
+            for tc in message.tool_calls:
+                parts.append({"functionCall": {"name": tc.name, "args": tc.arguments}})
+            contents.append({"role": role, "parts": parts or [{"text": ""}]})
+        return "\n\n".join(system_parts), contents
+
+    def _payload(self, request: ModelRequest) -> dict[str, Any]:
+        system_text, contents = self._render(request)
+        payload: dict[str, Any] = {"contents": contents}
+        if system_text:
+            payload["systemInstruction"] = {"parts": [{"text": system_text}]}
+        generation: dict[str, Any] = {}
+        if request.temperature is not None:
+            generation["temperature"] = request.temperature
+        if request.top_p is not None:
+            generation["topP"] = request.top_p
+        if request.max_output_tokens is not None:
+            generation["maxOutputTokens"] = request.max_output_tokens
+        if request.stop:
+            generation["stopSequences"] = request.stop
+        if request.output_schema is not None:
+            generation["responseMimeType"] = "application/json"
+            generation["responseSchema"] = _strip_unsupported(request.output_schema)
+        if generation:
+            payload["generationConfig"] = generation
+        if request.tools:
+            payload["tools"] = [
+                {
+                    "functionDeclarations": [
+                        {
+                            "name": tool.name,
+                            "description": tool.description,
+                            "parameters": _strip_unsupported(tool.input_schema)
+                            or {"type": "object", "properties": {}},
+                        }
+                        for tool in request.tools
+                    ]
+                }
+            ]
+        return payload
+
+    # -- parsing ---------------------------------------------------------------
+
+    def _parse_usage(self, usage: dict[str, Any] | None) -> TokenUsage:
+        if not usage:
+            return TokenUsage()
+        return TokenUsage(
+            input_tokens=usage.get("promptTokenCount", 0) or 0,
+            output_tokens=usage.get("candidatesTokenCount", 0) or 0,
+            cached_input_tokens=usage.get("cachedContentTokenCount", 0) or 0,
+            reasoning_tokens=usage.get("thoughtsTokenCount", 0) or 0,
+        )
+
+    def _parse_response(self, data: dict[str, Any], request: ModelRequest, latency_ms: int) -> ModelResponse:
+        candidates = data.get("candidates") or []
+        if not candidates:
+            raise ProviderResponseError(
+                f"no candidates in response: {json.dumps(data)[:500]}", provider=self.name
+            )
+        candidate = candidates[0]
+        text_parts: list[str] = []
+        tool_calls: list[ToolCallRequest] = []
+        for part in (candidate.get("content") or {}).get("parts") or []:
+            if "text" in part:
+                text_parts.append(part["text"])
+            elif "functionCall" in part:
+                fc = part["functionCall"]
+                tool_calls.append(
+                    ToolCallRequest(name=fc.get("name") or "", arguments=fc.get("args") or {})
+                )
+        finish_map = {
+            "STOP": "stop",
+            "MAX_TOKENS": "length",
+            "SAFETY": "content_filter",
+            "RECITATION": "content_filter",
+        }
+        finish = finish_map.get(candidate.get("finishReason"), "stop")
+        if tool_calls:
+            finish = "tool_calls"
+        text = "".join(text_parts)
+        structured: dict[str, Any] | None = None
+        if request.output_schema is not None and text:
+            try:
+                structured = json.loads(text)
+            except json.JSONDecodeError:
+                structured = None
+        usage = self._parse_usage(data.get("usageMetadata"))
+        return ModelResponse(
+            model=data.get("modelVersion", request.model),
+            text=text,
+            tool_calls=tool_calls,
+            structured=structured,
+            finish_reason=finish,  # type: ignore[arg-type]
+            usage=usage,
+            cost_usd=self.price_table.cost(request.model, usage),
+            latency_ms=latency_ms,
+            provider=self.name,
+            raw=data,
+        )
+
+    # -- API ---------------------------------------------------------------------
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        started = time.monotonic()
+        data = await self._post_json(
+            f"/models/{request.model}:generateContent", self._payload(request)
+        )
+        latency_ms = int((time.monotonic() - started) * 1000)
+        return self._parse_response(data, request, latency_ms)
+
+    async def stream(self, request: ModelRequest) -> AsyncIterator[ModelEvent]:
+        started = time.monotonic()
+        text_parts: list[str] = []
+        tool_calls: list[ToolCallRequest] = []
+        usage = TokenUsage()
+        model_name = request.model
+        async for line in self._post_stream(
+            f"/models/{request.model}:streamGenerateContent?alt=sse", self._payload(request)
+        ):
+            data_str = parse_sse_lines(line)
+            if data_str is None:
+                continue
+            try:
+                chunk = json.loads(data_str)
+            except json.JSONDecodeError:
+                continue
+            model_name = chunk.get("modelVersion", model_name)
+            if chunk.get("usageMetadata"):
+                usage = self._parse_usage(chunk["usageMetadata"])
+            for candidate in chunk.get("candidates") or []:
+                for part in (candidate.get("content") or {}).get("parts") or []:
+                    if part.get("text"):
+                        text_parts.append(part["text"])
+                        yield ModelEvent(type="text_delta", text=part["text"])
+                    elif "functionCall" in part:
+                        fc = part["functionCall"]
+                        tool_call = ToolCallRequest(
+                            name=fc.get("name") or "", arguments=fc.get("args") or {}
+                        )
+                        tool_calls.append(tool_call)
+                        yield ModelEvent(type="tool_call_delta", tool_call=tool_call)
+        yield ModelEvent(type="usage", usage=usage)
+        text = "".join(text_parts)
+        structured: dict[str, Any] | None = None
+        if request.output_schema is not None and text:
+            try:
+                structured = json.loads(text)
+            except json.JSONDecodeError:
+                structured = None
+        response = ModelResponse(
+            model=model_name,
+            text=text,
+            tool_calls=tool_calls,
+            structured=structured,
+            finish_reason="tool_calls" if tool_calls else "stop",
+            usage=usage,
+            cost_usd=self.price_table.cost(request.model, usage),
+            latency_ms=int((time.monotonic() - started) * 1000),
+            provider=self.name,
+        )
+        yield ModelEvent(type="done", response=response)
+
+    async def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
+        if not texts:
+            return []
+        embedding_model = model or "text-embedding-004"
+        data = await self._post_json(
+            f"/models/{embedding_model}:batchEmbedContents",
+            {
+                "requests": [
+                    {"model": f"models/{embedding_model}", "content": {"parts": [{"text": text}]}}
+                    for text in texts
+                ]
+            },
+        )
+        return [item["values"] for item in data.get("embeddings") or []]
+
+    def capabilities(self, model: str) -> ModelCapabilities:
+        return ModelCapabilities(
+            structured_output=True,
+            tool_calling=True,
+            vision=True,
+            audio=True,
+            prompt_caching="flash" in model or "pro" in model,
+            max_context_tokens=1_000_000,
+            max_output_tokens=65_536,
+            supports_system_message=True,
+        )

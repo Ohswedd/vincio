@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.DS_Store
+*.db
+*.duckdb
+.vincio/
+traces/
+.coverage
+htmlcov/
+dist/
+benchmarks/results/
+
+# Internal spec — not distributed
+PRD.md

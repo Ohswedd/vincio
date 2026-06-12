@@ -1,0 +1,220 @@
+"""Project configuration (``vincio.yaml``).
+
+Configuration is layered: defaults < config file < environment variables
+(``VINCIO_*``) < explicit constructor arguments.
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel, Field
+
+from .errors import ConfigError
+from .types import Budget, PolicySet
+
+__all__ = [
+    "ProviderConfig",
+    "StorageConfig",
+    "ObservabilityConfig",
+    "SecurityConfig",
+    "RetrievalConfig",
+    "MemoryConfig",
+    "CacheConfig",
+    "ServerConfig",
+    "VincioConfig",
+    "load_config",
+    "find_config_file",
+]
+
+CONFIG_FILENAMES = ("vincio.yaml", "vincio.yml", "vincio.json")
+
+
+class ProviderConfig(BaseModel):
+    default: str = "openai"
+    model: str = "gpt-5.2"
+    fallback_models: list[str] = Field(default_factory=list)
+    api_keys: dict[str, str] = Field(default_factory=dict)  # provider -> env var name or key
+    base_urls: dict[str, str] = Field(default_factory=dict)
+    timeout_s: float = 120.0
+    max_retries: int = 2
+
+    def resolve_api_key(self, provider: str) -> str | None:
+        """Resolve an API key: explicit config value, named env var, or standard env var."""
+        configured = self.api_keys.get(provider)
+        if configured:
+            # Treat values that look like env var names as indirection.
+            if configured.isupper() and configured in os.environ:
+                return os.environ[configured]
+            return configured
+        standard = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "google": "GOOGLE_API_KEY",
+            "mistral": "MISTRAL_API_KEY",
+        }.get(provider)
+        if standard:
+            return os.environ.get(standard)
+        return os.environ.get(f"{provider.upper()}_API_KEY")
+
+
+class StorageConfig(BaseModel):
+    metadata: str = "sqlite:///.vincio/vincio.db"
+    vector: str = "memory://"
+    graph: str = "memory://"
+    cache: str = "memory://"
+    documents_dir: str = ".vincio/documents"
+    analytics: str | None = None  # e.g. "duckdb:///.vincio/analytics.duckdb"
+
+
+class ObservabilityConfig(BaseModel):
+    exporter: str = "jsonl"  # jsonl | memory | otel | none
+    traces_dir: str = ".vincio/traces"
+    redact_pii_in_traces: bool = False
+    sample_rate: float = 1.0
+
+
+class SecurityConfig(BaseModel):
+    tenant_isolation: bool = True
+    pii_detection: bool = True
+    injection_detection: bool = True
+    audit_log: bool = True
+    audit_dir: str = ".vincio/audit"
+    retention_days: int | None = None
+
+
+class RetrievalConfig(BaseModel):
+    top_k: int = 8
+    candidate_multiplier: int = 4  # candidates fetched per index before merge/rerank
+    hybrid_weight_dense: float = 0.5
+    chunk_size_tokens: int = 400
+    chunk_overlap_tokens: int = 50
+    chunking: str = "recursive"
+    reranker: str | None = "heuristic"
+    embedder: str = "local"  # local | openai | <provider>
+
+
+class MemoryConfig(BaseModel):
+    enabled: bool = True
+    decay_lambda: float = 0.01  # per day
+    min_confidence: float = 0.25
+    max_items_per_run: int = 8
+    write_policy: str = "guarded"  # guarded | open | off
+
+
+class CacheConfig(BaseModel):
+    response_cache: bool = False
+    tool_cache: bool = True
+    embedding_cache: bool = True
+    retrieval_cache: bool = False
+    semantic_cache: bool = False
+    semantic_threshold: float = 0.97
+    ttl_s: int = 3600
+    max_entries: int = 10_000
+
+
+class ServerConfig(BaseModel):
+    host: str = "127.0.0.1"
+    port: int = 8042
+    api_keys: list[str] = Field(default_factory=list)
+    jwt_secret: str | None = None
+    cors_origins: list[str] = Field(default_factory=list)
+
+
+class VincioConfig(BaseModel):
+    """Top-level project configuration."""
+
+    project: str = "vincio_app"
+    provider: ProviderConfig = Field(default_factory=ProviderConfig)
+    storage: StorageConfig = Field(default_factory=StorageConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    security: SecurityConfig = Field(default_factory=SecurityConfig)
+    retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
+    memory: MemoryConfig = Field(default_factory=MemoryConfig)
+    cache: CacheConfig = Field(default_factory=CacheConfig)
+    server: ServerConfig = Field(default_factory=ServerConfig)
+    budget: Budget = Field(default_factory=Budget)
+    policies: PolicySet = Field(default_factory=PolicySet)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VincioConfig:
+        try:
+            return cls.model_validate(data)
+        except Exception as exc:  # pydantic ValidationError
+            raise ConfigError(f"invalid configuration: {exc}") from exc
+
+    def to_yaml(self) -> str:
+        return yaml.safe_dump(self.model_dump(mode="json"), sort_keys=False)
+
+
+def find_config_file(start: str | Path | None = None) -> Path | None:
+    """Locate the nearest vincio config file walking up from *start*."""
+    directory = Path(start or os.getcwd()).resolve()
+    for candidate_dir in (directory, *directory.parents):
+        for name in CONFIG_FILENAMES:
+            path = candidate_dir / name
+            if path.is_file():
+                return path
+    return None
+
+
+def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
+    """Apply ``VINCIO_SECTION__FIELD=value`` environment overrides."""
+    for key, value in os.environ.items():
+        if not key.startswith("VINCIO_") or "__" not in key:
+            continue
+        path = key[len("VINCIO_") :].lower().split("__")
+        node = data
+        for part in path[:-1]:
+            node = node.setdefault(part, {})
+            if not isinstance(node, dict):
+                break
+        else:
+            parsed: Any = value
+            if value.lower() in ("true", "false"):
+                parsed = value.lower() == "true"
+            else:
+                try:
+                    parsed = int(value)
+                except ValueError:
+                    try:
+                        parsed = float(value)
+                    except ValueError:
+                        parsed = value
+            node[path[-1]] = parsed
+    return data
+
+
+def load_config(
+    path: str | Path | None = None, *, overrides: dict[str, Any] | None = None
+) -> VincioConfig:
+    """Load configuration from a file (or discover it), env vars, and overrides."""
+    data: dict[str, Any] = {}
+    config_path = Path(path) if path else find_config_file()
+    if path and not Path(path).is_file():
+        raise ConfigError(f"config file not found: {path}")
+    if config_path and config_path.is_file():
+        try:
+            loaded = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+        except yaml.YAMLError as exc:
+            raise ConfigError(f"could not parse {config_path}: {exc}") from exc
+        if loaded is not None:
+            if not isinstance(loaded, dict):
+                raise ConfigError(f"config root must be a mapping: {config_path}")
+            data = loaded
+    data = _apply_env_overrides(data)
+    if overrides:
+        _deep_merge(data, overrides)
+    return VincioConfig.from_dict(data)
+
+
+def _deep_merge(base: dict[str, Any], extra: dict[str, Any]) -> None:
+    for key, value in extra.items():
+        if isinstance(value, dict) and isinstance(base.get(key), dict):
+            _deep_merge(base[key], value)
+        else:
+            base[key] = value
