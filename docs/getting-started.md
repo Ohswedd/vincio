@@ -113,5 +113,7 @@ vincio eval run golden/basic.jsonl --app app.py \
 - [Guide: build a RAG app](guides/build-rag-app.md)
 - [Guide: add tools](guides/add-tools.md)
 - [Guide: run evals](guides/run-evals.md)
+- [Guide: test LLM apps with pytest](guides/test-llm-apps.md)
+- [Concepts: observability](concepts/observability.md)
 - [Guide: performance & streaming](guides/performance.md)
 - [Reference: configuration](reference/config.md)
