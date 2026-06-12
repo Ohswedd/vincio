@@ -22,7 +22,9 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | `run(input, files=, tenant_id=, user_id=, session_id=, config=)` / `arun` | execute the 17-step pipeline → `RunResult` |
 | `astream(input, ...)` / `stream` | the same pipeline with end-to-end streaming → `RunStreamEvent` iterator |
 | `agent(tools=, planner=, max_steps=, evaluator=)` | bounded agent handle |
-| `workflow(name)` | deterministic `Workflow` builder |
+| `crew(name, members=, process=, tools=, max_rounds=)` | multi-agent `Crew` over a shared blackboard (sequential / parallel / hierarchical) |
+| `graph(name, state_schema=, reducers=)` | durable `StateGraph` checkpointed in the app's metadata store |
+| `workflow(name)` | deterministic `Workflow` builder (approval gates pause; `resume(result, approvals=)` continues) |
 | `evaluate(dataset, metrics=, concurrency=, gates=, judges=)` | `EvalReport` |
 | `task` (decorator) | configure from a task class |
 | `stats()` | sources, tools, memory, cost, run counts |
@@ -51,8 +53,8 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.connectors` | `connect`, `register_connector`, `WebConnector`, `GitHubConnector`, `SQLConnector`, `S3Connector`, `GCSConnector`, `NotionConnector`, `ConfluenceConnector`, `SlackConnector` |
 | `vincio.memory` | `MemoryEngine`, `ScopedMemory`, `MemoryConsolidator`, `MemoryGraph`, `SessionSummarizer`, `SQLiteMemoryStore`, `evaluate_memory` |
 | `vincio.tools` | `ToolRegistry`, `ToolRuntime`, `ToolPermissionChecker`, `SandboxedPython` |
-| `vincio.agents` | `AgentExecutor`, `Planner`, `StepDAG`, `HandoffRouter` |
-| `vincio.workflows` | `Workflow` |
+| `vincio.agents` | `AgentExecutor`, `Planner`, `StepDAG`, `HandoffRouter`, `Crew`, `AgentRole`, `Blackboard`, `StateGraph`, `Checkpointer`, `interrupt`, `compose`, `parallel`, `branch`, `LangGraphBackend`, `OpenAIAgentsBackend` |
+| `vincio.workflows` | `Workflow` (pause/resume approval gates, edit-and-resume) |
 | `vincio.output` | `OutputSchema`, `OutputContract`, `OutputValidator`, `Repairer` |
 | `vincio.evals` | `Dataset`, `dataset_from_traces`, `EvalRunner`, `ModelJudge`, `GEvalJudge`, `evaluate_gates`, `METRICS`, `SyntheticGenerator`, `RedTeamSuite`, `ExperimentTracker`, `ab_test` |
 | `vincio.optimize` | `PromptOptimizer`, `ContextOptimizer`, `RoutingPolicy`, `evolution_loop`, `fitness` |

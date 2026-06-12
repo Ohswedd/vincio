@@ -1,7 +1,8 @@
 """VincioBench: benchmark suite for Vincio and baselines.
 
-Families: PromptBench, RAGBench, MemoryBench, AgentBench, ToolBench,
-OutputBench, CostBench, SecurityBench, PerfBench.
+Families: PromptBench, RAGBench, MemoryBench, AgentBench (incl. 0.6 crews,
+durable graphs, composition), ToolBench, OutputBench, CostBench,
+SecurityBench, EvalBench, PerfBench.
 
 Runs fully offline by default (deterministic mock provider + deterministic
 metrics) so results are reproducible; set VINCIO_PROVIDER / VINCIO_MODEL to
@@ -380,8 +381,10 @@ async def bench_tools() -> dict[str, Any]:
 
 
 async def bench_agent() -> dict[str, Any]:
-    """AgentBench: bounded execution — budget adherence and loop prevention."""
-    from vincio.agents import AgentExecutor, Planner
+    """AgentBench: bounded execution — budget adherence and loop prevention —
+    plus the 0.6 orchestration layer: crew termination, durable-graph
+    checkpoint/resume/fork determinism, and composition streaming coverage."""
+    from vincio.agents import AgentExecutor, Crew, Planner, StateGraph, compose
     from vincio.providers import MockProvider
 
     registry = ToolRegistry()
@@ -403,12 +406,59 @@ async def bench_agent() -> dict[str, Any]:
     good = MockProvider()
     executor2 = AgentExecutor(good, model="mock-1", planner=Planner(mode="static"))
     state2 = await executor2.run("Summarize the refund policy")
+
+    # 0.6 crews: a tiny crew budget must stop the team before every member runs.
+    def member(text: str) -> AgentExecutor:
+        return AgentExecutor(MockProvider(default_text=text), model="mock-1", planner=Planner(mode="direct"))
+
+    crew = Crew("bench")
+    for name in ("a", "b", "c", "d"):
+        crew.add(name, member(name))
+    bounded = await crew.arun("objective", budget=Budget(max_steps=1))
+    full = await Crew("full").add("a", member("a")).add("b", member("b")).arun("objective")
+    delegated = Crew("h", process="hierarchical")
+    delegated.add("billing", member("billing"), keywords=["invoice"])
+    delegated.add("legal", member("legal"), keywords=["contract"])
+    routed = await delegated.arun("Review the invoice dispute")
+
+    # 0.6 durable graphs: interrupt → resume must equal the uninterrupted run,
+    # and a fork from a mid-run checkpoint must replay deterministically.
+    def build_graph() -> StateGraph:
+        graph = StateGraph("bench_flow")
+        graph.add_node("a", lambda s: {"x": s.get("x", 0) + 1})
+        graph.add_node("b", lambda s: {"x": s["x"] * 10})
+        graph.add_edge("a", "b")
+        return graph
+
+    straight = await build_graph().compile().ainvoke({"x": 1})
+    interrupted_graph = build_graph().compile(interrupt_before=["b"])
+    paused = await interrupted_graph.ainvoke({"x": 1})
+    resumed = await interrupted_graph.aresume(paused.thread_id)
+    forked_thread = interrupted_graph.fork(interrupted_graph.history(resumed.thread_id)[1].id)
+    replayed = await interrupted_graph.aresume(forked_thread)
+
+    # 0.6 composition: every node must stream a start/end event pair.
+    pipeline = compose(lambda v: v + 1, lambda v: v * 2, lambda v: v - 3)
+    events = [event async for event in pipeline.astream(1)]
+    starts = sum(1 for e in events if e.type == "node_start")
+    ends = sum(1 for e in events if e.type == "node_end")
+
     return {
         "adversarial_terminated": state.terminated,
         "termination_reason": state.termination_reason,
         "tool_calls_bounded": state.usage.tool_calls <= 4,
         "dag_success": state2.termination_reason in ("objective_complete", "validation_passed"),
         "dag_steps": state2.usage.steps,
+        "crew_budget_terminated": bounded.status == "budget_exhausted" and len(bounded.reports) < 4,
+        "crew_full_run_succeeded": full.status == "succeeded" and len(full.reports) == 2,
+        "crew_blackboard_entries": len(full.blackboard["entries"]),
+        "crew_delegation_recorded": (
+            len(routed.delegations) >= 1 and routed.delegations[0].to_agent == "billing"
+        ),
+        "graph_resume_deterministic": resumed.state == straight.state,
+        "graph_fork_replay_deterministic": replayed.state == straight.state,
+        "graph_checkpoints_per_run": len(interrupted_graph.history(paused.thread_id)),
+        "compose_stream_coverage": (starts == 3 and ends == 3 and events[-1].type == "done"),
     }
 
 

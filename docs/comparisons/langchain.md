@@ -20,6 +20,13 @@ with LangGraph for stateful workflows and LangSmith for observability.
 - **Deterministic security**: PII/secret detection, injection defense,
   RBAC/ABAC, tenant isolation, and audit logs are enforced in code, not by
   the model.
+- **Durable graphs without a platform (0.6).** `app.graph()` gives
+  LangGraph-style stateful graphs — conditional edges, checkpoints on your
+  own storage, resume, edit-and-resume, time-travel forks, and
+  `interrupt()` human gates — with bounded steps and the same trace/eval
+  loop as every other run. And when you want LangGraph itself,
+  `LangGraphBackend` exports the same graph definition to it: orchestrate
+  without lock-in.
 
 **Where LangChain is a fit:** the widest catalog of third-party
 integrations and a large community. Vincio's tool registry and provider

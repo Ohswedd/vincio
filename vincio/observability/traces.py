@@ -30,6 +30,20 @@ _current_span: contextvars.ContextVar[Span | None] = contextvars.ContextVar(
 )
 
 
+def _reset_quietly(var: contextvars.ContextVar, token: contextvars.Token, fallback: Any) -> None:
+    """Reset a contextvar, tolerating cross-context finalization.
+
+    An async generator abandoned mid-iteration (``break`` out of a streaming
+    loop) is finalized in a different context than the one that set the token;
+    ``reset`` then raises ``ValueError``. Restore the captured previous value
+    instead so the trace/span stack stays consistent.
+    """
+    try:
+        var.reset(token)
+    except ValueError:
+        var.set(fallback)
+
+
 class Tracer:
     def __init__(
         self,
@@ -91,8 +105,8 @@ class Tracer:
             from ..core.utils import utcnow
 
             trace.end_time = utcnow()
-            _current_span.reset(span_token)
-            _current_trace.reset(trace_token)
+            _reset_quietly(_current_span, span_token, None)
+            _reset_quietly(_current_trace, trace_token, None)
             if sampled:
                 self.exporter.export(trace)
 
@@ -117,7 +131,7 @@ class Tracer:
             span.end(status="error", error=f"{type_name(exc)}: {exc}")
             raise
         finally:
-            _current_span.reset(token)
+            _reset_quietly(_current_span, token, parent)
 
     # -- accessors -------------------------------------------------------------
 

@@ -1,8 +1,10 @@
 """Deterministic workflow engine.
 
 Features: DAG execution, retries with backoff, timeouts, compensation,
-branching (``when`` conditions), parallel steps, human approval gates,
-typed inputs/outputs, trace spans.
+branching (``when`` conditions), parallel steps, human approval gates with
+pause/resume (a gate with no ``approval_fn`` pauses the run; answer it with
+``workflow.resume(result, approvals={...})``), edit-and-resume on the saved
+context, typed inputs/outputs, trace spans.
 
 Example::
 
@@ -38,7 +40,8 @@ ApprovalFn = Callable[[str, "WorkflowContext"], Awaitable[bool]]
 
 class StepResult(BaseModel):
     name: str
-    status: str = "pending"  # pending | running | done | failed | skipped | compensated
+    # pending | running | done | failed | skipped | compensated | waiting_approval
+    status: str = "pending"
     output: Any = None
     error: str | None = None
     attempts: int = 0
@@ -62,11 +65,12 @@ class WorkflowContext(BaseModel):
 
 class WorkflowResult(BaseModel):
     workflow: str
-    status: str  # succeeded | failed | partial
+    status: str  # succeeded | failed | partial | paused
     context: WorkflowContext
     duration_ms: int = 0
     failed_steps: list[str] = Field(default_factory=list)
     compensated_steps: list[str] = Field(default_factory=list)
+    pending_approvals: list[str] = Field(default_factory=list)
 
     @property
     def output(self) -> Any:
@@ -174,17 +178,27 @@ class Workflow:
             return await asyncio.wait_for(coroutine, timeout=step.timeout_s)
         return await coroutine
 
-    async def _run_step(self, step: _StepDef, context: WorkflowContext) -> StepResult:
+    async def _run_step(
+        self,
+        step: _StepDef,
+        context: WorkflowContext,
+        approvals: dict[str, bool] | None = None,
+    ) -> StepResult:
         result = context.results[step.name]
         if step.when is not None and not step.when(context):
             result.status = "skipped"
             return result
         if step.approval:
-            if self.approval_fn is None:
-                result.status = "failed"
-                result.error = "approval required but no approval_fn configured"
+            if self.approval_fn is not None:
+                # A configured approver is always consulted; an approvals map
+                # never bypasses it.
+                approved = await self.approval_fn(step.name, context)
+            elif approvals is not None and step.name in approvals:
+                approved = approvals[step.name]
+            else:
+                # First-class interrupt: pause here; resume with an approvals map.
+                result.status = "waiting_approval"
                 return result
-            approved = await self.approval_fn(step.name, context)
             if not approved:
                 result.status = "failed"
                 result.error = "approval denied"
@@ -257,19 +271,45 @@ class Workflow:
             raise WorkflowError("workflow graph contains a cycle")
         return levels
 
-    async def arun(self, input: Any = None, *, compensate_on_failure: bool = True) -> WorkflowResult:
+    async def arun(
+        self,
+        input: Any = None,
+        *,
+        compensate_on_failure: bool = True,
+        context: WorkflowContext | None = None,
+        approvals: dict[str, bool] | None = None,
+    ) -> WorkflowResult:
+        """Run the workflow. Pass a prior result's ``context`` (or call
+        :meth:`aresume`) to continue a paused/failed run: done steps keep
+        their outputs and are not re-executed; ``approvals`` answers steps
+        that paused at an approval gate."""
         if not self._steps:
             raise WorkflowError(f"workflow {self.name!r} has no steps")
-        context = WorkflowContext(input=input)
+        if approvals:
+            gated = {n for n, s in self._steps.items() if s.approval}
+            unknown = set(approvals) - gated
+            if unknown:
+                raise WorkflowError(
+                    f"approvals reference steps without an approval gate: {sorted(unknown)}"
+                )
+        context = context or WorkflowContext(input=input)
         for name in self._steps:
-            context.results[name] = StepResult(name=name)
+            existing = context.results.get(name)
+            # Only finished work survives a resume; anything else re-runs fresh
+            # (a compensated/failed step must not leak its stale output).
+            if existing is None or existing.status != "done":
+                context.results[name] = StepResult(name=name)
         started = time.monotonic()
-        completed: list[str] = []
+        # Steps completed in earlier segments still compensate (in order) on failure.
+        completed: list[str] = [n for n in self._steps if context.results[n].status == "done"]
         failed: list[str] = []
+        waiting: list[str] = []
         with self.tracer.trace(run_id=None, workflow=self.name):
             for level in self._levels():
                 runnable: list[_StepDef] = []
                 for step in level:
+                    if context.results[step.name].status == "done":
+                        continue  # resumed: keep prior output, don't re-run
                     upstream = [context.results[d] for d in step.depends_on]
                     if any(u.status in ("failed", "skipped") for u in upstream):
                         # Skipped-on-condition upstream is fine only if optional;
@@ -285,19 +325,30 @@ class Workflow:
                     runnable.append(step)
                 if runnable:
                     results = await asyncio.gather(
-                        *(self._run_step(step, context) for step in runnable)
+                        *(self._run_step(step, context, approvals) for step in runnable)
                     )
                     for step, result in zip(runnable, results, strict=False):
                         if result.status == "done":
                             completed.append(step.name)
                         elif result.status == "failed":
                             failed.append(step.name)
-                if failed:
+                        elif result.status == "waiting_approval":
+                            waiting.append(step.name)
+                if failed or waiting:
                     break
         compensated: list[str] = []
-        if failed and compensate_on_failure:
-            compensated = await self._compensate(context, completed)
-        status = "succeeded" if not failed else ("partial" if completed else "failed")
+        if failed:
+            # A failure is terminal even when a sibling paused at a gate in the
+            # same level: never report a compensated run as resumable-paused.
+            for name in waiting:
+                context.results[name] = StepResult(name=name)
+            waiting = []
+            if compensate_on_failure:
+                compensated = await self._compensate(context, completed)
+        if waiting:
+            status = "paused"
+        else:
+            status = "succeeded" if not failed else ("partial" if completed else "failed")
         return WorkflowResult(
             workflow=self.name,
             status=status,
@@ -305,7 +356,28 @@ class Workflow:
             duration_ms=int((time.monotonic() - started) * 1000),
             failed_steps=failed,
             compensated_steps=compensated,
+            pending_approvals=waiting,
         )
+
+    async def aresume(
+        self,
+        previous: WorkflowResult,
+        *,
+        approvals: dict[str, bool] | None = None,
+        compensate_on_failure: bool = True,
+    ) -> WorkflowResult:
+        """Resume a paused (or failed) run. Done steps are not re-executed.
+        Edit-and-resume: mutate ``previous.context`` (input, ``data``, or a
+        step's recorded output) before calling to steer the continuation."""
+        return await self.arun(
+            previous.context.input,
+            context=previous.context,
+            approvals=approvals,
+            compensate_on_failure=compensate_on_failure,
+        )
+
+    def resume(self, previous: WorkflowResult, **kwargs: Any) -> WorkflowResult:
+        return run_sync(self.aresume(previous, **kwargs))
 
     def run(self, input: Any = None, **kwargs: Any) -> WorkflowResult:
         return run_sync(self.arun(input, **kwargs))
