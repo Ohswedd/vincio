@@ -33,10 +33,24 @@ retrieval:
   top_k: 8
   chunk_size_tokens: 400
   chunk_overlap_tokens: 50
-  chunking: adaptive          # fixed | recursive | semantic | heading_aware | table_aware | code_aware
+  chunking: adaptive          # fixed | recursive | semantic | heading_aware | table_aware | code_aware | sentence_window | hierarchical | contextual
   reranker: heuristic         # heuristic | recency | authority | llm | null
   embedder: local             # local (offline) | openai | google | mistral
+  query_strategies: []        # hyde | multi_query | decompose | step_back
 ```
+
+## Pushing retrieval quality
+
+When hybrid BM25+dense isn't enough, escalate the index mix and the query
+side — see [retrieval concepts](../concepts/retrieval.md) for each technique:
+
+```python
+# Fuse BM25 + dense + learned sparse + late interaction in one RRF.
+app.add_source("docs", path="./docs", retrieval="hybrid_full")
+```
+
+To pull from live systems instead of local files, use the
+[connector hub](connectors.md): `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`.
 
 ## Per-run files
 

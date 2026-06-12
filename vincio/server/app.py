@@ -94,7 +94,7 @@ def create_app(
         api_keys=config.server.api_keys, jwt_secret=config.server.jwt_secret
     )
 
-    api = FastAPI(title="Vincio", version="0.2.0", description="Context engineering platform API")
+    api = FastAPI(title="Vincio", version="0.3.0", description="Context engineering platform API")
 
     if config.server.cors_origins:
         from fastapi.middleware.cors import CORSMiddleware

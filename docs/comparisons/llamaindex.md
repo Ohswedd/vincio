@@ -9,6 +9,16 @@ document workflows.
   Retrieved chunks compete with memory, tool results, and instructions for
   a scored token budget, with conflict resolution and deduplication across
   all of them.
+- **The advanced-indexing playbook ships natively** — sentence-window,
+  parent-document/auto-merging (`AutoMergingIndex`), contextual chunk
+  prefixes, HyDE / multi-query / decomposition / step-back query
+  strategies, and GraphRAG (communities + hierarchical summaries with
+  global/local routing) — every one fused through the same weighted RRF and
+  measured by the same eval loop, alongside learned-sparse and
+  late-interaction indexes LlamaIndex delegates to plugins.
+- **Live corpora without rebuilds** — `LiveIndex` upserts, TTL expiry, and
+  embedding migrations (`VectorIndex.migrate`), with freshness surfaced in
+  evidence metadata.
 - **The full lifecycle is one consistent model**: input routing, memory with
   decay and privacy scopes, permissioned tools, bounded agents, output
   contracts with principled repair, evals, optimization, tracing, audit.
@@ -19,5 +29,8 @@ document workflows.
   missing facts, feeding insufficient-evidence behavior.
 
 **Where LlamaIndex is a fit:** very broad loader/index integrations for
-exotic data sources. Vincio's `Document`/`Chunk` contracts make it easy to
-feed LlamaIndex-parsed content into `app.add_source(documents=...)`.
+exotic data sources. Vincio's connector hub covers the common ones (web,
+GitHub, SQL, S3, GCS, Notion, Confluence, Slack — plus custom connectors
+via `register_connector`), and the `Document`/`Chunk` contracts make it
+easy to feed LlamaIndex-parsed content into `app.add_source(documents=...)`
+for anything else.

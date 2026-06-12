@@ -14,7 +14,8 @@ vincio/prompts      PromptSpec, AST, compiler (cache-aware), lint, variants
 vincio/context      ContextIR/Packet, scoring, budgeting, compression, compiler
 vincio/input        normalization, language/task classification, routing
 vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, multimodal
-vincio/retrieval    chunkers, embeddings, BM25/vector indexes, hybrid RRF, rerankers, graph, reasoning
+vincio/retrieval    chunkers, embeddings, BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers, graph+GraphRAG, live indexes, reasoning
+vincio/connectors   data connectors (web/github/sql/s3/gcs/notion/confluence/slack) feeding the document engine
 vincio/memory       engine (L0–L5), write policy, decay, conflicts, graph, summarizers
 vincio/tools        registry, permissioned runtime, sandbox
 vincio/agents       bounded DAG executor, planners, ReAct, handoffs

@@ -10,7 +10,7 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | Method | Purpose |
 |---|---|
 | `configure(objective=, role=, rules=, examples=, citation_policy=, ...)` | declarative prompt setup |
-| `add_source(name, path=, documents=, chunking=, retrieval=)` | load + chunk + index a knowledge source |
+| `add_source(name, path=, documents=, connector=, chunking=, retrieval=)` | load + chunk + index a knowledge source (local files, in-memory documents, or any connector) |
 | `add_memory(scope=, strategy=, store=)` | enable the memory engine |
 | `add_tool(fn_or_name, permissions=, approval_required=, side_effects=)` | enable a tool |
 | `add_evaluator(name_or_fn)` | score every run with a metric |
@@ -45,7 +45,8 @@ the terminal `done` (carrying `result: RunResult`).
 |---|---|
 | `vincio.prompts` | `PromptSpec`, `PromptCompiler`, `lint_spec`, `generate_variants`, `diff_specs` |
 | `vincio.context` | `ContextCompiler`, `ContextPacket`, `ContextIR`, `ContextScorer`, `BudgetAllocator` |
-| `vincio.retrieval` | `RetrievalEngine`, `BM25Index`, `VectorIndex`, `EntityGraph`, `ReasoningRetriever`, `chunk_document` |
+| `vincio.retrieval` | `RetrievalEngine`, `BM25Index`, `VectorIndex`, `SparseIndex`, `LateInteractionIndex`, `AutoMergingIndex`, `LiveIndex`, `QueryUnderstanding`, `EntityGraph`, `GraphRAG`, `ReasoningRetriever`, `chunk_document`, `contextualize_chunks` |
+| `vincio.connectors` | `connect`, `register_connector`, `WebConnector`, `GitHubConnector`, `SQLConnector`, `S3Connector`, `GCSConnector`, `NotionConnector`, `ConfluenceConnector`, `SlackConnector` |
 | `vincio.memory` | `MemoryEngine`, `MemoryGraph`, `SessionSummarizer`, `SQLiteMemoryStore` |
 | `vincio.tools` | `ToolRegistry`, `ToolRuntime`, `ToolPermissionChecker`, `SandboxedPython` |
 | `vincio.agents` | `AgentExecutor`, `Planner`, `StepDAG`, `HandoffRouter` |

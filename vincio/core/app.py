@@ -47,7 +47,9 @@ from ..retrieval.embeddings import CachedEmbedder, LocalHashEmbedder, ProviderEm
 from ..retrieval.engine import RetrievalEngine
 from ..retrieval.graph_retrieval import EntityGraph
 from ..retrieval.indexes import BM25Index, SearchFilter, VectorIndex, build_filter
+from ..retrieval.late_interaction import LateInteractionIndex
 from ..retrieval.rerankers import build_reranker
+from ..retrieval.sparse import SparseIndex
 from ..security.access import AccessController, Principal
 from ..security.audit import AuditLog
 from ..security.policy import PolicyEngine
@@ -210,6 +212,8 @@ class ContextApp:
         self.retrieval: RetrievalEngine | None = None
         self._bm25: BM25Index | None = None
         self._vector: VectorIndex | None = None
+        self._sparse: SparseIndex | None = None
+        self._late_interaction: LateInteractionIndex | None = None
         self.entity_graph: EntityGraph | None = None
         self.pending_evidence: list[EvidenceItem] = []
         self._ingested_files: dict[str, list[EvidenceItem]] = {}
@@ -362,11 +366,22 @@ class ContextApp:
             self._bm25 = BM25Index()
         if self._vector is None:
             self._vector = VectorIndex(self.embedder)
+        if retrieval in ("sparse", "hybrid_full") and self._sparse is None:
+            self._sparse = SparseIndex()
+        if retrieval in ("late_interaction", "hybrid_full") and self._late_interaction is None:
+            self._late_interaction = LateInteractionIndex()
         indexes: list[Any]
         if retrieval == "bm25":
             indexes = [self._bm25]
         elif retrieval in ("dense", "vector"):
             indexes = [self._vector]
+        elif retrieval == "sparse":
+            indexes = [self._sparse]
+        elif retrieval == "late_interaction":
+            indexes = [self._late_interaction]
+        elif retrieval == "hybrid_full":
+            # Lexical + dense + learned-sparse + late-interaction, one RRF.
+            indexes = [self._bm25, self._vector, self._sparse, self._late_interaction]
         else:  # hybrid / hybrid_graph
             indexes = [self._bm25, self._vector]
         reranker = build_reranker(self.config.retrieval.reranker)
@@ -374,6 +389,7 @@ class ContextApp:
             indexes,
             reranker=reranker,
             candidate_multiplier=self.config.retrieval.candidate_multiplier,
+            query_strategies=self.config.retrieval.query_strategies,
         )
         if retrieval in ("graph", "hybrid_graph") and self.entity_graph is None:
             self.entity_graph = EntityGraph()
@@ -384,17 +400,25 @@ class ContextApp:
         *,
         path: str | None = None,
         documents: list[Any] | None = None,
+        connector: Any | None = None,
         loader: str | None = None,
         chunking: str | None = None,
         retrieval: str = "hybrid",
     ) -> ContextApp:
-        """Register a knowledge source: load, chunk, and index documents."""
+        """Register a knowledge source: load, chunk, and index documents.
+
+        Sources can come from a local ``path``, in-memory ``documents``, or
+        any :class:`~vincio.connectors.Connector` (web, GitHub, SQL, S3,
+        GCS, Notion, Confluence, Slack, or custom) via ``connector=``.
+        """
         chunking = chunking or self.config.retrieval.chunking
         source = _SourceConfig(
             name=name, path=path, loader=loader, chunking=chunking, retrieval=retrieval
         )
         self._ensure_retrieval(retrieval)
         docs = list(documents or [])
+        if connector is not None:
+            docs.extend(run_sync(connector.load()))
         if path is not None:
             target = Path(path)
             if target.is_dir():
@@ -429,6 +453,10 @@ class ContextApp:
             await self._bm25.add(chunks)
         if self._vector is not None:
             await self._vector.add(chunks)
+        if self._sparse is not None:
+            await self._sparse.add(chunks)
+        if self._late_interaction is not None:
+            await self._late_interaction.add(chunks)
 
     async def ingest_files(self, paths: list[str]) -> list[EvidenceItem]:
         """Ad-hoc file ingestion for run(files=[...]): load, chunk, index."""

@@ -96,6 +96,9 @@ class RetrievalConfig(BaseModel):
     chunking: str = "recursive"
     reranker: str | None = "heuristic"
     embedder: str = "local"  # local | openai | <provider>
+    # Query-understanding strategies applied per retrieve():
+    # hyde | multi_query | decompose | step_back
+    query_strategies: list[str] = Field(default_factory=list)
 
 
 class MemoryConfig(BaseModel):

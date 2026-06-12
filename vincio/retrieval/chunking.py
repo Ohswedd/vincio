@@ -229,6 +229,108 @@ def code_chunker(document: Document, size: int, overlap: int) -> list[Chunk]:
     return chunks
 
 
+# -- sentence-window --------------------------------------------------------------------------
+
+def sentence_window_chunker(document: Document, size: int, overlap: int) -> list[Chunk]:
+    """One chunk per sentence, carrying a ±2-sentence window in metadata.
+
+    Retrieval scores the precise sentence; the engine swaps in the window
+    text when building evidence, so the model sees enough surrounding
+    context (sentence-window retrieval)."""
+    sentences = [s for s in split_sentences(document.text) if s.strip()]
+    chunks: list[Chunk] = []
+    window_radius = 2
+    for index, sentence in enumerate(sentences):
+        lo = max(0, index - window_radius)
+        hi = min(len(sentences), index + window_radius + 1)
+        window = " ".join(sentences[lo:hi])
+        chunks.append(
+            _make_chunk(
+                document,
+                sentence,
+                index,
+                metadata={"window_text": window, "matched_sentence": sentence},
+            )
+        )
+    return chunks
+
+
+# -- hierarchical / parent-document ------------------------------------------------------------
+
+def hierarchical_chunker(document: Document, size: int, overlap: int) -> list[Chunk]:
+    """Two-level hierarchy for auto-merging / parent-document retrieval.
+
+    Parents are large coherent units (~4× ``size``); each parent splits into
+    small children that link back via ``metadata["parent_id"]``. Index the
+    children for precision and hand the flat list to
+    :class:`~vincio.retrieval.hierarchy.AutoMergingIndex`, which stores the
+    parents and merges sibling hits back into them."""
+    parent_size = size * 4
+    parents = (heading_chunker if document.sections else recursive_chunker)(
+        document, parent_size, 0
+    )
+    chunks: list[Chunk] = []
+    index = 0
+    for parent in parents:
+        parent.metadata = {**parent.metadata, "level": "parent"}
+        parent.index = index
+        index += 1
+        chunks.append(parent)
+        pieces = [p.strip() for p in _recursive_split(parent.text, size, _SEPARATORS) if p.strip()]
+        if len(pieces) <= 1:
+            # The parent is already small; index it directly as its own child.
+            child = parent.model_copy(
+                update={
+                    "id": new_id("chk"),
+                    "index": index,
+                    "metadata": {**parent.metadata, "level": "child", "parent_id": parent.id},
+                }
+            )
+            index += 1
+            chunks.append(child)
+            continue
+        for piece in pieces:
+            chunks.append(
+                _make_chunk(
+                    document,
+                    piece,
+                    index,
+                    section_path=list(parent.section_path),
+                    page=parent.page,
+                    metadata={"level": "child", "parent_id": parent.id},
+                )
+            )
+            index += 1
+    return chunks
+
+
+# -- contextual retrieval -----------------------------------------------------------------------
+
+def _document_context(document: Document) -> str:
+    lead = split_sentences(document.text)[:1]
+    parts = [p for p in (document.title, lead[0] if lead else "") if p]
+    return ". ".join(part.rstrip(".") for part in parts)
+
+
+def contextual_chunker(document: Document, size: int, overlap: int) -> list[Chunk]:
+    """Adaptive chunking plus a situating prefix per chunk ("contextual
+    retrieval"). The offline prefix is heuristic (title, section path,
+    document lead); use :func:`~vincio.retrieval.hierarchy.contextualize_chunks`
+    to upgrade prefixes with LLM-written context."""
+    chunks = adaptive_chunker(document, size, overlap)
+    doc_context = _document_context(document)
+    for chunk in chunks:
+        scope = " > ".join(chunk.section_path)
+        prefix_parts = [p for p in (doc_context, scope) if p]
+        prefix = " — ".join(prefix_parts)
+        if not prefix or chunk.text.startswith(f"[{prefix}]"):
+            continue
+        chunk.metadata = {**chunk.metadata, "original_text": chunk.text, "contextualized": "heuristic"}
+        chunk.text = f"[{prefix}]\n{chunk.text}"
+        chunk.token_count = count_tokens(chunk.text)
+    return chunks
+
+
 # -- adaptive --------------------------------------------------------------------------------
 
 def adaptive_chunker(document: Document, size: int, overlap: int) -> list[Chunk]:
@@ -253,6 +355,10 @@ CHUNKERS: dict[str, ChunkingStrategy] = {
     "code_aware": code_chunker,
     "adaptive": adaptive_chunker,
     "document_structure": heading_chunker,
+    "sentence_window": sentence_window_chunker,
+    "hierarchical": hierarchical_chunker,
+    "parent_document": hierarchical_chunker,
+    "contextual": contextual_chunker,
 }
 
 

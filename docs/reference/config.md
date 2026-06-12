@@ -40,9 +40,10 @@ retrieval:
   candidate_multiplier: 4
   chunk_size_tokens: 400
   chunk_overlap_tokens: 50
-  chunking: recursive        # fixed | recursive | semantic | heading_aware | table_aware | code_aware | adaptive
+  chunking: recursive        # fixed | recursive | semantic | heading_aware | table_aware | code_aware | sentence_window | hierarchical | parent_document | contextual | adaptive
   reranker: heuristic        # heuristic | recency | authority | llm | null
   embedder: local            # local | openai | google | mistral
+  query_strategies: []       # hyde | multi_query | decompose | step_back
 
 memory:
   enabled: true
