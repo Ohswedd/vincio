@@ -1,17 +1,24 @@
-"""Eval datasets: JSONL golden datasets with tags and rubrics."""
+"""Eval datasets: JSONL golden datasets with tags and rubrics.
+
+``dataset_from_traces`` turns captured traces into a dataset in one call —
+the bridge from observability to evaluation.
+"""
 
 from __future__ import annotations
 
 import json
 import random
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
 from ..core.errors import DatasetError
 
-__all__ = ["EvalCase", "Dataset"]
+if TYPE_CHECKING:
+    from ..observability.spans import Trace
+
+__all__ = ["EvalCase", "Dataset", "dataset_from_traces"]
 
 
 class EvalCase(BaseModel):
@@ -102,3 +109,49 @@ class Dataset(BaseModel):
             Dataset(name=f"{self.name}_train", cases=shuffled[:cut]),
             Dataset(name=f"{self.name}_held", cases=shuffled[cut:]),
         )
+
+
+def dataset_from_traces(
+    traces: list[Trace],
+    *,
+    name: str = "traces",
+    include_outputs: bool = True,
+    min_feedback_score: float | None = None,
+    only_ok: bool = True,
+) -> Dataset:
+    """Curate captured traces into an eval dataset (one command, full provenance).
+
+    Each trace with a recorded input becomes a case; the trace's recorded
+    output becomes the reference answer when ``include_outputs`` is set.
+    ``min_feedback_score`` keeps only traces whose mean feedback score reaches
+    the bar — the usual way to bootstrap a golden set from production runs
+    users approved of. Trace/run/session ids ride along in case metadata.
+    """
+    cases: list[EvalCase] = []
+    latest = {trace.id: trace for trace in traces}
+    for trace in latest.values():
+        if only_ok and trace.status != "ok":
+            continue
+        input_text = trace.attributes.get("input")
+        if not input_text:
+            continue
+        if min_feedback_score is not None:
+            feedback_scores = [f.score for f in trace.feedback if f.score is not None]
+            if not feedback_scores or sum(feedback_scores) / len(feedback_scores) < min_feedback_score:
+                continue
+        expected = trace.attributes.get("output") if include_outputs else None
+        cases.append(
+            EvalCase(
+                id=trace.run_id or trace.id,
+                input=str(input_text),
+                expected=expected or None,
+                tags=["from_trace"],
+                metadata={
+                    "trace_id": trace.id,
+                    "run_id": trace.run_id,
+                    "session_id": trace.session_id,
+                    "scores": dict(trace.scores),
+                },
+            )
+        )
+    return Dataset(name=name, cases=cases, metadata={"source": "traces", "traces": len(traces)})

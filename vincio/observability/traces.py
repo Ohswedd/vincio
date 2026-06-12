@@ -60,6 +60,8 @@ class Tracer:
         self,
         *,
         run_id: str | None = None,
+        session_id: str | None = None,
+        thread_id: str | None = None,
         user_id: str | None = None,
         tenant_id: str | None = None,
         parent_id: str | None = None,
@@ -68,6 +70,8 @@ class Tracer:
         trace = Trace(
             app_name=self.app_name,
             run_id=run_id,
+            session_id=session_id,
+            thread_id=thread_id,
             user_id=user_id,
             tenant_id=tenant_id,
             parent_id=parent_id,

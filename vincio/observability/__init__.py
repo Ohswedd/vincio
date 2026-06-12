@@ -1,4 +1,4 @@
-"""Vincio observability: traces, spans, exporters, costs."""
+"""Vincio observability: traces, spans, sessions, exporters, costs, viewer."""
 
 from .costs import CostTracker, ModelPrice, PriceTable, default_price_table
 from .exporters import (
@@ -9,8 +9,15 @@ from .exporters import (
     NullExporter,
     TraceExporter,
 )
-from .spans import Span, SpanType, Trace, TraceEvent
+from .sessions import Session, record_feedback, sessions_from_traces
+from .spans import Feedback, Span, SpanType, Trace, TraceEvent
 from .traces import Tracer, trace_diff, trace_replay_plan
+from .viewer import (
+    render_session_text,
+    render_trace_text,
+    trace_diff_html,
+    trace_to_html,
+)
 
 __all__ = [
     "CostTracker",
@@ -23,6 +30,10 @@ __all__ = [
     "MultiExporter",
     "NullExporter",
     "TraceExporter",
+    "Feedback",
+    "Session",
+    "record_feedback",
+    "sessions_from_traces",
     "Span",
     "SpanType",
     "Trace",
@@ -30,6 +41,10 @@ __all__ = [
     "Tracer",
     "trace_diff",
     "trace_replay_plan",
+    "render_trace_text",
+    "render_session_text",
+    "trace_to_html",
+    "trace_diff_html",
 ]
 
 

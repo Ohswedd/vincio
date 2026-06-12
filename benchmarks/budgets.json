@@ -1,40 +1,149 @@
 {
-  "_comment": "VincioBench budgets enforced in CI by check_budgets.py. Keys are dotted paths into the report; each entry sets gte/lte bounds. Latency bounds are deliberately loose (shared CI runners) — they catch order-of-magnitude regressions, while ratio and quality budgets are tight.",
+  "_comment": "VincioBench budgets enforced in CI by check_budgets.py. Keys are dotted paths into the report; each entry sets gte/lte bounds. Latency bounds are deliberately loose (shared CI runners) \u2014 they catch order-of-magnitude regressions, while ratio and quality budgets are tight.",
   "budgets": {
-    "families.perf.context_compile.cold_p95_ms": { "lte": 250 },
-    "families.perf.context_compile.cache_speedup": { "gte": 1.5 },
-    "families.perf.prompt_compile.cache_speedup": { "gte": 1.2 },
-    "families.perf.retrieval.p95_ms": { "lte": 100 },
-    "families.perf.run.p50_ms": { "lte": 250 },
-    "families.perf.run.concurrent_runs_per_s": { "gte": 50 },
-    "families.perf.streaming.ttft_before_done": { "eq": true },
-    "families.cost.token_reduction": { "gte": 0.2 },
-    "families.rag.recall_at_3.mean": { "gte": 0.8 },
-    "families.rag.mrr.mean": { "gte": 0.6 },
-    "families.rag.modes.sparse.recall_at_3.mean": { "gte": 0.8 },
-    "families.rag.modes.late_interaction.recall_at_3.mean": { "gte": 0.8 },
-    "families.rag.modes.late_interaction_plaid.recall_at_3.mean": { "gte": 0.8 },
-    "families.rag.modes.hybrid_full.recall_at_3.mean": { "gte": 0.8 },
-    "families.rag.modes.hybrid_full.mrr.mean": { "gte": 0.6 },
-    "families.rag.modes.hybrid_full_query_understanding.recall_at_3.mean": { "gte": 0.8 },
-    "families.rag.graphrag.communities": { "gte": 1 },
-    "families.rag.graphrag.global_evidence": { "gte": 1 },
-    "families.memory.preference_recall": { "gte": 0.66 },
-    "families.memory.contradiction_superseded": { "eq": true },
-    "families.memory.cross_user_isolation": { "eq": true },
-    "families.memory.ttl_expired_excluded": { "eq": true },
-    "families.memory.recall_precision": { "gte": 0.6 },
-    "families.memory.recall_at_k": { "gte": 0.9 },
-    "families.memory.contradiction_rate": { "lte": 0.1 },
-    "families.memory.staleness": { "lte": 0.05 },
-    "families.memory.personalization_lift": { "gte": 0.5 },
-    "families.memory.consolidation_promoted": { "gte": 1 },
-    "families.memory.consolidation_provenance_retained": { "eq": true },
-    "families.output.missing_required_correctly_rejected": { "eq": true },
-    "families.tool.p50_overhead_ms": { "lte": 50 },
-    "families.agent.adversarial_terminated": { "eq": true },
-    "families.security.injection_detection_rate": { "gte": 0.8 },
-    "families.security.injection_false_positive_rate": { "lte": 0.2 },
-    "families.security.pii_coverage": { "gte": 0.8 }
+    "families.perf.context_compile.cold_p95_ms": {
+      "lte": 250
+    },
+    "families.perf.context_compile.cache_speedup": {
+      "gte": 1.5
+    },
+    "families.perf.prompt_compile.cache_speedup": {
+      "gte": 1.2
+    },
+    "families.perf.retrieval.p95_ms": {
+      "lte": 100
+    },
+    "families.perf.run.p50_ms": {
+      "lte": 250
+    },
+    "families.perf.run.concurrent_runs_per_s": {
+      "gte": 50
+    },
+    "families.perf.streaming.ttft_before_done": {
+      "eq": true
+    },
+    "families.cost.token_reduction": {
+      "gte": 0.2
+    },
+    "families.rag.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.mrr.mean": {
+      "gte": 0.6
+    },
+    "families.rag.modes.sparse.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.modes.late_interaction.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.modes.late_interaction_plaid.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.modes.hybrid_full.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.modes.hybrid_full.mrr.mean": {
+      "gte": 0.6
+    },
+    "families.rag.modes.hybrid_full_query_understanding.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.graphrag.communities": {
+      "gte": 1
+    },
+    "families.rag.graphrag.global_evidence": {
+      "gte": 1
+    },
+    "families.memory.preference_recall": {
+      "gte": 0.66
+    },
+    "families.memory.contradiction_superseded": {
+      "eq": true
+    },
+    "families.memory.cross_user_isolation": {
+      "eq": true
+    },
+    "families.memory.ttl_expired_excluded": {
+      "eq": true
+    },
+    "families.memory.recall_precision": {
+      "gte": 0.6
+    },
+    "families.memory.recall_at_k": {
+      "gte": 0.9
+    },
+    "families.memory.contradiction_rate": {
+      "lte": 0.1
+    },
+    "families.memory.staleness": {
+      "lte": 0.05
+    },
+    "families.memory.personalization_lift": {
+      "gte": 0.5
+    },
+    "families.memory.consolidation_promoted": {
+      "gte": 1
+    },
+    "families.memory.consolidation_provenance_retained": {
+      "eq": true
+    },
+    "families.output.missing_required_correctly_rejected": {
+      "eq": true
+    },
+    "families.tool.p50_overhead_ms": {
+      "lte": 50
+    },
+    "families.agent.adversarial_terminated": {
+      "eq": true
+    },
+    "families.security.injection_detection_rate": {
+      "gte": 0.8
+    },
+    "families.security.injection_false_positive_rate": {
+      "lte": 0.2
+    },
+    "families.security.pii_coverage": {
+      "gte": 0.8
+    },
+    "families.evals.metric_agreement": {
+      "gte": 0.9
+    },
+    "families.evals.guarded_attack_success_rate": {
+      "lte": 0.0
+    },
+    "families.evals.detector_coverage": {
+      "gte": 1.0
+    },
+    "families.evals.naive_attack_detected": {
+      "eq": true
+    },
+    "families.evals.synthetic_cases": {
+      "gte": 4
+    },
+    "families.evals.synthetic_deterministic": {
+      "eq": true
+    },
+    "families.evals.synthetic_full_coverage": {
+      "eq": true
+    },
+    "families.evals.ab_significant_detected": {
+      "eq": true
+    },
+    "families.evals.ab_null_not_significant": {
+      "eq": true
+    },
+    "families.evals.sessions_grouped": {
+      "eq": true
+    },
+    "families.evals.html_self_contained": {
+      "eq": true
+    },
+    "families.evals.trace_dataset_cases": {
+      "gte": 3
+    },
+    "families.evals.geval_calibration_error_reduced": {
+      "eq": true
+    }
   }
 }

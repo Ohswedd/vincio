@@ -28,11 +28,13 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Retrieval](docs/concepts/retrieval.md)
 - [Agents & workflows](docs/concepts/agents.md)
 - [Evaluation](docs/concepts/evals.md)
+- [Observability](docs/concepts/observability.md)
 - [Build a RAG app](docs/guides/build-rag-app.md)
 - [Connect data sources](docs/guides/connectors.md)
 - [Structured output](docs/guides/structured-output.md)
 - [Add tools](docs/guides/add-tools.md)
 - [Run evals](docs/guides/run-evals.md)
+- [Test LLM apps with pytest](docs/guides/test-llm-apps.md)
 - [Optimize](docs/guides/optimize-context.md)
 - [Performance & streaming](docs/guides/performance.md)
 - [API reference](docs/reference/api.md)
@@ -84,7 +86,35 @@ result.output; result.citations; result.trace_id; result.cost_usd
   is a validated instance.
 - Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,
   gates like `{"groundedness": ">= 0.95"}`; CLI `vincio eval run`.
-- CLI: init, run, eval run/report, prompt lint/compile,
-  trace show/replay/diff, optimize run, index build, memory
-  inspect/remember/recall/forget/export/consolidate/decay.
+- Evals & testing (0.5): metrics add faithfulness | answer_relevance |
+  hallucination (strict number checks) | toxicity | bias |
+  summarization_quality | knowledge_retention | conversation_relevance
+  (conversation via `case.context["messages"]`); `GEvalJudge(provider,
+  model=..., criteria=..., samples=N)` + `judge.calibrate(pairs)`;
+  `SyntheticGenerator(seed=...).generate(docs, n=...)` (offline templates,
+  LLM hook, provenance in `metadata.source_ids` + `rubric.facts`);
+  `RedTeamSuite().run(app)` (canary-judged jailbreak/injection/leak/bias/
+  toxicity probes, `attack_success_rate`, `detector_coverage`);
+  `ExperimentTracker(path).log/compare/ablation` + `ab_test(a, b, metric)`
+  (paired/Welch t-test, pure-Python p-values); `vincio.testing` —
+  `assert_eval` / `assert_grounded` / `assert_metric` / `assert_safe` +
+  pytest plugin with `vincio_snapshot` fixture
+  (`--vincio-update-snapshots`).
+- Observability (0.5): traces carry `session_id`/`thread_id` (pass
+  `session_id=` to `app.run`), `trace.add_score`/`span.add_score` (runtime
+  evaluators attach scores automatically), `trace.add_feedback(score=...,
+  comment=...)` / `record_feedback(..., exporter=...)`;
+  `sessions_from_traces(traces)` → `Session` aggregates;
+  `dataset_from_traces(traces, min_feedback_score=...)` → eval dataset;
+  viewer: `render_trace_text`, `trace_to_html` / `session_to_html`
+  (self-contained static HTML), `trace_diff_html`; OTel exporter emits
+  GenAI semantic conventions (`chat {model}`, `gen_ai.*`,
+  `gen_ai.conversation.id`).
+- Prompt registry (0.5): `PromptRegistry(dir).push(spec, tags=[...])` —
+  content-hash versions, moving tags, `diff(name, a, b, rendered=True)`,
+  `rollback(name)`, `link_eval(name, version, report)`.
+- CLI: init, run, eval run/report/dataset, prompt
+  lint/compile/push/versions/diff/rollback, trace
+  show/view/replay/diff/export/sessions/feedback, optimize run, index
+  build, memory inspect/remember/recall/forget/export/consolidate/decay.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).

@@ -10,7 +10,7 @@ traced context packets. Build status and the roadmap live in `ROADMAP.md`.
 
 ```
 vincio/core         types, errors, events, config, tokens, concurrency, ContextApp, 17-step runtime (sync + streaming)
-vincio/prompts      PromptSpec, AST, compiler (cache-aware), lint, variants
+vincio/prompts      PromptSpec, AST, compiler (cache-aware), lint, variants, versioned registry
 vincio/context      ContextIR/Packet, scoring, budgeting, compression, compiler
 vincio/input        normalization, language/task classification, routing
 vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, multimodal
@@ -21,9 +21,10 @@ vincio/tools        registry, permissioned runtime, sandbox
 vincio/agents       bounded DAG executor, planners, ReAct, handoffs
 vincio/workflows    deterministic DAG workflows (retries/compensation/approvals)
 vincio/output       schemas, robust parsers, validation pipeline, principled repair
-vincio/evals        datasets, metrics, judges, runner, gates, reports
+vincio/evals        datasets (+synthetic, +from-traces), metrics, judges (+G-Eval), runner, gates, reports, experiments (A/B significance), red-teaming
 vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimization
-vincio/observability traces/spans, JSONL/OTel exporters, cost tracking
+vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenAI semconv) exporters, viewer (TUI/HTML/diff), cost tracking
+vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packet/trace snapshots, pytest plugin (pytest11 entry point)
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, audit
 vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic + compile/chunk caches, invalidation
 vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/neo4j/redis/duckdb adapters
