@@ -15,9 +15,12 @@ from pydantic import BaseModel, Field
 
 from ..context.scoring import lexical_similarity, near_duplicate_score
 from ..core.concurrency import gather_bounded
+from ..core.tokens import count_tokens
 from ..core.types import Chunk, EvidenceItem, Message, ModelRequest, TrustLevel
+from ..core.utils import utcnow
 from ..providers.base import ModelProvider
 from .indexes import Index, SearchFilter, SearchHit
+from .query_understanding import QueryExpansion, QueryUnderstanding
 from .rerankers import Reranker
 
 __all__ = ["QueryPlan", "RetrievalResult", "RetrievalEngine", "reciprocal_rank_fusion"]
@@ -28,6 +31,7 @@ class QueryPlan(BaseModel):
     rewritten: str
     subqueries: list[str] = Field(default_factory=list)
     required_facts: list[str] = Field(default_factory=list)
+    expansions: list[QueryExpansion] = Field(default_factory=list)
 
 
 class RetrievalResult(BaseModel):
@@ -59,6 +63,11 @@ def reciprocal_rank_fusion(
     return merged
 
 
+# Fusion weight per query-understanding strategy: targeted decompositions
+# rank close to subqueries; HyDE/multi-query probes are supporting signals;
+# step-back generalizations only nudge the fusion.
+_STRATEGY_WEIGHTS = {"decompose": 0.6, "multi_query": 0.5, "hyde": 0.5, "step_back": 0.3}
+
 _SUBQUERY_SPLIT_RE = re.compile(r"(?i)\b(?:and|as well as|plus|also|;)\b")
 _PLAN_SCHEMA = {
     "type": "object",
@@ -84,6 +93,7 @@ class RetrievalEngine:
         candidate_multiplier: int = 4,
         duplicate_threshold: float = 0.9,
         max_concurrency: int = 8,
+        query_strategies: list[str] | None = None,
     ) -> None:
         if not indexes:
             raise ValueError("RetrievalEngine requires at least one index")
@@ -95,6 +105,8 @@ class RetrievalEngine:
         self.candidate_multiplier = candidate_multiplier
         self.duplicate_threshold = duplicate_threshold
         self.max_concurrency = max_concurrency
+        self.query_strategies = list(query_strategies or [])
+        self.query_understanding = QueryUnderstanding(planner_provider, planner_model)
 
     # -- query planning ------------------------------------------------------------
 
@@ -179,6 +191,7 @@ class RetrievalEngine:
         use_planner: bool = True,
         multi_hop: bool = False,
         max_hops: int = 2,
+        strategies: list[str] | None = None,
     ) -> RetrievalResult:
         import time
 
@@ -186,15 +199,33 @@ class RetrievalEngine:
         plan = await self.plan_query(query, objective=objective) if use_planner else QueryPlan(
             original=query, rewritten=query
         )
+        strategies = self.query_strategies if strategies is None else strategies
+        if strategies:
+            plan.expansions = await self.query_understanding.expand(
+                query, strategies, objective=objective
+            )
         candidate_k = max(top_k * self.candidate_multiplier, top_k)
 
-        queries = [plan.rewritten, *plan.subqueries]
+        # The main query counts more than subqueries and strategy expansions.
+        weighted_queries: list[tuple[str, float]] = [(plan.rewritten, 1.0)]
+        weighted_queries.extend((subquery, 0.6) for subquery in plan.subqueries)
+        for expansion in plan.expansions:
+            base = _STRATEGY_WEIGHTS.get(expansion.strategy, 0.5)
+            weighted_queries.extend((q, base) for q in expansion.queries)
+        seen_query_text = set()
+        deduped_queries: list[tuple[str, float]] = []
+        for text, base in weighted_queries:
+            key = text.lower().strip()
+            if not key or key in seen_query_text:
+                continue
+            seen_query_text.add(key)
+            deduped_queries.append((text, base))
+        queries = [text for text, _base in deduped_queries]
+
         # All (query, index) searches run concurrently under one bound.
         result_lists = await self._search_many(queries, top_k=candidate_k, where=where)
         weights: list[float] = []
-        for query_index in range(len(queries)):
-            # The main query counts more than subqueries.
-            base = 1.0 if query_index == 0 else 0.6
+        for _text, base in deduped_queries:
             weights.extend(base * w for w in self.index_weights)
 
         merged = reciprocal_rank_fusion(result_lists, weights=weights)
@@ -244,23 +275,48 @@ class RetrievalEngine:
             hits=deduped,
             plan=plan,
             latency_ms=int((time.monotonic() - started) * 1000),
-            metadata={"candidates": len(merged), "queries": len(queries)},
+            metadata={
+                "candidates": len(merged),
+                "queries": len(queries),
+                "strategies": list(strategies or []),
+            },
         )
 
     @staticmethod
     def _to_evidence(hit: SearchHit, query: str) -> EvidenceItem:
         chunk: Chunk = hit.chunk
+        metadata = {"chunk_id": chunk.id, "source_uri": chunk.source_uri, "retrieval_score": hit.score}
+        text = chunk.text
+        token_cost = chunk.token_count
+        # Sentence-window retrieval: score on the sentence, cite the window.
+        window_text = chunk.metadata.get("window_text")
+        if window_text and window_text != text:
+            metadata["matched_sentence"] = chunk.metadata.get("matched_sentence", text)
+            text = window_text
+            token_cost = count_tokens(text)
+        # Freshness: surface index/ingest age so downstream scoring and
+        # conflict resolution can prefer recent evidence.
+        indexed_at = chunk.metadata.get("indexed_at")
+        if indexed_at is not None:
+            metadata["indexed_at"] = indexed_at
+        stamp = chunk.created_at
+        if stamp is not None:
+            if stamp.tzinfo is None:
+                from datetime import UTC
+
+                stamp = stamp.replace(tzinfo=UTC)
+            metadata["age_days"] = round((utcnow() - stamp).total_seconds() / 86_400, 3)
         return EvidenceItem(
             id=chunk.citation_ref,
             source_id=chunk.document_id,
             source_type="document",
-            text=chunk.text,
+            text=text,
             page=chunk.page,
             section_path=chunk.section_path,
             trust_level=TrustLevel.UNTRUSTED_DOCUMENT,
             relevance=max(0.0, min(1.0, hit.score if hit.score <= 1.0 else lexical_similarity(chunk.text, query) + 0.5)),
             authority=float(chunk.metadata.get("authority", 0.5)),
             provenance=0.9 if chunk.source_uri else 0.5,
-            token_cost=chunk.token_count,
-            metadata={"chunk_id": chunk.id, "source_uri": chunk.source_uri, "retrieval_score": hit.score},
+            token_cost=token_cost,
+            metadata=metadata,
         )

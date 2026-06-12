@@ -44,8 +44,12 @@ from vincio.output import OutputContract, OutputSchema, OutputValidator
 from vincio.prompts import CompilerOptions, PromptCompiler, PromptSpec, lint_spec
 from vincio.retrieval import (
     BM25Index,
+    EntityGraph,
+    GraphRAG,
+    LateInteractionIndex,
     LocalHashEmbedder,
     RetrievalEngine,
+    SparseIndex,
     VectorIndex,
     chunk_document,
 )
@@ -133,18 +137,10 @@ async def bench_prompt() -> dict[str, Any]:
     return results
 
 
-async def bench_rag() -> dict[str, Any]:
-    """RAGBench: retrieval quality (recall@k/MRR) + grounded-answer evidence
-    quality vs a naive stuff-everything baseline."""
-    chunks = corpus_chunks()
-    bm25, vector = BM25Index(), VectorIndex(LocalHashEmbedder())
-    await bm25.add(chunks)
-    await vector.add(chunks)
-    engine = RetrievalEngine([bm25, vector])
-
+async def _retrieval_quality(engine: RetrievalEngine, **retrieve_kwargs: Any) -> dict[str, Any]:
     recalls, mrrs = [], []
     for question, _expected, source in QA_CASES:
-        result = await engine.retrieve(question, top_k=3, use_planner=False)
+        result = await engine.retrieve(question, top_k=3, use_planner=False, **retrieve_kwargs)
         hit_ranks = [
             rank
             for rank, item in enumerate(result.evidence, start=1)
@@ -152,9 +148,59 @@ async def bench_rag() -> dict[str, Any]:
         ]
         recalls.append(1.0 if hit_ranks else 0.0)
         mrrs.append(1.0 / hit_ranks[0] if hit_ranks else 0.0)
+    return {"recall_at_3": _summary(recalls), "mrr": _summary(mrrs)}
+
+
+async def bench_rag() -> dict[str, Any]:
+    """RAGBench: retrieval quality (recall@k/MRR) across retrieval modes —
+    BM25 baseline, hybrid RRF, learned sparse, late interaction (exact and
+    PLAID-compressed), the full four-way fusion, query-understanding
+    strategies, and GraphRAG — vs a naive stuff-everything baseline."""
+    chunks = corpus_chunks()
+    bm25, vector = BM25Index(), VectorIndex(LocalHashEmbedder())
+    sparse, late = SparseIndex(), LateInteractionIndex()
+    late_compressed = LateInteractionIndex(compressed=True, n_centroids=32)
+    for index in (bm25, vector, sparse, late, late_compressed):
+        await index.add(chunks)
+
+    modes = {
+        "bm25": [bm25],
+        "dense": [vector],
+        "sparse": [sparse],
+        "late_interaction": [late],
+        "late_interaction_plaid": [late_compressed],
+        "hybrid": [bm25, vector],
+        "hybrid_full": [bm25, vector, sparse, late],
+    }
+    mode_results: dict[str, Any] = {}
+    for mode, indexes in modes.items():
+        mode_results[mode] = await _retrieval_quality(RetrievalEngine(indexes))
+    hybrid = mode_results["hybrid"]
+
+    # Query understanding: strategy expansions fused into the same RRF.
+    mode_results["hybrid_full_query_understanding"] = await _retrieval_quality(
+        RetrievalEngine([bm25, vector, sparse, late]),
+        strategies=["hyde", "multi_query", "step_back"],
+    )
+
+    # GraphRAG: communities + summaries over the corpus entity graph.
+    graph = EntityGraph()
+    graph.add_chunks(chunks)
+    graphrag = GraphRAG(graph)
+    communities = await graphrag.build()
+    global_evidence = await graphrag.retrieve(
+        "What are the main themes across these policies?", mode="global"
+    )
+
     return {
-        "recall_at_3": _summary(recalls),
-        "mrr": _summary(mrrs),
+        "recall_at_3": hybrid["recall_at_3"],
+        "mrr": hybrid["mrr"],
+        "modes": mode_results,
+        "graphrag": {
+            "communities": len(communities),
+            "summarized": sum(1 for c in communities if c.summary),
+            "global_evidence": len(global_evidence),
+        },
         "index_size": len(chunks),
     }
 

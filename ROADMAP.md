@@ -15,7 +15,9 @@ and what is intentionally out of scope.
 Vincio 0.1.0 was feature-complete for its scope: a single, coherent context-engineering library with
 every subsystem implemented, tested offline, documented, and demonstrated by a runnable example.
 Future work deepens and broadens the library — it does not change that scope. 0.2.0 made the spine
-fast: streaming, concurrent, cached, and regression-gated.
+fast: streaming, concurrent, cached, and regression-gated. 0.3.0 made retrieval best-in-field:
+learned sparse and late interaction fused with BM25/dense/graph, query understanding, hierarchical
+and contextual indexing, GraphRAG, live indexes, and a connector hub.
 
 ---
 
@@ -167,6 +169,36 @@ See the [CHANGELOG](CHANGELOG.md) for the complete 0.2.0 notes.
 
 ---
 
+## ✅ Shipped — 0.3.0
+
+Retrieval & RAG superiority — the full milestone as specified below, delivered:
+
+- **Late-interaction retrieval** — `LateInteractionIndex` (ColBERT-style per-token MaxSim) behind
+  the existing `Index` interface, with PLAID-style centroid compression (candidate generation over
+  inverted centroid lists + exact rerank) for scale.
+- **Learned sparse retrieval** — `SparseIndex` over SPLADE-style impact vectors (offline
+  `LocalImpactEncoder`, served models via `CallableSparseEncoder`), fused with dense and BM25 in the
+  existing weighted-RRF merge; new app modes `sparse`, `late_interaction`, `hybrid_full`.
+- **Advanced indexing** — `sentence_window`, `hierarchical`/`parent_document`, and `contextual`
+  chunking strategies; `AutoMergingIndex` merges sibling hits into parents; `contextualize_chunks`
+  writes LLM chunk prefixes (heuristic offline fallback).
+- **Query understanding** — HyDE, multi-query expansion, decomposition, and step-back as planner
+  strategies (LLM-backed with deterministic offline fallbacks), recorded on the plan/trace and fused
+  with per-strategy weights.
+- **GraphRAG** — deterministic label-propagation communities over the entity graph, hierarchical
+  community summaries (extractive offline, LLM hook), and global vs local query routing.
+- **Incremental & live indexes** — `LiveIndex` (upsert, TTL expiry, purge), `VectorIndex.migrate`
+  re-embedding without rebuilds, and `indexed_at`/`age_days` freshness in evidence metadata.
+- **Connector hub** — `vincio.connectors` with web, GitHub, SQL, S3, GCS, Notion, Confluence, and
+  Slack connectors (plus `register_connector` for custom ones), wired into
+  `app.add_source(connector=...)`; S3/GCS as optional extras.
+- **277 tests passing offline in ~2s; ruff clean**; twelve runnable examples; VincioBench `rag`
+  family compares every retrieval mode with CI-gated recall/MRR budgets.
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.3.0 notes.
+
+---
+
 ## Where this goes next
 
 0.1.0 made every subsystem real. The road to 1.0 makes each one **best-in-class on its own** *and*
@@ -243,31 +275,39 @@ libraries if the spine is fast.*
   TTFT, and per-stage timings are span attributes, and "faster" is a number in the VincioBench
   report, gated in CI.
 
-### 🚧 0.3 — Retrieval & RAG superiority (vs LlamaIndex, RAGatouille)
+### ✅ 0.3 — Retrieval & RAG superiority (vs LlamaIndex, RAGatouille) (shipped)
 
 *Make retrieval the best in the field while keeping it one scored, budgeted subsystem of the
 compiler — not the center of gravity.*
 
-- **Late-interaction retrieval** — ColBERT-style multi-vector indexing and scoring behind the
-  existing `Index` interface, with a PLAID-style compressed index for scale.
-- **Learned sparse retrieval** — SPLADE / impact-weighted sparse vectors fused with dense and BM25 in
-  the existing weighted-RRF merge.
-- **Advanced indexing** — hierarchical / auto-merging retrieval, sentence-window and parent-document
-  retrieval, and "contextual retrieval" (LLM-written chunk prefixes) as a chunking strategy.
-- **Query understanding** — HyDE, multi-query expansion, query decomposition for multi-hop, and
-  step-back prompting, all as planner strategies with traces.
-- **GraphRAG** — community detection and hierarchical community summaries over the entity graph;
-  global vs local query routing.
-- **Incremental & live indexes** — upserts, deletes, TTL, and re-embedding migrations without full
-  rebuilds; freshness tracking surfaced in evidence metadata.
-- **Connector hub** — pluggable data connectors (web, S3/GCS, Notion, Confluence, Slack, GitHub,
-  SQL) as optional extras feeding the document engine.
-- *Interconnection:* every retriever is eval-scored (0.5) and its quality feeds reranking weights and
-  the optimizer (0.8); chunks keep full provenance into the evidence ledger.
-- *Edge over specialists:* RAGatouille gives you ColBERT; Vincio gives you ColBERT fused with sparse,
-  dense, and graph, then **budgeted and cited** inside a compiled packet.
+- ✅ **Late-interaction retrieval** — ColBERT-style multi-vector indexing and MaxSim scoring behind
+  the existing `Index` interface (`LateInteractionIndex`), with PLAID-style centroid compression
+  (inverted centroid lists for candidate generation, exact rerank) for scale.
+- ✅ **Learned sparse retrieval** — SPLADE-style impact-weighted sparse vectors (`SparseIndex`;
+  offline `LocalImpactEncoder`, served models via `CallableSparseEncoder`) fused with dense and BM25
+  in the existing weighted-RRF merge; `retrieval="hybrid_full"` fuses all four.
+- ✅ **Advanced indexing** — hierarchical / auto-merging retrieval (`AutoMergingIndex`),
+  sentence-window and parent-document retrieval, and "contextual retrieval" (LLM-written chunk
+  prefixes via `contextualize_chunks`, heuristic prefixes offline) as chunking strategies.
+- ✅ **Query understanding** — HyDE, multi-query expansion, query decomposition for multi-hop, and
+  step-back prompting, all as planner strategies with deterministic offline fallbacks, recorded on
+  the query plan and in traces.
+- ✅ **GraphRAG** — deterministic label-propagation community detection and hierarchical community
+  summaries over the entity graph; global vs local query routing (`GraphRAG.route`).
+- ✅ **Incremental & live indexes** — `LiveIndex` upserts, deletes, TTL with purge, and
+  `VectorIndex.migrate` re-embedding without full rebuilds; freshness (`indexed_at`, `age_days`)
+  surfaced in evidence metadata.
+- ✅ **Connector hub** — pluggable data connectors (web, S3/GCS, Notion, Confluence, Slack, GitHub,
+  SQL) feeding the document engine via `app.add_source(connector=...)`; cloud-store extras
+  (`vincio[s3]`, `vincio[gcs]`), custom connectors via `register_connector`.
+- *Interconnection (held):* every chunk keeps full provenance into the evidence ledger; freshness and
+  retrieval scores ride evidence metadata into context scoring; every mode is measured in the
+  VincioBench `rag` family with CI-gated recall/MRR budgets (eval-scoring per retriever lands in 0.5,
+  optimizer feedback in 0.8).
+- *Edge over specialists (delivered):* RAGatouille gives you ColBERT; Vincio gives you ColBERT fused
+  with sparse, dense, and graph, then **budgeted and cited** inside a compiled packet.
 
-### 🔭 0.4 — Memory & personalization (vs Mem0)
+### 🚧 0.4 — Memory & personalization (vs Mem0)
 
 *Personalization without the failure mode of stale, ungrounded memories.*
 

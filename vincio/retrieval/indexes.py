@@ -178,6 +178,18 @@ class VectorIndex:
                 removed += 1
         return removed
 
+    async def migrate(self, embedder: Embedder, *, batch_size: int = 64) -> int:
+        """Re-embed every stored chunk with a new embedder, in place — a
+        model migration without rebuilding the index or re-chunking."""
+        self.embedder = embedder
+        chunk_ids = list(self.chunks)
+        for start in range(0, len(chunk_ids), batch_size):
+            batch = chunk_ids[start : start + batch_size]
+            vectors = await embedder.embed([self.chunks[cid].text for cid in batch])
+            for chunk_id, vector in zip(batch, vectors, strict=True):
+                self.vectors[chunk_id] = vector
+        return len(chunk_ids)
+
     async def search(
         self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
     ) -> list[SearchHit]:

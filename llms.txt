@@ -29,6 +29,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Agents & workflows](docs/concepts/agents.md)
 - [Evaluation](docs/concepts/evals.md)
 - [Build a RAG app](docs/guides/build-rag-app.md)
+- [Connect data sources](docs/guides/connectors.md)
 - [Structured output](docs/guides/structured-output.md)
 - [Add tools](docs/guides/add-tools.md)
 - [Run evals](docs/guides/run-evals.md)
@@ -56,6 +57,18 @@ result.output; result.citations; result.trace_id; result.cost_usd
   request coalescing + pooled provider transport, slim (zero-copy) packets,
   hard `max_latency_ms` deadline + cancellation propagation; VincioBench
   budgets gate CI (`benchmarks/check_budgets.py`).
+- Retrieval (0.3): index modes bm25 | dense | sparse (SPLADE-style) |
+  late_interaction (ColBERT-style MaxSim, PLAID-style compression) |
+  hybrid | hybrid_full | graph | hybrid_graph, all fused by weighted RRF;
+  query strategies hyde | multi_query | decompose | step_back
+  (engine `query_strategies=` or config `retrieval.query_strategies`);
+  chunking adds sentence_window | hierarchical/parent_document (use
+  `AutoMergingIndex`) | contextual (+`contextualize_chunks` for LLM
+  prefixes); `GraphRAG` (communities + summaries, global/local routing);
+  `LiveIndex` (upsert/TTL/freshness) + `VectorIndex.migrate`.
+- Connectors: `from vincio.connectors import connect` — web, github, sql,
+  s3, gcs, notion, confluence, slack, custom via `register_connector`;
+  `app.add_source("kb", connector=connect("web", urls=[...]))`.
 - Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
   is a validated instance.
 - Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,

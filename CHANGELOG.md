@@ -4,6 +4,86 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] - 2026-06-12
+
+Retrieval & RAG superiority — the 0.3 roadmap milestone. Every advanced
+retrieval technique behind one `Index` interface, fused in one weighted RRF,
+budgeted and cited inside the compiled packet, and measured by CI-gated
+benchmarks.
+
+### Added
+
+- **Learned sparse retrieval** — `SparseIndex`, an inverted impact index
+  scored by SPLADE-style dot products, behind the same `Index` protocol as
+  BM25/dense so it fuses in the existing weighted-RRF merge. Encoders:
+  `LocalImpactEncoder` (offline, deterministic: sublinear tf + morphological
+  stem expansion) and `CallableSparseEncoder` (adapter for served SPLADE /
+  uniCOIL / ELSER models).
+- **Late-interaction retrieval** — `LateInteractionIndex` with ColBERT-style
+  per-token MaxSim scoring over any `Embedder` (offline hash embedder by
+  default, ColBERT checkpoints behind the same protocol). `compressed=True`
+  enables PLAID-style two-stage search: deterministic k-means centroid
+  codes, candidate generation over inverted centroid lists, exact rerank of
+  survivors. Token-vocabulary vector caching keeps indexing cheap.
+- **Advanced indexing** — new chunking strategies: `sentence_window` (score
+  the sentence, cite the ±2-sentence window — the engine swaps the window in
+  at evidence time), `hierarchical`/`parent_document` (small children linked
+  to large parents), and `contextual` (situating prefix per chunk).
+  `AutoMergingIndex` wraps any index and merges sibling child hits back into
+  their parent; `contextualize_chunks()` writes LLM chunk prefixes
+  (contextual retrieval) with a heuristic offline fallback.
+- **Query understanding** — `QueryUnderstanding` strategies: HyDE
+  (hypothetical answer passage as a search probe), multi-query expansion,
+  decomposition for multi-hop, and step-back prompting. LLM-backed with
+  deterministic offline fallbacks; expansions are recorded on the
+  `QueryPlan`, fused with per-strategy RRF weights, and surfaced in
+  retrieval metadata/traces. Configure per engine
+  (`RetrievalEngine(query_strategies=[...])`), per call
+  (`retrieve(strategies=[...])`), or app-wide
+  (`retrieval.query_strategies`).
+- **GraphRAG** — `detect_communities` (deterministic label propagation over
+  the entity graph), `Community` hierarchy (communities of communities),
+  extractive community summaries with an LLM hook, and `GraphRAG` retrieval
+  with global vs local routing: entity questions walk graph paths,
+  corpus-level questions retrieve community summaries that carry provenance
+  to their member chunks.
+- **Incremental & live indexes** — `LiveIndex` wraps any index with upsert
+  semantics, per-entry TTLs, lazy `purge_expired()`, and `indexed_at`
+  freshness stamps; the retrieval engine surfaces `indexed_at` and
+  `age_days` in evidence metadata. `VectorIndex.migrate(new_embedder)`
+  re-embeds in place — an embedding-model migration without re-chunking or
+  rebuilding.
+- **Connector hub** — new `vincio.connectors` package: `web`, `github`,
+  `sql` (SQLite built in, any DB-API connection), `s3` (`vincio[s3]`),
+  `gcs` (`vincio[gcs]`), `notion`, `confluence`, and `slack` connectors,
+  all returning provenance-tracked `Document`s; a `connect()` factory and
+  `register_connector()` plugin point; `app.add_source(connector=...)`
+  loads, chunks, and indexes in one call. REST connectors accept injected
+  httpx clients (offline-testable); cloud connectors accept injected
+  boto3/GCS clients.
+- **App retrieval modes** — `add_source(retrieval=...)` now also accepts
+  `sparse`, `late_interaction`, and `hybrid_full` (BM25 + dense + sparse +
+  late interaction in one fusion).
+- **VincioBench** — the `rag` family now compares every retrieval mode
+  (bm25, dense, sparse, late_interaction, late_interaction_plaid, hybrid,
+  hybrid_full, hybrid_full + query understanding) on recall@3/MRR and
+  exercises GraphRAG community building; new `budgets.json` gates hold each
+  mode at recall@3 ≥ 0.8 and verify GraphRAG produces communities and
+  global evidence.
+- **Docs & examples** — rewritten retrieval concepts page, a new
+  connectors guide (`docs/guides/connectors.md`), a new RAGatouille/ColBERT
+  comparison (`docs/comparisons/ragatouille.md`), an updated LlamaIndex
+  comparison, and `examples/12_advanced_rag.py` (sparse + late-interaction
+  fusion, query understanding, auto-merging, GraphRAG routing, live-index
+  TTL, SQL connector → full app — offline).
+
+### Changed
+
+- `QueryPlan` gains `expansions`; `RetrievalResult.metadata` reports the
+  strategies used; evidence from sentence-window chunks carries the window
+  text plus a `matched_sentence` marker.
+- 277 tests passing offline (~2s); ruff clean.
+
 ## [0.2.0] - 2026-06-12
 
 Performance & core hardening — the 0.2 roadmap milestone. The spine is now
