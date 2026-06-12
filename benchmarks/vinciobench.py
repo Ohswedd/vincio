@@ -1,7 +1,8 @@
 """VincioBench: benchmark suite for Vincio and baselines.
 
-Families: PromptBench, RAGBench, MemoryBench, AgentBench, ToolBench,
-OutputBench, CostBench, SecurityBench, PerfBench.
+Families: PromptBench, RAGBench, MemoryBench, AgentBench (incl. 0.6 crews,
+durable graphs, composition), ToolBench, OutputBench, CostBench,
+SecurityBench, EvalBench, PerfBench.
 
 Runs fully offline by default (deterministic mock provider + deterministic
 metrics) so results are reproducible; set VINCIO_PROVIDER / VINCIO_MODEL to
