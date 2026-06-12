@@ -6,8 +6,8 @@ Vincio is pre-1.0; security fixes are applied to the latest released version on 
 
 | Version | Supported |
 | ------- | --------- |
-| 0.4.x   | ✅        |
-| < 0.4   | ❌ (upgrade to 0.4.x) |
+| 0.5.x   | ✅        |
+| < 0.5   | ❌ (upgrade to 0.5.x) |
 
 ## Reporting a vulnerability
 

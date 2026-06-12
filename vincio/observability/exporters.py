@@ -97,18 +97,22 @@ class JSONLExporter:
         return found
 
     def load_all(self, limit: int | None = None) -> list[Trace]:
-        traces: list[Trace] = []
+        """All traces, latest record per trace id (re-exports act as updates)."""
+        latest: dict[str, Trace] = {}
         if not self.path.is_file():
-            return traces
+            return []
         with self.path.open(encoding="utf-8") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    traces.append(Trace.model_validate(json.loads(line)))
+                    trace = Trace.model_validate(json.loads(line))
                 except (json.JSONDecodeError, ValueError):
                     continue
+                latest.pop(trace.id, None)  # re-insert so updates keep file order
+                latest[trace.id] = trace
+        traces = list(latest.values())
         if limit is not None:
             traces = traces[-limit:]
         return traces

@@ -89,6 +89,7 @@ class VincioRuntime:
 
         with app.tracer.trace(
             run_id=run_id,
+            session_id=user_input.session_id,
             user_id=user_input.user_id,
             tenant_id=user_input.tenant_id,
             input=(user_input.text or "")[:500],
@@ -113,6 +114,9 @@ class VincioRuntime:
                 cancelled = True
                 trace.attributes["cancelled"] = True
             result.latency_ms = int((time.monotonic() - started) * 1000)
+            trace.attributes["output"] = (result.raw_text or "")[:500]
+            for metric_name, score in (result.eval_scores or {}).items():
+                trace.add_score(metric_name, score)
 
         # 15. persist run + packet (trace export happens in the tracer).
         self._persist_run(result, run_id, user_input)
@@ -143,6 +147,7 @@ class VincioRuntime:
 
         with app.tracer.trace(
             run_id=run_id,
+            session_id=user_input.session_id,
             user_id=user_input.user_id,
             tenant_id=user_input.tenant_id,
             input=(user_input.text or "")[:500],
@@ -486,6 +491,7 @@ class VincioRuntime:
                 result.cost_usd += cost if cost else response.cost_usd
                 span.set(
                     finish=response.finish_reason,
+                    input_tokens=response.usage.input_tokens,
                     output_tokens=response.usage.output_tokens,
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
@@ -585,6 +591,7 @@ class VincioRuntime:
                 result.cost_usd += cost if cost else response.cost_usd
                 span.set(
                     finish=response.finish_reason,
+                    input_tokens=response.usage.input_tokens,
                     output_tokens=response.usage.output_tokens,
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
@@ -673,6 +680,8 @@ class VincioRuntime:
                     metric_result = metric(case, run_output)
                     result.eval_scores[metric_result.name] = metric_result.value
                 span.set(**result.eval_scores)
+                for metric_name, score in result.eval_scores.items():
+                    span.add_score(metric_name, score)
 
         # 16. memory writes.
         if (

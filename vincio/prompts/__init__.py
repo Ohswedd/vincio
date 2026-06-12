@@ -24,6 +24,7 @@ from .compiler import (
 )
 from .lint import LINT_RULES, LintFinding, lint_ast, lint_spec
 from .optimizers import PromptVariant, diff_rendered, diff_specs, generate_variants
+from .registry import PromptRegistry, PromptVersion
 from .templates import PromptSpec, PromptVariable
 
 __all__ = [
@@ -49,9 +50,11 @@ __all__ = [
     "LINT_RULES",
     "lint_ast",
     "lint_spec",
+    "PromptRegistry",
     "PromptSpec",
     "PromptVariable",
     "PromptVariant",
+    "PromptVersion",
     "generate_variants",
     "diff_specs",
     "diff_rendered",

@@ -19,7 +19,10 @@ fast: streaming, concurrent, cached, and regression-gated. 0.3.0 made retrieval 
 learned sparse and late interaction fused with BM25/dense/graph, query understanding, hierarchical
 and contextual indexing, GraphRAG, live indexes, and a connector hub. 0.4.0 made memory personal
 and governed: scoped remember/recall, hybrid vector+graph recall, episodic→semantic consolidation
-with provenance, audited forgetting, and a CI-gated memory eval harness.
+with provenance, audited forgetting, and a CI-gated memory eval harness. 0.5.0 made evaluation and
+observability platform-grade in-process: quality/safety/conversational metrics, G-Eval judging with
+calibration, a pytest plugin, red-teaming, synthetic data, experiments with significance, a prompt
+registry, sessions and feedback on traces, OTel GenAI export, and a local trace viewer.
 
 ---
 
@@ -346,31 +349,54 @@ compiler — not the center of gravity.*
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 0.4.0 notes.
 
-### 🚧 0.5 — Evaluation, testing & observability (vs Ragas, DeepEval, LangSmith, Langfuse)
+### ✅ 0.5 — Evaluation, testing & observability (vs Ragas, DeepEval, LangSmith, Langfuse) (shipped)
 
 *Make evaluation and observability so good you stop reaching for an external platform — and keep them
 provider-neutral and dependency-free.*
 
-- **Metric library expansion** — faithfulness, answer relevance, context precision/recall,
-  hallucination, toxicity, bias, summarization quality, and conversational/session metrics;
-  rubric-based **G-Eval**-style LLM judges with calibration.
-- **Testing ergonomics** — a `pytest` plugin with `assert_eval` / `assert_grounded` assertions,
-  snapshot tests for packets and traces, and CI-friendly thresholds.
-- **Red-teaming & robustness** — an adversarial suite (jailbreaks, injection, PII-leak probes, bias
-  prompts) that reuses the security engine's detectors.
-- **Synthetic data generation** — bootstrap golden eval sets from your own corpora with
-  difficulty/coverage controls and provenance.
-- **Experiment tracking** — local run store, experiment comparison, ablations, and prompt/retriever
-  A/Bs with statistical significance.
-- **Prompt registry** — versioned prompt store with diffs, tags, rollbacks, and links to eval runs.
-- **Richer trace model** — sessions, threaded runs, user feedback capture, scores attached to spans,
-  and **OpenTelemetry GenAI semantic conventions**.
-- **Local trace viewer** — a TUI and a self-contained static-HTML export of a trace/session (no
-  server, no account); diff two traces visually.
-- *Interconnection:* metrics defined here are the *same objects* used as runtime guardrails (0.7) and
-  as the optimizer's fitness terms (0.8); traces become datasets with one command.
-- *Edge over specialists:* LangSmith/Langfuse are platforms you send data to; Vincio's evals and
-  traces live **in your process, in the same model as the runtime**, and can gate a release offline.
+- ✅ **Metric library expansion** — `faithfulness`, `answer_relevance`, context precision/recall,
+  `hallucination` (strict number checking catches numeric contradictions), `toxicity`, `bias`,
+  `summarization_quality`, and conversational/session metrics (`knowledge_retention`,
+  `conversation_relevance`) — all deterministic and offline; rubric-based **G-Eval** judging
+  (`GEvalJudge`) with auto-derived evaluation steps, repeated-sample scoring, and
+  `calibrate()` against human labels.
+- ✅ **Testing ergonomics** — the `vincio.testing` package and a `pytest` plugin (auto-registered):
+  `assert_eval` / `assert_grounded` / `assert_metric` / `assert_safe` with direction-aware
+  thresholds, and snapshot tests for packets and traces (volatile fields normalized away;
+  `pytest --vincio-update-snapshots` to refresh).
+- ✅ **Red-teaming & robustness** — `RedTeamSuite` with 13 built-in probes (jailbreaks, injection,
+  PII/secret-leak, bias, toxicity) judged deterministically via canary tokens and the security
+  engine's detectors; reports attack success rate *and* input-side detector coverage; the injection
+  detector gained persona/fake-authority signals (7/7 probe coverage, no new false positives).
+- ✅ **Synthetic data generation** — `SyntheticGenerator` bootstraps golden sets from your corpora
+  with difficulty mix (stated-fact / cloze / multi-hop), round-robin source coverage, and full
+  provenance; deterministic offline templates with an LLM hook.
+- ✅ **Experiment tracking** — `ExperimentTracker` on the existing metadata store: variant
+  comparison (direction-aware best-per-metric), ablations vs a baseline, and
+  `ab_test()` with paired/Welch t-tests and pure-Python p-values.
+- ✅ **Prompt registry** — `PromptRegistry`: content-hash-keyed versions, moving tags, field-level
+  and rendered diffs, rollback-as-new-head, and eval runs linked to the exact version measured;
+  `vincio prompt push / versions / diff / rollback`.
+- ✅ **Richer trace model** — sessions and threaded runs (`session_id` / `thread_id`), user feedback
+  capture (`trace.add_feedback`, `vincio trace feedback`), scores attached to spans and traces by
+  the runtime evaluators, and **OpenTelemetry GenAI semantic conventions** (`chat {model}`,
+  `gen_ai.*` attributes, `gen_ai.conversation.id`).
+- ✅ **Local trace viewer** — `vincio trace view` (TUI tree with scores and feedback),
+  `vincio trace export [--session]` (one self-contained static HTML file — no server, no account),
+  and `vincio trace diff --html` (visual side-by-side diff).
+- *Interconnection (held):* metrics defined here are the *same objects* used as runtime evaluators
+  today and as guardrails (0.7) / fitness terms (0.8) next; traces become datasets with one command
+  (`dataset_from_traces`, `vincio eval dataset --min-feedback`); red-team findings hardened the
+  security engine's detectors.
+- *Edge over specialists (delivered):* LangSmith/Langfuse are platforms you send data to; Vincio's
+  evals and traces live **in your process, in the same model as the runtime**, and gate releases
+  offline — see [docs/comparisons/langsmith-langfuse.md](docs/comparisons/langsmith-langfuse.md),
+  [ragas.md](docs/comparisons/ragas.md), and [deepeval.md](docs/comparisons/deepeval.md).
+- **367 tests passing offline in ~2s; ruff clean**; fourteen runnable examples; the VincioBench
+  `evals` family holds metric agreement, red-team judging, synthetic determinism/coverage,
+  significance, sessions, viewer self-containment, and G-Eval calibration under 13 CI-gated budgets.
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.5.0 notes.
 
 ### 🔭 0.6 — Agents & orchestration (vs LangChain/LangGraph, CrewAI, OpenAI Agents SDK)
 

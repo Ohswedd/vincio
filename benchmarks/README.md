@@ -24,6 +24,7 @@ Results are printed as JSON and saved to `benchmarks/results/`.
 | **OutputBench** | recovery rate over malformed model outputs; missing-required correctly rejected | raw `json.loads` |
 | **CostBench** | evidence-token reduction from the context compiler | stuff-everything context |
 | **SecurityBench** | injection detection rate, false-positive rate, PII coverage | — |
+| **EvalBench** | metric agreement on labeled examples; red-team judging (guarded vs naive target, detector coverage); synthetic-data determinism and coverage; A/B significance machinery; session grouping; HTML viewer self-containment; trace→dataset; G-Eval calibration | naive target (85% attack success) |
 | **PerfBench** | compile/retrieval/run latency (p50/p95), cache speedups, concurrent throughput, streaming TTFT | cold (uncached) paths |
 
 ## Benchmark gates (CI)

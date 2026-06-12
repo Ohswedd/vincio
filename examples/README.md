@@ -22,6 +22,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `11_streaming_performance.py` | end-to-end streaming, partial-JSON output, compile caches, zero-copy packets |
 | `12_advanced_rag.py` | sparse+late-interaction fusion, query understanding, auto-merging, GraphRAG, live indexes, SQL connector |
 | `13_memory_personalization.py` | scoped remember/recall, hybrid vector+graph recall, consolidation with provenance, GDPR-style hygiene, memory eval harness |
+| `14_evaluation_observability.py` | quality/safety metrics, eval assertions, synthetic datasets, experiments with significance, red-teaming, prompt registry, sessions + feedback, trace viewer, traces→datasets |
 
 Run any of them:
 

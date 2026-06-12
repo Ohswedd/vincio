@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "0.4.0"
+version = "0.5.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -61,6 +61,9 @@ all = [
 
 [project.scripts]
 vincio = "vincio.cli.main:main"
+
+[project.entry-points.pytest11]
+vincio = "vincio.testing.plugin"
 
 [project.urls]
 Homepage = "https://github.com/Ohswedd/vincio"

@@ -4,6 +4,139 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-06-12
+
+Evaluation, testing & observability — the 0.5 roadmap milestone. Make
+evaluation and observability so good you stop reaching for an external
+platform: metric parity with the eval specialists, unit-test ergonomics,
+red-teaming, synthetic data, experiments with significance, a prompt
+registry, sessions and feedback on traces, and a local viewer — all
+provider-neutral, offline, and in-process.
+
+### Added
+
+- **Metric library expansion** — `faithfulness` (Ragas-style claim
+  attribution), `answer_relevance` (penalizes evasive answers),
+  `hallucination` (unsupported verifiable claims with **strict number
+  checking** — "90 days" against evidence saying "30 days" fails; citation
+  markers are stripped first), `toxicity` and `bias` (deterministic
+  pattern-based rates), `summarization_quality`
+  (min(coverage, faithfulness) against the source), and conversational
+  metrics `knowledge_retention` (flags re-asking for facts the user already
+  gave) and `conversation_relevance` (both read `context["messages"]`).
+  All deterministic, offline, and usable as eval metrics, runtime
+  evaluators, and test assertions.
+- **G-Eval judge** — `GEvalJudge(provider, model=..., criteria=...)`
+  auto-derives evaluation steps from plain-language criteria (cached for the
+  judge's lifetime), scores on a 1–5 form-filling scale normalized to 0–1,
+  approximates probability-weighted scoring with `samples > 1`, and
+  `calibrate(pairs)` fits a linear correction against human labels
+  (returns scale/offset/Pearson r) applied to future scores.
+- **Testing ergonomics** — new `vincio.testing` package: `assert_eval`,
+  `assert_grounded`, `assert_metric`, `assert_safe` raise AssertionErrors
+  with the metric breakdown and offending output; quality metrics assert
+  `>=`, rate metrics (`hallucination`, `toxicity`, ...) assert `<=`. A
+  pytest plugin (registered via the `pytest11` entry point) adds the
+  `vincio_snapshot` fixture and `--vincio-update-snapshots`; snapshots
+  capture packet/trace *structure* with volatile fields (ids, timestamps,
+  durations, hashes) normalized away, stored as JSON next to the tests.
+- **Red-teaming & robustness** — `RedTeamSuite` sends 13 built-in probes
+  (jailbreaks, prompt injections, PII/secret-leak probes, bias and toxicity
+  provocations) at a `ContextApp` or any callable and judges responses
+  deterministically: attack probes carry a canary token, leak probes run the
+  secret scanner and PII detector, bias/toxicity probes reuse the new
+  metrics. Reports separate `attack_success_rate` (output level) from
+  `detector_coverage` (input-side injection detection); custom probes via
+  `RedTeamProbe`. The injection detector gained `persona_without_rules` and
+  `fake_authority` signals plus hardened override/exfiltration patterns —
+  built-in probe coverage is 7/7 with no new false positives.
+- **Synthetic data generation** — `SyntheticGenerator` bootstraps golden
+  datasets from documents/chunks/text with difficulty mix (`easy` stated
+  facts, `medium` cloze values, `hard` multi-hop across sources), coverage
+  controls (round-robin over sources, near-duplicate dedupe), and full
+  provenance (`metadata.source_ids`, source sentences in `rubric.facts` so
+  grounding metrics work immediately). Deterministic offline templates by
+  default; LLM-written questions when a provider is given, falling back to
+  templates on failure.
+- **Experiment tracking** — `ExperimentTracker` logs eval reports under
+  experiment/variant (SQLite via the existing metadata store), `compare()`
+  picks the best variant per metric (direction-aware: cost/latency/
+  hallucination-style metrics minimize), `ablation()` reports deltas vs a
+  baseline with p-values, and `ab_test(report_a, report_b, metric)` runs a
+  paired t-test when reports share case ids, Welch's t-test otherwise —
+  pure-Python t-distribution (regularized incomplete beta), no SciPy.
+- **Prompt registry** — `PromptRegistry`: file-backed versioned prompt store
+  keyed by `spec_hash` (re-pushing unchanged content is idempotent), tags
+  that move between versions ("production", "candidate"), field-level and
+  rendered diffs, `rollback()` that re-publishes an old version as a new
+  head (history kept), and `link_eval()` attaching eval-run summaries to the
+  exact version they measured. CLI: `vincio prompt push / versions / diff /
+  rollback`.
+- **Richer trace model** — traces carry `session_id` / `thread_id`
+  (`app.run(..., session_id=...)` threads them through), `scores` (runtime
+  evaluators attach metric scores to the eval span and the trace), and
+  first-class `Feedback` (`trace.add_feedback`, `record_feedback(...,
+  exporter=...)` persists updates; `vincio trace feedback`). Sessions are a
+  derived view: `sessions_from_traces()` groups traces (deduping re-exported
+  records) into `Session` objects with run/duration/error/score/feedback
+  aggregates; `vincio trace sessions` lists them.
+- **Traces become datasets** — `dataset_from_traces(traces,
+  min_feedback_score=...)` curates captured runs into an eval dataset with
+  full provenance (trace/run/session ids, scores); CLI:
+  `vincio eval dataset golden.jsonl --min-feedback 0.5`.
+- **OpenTelemetry GenAI semantic conventions** — the OTel exporter emits
+  `chat {model}` / `execute_tool {tool}` span names with
+  `gen_ai.operation.name`, `gen_ai.request.model`,
+  `gen_ai.usage.input_tokens` / `output_tokens`,
+  `gen_ai.response.finish_reasons`, `gen_ai.tool.name`, and
+  `gen_ai.conversation.id` (sessions), alongside the full `vincio.*`
+  attributes and span scores.
+- **Local trace viewer** — `render_trace_text` / `render_session_text` (TUI
+  tree with status glyphs, durations, scores, feedback; `vincio trace
+  view`), `trace_to_html` / `session_to_html` (one self-contained static
+  HTML file, inline CSS, no server or account; `vincio trace export
+  [--session]`), and `trace_diff_html` (side-by-side visual diff;
+  `vincio trace diff --html`).
+- **Surface** — `vincio.evals` exports `GEvalJudge`, `SyntheticGenerator`,
+  `RedTeamSuite` / `RedTeamProbe` / `BUILTIN_PROBES`, `ExperimentTracker` /
+  `ab_test`, `dataset_from_traces`; `vincio.observability` exports
+  `Session`, `Feedback`, `sessions_from_traces`, `record_feedback`, and the
+  viewer functions; `vincio.prompts` exports `PromptRegistry` /
+  `PromptVersion`; new `vincio.testing` package.
+- **VincioBench `evals` family** — measures metric agreement on labeled
+  examples, red-team judging on guarded vs naive targets, synthetic-data
+  determinism and coverage, the significance machinery (detects a real
+  shift, ignores a null one), session grouping, HTML self-containment,
+  trace→dataset conversion, and G-Eval calibration — 13 new `budgets.json`
+  gates hold the results in CI.
+- Documentation: new observability concept guide and pytest testing guide,
+  expanded evals concept guide, comparison write-ups for DeepEval and
+  LangSmith/Langfuse, updated Ragas comparison; example
+  `14_evaluation_observability.py`.
+
+### Changed
+
+- **OTel span names for model/tool spans changed** to the GenAI semantic
+  conventions: `model_call:<name>` → `chat {model}`, `tool_call:<name>` →
+  `execute_tool {tool}`. Dashboards or alerts keyed on the old span-name
+  prefixes need updating; all `vincio.*` attributes (including
+  `vincio.span_id`) are unchanged, and non-model/tool spans keep the
+  `{type}:{name}` format.
+- Model spans now record `input_tokens` (alongside `output_tokens`), and
+  completed runs store their output (truncated) and eval scores on the
+  trace, so traces are curatable into datasets.
+- `JSONLExporter.load_all()` now returns the latest record per trace id
+  (re-exports act as updates, e.g. after `record_feedback`).
+- `EvalReport.diff()` is direction-aware: a rising `hallucination` /
+  `toxicity` / `bias` / `unsupported_claim_rate` now counts as a regressed
+  case (previously only falling scores did). Metric direction has a single
+  source of truth: `vincio.evals.metrics.LOWER_IS_BETTER`.
+- `EvidenceItem`-based grounding metrics accept reference context from
+  `case.context["reference"]` / `["source"]` when a run carries no
+  evidence.
+- **367 tests passing offline in ~2s; ruff clean**; fourteen runnable
+  examples; 48 VincioBench budget gates.
+
 ## [0.4.0] - 2026-06-12
 
 Memory & personalization — the 0.4 roadmap milestone. Personalization

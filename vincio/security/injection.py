@@ -41,6 +41,8 @@ _SIGNALS: list[tuple[str, re.Pattern[str], float]] = [
         "override_instructions",
         re.compile(
             r"(?i)\b(?:ignore|disregard|forget|override)\b.{0,40}\b(?:previous|prior|above|all|earlier|system)\b.{0,30}\b(?:instructions?|prompts?|rules?|directives?)\b"
+            r"|\bsystem override\b"
+            r"|\bdisregard the (?:task|question|request)\b"
         ),
         0.9,
     ),
@@ -57,9 +59,24 @@ _SIGNALS: list[tuple[str, re.Pattern[str], float]] = [
         0.7,
     ),
     (
+        "persona_without_rules",
+        re.compile(
+            r"(?i)\b(?:an? ai|a model|an? assistant|an? bot)\b.{0,40}\b(?:without|with no|free of)\b.{0,20}\b(?:policies|restrictions|rules|filters|limitations)\b"
+            r"|\bif you had no\b.{0,20}\b(?:rules|restrictions|policies|filters|safety)\b"
+        ),
+        0.75,
+    ),
+    (
+        "fake_authority",
+        re.compile(
+            r"(?i)\b(?:new|secret|real|updated)?\s*(?:instructions?|message|directive|order)s?\s+from your\s+(?:developer|creator|owner|maker)s?\b"
+        ),
+        0.75,
+    ),
+    (
         "exfiltration",
         re.compile(
-            r"(?i)\b(?:reveal|show|print|repeat|output|send)\b.{0,40}\b(?:system prompt|instructions|api key|secret|password|credentials|configuration)\b"
+            r"(?i)\b(?:reveal|show|print|repeat|output|send)\b.{0,80}\b(?:system prompt|(?:hidden |initial |your )instructions|api key|secret|password|credentials|configuration)\b"
         ),
         0.85,
     ),

@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-301%20passing-2ea44f" alt="301 tests passing">
+  <img src="https://img.shields.io/badge/tests-367%20passing-2ea44f" alt="367 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -145,9 +145,9 @@ for any engine directly.
 | **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates. |
 | **Structured output** | Pydantic output contracts, robust parsers (fenced / embedded / lenient / streaming JSON), a validation pipeline, and **principled repair that fixes structure only — never invents facts**. |
-| **Evaluation** | Golden JSONL datasets, 17+ task / grounding / retrieval / operational metrics, deterministic and model judges, regression gates, and baseline-diff reports. |
+| **Evaluation (0.5)** | Golden JSONL datasets, 25+ task / grounding / quality / safety / conversational / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
 | **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
-| **Observability** | Every run yields a full trace span tree; JSONL and OpenTelemetry exporters; per-run cost tracking. |
+| **Observability (0.5)** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
 | **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, RBAC / ABAC, tenant isolation, and a hash-chained audit log. |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector), and graph (Neo4j) backends behind one factory. |
 | **Providers** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. |
@@ -176,6 +176,9 @@ baseline. Representative results on the bundled reference corpus:
 | **Memory** | preference recall · contradiction supersede · tenant isolation | **pass** | — |
 | **Tools** | runtime overhead, p50 | **0.02 ms** | — |
 | **Agents** | adversarial infinite-loop model | **bounded** (budget) | unbounded |
+| **Evals (0.5)** | metric agreement on labeled examples | **100%** | — |
+| | red-team detector coverage · guarded attack success | **100% · 0%** | naive target: 85% attacks succeed |
+| | A/B significance (real shift detected / null ignored) | **pass** | — |
 
 > **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
 > demonstrate the mechanisms, not to be quoted as universal gains. The context-compression
@@ -199,8 +202,10 @@ in-library** capabilities — not what is reachable by bolting on a separate pro
 | Bounded **agents** + deterministic workflows | ✅ | ✅ | ➖ | ➖ | ❌ |
 | Structured output + **structure-only repair** | ✅ | ➖ | ➖ | ✅ | ❌ |
 | Built-in **evals + CI gates** | ✅ | ➖ | ➖ | ➖ | ✅ |
+| **pytest assertions + red-teaming + synthetic data** | ✅ | ❌ | ❌ | ❌ | ➖ |
 | Eval-driven **optimization** (gated promotion) | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Native **tracing + cost**, no account needed | ✅ | ➖ | ➖ | ❌ | ❌ |
+| **Sessions, feedback, prompt registry, trace viewer** in-process | ✅ | ➖ | ❌ | ❌ | ❌ |
 | **Deterministic security** (PII / injection / audit) | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 <sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Reflects
@@ -226,10 +231,11 @@ a Ragas metric with `@register_metric`. See the in-depth write-ups in
 | Stream answers token-by-token through the full pipeline | `astream` + partial-JSON + compile caches | [`11_streaming_performance.py`](examples/11_streaming_performance.py) |
 | Push retrieval quality with the full 0.3 toolkit | sparse+late-interaction fusion, HyDE, auto-merge, GraphRAG, connectors | [`12_advanced_rag.py`](examples/12_advanced_rag.py) |
 | Personalize an app with governed memory | scoped remember/recall, consolidation, hygiene, memory evals | [`13_memory_personalization.py`](examples/13_memory_personalization.py) |
+| Evaluate, test, and observe without a platform | quality metrics, synthetic data, red-teaming, experiments, prompt registry, sessions + trace viewer | [`14_evaluation_observability.py`](examples/14_evaluation_observability.py) |
 
 ## More examples
 
-All twelve examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
+All fourteen examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
 a real model with environment variables:
 
 ```bash
@@ -243,8 +249,14 @@ cd examples && python 02_document_qa.py
 vincio init my-project           # scaffold config, a starter app, and a golden dataset
 vincio run app.py --input "..."  # run an app
 vincio eval run golden.jsonl     # run an eval suite (with CI gates and baseline compare)
+vincio eval dataset golden.jsonl --min-feedback 0.5  # curate traces into a dataset
 vincio prompt lint prompts/      # lint prompt specs
-vincio trace show trace_123      # inspect a run's full trace
+vincio prompt push prompts/support.yaml --tag production  # version a prompt
+vincio trace view trace_123      # TUI trace tree with scores + feedback
+vincio trace export trace_123    # self-contained static HTML (also --session)
+vincio trace diff a b --html diff.html  # visual side-by-side diff
+vincio trace sessions            # list sessions with aggregates
+vincio trace feedback trace_123 --score 1.0
 vincio optimize run --target groundedness
 vincio index build ./docs        # build a retrieval index
 vincio memory inspect --user u1  # inspect a user's memory
@@ -290,7 +302,11 @@ best-in-field — learned sparse + late interaction fused with BM25/dense/graph,
 auto-merging and contextual indexing, GraphRAG, live indexes, and a connector hub; 0.4.0 made
 memory personal and governed — scoped remember/recall, hybrid vector+graph recall,
 episodic→semantic consolidation with provenance, audited forgetting, and a CI-gated memory eval
-harness — with 301 offline tests, thirteen runnable examples, and full documentation. The public roadmap — what's
+harness; 0.5.0 made evaluation and observability platform-grade in-process — quality/safety/
+conversational metrics, G-Eval judging with calibration, a pytest plugin, red-teaming, synthetic
+data, experiments with statistical significance, a prompt registry, sessions and feedback on
+traces, OTel GenAI export, and a local trace viewer — with 367 offline tests, fourteen runnable
+examples, and full documentation. The public roadmap — what's
 shipped, what's next, and what's intentionally out of scope — lives in **[ROADMAP.md](ROADMAP.md)**.
 
 Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
@@ -323,7 +339,7 @@ green:
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 301 tests, no network or API keys required
+python -m pytest tests/ -q     # 367 tests, no network or API keys required
 ruff check vincio/ tests/
 ```
 

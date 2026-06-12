@@ -15,16 +15,39 @@ vincio eval run DATASET.jsonl --app APP.py
 vincio eval report REPORT.json|DIR
     Print a saved report (latest in a directory).
 
+vincio eval dataset OUTPUT.jsonl [--traces-dir DIR] [--name N] [--min-feedback X]
+    Curate captured traces into an eval dataset (provenance + scores ride along).
+
 vincio prompt lint PATH
     Lint prompt spec YAML files (PROMPT001–PROMPT009); exits non-zero on errors.
 
 vincio prompt compile SPEC.yaml [--format markdown|xml|json|minimal] [--task "..."]
     Compile and print a prompt with hashes, token count, and cacheability.
 
+vincio prompt push SPEC.yaml [--name N] [--tag T]... [--message M] [--registry DIR]
+vincio prompt versions NAME [--registry DIR]
+vincio prompt diff NAME V_A V_B [--rendered] [--registry DIR]
+vincio prompt rollback NAME [--to V] [--registry DIR]
+    Versioned prompt registry: push (idempotent on content), list versions
+    with tags/messages/eval links, diff two versions, re-publish an old
+    version as the new head.
+
 vincio trace show TRACE_ID  [--traces-dir DIR]
+vincio trace view TRACE_ID  [--traces-dir DIR]
 vincio trace replay TRACE_ID [--traces-dir DIR]
-vincio trace diff TRACE_A TRACE_B [--traces-dir DIR]
-    Inspect, extract a replay plan from, or structurally diff traces.
+vincio trace diff TRACE_A TRACE_B [--traces-dir DIR] [--html OUT.html]
+    Inspect (view: TUI tree with scores + feedback), extract a replay plan
+    from, or diff traces (--html writes a visual side-by-side diff).
+
+vincio trace export TRACE_ID [--session] [--output OUT.html] [--traces-dir DIR]
+    Write a self-contained static HTML page for a trace (or, with --session,
+    a whole session) — no server, no account.
+
+vincio trace sessions [--traces-dir DIR]
+    List sessions with run counts, durations, error rates, scores, feedback.
+
+vincio trace feedback TRACE_ID [--key K] [--score X] [--comment "..."] [--user U]
+    Attach feedback to a stored trace (persisted as an update).
 
 vincio optimize run --app APP.py --dataset DATASET.jsonl
         [--target quality|groundedness|cost|latency]

@@ -266,7 +266,58 @@ def cmd_prompt_compile(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_prompt_push(args: argparse.Namespace) -> int:
+    from ..prompts.registry import PromptRegistry
+
+    registry = PromptRegistry(args.registry)
+    spec = _spec_from_file(Path(args.path))
+    version = registry.push(
+        spec,
+        name=args.name,
+        tags=args.tag or None,
+        message=args.message or "",
+    )
+    tags = f"  tags={','.join(version.tags)}" if version.tags else ""
+    print(f"{version.ref}  hash={version.spec_hash[:12]}{tags}")
+    return 0
+
+
+def cmd_prompt_versions(args: argparse.Namespace) -> int:
+    from ..prompts.registry import PromptRegistry
+
+    registry = PromptRegistry(args.registry)
+    for version in registry.versions(args.name):
+        tags = f"  [{', '.join(version.tags)}]" if version.tags else ""
+        message = f"  {version.message}" if version.message else ""
+        evals = f"  evals={len(version.eval_runs)}" if version.eval_runs else ""
+        print(f"v{version.version}  {version.spec_hash[:12]}{tags}{message}{evals}")
+    return 0
+
+
+def cmd_prompt_diff(args: argparse.Namespace) -> int:
+    from ..prompts.registry import PromptRegistry
+
+    registry = PromptRegistry(args.registry)
+    result = registry.diff(args.name, args.version_a, args.version_b, rendered=args.rendered)
+    if args.rendered and result.get("rendered_diff"):
+        print(result.pop("rendered_diff"))
+        print()
+    print(json_dumps(result, indent=2))
+    return 0
+
+
+def cmd_prompt_rollback(args: argparse.Namespace) -> int:
+    from ..prompts.registry import PromptRegistry
+
+    registry = PromptRegistry(args.registry)
+    version = registry.rollback(args.name, to_version=args.to)
+    print(f"{version.ref}  {version.message}")
+    return 0
+
+
 def cmd_trace_show(args: argparse.Namespace) -> int:
+    from ..observability.viewer import _INTERESTING_ATTRIBUTES
+
     trace = _load_trace(args.trace_id, args.traces_dir)
     print(f"trace {trace.id}  app={trace.app_name}  status={trace.status}  duration={trace.duration_ms}ms")
     if trace.attributes:
@@ -277,8 +328,7 @@ def cmd_trace_show(args: argparse.Namespace) -> int:
             indent = "  " * depth
             print(f"{indent}├─ [{node['type']}] {node['name']}  {node['status']}  {node['duration_ms']}ms")
             interesting = {
-                k: v for k, v in node["attributes"].items()
-                if k in ("model", "tokens", "cacheability", "evidence", "cost_usd", "valid", "task_type")
+                k: v for k, v in node["attributes"].items() if k in _INTERESTING_ATTRIBUTES
             }
             if interesting:
                 print(f"{indent}│    {json_dumps(interesting)}")
@@ -301,7 +351,87 @@ def cmd_trace_diff(args: argparse.Namespace) -> int:
 
     trace_a = _load_trace(args.trace_a, args.traces_dir)
     trace_b = _load_trace(args.trace_b, args.traces_dir)
+    if getattr(args, "html", None):
+        from ..observability.viewer import trace_diff_html
+
+        Path(args.html).write_text(trace_diff_html(trace_a, trace_b), encoding="utf-8")
+        print(f"wrote {args.html}")
+        return 0
     print(json_dumps(trace_diff(trace_a, trace_b), indent=2))
+    return 0
+
+
+def cmd_trace_view(args: argparse.Namespace) -> int:
+    from ..observability.viewer import render_trace_text
+
+    trace = _load_trace(args.trace_id, args.traces_dir)
+    print(render_trace_text(trace))
+    return 0
+
+
+def cmd_trace_export(args: argparse.Namespace) -> int:
+    from ..observability.exporters import JSONLExporter
+    from ..observability.sessions import sessions_from_traces
+    from ..observability.viewer import session_to_html, trace_to_html
+
+    if args.session:
+        exporter = JSONLExporter(args.traces_dir)
+        sessions = [s for s in sessions_from_traces(exporter.load_all()) if s.id == args.trace_id]
+        if not sessions:
+            raise VincioError(f"session {args.trace_id!r} not found in {exporter.path}")
+        html_text = session_to_html(sessions[0])
+    else:
+        html_text = trace_to_html(_load_trace(args.trace_id, args.traces_dir))
+    output = args.output or f"{args.trace_id}.html"
+    Path(output).write_text(html_text, encoding="utf-8")
+    print(f"wrote {output}")
+    return 0
+
+
+def cmd_trace_sessions(args: argparse.Namespace) -> int:
+    from ..observability.exporters import JSONLExporter
+    from ..observability.sessions import sessions_from_traces
+
+    exporter = JSONLExporter(args.traces_dir)
+    sessions = sessions_from_traces(exporter.load_all())
+    if not sessions:
+        print(f"no sessions found in {exporter.path}")
+        return 0
+    for session in sessions:
+        print(json_dumps(session.summary()))
+    return 0
+
+
+def cmd_trace_feedback(args: argparse.Namespace) -> int:
+    from ..observability.exporters import JSONLExporter
+    from ..observability.sessions import record_feedback
+
+    trace = _load_trace(args.trace_id, args.traces_dir)
+    record_feedback(
+        trace,
+        key=args.key,
+        score=args.score,
+        comment=args.comment or "",
+        user_id=args.user,
+        exporter=JSONLExporter(args.traces_dir),
+    )
+    print(f"recorded feedback on {trace.id} (key={args.key}, score={args.score})")
+    return 0
+
+
+def cmd_eval_dataset(args: argparse.Namespace) -> int:
+    from ..evals.datasets import dataset_from_traces
+    from ..observability.exporters import JSONLExporter
+
+    exporter = JSONLExporter(args.traces_dir)
+    traces = exporter.load_all()
+    dataset = dataset_from_traces(
+        traces,
+        name=args.name or Path(args.output).stem,
+        min_feedback_score=args.min_feedback,
+    )
+    dataset.save(args.output)
+    print(f"wrote {len(dataset)} case(s) from {len(traces)} trace(s) to {args.output}")
     return 0
 
 
@@ -523,6 +653,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval_report = eval_sub.add_parser("report", help="print a saved report")
     p_eval_report.add_argument("report", help="report JSON file or directory")
     p_eval_report.set_defaults(fn=cmd_eval_report)
+    p_eval_dataset = eval_sub.add_parser("dataset", help="build a dataset from captured traces")
+    p_eval_dataset.add_argument("output", help="output JSONL path")
+    p_eval_dataset.add_argument("--traces-dir", default=".vincio/traces")
+    p_eval_dataset.add_argument("--name", default=None, help="dataset name")
+    p_eval_dataset.add_argument(
+        "--min-feedback", type=float, default=None,
+        help="keep only traces with mean feedback score >= this",
+    )
+    p_eval_dataset.set_defaults(fn=cmd_eval_dataset)
 
     p_prompt = sub.add_parser("prompt", help="prompt tooling")
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", required=True)
@@ -534,11 +673,35 @@ def build_parser() -> argparse.ArgumentParser:
     p_compile.add_argument("--format", default="markdown", choices=["markdown", "xml", "json", "minimal"])
     p_compile.add_argument("--task", default=None, help="user task to render")
     p_compile.set_defaults(fn=cmd_prompt_compile)
+    p_push = prompt_sub.add_parser("push", help="version a prompt spec in the registry")
+    p_push.add_argument("path", help="prompt spec file (yaml/json)")
+    p_push.add_argument("--name", default=None, help="registry name (defaults to spec name)")
+    p_push.add_argument("--tag", action="append", help="tag to apply (repeatable)")
+    p_push.add_argument("--message", default=None, help="version message")
+    p_push.add_argument("--registry", default=".vincio/prompts")
+    p_push.set_defaults(fn=cmd_prompt_push)
+    p_versions = prompt_sub.add_parser("versions", help="list versions of a prompt")
+    p_versions.add_argument("name")
+    p_versions.add_argument("--registry", default=".vincio/prompts")
+    p_versions.set_defaults(fn=cmd_prompt_versions)
+    p_pdiff = prompt_sub.add_parser("diff", help="diff two prompt versions")
+    p_pdiff.add_argument("name")
+    p_pdiff.add_argument("version_a", type=int)
+    p_pdiff.add_argument("version_b", type=int)
+    p_pdiff.add_argument("--rendered", action="store_true", help="include rendered text diff")
+    p_pdiff.add_argument("--registry", default=".vincio/prompts")
+    p_pdiff.set_defaults(fn=cmd_prompt_diff)
+    p_rollback = prompt_sub.add_parser("rollback", help="re-publish an earlier version as head")
+    p_rollback.add_argument("name")
+    p_rollback.add_argument("--to", type=int, default=None, help="version to roll back to")
+    p_rollback.add_argument("--registry", default=".vincio/prompts")
+    p_rollback.set_defaults(fn=cmd_prompt_rollback)
 
     p_trace = sub.add_parser("trace", help="trace tooling")
     trace_sub = p_trace.add_subparsers(dest="trace_command", required=True)
     for name, fn, extra in (
         ("show", cmd_trace_show, ["trace_id"]),
+        ("view", cmd_trace_view, ["trace_id"]),
         ("replay", cmd_trace_replay, ["trace_id"]),
         ("diff", cmd_trace_diff, ["trace_a", "trace_b"]),
     ):
@@ -546,7 +709,26 @@ def build_parser() -> argparse.ArgumentParser:
         for argument in extra:
             p_trace_sub.add_argument(argument)
         p_trace_sub.add_argument("--traces-dir", default=".vincio/traces")
+        if name == "diff":
+            p_trace_sub.add_argument("--html", default=None, help="write a visual diff HTML here")
         p_trace_sub.set_defaults(fn=fn)
+    p_trace_export = trace_sub.add_parser("export", help="export a trace/session as static HTML")
+    p_trace_export.add_argument("trace_id", help="trace id (or session id with --session)")
+    p_trace_export.add_argument("--session", action="store_true", help="export a whole session")
+    p_trace_export.add_argument("--output", default=None, help="output HTML path")
+    p_trace_export.add_argument("--traces-dir", default=".vincio/traces")
+    p_trace_export.set_defaults(fn=cmd_trace_export)
+    p_trace_sessions = trace_sub.add_parser("sessions", help="list sessions with aggregates")
+    p_trace_sessions.add_argument("--traces-dir", default=".vincio/traces")
+    p_trace_sessions.set_defaults(fn=cmd_trace_sessions)
+    p_trace_feedback = trace_sub.add_parser("feedback", help="attach feedback to a trace")
+    p_trace_feedback.add_argument("trace_id")
+    p_trace_feedback.add_argument("--key", default="user_rating")
+    p_trace_feedback.add_argument("--score", type=float, default=None)
+    p_trace_feedback.add_argument("--comment", default=None)
+    p_trace_feedback.add_argument("--user", default=None)
+    p_trace_feedback.add_argument("--traces-dir", default=".vincio/traces")
+    p_trace_feedback.set_defaults(fn=cmd_trace_feedback)
 
     p_optimize = sub.add_parser("optimize", help="optimization commands")
     optimize_sub = p_optimize.add_subparsers(dest="optimize_command", required=True)

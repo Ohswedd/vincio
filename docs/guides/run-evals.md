@@ -56,3 +56,16 @@ analytics = DuckDBAnalytics()
 analytics.ingest_report(report)
 analytics.metric_trend("groundedness")
 ```
+
+## 6. Go further (0.5)
+
+- **Bootstrap a dataset from your corpus** — `SyntheticGenerator(seed=7).generate(documents, n=50)`
+  (difficulty mix, source coverage, provenance), or curate production traces:
+  `vincio eval dataset golden.jsonl --min-feedback 0.5`.
+- **Judge with G-Eval** — `GEvalJudge(provider, model=..., criteria="...", samples=3)`;
+  calibrate against human labels with `judge.calibrate(pairs)`.
+- **Compare variants with significance** — `ExperimentTracker` + `ab_test(report_a, report_b, metric)`
+  (paired/Welch t-test). See the [evaluation concepts](../concepts/evals.md).
+- **Red-team the app** — `RedTeamSuite().run(app)`; gate `attack_success_rate` at 0.0.
+- **Assert in pytest** — `assert_grounded(result)`, `assert_eval(result, metrics={...})`;
+  see the [testing guide](test-llm-apps.md).

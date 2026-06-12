@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from ..core.utils import new_id, utcnow
 
-__all__ = ["SpanType", "TraceEvent", "Span", "Trace"]
+__all__ = ["SpanType", "TraceEvent", "Feedback", "Span", "Trace"]
 
 SpanType = Literal[
     "run",
@@ -37,6 +37,21 @@ class TraceEvent(BaseModel):
     attributes: dict[str, Any] = Field(default_factory=dict)
 
 
+class Feedback(BaseModel):
+    """User or system feedback attached to a trace (LangSmith-style).
+
+    ``key`` names the feedback channel ("user_rating", "thumbs", "correction"),
+    ``score`` is a normalized value (e.g. 0..1 or -1/1 for thumbs).
+    """
+
+    key: str = "user_rating"
+    score: float | None = None
+    comment: str = ""
+    user_id: str | None = None
+    timestamp: datetime = Field(default_factory=utcnow)
+    attributes: dict[str, Any] = Field(default_factory=dict)
+
+
 class Span(BaseModel):
     id: str = Field(default_factory=lambda: new_id("span"))
     trace_id: str = ""
@@ -48,6 +63,7 @@ class Span(BaseModel):
     status: Literal["running", "ok", "error"] = "running"
     attributes: dict[str, Any] = Field(default_factory=dict)
     events: list[TraceEvent] = Field(default_factory=list)
+    scores: dict[str, float] = Field(default_factory=dict)
     error: str | None = None
 
     @property
@@ -58,6 +74,11 @@ class Span(BaseModel):
 
     def set(self, **attributes: Any) -> Span:
         self.attributes.update(attributes)
+        return self
+
+    def add_score(self, name: str, value: float) -> Span:
+        """Attach an eval/quality score to this span (e.g. a metric result)."""
+        self.scores[name] = float(value)
         return self
 
     def add_event(self, name: str, **attributes: Any) -> TraceEvent:
@@ -76,6 +97,8 @@ class Trace(BaseModel):
     id: str = Field(default_factory=lambda: new_id("trace"))
     app_name: str = ""
     run_id: str | None = None
+    session_id: str | None = None
+    thread_id: str | None = None
     user_id: str | None = None
     tenant_id: str | None = None
     parent_id: str | None = None
@@ -84,12 +107,35 @@ class Trace(BaseModel):
     status: Literal["running", "ok", "error"] = "running"
     spans: list[Span] = Field(default_factory=list)
     attributes: dict[str, Any] = Field(default_factory=dict)
+    scores: dict[str, float] = Field(default_factory=dict)
+    feedback: list[Feedback] = Field(default_factory=list)
 
     @property
     def duration_ms(self) -> int:
         if self.end_time is None:
             return 0
         return int((self.end_time - self.start_time).total_seconds() * 1000)
+
+    def add_score(self, name: str, value: float) -> Trace:
+        """Attach an eval/quality score to the whole trace."""
+        self.scores[name] = float(value)
+        return self
+
+    def add_feedback(
+        self,
+        *,
+        key: str = "user_rating",
+        score: float | None = None,
+        comment: str = "",
+        user_id: str | None = None,
+        **attributes: Any,
+    ) -> Feedback:
+        """Record user/system feedback on this trace."""
+        item = Feedback(
+            key=key, score=score, comment=comment, user_id=user_id, attributes=dict(attributes)
+        )
+        self.feedback.append(item)
+        return item
 
     def span_tree(self) -> list[dict[str, Any]]:
         """Spans nested by parent for display/debugging."""

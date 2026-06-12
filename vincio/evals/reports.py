@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import GateFailedError
 from ..core.utils import utcnow
+from .metrics import LOWER_IS_BETTER
 
 __all__ = ["CaseResult", "GateSpec", "EvalReport", "evaluate_gates"]
 
@@ -154,7 +155,17 @@ class EvalReport(BaseModel):
                 continue
             for metric, value in case.metrics.items():
                 base_value = base_case.metrics.get(metric)
-                if base_value is not None and value < base_value - 1e-9 and metric not in ("cost", "latency", "input_tokens", "output_tokens", "retries", "unsupported_claim_rate"):
+                if base_value is None:
+                    continue
+                # Operational metrics are tracked, not gated, in case diffs.
+                if metric in ("cost", "latency", "input_tokens", "output_tokens", "retries"):
+                    continue
+                worse = (
+                    value > base_value + 1e-9
+                    if metric in LOWER_IS_BETTER
+                    else value < base_value - 1e-9
+                )
+                if worse:
                     regressed_cases.append({"case_id": case.case_id, "metric": metric, "from": base_value, "to": value})
         return {"metrics": changes, "regressed_cases": regressed_cases}
 

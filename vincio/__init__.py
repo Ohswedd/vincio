@@ -30,7 +30,7 @@ from .output.schemas import OutputContract, OutputSchema
 from .prompts.templates import PromptSpec
 from .workflows.engine import Workflow
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "ContextApp",
