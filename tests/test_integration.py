@@ -120,6 +120,70 @@ class TestMemoryPipeline:
         assert results
         assert "bullet points" in results[0].item.content
 
+    def test_app_remember_recall_ergonomics(self, offline_config, tmp_cwd):
+        app = ContextApp(name="mem", provider=MockProvider(), model="mock-1", config=offline_config)
+        item = app.remember("User prefers replies in French", user_id="u7")
+        assert item.type.value == "preference"
+        items = app.recall("reply language", user_id="u7")
+        assert items and "French" in items[0].content
+
+    def test_evidence_write_back_as_candidates(
+        self, sample_docs_dir, citing_mock_provider, offline_config, tmp_cwd
+    ):
+        offline_config.memory.write_back = ["evidence"]
+        app = ContextApp(
+            name="mem_wb", provider=citing_mock_provider, model="mock-1", config=offline_config
+        )
+        app.add_source("docs", path=str(sample_docs_dir))
+        app.add_memory(scope="user", strategy="semantic")
+        result = app.run(
+            "What is the refund window for the Pro plan?", user_id="u7", session_id="s1"
+        )
+        assert result.citations
+        candidates = app.memory.store.all_items(statuses=("candidate",))
+        assert candidates
+        assert all(c.metadata["origin"] == "evidence" for c in candidates)
+        assert any(e.action == "memory_write" for e in app.audit.entries)
+
+    def test_memory_server_endpoints(self, offline_config, tmp_cwd):
+        pytest.importorskip("fastapi")
+        from fastapi.testclient import TestClient
+
+        from vincio.server import create_app
+
+        app = ContextApp(name="mem", provider=MockProvider(), model="mock-1", config=offline_config)
+        app.add_memory(scope="user", strategy="semantic")
+        app.memory.remember("We agreed to migrate billing to Postgres", session_id="s1")
+        app.memory.remember("The rollout deadline is March 15 next quarter", session_id="s1")
+        app.config.server.api_keys = ["k"]
+        api = create_app(app.config, apps={"mem": app})
+        client = TestClient(api)
+        headers = {"x-api-key": "k"}
+
+        response = client.post(
+            "/v1/memory/consolidate",
+            params={"app_id": "mem"},
+            json={"session_id": "s1", "user_id": "u7"},
+            headers=headers,
+        )
+        assert response.status_code == 200
+        assert response.json()["promoted"] >= 1
+
+        stats = client.get("/v1/memory/stats", params={"app_id": "mem"}, headers=headers)
+        assert stats.status_code == 200 and stats.json()["total"] >= 2
+
+        export = client.get(
+            "/v1/memory/export", params={"app_id": "mem", "owner_id": "u7"}, headers=headers
+        )
+        assert export.status_code == 200 and export.json()
+
+        memory_id = export.json()[0]["id"]
+        deleted = client.delete(
+            f"/v1/memory/{memory_id}", params={"app_id": "mem"}, headers=headers
+        )
+        assert deleted.status_code == 200
+        assert any(e.action == "memory_delete" for e in app.audit.entries)
+
 
 class TestAgentPipeline:
     def test_agent_with_tools_and_retrieval(self, sample_docs_dir, offline_config, tmp_cwd):

@@ -17,7 +17,9 @@ every subsystem implemented, tested offline, documented, and demonstrated by a r
 Future work deepens and broadens the library — it does not change that scope. 0.2.0 made the spine
 fast: streaming, concurrent, cached, and regression-gated. 0.3.0 made retrieval best-in-field:
 learned sparse and late interaction fused with BM25/dense/graph, query understanding, hierarchical
-and contextual indexing, GraphRAG, live indexes, and a connector hub.
+and contextual indexing, GraphRAG, live indexes, and a connector hub. 0.4.0 made memory personal
+and governed: scoped remember/recall, hybrid vector+graph recall, episodic→semantic consolidation
+with provenance, audited forgetting, and a CI-gated memory eval harness.
 
 ---
 
@@ -307,26 +309,44 @@ compiler — not the center of gravity.*
 - *Edge over specialists (delivered):* RAGatouille gives you ColBERT; Vincio gives you ColBERT fused
   with sparse, dense, and graph, then **budgeted and cited** inside a compiled packet.
 
-### 🚧 0.4 — Memory & personalization (vs Mem0)
+### ✅ 0.4 — Memory & personalization (vs Mem0) (shipped)
 
 *Personalization without the failure mode of stale, ungrounded memories.*
 
-- **Personalization APIs** — first-class user / agent / session memory scopes with simple
-  `remember` / `recall` ergonomics over the existing L0–L5 layers.
-- **Consolidation tiers** — automatic episodic→semantic summarization, dedup, and promotion with
-  full provenance retained.
-- **Hybrid memory store** — vector + graph recall in one query, with the memory graph as the
-  relationship backbone.
-- **Forgetting & hygiene** — tunable decay, TTL, importance-weighted retention, and explicit
-  user-driven edit/delete/export (GDPR-style) flowing through the audit log.
-- **Memory eval harness** — metrics for recall precision, contradiction rate, staleness, and
-  personalization lift, runnable in VincioBench.
-- *Interconnection:* confirmed evidence and tool results can be written back as candidate memories;
-  every memory is utility-scored against the task before it ever enters a packet.
-- *Edge over specialists:* Mem0 stores memories; Vincio stores memories **with confidence,
-  provenance, decay, and conflict resolution**, scored for relevance before inclusion.
+- ✅ **Personalization APIs** — first-class user / agent / session memory scopes (new
+  `MemoryScope.AGENT`) with `remember` / `recall` ergonomics over the existing L0–L5 layers, on
+  both the engine and `ContextApp`; `ScopedMemory` handles (`memory.for_user("u1")`, `for_agent`,
+  `for_session`, `for_tenant`) bind one owner, and scope/type are inferred when not stated.
+- ✅ **Consolidation tiers** — automatic episodic→semantic summarization, dedup, and promotion with
+  full provenance retained: `MemoryConsolidator` / `memory.consolidate(session_id)` promote session
+  episodes to user/agent-scope semantic memories carrying `consolidated_from`, archive the episodes
+  with `consolidated_into`, merge near-duplicates (`merged_from`), and
+  `promote_aged_episodes()` runs the background tier transition.
+- ✅ **Hybrid memory store** — vector + graph recall in one query: `asearch()` fuses lexical and
+  vector relevance over any `Embedder` (offline hash embedder by default, content-addressed vector
+  cache) with graph adjacency boosts for memories linked to the task's entities, with the memory
+  graph as the relationship backbone.
+- ✅ **Forgetting & hygiene** — tunable decay, per-scope TTLs applied on write (expired items never
+  surface), importance-weighted retention (heavily used, confirmed, stable preferences survive
+  longer), and explicit user-driven edit/delete/export/erase (GDPR-style) flowing through the
+  hash-chained audit log as `memory_edit` / `memory_delete` / `memory_export` / `memory_erase`.
+- ✅ **Memory eval harness** — `evaluate_memory` measures recall precision, recall@k, contradiction
+  rate, staleness, and personalization lift; the VincioBench `memory` family runs it offline and
+  eleven `budgets.json` gates hold the results in CI.
+- *Interconnection (held):* cited evidence and successful tool results write back as candidate
+  memories with provenance (`memory.write_back`), carrying a status penalty until confirmed; every
+  memory is utility-scored against the task (objective + extracted entities) before it ever enters
+  a packet.
+- *Edge over specialists (held):* Mem0 stores memories; Vincio stores memories **with confidence,
+  provenance, decay, and conflict resolution**, scored for relevance before inclusion — see
+  [docs/comparisons/mem0.md](docs/comparisons/mem0.md).
+- **301 tests passing offline in ~2s; ruff clean**; thirteen runnable examples; the VincioBench
+  `memory` family holds recall precision, contradiction rate, staleness, and personalization lift
+  under CI-gated budgets.
 
-### 🔭 0.5 — Evaluation, testing & observability (vs Ragas, DeepEval, LangSmith, Langfuse)
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.4.0 notes.
+
+### 🚧 0.5 — Evaluation, testing & observability (vs Ragas, DeepEval, LangSmith, Langfuse)
 
 *Make evaluation and observability so good you stop reaching for an external platform — and keep them
 provider-neutral and dependency-free.*

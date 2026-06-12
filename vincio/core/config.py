@@ -107,6 +107,13 @@ class MemoryConfig(BaseModel):
     min_confidence: float = 0.25
     max_items_per_run: int = 8
     write_policy: str = "guarded"  # guarded | open | off
+    hybrid_recall: bool = True  # fuse lexical + vector + graph signals per query
+    vector_weight: float = 0.5  # vector share of fused relevance
+    retention_weight: float = 0.5  # importance-weighted retention strength
+    # Default TTL per scope, in days; scopes not listed never expire.
+    ttl_days: dict[str, float] = Field(default_factory=lambda: {"session": 30.0})
+    # What step 16 writes back: input | evidence | tools
+    write_back: list[str] = Field(default_factory=lambda: ["input"])
 
 
 class CacheConfig(BaseModel):

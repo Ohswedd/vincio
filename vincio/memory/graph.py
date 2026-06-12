@@ -19,7 +19,7 @@ from ..core.utils import new_id
 __all__ = ["MemoryNode", "MemoryEdge", "MemoryGraph", "NodeKind", "EdgeKind"]
 
 NodeKind = Literal[
-    "user", "tenant", "project", "entity", "preference", "goal", "decision", "fact", "event"
+    "user", "agent", "tenant", "project", "entity", "preference", "goal", "decision", "fact", "event"
 ]
 EdgeKind = Literal[
     "prefers", "owns", "decided", "works_on", "related_to", "supersedes", "contradicts"
@@ -94,7 +94,12 @@ class MemoryGraph:
         node_kind = _TYPE_TO_NODE.get(item.type, "fact")
         content_node = self.upsert_node(node_kind, item.content[:160], memory_id=item.id, confidence=item.confidence)
         content_node.memory_id = item.id
-        owner_kind: NodeKind = "tenant" if item.scope.value in ("tenant", "organization") else "user"
+        if item.scope.value in ("tenant", "organization"):
+            owner_kind: NodeKind = "tenant"
+        elif item.scope.value == "agent":
+            owner_kind = "agent"
+        else:
+            owner_kind = "user"
         owner_label = item.owner_id or f"anonymous_{owner_kind}"
         owner = self.upsert_node(owner_kind, owner_label)
         self.add_edge(_TYPE_TO_EDGE.get(item.type, "related_to"), owner, content_node, weight=item.confidence)
@@ -131,7 +136,7 @@ class MemoryGraph:
         return memory_ids
 
     def memories_for_owner(self, owner_label: str, *, edge_kind: EdgeKind | None = None) -> list[str]:
-        for kind in ("user", "tenant"):
+        for kind in ("user", "agent", "tenant"):
             node_id = self._label_index.get((kind, owner_label.lower()))
             if node_id:
                 return [

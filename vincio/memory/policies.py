@@ -26,6 +26,7 @@ __all__ = [
     "classify_memory_type",
     "stability_score",
     "decayed_confidence",
+    "importance_score",
     "detect_contradiction",
     "MemoryWritePolicy",
 ]
@@ -124,6 +125,30 @@ def decayed_confidence(item: MemoryItem, *, decay_lambda: float = 0.01) -> float
     usage_boost = 1.0 + min(0.5, 0.05 * item.usage_count)
     confirmation_boost = 1.0 + min(0.5, 0.15 * item.confirmations)
     return min(1.0, item.confidence * math.exp(-decay_lambda * age_days) * usage_boost * confirmation_boost)
+
+
+_TYPE_IMPORTANCE: dict[MemoryType, float] = {
+    MemoryType.PREFERENCE: 0.9,
+    MemoryType.DECISION: 0.85,
+    MemoryType.GOAL: 0.8,
+    MemoryType.SUMMARY: 0.6,
+    MemoryType.ENTITY: 0.55,
+    MemoryType.RELATIONSHIP: 0.55,
+    MemoryType.FACT: 0.5,
+}
+
+
+def importance_score(item: MemoryItem) -> float:
+    """How costly it would be to forget this item.
+
+    Importance-weighted retention: heavily used, confirmed, stable
+    preferences/decisions survive longer than incidental facts."""
+    type_weight = _TYPE_IMPORTANCE.get(item.type, 0.5)
+    stability = float(item.metadata.get("stability", 0.7))
+    usage = min(1.0, 0.1 * item.usage_count)
+    confirmations = min(1.0, 0.25 * item.confirmations)
+    score = 0.4 * type_weight + 0.25 * stability + 0.2 * usage + 0.15 * confirmations
+    return max(0.0, min(1.0, score))
 
 
 _NEGATION_RE = re.compile(r"(?i)\b(?:not|no longer|never|stopped|isn't|aren't|doesn't|don't|won't)\b")

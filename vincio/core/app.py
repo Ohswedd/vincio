@@ -69,6 +69,7 @@ from .types import (
     Example,
     FileRef,
     Instruction,
+    MemoryItem,
     Objective,
     PolicySet,
     RunConfig,
@@ -503,6 +504,7 @@ class ContextApp:
         scope: str = "user",
         strategy: str = "semantic",
         store: Any | None = None,
+        embedder: Any | None = None,
     ) -> ContextApp:
         if store is None:
             metadata_url = self.config.storage.metadata
@@ -515,15 +517,34 @@ class ContextApp:
                 from ..memory.stores import InMemoryMemoryStore
 
                 store = InMemoryMemoryStore()
+        if embedder is None and self.config.memory.hybrid_recall:
+            embedder = self.embedder
         self.memory = MemoryEngine(
             store,
             write_policy=MemoryWritePolicy(min_confidence=self.config.memory.min_confidence),
             decay_lambda=self.config.memory.decay_lambda,
             min_confidence=self.config.memory.min_confidence,
             graph_enabled=strategy in ("semantic_graph", "graph"),
+            embedder=embedder,
+            vector_weight=self.config.memory.vector_weight,
+            retention_weight=self.config.memory.retention_weight,
+            ttl_days=self.config.memory.ttl_days,
+            audit=self.audit,
         )
         self.memory_enabled = self.config.memory.enabled
         return self
+
+    def remember(self, content: str, **kwargs: Any) -> MemoryItem:
+        """Ergonomic memory write; creates the memory engine on first use."""
+        if self.memory is None:
+            self.add_memory()
+        return self.memory.remember(content, **kwargs)  # type: ignore[union-attr]
+
+    def recall(self, query: str, **kwargs: Any) -> list[MemoryItem]:
+        """Ergonomic memory recall over user/agent/session scopes."""
+        if self.memory is None:
+            self.add_memory()
+        return self.memory.recall(query, **kwargs)  # type: ignore[union-attr]
 
     # -- tools ------------------------------------------------------------------------------------
 

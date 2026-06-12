@@ -44,6 +44,7 @@ from ..evals.datasets import EvalCase
 from ..evals.metrics import METRICS, RunOutput
 from ..output.parsers import parse_partial_json
 from ..output.validators import OutputValidator
+from ..retrieval.chunking import extract_entities
 from .concurrency import gather_bounded
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -243,12 +244,17 @@ class VincioRuntime:
             if not (app.memory_enabled and app.memory is not None):
                 return []
             with app.tracer.span("memory", type="memory") as span:
-                memory_results = await asyncio.to_thread(
-                    app.memory.search,
+                # Hybrid recall, utility-scored against the task (objective +
+                # entities) before anything enters the packet.
+                task_entities = extract_entities(
+                    f"{routed.objective.text} {routed.input.text or ''}"
+                )
+                memory_results = await app.memory.asearch(
                     routed.input.text or routed.objective.text,
                     user_id=routed.input.user_id,
                     tenant_id=routed.input.tenant_id,
                     session_id=routed.input.session_id,
+                    task_entities=task_entities or None,
                     top_k=app.config.memory.max_items_per_run,
                 )
                 items = [r.item for r in memory_results]
@@ -677,17 +683,48 @@ class VincioRuntime:
             and result.status != RunStatus.FAILED
         ):
             with app.tracer.span("memory_write", type="memory_write") as span:
-                written = await app.memory.ingest(
-                    routed.input.text or "",
-                    owner_id=routed.input.user_id,
-                    source_trace_id=result.trace_id,
-                )
+                write_back = app.config.memory.write_back
+                written: list[Any] = []
+                if "input" in write_back:
+                    written += await app.memory.ingest(
+                        routed.input.text or "",
+                        owner_id=routed.input.user_id,
+                        source_trace_id=result.trace_id,
+                    )
+                # Confirmed evidence (cited in the output) and successful
+                # tool results flow back as candidate memories with
+                # provenance; recall utility-scores them before reuse.
+                if "evidence" in write_back and result.citations:
+                    cited_refs = set(result.citations)
+                    cited = [
+                        item
+                        for item in result.evidence
+                        if item.id in cited_refs or item.citation_ref in cited_refs
+                    ]
+                    written += app.memory.write_back(
+                        evidence=cited[:5],
+                        owner_id=routed.input.user_id,
+                        session_id=routed.input.session_id,
+                        source_trace_id=result.trace_id,
+                    )
+                if "tools" in write_back and result.tool_results:
+                    written += app.memory.write_back(
+                        tool_results=[t for t in result.tool_results if t.status == "ok"][:5],
+                        owner_id=routed.input.user_id,
+                        session_id=routed.input.session_id,
+                        source_trace_id=result.trace_id,
+                    )
                 span.set(written=len(written))
                 if written:
                     app.audit.record(
                         "memory_write", run_id=run_id, user_id=user_input.user_id,
                         tenant_id=user_input.tenant_id,
-                        details={"count": len(written)},
+                        details={
+                            "count": len(written),
+                            "origins": sorted(
+                                {str(w.metadata.get("origin", "input")) for w in written}
+                            ),
+                        },
                     )
 
         app.audit.record(

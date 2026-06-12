@@ -1,6 +1,14 @@
 """Vincio memory engine."""
 
-from .engine import MemoryEngine, MemorySearchResult
+from .consolidation import ConsolidationReport, MemoryConsolidator
+from .engine import MemoryEngine, MemorySearchResult, ScopedMemory
+from .evals import (
+    MemoryEvalCase,
+    MemoryEvalReport,
+    contradiction_rate,
+    evaluate_memory,
+    personalization_dataset,
+)
 from .graph import MemoryEdge, MemoryGraph, MemoryNode
 from .policies import (
     MemoryCandidate,
@@ -9,6 +17,7 @@ from .policies import (
     decayed_confidence,
     detect_contradiction,
     extract_memory_candidates,
+    importance_score,
     stability_score,
 )
 from .stores import InMemoryMemoryStore, MemoryStore, SQLiteMemoryStore
@@ -17,6 +26,14 @@ from .summarizers import SessionSummarizer, extractive_summary
 __all__ = [
     "MemoryEngine",
     "MemorySearchResult",
+    "ScopedMemory",
+    "ConsolidationReport",
+    "MemoryConsolidator",
+    "MemoryEvalCase",
+    "MemoryEvalReport",
+    "contradiction_rate",
+    "evaluate_memory",
+    "personalization_dataset",
     "MemoryEdge",
     "MemoryGraph",
     "MemoryNode",
@@ -26,6 +43,7 @@ __all__ = [
     "decayed_confidence",
     "detect_contradiction",
     "extract_memory_candidates",
+    "importance_score",
     "stability_score",
     "InMemoryMemoryStore",
     "MemoryStore",

@@ -14,6 +14,12 @@ Commands::
     vincio optimize run --app app.py --dataset golden.jsonl --target groundedness
     vincio index build ./docs
     vincio memory inspect --user u1
+    vincio memory remember "Prefers concise answers" --user u1
+    vincio memory recall "answer style" --user u1
+    vincio memory forget <memory_id>
+    vincio memory export --owner u1
+    vincio memory consolidate <session_id> --user u1
+    vincio memory decay
 """
 
 from __future__ import annotations
@@ -377,6 +383,92 @@ def cmd_index_build(args: argparse.Namespace) -> int:
     return 0
 
 
+def _memory_engine(db: str):
+    from ..memory.engine import MemoryEngine
+    from ..memory.stores import SQLiteMemoryStore
+    from ..retrieval.embeddings import LocalHashEmbedder
+    from ..security.audit import AuditLog
+
+    return MemoryEngine(
+        SQLiteMemoryStore(db),
+        embedder=LocalHashEmbedder(),
+        audit=AuditLog(Path(db).parent / "audit"),
+    )
+
+
+def cmd_memory_remember(args: argparse.Namespace) -> int:
+    engine = _memory_engine(args.db)
+    item = engine.remember(
+        args.content,
+        user_id=args.user,
+        agent_id=args.agent,
+        session_id=args.session,
+        tenant_id=args.tenant,
+        scope=args.scope,
+        type=args.type,
+    )
+    print(f"{item.id}  [{item.scope.value}/{item.type.value}]  conf={item.confidence:.2f}")
+    return 0
+
+
+def cmd_memory_recall(args: argparse.Namespace) -> int:
+    engine = _memory_engine(args.db)
+    results = engine.search(
+        args.query,
+        user_id=args.user,
+        agent_id=args.agent,
+        session_id=args.session,
+        tenant_id=args.tenant,
+        top_k=args.top_k,
+    )
+    if not results:
+        print("no memories recalled")
+        return 0
+    for result in results:
+        print(f"{result.score:8.4f}  {result.item.id}  [{result.item.scope.value}/{result.item.type.value}]")
+        print(f"          {result.item.content[:140]}")
+    return 0
+
+
+def cmd_memory_forget(args: argparse.Namespace) -> int:
+    engine = _memory_engine(args.db)
+    if engine.forget(args.memory_id, reason=args.reason):
+        print(f"forgot {args.memory_id}")
+        return 0
+    return _fail(f"memory not found: {args.memory_id}")
+
+
+def cmd_memory_export(args: argparse.Namespace) -> int:
+    engine = _memory_engine(args.db)
+    records = engine.export_owner_data(args.owner)
+    output = json_dumps(records)
+    if args.output:
+        Path(args.output).write_text(output, encoding="utf-8")
+        print(f"exported {len(records)} memorie(s) to {args.output}")
+    else:
+        print(output)
+    return 0
+
+
+def cmd_memory_consolidate(args: argparse.Namespace) -> int:
+    import asyncio
+
+    engine = _memory_engine(args.db)
+    report = asyncio.run(engine.consolidate(args.session_id, user_id=args.user))
+    print(
+        f"examined={report.examined} promoted={report.promoted} "
+        f"deduplicated={report.deduplicated} archived={report.archived}"
+    )
+    return 0
+
+
+def cmd_memory_decay(args: argparse.Namespace) -> int:
+    engine = _memory_engine(args.db)
+    stats = engine.decay_pass()
+    print(f"decayed={stats['decayed']} archived={stats['archived']} expired={stats['expired']}")
+    return 0
+
+
 def cmd_memory_inspect(args: argparse.Namespace) -> int:
     from ..memory.stores import SQLiteMemoryStore
 
@@ -484,6 +576,50 @@ def build_parser() -> argparse.ArgumentParser:
     p_mem_inspect.add_argument("--db", default=".vincio/memory.db")
     p_mem_inspect.add_argument("--limit", type=int, default=50)
     p_mem_inspect.set_defaults(fn=cmd_memory_inspect)
+
+    def _owner_flags(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument("--db", default=".vincio/memory.db")
+        parser.add_argument("--user", default=None)
+        parser.add_argument("--agent", default=None)
+        parser.add_argument("--session", default=None)
+        parser.add_argument("--tenant", default=None)
+
+    p_mem_remember = memory_sub.add_parser("remember", help="write one memory")
+    p_mem_remember.add_argument("content")
+    _owner_flags(p_mem_remember)
+    p_mem_remember.add_argument("--scope", default=None)
+    p_mem_remember.add_argument("--type", default=None)
+    p_mem_remember.set_defaults(fn=cmd_memory_remember)
+
+    p_mem_recall = memory_sub.add_parser("recall", help="scored hybrid recall")
+    p_mem_recall.add_argument("query")
+    _owner_flags(p_mem_recall)
+    p_mem_recall.add_argument("--top-k", type=int, default=5, dest="top_k")
+    p_mem_recall.set_defaults(fn=cmd_memory_recall)
+
+    p_mem_forget = memory_sub.add_parser("forget", help="delete one memory (audited)")
+    p_mem_forget.add_argument("memory_id")
+    p_mem_forget.add_argument("--db", default=".vincio/memory.db")
+    p_mem_forget.add_argument("--reason", default="user_request")
+    p_mem_forget.set_defaults(fn=cmd_memory_forget)
+
+    p_mem_export = memory_sub.add_parser("export", help="GDPR-style owner export (audited)")
+    p_mem_export.add_argument("--owner", required=True)
+    p_mem_export.add_argument("--db", default=".vincio/memory.db")
+    p_mem_export.add_argument("--output", default=None)
+    p_mem_export.set_defaults(fn=cmd_memory_export)
+
+    p_mem_consolidate = memory_sub.add_parser(
+        "consolidate", help="episodic→semantic consolidation for a session"
+    )
+    p_mem_consolidate.add_argument("session_id")
+    p_mem_consolidate.add_argument("--db", default=".vincio/memory.db")
+    p_mem_consolidate.add_argument("--user", default=None)
+    p_mem_consolidate.set_defaults(fn=cmd_memory_consolidate)
+
+    p_mem_decay = memory_sub.add_parser("decay", help="run a decay/TTL pass")
+    p_mem_decay.add_argument("--db", default=".vincio/memory.db")
+    p_mem_decay.set_defaults(fn=cmd_memory_decay)
 
     return parser
 
