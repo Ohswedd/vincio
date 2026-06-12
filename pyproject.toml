@@ -61,8 +61,11 @@ all = [
 vincio = "vincio.cli.main:main"
 
 [project.urls]
-Homepage = "https://github.com/vincio-ai/vincio"
-Documentation = "https://github.com/vincio-ai/vincio/tree/main/docs"
+Homepage = "https://github.com/Ohswedd/vincio"
+Documentation = "https://github.com/Ohswedd/vincio/tree/main/docs"
+Repository = "https://github.com/Ohswedd/vincio"
+Issues = "https://github.com/Ohswedd/vincio/issues"
+Changelog = "https://github.com/Ohswedd/vincio/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["vincio"]
