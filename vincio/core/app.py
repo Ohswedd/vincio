@@ -59,6 +59,8 @@ from ..security.access import AccessController, Principal
 from ..security.audit import AuditLog
 from ..security.policy import PolicyEngine
 from ..security.rails import Rail, RailEngine
+from ..skills.library import SkillLibrary
+from ..stability import experimental
 from ..storage.base import create_metadata_store
 from ..tools.permissions import ToolPermissionChecker
 from ..tools.registry import ToolRegistry
@@ -239,6 +241,10 @@ class ContextApp:
             cache_enabled=self.config.cache.tool_cache,
         )
         self.enabled_tools: list[str] = []
+
+        # protocols & interoperability (1.1): MCP servers, Agent Skills.
+        self.skill_library: SkillLibrary | None = None
+        self.mcp_clients: dict[str, Any] = {}
 
         # validation / repair / evaluators
         self.semantic_validators: dict[str, SemanticValidator] = {}
@@ -623,6 +629,175 @@ class ContextApp:
         if name not in self.enabled_tools:
             self.enabled_tools.append(name)
         return self
+
+    # -- skills (1.1) ---------------------------------------------------------------------------------
+
+    @experimental(since="1.1")
+    def add_skill(
+        self, skill: str | Any, *, register_scripts: bool = False
+    ) -> ContextApp:
+        """Load an Agent Skill (``SKILL.md`` path or a :class:`Skill`) and inject
+        it through the compiler with progressive disclosure: a one-line summary
+        is always available; the full body is included only when a run's task is
+        relevant. Set ``register_scripts=True`` to expose bundled scripts as
+        sandboxed, permissioned tools."""
+        from ..skills import Skill, load_skill, register_skill_scripts
+
+        loaded = skill if isinstance(skill, Skill) else load_skill(skill)
+        if self.skill_library is None:
+            self.skill_library = SkillLibrary()
+        self.skill_library.add(loaded)
+        if register_scripts and loaded.scripts:
+            for name in register_skill_scripts(self.tool_registry, loaded):
+                if name not in self.enabled_tools:
+                    self.enabled_tools.append(name)
+        return self
+
+    # -- MCP (1.1) ------------------------------------------------------------------------------------
+
+    @experimental(since="1.1")
+    def add_mcp_server(
+        self,
+        name: str,
+        *,
+        command: list[str] | None = None,
+        url: str | None = None,
+        server: Any | None = None,
+        transport: Any | None = None,
+        headers: dict[str, str] | None = None,
+        http_client: Any | None = None,
+        auth: str | None = None,
+        tools: bool = True,
+        resources: bool = True,
+        prompts: bool = False,
+        permissions: list[str] | None = None,
+        sampling: bool = True,
+        elicitation: Any | None = None,
+    ) -> ContextApp:
+        """Connect to an MCP server and register its tools/resources/prompts.
+
+        Provide exactly one of ``command`` (stdio), ``url`` (Streamable HTTP),
+        ``server`` (an in-process :class:`MCPServer`), or ``transport``. MCP
+        tools register through the existing permissioned, sandboxed, audited
+        runtime (namespaced ``<name>.<tool>``); resources become evidence with
+        ``origin: mcp:<name>``. Server-initiated sampling routes to this app's
+        provider; elicitation routes to ``elicitation``. Connect happens now
+        (synchronously); the live client is kept on ``app.mcp_clients[name]``.
+        """
+        from ..mcp import (
+            InProcessTransport,
+            MCPClient,
+            StdioTransport,
+            StreamableHTTPTransport,
+        )
+        from ..providers.base import run_sync
+
+        if transport is None:
+            provided = [x for x in (command, url, server) if x is not None]
+            if len(provided) != 1:
+                raise ConfigError(
+                    "add_mcp_server requires exactly one of command=, url=, server=, or transport="
+                )
+            if command is not None:
+                transport = StdioTransport(command)
+            elif url is not None:
+                transport = StreamableHTTPTransport(url, headers=headers, client=http_client)
+            else:
+                transport = InProcessTransport(server, auth=auth)
+        client = MCPClient(
+            transport,
+            name=name,
+            sampling_provider=self.resolve_provider() if sampling else None,
+            sampling_model=self.model,
+            elicitation_callback=elicitation,
+        )
+        run_sync(
+            client.register_into(
+                self,
+                tools=tools,
+                resources=resources,
+                prompts=prompts,
+                permissions=permissions,
+            )
+        )
+        self.mcp_clients[name] = client
+        return self
+
+    @experimental(since="1.1")
+    def serve_mcp(
+        self,
+        *,
+        name: str | None = None,
+        expose_resources: bool = True,
+        expose_prompts: bool = True,
+        token_validator: Any | None = None,
+    ) -> Any:
+        """Expose this app as an MCP server (returns an :class:`MCPServer`).
+
+        Registered tools become MCP tools (run through the permissioned,
+        sandboxed, audited runtime); evidence/sources become resources; the
+        prompt spec becomes a prompt. Run it over stdio with
+        ``vincio.mcp.serve_stdio(server)`` or the ``vincio mcp serve`` CLI.
+        """
+        from ..mcp import build_app_server
+
+        return build_app_server(
+            self,
+            name=name,
+            expose_resources=expose_resources,
+            expose_prompts=expose_prompts,
+            token_validator=token_validator,
+        )
+
+    # -- A2A (1.1) ------------------------------------------------------------------------------------
+
+    @experimental(since="1.1")
+    def serve_a2a(
+        self,
+        target: Any | None = None,
+        *,
+        name: str | None = None,
+        url: str = "",
+        description: str = "",
+        token_validator: Any | None = None,
+    ) -> Any:
+        """Expose a crew, a compiled graph, or this app over A2A.
+
+        Pass a :class:`Crew`, a compiled :class:`StateGraph`, or ``None`` (the
+        app itself). Returns an :class:`A2AServer` whose Agent Card is served at
+        ``/.well-known/agent.json``; delegation stays bounded and traced. Run it
+        over HTTP behind the FastAPI server or consume it in-process.
+        """
+        from ..a2a import app_a2a_server, crew_a2a_server, graph_a2a_server
+        from ..agents.crew import Crew
+        from ..agents.graph import CompiledGraph
+
+        if target is None:
+            return app_a2a_server(
+                self, name=name, url=url, description=description, token_validator=token_validator
+            )
+        if isinstance(target, Crew):
+            return crew_a2a_server(
+                target,
+                name=name,
+                url=url,
+                description=description,
+                token_validator=token_validator,
+                audit=self.audit,
+            )
+        if isinstance(target, CompiledGraph):
+            return graph_a2a_server(
+                target,
+                name=name or "graph",
+                url=url,
+                description=description,
+                tracer=self.tracer,
+                token_validator=token_validator,
+                audit=self.audit,
+            )
+        raise ConfigError(
+            "serve_a2a target must be a Crew, a compiled StateGraph, or None (the app)"
+        )
 
     # -- evaluators / optimizers ----------------------------------------------------------------------
 

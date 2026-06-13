@@ -26,9 +26,15 @@ guide](../guides/reliability-guardrails.md) and
 | End-user input | semi-trusted | classified, injection-checked, may be denied instruction authority |
 | Retrieved documents / tool output | **untrusted** | injection-scanned, wrapped in `<untrusted_content>`, never granted instruction authority |
 | Tool side effects | governed | permissioned, approval-gated, sandboxed, audited |
+| MCP server output (tools, resources, prompts) | **untrusted** | MCP tools run through the same permissioned/sandboxed/audited runtime as native tools; MCP resources enter as `untrusted_external` evidence (injection-scanned, never granted instruction authority); the MCP server you serve validates bearer tokens (OAuth 2.1 resource server) and enforces the policy engine + audit log on every inbound call |
+| A2A peer agent (remote delegate / inbound task) | **untrusted** | inbound tasks are token-validated and audited (`a2a_serve`); a remote delegate's output is treated as data; delegation stays budget-bounded and terminating, and is traced end to end |
+| Agent Skill (`SKILL.md`) | developer-authored | injected as `developer`-trust context with progressive disclosure; bundled scripts run only in the resource-limited subprocess sandbox through the permissioned, audited runtime |
 
 The core rule: **only system/developer content may instruct the model.**
-Retrieved and tool-produced text is data, not instructions.
+Retrieved, tool-produced, MCP-served, and A2A-delegated text is data, not
+instructions. Skills you load are developer-authored procedural knowledge, so
+they may instruct — but their bundled *scripts* are still sandboxed and audited
+like any other tool.
 
 ## Threats and controls (STRIDE)
 

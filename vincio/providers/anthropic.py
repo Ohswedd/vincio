@@ -22,7 +22,7 @@ from ..core.types import (
     ToolSpec,
 )
 from ..observability.costs import PriceTable, default_price_table
-from .base import HTTPProvider, parse_sse_lines
+from .base import HTTPProvider, parse_sse_lines, reasoning_budget_from_effort
 
 __all__ = ["AnthropicProvider"]
 
@@ -150,10 +150,23 @@ class AnthropicProvider(HTTPProvider):
                 payload["tool_choice"] = {"type": "tool", "name": STRUCTURED_TOOL_NAME}
         if tools:
             payload["tools"] = tools
-        if request.temperature is not None:
-            payload["temperature"] = request.temperature
-        if request.top_p is not None:
-            payload["top_p"] = request.top_p
+        thinking = (
+            request.reasoning_effort is not None or request.thinking_budget_tokens is not None
+        ) and self.capabilities(request.model).reasoning
+        if thinking:
+            # Extended thinking: budget must be < max_tokens, and the API only
+            # accepts the default sampling settings, so temperature/top_p are
+            # dropped while thinking is on.
+            budget = reasoning_budget_from_effort(
+                request.reasoning_effort, request.thinking_budget_tokens
+            )
+            payload["thinking"] = {"type": "enabled", "budget_tokens": budget}
+            payload["max_tokens"] = max(payload["max_tokens"], budget + 1024)
+        else:
+            if request.temperature is not None:
+                payload["temperature"] = request.temperature
+            if request.top_p is not None:
+                payload["top_p"] = request.top_p
         if request.stop:
             payload["stop_sequences"] = request.stop
         if stream:
@@ -319,6 +332,7 @@ class AnthropicProvider(HTTPProvider):
             vision=True,
             audio=False,
             prompt_caching=True,
+            reasoning="opus" in model or "sonnet" in model or "fable" in model,
             max_context_tokens=200_000,
             max_output_tokens=64_000 if "haiku" not in model else 32_000,
             supports_system_message=True,

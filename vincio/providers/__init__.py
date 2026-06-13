@@ -24,6 +24,7 @@ from .openai_compat import (
     _preset_factory,
     openai_compatible,
 )
+from .openai_responses import OpenAIResponsesProvider
 from .transport import CoalescingProvider, build_pooled_client
 
 __all__ = [
@@ -35,6 +36,7 @@ __all__ = [
     "build_pooled_client",
     "ProviderRegistry",
     "OpenAIProvider",
+    "OpenAIResponsesProvider",
     "OpenAICompatibleProvider",
     "OpenAICompatPreset",
     "openai_compatible",
@@ -51,6 +53,7 @@ __all__ = [
 
 _registry = ProviderRegistry()
 _registry.register("openai", OpenAIProvider)
+_registry.register("openai_responses", OpenAIResponsesProvider)
 _registry.register("anthropic", AnthropicProvider)
 _registry.register("google", GoogleProvider)
 _registry.register("gemini", GoogleProvider)

@@ -20,8 +20,10 @@ from vincio.stability import (
 )
 
 
-def test_version_is_one_zero():
-    assert vincio.__version__ == "1.0.0"
+def test_version_and_api_contract():
+    assert vincio.__version__ == "1.1.0"
+    # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
+    # release, so it stays "1.0" across the additive 1.x line.
     assert API_VERSION == "1.0"
 
 

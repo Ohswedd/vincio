@@ -34,6 +34,10 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | `improvement_loop(metrics=, weights=, gates=, experiment=, ...)` | `ImprovementLoop`: trace → dataset → eval → optimize → promote on this app |
 | `use_learned_budgets(source)` | install eval-tuned per-task budget allocations (`LearnedAllocations`, path, or mapping) |
 | `use_pack(pack, set_schema=, merge_rules=)` | apply a domain pack (`"support"`/`"engineering"`/`"finance"`/`"legal"` or a `Pack`): prompt config + schema + policies + evaluators + rails |
+| `add_skill(path_or_skill, register_scripts=)` *(experimental, 1.1)* | load an Agent Skill (`SKILL.md`) with progressive disclosure; optionally expose bundled scripts as sandboxed tools |
+| `add_mcp_server(name, command=/url=/server=/transport=, tools=, resources=, prompts=, permissions=, sampling=, elicitation=, auth=, headers=, http_client=)` *(experimental, 1.1)* | connect an MCP server; its tools register through the permissioned runtime, resources become evidence |
+| `serve_mcp(name=, expose_resources=, expose_prompts=, token_validator=)` *(experimental, 1.1)* | expose this app as an MCP server (`MCPServer`) |
+| `serve_a2a(target=, name=, url=, description=, token_validator=)` *(experimental, 1.1)* | expose a crew / compiled graph / the app over A2A (`A2AServer`, Agent Card + task lifecycle) |
 | `task` (decorator) | configure from a task class |
 | `stats()` | sources, tools, memory, cost, run counts |
 
@@ -73,8 +77,11 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.testing` | `assert_eval`, `assert_grounded`, `assert_metric`, `assert_safe`, `Snapshot` (+ pytest plugin: `vincio_snapshot` fixture, `--vincio-update-snapshots`) |
 | `vincio.security` | `PIIDetector`, `SecretScanner`, `InjectionDetector`, `AccessController`, `PolicyEngine`, `Rail`, `RailEngine`, `AuditLog` |
 | `vincio.caching` | `InMemoryCache`, `SQLiteCache`, `ResponseCache`, `SemanticCache`, `PromptCompileCache`, `ContextCompileCache`, `ChunkCache`, `InvalidationManager` |
-| `vincio.providers` | `build_provider`, `openai_compatible`, `OpenAICompatibleProvider`, `PRESETS`, `MockProvider`, `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `MistralProvider`, `LocalProvider`, `FailoverChain`, `CoalescingProvider` |
+| `vincio.providers` | `build_provider`, `openai_compatible`, `OpenAICompatibleProvider`, `OpenAIResponsesProvider`, `PRESETS`, `MockProvider`, `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `MistralProvider`, `LocalProvider`, `FailoverChain`, `CoalescingProvider`. Unified reasoning control (1.1): `RunConfig(reasoning_effort="low"\|"medium"\|"high")` / `thinking_budget_tokens` map to OpenAI reasoning effort, Anthropic extended thinking, and Gemini thinking budgets; thinking tokens are recorded on the model span and billed. |
 | `vincio.interop` | `add_langchain_tool`, `from_langchain_tool`, `from_langchain_loader`, `from_langchain_retriever`, `from_langchain_embeddings`, `to_langchain_*`; `add_llamaindex_tool`, `from_llamaindex_reader`, `from_llamaindex_retriever`, `from_llamaindex_embedding`, `to_llamaindex_*` |
+| `vincio.mcp` *(experimental, 1.1)* | `MCPClient`, `MCPServer`, `build_app_server`, `serve_stdio`, `connect_stdio`, `connect_http`, `connect_in_process`, `InProcessTransport`, `StdioTransport`, `StreamableHTTPTransport`, `static_token_validator`, `pkce_pair` — MCP client *and* server over stdio / Streamable HTTP / in-process |
+| `vincio.a2a` *(experimental, 1.1)* | `A2AServer`, `A2AClient`, `RemoteA2AAgent`, `AgentCard`, `AgentSkill`, `A2ATask`, `crew_a2a_server`, `graph_a2a_server`, `app_a2a_server`, `connect_a2a`, `connect_a2a_in_process`, `static_token_validator` — Agent Card + JSON-RPC task lifecycle |
+| `vincio.skills` *(experimental, 1.1)* | `Skill`, `SkillScript`, `SkillLibrary`, `load_skill`, `load_skills`, `parse_skill_md`, `register_skill_scripts` — `SKILL.md` loading with progressive disclosure |
 | `vincio.packs` | `Pack`, `load_pack`, `available_packs`, `register_pack` (`app.use_pack(...)`) |
 | `vincio.notebook` | `enable_rich_reprs`, `disable_rich_reprs`, `display`, `run_result_html`/`_markdown`, `trace_html`, `eval_report_html`, `memory_item_html`, `search_hit_html` |
 | `vincio.tui` | `TUI`, `render_home`, `render_trace`, `render_memory` (`vincio tui`) |

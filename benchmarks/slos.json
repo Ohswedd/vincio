@@ -131,6 +131,36 @@
       "threshold": 0.8,
       "enforced_by": "families.security.pii_coverage",
       "rationale": "Redaction policies depend on detection coverage."
+    },
+    {
+      "id": "mcp_schema_fidelity",
+      "category": "reliability",
+      "statement": "A consumed MCP tool's input schema is preserved exactly (fidelity 1.0).",
+      "metric": "families.protocols.mcp.schema_fidelity",
+      "direction": "gte",
+      "threshold": 1.0,
+      "enforced_by": "families.protocols.mcp.schema_fidelity",
+      "rationale": "Validation and constrained decoding depend on the discovered schema matching the server's."
+    },
+    {
+      "id": "a2a_delegation_terminates",
+      "category": "reliability",
+      "statement": "A budget-bounded crew delegated over A2A always terminates.",
+      "metric": "families.protocols.a2a.terminates",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.protocols.a2a.terminates",
+      "rationale": "Termination guarantees must hold across the protocol boundary, not just in-process."
+    },
+    {
+      "id": "skill_disclosure_savings",
+      "category": "cost",
+      "statement": "Progressive disclosure keeps off-topic skill bodies out of the budget (>= 0.5 token savings).",
+      "metric": "families.protocols.skills.disclosure_savings",
+      "direction": "gte",
+      "threshold": 0.5,
+      "enforced_by": "families.protocols.skills.disclosure_savings",
+      "rationale": "Skills must cost context only when used; otherwise loading many skills defeats budgeting."
     }
   ]
 }

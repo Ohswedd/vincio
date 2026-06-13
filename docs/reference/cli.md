@@ -115,4 +115,17 @@ vincio audit verify [PATH] [--json]
     Verify the SHA-256 hash chain of a persisted audit JSONL log offline
     (default .vincio/audit/audit.jsonl). Detects post-restart tampering and
     pinpoints the first broken line; exits non-zero if the chain is broken.
+
+vincio mcp tools (--command "CMD" | --url URL) [--resources] [--json]
+    Connect to an MCP server (stdio via --command, or Streamable HTTP via
+    --url) and list its tools (and, with --resources, its resources).
+
+vincio mcp add APP --name NAME (--command "CMD" | --url URL) [--resources]
+    Connect an MCP server to the ContextApp in APP and register its tools
+    (namespaced NAME.<tool>); prints the registered tools.
+
+vincio mcp serve APP [--name NAME]
+    Expose the ContextApp in APP as an MCP server over stdio (reads JSON-RPC
+    on stdin). Tools/resources/prompts are served through the permissioned,
+    audited runtime.
 ```

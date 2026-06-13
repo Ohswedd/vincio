@@ -24,7 +24,7 @@ EXAMPLE_FILES = sorted(p for p in EXAMPLES_DIR.glob("[0-9]*.py"))
 
 def test_examples_present():
     # Guards against an example being dropped without notice.
-    assert len(EXAMPLE_FILES) >= 21
+    assert len(EXAMPLE_FILES) >= 25
 
 
 @pytest.mark.parametrize("path", EXAMPLE_FILES, ids=lambda p: p.stem)

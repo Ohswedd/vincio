@@ -17,6 +17,9 @@ vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, 
 vincio/retrieval    chunkers, embeddings (local + hosted jina/voyage/cohere + build_embedder), BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers (heuristic/recency/authority/llm + hosted cohere/jina/voyage), graph+GraphRAG, live indexes, reasoning
 vincio/connectors   data connectors (web/github/sql/s3/gcs/notion/confluence/slack) feeding the document engine
 vincio/interop      LangChain + LlamaIndex bridges (tools/retrievers/loaders/embeddings, both directions; from_* duck-typed, to_* needs the extra)
+vincio/mcp          (1.1, experimental) MCP client + server over stdio/Streamable HTTP/in-process; tools→permissioned runtime, resources→evidence, prompts→PromptSpec, sampling→provider, elicitation→human gate; app.add_mcp_server / app.serve_mcp
+vincio/a2a          (1.1, experimental) Agent-to-Agent: Agent Card + JSON-RPC task lifecycle, crew/graph exposure, RemoteA2AAgent as a bounded crew delegate; app.serve_a2a
+vincio/skills       (1.1, experimental) Agent Skills: SKILL.md loader with progressive disclosure into the compiler, bundled scripts as sandboxed tools; app.add_skill
 vincio/packs        opt-in domain packs (support/engineering/finance/legal): prompt+schema+policies+evaluators+golden evals; app.use_pack
 vincio/memory       engine (L0–L5), write policy, decay, conflicts, graph, summarizers, grounded-fact auto-memory
 vincio/tools        registry, permissioned runtime, sandbox
@@ -30,11 +33,11 @@ vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packe
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, programmable rails, audit
 vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic + compile/chunk caches, invalidation
 vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/pgvector/chroma/pinecone/lancedb vector adapters (build_vector_index), neo4j/redis/duckdb adapters
-vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible passthrough & presets (groq/together/fireworks/openrouter/deepseek/perplexity/xai/nvidia) over pooled httpx + coalescing + deterministic mock
+vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible passthrough & presets (groq/together/fireworks/openrouter/deepseek/perplexity/xai/nvidia) + OpenAI Responses adapter; unified reasoning control (reasoning_effort/thinking budget, billed); over pooled httpx + coalescing + deterministic mock
 vincio/notebook     rich Jupyter reprs (enable_rich_reprs) for RunResult/Trace/EvalReport/MemoryItem/SearchHit
 vincio/tui          interactive terminal inspector (TUI) for runs/traces/memory; pure renderers + injectable IO
 vincio/server       FastAPI app (API key + JWT auth, real-token SSE streaming)
-vincio/cli          argparse CLI (init --template, config schema/validate/show, packs, tui, run, eval, prompt, trace, optimize, loop, index, memory, audit verify)
+vincio/cli          argparse CLI (init --template, config schema/validate/show, packs, tui, run, eval, prompt, trace, optimize, loop, index, memory, audit verify, mcp tools/add/serve)
 vincio/stability    API-stability contract (1.0): @deprecated/@experimental, deprecated_alias, stability_of, public_api, API_VERSION, VincioDeprecationWarning/VincioExperimentalWarning
 ```
 

@@ -863,6 +863,77 @@ def cmd_audit_verify(args: argparse.Namespace) -> int:
     return 1
 
 
+def _mcp_client(args: argparse.Namespace):
+    import shlex
+
+    from ..mcp import connect_http, connect_stdio
+
+    if getattr(args, "command", None):
+        return connect_stdio(shlex.split(args.command))
+    if getattr(args, "url", None):
+        return connect_http(args.url)
+    raise VincioError("provide --command (stdio) or --url (Streamable HTTP)")
+
+
+def cmd_mcp_tools(args: argparse.Namespace) -> int:
+    from ..providers.base import run_sync
+
+    client = _mcp_client(args)
+
+    async def go():
+        tools = await client.list_tools()
+        resources = await client.list_resources() if args.resources else []
+        await client.aclose()
+        return tools, resources
+
+    tools, resources = run_sync(go())
+    if args.json:
+        print(
+            json_dumps(
+                {
+                    "tools": [t.model_dump() for t in tools],
+                    "resources": [r.model_dump() for r in resources],
+                }
+            )
+        )
+        return 0
+    print(f"{len(tools)} tool(s):")
+    for tool in tools:
+        print(f"  {tool.name} — {tool.description}")
+    if args.resources:
+        print(f"{len(resources)} resource(s):")
+        for resource in resources:
+            print(f"  {resource.uri} ({resource.mime_type})")
+    return 0
+
+
+def cmd_mcp_add(args: argparse.Namespace) -> int:
+    import shlex
+
+    app = _load_app(args.app)
+    before = set(app.enabled_tools)
+    app.add_mcp_server(
+        args.name,
+        command=shlex.split(args.command) if args.command else None,
+        url=args.url,
+        resources=args.resources,
+    )
+    added = [t for t in app.enabled_tools if t not in before]
+    print(f"connected MCP server {args.name!r}; registered {len(added)} tool(s): {', '.join(added)}")
+    return 0
+
+
+def cmd_mcp_serve(args: argparse.Namespace) -> int:
+    from ..mcp import serve_stdio
+    from ..providers.base import run_sync
+
+    app = _load_app(args.app)
+    server = app.serve_mcp(name=args.name)
+    print(f"serving app {server.name!r} over MCP (stdio); reading JSON-RPC on stdin…", file=sys.stderr)
+    run_sync(serve_stdio(server))
+    return 0
+
+
 # -- parser ----------------------------------------------------------------------------
 
 
@@ -1051,6 +1122,26 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit_verify.add_argument("path", nargs="?", default=".vincio/audit/audit.jsonl")
     p_audit_verify.add_argument("--json", action="store_true", help="emit the result as JSON")
     p_audit_verify.set_defaults(fn=cmd_audit_verify)
+
+    p_mcp = sub.add_parser("mcp", help="Model Context Protocol client/server")
+    mcp_sub = p_mcp.add_subparsers(dest="mcp_command", required=True)
+    p_mcp_tools = mcp_sub.add_parser("tools", help="list an MCP server's tools/resources")
+    p_mcp_tools.add_argument("--command", default=None, help="stdio server command, e.g. 'python server.py'")
+    p_mcp_tools.add_argument("--url", default=None, help="Streamable HTTP server URL")
+    p_mcp_tools.add_argument("--resources", action="store_true", help="also list resources")
+    p_mcp_tools.add_argument("--json", action="store_true", help="emit JSON")
+    p_mcp_tools.set_defaults(fn=cmd_mcp_tools)
+    p_mcp_add = mcp_sub.add_parser("add", help="connect an MCP server to an app and register its tools")
+    p_mcp_add.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_mcp_add.add_argument("--name", required=True, help="name for the MCP server (tool namespace)")
+    p_mcp_add.add_argument("--command", default=None, help="stdio server command")
+    p_mcp_add.add_argument("--url", default=None, help="Streamable HTTP server URL")
+    p_mcp_add.add_argument("--resources", action="store_true", help="also import resources as evidence")
+    p_mcp_add.set_defaults(fn=cmd_mcp_add)
+    p_mcp_serve = mcp_sub.add_parser("serve", help="expose an app as an MCP server over stdio")
+    p_mcp_serve.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_mcp_serve.add_argument("--name", default=None, help="server name (defaults to the app name)")
+    p_mcp_serve.set_defaults(fn=cmd_mcp_serve)
 
     p_memory = sub.add_parser("memory", help="memory commands")
     memory_sub = p_memory.add_subparsers(dest="memory_command", required=True)
