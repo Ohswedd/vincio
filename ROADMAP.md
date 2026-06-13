@@ -30,7 +30,10 @@ LangGraph and the OpenAI Agents SDK. 0.7 made reliability a guarantee: provider-
 decoding with strict schema sanitization, streaming validation with early-abort, DSPy-style typed
 signatures that feed the optimizer, programmable rails in the deterministic policy engine, bounded
 self-correcting loops that never invent facts, and multi-schema routing — plus provider-transport
-reliability fixes (event-loop-safe clients, rate-limit cooldowns honored from error bodies).
+reliability fixes (event-loop-safe clients, rate-limit cooldowns honored from error bodies). 0.8
+closed the loop: trace→dataset→eval→optimize→promote as one audited, reproducible cycle, grounded
+auto-memory from runs, eval-driven retrieval feedback, cost/quality Pareto optimization, learned
+context budgeting, and guided offline search strategies.
 
 ---
 
@@ -507,27 +510,57 @@ See the [CHANGELOG](CHANGELOG.md) for the complete 0.6.0 notes.
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 0.7.0 notes.
 
-### 🔭 0.8 — The closed-loop ecosystem (the differentiator)
+### ✅ 0.8 — The closed-loop ecosystem (the differentiator) (shipped)
 
 *This is the milestone no single-purpose library can ship, because it requires owning the whole
 lifecycle.*
 
-- **Trace → dataset → eval → optimize → promote** — one continuous loop: capture production traces,
-  curate them into datasets, evaluate, run the gated optimizer, and promote the winner — all in the
-  library, all reproducible.
-- **Auto-memory from runs** — high-confidence, well-grounded facts surfaced during runs become
-  candidate memories under the existing write policy.
-- **Retrieval feedback** — eval-scored relevance feeds reranker weights and chunking choices
-  automatically.
-- **Cost/quality Pareto optimization** — the optimizer searches the prompt/context/routing/cache
-  space against a multi-objective (accuracy, groundedness, latency, cost) frontier, not a single
-  score.
-- **Learned context budgeting** — per-task budget allocation tuned from eval outcomes instead of
-  fixed tables.
-- **Context-aware offline optimization** — richer offline/RL-style search strategies for the
-  evolution loop, bounded and gated.
-- *Edge over the field:* each competitor optimizes one organ; Vincio optimizes the **organism**, with
-  every signal flowing through one packet, ledger, and trace.
+- ✅ **Trace → dataset → eval → optimize → promote** — one continuous loop, all in the library, all
+  reproducible: `ImprovementLoop` / `app.improvement_loop()` / `vincio loop run` captures the
+  traces production runs already write, curates them with `dataset_from_traces`
+  (feedback-filtered, fingerprinted for reproducibility), evaluates the current prompt as the
+  baseline, runs the gated prompt optimizer (candidate evaluations are memory-write-free so they
+  never pollute recall state), and promotes the winner — pushed to the `PromptRegistry`, tagged,
+  eval-linked, applied to the live app, written to the hash-chained audit log
+  (`loop_promotion`), announced on the event bus (`loop.promoted`), and logged (baseline and
+  winner) to the `ExperimentTracker`; `--dry-run` reports the decision without acting.
+- ✅ **Auto-memory from runs** — `memory.write_back: [facts]`: verifiable output claims that the
+  cited evidence supports (`extract_grounded_facts`, deterministic, support-thresholded) become
+  *candidate* memories through the existing guarded write policy, carrying measured support and
+  evidence provenance (`origin: run_fact`) and a status penalty in recall until confirmed.
+- ✅ **Retrieval feedback** — `RetrievalFeedback` tunes per-index RRF fusion weights and the
+  heuristic reranker's blend from eval relevance labels (`records_from_report` /
+  `records_from_dataset`), deterministically and gated: weights only change when recall@k + MRR
+  measurably improve; `recommend_chunking` picks the chunking config whose eval report scored
+  best.
+- ✅ **Cost/quality Pareto optimization** — `pareto_loop` / `ParetoFrontier`: candidates are kept
+  as a non-dominated accuracy/groundedness/latency/cost frontier with knee-point selection,
+  per-objective constraints (`{"cost": 0.01}`), and `prefer=` overrides; promotion still passes
+  the same safety rules as the scalar loop.
+- ✅ **Learned context budgeting** — `BudgetLearner` searches bounded perturbations of the
+  per-task allocation tables and adopts a learned table only through gated promotion;
+  `LearnedAllocations` persists as JSON and installs via `app.use_learned_budgets()` /
+  `BudgetAllocator(learned=...)`, with fixed tables as the fallback.
+- ✅ **Context-aware offline optimization** — guided search strategies for the evolution loop
+  (`hill_climb` single-knob mutation of the incumbent, `anneal` with Metropolis acceptance and a
+  cooling schedule), deterministic under seeds, hard-bounded by the evaluation budget, pluggable
+  into `ContextOptimizer(strategy=...)` and exposed as `guided_search`; pre-scored candidates
+  flow into the evolution loop without re-screening.
+- *Interconnection (held):* the loop reuses the tracer's exporter, the eval runner, the registry,
+  and the tracker — no new stores; promotions are audit-log entries and event-bus events; grounded
+  facts ride the same guarded memory pipeline and provenance metadata as every other write;
+  retrieval tuning mutates the live engine only through measured, gated improvement.
+- *Edge over the field (delivered):* each competitor optimizes one organ; Vincio optimizes the
+  **organism**, with every signal flowing through one packet, ledger, and trace — see the updated
+  [docs/comparisons/dspy.md](docs/comparisons/dspy.md) and
+  [ragas.md](docs/comparisons/ragas.md), and the new guide
+  [docs/guides/close-the-loop.md](docs/guides/close-the-loop.md).
+- **495 tests passing offline in ~2s; ruff clean**; eighteen runnable examples; the VincioBench
+  `loop` family holds promotion (fires, deterministic, gate-blocked, registry-tagged,
+  eval-linked), auto-memory grounding, retrieval-feedback gating, Pareto frontier correctness,
+  learned-budget promotion, and guided-search bounds under 14 CI-gated budgets (81 total).
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.8.0 notes.
 
 ### 🔭 0.9 — Integrations, connectors & developer experience (vs LangChain ecosystem breadth)
 

@@ -54,6 +54,15 @@ vincio optimize run --app APP.py --dataset DATASET.jsonl
         [--budget N] [--subset N] [--output winning.yaml]
     Prompt-variant optimization with gated promotion.
 
+vincio loop run --app APP.py [--dataset DATASET.jsonl | --min-feedback X]
+        [--gate "metric=>= 0.9"]... [--budget N] [--subset N]
+        [--tag production] [--experiment NAME] [--dry-run]
+    One closed-loop cycle: trace → dataset → eval → optimize → promote.
+    Without --dataset, curates the dataset from captured traces (feedback-
+    filtered). The promoted version is pushed to the prompt registry,
+    tagged, eval-linked, applied to the app, and audited; --dry-run
+    reports the decision without acting on it.
+
 vincio index build PATH [--db FILE] [--chunking STRATEGY] [--chunk-size N]
     Load, chunk, and persist documents into a SQLite index store.
 

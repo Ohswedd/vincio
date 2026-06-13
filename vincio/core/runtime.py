@@ -821,6 +821,30 @@ class VincioRuntime:
                         session_id=routed.input.session_id,
                         source_trace_id=result.trace_id,
                     )
+                # Auto-memory from runs (0.8): verifiable output claims that
+                # the cited evidence supports become candidate memories.
+                if "facts" in write_back and result.raw_text:
+                    from ..memory.facts import extract_grounded_facts
+
+                    cited_refs = set(result.citations)
+                    grounding = [
+                        item
+                        for item in result.evidence
+                        if item.id in cited_refs or item.citation_ref in cited_refs
+                    ] or result.evidence
+                    facts = extract_grounded_facts(
+                        result.raw_text,
+                        grounding,
+                        min_support=app.config.memory.fact_min_support,
+                        max_facts=app.config.memory.max_facts_per_run,
+                    )
+                    if facts:
+                        written += app.memory.write_back(
+                            facts=facts,
+                            owner_id=routed.input.user_id,
+                            session_id=routed.input.session_id,
+                            source_trace_id=result.trace_id,
+                        )
                 span.set(written=len(written))
                 if written:
                     app.audit.record(

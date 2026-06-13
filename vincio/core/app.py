@@ -1028,6 +1028,40 @@ class ContextApp:
         )
         return runner.run(dataset)
 
+    # -- closed loop (0.8) ---------------------------------------------------------
+
+    def improvement_loop(self, **kwargs: Any):
+        """The trace → dataset → eval → optimize → promote loop on this app.
+
+        Returns an :class:`~vincio.optimize.ImprovementLoop` bound to this
+        app's tracer, store, and prompt::
+
+            loop = app.improvement_loop(gates={"groundedness": ">= 0.8"})
+            result = loop.run(min_feedback_score=0.5)
+        """
+        from ..optimize.loop import ImprovementLoop
+
+        return ImprovementLoop(self, **kwargs)
+
+    def use_learned_budgets(self, source: Any) -> ContextApp:
+        """Install eval-tuned per-task budget allocations (0.8).
+
+        ``source`` is a :class:`~vincio.optimize.LearnedAllocations`, a path
+        to one saved as JSON, or a plain ``{task_type: {block: fraction}}``
+        mapping. Tasks without a learned table keep the fixed defaults.
+        """
+        from ..context.budgeting import BudgetAllocator
+        from ..optimize.budget_learning import LearnedAllocations
+
+        if isinstance(source, (str, Path)):
+            source = LearnedAllocations.load(source)
+        if isinstance(source, LearnedAllocations):
+            learned = source.allocations
+        else:
+            learned = {str(key): dict(value) for key, value in dict(source).items()}
+        self.context_compiler.allocator = BudgetAllocator(learned=learned)
+        return self
+
     # -- maintenance -------------------------------------------------------------------------------------------------
 
     async def aclose(self) -> None:

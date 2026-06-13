@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-467%20passing-2ea44f" alt="467 tests passing">
+  <img src="https://img.shields.io/badge/tests-495%20passing-2ea44f" alt="495 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -191,6 +191,7 @@ for any engine directly.
 | **Structured output (0.7)** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
 | **Evaluation (0.5)** | Golden JSONL datasets, 25+ task / grounding / quality / safety / conversational / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
 | **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
+| **The closed loop (0.8)** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
 | **Observability (0.5)** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
 | **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log. |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector), and graph (Neo4j) backends behind one factory. |
@@ -229,6 +230,10 @@ baseline. Representative results on the bundled reference corpus:
 | | self-correction recovery rate (bounded cycles) | **3 / 3** | — |
 | | rail catch rate · false positives on clean text | **100% · 0** | — |
 | | schema routing / classification accuracy | **100%** | — |
+| **Closed loop (0.8)** | loop promotion fires · deterministic · gates block regressions | **pass** | — |
+| | grounded facts written · ungrounded excluded | **pass** | — |
+| | retrieval feedback (noisy index corrected · healthy index untouched) | **pass** | — |
+| | Pareto front excludes dominated · knee balanced · learned budgets promote | **pass** | — |
 
 > **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
 > demonstrate the mechanisms, not to be quoted as universal gains. The context-compression
@@ -286,10 +291,11 @@ a Ragas metric with `@register_metric`. See the in-depth write-ups in
 | Run a multi-agent team with roles and delegation | crews + shared blackboard + budget guarantees | [`15_multi_agent_crew.py`](examples/15_multi_agent_crew.py) |
 | Build an interruptible, auditable, resumable process | durable graphs + human gates + time-travel | [`16_durable_graph.py`](examples/16_durable_graph.py) |
 | Guarantee output shape and guard every generation | signatures, constrained decoding, streaming validation, rails, self-correction, schema routing | [`17_reliable_structured_output.py`](examples/17_reliable_structured_output.py) |
+| Improve the app from its own production traffic | the closed loop: traces→dataset→eval→optimize→promote, auto-memory, retrieval feedback, Pareto, learned budgets | [`18_closed_loop.py`](examples/18_closed_loop.py) |
 
 ## More examples
 
-All seventeen examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
+All eighteen examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
 a real model with environment variables:
 
 ```bash
@@ -312,6 +318,7 @@ vincio trace diff a b --html diff.html  # visual side-by-side diff
 vincio trace sessions            # list sessions with aggregates
 vincio trace feedback trace_123 --score 1.0
 vincio optimize run --target groundedness
+vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"  # one closed-loop cycle
 vincio index build ./docs        # build a retrieval index
 vincio memory inspect --user u1  # inspect a user's memory
 vincio memory recall "answer style" --user u1  # scored hybrid recall
@@ -365,8 +372,11 @@ checkpoint/resume/time-travel, first-class human-in-the-loop, declarative compos
 streaming node events, and LangGraph / OpenAI Agents SDK backends; 0.7.0 made reliability a
 guarantee — provider-native constrained decoding with strict schema sanitization, streaming
 validation with early abort, DSPy-style typed signatures, programmable rails, bounded
-self-correcting loops, and multi-schema routing — with 467 offline tests, seventeen runnable
-examples, and full documentation. The public roadmap — what's
+self-correcting loops, and multi-schema routing; 0.8.0 closed the loop — trace→dataset→eval→
+optimize→promote as one audited, reproducible cycle, grounded auto-memory from runs, eval-driven
+retrieval feedback, cost/quality Pareto optimization, learned context budgeting, and guided
+offline search — with 495 offline tests, eighteen runnable examples, and full documentation. The
+public roadmap — what's
 shipped, what's next, and what's intentionally out of scope — lives in **[ROADMAP.md](ROADMAP.md)**.
 
 Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
@@ -387,6 +397,7 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [add tools](docs/guides/add-tools.md) ·
   [orchestrate multi-agent systems](docs/guides/orchestrate-agents.md) ·
   [run evals](docs/guides/run-evals.md) · [optimize](docs/guides/optimize-context.md) ·
+  [close the loop](docs/guides/close-the-loop.md) ·
   [performance & streaming](docs/guides/performance.md)
 - **Reference** — [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
   [config](docs/reference/config.md)

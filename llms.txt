@@ -38,6 +38,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Run evals](docs/guides/run-evals.md)
 - [Test LLM apps with pytest](docs/guides/test-llm-apps.md)
 - [Optimize](docs/guides/optimize-context.md)
+- [Close the loop](docs/guides/close-the-loop.md)
 - [Performance & streaming](docs/guides/performance.md)
 - [API reference](docs/reference/api.md)
 - [CLI reference](docs/reference/cli.md)
@@ -162,8 +163,34 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - Prompt registry (0.5): `PromptRegistry(dir).push(spec, tags=[...])` —
   content-hash versions, moving tags, `diff(name, a, b, rendered=True)`,
   `rollback(name)`, `link_eval(name, version, report)`.
+- The closed loop (0.8): `loop = app.improvement_loop(metrics=[...],
+  gates={"groundedness": ">= 0.8"})`; `result = loop.run(
+  min_feedback_score=0.5)` — capture traces → `dataset_from_traces` →
+  baseline eval → gated prompt optimization → promote (registry push +
+  tag "production" + `link_eval` + applied to the app + `loop_promotion`
+  audit entry + `loop.promoted` event); `dry_run=True` decides without
+  acting; candidate evals are memory-write-free; CLI `vincio loop run
+  --app app.py [--dataset ds.jsonl | --min-feedback X] [--gate ...]
+  [--tag T] [--dry-run]`. Auto-memory from runs: `memory.write_back:
+  [facts]` + `memory.fact_min_support` / `memory.max_facts_per_run` —
+  evidence-supported output claims (`vincio.memory.extract_grounded_facts`)
+  become candidate memories (`origin: run_fact`) through the guarded
+  policy. Retrieval feedback: `RetrievalFeedback(app.retrieval,
+  records_from_dataset(ds)).tune()` — gated, deterministic tuning of
+  per-index RRF weights + heuristic-reranker blend;
+  `recommend_chunking(reports_by_config, baseline=...)`. Pareto:
+  `pareto_loop(candidates, evaluate_fn, dataset, baseline=,
+  objectives=[ObjectiveSpec(...)], constraints={"cost": 0.01},
+  prefer="accuracy")` → `ParetoResult` with `frontier.front` /
+  `frontier.knee()`; promotion passes the same safety rules. Learned
+  budgets: `BudgetLearner(evaluate_allocation).learn(dataset,
+  task_type=...)` → `LearnedAllocations` (JSON save/load) installed via
+  `app.use_learned_budgets(...)`. Guided search:
+  `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")`
+  or `guided_search(space, evaluate, strategy=, budget=, seed=)` —
+  deterministic, budget-bounded, gate-respecting.
 - CLI: init, run, eval run/report/dataset, prompt
   lint/compile/push/versions/diff/rollback, trace
-  show/view/replay/diff/export/sessions/feedback, optimize run, index
-  build, memory inspect/remember/recall/forget/export/consolidate/decay.
+  show/view/replay/diff/export/sessions/feedback, optimize run, loop run,
+  index build, memory inspect/remember/recall/forget/export/consolidate/decay.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).

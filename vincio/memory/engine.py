@@ -29,6 +29,7 @@ from ..core.types import EvidenceItem, MemoryItem, MemoryScope, MemoryType, Priv
 from ..core.utils import utcnow
 from ..providers.base import run_sync
 from ..retrieval.embeddings import Embedder, cosine
+from .facts import GroundedFact
 from .graph import MemoryGraph
 from .policies import (
     MemoryCandidate,
@@ -335,14 +336,18 @@ class MemoryEngine:
         *,
         evidence: list[EvidenceItem] | None = None,
         tool_results: list[ToolResult] | None = None,
+        facts: list[GroundedFact] | None = None,
         owner_id: str | None = None,
         session_id: str | None = None,
         source_trace_id: str | None = None,
     ) -> list[MemoryItem]:
-        """Write confirmed evidence and tool results back as *candidate*
-        memories with provenance. Candidates carry a status penalty in
-        retrieval until confirmed, and every recall utility-scores them
-        against the task before they enter a packet."""
+        """Write confirmed evidence, tool results, and grounded run facts
+        back as *candidate* memories with provenance. Candidates carry a
+        status penalty in retrieval until confirmed, and every recall
+        utility-scores them against the task before they enter a packet.
+        ``facts`` are evidence-supported output claims (0.8 auto-memory):
+        their confidence scales with measured support and they go through
+        the same guarded admission as every other write."""
         scope = MemoryScope.SESSION if session_id else MemoryScope.USER
         write_owner = session_id or owner_id
         written: list[MemoryItem] = []
@@ -376,6 +381,18 @@ class MemoryEngine:
                 f"Tool {tool.tool_name} returned: {str(tool.output)}",
                 {"origin": "tool", "tool_name": tool.tool_name, "call_id": tool.call_id},
                 confidence=0.55,
+            )
+        for fact in facts or []:
+            if not fact.content.strip():
+                continue
+            _write(
+                fact.content,
+                {
+                    "origin": "run_fact",
+                    "support": round(fact.support, 4),
+                    "evidence_ids": list(fact.evidence_ids[:4]),
+                },
+                confidence=min(0.8, 0.35 + 0.45 * fact.support),
             )
         return written
 

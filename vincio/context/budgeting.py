@@ -137,11 +137,25 @@ class BudgetAllocation(BaseModel):
 
 
 class BudgetAllocator:
-    def __init__(self, allocation: dict[str, float] | None = None) -> None:
+    def __init__(
+        self,
+        allocation: dict[str, float] | None = None,
+        *,
+        learned: dict[str, dict[str, float]] | None = None,
+    ) -> None:
         self.base_allocation = allocation or dict(DEFAULT_ALLOCATION)
+        # Learned per-task tables (0.8): tuned from eval outcomes by
+        # vincio.optimize.BudgetLearner, keyed by TaskType value. A learned
+        # table overrides the fixed TASK_ALLOCATIONS entry for its task.
+        self.learned: dict[str, dict[str, float]] = {
+            str(key): dict(value) for key, value in (learned or {}).items()
+        }
 
     def allocation_for(self, task_type: TaskType) -> dict[str, float]:
-        fractions = dict(TASK_ALLOCATIONS.get(task_type, self.base_allocation))
+        fractions = self.learned.get(task_type.value)
+        if fractions is None:
+            fractions = TASK_ALLOCATIONS.get(task_type, self.base_allocation)
+        fractions = dict(fractions)
         total = sum(fractions.values())
         if total <= 0:
             fractions = dict(DEFAULT_ALLOCATION)

@@ -4,7 +4,8 @@ Families: PromptBench, RAGBench, MemoryBench, AgentBench (incl. 0.6 crews,
 durable graphs, composition), ToolBench, OutputBench, ReliabilityBench
 (0.7 constrained decoding, streaming validation, signatures, rails,
 self-correction, schema routing), CostBench, SecurityBench, EvalBench,
-PerfBench.
+LoopBench (0.8 closed loop: promotion, auto-memory, retrieval feedback,
+Pareto, learned budgeting, guided search), PerfBench.
 
 Runs fully offline by default (deterministic mock provider + deterministic
 metrics) so results are reproducible; set VINCIO_PROVIDER / VINCIO_MODEL to
@@ -838,6 +839,231 @@ async def bench_evals() -> dict[str, Any]:
     }
 
 
+async def bench_loop() -> dict[str, Any]:
+    """LoopBench (0.8): the closed-loop ecosystem holds end to end.
+
+    Measures the trace → dataset → eval → optimize → promote cycle
+    (promotion happens, decisions are deterministic and reproducible, gates
+    block bad promotions, the registry is tagged and eval-linked), grounded
+    auto-memory precision, retrieval-feedback gating, Pareto frontier
+    correctness, learned budgeting, and guided-search bounds — all offline.
+    """
+    import tempfile
+
+    from vincio import ContextApp, VincioConfig
+    from vincio.context.budgeting import BudgetAllocator
+    from vincio.evals import Dataset, EvalCase
+    from vincio.memory.facts import extract_grounded_facts
+    from vincio.optimize import (
+        BudgetLearner,
+        ImprovementLoop,
+        ParetoFrontier,
+        ParetoPoint,
+        RelevanceRecord,
+        RetrievalFeedback,
+        guided_search,
+    )
+    from vincio.prompts.registry import PromptRegistry
+    from vincio.providers import MockProvider
+
+    def quality_report(quality: float, *, n: int = 4):
+        from vincio.evals.reports import CaseResult, EvalReport
+
+        return EvalReport(
+            cases=[
+                CaseResult(
+                    case_id=f"c{i}",
+                    metrics={
+                        "semantic_similarity": quality,
+                        "cost": 0.001,
+                        "latency": 100.0,
+                    },
+                )
+                for i in range(n)
+            ]
+        )
+
+    # 1. The full loop: a format-sensitive provider gives the optimizer a
+    # real signal (only XML-rendered prompts get the right answer), so a
+    # variant must beat the baseline for promotion to fire.
+    def responder(request):
+        text = "\n".join(m.text for m in request.messages)
+        if "</" not in text:
+            return "I cannot answer that."
+        return "The refund window for the Pro plan is 30 days."
+
+    def build_app() -> ContextApp:
+        config = VincioConfig()
+        config.storage.metadata = "memory://"
+        config.observability.exporter = "memory"
+        config.security.audit_log = False
+        app = ContextApp(
+            name="loopbench",
+            provider=MockProvider(responder=responder),
+            model="mock-1",
+            config=config,
+        )
+        app.add_source("corpus", documents=corpus_documents())
+        return app
+
+    dataset = Dataset(
+        name="loopbench",
+        cases=[
+            EvalCase(id=f"c{index}", input=question, expected=expected)
+            for index, (question, expected, _source) in enumerate(QA_CASES)
+        ],
+    )
+    metrics = ["semantic_similarity", "cost", "latency"]
+
+    async def run_loop(gates=None):
+        from vincio.optimize import FitnessWeights
+
+        loop = ImprovementLoop(
+            build_app(),
+            registry=PromptRegistry(tempfile.mkdtemp(prefix="vinciobench_registry_")),
+            metrics=metrics,
+            # Zero latency weight: the determinism check must not tie-break
+            # equally good variants on wall-clock noise.
+            weights=FitnessWeights(latency=0.0),
+            gates=gates,
+        )
+        return loop, await loop.arun(dataset=dataset, max_variants=6, subset_size=4)
+
+    loop_a, result_a = await run_loop()
+    loop_b, result_b = await run_loop()
+    registry_tagged = False
+    eval_linked = False
+    if result_a.promoted:
+        version = loop_a.registry.get("loopbench", tag="production")
+        registry_tagged = version.ref == result_a.promoted_ref
+        eval_linked = bool(version.eval_runs)
+    deterministic = (
+        result_a.promoted == result_b.promoted
+        and result_a.dataset_fingerprint == result_b.dataset_fingerprint
+        and (result_a.optimization.best.params if result_a.optimization.best else None)
+        == (result_b.optimization.best.params if result_b.optimization.best else None)
+    )
+    _gate_loop, gate_result = await run_loop(gates={"semantic_similarity": ">= 1.1"})
+
+    # 2. Auto-memory: grounded claims become candidate memories; ungrounded
+    # claims never do.
+    evidence = [
+        EvidenceItem(
+            id="D1:C0",
+            source_id="D1",
+            text="Customers on the Pro plan may request refunds within 30 days of purchase.",
+            provenance=0.9,
+        )
+    ]
+    grounded = extract_grounded_facts(
+        "The refund window for the Pro plan is 30 days. [D1:C0]", evidence
+    )
+    ungrounded = extract_grounded_facts(
+        "The mascot is a purple axolotl with 12 legs and 4 wings.", evidence
+    )
+
+    # 3. Retrieval feedback: a noisy over-weighted index gets corrected, and
+    # tuning a single healthy index is gated (no change without improvement).
+    good_index, junk_index = BM25Index(), BM25Index()
+    await good_index.add(corpus_chunks())
+    await junk_index.add(
+        [
+            Chunk(document_id="junk_1", index=0, text="Refund window pro plan newsletter signup."),
+            Chunk(document_id="junk_2", index=0, text="Pro plan refund window stickers and merch."),
+        ]
+    )
+    relevant_ids = [
+        chunk.citation_ref
+        for chunk in corpus_chunks()
+        if "Pro plan may request refunds" in chunk.text
+    ]
+    records = [
+        RelevanceRecord(
+            query="What is the refund window for the Pro plan?", relevant_ids=relevant_ids
+        )
+    ]
+    noisy_engine = RetrievalEngine([good_index, junk_index], index_weights=[1.0, 2.0], reranker=None)
+    tuned = await RetrievalFeedback(noisy_engine, records, top_k=2).tune_index_weights()
+    healthy_engine = RetrievalEngine([good_index], reranker=None)
+    gated = await RetrievalFeedback(healthy_engine, records, top_k=2).tune_index_weights()
+
+    # 4. Pareto frontier: dominated points excluded, knee balances the axes.
+    points = [
+        ParetoPoint(name="premium", objectives={"accuracy": 0.95, "cost": 0.02}),
+        ParetoPoint(name="balanced", objectives={"accuracy": 0.9, "cost": 0.004}),
+        ParetoPoint(name="cheap", objectives={"accuracy": 0.6, "cost": 0.001}),
+        ParetoPoint(name="dominated", objectives={"accuracy": 0.5, "cost": 0.01}),
+    ]
+    from vincio.optimize import ObjectiveSpec
+
+    specs = [
+        ObjectiveSpec(name="accuracy", metric="semantic_similarity"),
+        ObjectiveSpec(name="cost", metric="cost", direction="min"),
+    ]
+    frontier = ParetoFrontier.build(points, specs=specs)
+    front_names = {point.name for point in frontier.front}
+
+    # 5. Learned budgeting: an evidence-hungry workload moves budget to
+    # evidence, through the same gated promotion as everything else.
+    async def evaluate_allocation(fractions, ds):
+        return quality_report(min(1.0, 0.4 + fractions.get("evidence", 0.0)), n=len(ds))
+
+    learner = BudgetLearner(evaluate_allocation)
+    budget_result, learned = await learner.learn(
+        dataset, task_type=TaskType.GENERAL, candidates=8, subset_size=4, seed=3
+    )
+    baseline_evidence = BudgetAllocator().allocation_for(TaskType.GENERAL)["evidence"]
+    learned_evidence = (
+        learned.get(TaskType.GENERAL)["evidence"] if learned is not None else baseline_evidence
+    )
+
+    # 6. Guided search: bounded by budget, finds the grid optimum.
+    space = {"top_k": [4, 8, 12], "reranker": ["heuristic", None]}
+    evaluations = 0
+
+    async def screen(config):
+        nonlocal evaluations
+        evaluations += 1
+        return float(config["top_k"]) + (1.0 if config["reranker"] else 0.0)
+
+    history = await guided_search(space, screen, strategy="hill_climb", budget=5, seed=7)
+    best_config, _best_score = max(history, key=lambda entry: entry[1])
+
+    return {
+        "promotion": {
+            "promoted": result_a.promoted,
+            "deterministic": deterministic,
+            "gate_blocks_regression": not gate_result.promoted,
+            "registry_tagged": registry_tagged,
+            "eval_linked": eval_linked,
+            "dataset_cases": result_a.dataset_size,
+        },
+        "auto_memory": {
+            "grounded_fact_written": len(grounded) >= 1,
+            "ungrounded_excluded": len(ungrounded) == 0,
+            "min_support": min((fact.support for fact in grounded), default=0.0),
+        },
+        "retrieval_feedback": {
+            "tuned_score": tuned.tuned_score,
+            "baseline_score": tuned.baseline_score,
+            "improved": tuned.tuned_score > tuned.baseline_score,
+            "gated_when_no_improvement": not gated.applied,
+        },
+        "pareto": {
+            "front_excludes_dominated": front_names == {"premium", "balanced", "cheap"},
+            "knee_balanced": frontier.knee().name == "balanced",
+        },
+        "budget_learning": {
+            "promoted": budget_result.promoted,
+            "evidence_share_increased": learned_evidence > baseline_evidence,
+        },
+        "guided_search": {
+            "budget_respected": evaluations == len(history) == 5,
+            "found_optimum": best_config["top_k"] == 12 and best_config["reranker"] == "heuristic",
+        },
+    }
+
+
 async def bench_perf() -> dict[str, Any]:
     """PerfBench (0.2): latency, throughput, streaming TTFT, and cache
     speedups for the hot paths — measured offline so results gate CI
@@ -975,6 +1201,7 @@ FAMILIES = {
     "cost": bench_cost,
     "security": bench_security,
     "evals": bench_evals,
+    "loop": bench_loop,
     "perf": bench_perf,
 }
 

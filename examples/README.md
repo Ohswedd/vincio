@@ -26,6 +26,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `15_multi_agent_crew.py` | crews with roles, shared blackboard, sequential/parallel/hierarchical processes, delegation records |
 | `16_durable_graph.py` | durable stateful graphs, checkpoints, human-in-the-loop interrupts, edit-and-resume, time-travel forks, composition |
 | `17_reliable_structured_output.py` | typed signatures, constrained decoding, streaming validation, rails, self-correction, multi-schema routing |
+| `18_closed_loop.py` | the closed loop: traces→dataset→eval→optimize→promote, auto-memory from runs, retrieval feedback, Pareto frontier, learned budgeting |
 
 Run any of them:
 
