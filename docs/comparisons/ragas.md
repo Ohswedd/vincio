@@ -20,7 +20,7 @@ Ragas is a focused, well-designed evaluation framework for RAG/LLM systems.
 - **Eval results drive optimization** — the evolution loop consumes the same
   reports and promotes prompt/context/routing changes only through safety
   gates; experiments and A/Bs come with statistical significance built in.
-- **Eval results close the loop (0.8)** — `ImprovementLoop` curates
+- **Eval results close the loop** — `ImprovementLoop` curates
   production traces into datasets, optimizes against them, and promotes the
   winner into the prompt registry in one audited, reproducible cycle;
   eval-scored relevance tunes retrieval fusion and reranker weights

@@ -31,7 +31,7 @@ document workflows.
 **Where LlamaIndex is a fit:** very broad loader/index integrations for
 exotic data sources. Vincio's connector hub covers the common ones (web,
 GitHub, SQL, S3, GCS, Notion, Confluence, Slack — plus custom connectors
-via `register_connector`), and for anything else `vincio.interop` (0.9)
+via `register_connector`), and for anything else `vincio.interop`
 converts LlamaIndex readers, retrievers, tools, and embeddings directly:
 `from_llamaindex_reader(reader)` → `app.add_source(documents=...)`,
 `from_llamaindex_retriever(r)`, `add_llamaindex_tool(app, t)`,

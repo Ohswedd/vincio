@@ -1,0 +1,136 @@
+{
+  "_comment": "Published Vincio performance & quality SLOs. Each SLO is a public promise; `enforced_by` names the budget key in budgets.json that gates it in CI. The published `threshold` is the promise to users; the CI budget is held at least as strict, so a build that passes the gate necessarily honors the SLO. tests/test_slos.py verifies that invariant. Measured on the deterministic offline suite (mock provider); see benchmarks/METHODOLOGY.md.",
+  "version": "1.0",
+  "slos": [
+    {
+      "id": "compile_latency_p95",
+      "category": "performance",
+      "statement": "Cold context compilation completes within 300 ms at p95.",
+      "metric": "families.perf.context_compile.cold_p95_ms",
+      "direction": "lte",
+      "threshold": 300,
+      "enforced_by": "families.perf.context_compile.cold_p95_ms",
+      "rationale": "Compilation is on the request hot path; the budget gates 250 ms to leave headroom under the promise."
+    },
+    {
+      "id": "compile_cache_speedup",
+      "category": "performance",
+      "statement": "The content-addressed compile cache yields at least a 1.5x speedup over the cold path.",
+      "metric": "families.perf.context_compile.cache_speedup",
+      "direction": "gte",
+      "threshold": 1.5,
+      "enforced_by": "families.perf.context_compile.cache_speedup",
+      "rationale": "Repeat compilations of unchanged inputs must amortize; protects the caching contract."
+    },
+    {
+      "id": "retrieval_latency_p95",
+      "category": "performance",
+      "statement": "Retrieval over an in-memory index returns within 150 ms at p95.",
+      "metric": "families.perf.retrieval.p95_ms",
+      "direction": "lte",
+      "threshold": 150,
+      "enforced_by": "families.perf.retrieval.p95_ms",
+      "rationale": "Retrieval fan-out is concurrent; the budget gates 100 ms for order-of-magnitude regression detection."
+    },
+    {
+      "id": "run_latency_p50",
+      "category": "performance",
+      "statement": "A cached end-to-end run completes within 300 ms at p50 (offline).",
+      "metric": "families.perf.run.p50_ms",
+      "direction": "lte",
+      "threshold": 300,
+      "enforced_by": "families.perf.run.p50_ms",
+      "rationale": "End-to-end median latency for a warm pipeline; budget gates 250 ms."
+    },
+    {
+      "id": "concurrent_throughput",
+      "category": "performance",
+      "statement": "The engine sustains at least 50 concurrent runs per second (offline).",
+      "metric": "families.perf.run.concurrent_runs_per_s",
+      "direction": "gte",
+      "threshold": 50,
+      "enforced_by": "families.perf.run.concurrent_runs_per_s",
+      "rationale": "Async hot paths must not serialize under concurrency."
+    },
+    {
+      "id": "streaming_ttft",
+      "category": "performance",
+      "statement": "The first streamed token is emitted before the run completes (true TTFT < full).",
+      "metric": "families.perf.streaming.ttft_before_done",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.streaming.ttft_before_done",
+      "rationale": "Streaming must deliver incremental tokens, not buffer the whole response."
+    },
+    {
+      "id": "token_efficiency",
+      "category": "cost",
+      "statement": "The context compiler reduces evidence tokens by at least 20% versus naive stuffing.",
+      "metric": "families.cost.token_reduction",
+      "direction": "gte",
+      "threshold": 0.2,
+      "enforced_by": "families.cost.token_reduction",
+      "rationale": "Budgeting and scoring exist to cut tokens; the floor protects the core value proposition."
+    },
+    {
+      "id": "tool_overhead_p50",
+      "category": "performance",
+      "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",
+      "metric": "families.tool.p50_overhead_ms",
+      "direction": "lte",
+      "threshold": 50,
+      "enforced_by": "families.tool.p50_overhead_ms",
+      "rationale": "Validation, permission checks, and sanitization must stay cheap relative to tool work."
+    },
+    {
+      "id": "retrieval_recall",
+      "category": "quality",
+      "statement": "Default hybrid retrieval achieves at least 0.80 recall@3 on the reference corpus.",
+      "metric": "families.rag.recall_at_3.mean",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.rag.recall_at_3.mean",
+      "rationale": "Grounding quality depends on recall; gated per-mode as well."
+    },
+    {
+      "id": "self_correction_recovery",
+      "category": "reliability",
+      "statement": "Self-correction recovers every recoverable malformed output within its cycle bound.",
+      "metric": "families.reliability.self_correction.recovery_rate",
+      "direction": "gte",
+      "threshold": 1.0,
+      "enforced_by": "families.reliability.self_correction.recovery_rate",
+      "rationale": "Structured-output reliability is a headline guarantee."
+    },
+    {
+      "id": "injection_detection",
+      "category": "security",
+      "statement": "Prompt-injection detection rate is at least 0.80 on the SecurityBench attack set.",
+      "metric": "families.security.injection_detection_rate",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.security.injection_detection_rate",
+      "rationale": "Injection defense must catch the bulk of known patterns."
+    },
+    {
+      "id": "injection_false_positives",
+      "category": "security",
+      "statement": "Injection false-positive rate stays at or below 0.20 on benign inputs.",
+      "metric": "families.security.injection_false_positive_rate",
+      "direction": "lte",
+      "threshold": 0.2,
+      "enforced_by": "families.security.injection_false_positive_rate",
+      "rationale": "Defense that blocks legitimate traffic is unusable."
+    },
+    {
+      "id": "pii_coverage",
+      "category": "security",
+      "statement": "PII detection covers at least 0.80 of the SecurityBench PII set.",
+      "metric": "families.security.pii_coverage",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.security.pii_coverage",
+      "rationale": "Redaction policies depend on detection coverage."
+    }
+  ]
+}

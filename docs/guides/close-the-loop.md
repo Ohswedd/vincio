@@ -1,6 +1,6 @@
 # Guide: close the loop
 
-0.8 ships the milestone no single-purpose library can: one continuous,
+Vincio ships the milestone no single-purpose library can: one continuous,
 reproducible improvement cycle — **trace → dataset → eval → optimize →
 promote** — plus the feedback paths that let every organ tune the others:
 runs write grounded facts back to memory, eval-scored relevance tunes

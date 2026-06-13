@@ -27,6 +27,7 @@ Commands::
     vincio memory export --owner u1
     vincio memory consolidate <session_id> --user u1
     vincio memory decay
+    vincio audit verify .vincio/audit/audit.jsonl
 """
 
 from __future__ import annotations
@@ -841,6 +842,27 @@ def cmd_memory_inspect(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit_verify(args: argparse.Namespace) -> int:
+    from ..security.audit import verify_audit_file
+
+    path = Path(args.path)
+    if not path.is_file():
+        return _fail(f"audit log not found: {path}")
+    result = verify_audit_file(path)
+    if args.json:
+        print(json_dumps(result.model_dump()))
+        return 0 if result.intact else 1
+    if result.intact:
+        print(f"OK  hash chain intact over {result.entries} entries ({path})")
+        return 0
+    print(
+        f"TAMPERED  chain broke at line {result.broken_at}: {result.reason} "
+        f"(verified {result.entries} entries before the break)",
+        file=sys.stderr,
+    )
+    return 1
+
+
 # -- parser ----------------------------------------------------------------------------
 
 
@@ -1020,6 +1042,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_index_build.add_argument("--chunking", default="adaptive")
     p_index_build.add_argument("--chunk-size", type=int, default=400)
     p_index_build.set_defaults(fn=cmd_index_build)
+
+    p_audit = sub.add_parser("audit", help="audit-log integrity tooling")
+    audit_sub = p_audit.add_subparsers(dest="audit_command", required=True)
+    p_audit_verify = audit_sub.add_parser(
+        "verify", help="verify the hash chain of a persisted audit JSONL file"
+    )
+    p_audit_verify.add_argument("path", nargs="?", default=".vincio/audit/audit.jsonl")
+    p_audit_verify.add_argument("--json", action="store_true", help="emit the result as JSON")
+    p_audit_verify.set_defaults(fn=cmd_audit_verify)
 
     p_memory = sub.add_parser("memory", help="memory commands")
     memory_sub = p_memory.add_subparsers(dest="memory_command", required=True)

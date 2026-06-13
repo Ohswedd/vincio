@@ -110,4 +110,9 @@ vincio memory consolidate SESSION_ID [--user U] [--db FILE]
 
 vincio memory decay [--db FILE]
     Run a decay/TTL pass (importance-weighted retention).
+
+vincio audit verify [PATH] [--json]
+    Verify the SHA-256 hash chain of a persisted audit JSONL log offline
+    (default .vincio/audit/audit.jsonl). Detects post-restart tampering and
+    pinpoints the first broken line; exits non-zero if the chain is broken.
 ```

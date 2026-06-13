@@ -1206,8 +1206,33 @@ FAMILIES = {
 }
 
 
+def _environment() -> dict[str, Any]:
+    """Reproducibility metadata stamped into every report.
+
+    Deliberately excludes wall-clock time so a report is byte-stable for a
+    given machine/version (only per-family ``_duration_ms`` varies), keeping
+    the committed reference report reviewable in diffs.
+    """
+    import platform
+
+    import vincio
+
+    return {
+        "schema_version": "1.0",
+        "vincio_version": vincio.__version__,
+        "python_version": platform.python_version(),
+        "platform": platform.system().lower(),
+        "deterministic": True,
+        "provider": "mock",
+    }
+
+
 async def run(selected: list[str]) -> dict[str, Any]:
-    report: dict[str, Any] = {"suite": "VincioBench", "families": {}}
+    report: dict[str, Any] = {
+        "suite": "VincioBench",
+        "environment": _environment(),
+        "families": {},
+    }
     for name in selected:
         started = time.perf_counter()
         report["families"][name] = await FAMILIES[name]()

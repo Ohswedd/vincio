@@ -4,6 +4,73 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.0] - 2026-06-13
+
+Stabilization & guarantees — the 1.0 roadmap milestone. This release does not
+add subsystems; it turns the library into a product you can trust in
+production. Every guarantee is mechanical: SemVer on a frozen public surface
+with an enforceable deprecation policy, published SLOs that CI budgets hold at
+least as strict, a documented threat model backed by offline audit-chain
+verification and a resource-limited tool sandbox, supply-chain attestations on
+releases, and a docs-completeness gate that runs every example.
+
+### Added
+
+- **API stability module** (`vincio.stability`) — `deprecated(since=,
+  removed_in=, alternative=)` and `experimental(since=, note=)` decorators
+  (working on functions and classes) that emit `VincioDeprecationWarning` /
+  `VincioExperimentalWarning`; `deprecated_alias(...)` for renamed symbols;
+  `stability_of(obj)` to introspect any symbol's contract; `public_api()` and
+  `API_VERSION`. All are re-exported from the top-level `vincio` package, which
+  is now the SemVer-covered public surface. See `docs/reference/stability.md`.
+- **Published SLOs** (`benchmarks/slos.json`, `docs/reference/slo.md`) —
+  latency/throughput/token-efficiency/quality/security targets, each naming the
+  VincioBench budget that enforces it. The budget is held at least as strict as
+  the public promise, so a passing CI run provably honors the SLO;
+  `tests/test_slos.py` verifies the invariant.
+- **Offline audit-chain verification** — `verify_audit_file(path)` and
+  `AuditLog.verify_file()` re-read the persisted JSONL and validate the SHA-256
+  hash chain, detecting tampering after a process restart and pinpointing the
+  first broken line (`ChainVerification`). New CLI: `vincio audit verify [path]`.
+- **Threat model** (`docs/security/threat-model.md`) — STRIDE over the real
+  controls (access, audit, injection, PII/secrets, sandbox), with the explicit
+  out-of-scope statement and the supply-chain story.
+- **Supply-chain attestations** — the release workflow now generates a
+  **CycloneDX SBOM** and emits **SLSA build-provenance attestations**
+  (`actions/attest-build-provenance`) for the published wheel and sdist.
+- **VincioBench methodology** (`benchmarks/METHODOLOGY.md`) — what each family
+  measures, its naive baseline, corpus provenance, the budgets-vs-SLOs design,
+  and how to reproduce every number offline. Reports now include an
+  `environment` block (Vincio/Python versions, platform, schema version).
+- **Security & governance example** (`examples/21_security_governance.py`) —
+  PII/secret redaction, injection defense, RBAC/ABAC + tenant isolation,
+  programmable rails, and a tamper-evident audit log, all offline.
+- **Docs-completeness gate** (`tests/test_docs_completeness.py`,
+  `tests/test_examples.py`) — runs all 22 examples end-to-end offline and
+  asserts every public subsystem is documented and every example is indexed.
+  The API reference now documents `vincio.input`, `vincio.documents`,
+  `vincio.cli`, and `vincio.stability`.
+
+### Changed
+
+- **Tool sandbox hardening** — `run_subprocess_sandboxed` and `SandboxedPython`
+  accept `max_cpu_seconds` / `max_memory_bytes` / `max_open_files` and apply
+  them via POSIX `setrlimit` in the child (best-effort; the wall-clock timeout
+  and output caps always apply). `SandboxedPython` defaults to conservative
+  10s CPU / 512 MB / 64-fd limits.
+- `__version__` is now `1.0.0`; the package classifier moves to
+  `Development Status :: 5 - Production/Stable`. Top-level exports add
+  `API_VERSION`, `StabilityLevel`, `VincioDeprecationWarning`,
+  `VincioExperimentalWarning`, `deprecated`, `experimental`, and `stability_of`.
+- `SECURITY.md` now lists 1.0.x as supported and documents SBOM/provenance.
+
+### Fixed
+
+- Carried forward from 0.9.0 and noted here for the 1.0 record: the
+  `ContextApp.add_evaluator` key mismatch for nameless callables (e.g.
+  `functools.partial`) — the name is resolved once so later metric lookup
+  succeeds.
+
 ## [0.9.0] - 2026-06-13
 
 Integrations, connectors & developer experience — the 0.9 roadmap milestone.
@@ -823,5 +890,6 @@ Initial public release.
 - **Surfaces** — FastAPI server (API key + JWT auth) and an argparse CLI.
 - 195 offline tests, 10 runnable examples, documentation, and the VincioBench benchmark suite.
 
+[1.0.0]: https://github.com/Ohswedd/vincio/releases/tag/v1.0.0
 [0.2.0]: https://github.com/Ohswedd/vincio/releases/tag/v0.2.0
 [0.1.0]: https://github.com/Ohswedd/vincio/releases/tag/v0.1.0

@@ -34,14 +34,16 @@ vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible pa
 vincio/notebook     rich Jupyter reprs (enable_rich_reprs) for RunResult/Trace/EvalReport/MemoryItem/SearchHit
 vincio/tui          interactive terminal inspector (TUI) for runs/traces/memory; pure renderers + injectable IO
 vincio/server       FastAPI app (API key + JWT auth, real-token SSE streaming)
-vincio/cli          argparse CLI (init --template, config schema/validate/show, packs, tui, run, eval, prompt, trace, optimize, loop, index, memory)
+vincio/cli          argparse CLI (init --template, config schema/validate/show, packs, tui, run, eval, prompt, trace, optimize, loop, index, memory, audit verify)
+vincio/stability    API-stability contract (1.0): @deprecated/@experimental, deprecated_alias, stability_of, public_api, API_VERSION, VincioDeprecationWarning/VincioExperimentalWarning
 ```
 
 ## Commands
 
 ```bash
 .venv/bin/pip install -e ".[dev]"     # setup
-.venv/bin/python -m pytest tests/ -q  # full suite (offline, ~2s, must stay green)
+.venv/bin/python -m pytest tests/ -q  # full suite (offline, must stay green; example smoke tests add a few seconds)
+.venv/bin/python -m pytest tests/ -q --ignore=tests/test_examples.py  # fast core suite (~2s)
 .venv/bin/ruff check vincio/ tests/   # lint
 ```
 
@@ -64,5 +66,16 @@ vincio/cli          argparse CLI (init --template, config schema/validate/show, 
   correct), never a bare `asyncio.gather` over unbounded inputs.
 - **Performance is gated** — `python benchmarks/vinciobench.py` +
   `python benchmarks/check_budgets.py` must pass; budgets live in
-  `benchmarks/budgets.json` and run in CI.
+  `benchmarks/budgets.json` and run in CI. Published SLOs (`benchmarks/slos.json`,
+  `docs/reference/slo.md`) are each held by a budget at least as strict;
+  `tests/test_slos.py` enforces that invariant.
+- **Public API is frozen under SemVer (1.0)** — the public surface is
+  `vincio.__all__` plus the documented subsystem entry points. Don't remove or
+  break a public symbol in a minor/patch; mark it with `@deprecated(since=,
+  removed_in=, alternative=)` and remove only at the next major. New, unproven
+  API goes behind `@experimental`. See `docs/reference/stability.md`.
+- **Docs stay complete** — `tests/test_docs_completeness.py` requires every
+  public subsystem to be documented and every example indexed;
+  `tests/test_examples.py` runs all examples offline. Add a doc + example when
+  you add a subsystem.
 - Update `ROADMAP.md` when adding subsystems or changing release status.

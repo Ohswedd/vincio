@@ -35,9 +35,18 @@ from .packs import Pack, available_packs, load_pack
 from .prompts.signatures import InputField, OutputField, Predict, Signature, signature
 from .prompts.templates import PromptSpec
 from .security.rails import Rail
+from .stability import (
+    API_VERSION,
+    StabilityLevel,
+    VincioDeprecationWarning,
+    VincioExperimentalWarning,
+    deprecated,
+    experimental,
+    stability_of,
+)
 from .workflows.engine import Workflow
 
-__version__ = "0.9.0"
+__version__ = "1.0.0"
 
 __all__ = [
     "ContextApp",
@@ -84,5 +93,12 @@ __all__ = [
     "load_pack",
     "available_packs",
     "enable_rich_reprs",
+    "API_VERSION",
+    "StabilityLevel",
+    "VincioDeprecationWarning",
+    "VincioExperimentalWarning",
+    "deprecated",
+    "experimental",
+    "stability_of",
     "__version__",
 ]
