@@ -36,7 +36,7 @@ jobs:
           /tmp/sbomenv/bin/pip install dist/*.whl
           cyclonedx-py environment /tmp/sbomenv \
             --output-format JSON \
-            --outfile dist/vincio.sbom.cdx.json
+            --output-file dist/vincio.sbom.cdx.json
       - name: Attest build provenance (SLSA)
         uses: actions/attest-build-provenance@v2
         with:
