@@ -16,13 +16,13 @@ vincio/input        normalization, language/task classification, routing
 vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, multimodal
 vincio/retrieval    chunkers, embeddings, BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers, graph+GraphRAG, live indexes, reasoning
 vincio/connectors   data connectors (web/github/sql/s3/gcs/notion/confluence/slack) feeding the document engine
-vincio/memory       engine (L0–L5), write policy, decay, conflicts, graph, summarizers
+vincio/memory       engine (L0–L5), write policy, decay, conflicts, graph, summarizers, grounded-fact auto-memory
 vincio/tools        registry, permissioned runtime, sandbox
 vincio/agents       bounded DAG executor, planners, ReAct, handoffs, crews + blackboard, durable state graphs (checkpoint/resume/fork), compose/pipe, LangGraph & OpenAI Agents SDK backends
 vincio/workflows    deterministic DAG workflows (retries/compensation/approval gates with pause+resume)
 vincio/output       schemas, robust parsers, validation pipeline, principled repair, constrained decoding (strict schema transform), streaming validation, self-correction loops, multi-schema routing
 vincio/evals        datasets (+synthetic, +from-traces), metrics, judges (+G-Eval), runner, gates, reports, experiments (A/B significance), red-teaming
-vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimization
+vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimization, improvement loop (trace→dataset→eval→optimize→promote), Pareto frontier, retrieval feedback, learned budgets, guided search strategies
 vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenAI semconv) exporters, viewer (TUI/HTML/diff), cost tracking
 vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packet/trace snapshots, pytest plugin (pytest11 entry point)
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, programmable rails, audit

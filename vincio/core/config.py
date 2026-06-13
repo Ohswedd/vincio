@@ -112,8 +112,13 @@ class MemoryConfig(BaseModel):
     retention_weight: float = 0.5  # importance-weighted retention strength
     # Default TTL per scope, in days; scopes not listed never expire.
     ttl_days: dict[str, float] = Field(default_factory=lambda: {"session": 30.0})
-    # What step 16 writes back: input | evidence | tools
+    # What step 16 writes back: input | evidence | tools | facts
     write_back: list[str] = Field(default_factory=lambda: ["input"])
+    # Auto-memory from runs (0.8, write_back includes "facts"): output claims
+    # need this much evidence support to become candidate memories, capped
+    # per run. Admission still goes through the guarded write policy.
+    fact_min_support: float = 0.5
+    max_facts_per_run: int = 5
 
 
 class CacheConfig(BaseModel):

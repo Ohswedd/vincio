@@ -12,6 +12,7 @@ Commands::
     vincio trace replay <trace_id>
     vincio trace diff <trace_a> <trace_b>
     vincio optimize run --app app.py --dataset golden.jsonl --target groundedness
+    vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"
     vincio index build ./docs
     vincio memory inspect --user u1
     vincio memory remember "Prefers concise answers" --user u1
@@ -484,6 +485,51 @@ def cmd_optimize_run(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_loop_run(args: argparse.Namespace) -> int:
+    """One improvement-loop cycle: trace → dataset → eval → optimize → promote."""
+    from ..evals.datasets import Dataset
+    from ..optimize.loop import ImprovementLoop
+    from ..optimize.search import FitnessWeights
+
+    app = _load_app(args.app)
+    gates: dict[str, str] = {}
+    for gate in args.gate or []:
+        if "=" not in gate:
+            return _fail(f"invalid gate {gate!r}; use metric='>= 0.9'")
+        key, _, expression = gate.partition("=")
+        gates[key.strip()] = expression.strip()
+    loop = ImprovementLoop(
+        app,
+        weights=FitnessWeights(),
+        gates=gates or None,
+        experiment=args.experiment,
+        concurrency=args.concurrency,
+    )
+    dataset = Dataset.load(args.dataset) if args.dataset else None
+    result = loop.run(
+        dataset=dataset,
+        min_feedback_score=args.min_feedback,
+        max_variants=args.budget,
+        subset_size=args.subset,
+        promote_tag=args.tag,
+        dry_run=args.dry_run,
+    )
+    print(f"dataset: {result.dataset_name} ({result.dataset_size} cases, fp {result.dataset_fingerprint})")
+    for step in result.steps:
+        detail = ", ".join(f"{k}={v}" for k, v in step.items() if k != "stage")
+        print(f"  [{step['stage']}] {detail}")
+    if result.optimization is not None:
+        for entry in result.optimization.history:
+            if entry["phase"] != "subset":
+                fitness_value = entry.get("fitness")
+                if isinstance(fitness_value, float):
+                    print(f"  [{entry['phase']}] {entry['name']}: {fitness_value:.4f}")
+    print(f"promoted: {result.promoted} — {result.reason}")
+    if result.promoted_ref:
+        print(f"prompt registry: {result.promoted_ref} (tag: {args.tag})")
+    return 0
+
+
 def cmd_index_build(args: argparse.Namespace) -> int:
     from ..core.types import Document
     from ..documents.loaders import load_directory, load_document
@@ -741,6 +787,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_opt_run.add_argument("--concurrency", type=int, default=4)
     p_opt_run.add_argument("--output", default=None, help="write winning spec YAML here")
     p_opt_run.set_defaults(fn=cmd_optimize_run)
+
+    p_loop = sub.add_parser("loop", help="closed improvement loop (0.8)")
+    loop_sub = p_loop.add_subparsers(dest="loop_command", required=True)
+    p_loop_run = loop_sub.add_parser(
+        "run", help="trace → dataset → eval → optimize → promote, one cycle"
+    )
+    p_loop_run.add_argument("--app", required=True)
+    p_loop_run.add_argument("--dataset", default=None, help="JSONL dataset (default: curate from captured traces)")
+    p_loop_run.add_argument("--min-feedback", type=float, default=None, help="min mean feedback score when curating from traces")
+    p_loop_run.add_argument("--budget", type=int, default=8, help="max prompt variants")
+    p_loop_run.add_argument("--subset", type=int, default=8, help="screening subset size")
+    p_loop_run.add_argument("--concurrency", type=int, default=4)
+    p_loop_run.add_argument("--gate", action="append", help="promotion gate, e.g. groundedness='>= 0.8'")
+    p_loop_run.add_argument("--tag", default="production", help="registry tag for the promoted version")
+    p_loop_run.add_argument("--experiment", default="improvement_loop")
+    p_loop_run.add_argument("--dry-run", action="store_true", help="report the decision without promoting")
+    p_loop_run.set_defaults(fn=cmd_loop_run)
 
     p_index = sub.add_parser("index", help="index commands")
     index_sub = p_index.add_subparsers(dest="index_command", required=True)

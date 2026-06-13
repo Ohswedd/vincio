@@ -20,6 +20,12 @@ Ragas is a focused, well-designed evaluation framework for RAG/LLM systems.
 - **Eval results drive optimization** — the evolution loop consumes the same
   reports and promotes prompt/context/routing changes only through safety
   gates; experiments and A/Bs come with statistical significance built in.
+- **Eval results close the loop (0.8)** — `ImprovementLoop` curates
+  production traces into datasets, optimizes against them, and promotes the
+  winner into the prompt registry in one audited, reproducible cycle;
+  eval-scored relevance tunes retrieval fusion and reranker weights
+  (`RetrievalFeedback`) and picks chunking configs (`recommend_chunking`).
+  Ragas scores a system; Vincio's scores change the system — through gates.
 - **Coverage beyond RAG**: agent metrics, tool reliability, memory quality
   (staleness, contradiction, privacy), schema validity, cost/latency — one
   report format, one gate mechanism, one CI command.

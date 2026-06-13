@@ -73,6 +73,7 @@ class Candidate(BaseModel):
 
 class OptimizationResult(BaseModel):
     baseline_fitness: float
+    baseline: Candidate | None = None
     best: Candidate | None = None
     promoted: bool = False
     reason: str = ""
@@ -143,10 +144,12 @@ async def evolution_loop(
         {"phase": "baseline", "name": baseline.name, "fitness": baseline.full_fitness}
     ]
 
-    # Phase 1: subset screening.
+    # Phase 1: subset screening. Candidates that arrive pre-scored (e.g.
+    # from a guided search strategy) keep their subset fitness.
     for candidate in candidates:
-        candidate.subset_report = await evaluate_fn(candidate, subset)
-        candidate.subset_fitness = fitness(candidate.subset_report, weights)
+        if candidate.subset_fitness is None:
+            candidate.subset_report = await evaluate_fn(candidate, subset)
+            candidate.subset_fitness = fitness(candidate.subset_report, weights)
         history.append(
             {"phase": "subset", "name": candidate.name, "fitness": candidate.subset_fitness}
         )
@@ -165,6 +168,7 @@ async def evolution_loop(
     best = max(survivors, key=lambda c: c.full_fitness or float("-inf"), default=None)
     result = OptimizationResult(
         baseline_fitness=baseline.full_fitness,
+        baseline=baseline,
         best=best,
         candidates=candidates,
         history=history,

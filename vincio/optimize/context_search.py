@@ -80,18 +80,56 @@ class ContextOptimizer:
         subset_size: int = 16,
         top_n: int = 3,
         seed: int = 7,
+        strategy: str = "random",
     ) -> OptimizationResult:
+        """Search the context-parameter grid.
+
+        ``strategy`` picks how candidates are proposed: ``"random"`` samples
+        the grid blindly; ``"hill_climb"`` and ``"anneal"`` condition each
+        proposal batch on subset scores already observed (0.8). Guided
+        candidates arrive pre-scored, so the evolution loop goes straight to
+        full-dataset verification and gated promotion for the survivors.
+        """
         space = space or ContextSearchSpace()
-        configs = space.sample(budget, seed=seed)
         baseline = Candidate(name="context:baseline", params=baseline_config or {}, payload=baseline_config or {})
-        candidates = [
-            Candidate(
-                name="context:" + ",".join(f"{k}={v}" for k, v in sorted(config.items())),
-                params=config,
-                payload=config,
+
+        def _name(config: dict[str, Any]) -> str:
+            return "context:" + ",".join(f"{k}={v}" for k, v in sorted(config.items()))
+
+        if strategy == "random":
+            configs = space.sample(budget, seed=seed)
+            candidates = [
+                Candidate(name=_name(config), params=config, payload=config)
+                for config in configs
+            ]
+        else:
+            from .search import fitness
+            from .strategies import guided_search
+
+            subset = dataset.sample(subset_size)
+            reports: dict[tuple, EvalReport] = {}
+
+            async def screen(config: dict[str, Any]) -> float:
+                report = await self.evaluate_config(config, subset)
+                reports[tuple(sorted((k, str(v)) for k, v in config.items()))] = report
+                return fitness(report, self.weights)
+
+            history = await guided_search(
+                space.model_dump(), screen, strategy=strategy, budget=budget, seed=seed
             )
-            for config in configs
-        ]
+            candidates = []
+            for config, score in history:
+                key = tuple(sorted((k, str(v)) for k, v in config.items()))
+                candidates.append(
+                    Candidate(
+                        name=_name(config),
+                        params=config,
+                        payload=config,
+                        subset_fitness=score,
+                        subset_report=reports.get(key),
+                    )
+                )
+
         def evaluate(candidate, ds):
             return self.evaluate_config(candidate.payload, ds)
 

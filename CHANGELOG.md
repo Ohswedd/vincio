@@ -4,6 +4,110 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.0] - 2026-06-13
+
+The closed-loop ecosystem — the 0.8 roadmap milestone, and the differentiator:
+the milestone no single-purpose library can ship, because it requires owning
+the whole lifecycle. One continuous, reproducible improvement cycle —
+trace → dataset → eval → optimize → promote — plus the feedback paths that
+let every organ tune the others: runs write grounded facts back to memory,
+eval-scored relevance tunes retrieval, the optimizer keeps a cost/quality
+Pareto frontier instead of one score, budget allocation is learned from eval
+outcomes, and guided offline search strategies drive the evolution loop.
+
+### Added
+
+- **The improvement loop** (`vincio.optimize.loop`) — `ImprovementLoop` /
+  `app.improvement_loop()` / `vincio loop run` wires the pieces that already
+  exist into one call: capture the traces production runs already write
+  (any exporter), curate them with `dataset_from_traces` (only successful
+  runs whose mean user feedback clears `min_feedback_score`; the dataset's
+  case-id fingerprint is recorded for reproducibility), evaluate the current
+  prompt as the baseline, run the gated prompt optimizer, and promote the
+  winner: pushed to the `PromptRegistry`, tagged (`production` by default),
+  linked to the eval report that justified it, applied to the live app,
+  written to the hash-chained audit log (`loop_promotion`), and announced on
+  the event bus (`loop.promoted`). Baseline and winner reports land in the
+  `ExperimentTracker` (same metadata store as runs), so `compare()` and
+  `ab_test()` work across cycles; `dry_run=True` reports the decision
+  without acting. Candidate evaluations are memory-write-free: an eval run
+  never pollutes user memory or hands later candidates different recall
+  state than earlier ones saw.
+- **Auto-memory from runs** (`vincio.memory.facts`) — with
+  `memory.write_back: [facts]`, verifiable claims from a run's output that
+  the cited evidence supports become *candidate* memories:
+  `extract_grounded_facts()` is deterministic (claim-shaped sentences,
+  support-thresholded lexical grounding against the cited evidence,
+  citation markers stripped), `MemoryEngine.write_back(facts=...)` writes
+  them with measured support and evidence provenance
+  (`origin: run_fact`, confidence scaling with support), and admission
+  still runs the guarded write policy — privacy, stability, contradiction,
+  confidence — with the candidate status penalty in recall until confirmed.
+  New config: `memory.fact_min_support`, `memory.max_facts_per_run`.
+- **Retrieval feedback** (`vincio.optimize.retrieval_feedback`) —
+  `RetrievalFeedback` tunes a live `RetrievalEngine` from relevance labels
+  that already live on eval cases (`rubric.relevant_ids`, via
+  `records_from_dataset` / `records_from_report`): a deterministic
+  coordinate search over per-index RRF fusion weights and a grid over the
+  heuristic reranker's blend, both **gated** — weights change only when
+  recall@k + MRR over the records measurably improve, and the engine is
+  restored untouched otherwise. `recommend_chunking(reports_by_config)`
+  picks the chunking config whose eval report scored best, staying on the
+  baseline unless beaten by `min_improvement`.
+- **Cost/quality Pareto optimization** (`vincio.optimize.pareto`) —
+  `pareto_loop` keeps the full multi-objective frontier instead of one
+  scalar: `ObjectiveSpec` axes (defaults: accuracy, groundedness, cost,
+  latency), `ParetoFrontier` with non-dominated filtering, `knee()`
+  (best summed normalized goodness), and `select(constraints=, prefer=)`
+  for per-objective bounds like `{"cost": 0.01}`. Screening still uses
+  scalar fitness (cheap); the final pick comes from the frontier of
+  full-dataset reports and passes the same promotion safety rules as the
+  scalar loop.
+- **Learned context budgeting** (`vincio.optimize.budget_learning`) —
+  `BudgetLearner` searches bounded perturbations of the per-task allocation
+  tables (move a slice of budget between blocks, renormalize) and adopts a
+  learned table only through gated promotion; `LearnedAllocations`
+  persists as JSON and installs via `app.use_learned_budgets()` or
+  `BudgetAllocator(learned=...)` — tasks without a learned table keep the
+  fixed defaults.
+- **Guided offline search strategies** (`vincio.optimize.strategies`) —
+  `hill_climb` (single-knob mutations of the incumbent) and `anneal`
+  (Metropolis acceptance with a cooling schedule) condition each proposal
+  batch on subset scores already observed; both are deterministic under a
+  seed, hard-bounded by the evaluation budget, and pluggable into
+  `ContextOptimizer(strategy=...)` or usable directly via
+  `guided_search()`. Pre-scored candidates flow into `evolution_loop`
+  without re-screening, and `OptimizationResult` now carries the evaluated
+  baseline candidate.
+- **CLI** — `vincio loop run --app app.py [--dataset ds.jsonl |
+  --min-feedback X] [--gate "metric=>= 0.9"] [--tag production]
+  [--experiment NAME] [--dry-run]`.
+- **Docs & examples** — a "close the loop" guide
+  (`docs/guides/close-the-loop.md`), updated API/CLI/config references,
+  0.8 sections in the DSPy and Ragas comparisons, and runnable example
+  `18_closed_loop.py` (the full cycle offline: auto-memory, promotion,
+  the frontier behind the decision, retrieval feedback, learned budgets).
+- **VincioBench `loop` family** — promotion fires and is deterministic,
+  gates block regressions, the registry version is tagged and eval-linked,
+  grounded facts are written (and ungrounded ones never are), retrieval
+  tuning improves and is gated, the frontier excludes dominated points with
+  a balanced knee, learned budgets promote, and guided search respects its
+  budget — under 14 new CI-gated budgets (81 total).
+
+### Changed
+
+- `OptimizationResult` gains a `baseline: Candidate` field (the evaluated
+  baseline with its full report), so loop callers can log and compare it.
+- `evolution_loop` skips subset screening for candidates that arrive with
+  `subset_fitness` already set (guided-search support); fresh candidates
+  behave exactly as before.
+- `BudgetAllocator` accepts `learned=` per-task allocation tables that
+  override the fixed `TASK_ALLOCATIONS` entry for their task type.
+- `MemoryEngine.write_back` accepts `facts=` (a list of `GroundedFact`)
+  alongside `evidence=` and `tool_results=`.
+- **495 tests passing offline in ~2s; ruff clean**; eighteen runnable
+  examples; 81 CI-gated VincioBench budgets.
+
 ## [0.7.0] - 2026-06-13
 
 Structured output, guardrails & reliability — the 0.7 roadmap milestone.

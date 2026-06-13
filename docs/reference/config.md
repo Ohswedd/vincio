@@ -56,7 +56,10 @@ memory:
   retention_weight: 0.5      # importance-weighted retention strength
   ttl_days:                  # default TTL per scope; unlisted scopes never expire
     session: 30
-  write_back: [input]        # input | evidence | tools
+  write_back: [input]        # input | evidence | tools | facts
+  fact_min_support: 0.5      # evidence support an output claim needs to become
+                             # a candidate memory (write_back includes "facts")
+  max_facts_per_run: 5
 
 cache:
   response_cache: false

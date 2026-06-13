@@ -18,6 +18,16 @@ and automatic prompt/weight optimization.
   program: prompt format/examples/reasoning-mode search, retrieval and
   context-budget tuning, model routing, and cache layout — all driven by
   the same fitness function and gated promotion rules.
+- **The loop is closed (0.8).** `ImprovementLoop` runs trace → dataset →
+  eval → optimize → promote as one reproducible cycle: production traces
+  become the training data, the winner lands in the prompt registry tagged
+  and eval-linked, and the decision is audited. DSPy optimizes a program
+  you compile once; Vincio keeps optimizing the system it is running.
+- **Multi-objective, not single-score (0.8).** `pareto_loop` keeps the
+  accuracy/groundedness/latency/cost frontier; budget allocation is learned
+  from eval outcomes (`BudgetLearner`); hill-climb/annealing strategies
+  condition proposals on what already scored well — all behind the same
+  gates.
 - **Production runtime included**: storage, traces, audit logs, tenant
   isolation, permissioned tools, budgets, and a server — DSPy-style
   optimization without assembling the operational stack around it.

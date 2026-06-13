@@ -9,6 +9,7 @@ from .evals import (
     evaluate_memory,
     personalization_dataset,
 )
+from .facts import GroundedFact, extract_grounded_facts
 from .graph import MemoryEdge, MemoryGraph, MemoryNode
 from .policies import (
     MemoryCandidate,
@@ -34,6 +35,8 @@ __all__ = [
     "contradiction_rate",
     "evaluate_memory",
     "personalization_dataset",
+    "GroundedFact",
+    "extract_grounded_facts",
     "MemoryEdge",
     "MemoryGraph",
     "MemoryNode",

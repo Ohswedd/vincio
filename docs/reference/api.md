@@ -31,6 +31,8 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | `graph(name, state_schema=, reducers=)` | durable `StateGraph` checkpointed in the app's metadata store |
 | `workflow(name)` | deterministic `Workflow` builder (approval gates pause; `resume(result, approvals=)` continues) |
 | `evaluate(dataset, metrics=, concurrency=, gates=, judges=)` | `EvalReport` |
+| `improvement_loop(metrics=, weights=, gates=, experiment=, ...)` | `ImprovementLoop`: trace → dataset → eval → optimize → promote on this app |
+| `use_learned_budgets(source)` | install eval-tuned per-task budget allocations (`LearnedAllocations`, path, or mapping) |
 | `task` (decorator) | configure from a task class |
 | `stats()` | sources, tools, memory, cost, run counts |
 
@@ -57,13 +59,13 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.context` | `ContextCompiler`, `ContextPacket`, `ContextIR`, `ContextScorer`, `BudgetAllocator` |
 | `vincio.retrieval` | `RetrievalEngine`, `BM25Index`, `VectorIndex`, `SparseIndex`, `LateInteractionIndex`, `AutoMergingIndex`, `LiveIndex`, `QueryUnderstanding`, `EntityGraph`, `GraphRAG`, `ReasoningRetriever`, `chunk_document`, `contextualize_chunks` |
 | `vincio.connectors` | `connect`, `register_connector`, `WebConnector`, `GitHubConnector`, `SQLConnector`, `S3Connector`, `GCSConnector`, `NotionConnector`, `ConfluenceConnector`, `SlackConnector` |
-| `vincio.memory` | `MemoryEngine`, `ScopedMemory`, `MemoryConsolidator`, `MemoryGraph`, `SessionSummarizer`, `SQLiteMemoryStore`, `evaluate_memory` |
+| `vincio.memory` | `MemoryEngine`, `ScopedMemory`, `MemoryConsolidator`, `MemoryGraph`, `SessionSummarizer`, `SQLiteMemoryStore`, `evaluate_memory`, `GroundedFact`, `extract_grounded_facts` |
 | `vincio.tools` | `ToolRegistry`, `ToolRuntime`, `ToolPermissionChecker`, `SandboxedPython` |
 | `vincio.agents` | `AgentExecutor`, `Planner`, `StepDAG`, `HandoffRouter`, `Crew`, `AgentRole`, `Blackboard`, `StateGraph`, `Checkpointer`, `interrupt`, `compose`, `parallel`, `branch`, `LangGraphBackend`, `OpenAIAgentsBackend` |
 | `vincio.workflows` | `Workflow` (pause/resume approval gates, edit-and-resume) |
 | `vincio.output` | `OutputSchema`, `OutputContract`, `OutputValidator`, `Repairer`, `to_strict_json_schema`, `choice_schema`, `regex_schema`, `StreamingValidator`, `SelfCorrector`, `SchemaRouter` |
 | `vincio.evals` | `Dataset`, `dataset_from_traces`, `EvalRunner`, `ModelJudge`, `GEvalJudge`, `evaluate_gates`, `METRICS`, `SyntheticGenerator`, `RedTeamSuite`, `ExperimentTracker`, `ab_test` |
-| `vincio.optimize` | `PromptOptimizer`, `ContextOptimizer`, `RoutingPolicy`, `evolution_loop`, `fitness` |
+| `vincio.optimize` | `PromptOptimizer`, `ContextOptimizer`, `RoutingPolicy`, `evolution_loop`, `fitness`, `ImprovementLoop`, `pareto_loop`, `ParetoFrontier`, `ObjectiveSpec`, `RetrievalFeedback`, `recommend_chunking`, `BudgetLearner`, `LearnedAllocations`, `guided_search` |
 | `vincio.observability` | `Tracer`, `JSONLExporter`, `OTelExporter`, `CostTracker`, `trace_diff`, `Session`, `sessions_from_traces`, `record_feedback`, `trace_to_html`, `render_trace_text` |
 | `vincio.testing` | `assert_eval`, `assert_grounded`, `assert_metric`, `assert_safe`, `Snapshot` (+ pytest plugin: `vincio_snapshot` fixture, `--vincio-update-snapshots`) |
 | `vincio.security` | `PIIDetector`, `SecretScanner`, `InjectionDetector`, `AccessController`, `PolicyEngine`, `Rail`, `RailEngine`, `AuditLog` |
