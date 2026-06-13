@@ -1,7 +1,14 @@
 """Vincio security: PII, secrets, injection defense, access, audit."""
 
 from .access import AccessController, AccessDecision, AccessRule, Principal, Role
-from .audit import AuditEntry, AuditLog, RetentionPolicy, apply_retention
+from .audit import (
+    AuditEntry,
+    AuditLog,
+    ChainVerification,
+    RetentionPolicy,
+    apply_retention,
+    verify_audit_file,
+)
 from .injection import InjectionDetector, InjectionVerdict, wrap_untrusted
 from .pii import PIIDetector, PIIMatch, redact
 from .policy import PolicyCheckResult, PolicyEngine, PolicyViolation
@@ -16,8 +23,10 @@ __all__ = [
     "Role",
     "AuditEntry",
     "AuditLog",
+    "ChainVerification",
     "RetentionPolicy",
     "apply_retention",
+    "verify_audit_file",
     "InjectionDetector",
     "InjectionVerdict",
     "wrap_untrusted",

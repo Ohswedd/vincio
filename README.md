@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-561%20passing-2ea44f" alt="561 tests passing">
+  <img src="https://img.shields.io/badge/tests-646%20passing-2ea44f" alt="646 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -186,7 +186,7 @@ for any engine directly.
 | **Context compiler** | Scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget — with an *excluded-context report* explaining every omission. |
 | **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; citations. |
 | **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. |
-| **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, sandboxing, reliability scoring, idempotent write-action guardrails with approval callbacks. |
+| **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, a resource-limited sandbox (timeout, output caps, scrubbed env, POSIX CPU/memory/fd `setrlimit`), reliability scoring, idempotent write-action guardrails with approval callbacks. |
 | **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement. |
 | **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events; runtime backends exporting to LangGraph and the OpenAI Agents SDK. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates that pause the run and resume without re-executing finished steps. |
@@ -195,12 +195,13 @@ for any engine directly.
 | **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
 | **The closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
 | **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
-| **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log. |
+| **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB behind one `build_vector_index` factory), and graph (Neo4j) backends. |
 | **Providers** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. |
 | **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
 | **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. |
 | **Integrations & DX** | LangChain + LlamaIndex interop (`vincio.interop`) for tools, retrievers, loaders, and embeddings — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
+| **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a frozen public surface (`vincio.__all__`) with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `@experimental` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
 
 Every extension point — providers, metrics, chunkers, rerankers, judges, validators, tools — accepts
 your own implementation via a registry.
@@ -290,7 +291,7 @@ OpenAI-compatible model, and pick the vector store you already run. See the
 | Gate quality in CI | datasets, gates, baseline diff | [`09_eval_pipeline.py`](examples/09_eval_pipeline.py) |
 | Tune prompts/context against an eval suite | optimization + gated promotion | [`10_optimization_run.py`](examples/10_optimization_run.py) |
 | Stream answers token-by-token through the full pipeline | `astream` + partial-JSON + compile caches | [`11_streaming_performance.py`](examples/11_streaming_performance.py) |
-| Push retrieval quality with the full 0.3 toolkit | sparse+late-interaction fusion, HyDE, auto-merge, GraphRAG, connectors | [`12_advanced_rag.py`](examples/12_advanced_rag.py) |
+| Push retrieval quality with the full retrieval toolkit | sparse+late-interaction fusion, HyDE, auto-merge, GraphRAG, connectors | [`12_advanced_rag.py`](examples/12_advanced_rag.py) |
 | Personalize an app with governed memory | scoped remember/recall, consolidation, hygiene, memory evals | [`13_memory_personalization.py`](examples/13_memory_personalization.py) |
 | Evaluate, test, and observe without a platform | quality metrics, synthetic data, red-teaming, experiments, prompt registry, sessions + trace viewer | [`14_evaluation_observability.py`](examples/14_evaluation_observability.py) |
 | Run a multi-agent team with roles and delegation | crews + shared blackboard + budget guarantees | [`15_multi_agent_crew.py`](examples/15_multi_agent_crew.py) |
@@ -299,11 +300,12 @@ OpenAI-compatible model, and pick the vector store you already run. See the
 | Improve the app from its own production traffic | the closed loop: traces→dataset→eval→optimize→promote, auto-memory, retrieval feedback, Pareto, learned budgets | [`18_closed_loop.py`](examples/18_closed_loop.py) |
 | Reuse LangChain/LlamaIndex assets and any OpenAI-compatible model | framework interop + provider/vector-store breadth | [`19_framework_interop.py`](examples/19_framework_interop.py) |
 | Configure an app for a domain in one line | opt-in domain packs (support/engineering/finance/legal) | [`20_domain_pack.py`](examples/20_domain_pack.py) |
+| Govern PII, injection, access, and audit integrity | deterministic security primitives + tamper-evident audit | [`21_security_governance.py`](examples/21_security_governance.py) |
 
 ## More examples
 
-All twenty examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
-a real model with environment variables:
+All twenty-two examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
+at a real model with environment variables:
 
 ```bash
 export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
@@ -332,6 +334,7 @@ vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"  # 
 vincio index build ./docs        # build a retrieval index
 vincio memory inspect --user u1  # inspect a user's memory
 vincio memory recall "answer style" --user u1  # scored hybrid recall
+vincio audit verify              # verify the audit-log hash chain offline
 ```
 
 A FastAPI server (API-key + JWT auth, real-token SSE streaming) is available via
@@ -368,10 +371,14 @@ of each engine.
 ## Roadmap
 
 Every subsystem above is implemented, tested offline, documented, and demonstrated by a runnable
-example. The roadmap deepens and broadens the library rather than changing that scope; the current
-focus is **stabilization and guarantees** — semantic-versioning and deprecation policy, published
-performance SLOs, a full security review with supply-chain attestations, and an expanded,
-reproducible VincioBench.
+example. **Vincio 1.0 is shipped:** the public API is frozen under
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) with a mechanical
+[deprecation policy](docs/reference/stability.md), performance and quality targets are
+[published as SLOs](docs/reference/slo.md) and gated by VincioBench, the
+[threat model](docs/security/threat-model.md) is documented with offline audit-chain verification and
+a resource-limited tool sandbox, releases ship a CycloneDX SBOM and SLSA provenance attestations, and
+a docs-completeness gate runs every example. The roadmap deepens and broadens the library from here
+rather than changing that scope.
 
 See **[ROADMAP.md](ROADMAP.md)** for what's shipped, what's next, and what's intentionally out of
 scope, and **[CHANGELOG.md](CHANGELOG.md)** for release notes.
@@ -401,7 +408,10 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [LlamaIndex](docs/guides/migrate-from-llamaindex.md) ·
   [Ragas](docs/guides/migrate-from-ragas.md) · [Mem0](docs/guides/migrate-from-mem0.md)
 - **Reference** — [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
-  [config](docs/reference/config.md)
+  [config](docs/reference/config.md) · [API stability & deprecation policy](docs/reference/stability.md) ·
+  [performance & quality SLOs](docs/reference/slo.md)
+- **Security** — [threat model](docs/security/threat-model.md) ·
+  [security policy](SECURITY.md) · [reliability & guardrails guide](docs/guides/reliability-guardrails.md)
 - **Comparisons** — [LangChain](docs/comparisons/langchain.md) ·
   [LlamaIndex](docs/comparisons/llamaindex.md) · [RAGatouille](docs/comparisons/ragatouille.md) ·
   [Mem0](docs/comparisons/mem0.md) · [CrewAI](docs/comparisons/crewai.md) ·
@@ -411,12 +421,11 @@ infrastructure. Hosted services and managed control planes are not part of this 
 
 ## Contributing
 
-Contributions are welcome. The test suite runs fully offline in a couple of seconds and must stay
-green:
+Contributions are welcome. The test suite runs fully offline and must stay green:
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 467 tests, no network or API keys required
+python -m pytest tests/ -q     # 646 tests, no network or API keys required
 ruff check vincio/ tests/
 ```
 

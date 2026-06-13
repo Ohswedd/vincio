@@ -38,10 +38,10 @@ and provenance (`metadata.source_ids`, source sentences in `rubric.facts`).
 - **Task** — `exact_match`, `semantic_similarity`, `classification_accuracy`, `extraction_f1`
 - **Grounding** — `groundedness`, `unsupported_claim_rate`, `citation_accuracy`,
   `citation_recall`, `context_precision`, `context_recall`
-- **Quality & safety (0.5)** — `faithfulness`, `answer_relevance`, `hallucination`
+- **Quality & safety** — `faithfulness`, `answer_relevance`, `hallucination`
   (strict number checking: "90 days" against evidence saying "30 days" fails),
   `toxicity`, `bias`, `summarization_quality`
-- **Conversational (0.5)** — `knowledge_retention` (flags re-asking for facts the
+- **Conversational** — `knowledge_retention` (flags re-asking for facts the
   user already gave), `conversation_relevance` — both read the session from
   `case.context["messages"]`
 - **Operational** — `cost`, `latency`, `input_tokens`, `output_tokens`, `retries`

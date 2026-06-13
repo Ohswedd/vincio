@@ -44,6 +44,19 @@ python benchmarks/check_budgets.py    # exit 1 on any budget breach
 Latency budgets are deliberately loose (shared CI runners) and exist to catch
 order-of-magnitude regressions; ratio and quality budgets are tight.
 
+## Published SLOs vs CI budgets
+
+There are two tiers. `slos.json` is the **public promise** — the
+[performance & quality SLOs](../docs/reference/slo.md) users can rely on. Each
+SLO names the `budgets.json` key that enforces it, and the budget is always held
+**at least as strict** as the published target, so a green build provably honors
+the SLO. `tests/test_slos.py` checks that invariant. Every report also carries an
+`environment` block (Vincio/Python versions, platform, schema version) so a
+saved report is self-describing and reproducible.
+
+See **[METHODOLOGY.md](METHODOLOGY.md)** for what each family measures, its naive
+baseline, corpus provenance, and how to reproduce every number on your own data.
+
 ## Per-stage profiling
 
 ```bash

@@ -17,7 +17,14 @@ from pydantic import BaseModel, Field
 
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 
-__all__ = ["AuditEntry", "AuditLog", "RetentionPolicy", "apply_retention"]
+__all__ = [
+    "AuditEntry",
+    "AuditLog",
+    "ChainVerification",
+    "RetentionPolicy",
+    "apply_retention",
+    "verify_audit_file",
+]
 
 
 class AuditEntry(BaseModel):
@@ -88,6 +95,18 @@ class AuditLog:
             previous = entry.entry_hash
         return True
 
+    def verify_file(self) -> ChainVerification:
+        """Re-read the persisted JSONL and verify its hash chain offline.
+
+        Unlike :meth:`verify_chain` (in-memory only), this detects tampering of
+        the on-disk log after a process restart — a row edited, inserted, or
+        deleted breaks the chain at a pinpointed line. In-memory logs
+        (``directory=None``) verify as intact with zero entries.
+        """
+        if self.path is None:
+            return ChainVerification(intact=True, entries=0)
+        return verify_audit_file(self.path)
+
     def query(
         self,
         *,
@@ -106,6 +125,52 @@ class AuditLog:
             and (run_id is None or entry.run_id == run_id)
         ]
         return results[-limit:]
+
+
+class ChainVerification(BaseModel):
+    """Result of verifying a persisted audit chain."""
+
+    intact: bool
+    entries: int
+    broken_at: int | None = None  # 1-based line number where the chain broke
+    reason: str | None = None
+
+
+def verify_audit_file(jsonl_path: str | Path) -> ChainVerification:
+    """Verify the integrity hash chain of a persisted audit JSONL file.
+
+    Recomputes each entry's hash from its content and checks that every
+    ``prev_hash`` links to the prior ``entry_hash``, so any edit, reorder,
+    insert, or delete is detected and localized. A missing file verifies as
+    intact with zero entries (nothing has been tampered with).
+    """
+    path = Path(jsonl_path)
+    if not path.is_file():
+        return ChainVerification(intact=True, entries=0)
+    previous = ""
+    count = 0
+    with path.open(encoding="utf-8") as fh:
+        for lineno, line in enumerate(fh, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = AuditEntry.model_validate_json(line)
+            except (ValueError, TypeError) as exc:
+                return ChainVerification(
+                    intact=False, entries=count, broken_at=lineno, reason=f"unparseable: {exc}"
+                )
+            count += 1
+            if entry.prev_hash != previous:
+                return ChainVerification(
+                    intact=False, entries=count, broken_at=lineno, reason="prev_hash mismatch"
+                )
+            if entry.entry_hash != entry.compute_hash():
+                return ChainVerification(
+                    intact=False, entries=count, broken_at=lineno, reason="entry_hash mismatch"
+                )
+            previous = entry.entry_hash
+    return ChainVerification(intact=True, entries=count)
 
 
 class RetentionPolicy(BaseModel):

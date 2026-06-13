@@ -1,6 +1,6 @@
 # Performance & streaming
 
-Vincio 0.2 made the spine fast: concurrent hot paths, content-addressed
+Vincio's spine is built for speed: concurrent hot paths, content-addressed
 compilation caches, zero-copy context packets, end-to-end streaming, and
 throughput primitives — all measured by VincioBench and gated in CI. This
 guide shows how to use each.
@@ -56,7 +56,7 @@ The hot paths are concurrent by default:
 - Memory recall, file ingestion, and retrieval run in parallel per run.
 - Retrieval fans out every (query × index) search pair concurrently.
 - Tool calls within one model round execute concurrently.
-- Eval cases already ran concurrently (0.1).
+- Eval cases already ran concurrently.
 
 Every fan-out is bounded and cancellation-correct: cancelling `arun`/`astream`
 cancels all in-flight subtasks, and `Budget.max_latency_ms` is enforced as a

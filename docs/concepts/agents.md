@@ -26,7 +26,7 @@ state.metrics()            # success, steps, tool calls/errors, cost, tokens
 - **Handoffs** — `HandoffRouter` routes objectives between named agents with
   bounded depth and merged provenance.
 
-## Multi-agent crews (0.6)
+## Multi-agent crews
 
 A crew binds named roles to bounded executors and runs them as a team over a
 shared **blackboard** — versioned, author-attributed working memory that every
@@ -60,7 +60,7 @@ result.blackboard        # JSON snapshot of the shared board
   `crew_agent` span, and `result.metrics()` aggregates per-member
   `AgentState.metrics()` for eval gates.
 
-## Durable stateful graphs (0.6)
+## Durable stateful graphs
 
 For long-running, interruptible processes, `app.graph()` builds a
 **checkpointed state graph**: nodes are functions over a shared state dict,
@@ -96,7 +96,7 @@ done = review.resume(paused.thread_id, value=True)          # …and resume
   `workflow.resume(result, approvals={"ship": True})` continues without
   re-running done steps.
 
-## Declarative composition (0.6)
+## Declarative composition
 
 Chains read like data: wrap any step — function, agent, crew, workflow, or
 compiled graph — and pipe with `|`. Results are normalized between steps and
@@ -112,7 +112,7 @@ parallel(fast=cheap_agent, thorough=rag_agent)   # dict of branch results
 branch(router, {"billing": billing_flow, "legal": legal_flow})
 ```
 
-## Runtime backends (0.6)
+## Runtime backends
 
 Vincio orchestrates without lock-in: adapters export the same definitions to
 external runtimes. `LangGraphBackend` translates a `StateGraph` (nodes

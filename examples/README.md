@@ -29,6 +29,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `18_closed_loop.py` | the closed loop: traces→dataset→eval→optimize→promote, auto-memory from runs, retrieval feedback, Pareto frontier, learned budgeting |
 | `19_framework_interop.py` | LangChain/LlamaIndex interop, OpenAI-compatible providers, `build_embedder`/`build_vector_index` breadth |
 | `20_domain_pack.py` | opt-in domain packs (`use_pack`), pack schema + golden eval set |
+| `21_security_governance.py` | PII/secret redaction, injection defense, RBAC/ABAC access control, programmable rails, tamper-evident audit log |
 
 Run any of them:
 

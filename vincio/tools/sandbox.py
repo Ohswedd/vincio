@@ -1,11 +1,13 @@
 """Sandboxed execution helpers (code execution sandbox).
 
 `run_subprocess_sandboxed` executes a command in a separate process with a
-timeout, output caps, a scrubbed environment, and an optional working
+timeout, output caps, a scrubbed environment, POSIX resource limits (CPU,
+address space, open files via ``setrlimit``), and an optional working
 directory jail. `SandboxedPython` runs Python snippets in a subprocess with
-``-I`` (isolated mode). These are OS-process isolation, not a security
-boundary against a hostile kernel — appropriate for tool-grade isolation of
-generated code; harden further with containers for adversarial workloads.
+``-I`` (isolated mode) under conservative CPU/memory/fd limits by default.
+These are OS-process isolation, not a security boundary against a hostile
+kernel — appropriate for tool-grade isolation of generated code; harden
+further with containers/seccomp for adversarial workloads.
 """
 
 from __future__ import annotations
@@ -14,6 +16,7 @@ import asyncio
 import os
 import sys
 import tempfile
+from collections.abc import Callable
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -33,6 +36,47 @@ class SandboxResult(BaseModel):
     truncated: bool = False
 
 
+def _rlimit_preexec(
+    max_cpu_seconds: int | None,
+    max_memory_bytes: int | None,
+    max_open_files: int | None,
+) -> Callable[[], None] | None:
+    """Build a POSIX ``preexec_fn`` that applies resource limits in the child.
+
+    Returns ``None`` on platforms without the :mod:`resource` module (Windows),
+    where these limits are not enforceable; the timeout and output caps still
+    apply everywhere.
+    """
+    try:
+        import resource
+    except ImportError:  # pragma: no cover - non-POSIX
+        return None
+
+    if max_cpu_seconds is None and max_memory_bytes is None and max_open_files is None:
+        return None
+
+    def _set(which: int, value: int) -> None:
+        # Best-effort: some platforms (notably macOS for RLIMIT_AS) don't honor
+        # every limit. A limit we can't set must not crash the child — the
+        # wall-clock timeout and output caps still bound it.
+        try:
+            soft, hard = resource.getrlimit(which)
+            cap = value if hard == resource.RLIM_INFINITY else min(value, hard)
+            resource.setrlimit(which, (cap, hard))
+        except (ValueError, OSError):  # pragma: no cover - platform-dependent
+            pass
+
+    def _apply() -> None:  # pragma: no cover - runs in the forked child
+        if max_cpu_seconds is not None:
+            _set(resource.RLIMIT_CPU, max_cpu_seconds)
+        if max_memory_bytes is not None and hasattr(resource, "RLIMIT_AS"):
+            _set(resource.RLIMIT_AS, max_memory_bytes)
+        if max_open_files is not None:
+            _set(resource.RLIMIT_NOFILE, max_open_files)
+
+    return _apply
+
+
 async def run_subprocess_sandboxed(
     command: list[str],
     *,
@@ -41,12 +85,23 @@ async def run_subprocess_sandboxed(
     cwd: str | Path | None = None,
     env_overrides: dict[str, str] | None = None,
     stdin_data: str | None = None,
+    max_cpu_seconds: int | None = None,
+    max_memory_bytes: int | None = None,
+    max_open_files: int | None = None,
 ) -> SandboxResult:
-    """Run a command with a scrubbed environment and hard timeout."""
+    """Run a command with a scrubbed environment and hard timeout.
+
+    On POSIX, ``max_cpu_seconds`` (RLIMIT_CPU), ``max_memory_bytes``
+    (RLIMIT_AS), and ``max_open_files`` (RLIMIT_NOFILE) are enforced in the
+    child via ``setrlimit`` so a runaway snippet cannot exhaust CPU, memory, or
+    file descriptors. These limits are best-effort on platforms without the
+    ``resource`` module; the wall-clock timeout and output caps always apply.
+    """
     import time
 
     env = {key: os.environ[key] for key in _SAFE_ENV_KEYS if key in os.environ}
     env.update(env_overrides or {})
+    preexec = _rlimit_preexec(max_cpu_seconds, max_memory_bytes, max_open_files)
     started = time.monotonic()
     process = await asyncio.create_subprocess_exec(
         *command,
@@ -55,6 +110,7 @@ async def run_subprocess_sandboxed(
         stdin=asyncio.subprocess.PIPE if stdin_data is not None else asyncio.subprocess.DEVNULL,
         cwd=str(cwd) if cwd else None,
         env=env,
+        preexec_fn=preexec,
     )
     try:
         stdout_bytes, stderr_bytes = await asyncio.wait_for(
@@ -91,10 +147,16 @@ class SandboxedPython:
         timeout_s: float = 15.0,
         max_output_bytes: int = 500_000,
         python_executable: str | None = None,
+        max_cpu_seconds: int | None = 10,
+        max_memory_bytes: int | None = 512 * 1024 * 1024,
+        max_open_files: int | None = 64,
     ) -> None:
         self.timeout_s = timeout_s
         self.max_output_bytes = max_output_bytes
         self.python_executable = python_executable or sys.executable
+        self.max_cpu_seconds = max_cpu_seconds
+        self.max_memory_bytes = max_memory_bytes
+        self.max_open_files = max_open_files
 
     async def run(self, code: str) -> SandboxResult:
         with tempfile.TemporaryDirectory(prefix="vincio_sandbox_") as tmp:
@@ -105,4 +167,7 @@ class SandboxedPython:
                 timeout_s=self.timeout_s,
                 max_output_bytes=self.max_output_bytes,
                 cwd=tmp,
+                max_cpu_seconds=self.max_cpu_seconds,
+                max_memory_bytes=self.max_memory_bytes,
+                max_open_files=self.max_open_files,
             )

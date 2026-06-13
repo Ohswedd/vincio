@@ -69,7 +69,7 @@ The `ContextIR` is the provider-neutral intermediate representation; the
 prompt compiler renders it into provider-specific messages (system blocks
 with cache hints for Anthropic, developer messages for OpenAI, etc.).
 
-## Caching, recompiles, and zero-copy packets (0.2)
+## Caching, recompiles, and zero-copy packets
 
 Compilation is a pure function of its inputs, so it caches
 content-addressed: with `cache.context_compile_cache` (on by default),

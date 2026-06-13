@@ -127,3 +127,33 @@ The VincioBench `reliability` family measures all of it offline — strict
 schema closure, mid-stream invalid detection (and the abort savings),
 correction recovery rate, rail catch rate with zero false positives,
 signature validity, and routing accuracy — under CI-gated budgets.
+
+## Tamper-evident audit log
+
+The audit log is append-only with a SHA-256 hash chain, so any edit, reorder,
+insert, or delete is detectable. Verify the in-memory log with
+`app.audit.verify_chain()`, or verify a **persisted** log offline (after a
+restart, on another machine) — this is what catches on-disk tampering:
+
+```python
+from vincio.security import verify_audit_file
+
+result = verify_audit_file(".vincio/audit/audit.jsonl")
+if not result.intact:
+    raise SystemExit(f"audit tampered at line {result.broken_at}: {result.reason}")
+```
+
+Or from the shell: `vincio audit verify .vincio/audit/audit.jsonl` (exit 1 on a
+broken chain). See the [threat model](../security/threat-model.md) for the full
+picture, and [`examples/21_security_governance.py`](../../examples/21_security_governance.py)
+for a runnable demo of PII/secret redaction, injection defense, access control,
+rails, and audit verification.
+
+## Sandboxed tool execution
+
+Tools that run generated code go through `vincio.tools.SandboxedPython` /
+`run_subprocess_sandboxed`: a separate process with a hard wall-clock timeout,
+output caps, a scrubbed environment, and — on POSIX — `setrlimit` CPU, memory,
+and file-descriptor limits (`max_cpu_seconds` / `max_memory_bytes` /
+`max_open_files`, conservative by default). This is OS-process isolation, not a
+kernel sandbox; for adversarial code, run tools in a container/VM.

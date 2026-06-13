@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -48,6 +48,9 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [API reference](docs/reference/api.md)
 - [CLI reference](docs/reference/cli.md)
 - [Config reference](docs/reference/config.md)
+- [API stability & deprecation policy](docs/reference/stability.md)
+- [Performance & quality SLOs](docs/reference/slo.md)
+- [Threat model](docs/security/threat-model.md)
 
 ## Key facts for code generation
 
@@ -56,7 +59,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
   mock (deterministic, offline; generates schema-valid structured output);
   plus OpenAI-compatible presets groq | together | fireworks | openrouter |
-  deepseek | perplexity | xai | nvidia (0.9) via `openai_compatible(name)` /
+  deepseek | perplexity | xai | nvidia via `openai_compatible(name)` /
   `build_provider(name)` (`<NAME>_API_KEY` env) or any endpoint with
   `openai_compatible(base_url=..., api_key=...)`.
 - `ContextApp.run()` executes: normalize → classify → policy → memory →
@@ -66,12 +69,12 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - Streaming: `async for event in app.astream("...")` — `stage`, `text_delta`,
   `partial_output` (incremental partial-JSON), `tool_*`, then `done` with the
   full `RunResult`; the server SSE endpoint emits the same events.
-- Performance (0.2): bounded concurrent fan-out (`vincio.core.concurrency`),
+- Performance: bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default),
   request coalescing + pooled provider transport, slim (zero-copy) packets,
   hard `max_latency_ms` deadline + cancellation propagation; VincioBench
   budgets gate CI (`benchmarks/check_budgets.py`).
-- Retrieval (0.3): index modes bm25 | dense | sparse (SPLADE-style) |
+- Retrieval: index modes bm25 | dense | sparse (SPLADE-style) |
   late_interaction (ColBERT-style MaxSim, PLAID-style compression) |
   hybrid | hybrid_full | graph | hybrid_graph, all fused by weighted RRF;
   query strategies hyde | multi_query | decompose | step_back
@@ -83,7 +86,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - Connectors: `from vincio.connectors import connect` — web, github, sql,
   s3, gcs, notion, confluence, slack, custom via `register_connector`;
   `app.add_source("kb", connector=connect("web", urls=[...]))`.
-- Memory (0.4): `app.remember(content, user_id=...)` / `app.recall(query,
+- Memory: `app.remember(content, user_id=...)` / `app.recall(query,
   user_id=...)`; scopes session | user | agent | tenant | organization |
   global; scoped handles `app.memory.for_user("u1").remember(...)`; hybrid
   lexical+vector+graph recall (`memory.hybrid_recall`, on by default);
@@ -94,7 +97,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `memory.write_back: [input, evidence, tools]`; eval harness
   `vincio.memory.evaluate_memory` (recall precision, contradiction rate,
   staleness, personalization lift) gated in VincioBench.
-- Agents & orchestration (0.6): `app.agent(tools=..., planner="dag|dynamic|
+- Agents & orchestration: `app.agent(tools=..., planner="dag|dynamic|
   react|direct", max_steps=...)` → bounded `AgentState` with `metrics()`;
   crews `app.crew(members=[{"name", "description", "goal", "keywords",
   "budget_fraction", ...}], process="sequential|parallel|hierarchical",
@@ -120,7 +123,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   (lazy imports, no lock-in).
 - Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
   is a validated instance.
-- Structured output & reliability (0.7): provider-native constrained
+- Structured output & reliability: provider-native constrained
   decoding negotiated per run (`vincio.output.to_strict_json_schema`
   strict-sanitizes the schema for the decoder; validation runs on the
   original; the mode lands on the trace as `decoding=native|prompt`);
@@ -145,7 +148,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   content-side validation.
 - Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,
   gates like `{"groundedness": ">= 0.95"}`; CLI `vincio eval run`.
-- Evals & testing (0.5): metrics add faithfulness | answer_relevance |
+- Evals & testing: metrics add faithfulness | answer_relevance |
   hallucination (strict number checks) | toxicity | bias |
   summarization_quality | knowledge_retention | conversation_relevance
   (conversation via `case.context["messages"]`); `GEvalJudge(provider,
@@ -159,7 +162,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `assert_eval` / `assert_grounded` / `assert_metric` / `assert_safe` +
   pytest plugin with `vincio_snapshot` fixture
   (`--vincio-update-snapshots`).
-- Observability (0.5): traces carry `session_id`/`thread_id` (pass
+- Observability: traces carry `session_id`/`thread_id` (pass
   `session_id=` to `app.run`), `trace.add_score`/`span.add_score` (runtime
   evaluators attach scores automatically), `trace.add_feedback(score=...,
   comment=...)` / `record_feedback(..., exporter=...)`;
@@ -169,10 +172,10 @@ result.output; result.citations; result.trace_id; result.cost_usd
   (self-contained static HTML), `trace_diff_html`; OTel exporter emits
   GenAI semantic conventions (`chat {model}`, `gen_ai.*`,
   `gen_ai.conversation.id`).
-- Prompt registry (0.5): `PromptRegistry(dir).push(spec, tags=[...])` —
+- Prompt registry: `PromptRegistry(dir).push(spec, tags=[...])` —
   content-hash versions, moving tags, `diff(name, a, b, rendered=True)`,
   `rollback(name)`, `link_eval(name, version, report)`.
-- The closed loop (0.8): `loop = app.improvement_loop(metrics=[...],
+- The closed loop: `loop = app.improvement_loop(metrics=[...],
   gates={"groundedness": ">= 0.8"})`; `result = loop.run(
   min_feedback_score=0.5)` — capture traces → `dataset_from_traces` →
   baseline eval → gated prompt optimization → promote (registry push +
@@ -198,7 +201,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")`
   or `guided_search(space, evaluate, strategy=, budget=, seed=)` —
   deterministic, budget-bounded, gate-respecting.
-- Integrations & DX (0.9): framework interop `from vincio.interop import
+- Integrations & DX: framework interop `from vincio.interop import
   add_langchain_tool, from_langchain_loader, from_langchain_retriever,
   from_langchain_embeddings, from_llamaindex_reader, from_llamaindex_retriever,
   from_llamaindex_embedding, add_llamaindex_tool` (duck-typed, no heavy import)
@@ -213,9 +216,25 @@ result.output; result.citations; result.trace_id; result.cost_usd
   reprs `from vincio import enable_rich_reprs` (RunResult/Trace/EvalReport/
   MemoryItem/SearchHit); interactive inspector `vincio.tui.TUI` / `vincio tui`;
   typed config schema `vincio.core.config.config_json_schema()`.
+- Stability & guarantees (1.0): SemVer on the frozen public surface
+  (`vincio.__all__` / `vincio.stability.public_api()`); `from vincio import
+  deprecated, experimental, stability_of` — `@deprecated(since=, removed_in=,
+  alternative=)` / `@experimental(since=)` emit `VincioDeprecationWarning` /
+  `VincioExperimentalWarning` (escalate to errors via `warnings.simplefilter`);
+  nothing public is removed in a minor/patch, only deprecated then removed at
+  the next major. Published SLOs (`benchmarks/slos.json`,
+  `docs/reference/slo.md`) each enforced by a VincioBench budget held at least
+  as strict (`tests/test_slos.py`). Security hardening: offline audit-chain
+  verification (`from vincio.security import verify_audit_file`;
+  `AuditLog.verify_file()`; `vincio audit verify <path>`); tool sandbox
+  `setrlimit` CPU/memory/fd limits (`run_subprocess_sandboxed` /
+  `SandboxedPython(max_cpu_seconds=, max_memory_bytes=, max_open_files=)`);
+  releases ship a CycloneDX SBOM + SLSA provenance attestations. Threat model
+  in `docs/security/threat-model.md`.
 - CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
   config schema/validate/show, packs list/show, tui, eval run/report/dataset,
   prompt lint/compile/push/versions/diff/rollback, trace
   show/view/replay/diff/export/sessions/feedback, optimize run, loop run,
-  index build, memory inspect/remember/recall/forget/export/consolidate/decay.
+  index build, memory inspect/remember/recall/forget/export/consolidate/decay,
+  audit verify.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).

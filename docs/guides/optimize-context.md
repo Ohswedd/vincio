@@ -42,11 +42,11 @@ space = ContextSearchSpace(top_k=[4, 8, 12], chunk_size_tokens=[200, 400, 800],
 result = await ContextOptimizer(evaluate_config_fn).optimize(dataset, space=space, budget=12)
 ```
 
-`strategy="hill_climb"` or `"anneal"` (0.8) makes proposals condition on
+`strategy="hill_climb"` or `"anneal"` makes proposals condition on
 subset scores already observed instead of sampling blindly — deterministic
 under a seed, bounded by the budget, same gated promotion.
 
-## The closed loop (0.8)
+## The closed loop
 
 `ImprovementLoop` runs the whole cycle — capture traces, curate a dataset,
 evaluate, optimize, and promote the winner into the prompt registry — in

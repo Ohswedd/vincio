@@ -57,7 +57,7 @@ analytics.ingest_report(report)
 analytics.metric_trend("groundedness")
 ```
 
-## 6. Go further (0.5)
+## 6. Go further
 
 - **Bootstrap a dataset from your corpus** — `SyntheticGenerator(seed=7).generate(documents, n=50)`
   (difficulty mix, source coverage, provenance), or curate production traces:

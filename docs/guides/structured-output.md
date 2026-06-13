@@ -22,7 +22,7 @@ result = app.run("Find risky renewal and liability clauses", files=["msa.pdf"])
 report: ContractRiskReport = result.output   # validated instance
 ```
 
-## Constrained generation (0.7)
+## Constrained generation
 
 When the provider supports native structured output (OpenAI json_schema,
 Anthropic forced tool use, Gemini responseSchema), Vincio sends a
@@ -75,7 +75,7 @@ def risk_levels_valid(report, ctx):
 app.add_validator("risk_levels", risk_levels_valid)
 ```
 
-## Streaming validation (0.7)
+## Streaming validation
 
 `vincio.output.parse_partial_json(text)` balances truncated JSON during
 streaming so UIs can render structured output incrementally. On top of it,
@@ -93,7 +93,7 @@ async for event in app.astream("Extract the invoice"):
         break  # stop paying for an answer that can no longer be valid
 ```
 
-## Multi-schema routing (0.7)
+## Multi-schema routing
 
 One app can produce different shapes for different tasks. Routes match by
 task type, keywords, or a predicate; content-side, `classify`/`validate_any`
@@ -105,7 +105,7 @@ app.add_output_schema(BillingIssue, keywords=["invoice", "refund"])
 result = app.run("Refund invoice INV-100")     # validates as BillingIssue
 ```
 
-## Typed signatures (0.7)
+## Typed signatures
 
 DSPy-style input → output signatures compile to a `PromptSpec` over the
 prompt AST — see [reliability & guardrails](reliability-guardrails.md) and
@@ -124,7 +124,7 @@ result = app.predictor(Triage)(ticket="The export button 500s")
 result.label, result.confidence            # typed, schema-validated
 ```
 
-## Self-correcting loops (0.7)
+## Self-correcting loops
 
 `app.enable_self_correction(max_cycles=2, max_cost_usd=0.05)` turns failed
 validations into bounded validate → critique → repair cycles. The critique

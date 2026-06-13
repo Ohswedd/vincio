@@ -57,6 +57,8 @@ the terminal `done` (carrying `result: RunResult`).
 | Module | Entry points |
 |---|---|
 | `vincio.prompts` | `PromptSpec`, `PromptCompiler`, `lint_spec`, `generate_variants`, `diff_specs`, `PromptRegistry`, `Signature`, `InputField`, `OutputField`, `signature`, `Predict` |
+| `vincio.input` | `normalize_text`, `classify_task`, `classify_file`, `detect_language`, `detect_ambiguity`, `InputRouter` — task/language classification and normalization feeding the runtime router |
+| `vincio.documents` | `load_document`, `load_directory`, `load_pdf`, `load_docx`, `load_xlsx`, `extract_markdown_tables`, `extract_code_symbols`, `TesseractOCR` — multimodal loaders (md/html/csv/pdf/docx/xlsx/eml/code), OCR, table/code-aware parsing |
 | `vincio.context` | `ContextCompiler`, `ContextPacket`, `ContextIR`, `ContextScorer`, `BudgetAllocator` |
 | `vincio.retrieval` | `RetrievalEngine`, `BM25Index`, `VectorIndex`, `SparseIndex`, `LateInteractionIndex`, `AutoMergingIndex`, `LiveIndex`, `QueryUnderstanding`, `EntityGraph`, `GraphRAG`, `ReasoningRetriever`, `chunk_document`, `contextualize_chunks`, `build_embedder`, `JinaEmbedder`, `VoyageEmbedder`, `CohereEmbedder`, `build_reranker`, `CohereReranker`, `JinaReranker`, `VoyageReranker` |
 | `vincio.connectors` | `connect`, `register_connector`, `Connector`, `CONNECTORS` — built-in kinds via `connect("web"\|"github"\|"sql"\|"s3"\|"gcs"\|"notion"\|"confluence"\|"slack", ...)` |
@@ -80,6 +82,17 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.storage` | `create_metadata_store`, `SQLiteMetadataStore`, `build_vector_index` (memory/qdrant/pgvector/chroma/pinecone/lancedb), Neo4j/Redis/DuckDB adapters |
 | `vincio.core.config` | `VincioConfig`, `load_config`, `config_json_schema` |
 | `vincio.server` | `create_app` (FastAPI) |
+| `vincio.cli` | `main`, `build_parser` — the `vincio` command (see [CLI reference](cli.md)) |
+| `vincio.stability` | `deprecated`, `experimental`, `deprecated_alias`, `stability_of`, `public_api`, `StabilityLevel`, `VincioDeprecationWarning`, `VincioExperimentalWarning`, `API_VERSION` |
 
 All public data contracts are Pydantic models; all engines are async-first
 with sync wrappers (`run` / `arun`).
+
+## Stability & versioning
+
+From 1.0, Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+on its public API — every symbol re-exported from the top-level `vincio` package
+(`vincio.__all__`, also returned by `vincio.stability.public_api()`) plus the
+documented entry points above. See the [stability policy](stability.md) for the
+deprecation contract; `vincio.deprecated` / `vincio.experimental` mark symbols
+and `vincio.stability_of(obj)` introspects any symbol's guarantee.

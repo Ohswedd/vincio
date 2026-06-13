@@ -38,7 +38,11 @@ OpenAI-compatible passthrough with hosted-gateway presets, hosted rerankers/embe
 Pinecone/LanceDB vector stores behind the existing interfaces, LangChain/LlamaIndex interop for
 tools/retrievers/loaders/embeddings, `vincio init` templates with a typed `vincio.yaml` schema,
 notebook reprs and an interactive TUI, opt-in domain packs, and migration guides — adopt Vincio
-without rewriting your stack.
+without rewriting your stack. **1.0 turns the library into a product you can trust in production:**
+SemVer on a frozen public API with a mechanical deprecation policy, published performance/quality
+SLOs gated by VincioBench, a documented threat model with offline audit-chain verification and
+resource-limited tool sandboxing, supply-chain attestations (SBOM + SLSA provenance) on releases,
+and a docs-completeness gate that runs every example and proves every subsystem is documented.
 
 ---
 
@@ -625,18 +629,52 @@ See the [CHANGELOG](CHANGELOG.md) for the complete 0.9.0 notes, and the new
 [migration guides](docs/guides/migrate-from-langchain.md) and
 [integrations guide](docs/guides/integrations.md).
 
-### 🚧 1.0 — Stabilization & guarantees (next)
+### ✅ 1.0 — Stabilization & guarantees (shipped)
 
-*Earn production trust.*
+*Earn production trust — make every guarantee mechanical, not aspirational.*
 
-- **API stability** — semantic-versioning guarantees on the public surface; deprecation policy.
-- **Performance SLOs** — published latency/throughput/token-efficiency targets enforced by
-  VincioBench gates.
-- **Security hardening** — a full security review of the tool sandbox, injection defense, and access
-  control; supply-chain attestations on releases.
-- **VincioBench at large** — expanded corpora, baselines against each competitor, and a transparent,
-  reproducible methodology (run it yourself; no hosted leaderboard).
-- **Docs completeness** — a guide and tested example for every subsystem and every public API.
+- ✅ **API stability** — Vincio now follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+  on a **frozen public surface** (`vincio.__all__`, returned by `vincio.stability.public_api()`, plus
+  the documented subsystem entry points). A new `vincio.stability` module makes the deprecation
+  policy mechanical: `@deprecated(since=, removed_in=, alternative=)` and `@experimental(since=)`
+  emit `VincioDeprecationWarning` / `VincioExperimentalWarning` (escalatable to errors in CI),
+  `deprecated_alias` keeps renamed symbols working for one major cycle, and `stability_of(obj)`
+  introspects any symbol's contract. The contract: nothing public is removed in a minor/patch, only
+  marked deprecated; removal waits for the next major. See the
+  [stability policy](docs/reference/stability.md).
+- ✅ **Performance SLOs** — a published [SLO table](docs/reference/slo.md)
+  (`benchmarks/slos.json`) states latency/throughput/token-efficiency/quality/security targets, each
+  naming the VincioBench budget that enforces it. The budgets are held **at least as strict** as the
+  public promise, so a green build provably honors every SLO; `tests/test_slos.py` enforces that
+  invariant. Reports now carry an `environment` block (version, Python, platform) for reproducibility.
+- ✅ **Security hardening** — a documented [threat model](docs/security/threat-model.md) (STRIDE over
+  the real controls). Concrete hardening: the hash-chained audit log gains **offline file
+  verification** (`AuditLog.verify_file()` / `verify_audit_file()` / `vincio audit verify`) that
+  detects post-restart tampering and pinpoints the broken line; the tool sandbox adds POSIX
+  `setrlimit` **CPU / memory / file-descriptor limits** (best-effort, alongside the existing
+  timeout, output caps, and scrubbed env). Releases ship a **CycloneDX SBOM** and **SLSA
+  build-provenance attestations** (`.github/workflows/release.yml`).
+- ✅ **VincioBench methodology** — a transparent, reproducible [methodology](benchmarks/METHODOLOGY.md):
+  what each family measures, its named naive baseline, corpus provenance, the two-tier
+  budgets-vs-SLOs design, and how to run it yourself. No hosted leaderboard — every number is
+  reproducible offline from this repo.
+- ✅ **Docs completeness** — a guide/reference and a **tested** example for every subsystem.
+  `tests/test_examples.py` runs all 22 examples end-to-end offline (new `21_security_governance.py`
+  covers the security subsystem); `tests/test_docs_completeness.py` asserts every public subsystem is
+  documented and every example is indexed. The API reference adds the previously-undocumented
+  `vincio.input`, `vincio.documents`, `vincio.cli`, and `vincio.stability` surfaces.
+- *Already-shipped fix (noted here for the record):* `ContextApp.add_evaluator` registered a callable
+  without a `__name__` (e.g. a `functools.partial`) under a key one greater than the one it recorded
+  in `app.evaluators`, so later metric lookup missed it; the name is now resolved once. Shipped with
+  0.9.0 and documented in the [CHANGELOG](CHANGELOG.md).
+- **646 offline tests; ruff clean; VincioBench 81/81 budgets**; twenty-two runnable examples (the
+  example smoke suite runs all of them end-to-end). New 1.0 tests cover the stability decorators and
+  warnings, the frozen public surface, offline audit-chain tamper detection, sandbox resource limits
+  and env scrubbing, the SLO↔budget invariant, every example running offline, and docs completeness.
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.0.0 notes, the
+[stability policy](docs/reference/stability.md), the published [SLOs](docs/reference/slo.md), and the
+[threat model](docs/security/threat-model.md).
 
 ## Out of scope
 
