@@ -17,7 +17,7 @@ from ..core.types import (
     ToolCallRequest,
 )
 from ..observability.costs import PriceTable, default_price_table
-from .base import HTTPProvider, parse_sse_lines
+from .base import HTTPProvider, parse_sse_lines, reasoning_budget_from_effort
 
 __all__ = ["GoogleProvider"]
 
@@ -109,6 +109,15 @@ class GoogleProvider(HTTPProvider):
         if request.output_schema is not None:
             generation["responseMimeType"] = "application/json"
             generation["responseSchema"] = _strip_unsupported(request.output_schema)
+        if (
+            request.reasoning_effort is not None or request.thinking_budget_tokens is not None
+        ) and self.capabilities(request.model).reasoning:
+            budget = reasoning_budget_from_effort(
+                request.reasoning_effort, request.thinking_budget_tokens
+            )
+            # includeThoughts surfaces a thought summary; thinkingBudget caps the
+            # thinking tokens (billed at the output rate, see _parse_usage).
+            generation["thinkingConfig"] = {"thinkingBudget": budget, "includeThoughts": True}
         if generation:
             payload["generationConfig"] = generation
         if request.tools:
@@ -132,11 +141,16 @@ class GoogleProvider(HTTPProvider):
     def _parse_usage(self, usage: dict[str, Any] | None) -> TokenUsage:
         if not usage:
             return TokenUsage()
+        thoughts = usage.get("thoughtsTokenCount", 0) or 0
+        # Gemini reports thinking tokens separately from candidatesTokenCount but
+        # bills them at the output rate (totalTokenCount includes them). Fold them
+        # into the billable output so cost tracking doesn't treat thinking as free;
+        # reasoning_tokens keeps the thinking subset for telemetry.
         return TokenUsage(
             input_tokens=usage.get("promptTokenCount", 0) or 0,
-            output_tokens=usage.get("candidatesTokenCount", 0) or 0,
+            output_tokens=(usage.get("candidatesTokenCount", 0) or 0) + thoughts,
             cached_input_tokens=usage.get("cachedContentTokenCount", 0) or 0,
-            reasoning_tokens=usage.get("thoughtsTokenCount", 0) or 0,
+            reasoning_tokens=thoughts,
         )
 
     def _parse_response(self, data: dict[str, Any], request: ModelRequest, latency_ms: int) -> ModelResponse:
@@ -270,6 +284,7 @@ class GoogleProvider(HTTPProvider):
             vision=True,
             audio=True,
             prompt_caching="flash" in model or "pro" in model,
+            reasoning="2.5" in model or "gemini-3" in model,
             max_context_tokens=1_000_000,
             max_output_tokens=65_536,
             supports_system_message=True,

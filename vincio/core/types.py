@@ -520,6 +520,9 @@ class ToolCallRequest(BaseModel):
     arguments: dict[str, Any] = Field(default_factory=dict)
 
 
+ReasoningEffort = Literal["minimal", "low", "medium", "high"]
+
+
 class ModelRequest(BaseModel):
     model: str
     messages: list[Message]
@@ -531,6 +534,17 @@ class ModelRequest(BaseModel):
     max_output_tokens: int | None = None
     stop: list[str] = Field(default_factory=list)
     seed: int | None = None
+    # Unified reasoning control across providers that expose it (OpenAI
+    # reasoning models, Anthropic extended/interleaved thinking, Gemini
+    # thinking budget). ``reasoning_effort`` is the portable knob; providers
+    # that take an explicit thinking-token budget derive it from the effort
+    # level unless ``thinking_budget_tokens`` is set. Providers ignore both
+    # when the model does not support reasoning.
+    reasoning_effort: ReasoningEffort | None = None
+    thinking_budget_tokens: int | None = None
+    # Provider server-state handle (OpenAI Responses API ``previous_response_id``)
+    # so reasoning is preserved across tool calls without resending context.
+    previous_response_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -571,6 +585,7 @@ class ModelCapabilities(BaseModel):
     vision: bool = False
     audio: bool = False
     prompt_caching: bool = False
+    reasoning: bool = False  # exposes a thinking/reasoning-effort control
     max_context_tokens: int = 128_000
     max_output_tokens: int = 8_192
     supports_system_message: bool = True
@@ -615,6 +630,8 @@ class RunConfig(BaseModel):
     retrieval_top_k: int | None = None
     stream: bool = False
     seed: int | None = None
+    reasoning_effort: ReasoningEffort | None = None
+    thinking_budget_tokens: int | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

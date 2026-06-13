@@ -326,6 +326,15 @@ class VincioRuntime:
         evidence: list[EvidenceItem] = list(app.pending_evidence)
         evidence.extend(ingested)
         evidence.extend(retrieved)
+        # Agent Skills: inject the always-on index plus any task-relevant skill
+        # bodies as scored evidence (progressive disclosure). The compiler
+        # budgets and cites them like any other context.
+        if app.skill_library is not None and len(app.skill_library):
+            evidence.extend(
+                app.skill_library.evidence_for(
+                    f"{routed.objective.text} {routed.input.text or ''}"
+                )
+            )
 
         # 9/12a. tool loop happens with the model below; collect tool specs.
         tool_specs = app.tool_registry.specs(app.enabled_tools) if app.enabled_tools else []
@@ -393,6 +402,15 @@ class VincioRuntime:
                 tokens=compiled_prompt.token_count,
                 lint=[f.code for f in compiled_prompt.lint_findings],
                 decoding=decoding.value,
+                reasoning=(
+                    (run_config.reasoning_effort or "default")
+                    if (
+                        run_config.reasoning_effort is not None
+                        or run_config.thinking_budget_tokens is not None
+                    )
+                    and capabilities.reasoning
+                    else "off"
+                ),
                 schema=contract.schema_name if contract.schema_def else None,
             )
 
@@ -407,6 +425,12 @@ class VincioRuntime:
             request_kwargs["temperature"] = run_config.temperature
         if run_config.seed is not None:
             request_kwargs["seed"] = run_config.seed
+        # Unified reasoning control: provider-neutral effort / thinking budget.
+        # Providers that don't expose reasoning ignore these fields.
+        if run_config.reasoning_effort is not None:
+            request_kwargs["reasoning_effort"] = run_config.reasoning_effort
+        if run_config.thinking_budget_tokens is not None:
+            request_kwargs["thinking_budget_tokens"] = run_config.thinking_budget_tokens
         request_kwargs["max_output_tokens"] = budget.max_output_tokens
 
         return _PreparedRun(
@@ -519,6 +543,7 @@ class VincioRuntime:
                     finish=response.finish_reason,
                     input_tokens=response.usage.input_tokens,
                     output_tokens=response.usage.output_tokens,
+                    reasoning_tokens=response.usage.reasoning_tokens,
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
                 )
@@ -633,6 +658,7 @@ class VincioRuntime:
                     finish=response.finish_reason,
                     input_tokens=response.usage.input_tokens,
                     output_tokens=response.usage.output_tokens,
+                    reasoning_tokens=response.usage.reasoning_tokens,
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
                 )

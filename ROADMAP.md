@@ -42,7 +42,11 @@ without rewriting your stack. **1.0 turns the library into a product you can tru
 SemVer on a frozen public API with a mechanical deprecation policy, published performance/quality
 SLOs gated by VincioBench, a documented threat model with offline audit-chain verification and
 resource-limited tool sandboxing, supply-chain attestations (SBOM + SLSA provenance) on releases,
-and a docs-completeness gate that runs every example and proves every subsystem is documented.
+and a docs-completeness gate that runs every example and proves every subsystem is documented. **1.1
+makes Vincio speak the ecosystem's interoperability protocols** — an MCP client *and* server, A2A
+agent-to-agent delegation, and Anthropic Agent Skills, plus a unified reasoning control across
+providers — all additive behind `@experimental` entry points on the frozen 1.0 API, in your process,
+never a hosted dependency.
 
 ---
 
@@ -675,6 +679,373 @@ See the [CHANGELOG](CHANGELOG.md) for the complete 0.9.0 notes, and the new
 See the [CHANGELOG](CHANGELOG.md) for the complete 1.0.0 notes, the
 [stability policy](docs/reference/stability.md), the published [SLOs](docs/reference/slo.md), and the
 [threat model](docs/security/threat-model.md).
+
+---
+
+## The road beyond 1.0
+
+1.0 made Vincio trustworthy: a frozen public surface under SemVer, published SLOs gated by
+VincioBench, a documented threat model, and a tested example for every subsystem. While that
+stabilized, the field moved. Six shifts during 2025–2026 redefined what an AI/LLM library is expected
+to do, and an audit of Vincio against them — and against LangChain/LangGraph, LlamaIndex, DSPy, Mem0,
+Ragas, DeepEval, Pydantic AI, CrewAI, Haystack, and the serving layer (vLLM/SGLang/Outlines) — found
+six concrete gaps:
+
+1. **Interoperability protocols became table stakes.** Consuming **MCP** servers as tools is now
+   universal (LangChain, DSPy, CrewAI, LlamaIndex, Pydantic AI, Haystack all ship it); *serving* an
+   MCP endpoint, **A2A** agent-to-agent delegation (Google → Linux Foundation, 150+ orgs), and
+   Anthropic's **Agent Skills** (`SKILL.md`, donated to the Agentic AI Foundation) are the new bar.
+   Vincio had a first-class tool engine but spoke none of these protocols — **1.1 (shipped) closes
+   this gap** with an MCP client *and* server, A2A, and Agent Skills.
+2. **Evaluation moved from output to trajectory.** Tool-call accuracy/F1, goal accuracy, plan
+   adherence, step efficiency, multi-turn simulation, *online* eval on sampled production traffic,
+   and drift detection are now expected (Ragas, DeepEval, LangSmith, Phoenix). Vincio's 17+ metrics
+   are output-and-grounding-shaped; it can trace a crew but cannot *score the trace*.
+3. **Cost and reliability at scale outgrew retry-and-cache.** Provider **Batch APIs** (a flat 50% cut)
+   are absent; `FailoverChain` and `RetryingProvider` exist but there is no **circuit breaker**, no
+   key/region load balancing, no **health-aware** routing; per-tenant/per-feature **cost attribution**
+   and enforced **budget/cost SLOs** are not first-class.
+4. **Optimization got reflective, and the data flywheel got real.** **GEPA** (reflective genetic-
+   Pareto, beating RL with ~35× fewer rollouts) and MIPROv2/SIMBA reset the optimizer bar beyond
+   Vincio's evolution/anneal/hill-climb/bandit search; **distillation / fine-tuning data export**
+   (teacher-trace → training set → cheaper student) is genuine whitespace across the whole field; and
+   **learned prompt compression** (LLMLingua-class) goes beyond Vincio's extractive compression.
+5. **Multimodal and embedding breadth advanced.** **Matryoshka** dimension truncation, **contextual**
+   chunk embeddings (Voyage `context-3`), unified text+image embeddings (Cohere v4), and vector stores
+   Vincio doesn't yet adapt (Weaviate, Milvus, Elasticsearch/OpenSearch, Vespa) are now standard.
+6. **Enterprise governance hardened into law.** The EU AI Act's GenAI transparency duties land
+   **2 Aug 2026** (machine-readable synthetic-content marking); **model/system cards**, **OWASP LLM
+   Top 10 (2025)** / **OWASP Agents** / **NIST AI RMF** / **MITRE ATLAS** mapping, **AI-BOM**, data
+   lineage with right-to-erasure-by-source, data-residency-aware routing, and **multilingual** support
+   (non-English PII, per-language eval slicing, the tokenizer "token tax") are what regulated buyers
+   now require. Vincio has the audit/security spine but not the compliance evidence on top of it.
+
+The three principles from the road to 1.0 still govern every item below — **beat the specialist at its
+own game and add what it structurally cannot** (provenance, budgeting, eval-gating, one trace);
+**interconnect, don't bolt on** (every new capability reads from and writes to the same Context Packet,
+evidence ledger, audit log, and trace stream); and **performance is a feature**. Two more now join them:
+
+- **Everything is additive.** 1.0 froze the public API under SemVer. Every 1.x feature below is new
+  surface behind a new entry point or an opt-in extra — no public symbol is removed or repurposed, so
+  upgrading across the entire 1.x line never breaks working code. Breaking changes are reserved for a
+  future 2.0 (see [Exploring](#-exploring--later-and-20)).
+- **Standards, in your process — never a hosted dependency.** MCP, A2A, Skills, OWASP/NIST/MITRE
+  mappings, model cards, and OTel/OpenInference spans are all *implemented in the library and run on
+  your infrastructure*. Vincio adopts the protocols and the compliance vocabulary; it does not become a
+  service to do so. [Out of scope](#out-of-scope) is unchanged.
+
+**Legend:** ✅ shipped · 🚧 planned (next) · 🔭 exploring (later). Milestones are ordered by dependency and urgency:
+the protocol layer first (nothing else interoperates without it), then evaluation depth (so every
+later change is measurable), then cost/reliability at scale, then optimization and the flywheel, then
+multimodal/embedding breadth, then the governance layer that ties the audit spine to regulation.
+
+### Post-1.0 competitive coverage map
+
+| Competitor / standard | What it's good at (2025–26) | Vincio answer (and the edge we add) | Milestone |
+|---|---|---|---|
+| **MCP (Anthropic/OpenAI/Google)** | Universal tool/resource/prompt protocol | MCP **client** (servers as sources) + **server** (expose Vincio), *plus* every MCP tool runs through the same permissioned, sandboxed, audited, budgeted runtime as native tools | 1.1 ✅ |
+| **A2A (Linux Foundation)** | Cross-vendor agent-to-agent delegation | A2A client/server + Agent Cards over the existing crew/graph model, *plus* bounded budgets, termination guarantees, and one trace across the delegation | 1.1 ✅ |
+| **Anthropic Agent Skills** | Portable `SKILL.md` procedural knowledge | A Skills loader with progressive disclosure into the compiler, *plus* skills that are budgeted, cited, and eval-gated like any other context | 1.1 ✅ |
+| **LangSmith / Ragas / DeepEval (agentic)** | Trajectory, tool-use, multi-turn, online eval | Trajectory/tool-use/goal/plan metrics over the spans Vincio already emits, online eval + drift, *plus* the same metrics reused as runtime guardrails and optimizer fitness | 1.2 🚧 |
+| **OpenAI/Anthropic Batch APIs** | 50% async cost cut for offline work | A `BatchRunner` behind the provider interface for evals/extraction/synthetic data, *plus* the same call sites, cost-tracked and traced | 1.3 🚧 |
+| **LiteLLM / gateways** | Failover, circuit breaking, key/region LB, cost attribution | Circuit breakers + health-aware routing on the existing `FailoverChain`, per-tenant/feature cost attribution + enforced budget SLOs, *plus* it lives in-process with your policies, not as a proxy hop | 1.3 🚧 |
+| **DSPy 3 (GEPA / MIPROv2 / SIMBA)** | Reflective program optimization | A reflective optimizer over the whole context lifecycle (not just the prompt), *plus* gated promotion, Pareto cost/quality, and the closed loop already shipped | 1.4 🚧 |
+| **DSPy BootstrapFinetune / distillation** | Teacher-trace → cheaper student | A distillation/fine-tune data flywheel from production traces, *plus* grounding, provenance, and eval-gating on every exported example | 1.4 🚧 |
+| **LLMLingua** | Learned prompt compression | A learned compressor as a compiler pass alongside extractive compression, *plus* per-task budget integration and faithfulness gating | 1.4 🚧 |
+| **Voyage / Cohere v4 / LlamaParse** | Matryoshka, contextual & multimodal embeddings, rich extraction | MRL truncation, contextual & multimodal embedders, and more vector stores behind the existing `Embedder`/`Index`, *plus* one scored, budgeted, cited packet | 1.5 🚧 |
+| **DeepTeam / NeMo / governance** | OWASP/NIST/MITRE mapping, safety classifiers | Red-team + audit mapped to OWASP LLM 2025 / OWASP Agents / NIST AI RMF / MITRE ATLAS, model/system cards, AI-BOM, lineage, residency, multilingual — all from the existing audit/security spine | 1.6 🚧 |
+
+---
+
+### ✅ 1.1 — Protocols & interoperability (MCP, A2A, Skills) (shipped)
+
+*Speak the protocols the ecosystem standardized on in 2025–26 — without becoming a service to do it.
+A tool from an MCP server, an agent reached over A2A, and a `SKILL.md` all flow through the same
+packet, ledger, permission model, and trace as everything Vincio already runs. The whole milestone is
+**additive behind `@experimental` entry points** on the frozen 1.0 API, and uses only the core
+`httpx` dependency — no SDKs.*
+
+- ✅ **MCP client** — `vincio.mcp.MCPClient` and `app.add_mcp_server(...)` connect to MCP servers over
+  **stdio**, **Streamable HTTP**, and an **in-process** transport (the offline-test path), negotiate
+  capabilities, and surface `tools` / `resources` / `prompts`. MCP tools register through the
+  *existing* tool registry (namespaced `<server>.<tool>`), so they inherit RBAC/ABAC scopes, the
+  permission lifecycle, the subprocess/sandbox limits, idempotency keys, reliability scoring, and the
+  audit log unchanged. MCP **resources** become first-class evidence with provenance
+  (`origin: mcp:<server>`) that the compiler chunks, scores, budgets, and cites like any local
+  document; MCP **prompts** import as `PromptSpec`s. Server-initiated **sampling** routes to the app's
+  provider; **elicitation** routes to the human-gate callback. OAuth 2.1 seams (`pkce_pair`,
+  bearer headers, PRM discovery URL) and the long-running **Tasks** primitive (poll/await) are
+  supported. `vincio mcp add` / `mcp tools` inspect a server from the CLI.
+- ✅ **MCP server** — `app.serve_mcp()` / `vincio mcp serve` expose a configured `ContextApp` as an MCP
+  server over stdio (and any transport): registered tools become MCP tools (JSON Schema derived from
+  the same type hints), evidence/sources become MCP resources, and the prompt spec becomes an MCP
+  prompt — with the deterministic policy engine and audit log enforced on every inbound call
+  (`mcp_serve`), and OAuth 2.1 resource-server token validation. One `ContextApp` is now both a
+  consumer and a provider of context.
+- ✅ **A2A (agent-to-agent)** — `vincio.a2a` serves an **Agent Card** at `/.well-known/agent.json`
+  describing a crew's or graph's capabilities, and a JSON-RPC server/client implements the A2A
+  **Task** lifecycle (`submitted → working → input-required → completed/failed`) with token auth and
+  per-task audit. `app.serve_a2a(crew | graph | None)` exposes a crew, a durable graph (whose
+  human-in-the-loop interrupts surface as `input-required` and resume by `taskId`), or the app itself
+  with one call; `RemoteA2AAgent` makes a remote A2A agent reachable as a delegate inside a local
+  crew. Delegation stays **bounded** (scaled budgets, termination guarantees) and **traced** end to
+  end — the edge no raw A2A SDK gives you.
+- ✅ **Agent Skills** — `vincio.skills` parses Anthropic-style `SKILL.md` (YAML frontmatter + Markdown,
+  optional bundled scripts), and `app.add_skill(path)` injects skill instructions through the compiler
+  with **progressive disclosure** (a one-line index always in budget, the body loaded only on
+  relevance) so skills cost context only when used. Bundled scripts run as sandboxed, permissioned
+  tools. Skills are scored, budgeted, and cited like any other context — not a privileged side
+  channel.
+- ✅ **Reasoning & Responses surface** — a unified reasoning control (`reasoning_effort` / thinking
+  `budget_tokens`) across providers that expose it (OpenAI reasoning models, Anthropic extended
+  thinking, Gemini thinking budget); the negotiated reasoning mode is recorded on the `prompt_render`
+  span and `reasoning_tokens` on the `model_call` span, and an optional OpenAI **Responses API**
+  adapter (`OpenAIResponsesProvider`: `previous_response_id` server-state, reasoning preserved across
+  tool calls) rides the same `ModelProvider` interface, with Chat Completions kept as the portable
+  default.
+- *Interconnection (held):* MCP tools, A2A delegates, and Skills emit the same `tool` / `crew` /
+  `crew_agent` / `model_call` spans on the shared tracer and write the same `tool_call` / `mcp_serve`
+  / `a2a_serve` entries to the hash-chained audit log; MCP resources and skill bodies ride the
+  evidence ledger with full provenance; protocol errors are ordinary `VincioError`s.
+- *Edge over specialists (delivered):* others bolt MCP on as an adapter; in Vincio an MCP tool is
+  **permissioned, sandboxed, budgeted, cited, and audited by construction**, and an A2A delegation is
+  **bounded and traced** — guarantees the raw protocols and thin adapters do not provide. See the new
+  guides [docs/guides/mcp.md](docs/guides/mcp.md), [a2a.md](docs/guides/a2a.md),
+  [agent-skills.md](docs/guides/agent-skills.md), and [reasoning.md](docs/guides/reasoning.md).
+- *Already-shipped fix (noted here for the record):* the Google/Gemini adapter recorded thinking
+  tokens (`thoughtsTokenCount`) as `reasoning_tokens` but excluded them from the billable output
+  (`candidatesTokenCount`), so thinking was costed at **$0** even though Gemini bills it at the output
+  rate (`totalTokenCount` includes it). The adapter now folds thinking tokens into the billable
+  output while keeping `reasoning_tokens` as the telemetry subset; OpenAI/Anthropic were already
+  correct (reasoning is part of completion/output tokens). Shipped with 1.1 and documented in the
+  [CHANGELOG](CHANGELOG.md).
+- **698 tests passing offline; ruff clean; VincioBench 88/88 budgets**; twenty-five runnable examples.
+  MCP client/server round-trip, A2A task lifecycle (incl. graph HITL resume), skill progressive
+  disclosure, and the reasoning surface are covered offline with the in-process transport and
+  `httpx.MockTransport`; four new examples (`22_mcp_tools_and_resources.py`, `23_a2a_delegation.py`,
+  `24_agent_skills.py`, `25_reasoning_control.py`); the VincioBench `protocols` family gates MCP
+  schema-fidelity, resource-provenance, A2A termination, and skill progressive-disclosure budget (with
+  three new SLOs).
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.1.0 notes.
+
+### 🚧 1.2 — Agentic evaluation & continuous quality (vs LangSmith, Ragas, DeepEval)
+
+*Vincio can run and trace a crew, a graph, and a tool loop. 1.2 makes it **score** them — over the
+trajectory, over a multi-turn conversation, and over live traffic — reusing the same metric objects as
+runtime guardrails and optimizer fitness, all in-process and dependency-free.*
+
+- 🚧 **Trajectory & tool-use metrics** — new evaluators that read the spans Vincio already emits:
+  `tool_call_accuracy` / `tool_call_f1` (right tool, right args, in the right order), `goal_accuracy`
+  (did the run achieve the objective), `plan_adherence` and `plan_quality`, `step_efficiency` (steps
+  and tokens vs an optimal path), and `topic_adherence`. They evaluate a `Trace`/`AgentState`
+  directly, so a crew or `StateGraph` run is scored without re-instrumentation. Final-output-only
+  evaluation is shown alongside trajectory evaluation in the report (agents pass materially more
+  output-only cases than trajectory eval reveals).
+- 🚧 **Multi-turn & simulation** — a deterministic-offline **user simulator** (`Simulator`,
+  LLM-backed with template fallback) drives multi-turn sessions from a persona + goal, and
+  conversational scoring extends today's `knowledge_retention` / `conversation_relevance` with
+  outcome and intent metrics over the whole thread; `dataset_from_traces` gains multi-turn golden
+  generation.
+- 🚧 **Online / continuous eval** — `app.add_online_evaluator(metric, sample_rate=...)` runs scorers
+  asynchronously on a sample of live runs (off the hot path), writing scores as a time series on the
+  existing metadata store — no traffic mirroring to any external service.
+- 🚧 **Drift detection** — `DriftMonitor` tracks rolling metric deltas (score drift) and
+  **embedding-distribution drift** on inputs against the golden-set distribution, raising a
+  `drift.detected` event on the bus when a baseline shifts; `vincio eval drift` reports it.
+- 🚧 **Human-in-the-loop annotation** — a local annotation queue (`AnnotationQueue`,
+  `vincio eval annotate`) that records human labels and tracks **Cohen's κ** between human and
+  LLM-judge, so a judge only earns CI gating weight once agreement clears a threshold (extends the
+  existing `GEvalJudge.calibrate()`).
+- 🚧 **Production A/B** — `app.experiment(...)` splits traffic across prompt/model/config variants and
+  compares eval metrics *and* cost per variant with the significance tests `ExperimentTracker`
+  already ships.
+- *Interconnection:* every metric here is the same object usable as a runtime guardrail (0.7) and an
+  optimizer/Pareto fitness term (0.8); trajectory scores attach to the run's spans and feed the
+  improvement loop; online scores and drift baselines live in the same store as runs and packets.
+- *Edge over specialists:* LangSmith/Ragas/DeepEval send your traces to a platform to score them;
+  Vincio scores the **trajectory in your process, in the same model as the runtime**, gates releases
+  offline, and turns the very same metric into a guardrail and an optimization target.
+- *Target:* new metrics validated against labeled agent traces in `tests/golden/`; example
+  `26_agentic_eval.py`; a VincioBench `agentic_evals` family gating trajectory-metric agreement,
+  simulator determinism, drift-detection sensitivity/specificity, and κ tracking.
+
+### 🚧 1.3 — Cost, reliability & scale (FinOps + resilience)
+
+*What real teams hit when an LLM app meets production traffic: provider outages, rate limits, runaway
+spend, and the need to attribute every dollar. Vincio already has failover, retries-with-cooldown, a
+routing policy, prompt caching, and cost tracking — 1.3 turns those into a complete, enforced cost-and-
+reliability layer that lives in your application, not in a proxy.*
+
+- 🚧 **Batch execution** — `vincio.providers.BatchRunner` / `app.batch([...])` and `vincio batch`
+  submit request sets to the OpenAI and Anthropic **Batch APIs** (flat ~50% cost), poll job status,
+  and reconcile results by custom ID with partial-failure surfacing — same call sites, switchable
+  sync↔batch for latency-tolerant work (evals, bulk extraction, synthetic-data generation, the
+  improvement loop). Cost-tracked and traced like any other call.
+- 🚧 **Circuit breakers & health-aware routing** — a `CircuitBreaker` wrapper tracks per-provider
+  failure rate and latency, opens on threshold (with half-open probing), and steers `FailoverChain` to
+  healthy entries in milliseconds; `KeyPool` round-robins health-aware across multiple API keys and
+  regions with dual TPM+RPM queueing and full-jitter backoff. The documented pattern made explicit:
+  retries for transient, fallback for persistent, circuit-break for systemic.
+- 🚧 **Runtime model cascades** — the existing offline-optimized `RoutingPolicy` gains **confidence-
+  based escalation at run time**: start cheap, escalate to a stronger model only when validation or a
+  confidence metric fails, with per-route cost/quality tracked. `app.use_cascade(...)` wires it as a
+  first-class app feature; the routing optimizer keeps tuning the thresholds offline.
+- 🚧 **Cost attribution & budget SLOs** — every run carries request-time metadata
+  (`user` / `tenant` / `feature` / `run`); cost is computed at span close against the versioned price
+  table and rolled up by any dimension (`vincio cost report --by tenant|feature`). Per-tenant/feature
+  **budgets** enforce a policy on breach — hard cap, **degrade-to-cheaper-model**, or
+  **queue-to-batch** — and anomaly thresholds raise a `cost.anomaly` event. (Attribution is captured
+  at request creation, not retrofitted from logs, so long agentic traces are counted honestly.)
+- 🚧 **Provider-aware prompt-cache strategy** — automatic Anthropic `cache_control` breakpoint
+  placement around stable prefixes (system, tools, long retrieved context) with TTL choice (5-min /
+  1-hour), stable→volatile content ordering to maximize OpenAI/Gemini auto-cache hits, and cache-hit-
+  rate telemetry on the trace — building on the cache-aware stable-prefix layout the compiler already
+  produces and the `cached_input_tokens` the providers already report.
+- 🚧 **Incremental indexing at scale** — `LiveIndex` gains content-hash change detection so only
+  changed documents re-embed, streaming ingestion for freshness, and a sharded-index protocol so a
+  corpus can be split across backends and queried in parallel through the existing `Index` interface.
+- *Interconnection:* batch, failover, cascades, and caching all sit behind the one `ModelProvider`
+  interface, so the compiler, evals, guardrails, and security apply unchanged; cost attribution reuses
+  the trace/cost model and the span attributes (`tenant_id` is already on sessions); budget breaches
+  are `PolicyViolation`s on the same audit path as every other policy decision.
+- *Edge over gateways:* LiteLLM/Bifrost give you failover and cost tracking as a **proxy hop** you
+  operate separately; Vincio gives you the same — circuit breaking, cascades, attribution, enforced
+  budgets — **in-process, governed by your policy engine, and on one trace** with the rest of the run.
+- *Target:* batch reconciliation, circuit-breaker state machine, cascade escalation, and budget
+  enforcement covered offline with `httpx.MockTransport` and the mock provider; example
+  `27_cost_and_reliability.py`; a VincioBench `scale` family gating batch-result correctness,
+  failover/circuit recovery, cache-hit-rate, and attribution accuracy.
+
+### 🚧 1.4 — Reflective optimization & the data flywheel (vs DSPy 3)
+
+*0.8 shipped the closed loop: trace → dataset → eval → optimize → promote. 1.4 sharpens the optimizer
+to the 2025–26 state of the art and adds the one lever the whole field is missing — turning production
+traces into cheaper models — while keeping every promotion gated, grounded, and audited.*
+
+- 🚧 **Reflective optimizer (GEPA-style)** — a `ReflectiveOptimizer` that, instead of blind mutation,
+  reads the eval report's failures, **reflects in natural language** on why a prompt/context lost, and
+  proposes targeted edits, evolving a **Pareto frontier** (it slots into the existing `ParetoFrontier`
+  and `guided_search`). MIPROv2-style joint instruction+example proposal is offered as a second
+  strategy. The same sample-efficiency win GEPA reports (beating RL with far fewer rollouts) under
+  Vincio's hard evaluation budget, deterministic under seed.
+- 🚧 **Distillation / fine-tune flywheel** — `app.export_training_set(...)` /
+  `vincio distill` curates production traces (feedback-filtered, grounding-checked, deduped, with full
+  provenance) into provider-ready fine-tuning **JSONL**, and a `BootstrapFinetune`-style teacher→student
+  loop measures whether a cheaper student fine-tuned on a strong teacher's grounded traces holds quality
+  on the eval suite before it is promoted into the routing cascade. Every exported example is grounded
+  and gated — the flywheel never trains on hallucinations.
+- 🚧 **Learned prompt compression** — an `LLMLinguaCompressor` compiler pass (token-importance
+  compression with a deterministic offline scorer and an optional learned model) that sits alongside
+  the existing extractive compressor, integrates with per-task budget allocation, and is **faithfulness-
+  gated**: compression is adopted only when it preserves the cited-fact set under eval.
+- 🚧 **Optimizer-judge calibration** — judge prompts used by the optimizer can themselves be tuned by
+  the reflective optimizer against κ-validated human labels (1.2), closing the loop on the loop.
+- *Interconnection:* the reflective optimizer reuses the fitness function, the eval runner, the
+  registry, the tracker, and gated promotion — no new stores; distillation reuses `dataset_from_traces`
+  and the grounding extractor from 0.8; the compressor is just another compiler pass measured by the
+  same VincioBench budgets.
+- *Edge over DSPy:* DSPy optimizes a program's prompts; Vincio applies reflective, Pareto-aware
+  optimization across the **whole context lifecycle** (prompt, examples, retrieval weights, budget,
+  compression) *and* exports the result as cheaper inference — with every step grounded, gated, and on
+  one trace.
+- *Target:* reflective-optimizer convergence and bound, distillation grounding/gating, and compression
+  faithfulness covered offline; example `28_reflective_optimization.py`; VincioBench `loop` family
+  extended with reflective-search-vs-baseline lift, distillation-quality-hold, and compression-fidelity
+  gates.
+
+### 🚧 1.5 — Multimodal, embeddings & retrieval breadth (vs LlamaIndex, Voyage/Cohere)
+
+*Keep retrieval best-in-field as the embedding and ingestion frontier moves — every new embedder, store,
+and parser sits behind an interface that already exists, so breadth costs no new concepts.*
+
+- 🚧 **Matryoshka embeddings** — output-dimension truncation (MRL) per model on the existing `Embedder`
+  interface (`dimensions=`), so vectors shrink with minimal quality loss; index storage and latency
+  tracked against recall in the `rag` benchmark family.
+- 🚧 **Contextual & multimodal embedders** — adapters for contextual chunk embeddings (Voyage
+  `context-3`, where the chunk vector carries document context — complementing Vincio's existing
+  `contextualize_chunks` LLM-prefix approach) and unified text+image embedders (Cohere v4, Voyage
+  multimodal), behind `build_embedder`; task/input-type hints (query vs document) plumbed through.
+- 🚧 **More vector stores** — Weaviate, Milvus, Elasticsearch/OpenSearch, and Vespa adapters behind the
+  one `Index` protocol and `build_vector_index` factory, joining Qdrant, pgvector, Chroma, Pinecone,
+  and LanceDB — with helpful missing-dependency errors, as the existing adapters have.
+- 🚧 **Richer extraction** — an advanced document-extraction path (layout-aware tables, figures, and
+  reading order) for complex PDFs behind the existing document engine, with the offline loaders kept as
+  the dependency-free default.
+- 🔭 **Voice / realtime (optional module)** — a separate `vincio[realtime]` extra for OpenAI Realtime /
+  Gemini Live (WebRTC/WebSocket session, VAD, interruption, in-session tool calls). Explicitly scoped as
+  a stateful bidirectional module, *not* core context engineering — built only if voice becomes a target.
+- *Interconnection:* every new embedder, store, and parser feeds the same compiler — chunked, scored,
+  budgeted, cited, and benchmarked exactly like a local file; nothing downstream changes.
+- *Target:* MRL recall-vs-dimension curve, multimodal-embedding retrieval, and each store adapter
+  covered with mock transports / local instances; example `29_multimodal_retrieval.py`; `rag` family
+  extended with MRL and multimodal recall/MRR budgets.
+
+### 🚧 1.6 — Enterprise governance & compliance
+
+*Turn the audit and security spine Vincio already has into the evidence regulated buyers now require —
+all generated in the library, on your infrastructure. No hosted compliance program (that stays
+[out of scope](#out-of-scope)); just the artifacts and controls, emitted as files you own.*
+
+- 🚧 **Model & system cards** — `vincio governance card` generates machine-readable **model cards**
+  (model id/version, capabilities, limitations, pricing) and **system cards** (model + retrieval +
+  memory + safety filters + human-oversight points) from the live app configuration and eval evidence;
+  pluggable schema (Open Model Card / AI Cards) since no format has won.
+- 🚧 **Compliance-framework mapping** — the `RedTeamSuite` and audit log map findings to **OWASP LLM Top
+  10 (2025)**, **OWASP Agents**, **NIST AI RMF (GenAI profile)**, and **MITRE ATLAS**; `vincio
+  governance report` emits the coverage matrix as compliance evidence, and evaluation results (1.2)
+  attach as measured evidence for the relevant controls.
+- 🚧 **EU AI Act artifacts** — a synthetic-content **output marking** hook (C2PA-style provenance
+  manifest / watermark metadata) for the 2 Aug 2026 transparency duty, an AI-interaction-disclosure
+  helper, and a training-/grounding-data summary export — all configurable and dated-deadline-agnostic.
+- 🚧 **AI-BOM & supply chain** — extend the shipped CycloneDX SBOM + SLSA provenance with an **AI-BOM**
+  (base-model identity and version, embedding/rerank models, fine-tune datasets, prompt/registry
+  versions) and SHA-256 model-hash verification, for blast-radius assessment when a model or dataset is
+  found compromised.
+- 🚧 **Data lineage & erasure-by-source** — first-class lineage from source document → chunk → evidence
+  → output (extending the evidence ledger's provenance), so `app.erase_source(...)` can satisfy a GDPR
+  right-to-erasure across indexes, caches, and memory, logged on the audit chain.
+- 🚧 **Data-residency-aware routing** — pin a run (or tenant) to provider regions and refuse egress when
+  policy requires in-jurisdiction processing, enforced by the deterministic policy engine.
+- 🚧 **Multilingual** — non-English PII/secret detectors (locale packs) extending today's English-centric
+  detectors, per-language **eval slicing** (so the ~24% high-vs-low-resource accuracy gap can't hide in
+  an aggregate), and tokenizer-aware **fertility/cost telemetry** that surfaces the non-English "token
+  tax" per tenant/language and makes it routable.
+- 🚧 **RAG-poisoning & injection hardening** — authority/provenance-based poisoning detection on
+  retrieved evidence (a handful of crafted docs can flip ~90% of answers) and a hook for a
+  PromptArmor-class injection classifier, extending the existing trust-tag/heuristic defense, with
+  FP/FN telemetry.
+- *Interconnection:* every artifact is generated from data Vincio already holds — the audit chain, the
+  evidence ledger, eval reports, the price table, the registry — so governance is a *view* over the
+  running system, not a parallel bookkeeping burden; residency and poisoning controls are
+  `PolicyViolation`s on the same audit path.
+- *Edge over the field:* governance bolted onto an app is documentation; Vincio's is **mechanical and
+  measured** — cards and BOMs generated from the live config, framework mappings backed by red-team and
+  eval evidence, erasure enforced through the same lineage that cites your answers.
+- *Target:* card/BOM generation, framework-mapping coverage, erasure completeness, residency
+  enforcement, and a non-English PII suite covered offline; example `30_governance_compliance.py`; a
+  VincioBench `governance` family gating card/BOM completeness, mapping coverage, erasure correctness,
+  and multilingual PII recall.
+
+### 🔭 Exploring — later, and 2.0
+
+Candidates that are real but not yet scheduled — pulled forward when demand and the standards settle:
+
+- 🔭 **Distributed execution** — sharded retrieval and a distributed work queue for graph/crew super-steps
+  across processes, keeping the single-process path as the default. (Durable checkpoint/resume already
+  ships; this is horizontal scale.)
+- 🔭 **AGNTCY / ACP** — the REST-native agent-interop alternative to A2A, if it gains adoption.
+- 🔭 **MCP Apps & 2026 spec** — server-rendered UI and the stateless-core changes from the in-flight
+  2026 MCP spec, once it ships stable (current target is the 2025-11-25 spec).
+- 🔭 **On-device / edge embedding & inference** — first-class quantized local models beyond the existing
+  OpenAI-compatible passthrough.
+- 🔭 **2.0 — the one breaking window.** Reserved for changes the frozen 1.x surface cannot make
+  additively: collapsing any deprecated aliases accumulated across 1.x, adopting finalized OTel GenAI
+  *agentic* semantic conventions if they break the current attribute names, and any Pydantic/Python
+  floor bumps. 2.0 ships only when there is a real breaking need — never for its own sake — and with the
+  same mechanical deprecation runway 1.0 established.
+
+---
 
 ## Out of scope
 

@@ -7,9 +7,10 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
 | 0.9.x   | ⚠️ critical fixes only |
-| < 0.9   | ❌ (upgrade to 1.0.x) |
+| < 0.9   | ❌ (upgrade to 1.1.x) |
 
 ## Threat model
 
@@ -20,6 +21,13 @@ escape, a compromised host/provider) is documented in the
 [threat model](docs/security/threat-model.md). The tool sandbox is OS-process
 isolation with `setrlimit` CPU/memory/fd limits — for adversarial code, run
 tools in a container/VM.
+
+The 1.1 interoperability protocols keep these guarantees at the boundary: MCP
+tools (consumed from a server) run through the same permissioned, sandboxed,
+audited runtime, and MCP resources enter as untrusted, injection-scanned
+evidence; an MCP/A2A server you expose validates bearer tokens (OAuth 2.1
+resource server) and enforces the policy engine + audit log on every inbound
+call; Agent-Skill bundled scripts run only in the subprocess sandbox.
 
 ## Supply-chain integrity
 

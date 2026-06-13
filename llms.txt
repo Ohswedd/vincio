@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.0 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.1 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -41,6 +41,10 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Close the loop](docs/guides/close-the-loop.md)
 - [Performance & streaming](docs/guides/performance.md)
 - [Integrations: providers, vector stores, frameworks](docs/guides/integrations.md)
+- [MCP (Model Context Protocol) client + server](docs/guides/mcp.md)
+- [A2A (agent-to-agent)](docs/guides/a2a.md)
+- [Agent Skills (SKILL.md)](docs/guides/agent-skills.md)
+- [Reasoning control & the Responses API](docs/guides/reasoning.md)
 - [Coming from LangChain](docs/guides/migrate-from-langchain.md)
 - [Coming from LlamaIndex](docs/guides/migrate-from-llamaindex.md)
 - [Coming from Ragas](docs/guides/migrate-from-ragas.md)
@@ -236,5 +240,17 @@ result.output; result.citations; result.trace_id; result.cost_usd
   prompt lint/compile/push/versions/diff/rollback, trace
   show/view/replay/diff/export/sessions/feedback, optimize run, loop run,
   index build, memory inspect/remember/recall/forget/export/consolidate/decay,
-  audit verify.
+  audit verify, mcp tools/add/serve.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).
+- Protocols & interoperability (1.1, experimental): MCP client + server
+  (`vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,
+  `app.serve_mcp()`; stdio / Streamable HTTP / in-process; MCP tools register
+  through the permissioned/sandboxed/audited runtime, resources become evidence
+  with `origin: mcp:<server>`, sampling routes to the provider, elicitation to a
+  human gate; OAuth 2.1 seams). A2A (`vincio.a2a`: `app.serve_a2a(crew|graph)`,
+  Agent Card + JSON-RPC task lifecycle, `RemoteA2AAgent` as a bounded crew
+  delegate). Agent Skills (`vincio.skills`: `app.add_skill(path)`, `SKILL.md`
+  with progressive disclosure, bundled scripts as sandboxed tools). Unified
+  reasoning control: `RunConfig(reasoning_effort="low|medium|high")` /
+  `thinking_budget_tokens` across OpenAI/Anthropic/Gemini, thinking tokens
+  billed; optional `OpenAIResponsesProvider` (`build_provider("openai_responses")`).

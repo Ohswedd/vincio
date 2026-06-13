@@ -243,6 +243,27 @@
     },
     "families.loop.guided_search.found_optimum": {
       "eq": true
+    },
+    "families.protocols.mcp.schema_fidelity": {
+      "gte": 1.0
+    },
+    "families.protocols.mcp.round_trip_ok": {
+      "eq": true
+    },
+    "families.protocols.mcp.resource_provenance": {
+      "eq": true
+    },
+    "families.protocols.a2a.terminates": {
+      "eq": true
+    },
+    "families.protocols.skills.index_always_present": {
+      "eq": true
+    },
+    "families.protocols.skills.off_topic_bodies": {
+      "lte": 0
+    },
+    "families.protocols.skills.disclosure_savings": {
+      "gte": 0.5
     }
   }
 }

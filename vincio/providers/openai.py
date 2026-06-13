@@ -114,6 +114,13 @@ class OpenAIProvider(HTTPProvider):
             payload["stop"] = request.stop
         if request.seed is not None:
             payload["seed"] = request.seed
+        if request.reasoning_effort is not None and self.capabilities(request.model).reasoning:
+            # OpenAI reasoning models accept an effort level directly. "minimal"
+            # is GPT-5 only; older o-series clamp it to "low".
+            effort = request.reasoning_effort
+            if effort == "minimal" and "gpt-5" not in request.model:
+                effort = "low"
+            payload["reasoning_effort"] = effort
         if stream:
             payload["stream"] = True
             payload["stream_options"] = {"include_usage": True}
@@ -270,6 +277,7 @@ class OpenAIProvider(HTTPProvider):
             vision=not model.startswith("gpt-3.5"),
             audio="audio" in model,
             prompt_caching=True,
+            reasoning=model.startswith(("o1", "o3", "o4")) or "gpt-5" in model,
             max_context_tokens=128_000 if "gpt-4o" in model else 272_000,
             max_output_tokens=16_384 if is_mini else 32_768,
             supports_system_message=True,

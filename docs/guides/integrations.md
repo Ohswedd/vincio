@@ -3,8 +3,9 @@
 Vincio's breadth sits behind interfaces that already exist, so adding a model
 gateway, embedder, reranker, or vector store changes nothing downstream — the
 context compiler, budgeting, evals, traces, and security apply unchanged. This
-guide covers the 0.9 adapters; for end-to-end migrations see the "coming from"
-guides linked at the bottom.
+guide covers those integration adapters; for end-to-end migrations see the
+"coming from" guides linked at the bottom, and for the MCP/A2A/Skills
+interoperability protocols see their dedicated guides.
 
 ## Any OpenAI-compatible model
 

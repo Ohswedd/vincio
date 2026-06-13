@@ -4,6 +4,86 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-06-13
+
+Protocols & interoperability — the first post-1.0 milestone. Vincio now speaks
+the interoperability protocols the ecosystem standardized on in 2025–26 —
+**MCP** (client *and* server), **A2A** agent-to-agent, and Anthropic **Agent
+Skills** — plus a unified reasoning control across providers. Everything is
+**additive under the frozen 1.0 API**: every new surface sits behind a new
+entry point and is marked `@experimental`; no public symbol is removed or
+repurposed, so upgrading across the 1.x line never breaks working code. The new
+protocols use only the core `httpx` dependency — no SDKs — and run in your
+process; Vincio adopts the standards, it does not become a service.
+
+### Added
+
+- **MCP client + server** (`vincio.mcp`, experimental) — `MCPClient` /
+  `app.add_mcp_server(name, command=/url=/server=)` connect to MCP servers over
+  **stdio**, **Streamable HTTP**, and an **in-process** transport (offline
+  tests), negotiate capabilities, and surface `tools` / `resources` / `prompts`.
+  MCP tools register through the *existing* permissioned, sandboxed, audited,
+  budgeted tool runtime (namespaced `<server>.<tool>`); MCP resources become
+  evidence with `origin: mcp:<server>` provenance; MCP prompts import as
+  `PromptSpec`. Server-initiated **sampling** routes to the app's provider,
+  **elicitation** to a human-gate callback; OAuth 2.1 seams (`pkce_pair`,
+  `static_token_validator`) and a long-running **Tasks** poll path are included.
+  `app.serve_mcp()` / `vincio mcp serve` expose a `ContextApp` as an MCP server
+  (tools/resources/prompts), with the policy engine and audit log enforced on
+  every inbound call and OAuth 2.1 resource-server token validation.
+  `vincio mcp tools` / `mcp add` inspect and wire servers from the CLI.
+- **A2A (agent-to-agent)** (`vincio.a2a`, experimental) — `app.serve_a2a(crew |
+  graph | None)` serves an **Agent Card** (`/.well-known/agent.json`) and a
+  JSON-RPC **task lifecycle** (`submitted → working → input-required →
+  completed/failed`); graph human-in-the-loop interrupts surface as
+  `input-required` and resume by `taskId`. `A2AClient` / `connect_a2a` reach
+  remote agents, and `RemoteA2AAgent` plugs a remote agent into a local crew as
+  a **bounded, traced** delegate. Token validation + per-task audit (`a2a_serve`).
+- **Agent Skills** (`vincio.skills`, experimental) — `app.add_skill(path)` loads
+  Anthropic-style `SKILL.md` (YAML frontmatter + Markdown + optional bundled
+  scripts) and injects it through the compiler with **progressive disclosure**:
+  a one-line index is always available; a skill's full body enters the budget
+  only when the task is relevant (scored and cited like any evidence). Bundled
+  scripts run as sandboxed, permissioned tools (`register_scripts=True`).
+- **Unified reasoning control** — `RunConfig(reasoning_effort="minimal"|"low"|
+  "medium"|"high")` / `thinking_budget_tokens` map to OpenAI reasoning effort,
+  Anthropic extended thinking (sampling left at default), and Gemini thinking
+  budgets; providers without reasoning ignore them. The negotiated reasoning
+  mode is recorded on the `prompt_render` span and `reasoning_tokens` on the
+  `model_call` span. `ModelCapabilities.reasoning` declares support.
+- **OpenAI Responses API adapter** (`OpenAIResponsesProvider`,
+  `build_provider("openai_responses")`) — stateful `previous_response_id`,
+  built-in tools, reasoning preserved across tool calls, behind the same
+  `ModelProvider` interface; Chat Completions stays the portable default.
+- **VincioBench `protocols` family** — gates MCP tool schema-fidelity + resource
+  provenance, A2A delegation termination, and Agent-Skill progressive-disclosure
+  budget savings; three new SLOs hold them (88 budgets total, all green).
+- Four new examples: `22_mcp_tools_and_resources.py`, `23_a2a_delegation.py`,
+  `24_agent_skills.py`, `25_reasoning_control.py` (25 examples, all run offline).
+- New guides: [MCP](docs/guides/mcp.md), [A2A](docs/guides/a2a.md),
+  [Agent Skills](docs/guides/agent-skills.md), and
+  [reasoning control](docs/guides/reasoning.md).
+
+### Fixed
+
+- **Reasoning-token cost accounting** — Gemini reported thinking tokens
+  (`thoughtsTokenCount`) as `reasoning_tokens` but excluded them from the
+  billable output (`candidatesTokenCount`), so thinking was costed at $0. The
+  Google adapter now folds thinking tokens into the billable output (they are
+  billed at the output rate, matching `totalTokenCount`), while
+  `reasoning_tokens` keeps the thinking subset for telemetry. OpenAI/Anthropic
+  were already correct (reasoning is part of completion/output tokens).
+
+### Changed
+
+- `__version__` is now `1.1.0`. `ModelRequest` gains `reasoning_effort`,
+  `thinking_budget_tokens`, and `previous_response_id`; `RunConfig` gains
+  `reasoning_effort` / `thinking_budget_tokens`; `ModelCapabilities` gains
+  `reasoning`; `MockProvider(reasoning=True)` emulates thinking tokens offline.
+  All additive and backward-compatible.
+
+See the [roadmap](ROADMAP.md) (1.1 milestone) for the full picture.
+
 ## [1.0.0] - 2026-06-13
 
 Stabilization & guarantees — the 1.0 roadmap milestone. This release does not

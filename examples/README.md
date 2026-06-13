@@ -30,6 +30,10 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `19_framework_interop.py` | LangChain/LlamaIndex interop, OpenAI-compatible providers, `build_embedder`/`build_vector_index` breadth |
 | `20_domain_pack.py` | opt-in domain packs (`use_pack`), pack schema + golden eval set |
 | `21_security_governance.py` | PII/secret redaction, injection defense, RBAC/ABAC access control, programmable rails, tamper-evident audit log |
+| `22_mcp_tools_and_resources.py` | MCP client + server: register a server's tools/resources, expose the app as an MCP server |
+| `23_a2a_delegation.py` | A2A: expose a crew as an agent (Agent Card + task lifecycle), remote agent as a bounded crew delegate |
+| `24_agent_skills.py` | Agent Skills: load `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools |
+| `25_reasoning_control.py` | unified `reasoning_effort` across providers, thinking-token cost accounting, Responses API adapter |
 
 Run any of them:
 

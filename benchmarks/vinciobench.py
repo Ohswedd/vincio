@@ -1190,6 +1190,98 @@ async def bench_perf() -> dict[str, Any]:
     return results
 
 
+async def bench_protocols() -> dict[str, Any]:
+    """ProtocolsBench (1.1): interoperability guarantees that thin adapters lack.
+
+    Measures MCP tool schema-fidelity and resource provenance, A2A task
+    termination (bounded delegation), and Agent-Skill progressive-disclosure
+    budget savings. All offline via the in-process transport."""
+    from vincio import ContextApp
+    from vincio.a2a import connect_a2a_in_process
+    from vincio.core.types import ToolCall
+    from vincio.mcp import MCPServer, connect_in_process
+    from vincio.providers import MockProvider
+    from vincio.skills import Skill, SkillLibrary
+
+    # -- MCP: schema fidelity, round-trip, resource provenance ----------------
+    tool_schema = {
+        "type": "object",
+        "properties": {"a": {"type": "integer"}, "b": {"type": "integer"}},
+        "required": ["a", "b"],
+    }
+
+    def list_tools():
+        return [{"name": "add", "description": "add", "inputSchema": tool_schema}]
+
+    async def call_tool(name, args):
+        return {"text": str(args["a"] + args["b"])}
+
+    def list_resources():
+        return [{"uri": "vincio://doc/1", "name": "doc", "mimeType": "text/plain"}]
+
+    async def read_resource(uri):
+        return {"uri": uri, "mimeType": "text/plain", "text": "policy text"}
+
+    server = MCPServer(
+        name="calc",
+        list_tools=list_tools,
+        call_tool=call_tool,
+        list_resources=list_resources,
+        read_resource=read_resource,
+    )
+    consumer = ContextApp(name="proto", provider=MockProvider(), model="mock-1")
+    client = connect_in_process(server, name="calc")
+    await client.register_into(consumer)
+    discovered = (await client.list_tools())[0]
+    schema_fidelity = 1.0 if discovered.input_schema == tool_schema else 0.0
+    runtime_result = await consumer.tool_runtime.execute(
+        ToolCall(tool_name="calc.add", arguments={"a": 7, "b": 8})
+    )
+    round_trip_ok = runtime_result.status == "ok" and runtime_result.output == "15"
+    resource_provenance = any(
+        ev.metadata.get("origin") == "mcp:calc" for ev in consumer.pending_evidence
+    )
+
+    # -- A2A: a budget-bounded crew terminates over the protocol --------------
+    app = ContextApp(name="a2a_proto", provider=MockProvider(default_text="done"), model="mock-1")
+    crew = app.crew(members=[{"name": f"m{i}", "goal": "work"} for i in range(4)])
+    a2a_server = app.serve_a2a(crew, name="bounded_crew")
+    a2a_client = connect_a2a_in_process(a2a_server)
+    task = await a2a_client.send("do the work", )
+    a2a_terminates = task.status.state in ("completed", "failed")
+
+    # -- Skills: progressive disclosure budget --------------------------------
+    library = SkillLibrary()
+    bodies = {}
+    for name in ("pdf", "sql", "email", "chart"):
+        body = f"Step-by-step instructions for the {name} skill. " * 20
+        library.add(Skill(name=name, description=f"Handle {name} tasks.", instructions=body, keywords=[name]))
+        bodies[name] = count_tokens(body)
+    total_body_tokens = sum(bodies.values())
+    off_topic = library.evidence_for("translate this sentence to French")
+    relevant = library.evidence_for("extract totals from the pdf invoice")
+    off_topic_bodies = sum(1 for e in off_topic if e.metadata["kind"] == "skill")
+    relevant_bodies = sum(1 for e in relevant if e.metadata["kind"] == "skill")
+    off_topic_loaded = sum(e.token_cost for e in off_topic if e.metadata["kind"] == "skill")
+    disclosure_savings = round(1.0 - off_topic_loaded / total_body_tokens, 4)
+    index_always = off_topic[0].metadata["kind"] == "skill_index"
+
+    return {
+        "mcp": {
+            "schema_fidelity": schema_fidelity,
+            "round_trip_ok": round_trip_ok,
+            "resource_provenance": resource_provenance,
+        },
+        "a2a": {"terminates": a2a_terminates, "task_state": task.status.state},
+        "skills": {
+            "index_always_present": index_always,
+            "off_topic_bodies": off_topic_bodies,
+            "relevant_bodies": relevant_bodies,
+            "disclosure_savings": disclosure_savings,
+        },
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -1202,6 +1294,7 @@ FAMILIES = {
     "security": bench_security,
     "evals": bench_evals,
     "loop": bench_loop,
+    "protocols": bench_protocols,
     "perf": bench_perf,
 }
 

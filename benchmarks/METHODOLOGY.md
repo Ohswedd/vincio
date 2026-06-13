@@ -42,6 +42,7 @@ where they are, so you can run it yourself and audit the claims.
 | **SecurityBench** | injection detection / false-positive rate, PII coverage | — |
 | **EvalBench** | metric agreement, red-team judging, synthetic determinism, A/B significance | naive target |
 | **LoopBench** | the closed loop end to end: promotion, gating, auto-memory, Pareto, learned budgets | ungated optimization |
+| **ProtocolsBench** | MCP tool schema-fidelity + resource provenance, A2A delegation termination, Agent-Skill progressive-disclosure savings | thin protocol adapter |
 | **PerfBench** | compile/retrieval/run latency, cache speedups, concurrent throughput, TTFT | cold paths |
 
 ## Corpora and provenance

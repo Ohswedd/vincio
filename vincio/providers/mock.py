@@ -106,6 +106,7 @@ class MockProvider(ModelProvider):
         default_text: str | None = None,
         latency_ms: int = 1,
         embedding_dim: int = 64,
+        reasoning: bool = False,
     ) -> None:
         self.responses = responses or {}
         self.script = list(script or [])
@@ -113,6 +114,7 @@ class MockProvider(ModelProvider):
         self.default_text = default_text
         self.latency_ms = latency_ms
         self.embedding_dim = embedding_dim
+        self.reasoning = reasoning
         self.requests: list[ModelRequest] = []
         self.call_count = 0
 
@@ -147,6 +149,15 @@ class MockProvider(ModelProvider):
                 input_tokens=count_tokens(input_text),
                 output_tokens=count_tokens(response.text),
             )
+        # Emulate thinking tokens when reasoning is requested and supported, so
+        # the reasoning surface (cost accounting, span attributes) is exercised
+        # offline. Deterministic: scales with the requested effort.
+        if self.reasoning and request.reasoning_effort and not response.usage.reasoning_tokens:
+            think = {"minimal": 8, "low": 24, "medium": 64, "high": 128}.get(
+                request.reasoning_effort, 32
+            )
+            response.usage.reasoning_tokens = think
+            response.usage.output_tokens += think
         return response
 
     def _default_response(self, request: ModelRequest) -> ModelResponse:
@@ -215,6 +226,7 @@ class MockProvider(ModelProvider):
             vision=True,
             audio=True,
             prompt_caching=True,
+            reasoning=self.reasoning,
             max_context_tokens=200_000,
             max_output_tokens=32_768,
             supports_system_message=True,

@@ -93,6 +93,15 @@ They emit a one-time `VincioExperimentalWarning` per process so their status is
 visible without being noisy. Use them, but pin your Vincio version if you
 depend on their exact shape.
 
+The **1.1 protocol & interoperability surfaces are experimental** while the
+underlying standards settle: `vincio.mcp` (MCP client/server), `vincio.a2a`
+(agent-to-agent), `vincio.skills` (Agent Skills), and the `ContextApp` methods
+`add_mcp_server` / `serve_mcp` / `add_skill` / `serve_a2a` (which emit the
+warning). The unified reasoning controls (`RunConfig.reasoning_effort` /
+`thinking_budget_tokens`) and the `OpenAIResponsesProvider` are additive and
+do not change existing behavior. None of this removes or repurposes any 1.0
+public symbol — upgrading across the 1.x line never breaks working code.
+
 ## Supported versions
 
 See [SECURITY.md](https://github.com/Ohswedd/vincio/blob/main/SECURITY.md) for

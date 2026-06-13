@@ -43,7 +43,25 @@ __all__ = [
     "ProviderRegistry",
     "parse_sse_lines",
     "run_sync",
+    "reasoning_budget_from_effort",
 ]
+
+
+# Effort → thinking-token budget for providers that take an explicit budget
+# (Anthropic, Gemini) rather than an effort level (OpenAI). Conservative
+# defaults; callers override with ModelRequest.thinking_budget_tokens.
+_EFFORT_BUDGET = {"minimal": 1024, "low": 4096, "medium": 8192, "high": 16384}
+
+
+def reasoning_budget_from_effort(
+    effort: str | None, explicit: int | None = None, *, default: int = 8192
+) -> int:
+    """Resolve a thinking-token budget from an effort level (or an explicit value)."""
+    if explicit is not None:
+        return max(0, explicit)
+    if effort is None:
+        return default
+    return _EFFORT_BUDGET.get(effort, default)
 
 
 def run_sync(coro):
