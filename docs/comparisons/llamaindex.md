@@ -31,6 +31,11 @@ document workflows.
 **Where LlamaIndex is a fit:** very broad loader/index integrations for
 exotic data sources. Vincio's connector hub covers the common ones (web,
 GitHub, SQL, S3, GCS, Notion, Confluence, Slack — plus custom connectors
-via `register_connector`), and the `Document`/`Chunk` contracts make it
-easy to feed LlamaIndex-parsed content into `app.add_source(documents=...)`
-for anything else.
+via `register_connector`), and for anything else `vincio.interop` (0.9)
+converts LlamaIndex readers, retrievers, tools, and embeddings directly:
+`from_llamaindex_reader(reader)` → `app.add_source(documents=...)`,
+`from_llamaindex_retriever(r)`, `add_llamaindex_tool(app, t)`,
+`from_llamaindex_embedding(e)` (and `to_llamaindex_*` with
+`vincio[llamaindex]`). New vector stores — Chroma, Pinecone, LanceDB —
+join Qdrant and pgvector behind one `build_vector_index` factory. See
+[Coming from LlamaIndex to Vincio](../guides/migrate-from-llamaindex.md).

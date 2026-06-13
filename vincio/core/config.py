@@ -29,6 +29,7 @@ __all__ = [
     "VincioConfig",
     "load_config",
     "find_config_file",
+    "config_json_schema",
 ]
 
 CONFIG_FILENAMES = ("vincio.yaml", "vincio.yml", "vincio.json")
@@ -186,6 +187,21 @@ class VincioConfig(BaseModel):
 
     def to_yaml(self) -> str:
         return yaml.safe_dump(self.model_dump(mode="json"), sort_keys=False)
+
+
+def config_json_schema() -> dict[str, Any]:
+    """JSON Schema for ``vincio.yaml``.
+
+    Drives editor completion and validation. Point your editor's YAML language
+    server at a file produced by ``vincio config schema`` (a
+    ``# yaml-language-server: $schema=...`` line at the top of the config does
+    this) to get inline completion and type checks against the typed config.
+    """
+    schema = VincioConfig.model_json_schema()
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["$id"] = "https://vincio.dev/schema/vincio.json"
+    schema["title"] = "VincioConfig"
+    return schema
 
 
 def find_config_file(start: str | Path | None = None) -> Path | None:

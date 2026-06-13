@@ -1,8 +1,30 @@
 # Reference: CLI
 
 ```text
-vincio init [path] [--project NAME] [--force]
-    Scaffold vincio.yaml, app.py, and golden/basic.jsonl.
+vincio init [path] [--template minimal|rag|agent|eval] [--provider NAME]
+        [--project NAME] [--force]
+    Scaffold a project from a template: vincio.yaml (with a JSON Schema editor
+    hint), app.py, vincio.schema.json, and a golden set. rag adds docs/ + a
+    grounded app; agent adds a tool; eval adds a dataset + run instructions.
+
+vincio config schema [--output FILE]
+    Emit the vincio.yaml JSON Schema (from the typed VincioConfig) for editor
+    completion and validation.
+
+vincio config validate [PATH]
+    Validate a vincio config file (or the nearest one); exits non-zero on error.
+
+vincio config show [PATH]
+    Print the effective merged configuration as YAML.
+
+vincio packs list
+    List the available domain packs (support, engineering, finance, legal).
+
+vincio packs show NAME
+    Show a pack's role, objective, policies, evaluators, and output schema.
+
+vincio tui [--traces-dir DIR] [--db FILE]
+    Interactive terminal inspector for runs, traces, and memory.
 
 vincio run APP.py --input "..." [--file F]... [--tenant T] [--user U]
     Run the app once and print status, trace id, cost, and output.

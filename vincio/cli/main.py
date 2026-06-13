@@ -2,7 +2,13 @@
 
 Commands::
 
-    vincio init
+    vincio init --template rag|agent|eval
+    vincio config schema --output vincio.schema.json
+    vincio config validate vincio.yaml
+    vincio config show
+    vincio packs list
+    vincio packs show support
+    vincio tui
     vincio run app.py --input "..."
     vincio eval run golden.jsonl --app app.py
     vincio eval report <report.json>
@@ -80,60 +86,231 @@ def _load_trace(trace_id: str, traces_dir: str):
 # -- commands -----------------------------------------------------------------------
 
 
+def _golden_line(**case: Any) -> str:
+    return json.dumps(case) + "\n"
+
+
+def _vincio_yaml(project: str, provider: str, **sections: Any) -> str:
+    config: dict[str, Any] = {
+        "project": project,
+        "provider": {"default": provider, "model": "gpt-5.2"},
+        "storage": {"metadata": "sqlite:///.vincio/vincio.db"},
+        "observability": {"exporter": "jsonl", "traces_dir": ".vincio/traces"},
+        "security": {"tenant_isolation": True},
+    }
+    for key, value in sections.items():
+        config[key] = {**config.get(key, {}), **value} if isinstance(value, dict) else value
+    body = yaml.safe_dump(config, sort_keys=False)
+    return "# yaml-language-server: $schema=./vincio.schema.json\n" + body
+
+
+def _template_files(template: str, project: str, provider: str) -> dict[str, str]:
+    """Return ``relative_path -> contents`` for a scaffold template."""
+    if template == "rag":
+        return {
+            "vincio.yaml": _vincio_yaml(
+                project, provider, retrieval={"reranker": "heuristic", "embedder": "local"}
+            ),
+            "app.py": (
+                '"""Vincio RAG app: answer questions grounded in ./docs."""\n\n'
+                "from vincio import ContextApp\n\n"
+                f'app = ContextApp(name="{project}")\n'
+                'app.add_source("docs", path="./docs", retrieval="hybrid")\n'
+                'app.set_policy("answer_only_from_sources", True)\n\n'
+                'if __name__ == "__main__":\n'
+                '    result = app.run("What does this project do?")\n'
+                "    print(result.output)\n"
+                "    print(result.citations)\n"
+            ),
+            "docs/welcome.md": (
+                "# Welcome\n\nThis project answers questions over the documents in `./docs`.\n"
+                "Add your own Markdown, PDF, or text files here and re-run.\n"
+            ),
+            "golden/qa.jsonl": (
+                _golden_line(
+                    id="qa_001",
+                    input="What does this project do?",
+                    expected="It answers questions grounded in the project documents.",
+                    rubric={"answer_only_from_sources": True},
+                    tags=["smoke"],
+                    difficulty="easy",
+                )
+            ),
+        }
+    if template == "agent":
+        return {
+            "vincio.yaml": _vincio_yaml(project, provider),
+            "app.py": (
+                '"""Vincio agent app: a ContextApp with a tool."""\n\n'
+                "from vincio import ContextApp\n\n\n"
+                "def get_weather(city: str) -> dict:\n"
+                '    """Look up the current weather for a city."""\n'
+                '    return {"city": city, "conditions": "sunny", "temp_c": 22}\n\n\n'
+                f'app = ContextApp(name="{project}")\n'
+                'app.add_tool(get_weather, permission="read_only")\n\n'
+                'if __name__ == "__main__":\n'
+                '    result = app.run("What is the weather in Rome?")\n'
+                "    print(result.output)\n"
+            ),
+            "golden/agent.jsonl": _golden_line(
+                id="agent_001",
+                input="What is the weather in Rome?",
+                expected="It is sunny and 22C in Rome.",
+                tags=["tool"],
+                difficulty="easy",
+            ),
+        }
+    if template == "eval":
+        cases = [
+            _golden_line(id="eval_001", input="2 + 2", expected="4", tags=["math"], difficulty="easy"),
+            _golden_line(
+                id="eval_002",
+                input="Summarize: the cat sat on the mat.",
+                expected="A cat sat on a mat.",
+                tags=["summary"],
+                difficulty="medium",
+            ),
+        ]
+        return {
+            "vincio.yaml": _vincio_yaml(project, provider),
+            "app.py": (
+                '"""Vincio app under evaluation."""\n\n'
+                "from vincio import ContextApp\n\n"
+                f'app = ContextApp(name="{project}")\n\n'
+                'if __name__ == "__main__":\n'
+                '    print(app.run("2 + 2").output)\n'
+            ),
+            "golden/eval.jsonl": "".join(cases),
+            "README.md": (
+                f"# {project}\n\nRun the eval suite:\n\n"
+                "```sh\nvincio eval run golden/eval.jsonl --app app.py \\\n"
+                '  --metric semantic_similarity --gate "semantic_similarity=>= 0.6"\n```\n'
+            ),
+        }
+    # minimal (default)
+    return {
+        "vincio.yaml": _vincio_yaml(project, provider),
+        "app.py": (
+            '"""Vincio starter app."""\n\n'
+            "from vincio import ContextApp\n\n"
+            f'app = ContextApp(name="{project}")\n'
+            '# app.add_source("docs", path="./docs", retrieval="hybrid")\n'
+            '# app.set_policy("answer_only_from_sources", True)\n'
+            '# app.use_pack("support")  # opt-in domain bundle\n\n'
+            'if __name__ == "__main__":\n'
+            '    result = app.run("Hello, Vincio!")\n'
+            "    print(result.output)\n"
+        ),
+        "golden/basic.jsonl": _golden_line(
+            id="case_001",
+            input="What does this project do?",
+            expected="It answers questions over the project documents.",
+            tags=["smoke"],
+            difficulty="easy",
+        ),
+    }
+
+
 def cmd_init(args: argparse.Namespace) -> int:
+    from ..core.config import config_json_schema
+
     root = Path(args.path)
     root.mkdir(parents=True, exist_ok=True)
+    project = args.project or root.resolve().name
+    template = args.template
+    files = _template_files(template, project, args.provider)
+    # Always write a JSON Schema so the vincio.yaml $schema hint resolves.
+    files["vincio.schema.json"] = json_dumps(config_json_schema(), indent=2) + "\n"
+
     config_path = root / "vincio.yaml"
     if config_path.exists() and not args.force:
         return _fail(f"{config_path} already exists (use --force to overwrite)")
-    config_path.write_text(
-        yaml.safe_dump(
-            {
-                "project": args.project or root.resolve().name,
-                "provider": {"default": "openai", "model": "gpt-5.2"},
-                "storage": {"metadata": "sqlite:///.vincio/vincio.db"},
-                "observability": {"exporter": "jsonl", "traces_dir": ".vincio/traces"},
-                "security": {"tenant_isolation": True},
-            },
-            sort_keys=False,
-        ),
-        encoding="utf-8",
-    )
-    app_path = root / "app.py"
-    if not app_path.exists():
-        app_path.write_text(
-            '"""Vincio starter app."""\n\n'
-            "from vincio import ContextApp\n\n"
-            'app = ContextApp(name="my_app")\n'
-            '# app.add_source("docs", path="./docs", retrieval="hybrid")\n'
-            '# app.set_policy("answer_only_from_sources", True)\n\n'
-            'if __name__ == "__main__":\n'
-            '    result = app.run("Hello, Vincio!")\n'
-            "    print(result.output)\n",
-            encoding="utf-8",
-        )
-    golden = root / "golden"
-    golden.mkdir(exist_ok=True)
-    sample = golden / "basic.jsonl"
-    if not sample.exists():
-        sample.write_text(
-            json.dumps(
-                {
-                    "id": "case_001",
-                    "input": "What does this project do?",
-                    "expected": "It answers questions over the project documents.",
-                    "tags": ["smoke"],
-                    "difficulty": "easy",
-                }
-            )
-            + "\n",
-            encoding="utf-8",
-        )
+
+    written: list[str] = []
+    for relative, contents in files.items():
+        path = root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.exists() and not args.force and relative != "vincio.yaml":
+            continue
+        path.write_text(contents, encoding="utf-8")
+        written.append(relative)
     (root / ".vincio").mkdir(exist_ok=True)
-    print(f"initialized vincio project in {root.resolve()}")
-    print("  vincio.yaml      project configuration")
-    print("  app.py           starter ContextApp")
-    print("  golden/basic.jsonl  starter eval dataset")
+
+    print(f"initialized vincio project ({template} template) in {root.resolve()}")
+    for relative in sorted(written):
+        print(f"  {relative}")
+    print(f"\nnext: cd {root} && vincio run app.py --input \"Hello, Vincio!\"")
+    return 0
+
+
+def cmd_config_schema(args: argparse.Namespace) -> int:
+    from ..core.config import config_json_schema
+
+    payload = json_dumps(config_json_schema(), indent=2)
+    if args.output:
+        Path(args.output).write_text(payload + "\n", encoding="utf-8")
+        print(f"wrote JSON Schema to {args.output}")
+    else:
+        print(payload)
+    return 0
+
+
+def cmd_config_validate(args: argparse.Namespace) -> int:
+    from ..core.config import find_config_file, load_config
+
+    path = args.path or find_config_file()
+    if path is None:
+        return _fail("no vincio config file found")
+    try:
+        config = load_config(path)
+    except VincioError as exc:
+        return _fail(f"{path}: {exc.message}")
+    print(f"{path}: ok (project={config.project}, provider={config.provider.default})")
+    return 0
+
+
+def cmd_config_show(args: argparse.Namespace) -> int:
+    from ..core.config import load_config
+
+    config = load_config(args.path) if args.path else load_config()
+    print(config.to_yaml())
+    return 0
+
+
+def cmd_packs_list(args: argparse.Namespace) -> int:
+    from ..packs import available_packs, load_pack
+
+    for name in available_packs():
+        try:
+            pack = load_pack(name)
+            print(f"{name:14s} {pack.description}")
+        except VincioError:
+            print(f"{name:14s} (failed to load)")
+    return 0
+
+
+def cmd_packs_show(args: argparse.Namespace) -> int:
+    from ..packs import load_pack
+
+    pack = load_pack(args.name)
+    print(f"# pack: {pack.name}")
+    print(f"description: {pack.description}")
+    print(f"role:        {pack.role}")
+    print(f"objective:   {pack.objective}")
+    print(f"rules:       {len(pack.rules)}")
+    print(f"policies:    {pack.policies}")
+    print(f"evaluators:  {', '.join(pack.evaluators) or '-'}")
+    print(f"eval cases:  {len(pack.eval_cases)}")
+    if pack.output_schema:
+        print(f"output schema ({pack.output_schema_name or pack.name}):")
+        print(json_dumps(pack.output_schema, indent=2))
+    return 0
+
+
+def cmd_tui(args: argparse.Namespace) -> int:
+    from ..tui import TUI
+
+    TUI(traces_dir=args.traces_dir, memory_db=args.db).run()
     return 0
 
 
@@ -674,8 +851,38 @@ def build_parser() -> argparse.ArgumentParser:
     p_init = sub.add_parser("init", help="initialize a vincio project")
     p_init.add_argument("path", nargs="?", default=".")
     p_init.add_argument("--project", default=None)
+    p_init.add_argument(
+        "--template", default="minimal", choices=["minimal", "rag", "agent", "eval"],
+        help="project scaffold to generate",
+    )
+    p_init.add_argument("--provider", default="openai", help="default provider for vincio.yaml")
     p_init.add_argument("--force", action="store_true")
     p_init.set_defaults(fn=cmd_init)
+
+    p_config = sub.add_parser("config", help="configuration tooling")
+    config_sub = p_config.add_subparsers(dest="config_command", required=True)
+    p_cfg_schema = config_sub.add_parser("schema", help="emit the vincio.yaml JSON Schema")
+    p_cfg_schema.add_argument("--output", default=None, help="write schema JSON here")
+    p_cfg_schema.set_defaults(fn=cmd_config_schema)
+    p_cfg_validate = config_sub.add_parser("validate", help="validate a vincio config file")
+    p_cfg_validate.add_argument("path", nargs="?", default=None)
+    p_cfg_validate.set_defaults(fn=cmd_config_validate)
+    p_cfg_show = config_sub.add_parser("show", help="print the effective merged config")
+    p_cfg_show.add_argument("path", nargs="?", default=None)
+    p_cfg_show.set_defaults(fn=cmd_config_show)
+
+    p_packs = sub.add_parser("packs", help="domain packs")
+    packs_sub = p_packs.add_subparsers(dest="packs_command", required=True)
+    p_packs_list = packs_sub.add_parser("list", help="list available domain packs")
+    p_packs_list.set_defaults(fn=cmd_packs_list)
+    p_packs_show = packs_sub.add_parser("show", help="show a pack's configuration")
+    p_packs_show.add_argument("name")
+    p_packs_show.set_defaults(fn=cmd_packs_show)
+
+    p_tui = sub.add_parser("tui", help="interactive inspector for runs, traces, and memory")
+    p_tui.add_argument("--traces-dir", default=".vincio/traces")
+    p_tui.add_argument("--db", default=".vincio/memory.db", help="memory database")
+    p_tui.set_defaults(fn=cmd_tui)
 
     p_run = sub.add_parser("run", help="run an app once")
     p_run.add_argument("app", help="python file exposing a ContextApp as `app`")

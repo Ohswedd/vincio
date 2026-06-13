@@ -15,7 +15,6 @@ build/
 traces/
 .coverage
 htmlcov/
-dist/
 benchmarks/results/
 
 # Internal spec — not distributed

@@ -14,6 +14,7 @@ from .base import (
     parse_storage_url,
 )
 from .sqlite import SQLiteMetadataStore
+from .vectorstores import VECTOR_BACKENDS, build_vector_index
 
 __all__ = [
     "BlobStore",
@@ -23,4 +24,6 @@ __all__ = [
     "create_metadata_store",
     "parse_storage_url",
     "SQLiteMetadataStore",
+    "VECTOR_BACKENDS",
+    "build_vector_index",
 ]

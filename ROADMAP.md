@@ -33,7 +33,12 @@ self-correcting loops that never invent facts, and multi-schema routing — plus
 reliability fixes (event-loop-safe clients, rate-limit cooldowns honored from error bodies). 0.8
 closed the loop: trace→dataset→eval→optimize→promote as one audited, reproducible cycle, grounded
 auto-memory from runs, eval-driven retrieval feedback, cost/quality Pareto optimization, learned
-context budgeting, and guided offline search strategies.
+context budgeting, and guided offline search strategies. 0.9 won on breadth and ergonomics: an
+OpenAI-compatible passthrough with hosted-gateway presets, hosted rerankers/embedders and Chroma/
+Pinecone/LanceDB vector stores behind the existing interfaces, LangChain/LlamaIndex interop for
+tools/retrievers/loaders/embeddings, `vincio init` templates with a typed `vincio.yaml` schema,
+notebook reprs and an interactive TUI, opt-in domain packs, and migration guides — adopt Vincio
+without rewriting your stack.
 
 ---
 
@@ -241,8 +246,8 @@ see [Out of scope](#out-of-scope).
 
 | Competitor | What it's good at | Vincio answer (and the edge we add) | Milestone |
 |---|---|---|---|
-| **LangChain / LangGraph** | Orchestration breadth, integrations, stateful graphs | Declarative composition + durable stateful graphs with checkpoint/resume, *plus* one trace and eval loop across the whole graph | 0.6, 0.9 |
-| **LlamaIndex** | Data connectors, advanced indexing, query engines | Hierarchical / auto-merging / GraphRAG retrieval + a connector hub, *plus* every retriever scored and budgeted by the context compiler | 0.3, 0.9 |
+| **LangChain / LangGraph** | Orchestration breadth, integrations, stateful graphs | Declarative composition + durable stateful graphs with checkpoint/resume and two-way tool/retriever/loader/embedding interop, *plus* one trace and eval loop across the whole graph | 0.6, 0.9 ✅ |
+| **LlamaIndex** | Data connectors, advanced indexing, query engines | Hierarchical / auto-merging / GraphRAG retrieval, a connector hub, reader/retriever/embedding interop, and Chroma/Pinecone/LanceDB/Qdrant/pgvector behind one Index, *plus* every retriever scored and budgeted by the context compiler | 0.3, 0.9 ✅ |
 | **RAGatouille / ColBERT** | Late-interaction multi-vector retrieval | Native ColBERT-style and learned-sparse (SPLADE) retrieval behind the Index interface, *plus* fusion with BM25/dense/graph in one RRF | 0.3 |
 | **Mem0** | User / long-term personalization memory | Personalization APIs over the existing layered memory, *plus* confidence, provenance, decay, conflict resolution, and utility scoring before inclusion | 0.4 |
 | **LangSmith / Langfuse** | Tracing, prompt management, datasets, experiment tracking | Sessions, user feedback, scored spans, a prompt registry, and a local/exportable trace viewer, *plus* a provider-neutral model with no hosted dependency | 0.5 |
@@ -562,24 +567,65 @@ lifecycle.*
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 0.8.0 notes.
 
-### 🔭 0.9 — Integrations, connectors & developer experience (vs LangChain ecosystem breadth)
+### ✅ 0.9 — Integrations, connectors & developer experience (vs LangChain ecosystem breadth) (shipped)
 
-*Win on coverage and ergonomics so real projects adopt Vincio without rewriting their stack.*
+*Win on coverage and ergonomics so real projects adopt Vincio without rewriting their stack — every
+new adapter sits behind an interface that already existed, so breadth costs no new concepts.*
 
-- **Provider & embedding breadth** — more LLM, embedding, reranker, and vector-store adapters behind
-  the existing interfaces; an OpenAI-compatible passthrough for any endpoint.
-- **Framework interop** — import/export LangChain and LlamaIndex tools, retrievers, and loaders so
-  existing assets work inside Vincio (and vice versa).
-- **Scaffolding & templates** — `vincio init` templates for RAG, agent, and eval projects; typed
-  `vincio.yaml` schema with validation and editor completion.
-- **Notebook & TUI ergonomics** — rich reprs for packets/traces/evals; an interactive TUI for runs,
-  traces, and memory inspection.
-- **Domain packs** — opt-in prompt/schema/eval bundles for support, engineering, finance, and legal,
-  shipped as extras you choose to install.
-- **Migration guides** — "coming from LangChain / LlamaIndex / Ragas / Mem0" guides mapping concepts
-  one-to-one to Vincio.
+- ✅ **Provider & embedding breadth** — an OpenAI-compatible passthrough (`OpenAICompatibleProvider`
+  / `openai_compatible(...)`) reaches *any* Chat-Completions endpoint, with named presets for the
+  popular hosted gateways (`groq`, `together`, `fireworks`, `openrouter`, `deepseek`, `perplexity`,
+  `xai`, `nvidia`) whose keys resolve from the conventional `<NAME>_API_KEY` env var. Hosted
+  rerankers (`CohereReranker`, `JinaReranker`, `VoyageReranker`) and embedders (`JinaEmbedder`,
+  `VoyageEmbedder`, `CohereEmbedder`) ride the core `httpx` dependency — no SDK — behind
+  `build_reranker` / `build_embedder`; new vector-store adapters (Chroma, Pinecone, LanceDB) join
+  Qdrant and pgvector behind the retrieval `Index` protocol via one `build_vector_index` factory.
+- ✅ **Framework interop** (`vincio.interop`) — bring LangChain and LlamaIndex **tools, retrievers,
+  loaders/readers, and embeddings** into Vincio, and hand Vincio's back. The `from_*` direction is
+  duck-typed (it imports nothing heavy), so existing assets drop in without a new dependency;
+  `add_langchain_tool` / `add_llamaindex_tool` register *and* enable a tool in one call; the `to_*`
+  direction builds real framework objects (needs `vincio[langchain]` / `vincio[llamaindex]`).
+- ✅ **Scaffolding & templates** — `vincio init --template {minimal,rag,agent,eval}` generates a
+  tailored `ContextApp`, config, and golden set; every generated `vincio.yaml` carries a
+  `# yaml-language-server: $schema=…` hint and ships a JSON Schema (`vincio config schema`, from the
+  typed `VincioConfig`) for editor completion; `vincio config validate` / `vincio config show` check
+  and print the effective merged config.
+- ✅ **Notebook & TUI ergonomics** — `enable_rich_reprs()` gives `RunResult`, `Trace`, `EvalReport`,
+  `MemoryItem`, and `SearchHit` HTML/Markdown reprs for Jupyter (pure render functions you can also
+  call directly); `vincio tui` is a dependency-free, keyboard-driven inspector for runs, traces, and
+  memory, with pure screen renderers and injectable IO so it is fully unit-tested.
+- ✅ **Domain packs** (`vincio.packs`) — opt-in, dependency-free bundles for **support, engineering,
+  finance, and legal**: a role/objective/rules prompt config, a structured output schema,
+  recommended policies + evaluators, and a small golden eval set. `app.use_pack("support")` applies
+  one through the public app API (so you can layer your own settings on top); `vincio packs
+  list/show` and `register_pack(...)` round it out.
+- ✅ **Migration guides** — "coming from LangChain / LlamaIndex / Ragas / Mem0" guides that map
+  concepts one-to-one to Vincio, plus an integrations guide covering the new providers, vector
+  stores, and interop adapters.
+- *Already-shipped fixes (noted here for the record):* the provider-transport reliability work —
+  event-loop-safe HTTP clients and 429 cooldowns honored from provider error bodies (Gemini
+  `RetryInfo.retryDelay` / "retry in Ns") with the backoff cap raised to 60s — shipped with 0.7/0.8
+  and is documented in the 0.8.0 [CHANGELOG](CHANGELOG.md) and the 0.7/0.8 notes above.
+- *Interconnection (held):* every new provider, embedder, reranker, and vector store implements an
+  interface the engine already speaks, so breadth changes nothing downstream — context compilation,
+  budgeting, scoring, evals, traces, and security apply unchanged. Imported LangChain/LlamaIndex
+  documents chunk, index, budget, and cite exactly like a local file; imported tools run through the
+  same permissioned, sandboxed, audited runtime as native tools.
+- *Edge over the field (delivered):* you adopt Vincio's compiler, evals, and closed loop **without
+  rewriting your stack** — keep your LangChain tools and LlamaIndex readers, point at any
+  OpenAI-compatible model, and pick the vector store you already run.
+- **561 tests passing offline in ~2.5s; ruff clean; VincioBench 81/81 budgets**; twenty runnable
+  examples. New 0.9 tests cover provider presets + key resolution, hosted reranker/embedder wire
+  formats (httpx `MockTransport`), the vector-store factory and its helpful missing-dependency
+  errors, both interop bridges (duck-typed fakes), pack loading/application/idempotent re-apply/run,
+  the notebook reprs (including defensive formatting), the TUI loop (with memory-store caching), and
+  every new CLI command.
 
-### 🔭 1.0 — Stabilization & guarantees
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.9.0 notes, and the new
+[migration guides](docs/guides/migrate-from-langchain.md) and
+[integrations guide](docs/guides/integrations.md).
+
+### 🚧 1.0 — Stabilization & guarantees (next)
 
 *Earn production trust.*
 

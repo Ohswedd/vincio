@@ -7,11 +7,11 @@ self-correction, schema routing), CostBench, SecurityBench, EvalBench,
 LoopBench (0.8 closed loop: promotion, auto-memory, retrieval feedback,
 Pareto, learned budgeting, guided search), PerfBench.
 
-Runs fully offline by default (deterministic mock provider + deterministic
-metrics) so results are reproducible; set VINCIO_PROVIDER / VINCIO_MODEL to
-benchmark a real model. Each family compares the Vincio pipeline against a
-naive baseline and reports metric deltas. Improvement
-hypotheses are *measured*, never assumed.
+Runs fully offline and deterministically (mock provider + deterministic
+metrics) so results are reproducible across machines and gate CI without API
+keys or network. Each family compares the Vincio pipeline against a naive
+baseline and reports metric deltas. Improvement hypotheses are *measured*,
+never assumed.
 
 Usage::
 

@@ -14,8 +14,10 @@ vincio/prompts      PromptSpec, AST, compiler (cache-aware), lint, variants, ver
 vincio/context      ContextIR/Packet, scoring, budgeting, compression, compiler
 vincio/input        normalization, language/task classification, routing
 vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, multimodal
-vincio/retrieval    chunkers, embeddings, BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers, graph+GraphRAG, live indexes, reasoning
+vincio/retrieval    chunkers, embeddings (local + hosted jina/voyage/cohere + build_embedder), BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers (heuristic/recency/authority/llm + hosted cohere/jina/voyage), graph+GraphRAG, live indexes, reasoning
 vincio/connectors   data connectors (web/github/sql/s3/gcs/notion/confluence/slack) feeding the document engine
+vincio/interop      LangChain + LlamaIndex bridges (tools/retrievers/loaders/embeddings, both directions; from_* duck-typed, to_* needs the extra)
+vincio/packs        opt-in domain packs (support/engineering/finance/legal): prompt+schema+policies+evaluators+golden evals; app.use_pack
 vincio/memory       engine (L0–L5), write policy, decay, conflicts, graph, summarizers, grounded-fact auto-memory
 vincio/tools        registry, permissioned runtime, sandbox
 vincio/agents       bounded DAG executor, planners, ReAct, handoffs, crews + blackboard, durable state graphs (checkpoint/resume/fork), compose/pipe, LangGraph & OpenAI Agents SDK backends
@@ -27,10 +29,12 @@ vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenA
 vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packet/trace snapshots, pytest plugin (pytest11 entry point)
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, programmable rails, audit
 vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic + compile/chunk caches, invalidation
-vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/neo4j/redis/duckdb adapters
-vincio/providers    openai/anthropic/google/mistral/local over pooled httpx + coalescing + deterministic mock
+vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/pgvector/chroma/pinecone/lancedb vector adapters (build_vector_index), neo4j/redis/duckdb adapters
+vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible passthrough & presets (groq/together/fireworks/openrouter/deepseek/perplexity/xai/nvidia) over pooled httpx + coalescing + deterministic mock
+vincio/notebook     rich Jupyter reprs (enable_rich_reprs) for RunResult/Trace/EvalReport/MemoryItem/SearchHit
+vincio/tui          interactive terminal inspector (TUI) for runs/traces/memory; pure renderers + injectable IO
 vincio/server       FastAPI app (API key + JWT auth, real-token SSE streaming)
-vincio/cli          argparse CLI
+vincio/cli          argparse CLI (init --template, config schema/validate/show, packs, tui, run, eval, prompt, trace, optimize, loop, index, memory)
 ```
 
 ## Commands

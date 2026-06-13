@@ -3,6 +3,12 @@
 Configuration is layered: defaults < `vincio.yaml` < `VINCIO_*` environment
 variables < explicit constructor arguments.
 
+Generate a JSON Schema for editor completion with `vincio config schema --output
+vincio.schema.json` and reference it from a `# yaml-language-server: $schema=…`
+comment at the top of the file (`vincio init` writes both for you). Check a
+config with `vincio config validate` and print the effective merged result with
+`vincio config show`.
+
 ## vincio.yaml
 
 ```yaml
@@ -10,6 +16,8 @@ project: contract_ai
 
 provider:
   default: openai            # openai | anthropic | google | mistral | local | mock
+                             # + OpenAI-compatible presets: groq | together | fireworks |
+                             #   openrouter | deepseek | perplexity | xai | nvidia (keys via <NAME>_API_KEY)
   model: gpt-5.2
   fallback_models: []        # used by FailoverChain
   base_urls: {}              # e.g. local: "http://localhost:8000/v1"
@@ -41,8 +49,8 @@ retrieval:
   chunk_size_tokens: 400
   chunk_overlap_tokens: 50
   chunking: recursive        # fixed | recursive | semantic | heading_aware | table_aware | code_aware | sentence_window | hierarchical | parent_document | contextual | adaptive
-  reranker: heuristic        # heuristic | recency | authority | llm | null
-  embedder: local            # local | openai | google | mistral
+  reranker: heuristic        # heuristic | recency | authority | llm | cohere | jina | voyage | null
+  embedder: local            # local | jina | voyage | cohere | openai | google | mistral | <provider>
   query_strategies: []       # hyde | multi_query | decompose | step_back
 
 memory:

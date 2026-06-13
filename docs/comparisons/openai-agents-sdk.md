@@ -6,8 +6,9 @@ handoffs, and guardrails, executed by a hosted-model-centric runner.
 **Where Vincio differs**
 
 - **Provider-neutral.** Vincio agents, crews, and graphs run against any
-  provider (OpenAI, Anthropic, Google, Mistral, local, mock) behind one
-  interface — and offline in CI with deterministic mocks.
+  provider (OpenAI, Anthropic, Google, Mistral, local, mock, and any
+  OpenAI-compatible gateway — groq, together, fireworks, openrouter, deepseek,
+  …) behind one interface — and offline in CI with deterministic mocks.
 - **Durable state is first-class.** Stateful graphs checkpoint every step on
   your own storage (memory/SQLite/Postgres), with resume, edit-and-resume,
   and time-travel forks — no session service required.

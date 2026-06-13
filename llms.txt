@@ -40,6 +40,11 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Optimize](docs/guides/optimize-context.md)
 - [Close the loop](docs/guides/close-the-loop.md)
 - [Performance & streaming](docs/guides/performance.md)
+- [Integrations: providers, vector stores, frameworks](docs/guides/integrations.md)
+- [Coming from LangChain](docs/guides/migrate-from-langchain.md)
+- [Coming from LlamaIndex](docs/guides/migrate-from-llamaindex.md)
+- [Coming from Ragas](docs/guides/migrate-from-ragas.md)
+- [Coming from Mem0](docs/guides/migrate-from-mem0.md)
 - [API reference](docs/reference/api.md)
 - [CLI reference](docs/reference/cli.md)
 - [Config reference](docs/reference/config.md)
@@ -49,7 +54,11 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - All public data contracts are Pydantic v2 models.
 - Async-first: every engine has `arun`/async methods plus sync wrappers.
 - Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
-  mock (deterministic, offline; generates schema-valid structured output).
+  mock (deterministic, offline; generates schema-valid structured output);
+  plus OpenAI-compatible presets groq | together | fireworks | openrouter |
+  deepseek | perplexity | xai | nvidia (0.9) via `openai_compatible(name)` /
+  `build_provider(name)` (`<NAME>_API_KEY` env) or any endpoint with
+  `openai_compatible(base_url=..., api_key=...)`.
 - `ContextApp.run()` executes: normalize → classify → policy → memory →
   retrieve → compile context (score/dedupe/conflict/compress/budget) →
   compile prompt (cache-aware) → model (+bounded tool loop) → validate
@@ -189,8 +198,24 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")`
   or `guided_search(space, evaluate, strategy=, budget=, seed=)` —
   deterministic, budget-bounded, gate-respecting.
-- CLI: init, run, eval run/report/dataset, prompt
-  lint/compile/push/versions/diff/rollback, trace
+- Integrations & DX (0.9): framework interop `from vincio.interop import
+  add_langchain_tool, from_langchain_loader, from_langchain_retriever,
+  from_langchain_embeddings, from_llamaindex_reader, from_llamaindex_retriever,
+  from_llamaindex_embedding, add_llamaindex_tool` (duck-typed, no heavy import)
+  + `to_langchain_*` / `to_llamaindex_*` (extras `vincio[langchain]` /
+  `vincio[llamaindex]`); embedders `build_embedder("local|jina|voyage|cohere|
+  <provider>")`; rerankers `build_reranker("heuristic|recency|authority|llm|
+  cohere|jina|voyage")` (hosted ones are httpx-only); vector stores
+  `from vincio.storage import build_vector_index` over memory | qdrant |
+  pgvector | chroma | pinecone | lancedb (extras `vincio[chroma|pinecone|
+  lancedb]`); domain packs `app.use_pack("support|engineering|finance|legal")`,
+  `from vincio import load_pack, available_packs` (+ `register_pack`); notebook
+  reprs `from vincio import enable_rich_reprs` (RunResult/Trace/EvalReport/
+  MemoryItem/SearchHit); interactive inspector `vincio.tui.TUI` / `vincio tui`;
+  typed config schema `vincio.core.config.config_json_schema()`.
+- CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
+  config schema/validate/show, packs list/show, tui, eval run/report/dataset,
+  prompt lint/compile/push/versions/diff/rollback, trace
   show/view/replay/diff/export/sessions/feedback, optimize run, loop run,
   index build, memory inspect/remember/recall/forget/export/consolidate/decay.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).

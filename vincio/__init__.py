@@ -27,15 +27,17 @@ from .core.types import (
 )
 from .evals.datasets import Dataset
 from .memory.engine import MemoryEngine, ScopedMemory
+from .notebook import enable_rich_reprs
 from .optimize.loop import ImprovementLoop, LoopResult
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
+from .packs import Pack, available_packs, load_pack
 from .prompts.signatures import InputField, OutputField, Predict, Signature, signature
 from .prompts.templates import PromptSpec
 from .security.rails import Rail
 from .workflows.engine import Workflow
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 __all__ = [
     "ContextApp",
@@ -78,5 +80,9 @@ __all__ = [
     "Predict",
     "Rail",
     "Workflow",
+    "Pack",
+    "load_pack",
+    "available_packs",
+    "enable_rich_reprs",
     "__version__",
 ]

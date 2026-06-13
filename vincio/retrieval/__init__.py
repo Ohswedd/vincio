@@ -1,7 +1,19 @@
 """Vincio retrieval engine."""
 
 from .chunking import CHUNKERS, chunk_document
-from .embeddings import CachedEmbedder, Embedder, LocalHashEmbedder, ProviderEmbedder, cosine
+from .embeddings import (
+    BatchingEmbedder,
+    CachedEmbedder,
+    CohereEmbedder,
+    Embedder,
+    HTTPEmbedder,
+    JinaEmbedder,
+    LocalHashEmbedder,
+    ProviderEmbedder,
+    VoyageEmbedder,
+    build_embedder,
+    cosine,
+)
 from .engine import QueryPlan, RetrievalEngine, RetrievalResult, reciprocal_rank_fusion
 from .graph_retrieval import EntityGraph, GraphPath
 from .graphrag import Community, GraphRAG, detect_communities
@@ -13,11 +25,15 @@ from .query_understanding import QUERY_STRATEGIES, QueryExpansion, QueryUndersta
 from .reasoning_retrieval import FactCoverage, FactRequirement, FactSchema, ReasoningRetriever
 from .rerankers import (
     AuthorityReranker,
+    CohereReranker,
     CrossEncoderReranker,
     HeuristicReranker,
+    HTTPReranker,
+    JinaReranker,
     LLMReranker,
     RecencyReranker,
     Reranker,
+    VoyageReranker,
     build_reranker,
 )
 from .sparse import CallableSparseEncoder, LocalImpactEncoder, SparseEncoder, SparseIndex
@@ -26,9 +42,15 @@ __all__ = [
     "CHUNKERS",
     "chunk_document",
     "CachedEmbedder",
+    "BatchingEmbedder",
     "Embedder",
     "LocalHashEmbedder",
     "ProviderEmbedder",
+    "HTTPEmbedder",
+    "JinaEmbedder",
+    "VoyageEmbedder",
+    "CohereEmbedder",
+    "build_embedder",
     "cosine",
     "QueryPlan",
     "RetrievalEngine",
@@ -62,6 +84,10 @@ __all__ = [
     "LLMReranker",
     "RecencyReranker",
     "Reranker",
+    "HTTPReranker",
+    "CohereReranker",
+    "JinaReranker",
+    "VoyageReranker",
     "build_reranker",
     "CallableSparseEncoder",
     "LocalImpactEncoder",

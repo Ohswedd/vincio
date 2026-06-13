@@ -1,9 +1,10 @@
 # VincioBench
 
-Benchmark suite for Vincio and baseline comparisons. Runs fully offline by
-default (deterministic mock provider + deterministic metrics) so results
-are reproducible; set `VINCIO_PROVIDER`/`VINCIO_MODEL` to benchmark a real
-model.
+Benchmark suite for Vincio and baseline comparisons. Runs fully offline and
+deterministically (mock provider + deterministic metrics) so results are
+reproducible across machines and gate CI without API keys, quota, or network
+flakiness — the point is a stable, self-hostable measurement, not a hosted
+leaderboard.
 
 ```bash
 python benchmarks/vinciobench.py             # all families

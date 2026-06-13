@@ -29,6 +29,10 @@ with LangGraph for stateful workflows and LangSmith for observability.
   without lock-in.
 
 **Where LangChain is a fit:** the widest catalog of third-party
-integrations and a large community. Vincio's tool registry and provider
-abstraction make it straightforward to wrap any LangChain component as a
-Vincio tool when you need one.
+integrations and a large community. You don't have to choose — `vincio.interop`
+(0.9) brings LangChain tools, retrievers, loaders, and embeddings into Vincio
+(duck-typed, no import needed) and hands Vincio's back: `add_langchain_tool(app,
+tool)`, `from_langchain_retriever(r)`, `from_langchain_loader(loader)`,
+`from_langchain_embeddings(e)`, and `to_langchain_*` (with `vincio[langchain]`).
+Migrate incrementally — see
+[Coming from LangChain to Vincio](../guides/migrate-from-langchain.md).

@@ -17,8 +17,10 @@ All indexes implement one `Index` protocol (`add` / `search` / `delete`), so
 any mix fuses in a single weighted reciprocal-rank-fusion merge:
 
 - **BM25** — pure-python Okapi BM25.
-- **Dense** — vector index (local hash embeddings offline; provider
-  embeddings, Qdrant, or pgvector in production). `VectorIndex.migrate()`
+- **Dense** — vector index (local hash embeddings offline; provider or hosted
+  embeddings — `build_embedder("local"|"jina"|"voyage"|"cohere"|<provider>)` —
+  with Qdrant, pgvector, Chroma, Pinecone, or LanceDB in production, all behind
+  one `build_vector_index(kind, embedder, ...)` factory). `VectorIndex.migrate()`
   re-embeds in place for embedding-model migrations.
 - **Learned sparse** — `SparseIndex` over SPLADE-style impact vectors:
   the offline `LocalImpactEncoder` (sublinear tf + morphological expansion)
@@ -106,8 +108,9 @@ report["missing_facts"]   # feeds insufficient-evidence behavior
 ## Rerankers
 
 `heuristic` (lexical + structure priors), `recency`, `authority`,
-`llm` (batched model scoring), or any cross-encoder via
-`CrossEncoderReranker(score_fn)`.
+`llm` (batched model scoring), hosted cross-encoders (`cohere`, `jina`,
+`voyage` — httpx-only) via `build_reranker(kind, api_key=..., model=...)`, or any
+custom cross-encoder via `CrossEncoderReranker(score_fn)`.
 
 ## Connectors
 
