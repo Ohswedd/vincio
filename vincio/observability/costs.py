@@ -36,6 +36,13 @@ _DEFAULT_PRICES: dict[str, ModelPrice] = {
     # Google
     "gemini-3-pro": ModelPrice(input_per_mtok=2.0, output_per_mtok=12.0, cached_input_per_mtok=0.5),
     "gemini-3-flash": ModelPrice(input_per_mtok=0.3, output_per_mtok=2.5, cached_input_per_mtok=0.075),
+    # Google — current GA models (free tier bills $0; paid-tier rates shown for cost tracking)
+    "gemini-2.5-pro": ModelPrice(input_per_mtok=1.25, output_per_mtok=10.0, cached_input_per_mtok=0.31),
+    "gemini-2.5-flash": ModelPrice(input_per_mtok=0.3, output_per_mtok=2.5, cached_input_per_mtok=0.075),
+    "gemini-2.5-flash-lite": ModelPrice(input_per_mtok=0.1, output_per_mtok=0.4, cached_input_per_mtok=0.025),
+    "gemini-2.0-flash": ModelPrice(input_per_mtok=0.1, output_per_mtok=0.4, cached_input_per_mtok=0.025),
+    "gemini-2.0-flash-lite": ModelPrice(input_per_mtok=0.075, output_per_mtok=0.3),
+    "text-embedding-004": ModelPrice(input_per_mtok=0.0),
     # Mistral
     "mistral-large-latest": ModelPrice(input_per_mtok=2.0, output_per_mtok=6.0),
     "mistral-small-latest": ModelPrice(input_per_mtok=0.2, output_per_mtok=0.6),

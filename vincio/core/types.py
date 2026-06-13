@@ -649,7 +649,10 @@ class RunStreamEvent(BaseModel):
 
     - ``stage`` — a pipeline stage finished (``stage`` + ``data``)
     - ``text_delta`` — a chunk of model output text
-    - ``partial_output`` — best-effort parse of the structured output so far
+    - ``partial_output`` — best-effort parse of the structured output so far,
+      with streaming validation: ``valid_prefix`` is False as soon as the
+      partial output definitely cannot match the schema (``validation_errors``
+      says why), so consumers can abort early
     - ``tool_call`` / ``tool_result`` — tool loop activity
     - ``usage`` — token usage update
     - ``done`` — terminal event carrying the final :class:`RunResult`
@@ -670,6 +673,8 @@ class RunStreamEvent(BaseModel):
     text: str | None = None
     partial_output: Any = None
     output_complete: bool = False
+    valid_prefix: bool | None = None  # streaming validation verdict (schema runs only)
+    validation_errors: list[str] = Field(default_factory=list)
     tool_name: str | None = None
     tool_result: ToolResult | None = None
     usage: TokenUsage | None = None

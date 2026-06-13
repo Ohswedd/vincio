@@ -26,7 +26,11 @@ registry, sessions and feedback on traces, OTel GenAI export, and a local trace 
 orchestration expressive and safe: multi-agent crews with roles, delegation, and a shared
 blackboard; durable stateful graphs with checkpoint/resume/time-travel; first-class
 human-in-the-loop; declarative composition with streaming node events; and runtime backends for
-LangGraph and the OpenAI Agents SDK.
+LangGraph and the OpenAI Agents SDK. 0.7 made reliability a guarantee: provider-native constrained
+decoding with strict schema sanitization, streaming validation with early-abort, DSPy-style typed
+signatures that feed the optimizer, programmable rails in the deterministic policy engine, bounded
+self-correcting loops that never invent facts, and multi-schema routing — plus provider-transport
+reliability fixes (event-loop-safe clients, rate-limit cooldowns honored from error bodies).
 
 ---
 
@@ -445,22 +449,63 @@ See the [CHANGELOG](CHANGELOG.md) for the complete 0.5.0 notes.
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 0.6.0 notes.
 
-### 🔭 0.7 — Structured output, guardrails & reliability (vs Pydantic AI, Guardrails, NeMo, DSPy)
+### ✅ 0.7 — Structured output, guardrails & reliability (vs Pydantic AI, Guardrails, NeMo, DSPy) (shipped)
 
 *Reliability as a guarantee, not a hope.*
 
-- **Constrained generation** — provider-native grammar/JSON-schema-constrained decoding where
-  available, with the robust-parser fallback everywhere else.
-- **Streaming validation** — validate and repair partial structured output as it streams.
-- **Typed signatures** — DSPy-style input→output signatures over the prompt AST, usable as
-  optimization targets.
-- **Rails as policies** — programmable input/output rails (topic, format, safety) expressed in the
-  deterministic policy engine and enforced before/after generation.
-- **Self-correcting loops** — bounded validate→critique→repair cycles with cost ceilings; structure
-  is fixed, facts are never invented.
-- **Multi-schema routing** — choose/validate against alternative schemas by task or content.
-- *Interconnection:* every validation failure and repair is a trace event and an audit entry; rails
-  reuse the security detectors; signatures feed the optimizer.
+- ✅ **Constrained generation** — provider-native grammar/JSON-schema-constrained decoding where
+  available (OpenAI strict json_schema, Anthropic forced tool use, Gemini responseSchema), with the
+  robust-parser fallback everywhere else. Schemas are strict-sanitized for constrained decoders
+  (`to_strict_json_schema`: objects closed, all properties required, optionals nullable) while
+  validation runs against the original schema; the negotiated decoding mode
+  (`native` / `prompt`) is recorded on every trace. Grammar-style constraints
+  (`choice_schema`, `regex_schema`) ride the same path, with `pattern` now enforced by the
+  deterministic schema validator.
+- ✅ **Streaming validation** — `StreamingValidator` parses balanced partial JSON as it streams and
+  prefix-checks it against the schema: missing required fields are tolerated until the stream ends,
+  definite mismatches (wrong type, unknown field on a closed object) surface mid-stream.
+  `app.astream()` emits `valid_prefix` / `validation_errors` on every `partial_output` event so
+  consumers can abort doomed generations early; `finalize()` applies allowed structural repair.
+- ✅ **Typed signatures** — DSPy-style input→output signatures over the prompt AST: class-based
+  (`Signature` with `InputField` / `OutputField`) and string form
+  (`signature("question, context -> answer, confidence: float")`). `Predict` /
+  `app.predictor(sig)` executes them with native constrained decoding and full output validation;
+  `Signature.to_prompt_spec()` makes every signature a drop-in prompt-optimization target.
+- ✅ **Rails as policies** — programmable input/output rails (topic, format, safety, custom
+  predicates) expressed in the deterministic policy engine (`app.add_rail(...)`,
+  `RailEngine`) and enforced before/after every generation; safety rails reuse the security
+  engine's PII / secret / injection detectors, and `action="redact"` masks instead of blocking.
+- ✅ **Self-correcting loops** — `SelfCorrector` / `app.enable_self_correction()`: bounded
+  validate→critique→repair cycles with a deterministic critique built from the validation report, a
+  hard `max_cost_usd` ceiling, and a structure-only repair contract — facts are never invented, and
+  semantic/citation/policy validators re-run every cycle.
+- ✅ **Multi-schema routing** — `SchemaRouter` / `app.add_output_schema(...)`: choose the output
+  contract per run by task type, keywords, or predicate; content-side `classify` / `validate_any`
+  validate heterogeneous outputs against the registered alternatives.
+- ✅ **Provider reliability fixes (shipped with 0.7)** — HTTP provider clients are recreated when
+  bound to a closed/stale event loop (sync usage across `asyncio.run` calls no longer raises
+  "Event loop is closed"); 429 cooldowns are honored from provider error bodies (Gemini
+  `RetryInfo.retryDelay` / "retry in Ns" messages) when no `Retry-After` header is set, with the
+  retry backoff cap raised to 60s so free-tier RPM limits self-heal; Gemini GA model pricing
+  (2.5 pro/flash/flash-lite, 2.0 flash/flash-lite) and the `gemini-embedding-001` default
+  embedding model reflect the live API.
+- *Interconnection (held):* every validation failure, repair, and correction cycle is a trace event
+  on the `output_validation` span *and* an `output_validation` entry in the hash-chained audit log;
+  rail violations are `PolicyViolation`s (`rail:<name>`) on the same trace/audit path as every other
+  policy decision; rails reuse the security detectors; signatures feed the optimizer via
+  `to_prompt_spec()`.
+- *Edge over specialists (delivered):* Pydantic AI retries, Guardrails re-asks, NeMo scripts a
+  dialog runtime — Vincio repairs **deterministically first, model-second, facts never**, with every
+  decision audited — see [docs/comparisons/pydantic-ai.md](docs/comparisons/pydantic-ai.md),
+  [guardrails.md](docs/comparisons/guardrails.md),
+  [nemo-guardrails.md](docs/comparisons/nemo-guardrails.md), and the updated
+  [dspy.md](docs/comparisons/dspy.md).
+- **467 tests passing offline in ~2s; ruff clean**; seventeen runnable examples; the VincioBench
+  `reliability` family holds strict-schema closure, mid-stream invalid detection (with abort
+  savings), correction recovery rate, rail catch rate (zero false positives), signature validity,
+  and routing accuracy under 13 CI-gated budgets.
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 0.7.0 notes.
 
 ### 🔭 0.8 — The closed-loop ecosystem (the differentiator)
 

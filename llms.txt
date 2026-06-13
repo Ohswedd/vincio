@@ -32,6 +32,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Build a RAG app](docs/guides/build-rag-app.md)
 - [Connect data sources](docs/guides/connectors.md)
 - [Structured output](docs/guides/structured-output.md)
+- [Reliability & guardrails](docs/guides/reliability-guardrails.md)
 - [Add tools](docs/guides/add-tools.md)
 - [Orchestrate multi-agent systems](docs/guides/orchestrate-agents.md)
 - [Run evals](docs/guides/run-evals.md)
@@ -109,6 +110,29 @@ result.output; result.citations; result.trace_id; result.cost_usd
   (lazy imports, no lock-in).
 - Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
   is a validated instance.
+- Structured output & reliability (0.7): provider-native constrained
+  decoding negotiated per run (`vincio.output.to_strict_json_schema`
+  strict-sanitizes the schema for the decoder; validation runs on the
+  original; the mode lands on the trace as `decoding=native|prompt`);
+  grammar-style `choice_schema(options)` / `regex_schema(pattern)`;
+  streaming validation — `partial_output` events carry `valid_prefix` /
+  `validation_errors` (abort early when False); typed signatures —
+  `class Sig(Signature)` with `InputField`/`OutputField` (docstring =
+  instruction) or `signature("question, context -> answer, confidence:
+  float")`, executed via `Predict(sig, provider=, model=)` or
+  `app.predictor(sig)(**inputs)` (typed result), optimizer target via
+  `sig.to_prompt_spec()`; rails — `app.add_rail(name=, kind="topic|format|
+  safety|custom", direction="input|output|both", action="block|warn|
+  redact", blocked_topics=/allowed_topics=/max_chars=/require_pattern=/
+  forbid_pattern=/detectors=["pii","secrets","injection"]/predicate=)` +
+  `app.register_rail_predicate(name, fn)` — deterministic, enforced
+  before/after every generation, violations audited as `rail:<name>`;
+  self-correction — `app.enable_self_correction(max_cycles=2,
+  max_cost_usd=0.05)` (bounded validate→critique→repair, structure-only,
+  facts never invented) or `vincio.output.SelfCorrector`; multi-schema
+  routing — `app.add_output_schema(schema, keywords=, task_types=, when=)`
+  picks the contract per run; `SchemaRouter.classify/validate_any` for
+  content-side validation.
 - Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,
   gates like `{"groundedness": ">= 0.95"}`; CLI `vincio eval run`.
 - Evals & testing (0.5): metrics add faithfulness | answer_relevance |

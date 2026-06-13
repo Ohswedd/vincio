@@ -112,6 +112,8 @@ vincio eval run golden/basic.jsonl --app app.py \
 - [Concepts: context packets](concepts/context-packets.md)
 - [Guide: build a RAG app](guides/build-rag-app.md)
 - [Guide: add tools](guides/add-tools.md)
+- [Guide: structured output](guides/structured-output.md)
+- [Guide: reliability & guardrails](guides/reliability-guardrails.md)
 - [Guide: run evals](guides/run-evals.md)
 - [Guide: test LLM apps with pytest](guides/test-llm-apps.md)
 - [Guide: orchestrate multi-agent systems](guides/orchestrate-agents.md)

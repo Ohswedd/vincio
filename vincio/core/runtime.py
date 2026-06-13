@@ -42,7 +42,10 @@ from ..core.types import (
 from ..core.utils import new_id, utcnow
 from ..evals.datasets import EvalCase
 from ..evals.metrics import METRICS, RunOutput
-from ..output.parsers import parse_partial_json
+from ..output.constrained import DecodingMode, negotiate_decoding, to_strict_json_schema
+from ..output.correction import SelfCorrector
+from ..output.schemas import OutputContract
+from ..output.streaming import StreamingValidator
 from ..output.validators import OutputValidator
 from ..retrieval.chunking import extract_entities
 from .concurrency import gather_bounded
@@ -66,6 +69,8 @@ class _PreparedRun:
     model: str
     tool_specs: list[Any]
     messages: list[Message]
+    contract: OutputContract
+    decoding: DecodingMode = DecodingMode.NONE
     request_kwargs: dict[str, Any] = field(default_factory=dict)
 
 
@@ -242,6 +247,21 @@ class VincioRuntime:
             if check.transformed_text is not None:
                 routed.input.text = check.transformed_text
 
+        # 4b. multi-schema routing: pick the output contract for this task.
+        contract = app.output_contract
+        if app.schema_router is not None:
+            route = app.schema_router.route(
+                routed.input.text or routed.objective.text,
+                task_type=routed.task.task_type.value,
+            )
+            if route is not None:
+                contract = OutputContract.from_schema(
+                    route.schema_obj,
+                    require_citations=app.output_contract.require_citations,
+                    validators=app.output_contract.validators,
+                    repair_policy=app.output_contract.repair_policy,
+                )
+
         # 5-7. memory recall, file ingestion, and retrieval run concurrently —
         # they are independent reads. Each opens its own span; contextvars
         # keep nesting correct per task.
@@ -322,9 +342,9 @@ class VincioRuntime:
                 memory=memory_items,
                 tool_specs=tool_specs,
                 output_contract=OutputContractRef(
-                    schema_ref=app.output_contract.schema_name if app.output_contract.schema_def else None,
-                    schema_def=app.output_contract.schema_def,
-                    format=app.output_contract.format,
+                    schema_ref=contract.schema_name if contract.schema_def else None,
+                    schema_def=contract.schema_def,
+                    format=contract.format,
                 ),
                 budget=budget,
                 policies=policies,
@@ -356,6 +376,7 @@ class VincioRuntime:
         provider = app.resolve_provider(run_config)
         model = run_config.model or app.model
         capabilities = provider.capabilities(model)
+        decoding = negotiate_decoding(capabilities, contract.schema_def)
         with app.tracer.span("prompt_render", type="prompt_render") as span:
             compiled_prompt = app.prompt_compiler.compile(
                 app.prompt_spec,
@@ -363,8 +384,7 @@ class VincioRuntime:
                 variables=app.prompt_variables,
                 memory_items=compiled_context.ir.memory_as_items(),
                 evidence_items=compiled_context.ir.evidence_as_items(),
-                provider_enforces_schema=capabilities.structured_output
-                and app.output_contract.schema_def is not None,
+                provider_enforces_schema=decoding == DecodingMode.NATIVE,
             )
             span.set(
                 prompt_id=compiled_prompt.prompt_id,
@@ -372,13 +392,17 @@ class VincioRuntime:
                 cacheability=round(compiled_prompt.cacheability, 4),
                 tokens=compiled_prompt.token_count,
                 lint=[f.code for f in compiled_prompt.lint_findings],
+                decoding=decoding.value,
+                schema=contract.schema_name if contract.schema_def else None,
             )
 
         messages = list(compiled_prompt.messages)
         request_kwargs: dict[str, Any] = {}
-        if app.output_contract.schema_def is not None and capabilities.structured_output:
-            request_kwargs["output_schema"] = app.output_contract.schema_def
-            request_kwargs["output_schema_name"] = app.output_contract.schema_name
+        if decoding == DecodingMode.NATIVE and contract.schema_def is not None:
+            # Strict-sanitized schema rides the provider's constrained
+            # decoder; validation still runs against the original schema.
+            request_kwargs["output_schema"] = to_strict_json_schema(contract.schema_def)
+            request_kwargs["output_schema_name"] = contract.schema_name
         if run_config.temperature is not None:
             request_kwargs["temperature"] = run_config.temperature
         if run_config.seed is not None:
@@ -393,6 +417,8 @@ class VincioRuntime:
             model=model,
             tool_specs=tool_specs,
             messages=messages,
+            contract=contract,
+            decoding=decoding,
             request_kwargs=request_kwargs,
         )
 
@@ -523,11 +549,21 @@ class VincioRuntime:
         app = self.app
         messages = prepared.messages
         expects_json = (
-            app.output_contract.schema_def is not None or app.output_contract.format == "json"
+            prepared.contract.schema_def is not None or prepared.contract.format == "json"
         )
         min_parse_chars = app.config.performance.partial_parse_min_chars
         response: ModelResponse | None = None
         for _round in range(budget.max_tool_calls + 1):
+            # Fresh per model round: deltas accumulate per response.
+            stream_validator = (
+                StreamingValidator(
+                    prepared.contract.output_schema(),
+                    repair_policy=prepared.contract.repair_policy,
+                    min_interval_chars=min_parse_chars,
+                )
+                if expects_json
+                else None
+            )
             request = ModelRequest(
                 model=prepared.model,
                 messages=messages,
@@ -550,8 +586,6 @@ class VincioRuntime:
                     started = time.monotonic()
                     first_token_ms: int | None = None
                     accumulated: list[str] = []
-                    accumulated_len = 0
-                    last_parse_len = 0
                     response = None
                     async for event in prepared.provider.stream(request):
                         if event.type == "text_delta" and event.text:
@@ -560,19 +594,25 @@ class VincioRuntime:
                                 span.set(ttft_ms=first_token_ms)
                                 span.add_event("first_token", ttft_ms=first_token_ms)
                             accumulated.append(event.text)
-                            accumulated_len += len(event.text)
                             yield RunStreamEvent(type="text_delta", text=event.text)
-                            if (
-                                expects_json
-                                and accumulated_len - last_parse_len >= min_parse_chars
-                            ):
-                                last_parse_len = accumulated_len
-                                partial, complete = parse_partial_json("".join(accumulated))
-                                if partial is not None:
+                            if stream_validator is not None:
+                                # Streaming validation: parse the balanced
+                                # partial and prefix-check it against the
+                                # schema; definite mismatches surface
+                                # mid-stream.
+                                partial_event = stream_validator.feed(event.text)
+                                if partial_event is not None:
+                                    if not partial_event.valid_prefix:
+                                        span.add_event(
+                                            "stream_invalid_prefix",
+                                            errors=partial_event.errors[:4],
+                                        )
                                     yield RunStreamEvent(
                                         type="partial_output",
-                                        partial_output=partial,
-                                        output_complete=complete,
+                                        partial_output=partial_event.data,
+                                        output_complete=partial_event.complete,
+                                        valid_prefix=partial_event.valid_prefix,
+                                        validation_errors=partial_event.errors,
                                     )
                         elif event.type == "usage" and event.usage is not None:
                             yield RunStreamEvent(type="usage", usage=event.usage)
@@ -633,12 +673,13 @@ class VincioRuntime:
         result.raw_text = response.text
 
         # 13. parse and validate output.
+        contract = prepared.contract
         evidence_ids = {e.id for e in compiled_context.ir.evidence} | {
             e.citation_ref for e in compiled_context.ir.evidence
         } | {entry.get("id") for entry in compiled_context.ir.evidence_ledger if entry.get("id")}
         with app.tracer.span("output_validation", type="output_validation") as span:
             validator = OutputValidator(
-                app.output_contract,
+                contract,
                 semantic_validators=app.semantic_validators,
                 policy_engine=app.policy_engine,
                 repairer=app.repairer,
@@ -648,7 +689,49 @@ class VincioRuntime:
                 structured=response.structured,
                 evidence_ids=evidence_ids if evidence_ids else None,
             )
-            span.set(valid=report.valid, steps=[s.name for s in report.steps if not s.passed], repairs=report.repair_actions)
+
+            # 13b. bounded self-correction (validate → critique → repair).
+            correction_cycles = 0
+            if not report.valid and app.self_correction is not None:
+                corrector = SelfCorrector(
+                    validator,
+                    provider=prepared.provider,
+                    model=prepared.model,
+                    **app.self_correction,
+                )
+                correction = await corrector.correct(
+                    response.text,
+                    structured=response.structured,
+                    evidence_ids=evidence_ids if evidence_ids else None,
+                    initial_report=report,
+                )
+                result.cost_usd += correction.cost_usd
+                correction_cycles = correction.cycles
+                span.add_event(
+                    "self_correction",
+                    cycles=correction.cycles,
+                    cost_usd=round(correction.cost_usd, 8),
+                    stopped=correction.stopped_reason,
+                    valid=correction.valid,
+                )
+                if correction.report is not None:
+                    report = correction.report
+                if correction.valid:
+                    result.raw_text = correction.raw_text
+
+            # Every repair and failure is a trace event (and an audit entry below).
+            for action in report.repair_actions:
+                span.add_event("repair", action=action)
+            for step in report.steps:
+                if not step.passed:
+                    span.add_event("validation_failed", step=step.name, detail=step.detail[:200])
+            span.set(
+                valid=report.valid,
+                steps=[s.name for s in report.steps if not s.passed],
+                repairs=report.repair_actions,
+                decoding=prepared.decoding.value,
+                schema=contract.schema_name if contract.schema_def else None,
+            )
             result.validation = report.model_dump(mode="json", exclude={"output", "raw_text"})
             result.citations = report.citations
             if report.valid:
@@ -657,6 +740,21 @@ class VincioRuntime:
                 result.output = response.structured or response.text
                 result.status = RunStatus.FAILED
                 result.error = "output validation failed: " + "; ".join(report.errors)
+            if report.repair_actions or correction_cycles or not report.valid:
+                app.audit.record(
+                    "output_validation",
+                    run_id=run_id,
+                    user_id=user_input.user_id,
+                    tenant_id=user_input.tenant_id,
+                    trace_id=result.trace_id,
+                    decision="repair" if report.valid else "deny",
+                    details={
+                        "schema": contract.schema_name if contract.schema_def else None,
+                        "errors": report.errors[:8],
+                        "repairs": report.repair_actions[:8],
+                        "correction_cycles": correction_cycles,
+                    },
+                )
 
         result.evidence = compiled_context.ir.evidence
 
@@ -670,7 +768,7 @@ class VincioRuntime:
                     citations=result.citations,
                     usage=result.usage,
                     cost_usd=result.cost_usd,
-                    schema_valid=report.valid if app.output_contract.schema_def else None,
+                    schema_valid=report.valid if contract.schema_def else None,
                 )
                 case = EvalCase(id=run_id, input=routed.input.text or "")
                 for evaluator_name in app.evaluators:

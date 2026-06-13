@@ -1,8 +1,10 @@
 """VincioBench: benchmark suite for Vincio and baselines.
 
 Families: PromptBench, RAGBench, MemoryBench, AgentBench (incl. 0.6 crews,
-durable graphs, composition), ToolBench, OutputBench, CostBench,
-SecurityBench, EvalBench, PerfBench.
+durable graphs, composition), ToolBench, OutputBench, ReliabilityBench
+(0.7 constrained decoding, streaming validation, signatures, rails,
+self-correction, schema routing), CostBench, SecurityBench, EvalBench,
+PerfBench.
 
 Runs fully offline by default (deterministic mock provider + deterministic
 metrics) so results are reproducible; set VINCIO_PROVIDER / VINCIO_MODEL to
@@ -282,6 +284,207 @@ async def bench_output() -> dict[str, Any]:
         else 1.0,
         "missing_required_correctly_rejected": must_fail_failed,
     }
+
+
+async def bench_reliability() -> dict[str, Any]:
+    """ReliabilityBench (0.7): constrained decoding, streaming validation,
+    self-correction, rails, signatures, and multi-schema routing — all
+    measured offline and deterministically."""
+    from pydantic import BaseModel
+
+    from vincio.core.types import ModelResponse
+    from vincio.output import (
+        SchemaRouter,
+        SelfCorrector,
+        StreamingValidator,
+        to_strict_json_schema,
+    )
+    from vincio.prompts import Predict, Signature
+    from vincio.prompts.signatures import InputField, OutputField
+    from vincio.providers import MockProvider
+    from vincio.security.rails import Rail, RailEngine
+
+    results: dict[str, Any] = {}
+
+    # Constrained decoding: every object in the strict schema must be closed
+    # and fully required, and the transform must not lose any field.
+    class LineItem(BaseModel):
+        description: str
+        amount: float | None = None
+
+    class InvoiceModel(BaseModel):
+        vendor: str
+        total: float
+        currency: str = "USD"
+        lines: list[LineItem] = []
+
+    original = InvoiceModel.model_json_schema()
+    strict = to_strict_json_schema(original)
+
+    def object_nodes(node: Any) -> list[dict[str, Any]]:
+        found = []
+        if isinstance(node, dict):
+            if "properties" in node:
+                found.append(node)
+            for value in node.values():
+                found.extend(object_nodes(value))
+        elif isinstance(node, list):
+            for item in node:
+                found.extend(object_nodes(item))
+        return found
+
+    objects = object_nodes(strict)
+    closed = [n for n in objects if n.get("additionalProperties") is False]
+    fully_required = [n for n in objects if set(n.get("required", [])) == set(n["properties"])]
+    results["constrained"] = {
+        "objects": len(objects),
+        "closed_fraction": round(len(closed) / max(1, len(objects)), 4),
+        "fully_required_fraction": round(len(fully_required) / max(1, len(objects)), 4),
+        "fields_preserved": set(strict["properties"]) == set(original["properties"]),
+    }
+
+    # Streaming validation: a definite type mismatch must be caught
+    # mid-stream, well before the full (invalid) output finishes.
+    schema = OutputSchema.from_pydantic(InvoiceModel)
+    bad_output = (
+        '{"vendor": "Acme", "total": "not a number", "currency": "USD", '
+        '"lines": [' + ", ".join(['{"description": "row", "amount": 1.0}'] * 40) + "]}"
+    )
+    detected_at: int | None = None
+    validator = StreamingValidator(schema, min_interval_chars=16)
+    for start in range(0, len(bad_output), 16):
+        event = validator.feed(bad_output[start : start + 16])
+        if event is not None and not event.valid_prefix:
+            detected_at = event.chars_seen
+            break
+    results["streaming_validation"] = {
+        "invalid_detected_mid_stream": detected_at is not None,
+        "detected_at_chars": detected_at or len(bad_output),
+        "total_chars": len(bad_output),
+        "abort_savings_fraction": round(
+            1 - (detected_at or len(bad_output)) / len(bad_output), 4
+        ),
+    }
+
+    # Self-correction: invalid outputs recover within bounded cycles; the
+    # loop never exceeds max_cycles.
+    contract = OutputContract.from_schema(schema)
+    invalid_outputs = [
+        '{"vendor": "Acme"}',
+        "the vendor is Acme and the total is 12.5",
+        '{"vendor": "Acme", "total": []}',
+    ]
+    fixer = MockProvider(
+        responder=lambda request: ModelResponse(
+            text='{"vendor": "Acme", "total": 12.5, "currency": "USD", "lines": []}'
+        )
+    )
+    recovered = 0
+    max_cycles_respected = True
+    for raw in invalid_outputs:
+        corrector = SelfCorrector(
+            OutputValidator(contract, schema=schema), provider=fixer, model="mock-1",
+            max_cycles=2,
+        )
+        outcome = await corrector.correct(raw)
+        recovered += 1 if outcome.valid else 0
+        max_cycles_respected = max_cycles_respected and outcome.cycles <= 2
+    results["self_correction"] = {
+        "invalid_outputs": len(invalid_outputs),
+        "recovered": recovered,
+        "recovery_rate": round(recovered / len(invalid_outputs), 4),
+        "max_cycles_respected": max_cycles_respected,
+    }
+
+    # Rails: deterministic block decisions over labeled probes — every
+    # violation caught, zero false positives on clean texts.
+    engine = RailEngine()
+    engine.add(Rail(name="no_legal", kind="topic", blocked_topics=["legal advice"]))
+    engine.add(Rail(name="no_pii", kind="safety", detectors=["pii", "secrets"]))
+    engine.add(Rail(name="bounded", kind="format", max_chars=400, direction="output"))
+    violating = [
+        "Please give me legal advice about this contract dispute",
+        "Sure — reach the customer at jane.doe@example.com for details",
+        "x" * 500,
+    ]
+    clean = [
+        "The refund window for the Pro plan is 30 days. [E1]",
+        "Invoices are issued on the first business day of each month.",
+        "The SLA guarantees 99.9 percent uptime.",
+    ]
+    caught = sum(1 for text in violating if not engine.check(text, direction="output").allowed)
+    false_positives = sum(
+        1 for text in clean if not engine.check(text, direction="output").allowed
+    )
+    results["rails"] = {
+        "violations": len(violating),
+        "caught": caught,
+        "catch_rate": round(caught / len(violating), 4),
+        "false_positives": false_positives,
+    }
+
+    # Signatures: typed predictions validate against the output schema and
+    # compile to optimizer-ready prompt specs.
+    class Triage(Signature):
+        """Classify a support ticket."""
+
+        ticket: str = InputField(desc="raw ticket text")
+        label: str = OutputField(desc="bug | billing | feature | other")
+        confidence: float = OutputField()
+
+    predict = Predict(Triage, provider=MockProvider(), model="mock-1")
+    tickets = ["The export crashes", "Refund my invoice", "Please add dark mode"]
+    valid_predictions = 0
+    for ticket in tickets:
+        outcome = await predict.acall(ticket=ticket)
+        valid_predictions += 1 if outcome.report.valid else 0
+    from vincio.prompts import generate_variants
+
+    variants = generate_variants(Triage.to_prompt_spec(), max_variants=8)
+    results["signatures"] = {
+        "predictions": len(tickets),
+        "schema_valid": valid_predictions,
+        "valid_rate": round(valid_predictions / len(tickets), 4),
+        "optimizer_variants": len(variants),
+    }
+
+    # Multi-schema routing: labeled tasks land on the right schema.
+    class Bug(BaseModel):
+        title: str
+        severity: str
+
+    class Billing(BaseModel):
+        invoice_id: str
+        amount: float
+
+    router = SchemaRouter()
+    router.add(Bug, keywords=["bug", "crash", "error"])
+    router.add(Billing, keywords=["invoice", "refund", "charge"])
+    routed_cases = [
+        ("The app crashes when exporting", "Bug"),
+        ("There is an error in the report module", "Bug"),
+        ("Refund invoice INV-100 please", "Billing"),
+        ("Why was my card charged twice?", "Billing"),
+    ]
+    routing_hits = sum(
+        1
+        for text, expected in routed_cases
+        if (route := router.route(text)) is not None and route.name == expected
+    )
+    classify_hits = sum(
+        1
+        for data, expected in [
+            ({"title": "crash", "severity": "high"}, "Bug"),
+            ({"invoice_id": "INV-1", "amount": 10.0}, "Billing"),
+        ]
+        if (route := router.classify(data)) is not None and route.name == expected
+    )
+    results["schema_routing"] = {
+        "cases": len(routed_cases),
+        "routing_accuracy": round(routing_hits / len(routed_cases), 4),
+        "classification_accuracy": round(classify_hits / 2, 4),
+    }
+    return results
 
 
 async def bench_memory() -> dict[str, Any]:
@@ -768,6 +971,7 @@ FAMILIES = {
     "agent": bench_agent,
     "tool": bench_tools,
     "output": bench_output,
+    "reliability": bench_reliability,
     "cost": bench_cost,
     "security": bench_security,
     "evals": bench_evals,

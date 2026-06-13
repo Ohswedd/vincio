@@ -5,6 +5,15 @@ and automatic prompt/weight optimization.
 
 **Where Vincio differs**
 
+- **Typed signatures, validated end to end (0.7).** Vincio `Signature`s
+  (class-based or the `"question, context -> answer"` string form) compile
+  to a `PromptSpec` over the prompt AST; `Predict` executes them with
+  provider-native constrained decoding and the full validation pipeline —
+  schema, repair, citations, policy — not just a parse.
+- **Signatures feed the optimizer.** `Signature.to_prompt_spec()` is a
+  drop-in target for `PromptOptimizer`: format selection, example search,
+  reasoning modes, and instruction rewrites all apply to signatures exactly
+  as to hand-written prompts.
 - **Optimization spans the full context lifecycle**, not just the LM
   program: prompt format/examples/reasoning-mode search, retrieval and
   context-budget tuning, model routing, and cache layout — all driven by

@@ -3,6 +3,11 @@
 Evaluates run-level policies before and after model execution. Policy
 enforcement never depends on model judgment: each check is plain code over
 the run state, producing explainable :class:`PolicyViolation` records.
+
+Programmable rails (0.7) plug in here: a :class:`~vincio.security.rails.RailEngine`
+attached to the policy engine evaluates topic / format / safety / custom
+rails inside the same input and output checks, so rails are enforced
+before and after every generation with zero extra wiring.
 """
 
 from __future__ import annotations
@@ -14,6 +19,7 @@ from pydantic import BaseModel, Field
 from ..core.types import PolicySet, TrustLevel
 from .injection import InjectionDetector
 from .pii import PIIDetector, redact
+from .rails import RailEngine
 
 __all__ = ["PolicyViolation", "PolicyCheckResult", "PolicyEngine"]
 
@@ -42,10 +48,30 @@ class PolicyEngine:
         *,
         pii_detector: PIIDetector | None = None,
         injection_detector: InjectionDetector | None = None,
+        rails: RailEngine | None = None,
     ) -> None:
         self.policies = policies or PolicySet()
         self.pii = pii_detector or PIIDetector()
         self.injection = injection_detector or InjectionDetector()
+        self.rails = rails
+
+    def _check_rails(
+        self, text: str, *, direction: str, violations: list[PolicyViolation]
+    ) -> str | None:
+        """Evaluate rails for one direction; returns redacted text if any."""
+        if self.rails is None or not self.rails.rails:
+            return None
+        check = self.rails.check(text, direction=direction)
+        for violation in check.violations:
+            violations.append(
+                PolicyViolation(
+                    policy=f"rail:{violation.rail}",
+                    severity="block" if violation.action == "block" else "warn",
+                    message=violation.message,
+                    details={"kind": violation.kind, **violation.details},
+                )
+            )
+        return check.transformed_text
 
     # -- input-side checks ---------------------------------------------------------
 
@@ -80,6 +106,14 @@ class PolicyEngine:
                         details={"types": sorted({m.type for m in matches})},
                     )
                 )
+
+        rail_transformed = self._check_rails(
+            transformed if transformed is not None else text,
+            direction="input",
+            violations=violations,
+        )
+        if rail_transformed is not None:
+            transformed = rail_transformed
 
         allowed = not any(v.severity == "block" for v in violations)
         return PolicyCheckResult(allowed=allowed, violations=violations, transformed_text=transformed)
@@ -126,8 +160,9 @@ class PolicyEngine:
                         details={"types": sorted({m.type for m in high})},
                     )
                 )
+        transformed = self._check_rails(text, direction="output", violations=violations)
         allowed = not any(v.severity == "block" for v in violations)
-        return PolicyCheckResult(allowed=allowed, violations=violations)
+        return PolicyCheckResult(allowed=allowed, violations=violations, transformed_text=transformed)
 
     # -- memory-side checks -----------------------------------------------------------
 

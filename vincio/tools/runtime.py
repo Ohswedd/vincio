@@ -7,6 +7,7 @@ Lifecycle: validate_arguments → check_permissions → (approval) → execute
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 from typing import Any
 
@@ -29,7 +30,7 @@ __all__ = ["validate_against_schema", "ToolRuntime"]
 
 def validate_against_schema(value: Any, schema: dict[str, Any], *, path: str = "$") -> list[str]:
     """Minimal deterministic JSON-schema validation (type/required/properties/
-    enum/items/bounds). Returns a list of error strings."""
+    enum/items/bounds/pattern). Returns a list of error strings."""
     errors: list[str] = []
     if not schema:
         return errors
@@ -89,6 +90,8 @@ def validate_against_schema(value: Any, schema: dict[str, Any], *, path: str = "
             errors.append(f"{path}: shorter than minLength {schema['minLength']}")
         if "maxLength" in schema and len(value) > schema["maxLength"]:
             errors.append(f"{path}: longer than maxLength {schema['maxLength']}")
+        if "pattern" in schema and not re.search(schema["pattern"], value):
+            errors.append(f"{path}: does not match pattern {schema['pattern']!r}")
     return errors
 
 
