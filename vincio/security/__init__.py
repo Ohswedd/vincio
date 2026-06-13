@@ -5,6 +5,7 @@ from .audit import AuditEntry, AuditLog, RetentionPolicy, apply_retention
 from .injection import InjectionDetector, InjectionVerdict, wrap_untrusted
 from .pii import PIIDetector, PIIMatch, redact
 from .policy import PolicyCheckResult, PolicyEngine, PolicyViolation
+from .rails import Rail, RailEngine
 from .secrets import SecretFinding, SecretScanner, SecretString
 
 __all__ = [
@@ -26,6 +27,8 @@ __all__ = [
     "PolicyCheckResult",
     "PolicyEngine",
     "PolicyViolation",
+    "Rail",
+    "RailEngine",
     "SecretFinding",
     "SecretScanner",
     "SecretString",

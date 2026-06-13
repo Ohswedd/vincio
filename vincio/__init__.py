@@ -27,11 +27,14 @@ from .core.types import (
 )
 from .evals.datasets import Dataset
 from .memory.engine import MemoryEngine, ScopedMemory
+from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
+from .prompts.signatures import InputField, OutputField, Predict, Signature, signature
 from .prompts.templates import PromptSpec
+from .security.rails import Rail
 from .workflows.engine import Workflow
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 __all__ = [
     "ContextApp",
@@ -63,7 +66,14 @@ __all__ = [
     "Dataset",
     "OutputContract",
     "OutputSchema",
+    "SchemaRouter",
     "PromptSpec",
+    "Signature",
+    "InputField",
+    "OutputField",
+    "signature",
+    "Predict",
+    "Rail",
     "Workflow",
     "__version__",
 ]

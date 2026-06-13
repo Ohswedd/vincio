@@ -39,9 +39,11 @@ from ..observability import build_exporter
 from ..observability.costs import CostTracker
 from ..observability.traces import Tracer
 from ..output.repair import Repairer
+from ..output.routing import SchemaRouter
 from ..output.schemas import OutputContract, OutputSchema
 from ..output.validators import SemanticValidator
 from ..prompts.compiler import CompilerOptions, PromptCompiler
+from ..prompts.signatures import Predict, Signature
 from ..prompts.templates import PromptSpec
 from ..providers import build_provider
 from ..providers.base import ModelProvider, run_sync
@@ -56,6 +58,7 @@ from ..retrieval.sparse import SparseIndex
 from ..security.access import AccessController, Principal
 from ..security.audit import AuditLog
 from ..security.policy import PolicyEngine
+from ..security.rails import Rail, RailEngine
 from ..storage.base import create_metadata_store
 from ..tools.permissions import ToolPermissionChecker
 from ..tools.registry import ToolRegistry
@@ -163,7 +166,8 @@ class ContextApp:
             self.config.security.audit_dir if self.config.security.audit_log else None
         )
         self.access = AccessController(tenant_isolation=self.config.security.tenant_isolation)
-        self.policy_engine = PolicyEngine(self.policies)
+        self.rail_engine = RailEngine()
+        self.policy_engine = PolicyEngine(self.policies, rails=self.rail_engine)
         self.input_router = InputRouter()
 
         # provider
@@ -241,6 +245,8 @@ class ContextApp:
         self.repairer = Repairer(self.output_contract.repair_policy)
         self.evaluators: list[str] = []
         self.optimizers: list[str] = []
+        self.schema_router: SchemaRouter | None = None
+        self.self_correction: dict[str, Any] | None = None
 
         self._runtime = VincioRuntime(self)
 
@@ -359,8 +365,28 @@ class ContextApp:
                 )
         if name == "require_citations":
             self.output_contract.require_citations = bool(value)
-        self.policy_engine = PolicyEngine(self.policies)
+        self.policy_engine = PolicyEngine(self.policies, rails=self.rail_engine)
         self.events.emit("policy.changed", {"policy": name})
+        return self
+
+    # -- rails ------------------------------------------------------------------
+
+    def add_rail(self, rail: Rail | None = None, **kwargs: Any) -> ContextApp:
+        """Add a programmable input/output rail (topic, format, safety, custom).
+
+        Rails are evaluated by the deterministic policy engine before and
+        after every generation::
+
+            app.add_rail(name="no_competitors", kind="topic", direction="output",
+                         blocked_topics=["acme corp"])
+            app.add_rail(name="no_secrets", kind="safety", detectors=["secrets", "pii"])
+        """
+        self.rail_engine.add(rail if rail is not None else Rail(**kwargs))
+        return self
+
+    def register_rail_predicate(self, name: str, predicate: Callable[[str, dict[str, Any]], Any]) -> ContextApp:
+        """Register a custom rail predicate: ``(text, params) -> falsy | message``."""
+        self.rail_engine.register(name, predicate)
         return self
 
     # -- sources / retrieval ----------------------------------------------------------------
@@ -623,6 +649,65 @@ class ContextApp:
         if name not in self.optimizers:
             self.optimizers.append(name)
         return self
+
+    # -- structured output (0.7) -------------------------------------------------
+
+    def add_output_schema(
+        self,
+        schema: type[BaseModel] | OutputSchema | dict[str, Any],
+        *,
+        name: str | None = None,
+        task_types: list[str] | None = None,
+        keywords: list[str] | None = None,
+        when: Callable[[str], bool] | None = None,
+        priority: int = 100,
+    ) -> ContextApp:
+        """Register an alternative output schema, routed by task or content.
+
+        The first call creates the schema router; the app's base schema (if
+        any) stays the default when no route matches::
+
+            app.add_output_schema(BugReport, keywords=["bug", "crash"])
+            app.add_output_schema(BillingIssue, keywords=["invoice", "refund"])
+        """
+        if self.schema_router is None:
+            self.schema_router = SchemaRouter(default=self.output_contract.output_schema())
+        self.schema_router.add(
+            schema, name=name, task_types=task_types, keywords=keywords, when=when,
+            priority=priority,
+        )
+        return self
+
+    def enable_self_correction(
+        self, *, max_cycles: int = 2, max_cost_usd: float = 0.05, temperature: float = 0.0
+    ) -> ContextApp:
+        """Turn on bounded validate → critique → repair cycles for failed
+        outputs. Structure-only: the critique and repair prompt forbid
+        changing factual content, and all validators re-run each cycle."""
+        self.self_correction = {
+            "max_cycles": max_cycles,
+            "max_cost_usd": max_cost_usd,
+            "temperature": temperature,
+        }
+        return self
+
+    def predictor(
+        self,
+        sig: type[Signature],
+        *,
+        model: str | None = None,
+        temperature: float = 0.0,
+        prompt_spec: PromptSpec | None = None,
+    ) -> Predict:
+        """A :class:`~vincio.prompts.signatures.Predict` bound to the app's
+        provider and model: ``app.predictor(Triage)(ticket="...")``."""
+        return Predict(
+            sig,
+            provider=self.resolve_provider(),
+            model=model or self.model,
+            temperature=temperature,
+            prompt_spec=prompt_spec,
+        )
 
     # -- task decorator ----------------------------------------------------------------------
 

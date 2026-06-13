@@ -251,7 +251,7 @@ class GoogleProvider(HTTPProvider):
     async def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
         if not texts:
             return []
-        embedding_model = model or "text-embedding-004"
+        embedding_model = model or "gemini-embedding-001"
         data = await self._post_json(
             f"/models/{embedding_model}:batchEmbedContents",
             {

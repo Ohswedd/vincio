@@ -22,6 +22,7 @@ Results are printed as JSON and saved to `benchmarks/results/`.
 | **AgentBench** | budget adherence under an adversarial looping model, DAG success; crew over-budget termination, full-crew success, delegation recording; durable-graph interrupt→resume and fork-replay determinism; composition streaming coverage | unbounded loop |
 | **ToolBench** | reliability, runtime overhead (p50 ms), invalid-arg rejection, cache hits | — |
 | **OutputBench** | recovery rate over malformed model outputs; missing-required correctly rejected | raw `json.loads` |
+| **ReliabilityBench (0.7)** | strict-schema closure for constrained decoding; mid-stream invalid detection + abort savings; self-correction recovery within cycle bounds; rail catch rate + false positives; signature prediction validity + optimizer variants; schema routing/classification accuracy | validate-at-end / unguarded output |
 | **CostBench** | evidence-token reduction from the context compiler | stuff-everything context |
 | **SecurityBench** | injection detection rate, false-positive rate, PII coverage | — |
 | **EvalBench** | metric agreement on labeled examples; red-team judging (guarded vs naive target, detector coverage); synthetic-data determinism and coverage; A/B significance machinery; session grouping; HTML viewer self-containment; trace→dataset; G-Eval calibration | naive target (85% attack success) |

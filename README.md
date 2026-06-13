@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-426%20passing-2ea44f" alt="426 tests passing">
+  <img src="https://img.shields.io/badge/tests-467%20passing-2ea44f" alt="467 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -140,6 +140,29 @@ paused = flow.invoke({"doc": "msa.pdf"})           # pauses at the human gate
 done = flow.resume(paused.thread_id, value=True)   # later — even after a restart
 ```
 
+### Reliability as a guarantee
+
+```python
+from vincio import Signature, InputField, OutputField
+
+class Triage(Signature):
+    """Classify a support ticket."""
+    ticket: str = InputField(desc="the raw ticket text")
+    label: str = OutputField(desc="bug | billing | feature | other")
+    confidence: float = OutputField()
+
+result = app.predictor(Triage)(ticket="The export button 500s")  # typed + validated
+
+app.add_rail(name="no_leaks", kind="safety", detectors=["pii", "secrets"], action="redact")
+app.add_rail(name="on_topic", kind="topic", direction="input", blocked_topics=["legal advice"])
+app.enable_self_correction(max_cycles=2, max_cost_usd=0.05)      # facts never invented
+app.add_output_schema(BugReport, keywords=["bug", "crash"])       # multi-schema routing
+
+async for event in app.astream("Extract the invoice"):
+    if event.type == "partial_output" and event.valid_prefix is False:
+        break   # streaming validation: stop paying for a doomed answer
+```
+
 ### Evaluation as a gate
 
 ```python
@@ -165,11 +188,11 @@ for any engine directly.
 | **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement. |
 | **Orchestration (0.6)** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events; runtime backends exporting to LangGraph and the OpenAI Agents SDK. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates that pause the run and resume without re-executing finished steps. |
-| **Structured output** | Pydantic output contracts, robust parsers (fenced / embedded / lenient / streaming JSON), a validation pipeline, and **principled repair that fixes structure only — never invents facts**. |
+| **Structured output (0.7)** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
 | **Evaluation (0.5)** | Golden JSONL datasets, 25+ task / grounding / quality / safety / conversational / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
 | **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
 | **Observability (0.5)** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
-| **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, RBAC / ABAC, tenant isolation, and a hash-chained audit log. |
+| **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log. |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector), and graph (Neo4j) backends behind one factory. |
 | **Providers** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. |
 | **Performance (0.2)** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
@@ -202,6 +225,10 @@ baseline. Representative results on the bundled reference corpus:
 | **Evals (0.5)** | metric agreement on labeled examples | **100%** | — |
 | | red-team detector coverage · guarded attack success | **100% · 0%** | naive target: 85% attacks succeed |
 | | A/B significance (real shift detected / null ignored) | **pass** | — |
+| **Reliability (0.7)** | invalid output detected mid-stream → tokens saved | **98%** | 0% (validate at end) |
+| | self-correction recovery rate (bounded cycles) | **3 / 3** | — |
+| | rail catch rate · false positives on clean text | **100% · 0** | — |
+| | schema routing / classification accuracy | **100%** | — |
 
 > **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
 > demonstrate the mechanisms, not to be quoted as universal gains. The context-compression
@@ -258,10 +285,11 @@ a Ragas metric with `@register_metric`. See the in-depth write-ups in
 | Evaluate, test, and observe without a platform | quality metrics, synthetic data, red-teaming, experiments, prompt registry, sessions + trace viewer | [`14_evaluation_observability.py`](examples/14_evaluation_observability.py) |
 | Run a multi-agent team with roles and delegation | crews + shared blackboard + budget guarantees | [`15_multi_agent_crew.py`](examples/15_multi_agent_crew.py) |
 | Build an interruptible, auditable, resumable process | durable graphs + human gates + time-travel | [`16_durable_graph.py`](examples/16_durable_graph.py) |
+| Guarantee output shape and guard every generation | signatures, constrained decoding, streaming validation, rails, self-correction, schema routing | [`17_reliable_structured_output.py`](examples/17_reliable_structured_output.py) |
 
 ## More examples
 
-All sixteen examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
+All seventeen examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
 a real model with environment variables:
 
 ```bash
@@ -334,8 +362,11 @@ data, experiments with statistical significance, a prompt registry, sessions and
 traces, OTel GenAI export, and a local trace viewer; 0.6.0 made orchestration expressive *and*
 safe — multi-agent crews with delegation and a shared blackboard, durable stateful graphs with
 checkpoint/resume/time-travel, first-class human-in-the-loop, declarative composition with
-streaming node events, and LangGraph / OpenAI Agents SDK backends — with 426 offline tests,
-sixteen runnable examples, and full documentation. The public roadmap — what's
+streaming node events, and LangGraph / OpenAI Agents SDK backends; 0.7.0 made reliability a
+guarantee — provider-native constrained decoding with strict schema sanitization, streaming
+validation with early abort, DSPy-style typed signatures, programmable rails, bounded
+self-correcting loops, and multi-schema routing — with 467 offline tests, seventeen runnable
+examples, and full documentation. The public roadmap — what's
 shipped, what's next, and what's intentionally out of scope — lives in **[ROADMAP.md](ROADMAP.md)**.
 
 Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
@@ -351,7 +382,9 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [evaluation](docs/concepts/evals.md)
 - **Guides** — [build a RAG app](docs/guides/build-rag-app.md) ·
   [connect data sources](docs/guides/connectors.md) ·
-  [structured output](docs/guides/structured-output.md) · [add tools](docs/guides/add-tools.md) ·
+  [structured output](docs/guides/structured-output.md) ·
+  [reliability & guardrails](docs/guides/reliability-guardrails.md) ·
+  [add tools](docs/guides/add-tools.md) ·
   [orchestrate multi-agent systems](docs/guides/orchestrate-agents.md) ·
   [run evals](docs/guides/run-evals.md) · [optimize](docs/guides/optimize-context.md) ·
   [performance & streaming](docs/guides/performance.md)
@@ -361,7 +394,8 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [LlamaIndex](docs/comparisons/llamaindex.md) · [RAGatouille](docs/comparisons/ragatouille.md) ·
   [Mem0](docs/comparisons/mem0.md) · [CrewAI](docs/comparisons/crewai.md) ·
   [OpenAI Agents SDK](docs/comparisons/openai-agents-sdk.md) · [DSPy](docs/comparisons/dspy.md) ·
-  [Ragas](docs/comparisons/ragas.md)
+  [Pydantic AI](docs/comparisons/pydantic-ai.md) · [Guardrails AI](docs/comparisons/guardrails.md) ·
+  [NeMo Guardrails](docs/comparisons/nemo-guardrails.md) · [Ragas](docs/comparisons/ragas.md)
 
 ## Contributing
 
@@ -370,7 +404,7 @@ green:
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 426 tests, no network or API keys required
+python -m pytest tests/ -q     # 467 tests, no network or API keys required
 ruff check vincio/ tests/
 ```
 

@@ -4,6 +4,138 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.7.0] - 2026-06-13
+
+Structured output, guardrails & reliability — the 0.7 roadmap milestone.
+Reliability as a guarantee, not a hope: provider-native constrained decoding
+with strict schema sanitization, streaming validation with early abort,
+DSPy-style typed signatures that feed the optimizer, programmable rails in
+the deterministic policy engine, bounded self-correcting loops that never
+invent facts, and multi-schema routing — every failure, repair, and rail
+decision landing on the trace and in the hash-chained audit log.
+
+### Added
+
+- **Constrained generation** (`vincio.output.constrained`) —
+  `to_strict_json_schema()` transforms any JSON schema for strict
+  provider-native constrained decoding (every object closed via
+  `additionalProperties: false`, every property required, optional fields
+  made nullable, `default`/`format` stripped) while validation keeps running
+  against the original schema; `negotiate_decoding()` picks
+  `native`/`prompt`/`none` from the provider capability matrix per run, and
+  the chosen mode is recorded on the `prompt_render` and `output_validation`
+  spans. Grammar-style constraints `choice_schema(options)` and
+  `regex_schema(pattern)` express fixed choices and regex-shaped strings as
+  schemas that ride the same native path; the deterministic JSON-schema
+  validator now also enforces `pattern`.
+- **Streaming validation** (`vincio.output.streaming`) —
+  `StreamingValidator` accumulates text deltas, parses the balanced partial
+  JSON, and prefix-checks it against the schema (`validate_partial`):
+  missing required fields are tolerated while streaming, definite
+  mismatches — wrong type, unknown field on a closed object — are reported
+  mid-stream. `app.astream()` wires it in automatically: `partial_output`
+  events now carry `valid_prefix` and `validation_errors`, so consumers can
+  abort a generation that can no longer be valid; `finalize()` applies the
+  allowed structural repairs at stream end.
+- **Typed signatures** (`vincio.prompts.signatures`) — DSPy-style
+  input→output signatures over the prompt AST: subclass `Signature` with
+  `InputField` / `OutputField` markers (docstring becomes the instruction)
+  or use the string form
+  `signature("question, context -> answer, confidence: float")`.
+  `Signature.to_prompt_spec()` compiles to a `PromptSpec` (drop-in target
+  for `PromptOptimizer` variants/rewrites); `Predict` /
+  `app.predictor(sig)` executes with provider-native constrained decoding
+  and the full validation pipeline, returning typed results
+  (`result.label`, `result.confidence`); inputs are type-checked before the
+  call.
+- **Rails as policies** (`vincio.security.rails`) — programmable rails as
+  plain data (`Rail`: kind `topic` / `format` / `safety` / `custom`,
+  direction, action `block` / `warn` / `redact`, parameters) evaluated by
+  `RailEngine` inside the deterministic policy engine: topic rails match
+  blocked/allowed topics by word-boundary patterns, format rails check
+  length and require/forbid regexes, safety rails reuse the security
+  engine's PII detector, secret scanner, and injection detector
+  (`action="redact"` masks PII instead of blocking), and custom rails call
+  predicates registered via `app.register_rail_predicate()`. Input rails
+  run before the model is called (a blocking violation denies the run);
+  output rails run inside the validation pipeline's policy step. Every
+  violation is a `PolicyViolation` named `rail:<name>` on the trace and in
+  the audit log. New app APIs: `app.add_rail(...)`.
+- **Self-correcting loops** (`vincio.output.correction`) — `SelfCorrector`
+  runs bounded validate → critique → repair cycles: the critique is built
+  deterministically from the `ValidationReport` (`build_critique`), the
+  repair request is structure-only (re-serialize, rename, retype — never
+  add, remove, or change factual content), semantic/citation/policy
+  validators re-run every cycle, and the loop stops at the first valid
+  output, `max_cycles`, or the hard `max_cost_usd` ceiling.
+  `app.enable_self_correction(max_cycles=, max_cost_usd=)` wires it into
+  the run flow; cycles, cost, and outcome are a `self_correction` trace
+  event and audit-log details.
+- **Multi-schema routing** (`vincio.output.routing`) — `SchemaRouter` holds
+  named `SchemaRoute`s (schema + task types / keywords / predicate /
+  priority): `route()` picks the output contract for a run before
+  generation (keywords match at word starts, so "crash" matches
+  "crashed"), `classify()` finds which registered schema some structured
+  data matches, and `validate_any()` validates against the alternatives.
+  `app.add_output_schema(schema, keywords=..., task_types=..., when=...)`
+  routes per run; the chosen schema is recorded on the `prompt_render`
+  span.
+- **Interconnection** — every validation failure and repair is now a trace
+  event (`repair` / `validation_failed` / `self_correction` /
+  `stream_invalid_prefix` events on the `output_validation` and
+  `model_call` spans) *and* an `output_validation` entry in the
+  hash-chained audit log (`decision=repair|deny`, with errors, repairs, and
+  correction cycles); rails reuse the security detectors; signatures feed
+  the optimizer.
+- **VincioBench** — new `reliability` family measures strict-schema closure
+  (100% objects closed and fully required), mid-stream invalid detection
+  with abort savings (~98% of an invalid output's tokens saved offline),
+  self-correction recovery rate with cycle bounds, rail catch rate with
+  zero false positives on clean text, signature prediction validity and
+  optimizer variant generation, and schema-routing/classification accuracy
+  — held by 13 new `budgets.json` gates in CI.
+- **Docs & examples** — a new how-to guide
+  (`docs/guides/reliability-guardrails.md`), an expanded structured-output
+  guide (constrained decoding, streaming validation, routing, signatures,
+  self-correction), comparison write-ups for Pydantic AI, Guardrails AI,
+  and NeMo Guardrails, a typed-signatures section in the DSPy comparison,
+  and runnable example `17_reliable_structured_output.py`; the examples
+  index now also lists the 0.6 crew and durable-graph examples.
+
+### Fixed
+
+- **HTTP provider clients no longer die with the event loop** — a provider
+  reused across `asyncio.run()` calls (the natural sync usage of
+  `generate_sync` / `stream_sync` / `app.run`) recreates its pooled
+  `httpx.AsyncClient` when the cached client is bound to a closed or
+  different loop, instead of raising "Event loop is closed".
+- **Rate-limit cooldowns are honored from error bodies** — when a 429
+  carries no `Retry-After` header, the retry delay is extracted from the
+  provider error body (Google's `RetryInfo.retryDelay` detail or
+  "retry in Ns" message), and `RetryingProvider`'s backoff cap was raised
+  from 20s to 60s, so free-tier per-minute limits self-heal inside the
+  retry loop.
+- **Gemini defaults match the live API** — the default Google embedding
+  model is now `gemini-embedding-001` (the live batch-embedding model), and
+  the price table covers the current GA models (`gemini-2.5-pro`,
+  `gemini-2.5-flash`, `gemini-2.5-flash-lite`, `gemini-2.0-flash`,
+  `gemini-2.0-flash-lite`, `text-embedding-004`) so cost tracking reports
+  paid-tier rates instead of $0 for unknown models.
+
+### Changed
+
+- `RunStreamEvent` gains `valid_prefix` and `validation_errors` on
+  `partial_output` events (streaming validation).
+- `PolicyEngine` accepts a `rails=` engine and `check_output()` can return
+  `transformed_text` (redact-action rails); the validation pipeline ships
+  the redacted text for plain-text outputs.
+- The runtime negotiates the structured-output decoding mode per run and
+  sends the strict-sanitized schema to capable providers (previously the
+  raw schema was sent, which strict decoders such as OpenAI
+  `strict: true` reject for open objects).
+- **467 tests passing offline in ~2s; ruff clean**; seventeen runnable
+  examples; 67 CI-gated VincioBench budgets.
+
 ## [0.6.0] - 2026-06-12
 
 Agents & orchestration — the 0.6 roadmap milestone. Match the orchestration

@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 import random
+import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator
@@ -123,13 +124,28 @@ class HTTPProvider(ModelProvider):
         self.max_keepalive_connections = max_keepalive_connections
         self._client = client
         self._owns_client = client is None
+        self._client_loop: asyncio.AbstractEventLoop | None = None
 
     default_base_url: str = ""
     requires_api_key: bool = True
 
     @property
     def client(self) -> httpx.AsyncClient:
-        if self._client is None or self._client.is_closed:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+        # Recreate a client we own if it is closed or was bound to a different
+        # event loop. Reusing a client across asyncio.run() calls (the natural
+        # sync usage of generate_sync/stream_sync) otherwise raises
+        # "Event loop is closed" when httpx touches a connection from a dead loop.
+        stale_loop = (
+            self._owns_client
+            and loop is not None
+            and self._client_loop is not None
+            and self._client_loop is not loop
+        )
+        if self._client is None or self._client.is_closed or stale_loop:
             self._client = httpx.AsyncClient(
                 timeout=self.timeout_s,
                 limits=httpx.Limits(
@@ -138,6 +154,7 @@ class HTTPProvider(ModelProvider):
                 ),
             )
             self._owns_client = True
+            self._client_loop = loop
         return self._client
 
     async def aclose(self) -> None:
@@ -166,9 +183,10 @@ class HTTPProvider(ModelProvider):
             raise ProviderAuthError(f"authentication failed: {message}", **kw)
         if response.status_code == 429:
             retry_after = response.headers.get("retry-after")
+            retry_after_s = float(retry_after) if retry_after else _retry_delay_from_body(body)
             raise ProviderRateLimitError(
                 f"rate limited: {message}",
-                retry_after_s=float(retry_after) if retry_after else None,
+                retry_after_s=retry_after_s,
                 **kw,
             )
         if response.status_code in (408, 504):
@@ -207,6 +225,33 @@ class HTTPProvider(ModelProvider):
             raise ProviderUnavailableError(str(exc), provider=self.name) from exc
 
 
+def _retry_delay_from_body(body: Any) -> float | None:
+    """Extract a retry delay from a provider error body when no Retry-After header is set.
+
+    Google's Gemini API returns the cooldown in the JSON body — either as a
+    ``RetryInfo.retryDelay`` detail ("29s") or in the message text ("retry in
+    29.1s"). Honoring it lets free-tier RPM limits self-heal via the retry loop.
+    """
+    if not isinstance(body, dict):
+        return None
+    error = body.get("error") or {}
+    for detail in error.get("details", []) or []:
+        if not isinstance(detail, dict):
+            continue
+        delay = detail.get("retryDelay")
+        if isinstance(delay, str) and delay.endswith("s"):
+            try:
+                return float(delay[:-1])
+            except ValueError:
+                pass
+    message = error.get("message") if isinstance(error, dict) else None
+    if isinstance(message, str):
+        match = re.search(r"retry in (\d+(?:\.\d+)?)s", message)
+        if match:
+            return float(match.group(1))
+    return None
+
+
 def parse_sse_lines(line: str) -> str | None:
     """Extract the data payload from an SSE line; returns None for non-data lines."""
     line = line.strip()
@@ -226,7 +271,7 @@ class RetryingProvider(ModelProvider):
         *,
         max_retries: int = 2,
         base_delay_s: float = 0.5,
-        max_delay_s: float = 20.0,
+        max_delay_s: float = 60.0,
         jitter: float = 0.2,
     ) -> None:
         self.inner = inner

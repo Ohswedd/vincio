@@ -20,3 +20,6 @@ benchmarks/results/
 
 # Internal spec — not distributed
 PRD.md
+
+# Live API test harnesses — hit real providers, cost quota, may hold keys
+tests/live/

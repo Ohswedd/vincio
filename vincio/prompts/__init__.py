@@ -25,6 +25,7 @@ from .compiler import (
 from .lint import LINT_RULES, LintFinding, lint_ast, lint_spec
 from .optimizers import PromptVariant, diff_rendered, diff_specs, generate_variants
 from .registry import PromptRegistry, PromptVersion
+from .signatures import InputField, OutputField, Predict, PredictResult, Signature, signature
 from .templates import PromptSpec, PromptVariable
 
 __all__ = [
@@ -58,4 +59,10 @@ __all__ = [
     "generate_variants",
     "diff_specs",
     "diff_rendered",
+    "Signature",
+    "InputField",
+    "OutputField",
+    "signature",
+    "Predict",
+    "PredictResult",
 ]

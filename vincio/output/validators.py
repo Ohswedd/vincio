@@ -194,7 +194,7 @@ class OutputValidator:
                 return report
             report.step("citations", True, f"{len(citations)} found")
 
-        # 5. policy validation
+        # 5. policy validation (includes programmable output rails)
         if self.policy_engine is not None:
             policy_result = self.policy_engine.check_output(
                 raw_text, citations_present=bool(report.citations)
@@ -204,7 +204,14 @@ class OutputValidator:
                     "policy", False, "; ".join(v.message for v in policy_result.blocking)
                 )
                 return report
-            report.step("policy", True)
+            detail = ""
+            if policy_result.violations:
+                detail = "; ".join(v.message for v in policy_result.violations)
+            if policy_result.transformed_text is not None and isinstance(data, str):
+                # A redact rail fired on a text output: ship the redacted text.
+                data = policy_result.transformed_text
+                report.repair_actions.append("output redacted by rail")
+            report.step("policy", True, detail)
 
         # 6-7. final
         report.valid = True
