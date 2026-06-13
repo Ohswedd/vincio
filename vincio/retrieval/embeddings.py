@@ -22,7 +22,10 @@ import threading
 from collections import OrderedDict
 from typing import Any, Protocol
 
+import httpx
+
 from ..core.concurrency import gather_bounded
+from ..core.errors import ConfigError, ProviderAuthError, ProviderError
 from ..providers.base import ModelProvider, run_sync
 
 __all__ = [
@@ -31,6 +34,11 @@ __all__ = [
     "ProviderEmbedder",
     "CachedEmbedder",
     "BatchingEmbedder",
+    "HTTPEmbedder",
+    "JinaEmbedder",
+    "VoyageEmbedder",
+    "CohereEmbedder",
+    "build_embedder",
     "cosine",
 ]
 
@@ -279,3 +287,140 @@ class BatchingEmbedder:
             for future in unique[text]:
                 if not future.done():
                     future.set_result(vector)
+
+
+class HTTPEmbedder:
+    """Hosted embedding endpoint over httpx (OpenAI-style ``/embeddings``).
+
+    Jina and Voyage speak the OpenAI embedding dialect, so they subclass this
+    directly; Cohere's v2 shape overrides payload/parse. An
+    ``httpx.AsyncClient`` can be injected for offline testing.
+    """
+
+    name = "http"
+    default_base_url = ""
+    default_model = ""
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+        dim: int = 1024,
+        client: httpx.AsyncClient | None = None,
+        timeout_s: float = 60.0,
+    ) -> None:
+        self.api_key = api_key
+        self.model = model or self.default_model
+        self.base_url = (base_url or self.default_base_url).rstrip("/")
+        self.dim = dim
+        self._client = client
+        self.timeout_s = timeout_s
+
+    def _headers(self) -> dict[str, str]:
+        if not self.api_key:
+            raise ProviderAuthError(f"missing API key for embedder {self.name!r}", provider=self.name)
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+    def _payload(self, texts: list[str]) -> dict[str, Any]:
+        return {"model": self.model, "input": texts}
+
+    def _parse(self, data: dict[str, Any]) -> list[list[float]]:
+        items = sorted(data.get("data") or [], key=lambda item: item.get("index", 0))
+        return [item["embedding"] for item in items]
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        if not texts:
+            return []
+        client = self._client or httpx.AsyncClient(timeout=self.timeout_s)
+        try:
+            response = await client.post(self.base_url, json=self._payload(texts), headers=self._headers())
+            if response.status_code >= 400:
+                raise ProviderError(
+                    f"embedder {self.name!r} error {response.status_code}: {response.text[:500]}",
+                    provider=self.name,
+                )
+            vectors = self._parse(response.json())
+        finally:
+            if self._client is None:
+                await client.aclose()
+        if vectors:
+            self.dim = len(vectors[0])
+        return vectors
+
+
+class JinaEmbedder(HTTPEmbedder):
+    """Jina AI embeddings (``/v1/embeddings``); OpenAI-compatible shape."""
+
+    name = "jina"
+    default_base_url = "https://api.jina.ai/v1/embeddings"
+    default_model = "jina-embeddings-v3"
+
+
+class VoyageEmbedder(HTTPEmbedder):
+    """Voyage AI embeddings (``/v1/embeddings``); OpenAI-compatible shape."""
+
+    name = "voyage"
+    default_base_url = "https://api.voyageai.com/v1/embeddings"
+    default_model = "voyage-3"
+
+
+class CohereEmbedder(HTTPEmbedder):
+    """Cohere v2 embeddings (``/v2/embed``).
+
+    Cohere asks for an ``input_type`` (``search_document`` for the corpus,
+    ``search_query`` at query time) and returns vectors under
+    ``embeddings.float`` rather than the OpenAI ``data[].embedding`` shape.
+    """
+
+    name = "cohere"
+    default_base_url = "https://api.cohere.com/v2/embed"
+    default_model = "embed-english-v3.0"
+
+    def __init__(self, *, input_type: str = "search_document", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.input_type = input_type
+
+    def _payload(self, texts: list[str]) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "texts": texts,
+            "input_type": self.input_type,
+            "embedding_types": ["float"],
+        }
+
+    def _parse(self, data: dict[str, Any]) -> list[list[float]]:
+        embeddings = data.get("embeddings") or {}
+        if isinstance(embeddings, dict):
+            return list(embeddings.get("float") or [])
+        return list(embeddings)  # older "embed-floats" responses returned a bare list
+
+
+_HTTP_EMBEDDERS: dict[str, type[HTTPEmbedder]] = {
+    "jina": JinaEmbedder,
+    "voyage": VoyageEmbedder,
+    "cohere": CohereEmbedder,
+}
+
+
+def build_embedder(kind: str = "local", *, config: Any | None = None, **kwargs: Any) -> Embedder:
+    """Construct an embedder by name.
+
+    - ``local`` → :class:`LocalHashEmbedder` (deterministic, dependency-free)
+    - ``jina`` / ``voyage`` / ``cohere`` → hosted HTTP embedders (httpx only)
+    - any provider name (``openai``, ``google``, ``mistral``, ``groq``, …) →
+      :class:`ProviderEmbedder` over :func:`vincio.providers.build_provider`
+    """
+    if kind == "local":
+        return LocalHashEmbedder(**kwargs)
+    if kind in _HTTP_EMBEDDERS:
+        return _HTTP_EMBEDDERS[kind](**kwargs)
+    try:
+        from ..providers import build_provider
+
+        provider = build_provider(kind, config)
+    except Exception as exc:  # noqa: BLE001 - surface a clear configuration error
+        raise ConfigError(f"unknown embedder {kind!r}: {exc}") from exc
+    model = kwargs.pop("model", None)
+    return ProviderEmbedder(provider, model=model, **kwargs)

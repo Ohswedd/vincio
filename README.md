@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-495%20passing-2ea44f" alt="495 tests passing">
+  <img src="https://img.shields.io/badge/tests-561%20passing-2ea44f" alt="561 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -65,6 +65,8 @@ Vincio treats context as a compiled artifact with a clear contract:
 pip install vincio                  # core — runs fully offline with the mock provider
 pip install "vincio[openai]"        # + OpenAI provider
 pip install "vincio[anthropic]"     # + Anthropic provider
+pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, postgres)
+pip install "vincio[langchain]"     # + LangChain interop export (also: llamaindex)
 pip install "vincio[all]"           # every optional integration
 ```
 
@@ -183,21 +185,22 @@ for any engine directly.
 | **Prompt compiler** | Typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, diffing, variant generation. |
 | **Context compiler** | Scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget — with an *excluded-context report* explaining every omission. |
 | **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; citations. |
-| **Memory (0.4)** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. |
+| **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. |
 | **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, sandboxing, reliability scoring, idempotent write-action guardrails with approval callbacks. |
 | **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement. |
-| **Orchestration (0.6)** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events; runtime backends exporting to LangGraph and the OpenAI Agents SDK. |
+| **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events; runtime backends exporting to LangGraph and the OpenAI Agents SDK. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates that pause the run and resume without re-executing finished steps. |
-| **Structured output (0.7)** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
-| **Evaluation (0.5)** | Golden JSONL datasets, 25+ task / grounding / quality / safety / conversational / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
+| **Structured output** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
+| **Evaluation** | Golden JSONL datasets, 25+ task / grounding / quality / safety / conversational / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
 | **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
-| **The closed loop (0.8)** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
-| **Observability (0.5)** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
+| **The closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
+| **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
 | **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log. |
-| **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector), and graph (Neo4j) backends behind one factory. |
-| **Providers** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. |
-| **Performance (0.2)** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
-| **Connectors (0.3)** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. |
+| **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB behind one `build_vector_index` factory), and graph (Neo4j) backends. |
+| **Providers** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. |
+| **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
+| **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. |
+| **Integrations & DX** | LangChain + LlamaIndex interop (`vincio.interop`) for tools, retrievers, loaders, and embeddings — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
 
 Every extension point — providers, metrics, chunkers, rerankers, judges, validators, tools — accepts
 your own implementation via a registry.
@@ -221,16 +224,16 @@ baseline. Representative results on the bundled reference corpus:
 | **Memory** | preference recall · contradiction supersede · tenant isolation | **pass** | — |
 | **Tools** | runtime overhead, p50 | **0.02 ms** | — |
 | **Agents** | adversarial infinite-loop model | **bounded** (budget) | unbounded |
-| **Orchestration (0.6)** | crew over-budget termination · delegation recorded | **pass** | — |
+| **Orchestration** | crew over-budget termination · delegation recorded | **pass** | — |
 | | graph interrupt→resume and fork-replay vs straight run | **identical state** | — |
-| **Evals (0.5)** | metric agreement on labeled examples | **100%** | — |
+| **Evals** | metric agreement on labeled examples | **100%** | — |
 | | red-team detector coverage · guarded attack success | **100% · 0%** | naive target: 85% attacks succeed |
 | | A/B significance (real shift detected / null ignored) | **pass** | — |
-| **Reliability (0.7)** | invalid output detected mid-stream → tokens saved | **98%** | 0% (validate at end) |
+| **Reliability** | invalid output detected mid-stream → tokens saved | **98%** | 0% (validate at end) |
 | | self-correction recovery rate (bounded cycles) | **3 / 3** | — |
 | | rail catch rate · false positives on clean text | **100% · 0** | — |
 | | schema routing / classification accuracy | **100%** | — |
-| **Closed loop (0.8)** | loop promotion fires · deterministic · gates block regressions | **pass** | — |
+| **Closed loop** | loop promotion fires · deterministic · gates block regressions | **pass** | — |
 | | grounded facts written · ungrounded excluded | **pass** | — |
 | | retrieval feedback (noisy index corrected · healthy index untouched) | **pass** | — |
 | | Pareto front excludes dominated · knee balanced · learned budgets promote | **pass** | — |
@@ -265,9 +268,11 @@ in-library** capabilities — not what is reachable by bolting on a separate pro
 | **Deterministic security** (PII / injection / audit) | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 <sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Reflects
-mid-2026; ecosystems evolve. Vincio is built to *interoperate* — wrap a LangChain component as a
-tool, feed LlamaIndex-parsed documents into a source, use a DSPy program as a provider, or register
-a Ragas metric with `@register_metric`. See the in-depth write-ups in
+mid-2026; ecosystems evolve. Vincio is built to *interoperate* — `vincio.interop` brings LangChain
+and LlamaIndex tools, retrievers, loaders, and embeddings in (and hands Vincio's back), point at any
+OpenAI-compatible model, and pick the vector store you already run. See the
+[migration guides](docs/guides/migrate-from-langchain.md), the
+[integrations guide](docs/guides/integrations.md), and the in-depth write-ups in
 [`docs/comparisons/`](docs/comparisons).</sub>
 
 ## Use cases
@@ -292,10 +297,12 @@ a Ragas metric with `@register_metric`. See the in-depth write-ups in
 | Build an interruptible, auditable, resumable process | durable graphs + human gates + time-travel | [`16_durable_graph.py`](examples/16_durable_graph.py) |
 | Guarantee output shape and guard every generation | signatures, constrained decoding, streaming validation, rails, self-correction, schema routing | [`17_reliable_structured_output.py`](examples/17_reliable_structured_output.py) |
 | Improve the app from its own production traffic | the closed loop: traces→dataset→eval→optimize→promote, auto-memory, retrieval feedback, Pareto, learned budgets | [`18_closed_loop.py`](examples/18_closed_loop.py) |
+| Reuse LangChain/LlamaIndex assets and any OpenAI-compatible model | framework interop + provider/vector-store breadth | [`19_framework_interop.py`](examples/19_framework_interop.py) |
+| Configure an app for a domain in one line | opt-in domain packs (support/engineering/finance/legal) | [`20_domain_pack.py`](examples/20_domain_pack.py) |
 
 ## More examples
 
-All eighteen examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
+All twenty examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at
 a real model with environment variables:
 
 ```bash
@@ -306,7 +313,10 @@ cd examples && python 02_document_qa.py
 ## Command line
 
 ```bash
-vincio init my-project           # scaffold config, a starter app, and a golden dataset
+vincio init my-project --template rag  # scaffold config + app + golden set (minimal|rag|agent|eval)
+vincio config schema --output vincio.schema.json  # typed JSON Schema for editor completion
+vincio packs list                # opt-in domain packs (support/engineering/finance/legal)
+vincio tui                       # interactive inspector for runs, traces, and memory
 vincio run app.py --input "..."  # run an app
 vincio eval run golden.jsonl     # run an eval suite (with CI gates and baseline compare)
 vincio eval dataset golden.jsonl --min-feedback 0.5  # curate traces into a dataset
@@ -357,27 +367,14 @@ of each engine.
 
 ## Roadmap
 
-Vincio 0.1.0 shipped every in-scope subsystem above; 0.2.0 made the spine fast — streaming,
-concurrency, compilation caches, and CI-gated performance budgets; 0.3.0 made retrieval
-best-in-field — learned sparse + late interaction fused with BM25/dense/graph, query understanding,
-auto-merging and contextual indexing, GraphRAG, live indexes, and a connector hub; 0.4.0 made
-memory personal and governed — scoped remember/recall, hybrid vector+graph recall,
-episodic→semantic consolidation with provenance, audited forgetting, and a CI-gated memory eval
-harness; 0.5.0 made evaluation and observability platform-grade in-process — quality/safety/
-conversational metrics, G-Eval judging with calibration, a pytest plugin, red-teaming, synthetic
-data, experiments with statistical significance, a prompt registry, sessions and feedback on
-traces, OTel GenAI export, and a local trace viewer; 0.6.0 made orchestration expressive *and*
-safe — multi-agent crews with delegation and a shared blackboard, durable stateful graphs with
-checkpoint/resume/time-travel, first-class human-in-the-loop, declarative composition with
-streaming node events, and LangGraph / OpenAI Agents SDK backends; 0.7.0 made reliability a
-guarantee — provider-native constrained decoding with strict schema sanitization, streaming
-validation with early abort, DSPy-style typed signatures, programmable rails, bounded
-self-correcting loops, and multi-schema routing; 0.8.0 closed the loop — trace→dataset→eval→
-optimize→promote as one audited, reproducible cycle, grounded auto-memory from runs, eval-driven
-retrieval feedback, cost/quality Pareto optimization, learned context budgeting, and guided
-offline search — with 495 offline tests, eighteen runnable examples, and full documentation. The
-public roadmap — what's
-shipped, what's next, and what's intentionally out of scope — lives in **[ROADMAP.md](ROADMAP.md)**.
+Every subsystem above is implemented, tested offline, documented, and demonstrated by a runnable
+example. The roadmap deepens and broadens the library rather than changing that scope; the current
+focus is **stabilization and guarantees** — semantic-versioning and deprecation policy, published
+performance SLOs, a full security review with supply-chain attestations, and an expanded,
+reproducible VincioBench.
+
+See **[ROADMAP.md](ROADMAP.md)** for what's shipped, what's next, and what's intentionally out of
+scope, and **[CHANGELOG.md](CHANGELOG.md)** for release notes.
 
 Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
 retention, tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own
@@ -398,7 +395,11 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [orchestrate multi-agent systems](docs/guides/orchestrate-agents.md) ·
   [run evals](docs/guides/run-evals.md) · [optimize](docs/guides/optimize-context.md) ·
   [close the loop](docs/guides/close-the-loop.md) ·
-  [performance & streaming](docs/guides/performance.md)
+  [performance & streaming](docs/guides/performance.md) ·
+  [integrations](docs/guides/integrations.md)
+- **Migrating** — coming from [LangChain](docs/guides/migrate-from-langchain.md) ·
+  [LlamaIndex](docs/guides/migrate-from-llamaindex.md) ·
+  [Ragas](docs/guides/migrate-from-ragas.md) · [Mem0](docs/guides/migrate-from-mem0.md)
 - **Reference** — [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
   [config](docs/reference/config.md)
 - **Comparisons** — [LangChain](docs/comparisons/langchain.md) ·

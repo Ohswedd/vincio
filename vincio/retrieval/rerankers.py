@@ -6,9 +6,12 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import Any, Protocol
+
+import httpx
 
 from ..context.scoring import lexical_similarity
+from ..core.errors import ProviderAuthError, ProviderError
 from ..core.types import Message, ModelRequest
 from ..core.utils import utcnow
 from ..providers.base import ModelProvider
@@ -21,6 +24,10 @@ __all__ = [
     "AuthorityReranker",
     "LLMReranker",
     "CrossEncoderReranker",
+    "HTTPReranker",
+    "CohereReranker",
+    "JinaReranker",
+    "VoyageReranker",
     "build_reranker",
 ]
 
@@ -205,6 +212,120 @@ class CrossEncoderReranker:
         return rescored[:top_k]
 
 
+class HTTPReranker:
+    """Hosted cross-encoder reranker over a JSON rerank endpoint (httpx only).
+
+    Subclasses set the endpoint path, the default model, and how to read the
+    per-document relevance scores back out. An ``httpx.AsyncClient`` can be
+    injected for offline testing (the established pattern across Vincio's HTTP
+    adapters); otherwise one is created and closed per call.
+    """
+
+    name = "http"
+    default_base_url = ""
+    default_model = ""
+    results_key = "results"  # response key holding the scored items
+    score_key = "relevance_score"
+    top_param = "top_n"  # request field naming the truncation count
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        base_url: str | None = None,
+        client: httpx.AsyncClient | None = None,
+        timeout_s: float = 30.0,
+    ) -> None:
+        self.api_key = api_key
+        self.model = model or self.default_model
+        self.base_url = (base_url or self.default_base_url).rstrip("/")
+        self._client = client
+        self.timeout_s = timeout_s
+
+    def _headers(self) -> dict[str, str]:
+        if not self.api_key:
+            raise ProviderAuthError(f"missing API key for reranker {self.name!r}", provider=self.name)
+        return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
+
+    def _payload(self, query: str, documents: list[str], top_k: int) -> dict[str, Any]:
+        return {
+            "model": self.model,
+            "query": query,
+            "documents": documents,
+            self.top_param: top_k,
+        }
+
+    def _parse(self, data: dict[str, Any]) -> list[tuple[int, float]]:
+        out: list[tuple[int, float]] = []
+        for item in data.get(self.results_key) or []:
+            if isinstance(item, dict) and "index" in item:
+                out.append((int(item["index"]), float(item.get(self.score_key, 0.0))))
+        return out
+
+    async def rerank(self, query: str, hits: list[SearchHit], *, top_k: int) -> list[SearchHit]:
+        if not hits:
+            return []
+        documents = [hit.chunk.text for hit in hits]
+        payload = self._payload(query, documents, top_k)
+        client = self._client or httpx.AsyncClient(timeout=self.timeout_s)
+        try:
+            response = await client.post(self.base_url, json=payload, headers=self._headers())
+            if response.status_code >= 400:
+                raise ProviderError(
+                    f"reranker {self.name!r} error {response.status_code}: {response.text[:500]}",
+                    provider=self.name,
+                )
+            scored = self._parse(response.json())
+        finally:
+            if self._client is None:
+                await client.aclose()
+        # Sort defensively (don't assume the endpoint pre-sorted); documents it
+        # dropped fall to the back, preserving original order.
+        scored.sort(key=lambda pair: pair[1], reverse=True)
+        ranked = [SearchHit(chunk=hits[i].chunk, score=s, source=self.name) for i, s in scored]
+        seen = {i for i, _ in scored}
+        tail = [
+            SearchHit(chunk=hit.chunk, score=hit.score * 0.0, source=self.name)
+            for index, hit in enumerate(hits)
+            if index not in seen
+        ]
+        return (ranked + tail)[:top_k]
+
+
+class CohereReranker(HTTPReranker):
+    """Cohere Rerank (``/v2/rerank``). Needs a Cohere API key; httpx only."""
+
+    name = "cohere"
+    default_base_url = "https://api.cohere.com/v2/rerank"
+    default_model = "rerank-v3.5"
+
+
+class JinaReranker(HTTPReranker):
+    """Jina AI Reranker (``/v1/rerank``). Needs a Jina API key; httpx only."""
+
+    name = "jina"
+    default_base_url = "https://api.jina.ai/v1/rerank"
+    default_model = "jina-reranker-v2-base-multilingual"
+
+
+class VoyageReranker(HTTPReranker):
+    """Voyage AI Reranker (``/v1/rerank``). Needs a Voyage API key; httpx only."""
+
+    name = "voyage"
+    default_base_url = "https://api.voyageai.com/v1/rerank"
+    default_model = "rerank-2"
+    results_key = "data"
+    top_param = "top_k"
+
+
+_HTTP_RERANKERS: dict[str, type[HTTPReranker]] = {
+    "cohere": CohereReranker,
+    "jina": JinaReranker,
+    "voyage": VoyageReranker,
+}
+
+
 def build_reranker(kind: str | None, **kwargs) -> Reranker | None:
     if kind in (None, "none"):
         return None
@@ -216,4 +337,6 @@ def build_reranker(kind: str | None, **kwargs) -> Reranker | None:
         return AuthorityReranker(**kwargs)
     if kind == "llm":
         return LLMReranker(**kwargs)
+    if kind in _HTTP_RERANKERS:
+        return _HTTP_RERANKERS[kind](**kwargs)
     raise ValueError(f"unknown reranker {kind!r}")

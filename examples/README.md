@@ -27,6 +27,8 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `16_durable_graph.py` | durable stateful graphs, checkpoints, human-in-the-loop interrupts, edit-and-resume, time-travel forks, composition |
 | `17_reliable_structured_output.py` | typed signatures, constrained decoding, streaming validation, rails, self-correction, multi-schema routing |
 | `18_closed_loop.py` | the closed loop: traces→dataset→eval→optimize→promote, auto-memory from runs, retrieval feedback, Pareto frontier, learned budgeting |
+| `19_framework_interop.py` | LangChain/LlamaIndex interop, OpenAI-compatible providers, `build_embedder`/`build_vector_index` breadth |
+| `20_domain_pack.py` | opt-in domain packs (`use_pack`), pack schema + golden eval set |
 
 Run any of them:
 

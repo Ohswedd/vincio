@@ -33,6 +33,7 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | `evaluate(dataset, metrics=, concurrency=, gates=, judges=)` | `EvalReport` |
 | `improvement_loop(metrics=, weights=, gates=, experiment=, ...)` | `ImprovementLoop`: trace → dataset → eval → optimize → promote on this app |
 | `use_learned_budgets(source)` | install eval-tuned per-task budget allocations (`LearnedAllocations`, path, or mapping) |
+| `use_pack(pack, set_schema=, merge_rules=)` | apply a domain pack (`"support"`/`"engineering"`/`"finance"`/`"legal"` or a `Pack`): prompt config + schema + policies + evaluators + rails |
 | `task` (decorator) | configure from a task class |
 | `stats()` | sources, tools, memory, cost, run counts |
 
@@ -57,8 +58,8 @@ the terminal `done` (carrying `result: RunResult`).
 |---|---|
 | `vincio.prompts` | `PromptSpec`, `PromptCompiler`, `lint_spec`, `generate_variants`, `diff_specs`, `PromptRegistry`, `Signature`, `InputField`, `OutputField`, `signature`, `Predict` |
 | `vincio.context` | `ContextCompiler`, `ContextPacket`, `ContextIR`, `ContextScorer`, `BudgetAllocator` |
-| `vincio.retrieval` | `RetrievalEngine`, `BM25Index`, `VectorIndex`, `SparseIndex`, `LateInteractionIndex`, `AutoMergingIndex`, `LiveIndex`, `QueryUnderstanding`, `EntityGraph`, `GraphRAG`, `ReasoningRetriever`, `chunk_document`, `contextualize_chunks` |
-| `vincio.connectors` | `connect`, `register_connector`, `WebConnector`, `GitHubConnector`, `SQLConnector`, `S3Connector`, `GCSConnector`, `NotionConnector`, `ConfluenceConnector`, `SlackConnector` |
+| `vincio.retrieval` | `RetrievalEngine`, `BM25Index`, `VectorIndex`, `SparseIndex`, `LateInteractionIndex`, `AutoMergingIndex`, `LiveIndex`, `QueryUnderstanding`, `EntityGraph`, `GraphRAG`, `ReasoningRetriever`, `chunk_document`, `contextualize_chunks`, `build_embedder`, `JinaEmbedder`, `VoyageEmbedder`, `CohereEmbedder`, `build_reranker`, `CohereReranker`, `JinaReranker`, `VoyageReranker` |
+| `vincio.connectors` | `connect`, `register_connector`, `Connector`, `CONNECTORS` — built-in kinds via `connect("web"\|"github"\|"sql"\|"s3"\|"gcs"\|"notion"\|"confluence"\|"slack", ...)` |
 | `vincio.memory` | `MemoryEngine`, `ScopedMemory`, `MemoryConsolidator`, `MemoryGraph`, `SessionSummarizer`, `SQLiteMemoryStore`, `evaluate_memory`, `GroundedFact`, `extract_grounded_facts` |
 | `vincio.tools` | `ToolRegistry`, `ToolRuntime`, `ToolPermissionChecker`, `SandboxedPython` |
 | `vincio.agents` | `AgentExecutor`, `Planner`, `StepDAG`, `HandoffRouter`, `Crew`, `AgentRole`, `Blackboard`, `StateGraph`, `Checkpointer`, `interrupt`, `compose`, `parallel`, `branch`, `LangGraphBackend`, `OpenAIAgentsBackend` |
@@ -70,9 +71,14 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.testing` | `assert_eval`, `assert_grounded`, `assert_metric`, `assert_safe`, `Snapshot` (+ pytest plugin: `vincio_snapshot` fixture, `--vincio-update-snapshots`) |
 | `vincio.security` | `PIIDetector`, `SecretScanner`, `InjectionDetector`, `AccessController`, `PolicyEngine`, `Rail`, `RailEngine`, `AuditLog` |
 | `vincio.caching` | `InMemoryCache`, `SQLiteCache`, `ResponseCache`, `SemanticCache`, `PromptCompileCache`, `ContextCompileCache`, `ChunkCache`, `InvalidationManager` |
-| `vincio.providers` | `build_provider`, `MockProvider`, `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `MistralProvider`, `LocalProvider`, `FailoverChain`, `CoalescingProvider` |
+| `vincio.providers` | `build_provider`, `openai_compatible`, `OpenAICompatibleProvider`, `PRESETS`, `MockProvider`, `OpenAIProvider`, `AnthropicProvider`, `GoogleProvider`, `MistralProvider`, `LocalProvider`, `FailoverChain`, `CoalescingProvider` |
+| `vincio.interop` | `add_langchain_tool`, `from_langchain_tool`, `from_langchain_loader`, `from_langchain_retriever`, `from_langchain_embeddings`, `to_langchain_*`; `add_llamaindex_tool`, `from_llamaindex_reader`, `from_llamaindex_retriever`, `from_llamaindex_embedding`, `to_llamaindex_*` |
+| `vincio.packs` | `Pack`, `load_pack`, `available_packs`, `register_pack` (`app.use_pack(...)`) |
+| `vincio.notebook` | `enable_rich_reprs`, `disable_rich_reprs`, `display`, `run_result_html`/`_markdown`, `trace_html`, `eval_report_html`, `memory_item_html`, `search_hit_html` |
+| `vincio.tui` | `TUI`, `render_home`, `render_trace`, `render_memory` (`vincio tui`) |
 | `vincio.core.concurrency` | `gather_bounded`, `map_bounded` (bounded, cancellation-correct fan-out) |
-| `vincio.storage` | `create_metadata_store`, `SQLiteMetadataStore`, Qdrant/pgvector/Neo4j/Redis adapters |
+| `vincio.storage` | `create_metadata_store`, `SQLiteMetadataStore`, `build_vector_index` (memory/qdrant/pgvector/chroma/pinecone/lancedb), Neo4j/Redis/DuckDB adapters |
+| `vincio.core.config` | `VincioConfig`, `load_config`, `config_json_schema` |
 | `vincio.server` | `create_app` (FastAPI) |
 
 All public data contracts are Pydantic models; all engines are async-first

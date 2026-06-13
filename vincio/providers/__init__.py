@@ -17,6 +17,13 @@ from .local import LocalProvider
 from .mistral import MistralProvider
 from .mock import MockProvider, instance_from_schema
 from .openai import OpenAIProvider
+from .openai_compat import (
+    PRESETS,
+    OpenAICompatibleProvider,
+    OpenAICompatPreset,
+    _preset_factory,
+    openai_compatible,
+)
 from .transport import CoalescingProvider, build_pooled_client
 
 __all__ = [
@@ -28,6 +35,10 @@ __all__ = [
     "build_pooled_client",
     "ProviderRegistry",
     "OpenAIProvider",
+    "OpenAICompatibleProvider",
+    "OpenAICompatPreset",
+    "openai_compatible",
+    "PRESETS",
     "AnthropicProvider",
     "GoogleProvider",
     "MistralProvider",
@@ -48,6 +59,12 @@ _registry.register("local", LocalProvider)
 _registry.register("ollama", LocalProvider)
 _registry.register("vllm", lambda **kw: LocalProvider(base_url=kw.pop("base_url", "http://localhost:8000/v1"), **kw))
 _registry.register("mock", lambda **kw: MockProvider(**{k: v for k, v in kw.items() if k not in ("api_key", "base_url", "timeout_s")}))
+# OpenAI-compatible passthrough: a generic adapter plus named hosted-gateway
+# presets (groq, together, fireworks, openrouter, deepseek, perplexity, xai,
+# nvidia). Their API keys resolve from the conventional <NAME>_API_KEY env var.
+_registry.register("openai_compat", OpenAICompatibleProvider)
+for _preset in PRESETS:
+    _registry.register(_preset, _preset_factory(_preset))
 
 
 def default_registry() -> ProviderRegistry:

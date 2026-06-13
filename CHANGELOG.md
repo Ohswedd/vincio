@@ -4,6 +4,100 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.0] - 2026-06-13
+
+Integrations, connectors & developer experience — the 0.9 roadmap milestone.
+Win on coverage and ergonomics so real projects adopt Vincio without rewriting
+their stack: an OpenAI-compatible passthrough for any endpoint, hosted
+rerankers/embedders and three more vector stores behind the existing
+interfaces, two-way LangChain/LlamaIndex interop, scaffolding templates with a
+typed config schema, notebook reprs and an interactive TUI, opt-in domain
+packs, and migration guides. Every new adapter implements an interface the
+engine already speaks, so breadth adds no new concepts — context compilation,
+budgeting, evals, traces, and security apply unchanged.
+
+### Added
+
+- **OpenAI-compatible passthrough** (`vincio.providers.openai_compat`) —
+  `OpenAICompatibleProvider` reaches any Chat-Completions endpoint;
+  `openai_compatible("groq")` / `openai_compatible(base_url=..., api_key=...)`
+  construct one, with named presets for `groq`, `together`, `fireworks`,
+  `openrouter`, `deepseek`, `perplexity`, `xai`, and `nvidia`. Presets are
+  registered in the provider registry (so `build_provider("groq")` and
+  `provider.default: groq` work) and their keys resolve from the conventional
+  `<NAME>_API_KEY` env var — no extra wiring.
+- **Hosted rerankers** (`vincio.retrieval.rerankers`) — `CohereReranker`,
+  `JinaReranker`, and `VoyageReranker` call the real rerank endpoints over the
+  core `httpx` dependency (no SDK), behind `build_reranker("cohere"|"jina"|
+  "voyage", api_key=..., model=...)` and the `retrieval.reranker` config. An
+  injectable `httpx.AsyncClient` keeps them offline-testable.
+- **Hosted embedders** (`vincio.retrieval.embeddings`) — `JinaEmbedder`,
+  `VoyageEmbedder`, and `CohereEmbedder` (Cohere's v2 `embeddings.float` shape
+  handled), plus a `build_embedder("local"|"jina"|"voyage"|"cohere"|<provider>)`
+  factory that also wraps any embedding-capable provider as a `ProviderEmbedder`.
+- **More vector stores** — `ChromaVectorIndex`, `PineconeVectorIndex`, and
+  `LanceDBVectorIndex` join Qdrant and pgvector behind the retrieval `Index`
+  protocol, unified by `vincio.storage.build_vector_index(kind, embedder,
+  **opts)` (`memory`, `qdrant`, `pgvector`, `chroma`, `pinecone`, `lancedb`).
+  Missing optional dependencies raise a clear, actionable `StorageError`. New
+  extras: `vincio[chroma]`, `vincio[pinecone]`, `vincio[lancedb]`.
+- **Framework interop** (`vincio.interop`) — bring LangChain and LlamaIndex
+  **tools, retrievers, loaders/readers, and embeddings** into Vincio, and hand
+  Vincio's back. The `from_*` adapters are duck-typed (they import nothing
+  heavy), so existing assets drop in without a new dependency;
+  `add_langchain_tool` / `add_llamaindex_tool` register *and* enable a tool in
+  one call; imported documents chunk, index, budget, and cite like any local
+  file, and imported tools run through the same permissioned, sandboxed, audited
+  runtime. The `to_*` adapters build real framework objects (extras
+  `vincio[langchain]` / `vincio[llamaindex]`).
+- **Scaffolding & templates** — `vincio init --template {minimal,rag,agent,eval}`
+  generates a tailored `ContextApp`, `vincio.yaml`, golden set, and (for `rag`)
+  sample docs. Every generated config carries a `# yaml-language-server:
+  $schema=…` hint and ships a JSON Schema for editor completion; `--provider`
+  sets the default provider.
+- **Typed config tooling** — `config_json_schema()` derives a JSON Schema from
+  the typed `VincioConfig`; `vincio config schema` emits it, `vincio config
+  validate` checks a config file with clear errors, and `vincio config show`
+  prints the effective merged configuration.
+- **Notebook & TUI ergonomics** — `vincio.notebook.enable_rich_reprs()` attaches
+  HTML/Markdown reprs to `RunResult`, `Trace`, `EvalReport`, `MemoryItem`, and
+  `SearchHit` for Jupyter (pure `*_html`/`*_markdown` render functions you can
+  also call directly; `enable_rich_reprs` is exported from the top level).
+  `vincio.tui.TUI` / `vincio tui` is a dependency-free, keyboard-driven inspector
+  for runs, traces, and memory, with pure screen renderers and injectable IO so
+  it is fully unit-tested.
+- **Domain packs** (`vincio.packs`) — opt-in, dependency-free bundles for
+  **support, engineering, finance, and legal**: a role/objective/rules prompt
+  config, a structured output schema, recommended policies + evaluators, and a
+  golden eval set. `app.use_pack("support")` applies one through the public app
+  API (layer your own settings on top); `load_pack` / `available_packs` /
+  `register_pack` and `vincio packs list` / `vincio packs show` round it out.
+- **Migration guides** — "coming from LangChain / LlamaIndex / Ragas / Mem0"
+  guides that map concepts one-to-one, plus an
+  [integrations guide](docs/guides/integrations.md) covering the new providers,
+  vector stores, embedders, rerankers, and interop adapters. Two new runnable
+  examples: `19_framework_interop.py` and `20_domain_pack.py`.
+
+### Fixed
+
+- `ContextApp.add_evaluator` registered a callable without `__name__` (e.g. a
+  `functools.partial`) under a key one greater than the one it recorded in
+  `app.evaluators`, so later lookup missed the metric; the name is now resolved
+  once.
+- Removed a duplicate `dist/` entry in `.gitignore`. (The provider-transport
+  reliability fixes — event-loop-safe HTTP clients and 429 cooldowns honored
+  from provider error bodies — shipped with 0.7/0.8 and are documented under
+  [0.8.0].)
+
+### Changed
+
+- `__version__` is now `0.9.0`; top-level exports add `Pack`, `load_pack`,
+  `available_packs`, and `enable_rich_reprs`. New offline tests cover provider
+  presets and key resolution, hosted reranker/embedder wire formats, the
+  vector-store factory, both interop bridges, pack loading/application/run, the
+  notebook reprs, the TUI loop, and every new CLI command; the suite stays
+  fully offline and ruff-clean.
+
 ## [0.8.0] - 2026-06-13
 
 The closed-loop ecosystem — the 0.8 roadmap milestone, and the differentiator:

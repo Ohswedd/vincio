@@ -630,8 +630,13 @@ class ContextApp:
         if callable(name):
             from ..evals.metrics import METRICS
 
-            METRICS[getattr(name, "__name__", f"custom_{len(METRICS)}")] = name
-            name = getattr(name, "__name__", f"custom_{len(METRICS)}")
+            # Resolve the name once: computing it twice around the insertion
+            # would disagree for a callable without __name__ (the second
+            # len(METRICS) is one larger), registering one key but recording
+            # a different one in self.evaluators.
+            fn = name
+            name = getattr(fn, "__name__", f"custom_{len(METRICS)}")
+            METRICS[name] = fn
         self.evaluators.append(name)
         return self
 
@@ -1060,6 +1065,27 @@ class ContextApp:
         else:
             learned = {str(key): dict(value) for key, value in dict(source).items()}
         self.context_compiler.allocator = BudgetAllocator(learned=learned)
+        return self
+
+    def use_pack(self, pack: Any, *, set_schema: bool = True, merge_rules: bool = False) -> ContextApp:
+        """Apply a domain pack (0.9): prompt config + schema + policies +
+        evaluators + rails.
+
+        ``pack`` is a pack name (``"support"``, ``"engineering"``, ``"finance"``,
+        ``"legal"``) or a :class:`~vincio.packs.Pack`. Packs are opt-in, ship in
+        the package, and configure the app through its public API, so you can
+        layer your own settings on top::
+
+            app = ContextApp(name="helpdesk").use_pack("support")
+        """
+        from ..packs import Pack, load_pack
+
+        if isinstance(pack, str):
+            pack = load_pack(pack)
+        if not isinstance(pack, Pack):
+            raise ConfigError(f"use_pack expects a pack name or Pack, got {type(pack).__name__}")
+        pack.apply(self, set_schema=set_schema, merge_rules=merge_rules)
+        self.events.emit("pack.applied", {"pack": pack.name})
         return self
 
     # -- maintenance -------------------------------------------------------------------------------------------------

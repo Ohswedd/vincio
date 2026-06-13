@@ -18,13 +18,15 @@ Python 3.11+ is required.
 ## Initialize a project
 
 ```bash
-vincio init my-project
+vincio init my-project --template rag   # or: minimal | agent | eval
 cd my-project
 export OPENAI_API_KEY=sk-...
 ```
 
-This creates `vincio.yaml` (configuration), `app.py` (a starter app), and
-`golden/basic.jsonl` (a starter eval dataset).
+This creates `vincio.yaml` (configuration, with a JSON Schema hint for editor
+completion), `app.py` (a starter app), `vincio.schema.json`, and a starter
+golden eval dataset. Use `--provider groq` (or any
+[OpenAI-compatible preset](guides/integrations.md)) to target a different model.
 
 ## First app
 
@@ -119,4 +121,6 @@ vincio eval run golden/basic.jsonl --app app.py \
 - [Guide: orchestrate multi-agent systems](guides/orchestrate-agents.md)
 - [Concepts: observability](concepts/observability.md)
 - [Guide: performance & streaming](guides/performance.md)
+- [Guide: integrations (providers, vector stores, frameworks)](guides/integrations.md)
+- [Migrating from LangChain](guides/migrate-from-langchain.md), [LlamaIndex](guides/migrate-from-llamaindex.md), [Ragas](guides/migrate-from-ragas.md), or [Mem0](guides/migrate-from-mem0.md)
 - [Reference: configuration](reference/config.md)
