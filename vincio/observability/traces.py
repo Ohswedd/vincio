@@ -110,6 +110,40 @@ class Tracer:
             if sampled:
                 self.exporter.export(trace)
 
+    def new_trace(self, **kwargs: Any) -> Trace:
+        """Create a detached trace (not made current, not exported).
+
+        Pair with :meth:`bind` to attach spans and :meth:`export` to persist —
+        used by batch execution, whose model call is fulfilled out of band.
+        """
+        return Trace(app_name=self.app_name, **kwargs)
+
+    @contextmanager
+    def bind(self, trace: Trace) -> Iterator[Trace]:
+        """Make an existing detached trace current for nested spans.
+
+        Unlike :meth:`trace` this neither creates nor exports the trace; the
+        caller owns its lifecycle (``new_trace`` → ``bind`` → ``export``).
+        """
+        trace_token = _current_trace.set(trace)
+        span_token = _current_span.set(None)
+        try:
+            yield trace
+        finally:
+            _reset_quietly(_current_span, span_token, None)
+            _reset_quietly(_current_trace, trace_token, None)
+
+    def export(self, trace: Trace) -> None:
+        """Finalize and export a detached trace (respects the sample rate)."""
+        from ..core.utils import utcnow
+
+        if trace.end_time is None:
+            trace.end_time = utcnow()
+        if trace.status == "running":
+            trace.status = "ok"
+        if self._should_sample():
+            self.exporter.export(trace)
+
     @contextmanager
     def span(self, name: str, *, type: SpanType = "custom", **attributes: Any) -> Iterator[Span]:
         trace = _current_trace.get()

@@ -4,6 +4,82 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] - 2026-06-15
+
+Cost, reliability & scale (FinOps + resilience). What real teams hit when an LLM
+app meets production traffic — provider outages, rate limits, runaway spend, and
+the need to attribute every dollar — handled **in your application, not a proxy
+hop**. Like 1.1/1.2, the milestone is **additive under the frozen 1.0 API**: new
+surfaces sit behind `@experimental` entry points, no public symbol is removed or
+repurposed, and it uses only the core `httpx` dependency — no SDKs.
+
+### Added
+
+- **Batch execution** (`vincio.providers.BatchRunner`, `BatchRequest`,
+  `BatchResult`, `BatchJob`, `BatchRunResult`, `BatchBackend`,
+  `InProcessBatchBackend`, `OpenAIBatchBackend`, `AnthropicBatchBackend`) —
+  `app.batch([...])` / `app.abatch` / `vincio batch` submit a request set to the
+  OpenAI **Batch API** or Anthropic **Message Batches API** (flat ~50% cost), poll
+  to completion, and reconcile responses **by custom id** with partial-failure
+  surfacing (missing ids become failed results, never dropped). The in-process
+  backend is the offline/default path; the wire backends drive the real endpoints
+  over the provider's own `httpx` client, reusing its payload-building and parsing.
+  Same `RunResult` contract, cost-tracked at the discounted rate and traced.
+- **Circuit breaking & health-aware failover** (`vincio.providers.CircuitBreaker`,
+  `CircuitState`, `HealthAwareFailover`, `CircuitOpenError`) — a breaker tracks
+  per-provider failure rate **and** latency over a rolling window, opens on
+  threshold with half-open probing, and fast-fails (non-retryable) so the failover
+  chain steers to healthy entries in microseconds. The documented pattern, made
+  explicit: retries for transient (`RetryingProvider`), fallback for persistent
+  (`HealthAwareFailover`), circuit-break for systemic (`CircuitBreaker`).
+- **Key pooling & rate limiting** (`vincio.providers.KeyPool`, `RateLimiter`) —
+  round-robins health-aware across multiple API keys/regions, enforces per-key
+  dual **RPM + TPM** token buckets so a limit self-heals instead of erroring, and
+  applies full-jitter backoff that honors `retry_after` on 429.
+- **Runtime model cascades** (`vincio.optimize.ModelCascade`, `CascadeRung`,
+  `response_confidence`) — `app.use_cascade([...])` starts on the cheapest rung and
+  escalates only when a response's confidence is below the rung threshold (default:
+  a clean, schema-valid stop is confident); a custom confidence callable drives it
+  from your own metric. The offline `RoutingOptimizer` keeps tuning thresholds.
+- **Cost attribution & budget SLOs** (`vincio.observability.finops`: `CostLedger`,
+  `CostEvent`, `CostReport`, `CostBudget`, `BudgetManager`, `BudgetDecision`) —
+  every model call in a `ContextApp` run (including its tool loop, self-correction,
+  and batch) records an attributed `CostEvent` (`tenant` / `user` / `feature` /
+  `run`), rolled up by any dimension (`app.cost_report(by=...)` /
+  `vincio cost report --by tenant|feature`). `app.set_cost_budget(...)` enforces a
+  per-scope budget on breach — **hard cap** (deny), **degrade-to-cheaper-model**,
+  or **queue-to-batch** — as a `PolicyViolation` on the hash-chained audit path; an
+  `anomaly_factor` raises a `cost.anomaly` event on a spend spike. Attribution is
+  captured at request creation, so long agentic traces are counted honestly.
+- **Provider-aware prompt caching** (`vincio.providers.PromptCacheStrategy`,
+  `cache_hit_rate`) — `app.enable_prompt_caching(ttl="5m"|"1h")` attaches an
+  Anthropic `cache_control` breakpoint with the chosen TTL to the compiler's stable
+  prefix (when long enough to be worth caching); auto-cache providers (OpenAI/Gemini)
+  rely on the stable→volatile ordering the compiler already produces. **Cache-hit
+  rate** is recorded on every model span. On by default (`cache.provider_cache`).
+- **Incremental & sharded indexing** (`vincio.retrieval.ShardedIndex`,
+  `UpsertStats`) — `LiveIndex.upsert` gained **content-hash change detection** so
+  only changed chunks re-embed, `LiveIndex.upsert_stream` for streaming ingestion,
+  and `ShardedIndex` splits a corpus across N backends queried in parallel and
+  merged, behind the existing `Index` protocol (a document's chunks co-locate).
+- **VincioBench `scale` family** — gates batch-result correctness, circuit/failover
+  recovery, prompt-cache hit rate, cost-attribution accuracy, and cascade savings;
+  four new SLOs hold them (**103 budgets total, all green**).
+- Example `27_cost_and_reliability.py` (27 examples, all run offline). New guide:
+  [Cost, reliability & scale](docs/guides/cost-and-reliability.md); new comparison:
+  [vs LiteLLM / gateways](docs/comparisons/litellm.md).
+
+### Changed
+
+- `__version__` is now `1.3.0`. `UserInput` gains an optional `feature` field and
+  `Message` gains an optional `cache_ttl` field; `arun` / `astream` accept a
+  `feature=` attribution argument; `CacheConfig` gains `provider_cache` /
+  `provider_cache_ttl` / `provider_cache_min_prefix_tokens`. `HTTPProvider` gains
+  `_get_json` / `_get_text` helpers and the Anthropic adapter sends the
+  extended-cache-ttl beta header. All additive and backward-compatible.
+
+See the [roadmap](ROADMAP.md) (1.3 milestone) for the full picture.
+
 ## [1.2.0] - 2026-06-14
 
 Agentic evaluation & continuous quality. Vincio could run and trace a crew, a

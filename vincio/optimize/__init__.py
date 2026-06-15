@@ -32,11 +32,14 @@ from .retrieval_feedback import (
     records_from_report,
 )
 from .routing import (
+    CascadeRung,
     EpsilonGreedyBandit,
+    ModelCascade,
     RoutingOptimizer,
     RoutingPolicy,
     UCB1Bandit,
     estimate_difficulty,
+    response_confidence,
 )
 from .search import Candidate, FitnessWeights, OptimizationResult, evolution_loop, fitness
 from .strategies import (
@@ -83,6 +86,9 @@ __all__ = [
     "RoutingPolicy",
     "UCB1Bandit",
     "estimate_difficulty",
+    "CascadeRung",
+    "ModelCascade",
+    "response_confidence",
     "Candidate",
     "FitnessWeights",
     "OptimizationResult",

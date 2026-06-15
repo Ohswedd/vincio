@@ -18,6 +18,8 @@ __all__ = [
     "ProviderTimeoutError",
     "ProviderUnavailableError",
     "ProviderResponseError",
+    "CircuitOpenError",
+    "BatchError",
     "PromptError",
     "PromptLintError",
     "PromptBudgetError",
@@ -143,6 +145,26 @@ class ProviderUnavailableError(ProviderError):
 
 class ProviderResponseError(ProviderError):
     code = "PROVIDER_RESPONSE"
+
+
+class CircuitOpenError(ProviderUnavailableError):
+    """Raised by an open :class:`~vincio.providers.CircuitBreaker`.
+
+    Fails fast (non-retryable) so a failover chain skips the unhealthy entry
+    immediately instead of waiting on a call that is expected to fail.
+    """
+
+    code = "CIRCUIT_OPEN"
+
+    def __init__(self, message: str, **kw: Any) -> None:
+        kw.setdefault("retryable", False)
+        super().__init__(message, **kw)
+
+
+class BatchError(ProviderError):
+    """A provider Batch API submission/poll/reconciliation failure."""
+
+    code = "BATCH_ERROR"
 
 
 # --- prompt engine ----------------------------------------------------------

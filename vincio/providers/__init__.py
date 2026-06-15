@@ -12,7 +12,22 @@ from .base import (
     ProviderRegistry,
     RetryingProvider,
 )
+from .batch import (
+    AnthropicBatchBackend,
+    BatchBackend,
+    BatchJob,
+    BatchRequest,
+    BatchResult,
+    BatchRunner,
+    BatchRunResult,
+    BatchStatus,
+    InProcessBatchBackend,
+    OpenAIBatchBackend,
+)
+from .cache_strategy import PromptCacheStrategy, cache_hit_rate
+from .circuit import CircuitBreaker, CircuitState, HealthAwareFailover
 from .google import GoogleProvider
+from .keypool import KeyPool, RateLimiter
 from .local import LocalProvider
 from .mistral import MistralProvider
 from .mock import MockProvider, instance_from_schema
@@ -32,6 +47,23 @@ __all__ = [
     "HTTPProvider",
     "RetryingProvider",
     "FailoverChain",
+    "CircuitBreaker",
+    "CircuitState",
+    "HealthAwareFailover",
+    "KeyPool",
+    "RateLimiter",
+    "PromptCacheStrategy",
+    "cache_hit_rate",
+    "BatchRunner",
+    "BatchBackend",
+    "BatchRequest",
+    "BatchResult",
+    "BatchJob",
+    "BatchRunResult",
+    "BatchStatus",
+    "InProcessBatchBackend",
+    "OpenAIBatchBackend",
+    "AnthropicBatchBackend",
     "CoalescingProvider",
     "build_pooled_client",
     "ProviderRegistry",

@@ -16,11 +16,20 @@ from typing import Any
 
 from pydantic import BaseModel
 
-from ..core.types import TaskType
+from ..core.types import ModelResponse, TaskType
 from ..evals.reports import EvalReport
 from .search import FitnessWeights
 
-__all__ = ["RoutingPolicy", "estimate_difficulty", "RoutingOptimizer", "EpsilonGreedyBandit", "UCB1Bandit"]
+__all__ = [
+    "RoutingPolicy",
+    "estimate_difficulty",
+    "RoutingOptimizer",
+    "EpsilonGreedyBandit",
+    "UCB1Bandit",
+    "CascadeRung",
+    "ModelCascade",
+    "response_confidence",
+]
 
 _REASONING_RE = re.compile(
     r"(?i)\b(why|prove|derive|step[- ]by[- ]step|trade-?offs?|compare and|multi-?hop|implications?|root cause)\b"
@@ -66,6 +75,87 @@ class RoutingPolicy(BaseModel):
         if difficulty > self.difficulty_threshold_high:
             return self.strong_model
         return self.default_model
+
+
+def response_confidence(response: ModelResponse, *, expects_schema: bool = False) -> float:
+    """Default runtime confidence signal for a model response, in [0, 1].
+
+    A clean stop is high confidence; a truncated or content-filtered answer, or
+    a structured request that failed to parse, is low — exactly the cases worth
+    escalating to a stronger model. Apps can supply a custom signal (e.g. a
+    confidence metric) to :meth:`ContextApp.use_cascade`.
+    """
+    if response.finish_reason in ("length", "content_filter", "error"):
+        return 0.0
+    if expects_schema and response.structured is None:
+        return 0.2
+    if not (response.text or response.structured or response.tool_calls):
+        return 0.0
+    return 1.0
+
+
+class CascadeRung(BaseModel):
+    """One step of a runtime cascade: a model and the confidence below which a
+    response is escalated to the next rung."""
+
+    model: str
+    provider: str | None = None
+    min_confidence: float = 0.5
+
+
+class ModelCascade(BaseModel):
+    """An ordered cheap→strong model ladder for confidence-based escalation.
+
+    At run time the cascade starts on the first (cheapest) rung and escalates to
+    the next only when a response's confidence falls below the current rung's
+    threshold — so most runs finish cheap and only the hard ones pay for the
+    stronger model. The offline :class:`RoutingOptimizer` keeps tuning the
+    thresholds; this is its runtime counterpart.
+    """
+
+    rungs: list[CascadeRung]
+    max_escalations: int | None = None  # default: walk the whole ladder
+
+    def model_post_init(self, _ctx: Any) -> None:
+        if not self.rungs:
+            raise ValueError("ModelCascade requires at least one rung")
+        models = [rung.model for rung in self.rungs]
+        if len(set(models)) != len(models):
+            raise ValueError(f"ModelCascade rungs must have unique model names, got {models}")
+
+    @classmethod
+    def from_models(
+        cls, models: list[str], *, min_confidence: float = 0.5, max_escalations: int | None = None
+    ) -> ModelCascade:
+        """Build a cascade from a cheap→strong list of model names."""
+        return cls(
+            rungs=[CascadeRung(model=m, min_confidence=min_confidence) for m in models],
+            max_escalations=max_escalations,
+        )
+
+    @property
+    def escalation_cap(self) -> int:
+        ladder = len(self.rungs) - 1
+        return ladder if self.max_escalations is None else min(self.max_escalations, ladder)
+
+    def first(self) -> CascadeRung:
+        return self.rungs[0]
+
+    def _index(self, model: str) -> int:
+        for i, rung in enumerate(self.rungs):
+            if rung.model == model:
+                return i
+        return -1
+
+    def next_rung(self, model: str, confidence: float) -> CascadeRung | None:
+        """The next stronger rung when ``confidence`` is below ``model``'s
+        threshold, else ``None`` (stay where we are)."""
+        i = self._index(model)
+        if i < 0 or i + 1 >= len(self.rungs):
+            return None
+        if confidence >= self.rungs[i].min_confidence:
+            return None
+        return self.rungs[i + 1]
 
 
 class RoutingOptimizer:

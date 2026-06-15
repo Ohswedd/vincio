@@ -156,6 +156,7 @@ class UserInput(BaseModel):
     tenant_id: str | None = None
     user_id: str | None = None
     session_id: str | None = None
+    feature: str | None = None  # product feature/surface for cost attribution
     locale: str | None = None
 
 
@@ -506,6 +507,10 @@ class Message(BaseModel):
     tool_calls: list[ToolCallRequest] = Field(default_factory=list)
     tool_call_id: str | None = None
     cache_hint: bool = False  # marks the end of a stable, cacheable prefix
+    # Provider-cache TTL for the breakpoint at this message (Anthropic
+    # cache_control). None falls back to the provider default (5-minute
+    # ephemeral); "1h" requests the extended one-hour cache.
+    cache_ttl: Literal["5m", "1h"] | None = None
 
     @property
     def text(self) -> str:

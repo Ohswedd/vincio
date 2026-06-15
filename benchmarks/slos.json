@@ -221,6 +221,46 @@
       "threshold": 0.75,
       "enforced_by": "families.agentic_evals.cohen_kappa_tracked",
       "rationale": "An LLM judge should only gate CI once it has demonstrably agreed with people."
+    },
+    {
+      "id": "batch_result_correctness",
+      "category": "reliability",
+      "statement": "Every batched request is reconciled by custom id; results are never silently dropped.",
+      "metric": "families.scale.batch.reconciled_ok",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.scale.batch.reconciled_ok",
+      "rationale": "Latency-tolerant batch work must return a result for every request — losing one corrupts evals and bulk extraction."
+    },
+    {
+      "id": "failover_circuit_recovery",
+      "category": "reliability",
+      "statement": "A tripped circuit recovers through a half-open probe once the provider is healthy again.",
+      "metric": "families.scale.circuit.half_open_recovers",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.scale.circuit.half_open_recovers",
+      "rationale": "A breaker that opens but never closes turns a transient outage into a permanent one."
+    },
+    {
+      "id": "prompt_cache_hit_rate",
+      "category": "cost",
+      "statement": "Provider-aware prompt caching achieves at least a 50% input-token hit rate on a warm, stable prefix.",
+      "metric": "families.scale.cache.hit_rate",
+      "direction": "gte",
+      "threshold": 0.5,
+      "enforced_by": "families.scale.cache.hit_rate",
+      "rationale": "Stable system/tool/context prefixes are the bulk of input tokens; caching them is the single biggest cost lever."
+    },
+    {
+      "id": "cost_attribution_accuracy",
+      "category": "cost",
+      "statement": "Cost rolled up by tenant/feature equals the sum of the attributed per-call costs.",
+      "metric": "families.scale.attribution.accuracy",
+      "direction": "gte",
+      "threshold": 0.99,
+      "enforced_by": "families.scale.attribution.accuracy",
+      "rationale": "FinOps decisions and per-tenant budgets are only trustworthy if attribution is exact, not estimated."
     }
   ]
 }

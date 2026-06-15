@@ -220,6 +220,7 @@ for any engine directly.
 | **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. |
 | **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. All via `app.add_mcp_server` / `serve_mcp` / `serve_a2a` / `add_skill` (experimental, since 1.1). |
 | **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
+| **Cost & reliability (FinOps)** | Production-traffic resilience in-process, not a proxy hop: **batch execution** at ~50% cost (OpenAI Batch + Anthropic Message Batches, `app.batch`), **circuit breaking** + **health-aware failover** and **key pooling** with RPM+TPM rate limiting (retry → fallback → circuit-break), **runtime model cascades** (start cheap, escalate on low confidence, `app.use_cascade`), **cost attribution** by tenant/feature (`app.cost_report` / `vincio cost report`) with enforced **budget SLOs** (cap / degrade / queue-to-batch + `cost.anomaly`), provider-aware **prompt caching** with TTL choice and cache-hit telemetry, and **incremental** (content-hash) + **sharded** indexing at scale. |
 | **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. |
 | **Integrations & DX** | LangChain + LlamaIndex interop (`vincio.interop`) for tools, retrievers, loaders, and embeddings — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
 | **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a frozen public surface (`vincio.__all__`) with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `@experimental` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
@@ -262,6 +263,10 @@ baseline. Representative results on the bundled reference corpus:
 | **Protocols** | MCP tool schema fidelity · resource provenance · round-trip | **1.00 · pass · pass** | thin adapter |
 | | A2A budget-bounded delegation terminates | **pass** | — |
 | | Agent-Skill progressive-disclosure token savings (off-topic) | **100%** | — |
+| **Cost & reliability (scale)** | batch reconciliation by custom id · partial failures surfaced | **pass · pass** | dropped silently |
+| | circuit opens on systemic failure → half-open recovers · failover steers healthy | **pass** | one slow timeout/request |
+| | prompt-cache hit rate (warm stable prefix) · cost-attribution accuracy | **72% · 100%** | — |
+| | cascade savings vs always-strong (cheap-first, escalate on low confidence) | **−70%** | — |
 
 > **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
 > demonstrate the mechanisms, not to be quoted as universal gains. The context-compression
@@ -292,6 +297,7 @@ in-library** capabilities — not what is reachable by bolting on a separate pro
 | **Sessions, feedback, prompt registry, trace viewer** in-process | ✅ | ➖ | ❌ | ❌ | ❌ |
 | **Deterministic security** (PII / injection / audit) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **MCP** client *and* server + **A2A** + **Agent Skills** | ✅ | ➖ | ➖ | ➖ | ❌ |
+| **In-process FinOps**: batch · circuit-break · cascades · cost attribution + budgets | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 <sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Reflects
 mid-2026; ecosystems evolve. Vincio is built to *interoperate* — it speaks MCP (client *and* server),
@@ -332,10 +338,11 @@ and the vector store you already run. See the
 | Drop in portable `SKILL.md` knowledge with budgeting | Agent Skills + progressive disclosure | [`24_agent_skills.py`](examples/24_agent_skills.py) |
 | Control reasoning effort across providers with honest cost | unified reasoning control + Responses API | [`25_reasoning_control.py`](examples/25_reasoning_control.py) |
 | Score agents over their trajectory and live traffic | trajectory & tool-use metrics, multi-turn simulator, online eval + drift, Cohen's-κ annotation, A/B + metric-as-guardrail | [`26_agentic_eval.py`](examples/26_agentic_eval.py) |
+| Survive outages and account for every dollar at scale | batch execution, circuit breaking + failover, key pooling, model cascades, cost attribution + budgets, prompt caching, sharded indexing | [`27_cost_and_reliability.py`](examples/27_cost_and_reliability.py) |
 
 ## More examples
 
-All twenty-six examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
+All twenty-seven examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
 at a real model with environment variables:
 
 ```bash
@@ -438,6 +445,7 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [run evals](docs/guides/run-evals.md) · [test LLM apps](docs/guides/test-llm-apps.md) ·
   [optimize](docs/guides/optimize-context.md) · [close the loop](docs/guides/close-the-loop.md) ·
   [performance & streaming](docs/guides/performance.md) ·
+  [cost, reliability & scale](docs/guides/cost-and-reliability.md) ·
   [integrations](docs/guides/integrations.md)
 - **Agentic evaluation & continuous quality** —
   [trajectory metrics, simulator, online eval, drift & annotation](docs/guides/agentic-eval.md)
@@ -457,7 +465,8 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [Mem0](docs/comparisons/mem0.md) · [CrewAI](docs/comparisons/crewai.md) ·
   [OpenAI Agents SDK](docs/comparisons/openai-agents-sdk.md) · [DSPy](docs/comparisons/dspy.md) ·
   [Pydantic AI](docs/comparisons/pydantic-ai.md) · [Guardrails AI](docs/comparisons/guardrails.md) ·
-  [NeMo Guardrails](docs/comparisons/nemo-guardrails.md) · [Ragas](docs/comparisons/ragas.md)
+  [NeMo Guardrails](docs/comparisons/nemo-guardrails.md) · [Ragas](docs/comparisons/ragas.md) ·
+  [LiteLLM / gateways](docs/comparisons/litellm.md)
 
 ## Contributing
 

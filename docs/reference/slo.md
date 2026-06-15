@@ -82,5 +82,21 @@ simulated multi-turn cases must replay identically to serve as CI goldens; drift
 must catch real regressions without crying wolf; and an LLM judge only earns CI
 gating weight once it has demonstrably agreed with people.
 
+## Cost & reliability (scale)
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| Every batched request is reconciled by custom id; results are never silently dropped. | true | `families.scale.batch.reconciled_ok` |
+| A tripped circuit recovers through a half-open probe once the provider is healthy again. | true | `families.scale.circuit.half_open_recovers` |
+| Provider-aware prompt caching achieves at least a 50% input-token hit rate on a warm, stable prefix. | ≥ 0.50 | `families.scale.cache.hit_rate` |
+| Cost rolled up by tenant/feature equals the sum of the attributed per-call costs. | ≥ 0.99 | `families.scale.attribution.accuracy` |
+
+Latency-tolerant batch work must return a result for every request — losing one
+corrupts evals and bulk extraction; a breaker that opens but never closes turns
+a transient outage into a permanent one; stable system/tool/context prefixes are
+the bulk of input tokens, so caching them is the single biggest cost lever; and
+FinOps decisions and per-tenant budgets are only trustworthy if attribution is
+exact, not estimated.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

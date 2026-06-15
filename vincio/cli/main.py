@@ -10,6 +10,8 @@ Commands::
     vincio packs show support
     vincio tui
     vincio run app.py --input "..."
+    vincio batch app.py --input "..." --input "..."   # Batch API, ~50% cost
+    vincio cost report --by tenant|feature             # attributed cost rollup
     vincio eval run golden.jsonl --app app.py
     vincio eval report <report.json>
     vincio eval dataset golden.jsonl [--group-by-session]
@@ -341,6 +343,45 @@ def cmd_run(args: argparse.Namespace) -> int:
     else:
         print(output)
     return 0 if result.error is None else 1
+
+
+def cmd_batch(args: argparse.Namespace) -> int:
+    app = _load_app(args.app)
+    inputs: list[str] = list(args.input or [])
+    if args.input_file:
+        text = Path(args.input_file).read_text(encoding="utf-8")
+        inputs.extend(line for line in (ln.strip() for ln in text.splitlines()) if line)
+    if not inputs:
+        return _fail("no inputs; pass --input (repeatable) or --input-file")
+    results = app.batch(inputs, discount=args.discount)
+    succeeded = sum(1 for r in results if r.error is None)
+    total_cost = sum(r.cost_usd for r in results)
+    print(f"batch: {succeeded}/{len(results)} succeeded  cost=${total_cost:.6f}")
+    for i, result in enumerate(results):
+        marker = "ok " if result.error is None else "ERR"
+        print(f"  [{marker}] {i}: {result.trace_id}  ${result.cost_usd:.6f}")
+        if result.error:
+            print(f"        {result.error}")
+    if args.output:
+        Path(args.output).write_text(
+            json_dumps([r.model_dump(mode="json") for r in results], indent=2), encoding="utf-8"
+        )
+        print(f"saved results to {args.output}")
+    return 0 if succeeded == len(results) else 1
+
+
+def cmd_cost_report(args: argparse.Namespace) -> int:
+    from ..observability.finops import CostLedger
+    from ..storage.base import create_metadata_store
+
+    store = create_metadata_store(f"sqlite:///{args.db}")
+    ledger = CostLedger.from_store(store)
+    report = ledger.report(args.by)
+    if args.json:
+        print(json_dumps(report.model_dump(mode="json"), indent=2))
+    else:
+        report.print_summary()
+    return 0
 
 
 def cmd_eval_run(args: argparse.Namespace) -> int:
@@ -1043,6 +1084,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--tenant", default=None)
     p_run.add_argument("--user", default=None)
     p_run.set_defaults(fn=cmd_run)
+
+    p_batch = sub.add_parser("batch", help="run a set of inputs through a Batch API (~50% cost)")
+    p_batch.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_batch.add_argument("--input", action="append", help="an input (repeatable)")
+    p_batch.add_argument("--input-file", default=None, help="file with one input per line")
+    p_batch.add_argument("--discount", type=float, default=0.5, help="batch price multiplier")
+    p_batch.add_argument("--output", default=None, help="save results JSON here")
+    p_batch.set_defaults(fn=cmd_batch)
+
+    p_cost = sub.add_parser("cost", help="cost attribution reporting")
+    cost_sub = p_cost.add_subparsers(dest="cost_command", required=True)
+    p_cost_report = cost_sub.add_parser("report", help="roll up attributed cost by a dimension")
+    p_cost_report.add_argument(
+        "--by", default="tenant",
+        choices=["tenant", "feature", "user", "model", "provider", "run"],
+    )
+    p_cost_report.add_argument("--db", default=".vincio/vincio.db", help="metadata database")
+    p_cost_report.add_argument("--json", action="store_true", help="emit JSON")
+    p_cost_report.set_defaults(fn=cmd_cost_report)
 
     p_eval = sub.add_parser("eval", help="evaluation commands")
     eval_sub = p_eval.add_subparsers(dest="eval_command", required=True)

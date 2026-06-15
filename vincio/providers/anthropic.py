@@ -28,6 +28,21 @@ __all__ = ["AnthropicProvider"]
 
 STRUCTURED_TOOL_NAME = "emit_structured_output"
 ANTHROPIC_VERSION = "2023-06-01"
+# Beta that unlocks the 1-hour cache TTL; harmless when only 5-minute (default
+# ephemeral) breakpoints are used, so it is sent whenever caching is in play.
+EXTENDED_CACHE_TTL_BETA = "extended-cache-ttl-2025-04-11"
+
+
+def _cache_control(ttl: str | None) -> dict[str, str]:
+    """Build an Anthropic ``cache_control`` block for a cache breakpoint.
+
+    A bare ``ephemeral`` block is the 5-minute cache; ``ttl="1h"`` requests the
+    one-hour cache (needs the extended-cache-ttl beta header).
+    """
+    control = {"type": "ephemeral"}
+    if ttl == "1h":
+        control["ttl"] = "1h"
+    return control
 
 
 class AnthropicProvider(HTTPProvider):
@@ -42,6 +57,7 @@ class AnthropicProvider(HTTPProvider):
         return {
             "x-api-key": self.api_key or "",
             "anthropic-version": ANTHROPIC_VERSION,
+            "anthropic-beta": EXTENDED_CACHE_TTL_BETA,
             "Content-Type": "application/json",
         }
 
@@ -55,7 +71,7 @@ class AnthropicProvider(HTTPProvider):
             if message.role in ("system", "developer"):
                 block: dict[str, Any] = {"type": "text", "text": message.text}
                 if message.cache_hint:
-                    block["cache_control"] = {"type": "ephemeral"}
+                    block["cache_control"] = _cache_control(message.cache_ttl)
                 system_blocks.append(block)
                 continue
             if message.role == "tool":
@@ -75,10 +91,7 @@ class AnthropicProvider(HTTPProvider):
             content: list[dict[str, Any]] = []
             if isinstance(message.content, str):
                 if message.content:
-                    part: dict[str, Any] = {"type": "text", "text": message.content}
-                    if message.cache_hint:
-                        part["cache_control"] = {"type": "ephemeral"}
-                    content.append(part)
+                    content.append({"type": "text", "text": message.content})
             else:
                 for part_model in message.content:
                     if part_model.type == "text":
@@ -113,6 +126,10 @@ class AnthropicProvider(HTTPProvider):
                     content.append(
                         {"type": "tool_use", "id": tc.id, "name": tc.name, "input": tc.arguments}
                     )
+            # A cache breakpoint caches everything up to and including the last
+            # block of this message — works for single-text and multi-part alike.
+            if message.cache_hint and content:
+                content[-1] = {**content[-1], "cache_control": _cache_control(message.cache_ttl)}
             rendered.append({"role": message.role, "content": content or [{"type": "text", "text": ""}]})
         return system_blocks, rendered
 

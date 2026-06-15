@@ -33,6 +33,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Connect data sources](docs/guides/connectors.md)
 - [Structured output](docs/guides/structured-output.md)
 - [Reliability & guardrails](docs/guides/reliability-guardrails.md)
+- [Cost, reliability & scale](docs/guides/cost-and-reliability.md)
 - [Add tools](docs/guides/add-tools.md)
 - [Orchestrate multi-agent systems](docs/guides/orchestrate-agents.md)
 - [Run evals](docs/guides/run-evals.md)
@@ -50,6 +51,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Coming from LlamaIndex](docs/guides/migrate-from-llamaindex.md)
 - [Coming from Ragas](docs/guides/migrate-from-ragas.md)
 - [Coming from Mem0](docs/guides/migrate-from-mem0.md)
+- [vs LiteLLM / gateways](docs/comparisons/litellm.md)
 - [API reference](docs/reference/api.md)
 - [CLI reference](docs/reference/cli.md)
 - [Config reference](docs/reference/config.md)
@@ -283,3 +285,46 @@ result.output; result.citations; result.trace_id; result.cost_usd
   reasoning control: `RunConfig(reasoning_effort="low|medium|high")` /
   `thinking_budget_tokens` across OpenAI/Anthropic/Gemini, thinking tokens
   billed; optional `OpenAIResponsesProvider` (`build_provider("openai_responses")`).
+- Cost, reliability & scale (1.3, experimental): batch — `app.batch(inputs, *,
+  discount=0.5)` / `app.abatch(...)` → `list[RunResult]`, or
+  `BatchRunner(backend_or_provider, *, discount=0.5).run(requests)` →
+  `BatchRunResult` (`.cost_usd`, `.succeeded`, `.failed`, `.by_id()`,
+  reconcile via `BatchRequest(custom_id, request)` → `BatchResult.custom_id`);
+  ~50% cost (`discount=0.5`); backends `InProcessBatchBackend` (offline/default)
+  | `OpenAIBatchBackend(completion_window="24h")` | `AnthropicBatchBackend`;
+  CLI `vincio batch app.py --input X [--input-file lines.txt] [--discount 0.5]
+  [--output results.json]`. Resilience (compose inner→outer): retry →
+  fallback → circuit-break — `CircuitBreaker(RetryingProvider(provider), *,
+  failure_threshold=0.5, cooldown_s=30.0)` (a `ModelProvider`; `.state`/`.healthy`,
+  `CircuitState` CLOSED/OPEN/HALF_OPEN, emits `circuit.opened|closed|half_open`),
+  `HealthAwareFailover([(provider, label), ...])` (open breakers raise
+  non-retryable `CircuitOpenError`, skipped in microseconds), `KeyPool(providers,
+  *, rpm=, tpm=, breaker=True)` (round-robin health-aware across keys/regions,
+  dual RPM+TPM `RateLimiter`, full-jitter backoff honoring `retry_after`).
+  Cascade — `app.use_cascade(models, *, min_confidence=0.5, max_escalations=None,
+  confidence=)` (cheap→strong, escalate on low confidence) or
+  `ModelCascade.from_models([...])` / `ModelCascade([CascadeRung(model, provider=,
+  min_confidence=)])`; `response_confidence(resp)` = 1.0 clean stop / 0.0
+  length|content_filter|error / 0.2 schema-expected-but-unparsed. Budgets —
+  `app.set_cost_budget(limit_usd=, scope="tenant|feature|user|global", id=,
+  period="run|hour|day|month|total", on_breach="cap|degrade|queue_to_batch",
+  degrade_model=, anomaly_factor=)`; `app.cost_report(by="tenant|feature|user|
+  model|provider|run", since=)` → `CostReport` (`.total_usd`, `.rows`,
+  `.print_summary()`); `app.cost_ledger`/`app.budget_manager` always present;
+  `arun`/`astream` gained `feature=` (cost-attribution dim alongside
+  `tenant_id`/`user_id`/`session_id`); events `cost.anomaly` /
+  `cost.budget_exceeded`, hash-chained audit `cost_budget` (deny|degrade); CLI
+  `vincio cost report --by ... [--db .vincio/vincio.db] [--json]`. Prompt caching —
+  `app.enable_prompt_caching(ttl="5m|1h", min_prefix_tokens=1024)` (on by default
+  via `provider_cache`/`provider_cache_ttl`/`provider_cache_min_prefix_tokens`
+  config; `Message.cache_ttl`; model spans gain `cache_hit_rate` /
+  `cached_input_tokens`). Live & sharded retrieval — `LiveIndex.upsert(chunks, *,
+  ttl_seconds=)` / `upsert_stream(...)` → `UpsertStats(added, updated, unchanged,
+  .reembedded)` (content-hash change detection — only changed chunks re-embed);
+  `ShardedIndex(shards, *, router=, max_concurrency=8)` (Index protocol, chunks
+  co-locate by `document_id` hash, parallel fan-out merges `top_k`). New
+  `vincio.__all__` exports: `BatchRunner`, `CircuitBreaker`, `HealthAwareFailover`,
+  `KeyPool`, `ModelCascade`, `CostLedger`, `CostBudget`, `BudgetManager`,
+  `ShardedIndex`. Edge over gateways (LiteLLM/Bifrost/Portkey): same failover,
+  circuit breaking, cascades, cost attribution, enforced budgets, batch — but
+  in-process (no proxy hop), governed by the policy engine, on one trace.

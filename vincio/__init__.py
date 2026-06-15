@@ -28,12 +28,16 @@ from .core.types import (
 from .evals.datasets import Dataset
 from .memory.engine import MemoryEngine, ScopedMemory
 from .notebook import enable_rich_reprs
+from .observability.finops import BudgetManager, CostBudget, CostLedger
 from .optimize.loop import ImprovementLoop, LoopResult
+from .optimize.routing import ModelCascade
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
 from .packs import Pack, available_packs, load_pack
 from .prompts.signatures import InputField, OutputField, Predict, Signature, signature
 from .prompts.templates import PromptSpec
+from .providers import BatchRunner, CircuitBreaker, HealthAwareFailover, KeyPool
+from .retrieval import ShardedIndex
 from .security.rails import Rail
 from .stability import (
     API_VERSION,
@@ -46,7 +50,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.2.0"
+__version__ = "1.3.0"
 
 __all__ = [
     "ContextApp",
@@ -93,6 +97,15 @@ __all__ = [
     "load_pack",
     "available_packs",
     "enable_rich_reprs",
+    "BatchRunner",
+    "CircuitBreaker",
+    "HealthAwareFailover",
+    "KeyPool",
+    "ModelCascade",
+    "CostLedger",
+    "CostBudget",
+    "BudgetManager",
+    "ShardedIndex",
     "API_VERSION",
     "StabilityLevel",
     "VincioDeprecationWarning",
