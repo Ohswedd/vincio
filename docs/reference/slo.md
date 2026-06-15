@@ -52,5 +52,35 @@ portable.
 | Injection false-positive rate | ≤ 0.20 | `security.injection_false_positive_rate` |
 | PII coverage | ≥ 0.80 | `security.pii_coverage` |
 
+## Protocols & interoperability
+
+| SLO | Target | VincioBench metric |
+|---|---|---|
+| MCP tool schema fidelity | exact (1.0) | `protocols.mcp.schema_fidelity` |
+| A2A budget-bounded delegation terminates | always | `protocols.a2a.terminates` |
+| Skill progressive-disclosure token savings | ≥ 0.50 | `protocols.skills.disclosure_savings` |
+
+A consumed MCP tool's input schema is preserved exactly so validation and
+constrained decoding bind to the server's contract; a crew delegated over A2A
+inherits the same termination guarantee as in-process; and an unused skill body
+stays out of the budget.
+
+## Continuous quality (agentic evaluation)
+
+| SLO | Target | VincioBench metric |
+|---|---|---|
+| Trajectory-metric agreement with labeled traces | ≥ 0.90 | `agentic_evals.trajectory_agreement` |
+| Trajectory eval flags runs output-only eval passes | always | `agentic_evals.trajectory_catches_more` |
+| Simulator determinism (same seed → same conversation) | exact | `agentic_evals.simulator_determinism` |
+| Drift detection sensitivity (real regressions caught) | ≥ 0.85 | `agentic_evals.drift_sensitivity` |
+| Drift detection specificity (stable windows not alarmed) | ≥ 0.90 | `agentic_evals.drift_specificity` |
+| Judge–human Cohen's κ before a judge earns gating weight | ≥ 0.75 | `agentic_evals.cohen_kappa_tracked` |
+
+Trajectory scores must track ground truth or trajectory-gated releases would be
+meaningless; a wrong path with a right-looking answer must be catchable;
+simulated multi-turn cases must replay identically to serve as CI goldens; drift
+must catch real regressions without crying wolf; and an LLM judge only earns CI
+gating weight once it has demonstrably agreed with people.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

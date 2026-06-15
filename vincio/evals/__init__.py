@@ -1,7 +1,10 @@
 """Vincio evaluation engine."""
 
+from .annotation import AnnotationItem, AnnotationQueue, cohens_kappa
 from .datasets import Dataset, EvalCase, dataset_from_traces
-from .experiments import ExperimentRun, ExperimentTracker, ab_test
+from .drift import DriftMonitor, DriftReport
+from .experiments import Experiment, ExperimentRun, ExperimentTracker, ab_test
+from .guardrails import metric_guardrail
 from .judges import (
     DeterministicJudge,
     EmbeddingJudge,
@@ -11,6 +14,7 @@ from .judges import (
     ModelJudge,
 )
 from .metrics import METRICS, Metric, MetricResult, RunOutput, register_metric
+from .online import OnlineEvaluator
 from .redteam import (
     BUILTIN_PROBES,
     ProbeResult,
@@ -20,7 +24,16 @@ from .redteam import (
 )
 from .reports import CaseResult, EvalReport, GateSpec, evaluate_gates
 from .runners import EvalRunner, EvalTarget
+from .simulator import Persona, SimulatedConversation, Simulator
 from .synthetic import SyntheticGenerator
+from .trajectory import (
+    TRAJECTORY_METRICS,
+    Trajectory,
+    TrajectoryStep,
+    trajectory_from_agent_state,
+    trajectory_from_crew_result,
+    trajectory_from_trace,
+)
 
 __all__ = [
     "Dataset",
@@ -28,6 +41,7 @@ __all__ = [
     "dataset_from_traces",
     "ExperimentRun",
     "ExperimentTracker",
+    "Experiment",
     "ab_test",
     "DeterministicJudge",
     "EmbeddingJudge",
@@ -40,6 +54,7 @@ __all__ = [
     "MetricResult",
     "RunOutput",
     "register_metric",
+    "metric_guardrail",
     "BUILTIN_PROBES",
     "ProbeResult",
     "RedTeamProbe",
@@ -52,4 +67,20 @@ __all__ = [
     "EvalRunner",
     "EvalTarget",
     "SyntheticGenerator",
+    # 1.2 — agentic evaluation & continuous quality
+    "Trajectory",
+    "TrajectoryStep",
+    "trajectory_from_agent_state",
+    "trajectory_from_crew_result",
+    "trajectory_from_trace",
+    "TRAJECTORY_METRICS",
+    "Simulator",
+    "Persona",
+    "SimulatedConversation",
+    "OnlineEvaluator",
+    "DriftMonitor",
+    "DriftReport",
+    "AnnotationQueue",
+    "AnnotationItem",
+    "cohens_kappa",
 ]

@@ -264,6 +264,24 @@
     },
     "families.protocols.skills.disclosure_savings": {
       "gte": 0.5
+    },
+    "families.agentic_evals.trajectory_agreement": {
+      "gte": 0.9
+    },
+    "families.agentic_evals.trajectory_catches_more": {
+      "eq": true
+    },
+    "families.agentic_evals.simulator_determinism": {
+      "eq": true
+    },
+    "families.agentic_evals.drift_sensitivity": {
+      "gte": 0.85
+    },
+    "families.agentic_evals.drift_specificity": {
+      "gte": 0.9
+    },
+    "families.agentic_evals.cohen_kappa_tracked": {
+      "gte": 0.75
     }
   }
 }

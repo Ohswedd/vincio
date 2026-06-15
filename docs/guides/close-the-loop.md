@@ -161,6 +161,58 @@ the same gated promotion path — a guided search can never bypass the safety
 rules. `guided_search(space, evaluate, strategy=...)` exposes the primitive
 for custom spaces.
 
+## Continuous quality
+
+The same metric objects that gate releases offline also watch live traffic
+and feed the loop back. Online evaluators score a sampled fraction of
+finished runs off the hot path (deterministic 1-in-N sampling), writing each
+score as a time series; a `DriftMonitor` compares those scores against a
+golden baseline and raises a regression the moment it appears:
+
+```python
+app.add_online_evaluator("goal_accuracy", sample_rate=0.2)   # scored after the response is final
+app.add_online_evaluator("answer_relevance", sample_rate=0.1)
+series = app.online_evaluators[0].series()                   # rows from the metadata store
+
+from vincio.evals import DriftMonitor
+monitor = DriftMonitor(bus=app.events, store=app.store, score_threshold=0.1)
+monitor.set_score_baseline("goal_accuracy", baseline_values)
+report = monitor.check_scores("goal_accuracy", [r["metric_value"] for r in series])
+report.drifted, report.delta, report.z_score                 # raises drift.detected on the bus
+```
+
+Drift fires a `drift.detected` event and persists the baseline; the CLI
+`vincio eval drift baseline.json current.json` exits non-zero so a scheduled
+check can gate. Because the live scores are trajectory metrics like any
+other, they flow straight into the optimizer's fitness — the
+`AGENTIC_OBJECTIVES` preset keeps a frontier over `goal_accuracy`,
+`tool_call_accuracy`, `step_efficiency`, and `cost`:
+
+```python
+from vincio.optimize import AGENTIC_OBJECTIVES, pareto_loop
+
+result = await pareto_loop(candidates, evaluate_fn, dataset,
+                           baseline=baseline, objectives=AGENTIC_OBJECTIVES)
+```
+
+A metric earns the right to *gate* CI only once it has demonstrably agreed
+with people. An `AnnotationQueue` pairs judge scores with human labels and
+reports Cohen's κ; the judge's gating weight is `1.0` only when calibrated κ
+clears the bar — chance-level agreement carries no veto:
+
+```python
+from vincio.evals import AnnotationQueue
+
+q = AnnotationQueue(name="judge_cal")
+item = q.add(run_id="r1", judge_score=0.9); q.label(item.id, human_score=1.0)
+q.agreement()                       # {"cohens_kappa": ..., "exact_agreement": ..., "n": ...}
+q.gating_weight(threshold=0.6)      # 0.0 until κ clears the bar, then 1.0
+```
+
+`GEvalJudge.calibrate(pairs)` returns the same `cohens_kappa`, and
+`vincio eval annotate labels.jsonl` reports it from the CLI — the LLM judge
+only joins the gate after it has earned the trust.
+
 ## What lands where (interconnection)
 
 | Event | Where it's recorded |
@@ -171,6 +223,8 @@ for custom spaces.
 | Grounded facts | candidate memories with `origin: run_fact`, support, evidence ids |
 | Retrieval tuning | engine weights (applied only when gated improvement holds) |
 | Learned budgets | `LearnedAllocations` JSON → `BudgetAllocator(learned=...)` |
+| Online scores | metadata store time series (kind `eval_results`) + `eval.online` event |
+| Detected drift | persisted baseline (kind `drift_baselines`) + `drift.detected` event |
 
 The VincioBench `loop` family measures all of it offline — promotion fires
 and is deterministic, gates block regressions, the registry is tagged and

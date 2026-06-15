@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.1 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.2 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -36,6 +36,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [Add tools](docs/guides/add-tools.md)
 - [Orchestrate multi-agent systems](docs/guides/orchestrate-agents.md)
 - [Run evals](docs/guides/run-evals.md)
+- [Agentic evaluation & continuous quality](docs/guides/agentic-eval.md)
 - [Test LLM apps with pytest](docs/guides/test-llm-apps.md)
 - [Optimize](docs/guides/optimize-context.md)
 - [Close the loop](docs/guides/close-the-loop.md)
@@ -166,6 +167,33 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `assert_eval` / `assert_grounded` / `assert_metric` / `assert_safe` +
   pytest plugin with `vincio_snapshot` fixture
   (`--vincio-update-snapshots`).
+- Agentic evaluation & continuous quality (1.2): trajectory & tool-use metrics
+  `tool_call_accuracy | tool_call_f1 | goal_accuracy | plan_adherence |
+  plan_quality | step_efficiency | topic_adherence` score the agent
+  `trajectory` carried on a RunOutput — build it with
+  `RunOutput.from_agent_state(state)` / `from_crew_result(result)` /
+  `from_trace(trace)` (no re-instrumentation); expected/optimal refs live in
+  `rubric['expected_tools' | 'plan' | 'optimal_steps' | 'topic']`;
+  `report.metric_families()` shows output-only vs trajectory side by side. Plus
+  conversational `conversation_outcome` / `intent_resolution`. Multi-turn:
+  `Simulator(seed=...).simulate(agent, Persona(goal=...))` (LLM-backed,
+  deterministic template fallback) → `SimulatedConversation.to_eval_case()`;
+  `dataset_from_traces(traces, group_by_session=True)` makes multi-turn goldens.
+  Online/continuous: `app.add_online_evaluator(metric, sample_rate=...)` scores
+  a sample of live runs off the hot path, writing a score time series to the
+  store (`OnlineEvaluator.series()`); `await app.aflush_online()` drains in
+  tests. Drift: `DriftMonitor(bus=, store=, score_threshold=, embedding_threshold=)`
+  `.set_score_baseline/check_scores` + `.set_embedding_baseline/check_embeddings`
+  raise a `drift.detected` event and persist `drift_baselines`; CLI
+  `vincio eval drift baseline.json current.json`. Annotation: `AnnotationQueue`
+  + `cohens_kappa(pairs, bins=)`; `GEvalJudge.calibrate(pairs)` now also returns
+  `cohens_kappa` and `judge.gating_weight(threshold=)` / `queue.judge_trusted()`
+  gate a judge on agreement; CLI `vincio eval annotate labels.jsonl`. A/B:
+  `app.experiment(name, variants={...}, dataset=, metrics=[...])` → `Experiment`
+  with `.compare()`, `.cost()`, `.significance(metric)`. Interconnection: every
+  metric is reusable as a runtime guardrail — `app.add_metric_rail(metric,
+  threshold=)` / `metric_guardrail(metric, threshold=)` — and as optimizer
+  fitness via `AGENTIC_OBJECTIVES` (trajectory metrics are ordinary metrics).
 - Observability: traces carry `session_id`/`thread_id` (pass
   `session_id=` to `app.run`), `trace.add_score`/`span.add_score` (runtime
   evaluators attach scores automatically), `trace.add_feedback(score=...,
@@ -236,7 +264,8 @@ result.output; result.citations; result.trace_id; result.cost_usd
   releases ship a CycloneDX SBOM + SLSA provenance attestations. Threat model
   in `docs/security/threat-model.md`.
 - CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
-  config schema/validate/show, packs list/show, tui, eval run/report/dataset,
+  config schema/validate/show, packs list/show, tui,
+  eval run/report/dataset (`--group-by-session`)/drift/annotate,
   prompt lint/compile/push/versions/diff/rollback, trace
   show/view/replay/diff/export/sessions/feedback, optimize run, loop run,
   index build, memory inspect/remember/recall/forget/export/consolidate/decay,

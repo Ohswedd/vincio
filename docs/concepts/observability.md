@@ -46,6 +46,36 @@ record_feedback(trace, score=1.0, exporter=exporter)           # persist update
 vincio trace feedback <trace_id> --score 1.0 --comment "clear answer"
 ```
 
+## Online evaluators and drift
+
+The same scores can be earned continuously, off the hot path. An online
+evaluator scores a sampled fraction of live runs after the response is
+finalized and writes each score as a time series to the metadata store
+(kind `eval_results`); `OnlineEvaluator.series()` returns the rows, so a
+metric becomes a trend you can watch, not just a per-run number:
+
+```python
+app.add_online_evaluator("goal_accuracy", sample_rate=0.2)
+app.online_evaluators[0].series()   # the score time series
+```
+
+`DriftMonitor` reads those series against a baseline. When live scores or
+embeddings move past threshold it raises a `drift.detected` event on the bus
+and persists the comparison (kind `drift_baselines`) — drift is itself an
+observable signal, in the same store as everything else.
+
+A traced agent run also carries a `Trajectory` — the steps, tool calls, and
+termination it took to get there. Project it onto a `RunOutput` and the run
+becomes scorable without re-instrumentation:
+
+```python
+run = RunOutput.from_agent_state(state)   # from app.agent(...).run(...)
+```
+
+so the trace that recorded *what happened* feeds the metrics that judge
+*how good the path was* — the same scores/feedback narrative, now over the
+whole trajectory.
+
 ## Traces become datasets
 
 The bridge from observability to evaluation is one call (or one command):

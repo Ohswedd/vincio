@@ -99,8 +99,18 @@ underlying standards settle: `vincio.mcp` (MCP client/server), `vincio.a2a`
 `add_mcp_server` / `serve_mcp` / `add_skill` / `serve_a2a` (which emit the
 warning). The unified reasoning controls (`RunConfig.reasoning_effort` /
 `thinking_budget_tokens`) and the `OpenAIResponsesProvider` are additive and
-do not change existing behavior. None of this removes or repurposes any 1.0
-public symbol — upgrading across the 1.x line never breaks working code.
+do not change existing behavior.
+
+The **1.2 continuous-quality entry points are experimental** while their shape
+settles: the `ContextApp` methods `add_online_evaluator`, `experiment`, and
+`add_metric_rail` (which emit the warning). The rest of 1.2 is stable, additive
+API: the new trajectory/conversational metrics in `METRICS`, the `Trajectory`
+model and `RunOutput.from_*` constructors, `Simulator` / `DriftMonitor` /
+`AnnotationQueue` / `Experiment` / `metric_guardrail`, `dataset_from_traces`'s
+`group_by_session` parameter, and the new `vincio eval drift|annotate` commands.
+
+None of this removes or repurposes any 1.0 public symbol — upgrading across the
+1.x line never breaks working code.
 
 ## Supported versions
 

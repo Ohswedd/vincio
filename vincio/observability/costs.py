@@ -42,6 +42,9 @@ _DEFAULT_PRICES: dict[str, ModelPrice] = {
     "gemini-2.5-flash-lite": ModelPrice(input_per_mtok=0.1, output_per_mtok=0.4, cached_input_per_mtok=0.025),
     "gemini-2.0-flash": ModelPrice(input_per_mtok=0.1, output_per_mtok=0.4, cached_input_per_mtok=0.025),
     "gemini-2.0-flash-lite": ModelPrice(input_per_mtok=0.075, output_per_mtok=0.3),
+    # Embeddings: gemini-embedding-001 is the current GA model and the provider
+    # default; without it here, embedding cost silently resolves to $0.
+    "gemini-embedding-001": ModelPrice(input_per_mtok=0.15),
     "text-embedding-004": ModelPrice(input_per_mtok=0.0),
     # Mistral
     "mistral-large-latest": ModelPrice(input_per_mtok=2.0, output_per_mtok=6.0),

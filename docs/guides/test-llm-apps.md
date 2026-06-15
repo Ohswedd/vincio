@@ -78,6 +78,73 @@ vincio eval run tests/golden/basic.jsonl --app app.py \
   --gate "groundedness=>= 0.95" --output report.json
 ```
 
+## Unit-test agents on the trajectory
+
+Output-only eval can't see a run that answers right while taking the wrong
+path. Build a `RunOutput` from a completed run — no re-instrumentation — and
+assert on trajectory metrics: the same `(EvalCase, RunOutput) -> MetricResult`
+objects, just reading the `Trajectory` the run carried:
+
+```python
+from vincio.evals import EvalCase, RunOutput
+from vincio.evals.metrics import METRICS
+
+def test_agent_takes_the_right_path(support_agent):
+    state = support_agent.run("Look up order 1234 and summarize its status")
+    run = RunOutput.from_agent_state(state)        # or .from_crew_result / .from_trace
+    case = EvalCase(
+        id="order_status",
+        input="Look up order 1234 and summarize its status",
+        expected="shipped",
+        rubric={"expected_tools": ["lookup_order", "summarize"],
+                "plan": ["tool", "tool", "finalize"], "optimal_steps": 3},
+    )
+    # Trajectory metrics read the case rubric, so call them directly:
+    assert METRICS["tool_call_accuracy"](case, run).value == 1.0   # right tools, order, args
+    assert METRICS["goal_accuracy"](case, run).value == 1.0        # terminated ok, answer matches
+```
+
+`expected_tools` entries are tool names or `{"tool": name, "arguments": {...}}`.
+The seven trajectory metrics — `tool_call_accuracy`, `tool_call_f1`,
+`goal_accuracy`, `plan_adherence`, `plan_quality`, `step_efficiency`,
+`topic_adherence` (`TRAJECTORY_METRICS`) — all sit in the `METRICS` registry
+next to output metrics, return `[0, 1]`, and assert `>= threshold`. A run
+with no trajectory returns a neutral `1.0`, so they compose with output-only
+metrics in one report; `EvalReport.metric_families()` shows the `"output"`
+and `"trajectory"` views side by side.
+
+## Deterministic multi-turn test doubles
+
+`Simulator(seed=...)` is a reproducible multi-turn driver: with no
+provider it falls back to a seed-deterministic template, so the **same seed
+yields the same conversation** — usable as a CI golden, not a flaky
+model-judged one:
+
+```python
+from vincio.evals import Simulator, Persona, RunOutput
+from vincio.evals.metrics import METRICS
+
+def test_password_reset_thread(support_agent):
+    def agent(messages: list[dict]) -> str:        # your app under test (sync or async)
+        return support_agent.run(messages[-1]["content"]).output
+
+    persona = Persona(name="sam", goal="reset password", max_turns=3)
+    convo = Simulator(seed=7).simulate(agent, persona)
+    again = Simulator(seed=7).simulate(agent, persona)
+    assert convo.turns == again.turns              # same seed -> identical conversation
+    assert convo.goal_achieved
+
+    case = convo.to_eval_case(id="reset")          # context["messages"] = the whole thread
+    run = RunOutput(output=convo.turns[-1]["content"])
+    assert METRICS["intent_resolution"](case, run).value >= 0.8   # every user turn addressed
+```
+
+Give it `provider`+`model` for an LLM-backed user; leave them off for
+offline CI. Conversational metrics (`conversation_outcome`,
+`intent_resolution`) read `case.context["messages"]`, and
+`dataset_from_traces(traces, group_by_session=True)` stitches a real
+session's traces into the same multi-turn golden shape.
+
 ## Patterns
 
 - **Pin the provider**: tests should run against `MockProvider` (deterministic,

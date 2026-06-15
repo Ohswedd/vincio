@@ -118,6 +118,7 @@ def dataset_from_traces(
     include_outputs: bool = True,
     min_feedback_score: float | None = None,
     only_ok: bool = True,
+    group_by_session: bool = False,
 ) -> Dataset:
     """Curate captured traces into an eval dataset (one command, full provenance).
 
@@ -126,7 +127,16 @@ def dataset_from_traces(
     ``min_feedback_score`` keeps only traces whose mean feedback score reaches
     the bar — the usual way to bootstrap a golden set from production runs
     users approved of. Trace/run/session ids ride along in case metadata.
+
+    With ``group_by_session=True`` the traces of one session/thread are stitched
+    into a single **multi-turn** golden case (``context['messages']`` holds the
+    whole thread), so the conversational and outcome metrics score the session
+    end to end rather than turn by turn.
     """
+    if group_by_session:
+        return _multi_turn_dataset_from_traces(
+            traces, name=name, min_feedback_score=min_feedback_score, only_ok=only_ok
+        )
     cases: list[EvalCase] = []
     latest = {trace.id: trace for trace in traces}
     for trace in latest.values():
@@ -155,3 +165,53 @@ def dataset_from_traces(
             )
         )
     return Dataset(name=name, cases=cases, metadata={"source": "traces", "traces": len(traces)})
+
+
+def _multi_turn_dataset_from_traces(
+    traces: list[Trace],
+    *,
+    name: str,
+    min_feedback_score: float | None,
+    only_ok: bool,
+) -> Dataset:
+    """Stitch traces sharing a session/thread into multi-turn golden cases."""
+    by_session: dict[str, list[Trace]] = {}
+    for trace in {t.id: t for t in traces}.values():
+        if only_ok and trace.status != "ok":
+            continue
+        if not trace.attributes.get("input"):
+            continue
+        key = trace.session_id or trace.thread_id or trace.id
+        by_session.setdefault(key, []).append(trace)
+
+    cases: list[EvalCase] = []
+    for session_id, session_traces in by_session.items():
+        ordered = sorted(session_traces, key=lambda t: t.start_time)
+        if min_feedback_score is not None:
+            scores = [f.score for t in ordered for f in t.feedback if f.score is not None]
+            if not scores or sum(scores) / len(scores) < min_feedback_score:
+                continue
+        messages: list[dict[str, Any]] = []
+        last_output: Any = None
+        for trace in ordered:
+            user_text = str(trace.attributes.get("input"))
+            messages.append({"role": "user", "content": user_text})
+            output = trace.attributes.get("output")
+            if output is not None:
+                messages.append({"role": "assistant", "content": str(output)})
+                last_output = output
+        cases.append(
+            EvalCase(
+                id=session_id,
+                input=messages[0]["content"] if messages else "",
+                context={"messages": messages},
+                expected=last_output or None,
+                tags=["from_trace", "multi_turn"],
+                metadata={"session_id": session_id, "turns": len(ordered)},
+            )
+        )
+    return Dataset(
+        name=name,
+        cases=cases,
+        metadata={"source": "traces", "traces": len(traces), "sessions": len(cases), "multi_turn": True},
+    )
