@@ -772,15 +772,19 @@ class VincioRuntime:
                     cache_breakpoints=prepared.cache_info.get("breakpoints"),
                 )
             if cached is not None:
+                # A response-cache hit served the answer without an API call, so
+                # it is free; track the tokens but bill nothing.
                 response = cached
+                app.cost_tracker.usage.add(response.usage)
+                spent = 0.0
             else:
                 response = await provider.generate(request)
                 if app.response_cache is not None and not response.tool_calls:
                     app.response_cache.set(
                         request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
                     )
-            cost = app.cost_tracker.record_model_call(model, response.usage)
-            spent = cost if cost else response.cost_usd
+                cost = app.cost_tracker.record_model_call(model, response.usage)
+                spent = cost if cost else response.cost_usd
             result.usage.add(response.usage)
             result.cost_usd += spent
             self._attribute_cost(
@@ -816,8 +820,8 @@ class VincioRuntime:
         rung's confidence threshold is regenerated on the next stronger rung
         (clean: the prior answer is never appended to the transcript), bounded by
         the cascade's escalation cap. Tool rounds use the current rung and are
-        bounded by ``max_tool_calls``. Streaming runs use the first rung without
-        runtime escalation (see ``_model_tool_loop_stream``).
+        bounded by ``max_tool_calls``. Streaming runs reuse this loop and replay
+        the accepted answer as deltas (see ``_model_tool_loop_stream``).
         """
         cascade = self.app.cascade if prepared.cascade_active else None
         expects_schema = prepared.contract.schema_def is not None
@@ -875,6 +879,27 @@ class VincioRuntime:
         )
         min_parse_chars = app.config.performance.partial_parse_min_chars
         response: ModelResponse | None = None
+
+        # Cascade runs buffer each rung and stream the accepted answer: run the
+        # non-streaming cascade loop (which escalates on low confidence) to
+        # produce the final response, then replay its text as deltas so the
+        # consumer sees only the final, escalated answer — never a discarded
+        # cheap attempt.
+        if prepared.cascade_active:
+            response = await self._model_tool_loop(prepared, budget, result, user_input, run_id)
+            chunk = 16
+            for start in range(0, len(response.text), chunk):
+                yield RunStreamEvent(type="text_delta", text=response.text[start : start + chunk])
+            if response.structured is not None:
+                yield RunStreamEvent(
+                    type="partial_output",
+                    partial_output=response.structured,
+                    output_complete=True,
+                    valid_prefix=True,
+                )
+            yield response
+            return
+
         for _round in range(budget.max_tool_calls + 1):
             # Fresh per model round: deltas accumulate per response.
             stream_validator = (
@@ -948,8 +973,13 @@ class VincioRuntime:
                         app.response_cache.set(
                             request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
                         )
-                cost = app.cost_tracker.record_model_call(prepared.model, response.usage)
-                spent = cost if cost else response.cost_usd
+                if cached is not None:
+                    # A response-cache hit is free; track tokens, bill nothing.
+                    app.cost_tracker.usage.add(response.usage)
+                    spent = 0.0
+                else:
+                    cost = app.cost_tracker.record_model_call(prepared.model, response.usage)
+                    spent = cost if cost else response.cost_usd
                 result.usage.add(response.usage)
                 result.cost_usd += spent
                 self._attribute_cost(

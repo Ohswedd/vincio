@@ -196,6 +196,90 @@ class TestBatchWire:
         assert result.by_id()["c0"].response.text == "answer c0"
 
     @pytest.mark.asyncio
+    async def test_openai_batch_error_file_and_failed_status(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if path.endswith("/files"):
+                return httpx.Response(200, json={"id": "file_in"})
+            if path.endswith("/batches") and request.method == "POST":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "b2",
+                        "status": "completed",
+                        "output_file_id": "ok_file",
+                        "error_file_id": "err_file",
+                        "request_counts": {"total": 2, "completed": 1, "failed": 1},
+                    },
+                )
+            if "ok_file/content" in path:
+                line = {
+                    "custom_id": "c0",
+                    "response": {"status_code": 200, "body": {
+                        "model": "gpt-5.2",
+                        "choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}],
+                        "usage": {"prompt_tokens": 5, "completion_tokens": 2},
+                    }},
+                    "error": None,
+                }
+                return httpx.Response(200, text=json.dumps(line))
+            if "err_file/content" in path:
+                line = {"custom_id": "c1", "error": {"code": "rate_limit", "message": "slow down"}}
+                return httpx.Response(200, text=json.dumps(line))
+            return httpx.Response(404, json={"error": "nf"})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        provider = OpenAIProvider(api_key="x", client=client)
+        runner = BatchRunner(OpenAIBatchBackend(provider), poll_interval_s=0.0)
+        result = await runner.run(
+            [BatchRequest(custom_id=f"c{i}", request=_req("gpt-5.2")) for i in range(2)]
+        )
+        assert result.by_id()["c0"].ok
+        assert not result.by_id()["c1"].ok and "rate_limit" in result.by_id()["c1"].error
+
+    @pytest.mark.asyncio
+    async def test_anthropic_batch_errored_result_and_cancel(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            path = request.url.path
+            if path.endswith("/messages/batches") and request.method == "POST":
+                return httpx.Response(
+                    200,
+                    json={
+                        "id": "mb2",
+                        "processing_status": "ended",
+                        "results_url": "https://api.anthropic.com/v1/messages/batches/mb2/results",
+                        "request_counts": {"succeeded": 1, "errored": 1},
+                    },
+                )
+            if path.endswith("/results"):
+                lines = [
+                    {"custom_id": "c0", "result": {"type": "succeeded", "message": {
+                        "model": "claude-sonnet-4-6",
+                        "content": [{"type": "text", "text": "ok"}],
+                        "stop_reason": "end_turn",
+                        "usage": {"input_tokens": 5, "output_tokens": 2},
+                    }}},
+                    {"custom_id": "c1", "result": {"type": "errored", "error": {"type": "overloaded"}}},
+                ]
+                return httpx.Response(200, text="\n".join(json.dumps(line) for line in lines))
+            if path.endswith("/cancel"):
+                return httpx.Response(200, json={"id": "mb2", "processing_status": "canceling"})
+            return httpx.Response(404, json={"error": "nf"})
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        provider = AnthropicProvider(api_key="x", client=client)
+        backend = AnthropicBatchBackend(provider)
+        runner = BatchRunner(backend, poll_interval_s=0.0)
+        result = await runner.run(
+            [BatchRequest(custom_id=f"c{i}", request=_req("claude-sonnet-4-6")) for i in range(2)]
+        )
+        assert result.by_id()["c0"].ok
+        assert not result.by_id()["c1"].ok and "overloaded" in result.by_id()["c1"].error
+        # cancel returns a non-terminal-mapped job without raising.
+        job = await backend.cancel(result.job)
+        assert job.id == "mb2"
+
+    @pytest.mark.asyncio
     async def test_anthropic_batch_backend_roundtrip(self):
         def handler(request: httpx.Request) -> httpx.Response:
             path = request.url.path
@@ -516,6 +600,77 @@ class TestCostAttribution:
         reloaded = CostLedger.from_store(app.store)
         assert reloaded.report("tenant").total_usd == pytest.approx(app.cost_report(by="tenant").total_usd)
         assert reloaded.report("tenant").total_usd > 0
+
+    def test_agent_calls_are_attributed(self, offline_config, tmp_cwd):
+        app = ContextApp(name="a", provider=MockProvider(default_text="ok"), config=offline_config)
+        app.cost_tracker.price_table.set("gpt-5.2", ModelPrice(input_per_mtok=1e6, output_per_mtok=1e6))
+
+        def tool(x: str) -> str:
+            """echo"""
+            return x
+
+        app.agent(tools=[tool], planner="react", max_steps=3).run(
+            "do something", tenant_id="acme", feature="research"
+        )
+        report = app.cost_report(by="tenant")
+        assert any(r.key == "acme" and r.cost_usd > 0 for r in report.rows)
+        assert any(r.key == "research" for r in app.cost_report(by="feature").rows)
+
+    def test_crew_calls_are_attributed(self, offline_config, tmp_cwd):
+        app = ContextApp(name="c", provider=MockProvider(default_text="done"), config=offline_config)
+        app.cost_tracker.price_table.set("gpt-5.2", ModelPrice(input_per_mtok=1e6, output_per_mtok=1e6))
+        crew = app.crew(
+            members=[{"name": "r", "goal": "research"}, {"name": "w", "goal": "write"}],
+            process="sequential",
+        )
+        crew.run("summarize", tenant_id="globex", feature="report")
+        assert any(r.key == "globex" and r.cost_usd > 0 for r in app.cost_report(by="tenant").rows)
+
+    def test_response_cache_hit_is_free(self, tmp_cwd):
+        from vincio.core.config import CacheConfig
+
+        config = offline_config_with(tmp_cwd, cache=CacheConfig(response_cache=True))
+        app = ContextApp(name="cache", provider=MockProvider(default_text="cached"), config=config)
+        app.cost_tracker.price_table.set("gpt-5.2", ModelPrice(input_per_mtok=1e6, output_per_mtok=1e6))
+        first = app.run("same question")
+        second = app.run("same question")
+        assert first.cost_usd > 0 and second.cost_usd == 0.0  # cache hit billed nothing
+        # The ledger reflects the free hit too.
+        events = app.cost_ledger.events
+        assert events[-1].cost_usd == 0.0
+
+
+def offline_config_with(tmp_path, **overrides):
+    from vincio import VincioConfig
+
+    config = VincioConfig()
+    config.storage.metadata = "memory://"
+    config.observability.exporter = "memory"
+    for key, value in overrides.items():
+        setattr(config, key, value)
+    return config
+
+
+class TestStreamingCascade:
+    @pytest.mark.asyncio
+    async def test_streaming_run_escalates_and_streams_accepted_answer(self, offline_config, tmp_cwd):
+        def responder(req):
+            if "mini" in req.model:
+                return ModelResponse(text="partial", finish_reason="length")
+            return ModelResponse(text="full answer", finish_reason="stop")
+
+        app = ContextApp(name="s", provider=MockProvider(responder=responder), config=offline_config)
+        app.use_cascade(["gpt-5.2-mini", "gpt-5.2"])
+        deltas: list[str] = []
+        result = None
+        async for ev in app.astream("hi"):
+            if ev.type == "text_delta":
+                deltas.append(ev.text or "")
+            elif ev.type == "done":
+                result = ev.result
+        streamed = "".join(deltas)
+        assert result.metadata["cascade"]["escalations"] == 1
+        assert "full answer" in streamed and "partial" not in streamed  # discarded cheap answer never streamed
 
 
 class TestBudgets:
