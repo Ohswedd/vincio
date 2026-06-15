@@ -1,6 +1,6 @@
 # Guide: reliability & guardrails
 
-0.7 makes reliability a guarantee, not a hope: deterministic rails before
+Vincio makes reliability a guarantee, not a hope: deterministic rails before
 and after every generation, schema-constrained decoding, streaming
 validation, bounded self-correction, and typed signatures — all on the same
 packet, trace, and audit log as the rest of the pipeline.

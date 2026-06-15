@@ -45,8 +45,10 @@ resource-limited tool sandboxing, supply-chain attestations (SBOM + SLSA provena
 and a docs-completeness gate that runs every example and proves every subsystem is documented. **1.1
 makes Vincio speak the ecosystem's interoperability protocols** — an MCP client *and* server, A2A
 agent-to-agent delegation, and Anthropic Agent Skills, plus a unified reasoning control across
-providers — all additive behind `@experimental` entry points on the frozen 1.0 API, in your process,
-never a hosted dependency.
+providers. **1.2 makes Vincio *score* what it runs** — trajectory, tool-use, multi-turn, and online
+metrics that double as runtime guardrails and optimizer fitness, plus drift detection and Cohen's-κ
+judge calibration. All additive behind `@experimental` entry points on the frozen 1.0 API, in your
+process, never a hosted dependency.
 
 ---
 
@@ -700,7 +702,9 @@ six concrete gaps:
 2. **Evaluation moved from output to trajectory.** Tool-call accuracy/F1, goal accuracy, plan
    adherence, step efficiency, multi-turn simulation, *online* eval on sampled production traffic,
    and drift detection are now expected (Ragas, DeepEval, LangSmith, Phoenix). Vincio's 17+ metrics
-   are output-and-grounding-shaped; it can trace a crew but cannot *score the trace*.
+   were output-and-grounding-shaped; it could trace a crew but not *score the trace* — **1.2 (shipped)
+   closes this gap** with trajectory/tool-use/goal/plan metrics, a multi-turn simulator, online eval,
+   drift detection, and Cohen's-κ annotation, every metric reusable as a guardrail and optimizer term.
 3. **Cost and reliability at scale outgrew retry-and-cache.** Provider **Batch APIs** (a flat 50% cut)
    are absent; `FailoverChain` and `RetryingProvider` exist but there is no **circuit breaker**, no
    key/region load balancing, no **health-aware** routing; per-tenant/per-feature **cost attribution**
@@ -746,7 +750,7 @@ multimodal/embedding breadth, then the governance layer that ties the audit spin
 | **MCP (Anthropic/OpenAI/Google)** | Universal tool/resource/prompt protocol | MCP **client** (servers as sources) + **server** (expose Vincio), *plus* every MCP tool runs through the same permissioned, sandboxed, audited, budgeted runtime as native tools | 1.1 ✅ |
 | **A2A (Linux Foundation)** | Cross-vendor agent-to-agent delegation | A2A client/server + Agent Cards over the existing crew/graph model, *plus* bounded budgets, termination guarantees, and one trace across the delegation | 1.1 ✅ |
 | **Anthropic Agent Skills** | Portable `SKILL.md` procedural knowledge | A Skills loader with progressive disclosure into the compiler, *plus* skills that are budgeted, cited, and eval-gated like any other context | 1.1 ✅ |
-| **LangSmith / Ragas / DeepEval (agentic)** | Trajectory, tool-use, multi-turn, online eval | Trajectory/tool-use/goal/plan metrics over the spans Vincio already emits, online eval + drift, *plus* the same metrics reused as runtime guardrails and optimizer fitness | 1.2 🚧 |
+| **LangSmith / Ragas / DeepEval (agentic)** | Trajectory, tool-use, multi-turn, online eval | Trajectory/tool-use/goal/plan metrics over the spans Vincio already emits, online eval + drift, *plus* the same metrics reused as runtime guardrails and optimizer fitness | 1.2 ✅ |
 | **OpenAI/Anthropic Batch APIs** | 50% async cost cut for offline work | A `BatchRunner` behind the provider interface for evals/extraction/synthetic data, *plus* the same call sites, cost-tracked and traced | 1.3 🚧 |
 | **LiteLLM / gateways** | Failover, circuit breaking, key/region LB, cost attribution | Circuit breakers + health-aware routing on the existing `FailoverChain`, per-tenant/feature cost attribution + enforced budget SLOs, *plus* it lives in-process with your policies, not as a proxy hop | 1.3 🚧 |
 | **DSPy 3 (GEPA / MIPROv2 / SIMBA)** | Reflective program optimization | A reflective optimizer over the whole context lifecycle (not just the prompt), *plus* gated promotion, Pareto cost/quality, and the closed loop already shipped | 1.4 🚧 |
@@ -829,46 +833,66 @@ packet, ledger, permission model, and trace as everything Vincio already runs. T
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 1.1.0 notes.
 
-### 🚧 1.2 — Agentic evaluation & continuous quality (vs LangSmith, Ragas, DeepEval)
+### ✅ 1.2 — Agentic evaluation & continuous quality (vs LangSmith, Ragas, DeepEval) (shipped)
 
-*Vincio can run and trace a crew, a graph, and a tool loop. 1.2 makes it **score** them — over the
-trajectory, over a multi-turn conversation, and over live traffic — reusing the same metric objects as
-runtime guardrails and optimizer fitness, all in-process and dependency-free.*
+*Vincio can run and trace a crew, a graph, and a tool loop — 1.2 makes it **score** them, over the
+trajectory, over a multi-turn conversation, and over live traffic, reusing the same metric objects as
+runtime guardrails and optimizer fitness, all in-process and dependency-free. Additive behind
+`@experimental` entry points on the frozen 1.0 API.*
 
-- 🚧 **Trajectory & tool-use metrics** — new evaluators that read the spans Vincio already emits:
-  `tool_call_accuracy` / `tool_call_f1` (right tool, right args, in the right order), `goal_accuracy`
-  (did the run achieve the objective), `plan_adherence` and `plan_quality`, `step_efficiency` (steps
-  and tokens vs an optimal path), and `topic_adherence`. They evaluate a `Trace`/`AgentState`
-  directly, so a crew or `StateGraph` run is scored without re-instrumentation. Final-output-only
-  evaluation is shown alongside trajectory evaluation in the report (agents pass materially more
-  output-only cases than trajectory eval reveals).
-- 🚧 **Multi-turn & simulation** — a deterministic-offline **user simulator** (`Simulator`,
-  LLM-backed with template fallback) drives multi-turn sessions from a persona + goal, and
-  conversational scoring extends today's `knowledge_retention` / `conversation_relevance` with
-  outcome and intent metrics over the whole thread; `dataset_from_traces` gains multi-turn golden
-  generation.
-- 🚧 **Online / continuous eval** — `app.add_online_evaluator(metric, sample_rate=...)` runs scorers
-  asynchronously on a sample of live runs (off the hot path), writing scores as a time series on the
-  existing metadata store — no traffic mirroring to any external service.
-- 🚧 **Drift detection** — `DriftMonitor` tracks rolling metric deltas (score drift) and
-  **embedding-distribution drift** on inputs against the golden-set distribution, raising a
-  `drift.detected` event on the bus when a baseline shifts; `vincio eval drift` reports it.
-- 🚧 **Human-in-the-loop annotation** — a local annotation queue (`AnnotationQueue`,
-  `vincio eval annotate`) that records human labels and tracks **Cohen's κ** between human and
-  LLM-judge, so a judge only earns CI gating weight once agreement clears a threshold (extends the
-  existing `GEvalJudge.calibrate()`).
-- 🚧 **Production A/B** — `app.experiment(...)` splits traffic across prompt/model/config variants and
-  compares eval metrics *and* cost per variant with the significance tests `ExperimentTracker`
-  already ships.
-- *Interconnection:* every metric here is the same object usable as a runtime guardrail (0.7) and an
-  optimizer/Pareto fitness term (0.8); trajectory scores attach to the run's spans and feed the
-  improvement loop; online scores and drift baselines live in the same store as runs and packets.
-- *Edge over specialists:* LangSmith/Ragas/DeepEval send your traces to a platform to score them;
-  Vincio scores the **trajectory in your process, in the same model as the runtime**, gates releases
-  offline, and turns the very same metric into a guardrail and an optimization target.
-- *Target:* new metrics validated against labeled agent traces in `tests/golden/`; example
-  `26_agentic_eval.py`; a VincioBench `agentic_evals` family gating trajectory-metric agreement,
-  simulator determinism, drift-detection sensitivity/specificity, and κ tracking.
+- ✅ **Trajectory & tool-use metrics** — seven new evaluators score *how* a run reached its answer:
+  `tool_call_accuracy` / `tool_call_f1` (right tool, right args, in the right order),
+  `goal_accuracy` (successful termination + answer match), `plan_adherence` (LCS vs the expected
+  plan), `plan_quality` (failed/redundant steps, reference-free), `step_efficiency` (steps vs an
+  optimal path), and `topic_adherence`. They read a provider-neutral `Trajectory` carried on the
+  `RunOutput` — built with `RunOutput.from_agent_state(state)` / `from_crew_result(result)` /
+  `from_trace(trace)` — so a crew, a `StateGraph` run, or a captured trace is scored **without
+  re-instrumentation**. `EvalReport.metric_families()` shows final-output-only and trajectory
+  evaluation side by side (a run can answer right while taking the wrong path — output-only eval can't
+  see that, and the VincioBench family proves the gap).
+- ✅ **Multi-turn & simulation** — a deterministic-offline **user simulator** (`Simulator`, LLM-backed
+  with a seeded template fallback) drives multi-turn sessions from a `Persona` + goal; same seed →
+  identical conversation. New conversational metrics `conversation_outcome` and `intent_resolution`
+  join `knowledge_retention` / `conversation_relevance` to score the whole thread, and
+  `dataset_from_traces(..., group_by_session=True)` stitches a session's traces into a multi-turn
+  golden case.
+- ✅ **Online / continuous eval** — `app.add_online_evaluator(metric, sample_rate=...)` scores a
+  sampled fraction of live runs after the response is finalized (scheduled off the hot path; sampling
+  bounds the overhead), writing each score as a time series on the existing metadata store
+  (`OnlineEvaluator.series()`) — no traffic mirrored to any external service.
+- ✅ **Drift detection** — `DriftMonitor` tracks rolling metric deltas (score drift) and
+  **embedding-distribution drift** of inputs against the golden-set distribution, raising a
+  `drift.detected` event on the bus and persisting baselines (`drift_baselines`) to the store when a
+  baseline shifts; `vincio eval drift baseline.json current.json` reports it and exits non-zero.
+- ✅ **Human-in-the-loop annotation** — a local `AnnotationQueue` records human labels next to
+  LLM-judge scores and tracks **Cohen's κ**; `GEvalJudge.calibrate()` now also returns κ, and
+  `judge.gating_weight(threshold)` / `queue.judge_trusted()` mean a judge only earns CI-gating weight
+  once agreement clears the bar. `vincio eval annotate labels.jsonl` reports it.
+- ✅ **Production A/B** — `app.experiment(name, variants=..., dataset=..., metrics=...)` evaluates
+  prompt/model/config variants and compares eval metrics **and** cost per variant
+  (`exp.compare()` / `exp.cost()` / `exp.significance(metric)`) with the paired/Welch significance
+  tests `ExperimentTracker` already ships.
+- *Interconnection (held):* every metric here is the same object usable as a runtime guardrail (0.7) —
+  `app.add_metric_rail(metric, threshold=...)` / `metric_guardrail(...)` wrap a metric as a rail
+  predicate — and as an optimizer/Pareto fitness term (0.8) via the new `AGENTIC_OBJECTIVES` preset
+  (trajectory metrics are ordinary metrics, so they flow into `report.metric_values` and the frontier
+  unchanged); online scores and drift baselines live in the same store as runs and packets.
+- *Edge over specialists (delivered):* LangSmith/Ragas/DeepEval send your traces to a platform to
+  score them; Vincio scores the **trajectory in your process, in the same model as the runtime**,
+  gates releases offline, and turns the very same metric into a guardrail and an optimization target.
+- *Already-shipped fix (noted here for the record):* the Google/Gemini cost table referenced a dead
+  embedding model (`text-embedding-004`) while the provider defaulted to `gemini-embedding-001`, which
+  was **absent from the table** — so a price lookup fell through to the zero default and embedding cost
+  was tracked as **$0**. `gemini-embedding-001` is now priced ($0.15 / 1M input tokens), with a
+  regression test. Documented in the [CHANGELOG](CHANGELOG.md).
+- **740 tests passing offline; ruff clean; VincioBench 94/94 budgets**; twenty-six runnable examples.
+  Trajectory metrics are validated against labeled agent traces in `tests/golden/agentic_eval.jsonl`;
+  simulator determinism, online sampling, drift sensitivity/specificity, κ tracking, A/B significance,
+  and the metric-as-guardrail path are covered offline; example `26_agentic_eval.py`; the VincioBench
+  `agentic_evals` family gates trajectory-metric agreement, the output-only/trajectory gap, simulator
+  determinism, drift sensitivity/specificity, and κ tracking (with six new SLOs).
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.2.0 notes.
 
 ### 🚧 1.3 — Cost, reliability & scale (FinOps + resilience)
 

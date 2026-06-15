@@ -26,7 +26,7 @@ vincio/tools        registry, permissioned runtime, sandbox
 vincio/agents       bounded DAG executor, planners, ReAct, handoffs, crews + blackboard, durable state graphs (checkpoint/resume/fork), compose/pipe, LangGraph & OpenAI Agents SDK backends
 vincio/workflows    deterministic DAG workflows (retries/compensation/approval gates with pause+resume)
 vincio/output       schemas, robust parsers, validation pipeline, principled repair, constrained decoding (strict schema transform), streaming validation, self-correction loops, multi-schema routing
-vincio/evals        datasets (+synthetic, +from-traces), metrics, judges (+G-Eval), runner, gates, reports, experiments (A/B significance), red-teaming
+vincio/evals        datasets (+synthetic, +from-traces, +multi-turn), metrics (task/grounding/quality/conversational/+1.2 trajectory & tool-use), judges (+G-Eval +Cohen's-κ calibration), runner, gates, reports, experiments (A/B significance), red-teaming; (1.2) Trajectory + RunOutput.from_*, Simulator, OnlineEvaluator (app.add_online_evaluator), DriftMonitor, AnnotationQueue, Experiment (app.experiment), metric_guardrail (app.add_metric_rail)
 vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimization, improvement loop (trace→dataset→eval→optimize→promote), Pareto frontier, retrieval feedback, learned budgets, guided search strategies
 vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenAI semconv) exporters, viewer (TUI/HTML/diff), cost tracking
 vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packet/trace snapshots, pytest plugin (pytest11 entry point)

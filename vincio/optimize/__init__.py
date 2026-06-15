@@ -11,6 +11,7 @@ from .cache_tuning import (
 from .context_search import ContextOptimizer, ContextSearchSpace
 from .loop import DEFAULT_LOOP_METRICS, ImprovementLoop, LoopResult
 from .pareto import (
+    AGENTIC_OBJECTIVES,
     DEFAULT_OBJECTIVES,
     ObjectiveSpec,
     ParetoFrontier,
@@ -61,6 +62,7 @@ __all__ = [
     "ImprovementLoop",
     "LoopResult",
     "DEFAULT_OBJECTIVES",
+    "AGENTIC_OBJECTIVES",
     "ObjectiveSpec",
     "ParetoFrontier",
     "ParetoPoint",

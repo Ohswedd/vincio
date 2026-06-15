@@ -1,7 +1,7 @@
 # Reasoning control & the Responses API
 
-> **New in 1.1.** One portable knob for thinking/reasoning across providers,
-> with honest cost accounting.
+> One portable knob for thinking/reasoning across providers, with honest cost
+> accounting.
 
 Reasoning models expose a "think harder" control under different names. Vincio
 gives you **one** provider-neutral knob:
@@ -30,9 +30,8 @@ Whether a model supports reasoning is provider-declared
 ## Cost accounting
 
 Thinking tokens are recorded on the `model_call` span (`reasoning_tokens`) and
-**billed** at the output rate. (1.1 fixed a latent gap where Gemini thinking
-tokens — `thoughtsTokenCount` — were counted but excluded from the billable
-output, so they were costed at $0.)
+**billed** at the output rate — including Gemini thinking tokens
+(`thoughtsTokenCount`), which are counted as billable output, not costed at $0.
 
 ## OpenAI Responses API
 

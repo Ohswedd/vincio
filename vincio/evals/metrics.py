@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import re
+from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
@@ -22,6 +23,12 @@ from ..context.compression import split_sentences
 from ..context.scoring import lexical_similarity
 from ..core.types import EvidenceItem, TokenUsage
 from .datasets import EvalCase
+from .trajectory import (
+    Trajectory,
+    trajectory_from_agent_state,
+    trajectory_from_crew_result,
+    trajectory_from_trace,
+)
 
 __all__ = [
     "RunOutput",
@@ -49,6 +56,15 @@ __all__ = [
     "summarization_quality",
     "knowledge_retention",
     "conversation_relevance",
+    "conversation_outcome",
+    "intent_resolution",
+    "tool_call_accuracy",
+    "tool_call_f1",
+    "goal_accuracy",
+    "plan_adherence",
+    "plan_quality",
+    "step_efficiency",
+    "topic_adherence",
     "cost_metric",
     "latency_metric",
     "recall_at_k",
@@ -76,6 +92,7 @@ class RunOutput(BaseModel):
     error: str | None = None
     trace_id: str = ""
     agent_metrics: dict[str, Any] = Field(default_factory=dict)
+    trajectory: Trajectory | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @property
@@ -92,6 +109,60 @@ class RunOutput(BaseModel):
             return json.dumps(self.output, default=str)
         except (TypeError, ValueError):
             return str(self.output)
+
+    @classmethod
+    def from_agent_state(cls, state: Any, **fields: Any) -> RunOutput:
+        """Build a RunOutput from a completed agent run (``AgentState``),
+        carrying its trajectory so trajectory metrics can score it. The final
+        answer becomes the output; usage/cost ride along. Extra ``fields``
+        (e.g. ``trace_id``, ``evidence``) override the derived values."""
+        traj = trajectory_from_agent_state(state)
+        usage = TokenUsage(
+            input_tokens=int(traj.usage.get("input_tokens", 0)),
+            output_tokens=int(traj.usage.get("output_tokens", 0)),
+        )
+        data: dict[str, Any] = {
+            "output": state.final_answer,
+            "raw_text": state.raw_answer_text or "",
+            "evidence": list(getattr(state, "evidence", []) or []),
+            "usage": usage,
+            "cost_usd": float(traj.usage.get("cost_usd", 0.0)),
+            "trajectory": traj,
+        }
+        data.update(fields)
+        return cls(**data)
+
+    @classmethod
+    def from_crew_result(cls, result: Any, **fields: Any) -> RunOutput:
+        """Build a RunOutput from a :class:`~vincio.agents.crew.CrewResult`."""
+        traj = trajectory_from_crew_result(result)
+        usage = TokenUsage(
+            input_tokens=int(traj.usage.get("input_tokens", 0)),
+            output_tokens=int(traj.usage.get("output_tokens", 0)),
+        )
+        data: dict[str, Any] = {
+            "output": result.output,
+            "raw_text": str(result.output or ""),
+            "usage": usage,
+            "cost_usd": float(traj.usage.get("cost_usd", 0.0)),
+            "trajectory": traj,
+        }
+        data.update(fields)
+        return cls(**data)
+
+    @classmethod
+    def from_trace(cls, trace: Any, **fields: Any) -> RunOutput:
+        """Build a RunOutput from a captured ``Trace`` (no re-run needed)."""
+        traj = trajectory_from_trace(trace)
+        data: dict[str, Any] = {
+            "output": trace.attributes.get("output"),
+            "raw_text": str(trace.attributes.get("output") or ""),
+            "trace_id": trace.id,
+            "cost_usd": float(trace.attributes.get("cost_usd", 0.0) or 0.0),
+            "trajectory": traj,
+        }
+        data.update(fields)
+        return cls(**data)
 
 
 class MetricResult(BaseModel):
@@ -571,6 +642,296 @@ def conversation_relevance(case: EvalCase, run: RunOutput) -> MetricResult:
     return MetricResult(
         name="conversation_relevance", value=round(value, 4),
         details={"direct": round(direct, 4), "windowed": round(windowed, 4), "turns": len(messages)},
+    )
+
+
+@register_metric("conversation_outcome")
+def conversation_outcome(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Whether the multi-turn conversation achieved the user's goal. The goal
+    comes from ``rubric['goal']`` / ``rubric['goal_keywords']`` /
+    ``context['goal']`` and is measured against the assistant's turns plus the
+    final output. The intent-and-outcome view that single-turn relevance misses."""
+    goal = str(case.rubric.get("goal") or case.context.get("goal") or "")
+    keywords = [str(k) for k in case.rubric.get("goal_keywords", [])]
+    messages = _conversation(case)
+    assistant_text = " ".join(m["content"] for m in messages if m.get("role") == "assistant")
+    assistant_text = f"{assistant_text} {run.output_text}".strip()
+    if not goal and not keywords:
+        return MetricResult(name="conversation_outcome", value=1.0, details={"goal": None})
+    if keywords:
+        hit = sum(1 for k in keywords if k.lower() in assistant_text.lower())
+        value = hit / len(keywords)
+        details: dict[str, Any] = {"keywords": len(keywords), "matched": hit}
+    else:
+        similarity = lexical_similarity(goal, assistant_text)
+        value = min(1.0, similarity * 3)
+        details = {"similarity": round(similarity, 4)}
+    return MetricResult(
+        name="conversation_outcome", value=round(value, 4), passed=value >= 0.5, details=details
+    )
+
+
+@register_metric("intent_resolution")
+def intent_resolution(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Fraction of user intents (turns) the assistant addressed: every user turn
+    should be followed by a relevant assistant reply (the last turn falls back to
+    the run output)."""
+    messages = _conversation(case)
+    if not messages:
+        similarity = lexical_similarity(case.input_text, run.output_text)
+        return MetricResult(
+            name="intent_resolution", value=round(min(1.0, similarity * 3), 4), details={"turns": 0}
+        )
+    intents = 0
+    resolved = 0
+    for i, message in enumerate(messages):
+        if message.get("role") != "user":
+            continue
+        intents += 1
+        reply = next(
+            (messages[j]["content"] for j in range(i + 1, len(messages))
+             if messages[j].get("role") == "assistant"),
+            run.output_text,
+        )
+        if lexical_similarity(message["content"], reply) >= 0.1:
+            resolved += 1
+    value = resolved / intents if intents else 1.0
+    return MetricResult(
+        name="intent_resolution", value=round(value, 4),
+        details={"intents": intents, "resolved": resolved},
+    )
+
+
+# -- trajectory & tool-use metrics ------------------------------------------
+#
+# These read the agent ``trajectory`` carried on the RunOutput (built from an
+# AgentState / CrewResult / Trace via ``RunOutput.from_*``). They evaluate *how*
+# a run reached its answer — not just the final text — so a crew or StateGraph
+# run is scored without re-instrumentation. Expected/optimal references live on
+# the case (``rubric['expected_tools' | 'plan' | 'optimal_steps' | 'topic']``).
+# When no trajectory is present they return a neutral 1.0 so they can sit
+# alongside output-only metrics in the same report.
+
+
+def _normalize_tool(value: Any) -> tuple[str, frozenset[tuple[str, str]]]:
+    """Normalize an expected tool spec (a name, or ``{tool, arguments}``)."""
+    if isinstance(value, dict):
+        name = value.get("tool") or value.get("name") or value.get("tool_name") or ""
+        args = value.get("arguments") or value.get("args") or {}
+    else:
+        name, args = value, {}
+    arg_sig = frozenset((str(k), _normalize(str(v))) for k, v in (args or {}).items())
+    return _normalize(str(name)), arg_sig
+
+
+def _expected_tools(case: EvalCase) -> list[Any]:
+    spec = case.rubric.get("expected_tools")
+    if spec is None and isinstance(case.expected, dict):
+        spec = case.expected.get("tool_calls") or case.expected.get("expected_tools")
+    return list(spec or [])
+
+
+def _actual_tool_sig(step: Any) -> tuple[str, frozenset[tuple[str, str]]]:
+    name = _normalize(step.tool_name or step.name)
+    args = frozenset((str(k), _normalize(str(v))) for k, v in (step.tool_arguments or {}).items())
+    return name, args
+
+
+def _step_tokens(step: Any) -> set[str]:
+    return {_normalize(t) for t in (step.type, step.name, step.tool_name or "") if t}
+
+
+def _lcs_against_tokens(expected: list[str], token_sets: list[set[str]]) -> int:
+    """Longest common subsequence length matching each expected token against a
+    step's token set (type / name / tool_name)."""
+    n, m = len(expected), len(token_sets)
+    dp = [[0] * (m + 1) for _ in range(n + 1)]
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            if expected[i - 1] in token_sets[j - 1]:
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else:
+                dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+    return dp[n][m]
+
+
+@register_metric("tool_call_accuracy")
+def tool_call_accuracy(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Right tool, right args, in the right order. Expected calls come from
+    ``rubric['expected_tools']`` (names or ``{tool, arguments}``); positional
+    match, args required only when the reference supplies them. With no
+    reference, falls back to the fraction of executed tool calls that succeeded."""
+    traj = run.trajectory
+    actual = traj.tool_calls() if traj else []
+    expected = _expected_tools(case)
+    if not expected:
+        if not actual:
+            return MetricResult(name="tool_call_accuracy", value=1.0, details={"tools": 0})
+        ok = sum(1 for s in actual if s.ok)
+        return MetricResult(
+            name="tool_call_accuracy", value=round(ok / len(actual), 4), passed=ok == len(actual),
+            details={"tools": len(actual), "ok": ok, "mode": "success_rate"},
+        )
+    exp_norm = [_normalize_tool(e) for e in expected]
+    act_norm = [_actual_tool_sig(s) for s in actual]
+    correct = 0
+    for i, (name, args) in enumerate(exp_norm):
+        if i < len(act_norm):
+            act_name, act_args = act_norm[i]
+            if act_name == name and (not args or args <= act_args):
+                correct += 1
+    value = correct / len(exp_norm)
+    return MetricResult(
+        name="tool_call_accuracy", value=round(value, 4), passed=value == 1.0,
+        details={"expected": len(exp_norm), "correct": correct, "actual": len(act_norm)},
+    )
+
+
+@register_metric("tool_call_f1")
+def tool_call_f1(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Order-insensitive F1 over tool *names* (multiset) against
+    ``rubric['expected_tools']`` — catches missing and spurious tool calls that
+    a positional score hides. Returns 1.0 when no reference is given."""
+    traj = run.trajectory
+    actual = traj.tool_calls() if traj else []
+    expected = _expected_tools(case)
+    if not expected:
+        return MetricResult(name="tool_call_f1", value=1.0, details={"reference": None})
+    exp = Counter(_normalize_tool(e)[0] for e in expected)
+    act = Counter(_normalize(s.tool_name or s.name) for s in actual)
+    true_positive = sum((exp & act).values())
+    precision = true_positive / sum(act.values()) if act else 0.0
+    recall = true_positive / sum(exp.values()) if exp else 0.0
+    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+    return MetricResult(
+        name="tool_call_f1", value=round(f1, 4),
+        details={"precision": round(precision, 4), "recall": round(recall, 4), "tp": true_positive},
+    )
+
+
+@register_metric("goal_accuracy")
+def goal_accuracy(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Did the run achieve its objective? Successful termination, combined with a
+    match of the final answer to ``case.expected`` when one is given (half weight
+    each), so a run that 'finishes' with the wrong answer does not pass."""
+    traj = run.trajectory
+    success = bool(traj.success) if traj else (run.error is None)
+    expected = _expected_text(case)
+    if not expected:
+        value = 1.0 if success else 0.0
+        return MetricResult(
+            name="goal_accuracy", value=value, passed=success,
+            details={"success": success, "expected": False},
+        )
+    similarity = lexical_similarity(expected, run.output_text)
+    answer_match = similarity >= 0.5
+    value = 0.5 * (1.0 if success else 0.0) + 0.5 * (1.0 if answer_match else 0.0)
+    return MetricResult(
+        name="goal_accuracy", value=round(value, 4), passed=value == 1.0,
+        details={"success": success, "answer_match": answer_match, "similarity": round(similarity, 4)},
+    )
+
+
+@register_metric("plan_adherence")
+def plan_adherence(case: EvalCase, run: RunOutput) -> MetricResult:
+    """How closely the executed steps follow the expected plan, as
+    LCS-length / plan-length. The plan is ``rubric['plan']`` /
+    ``rubric['expected_steps']`` (step types, names, or tool names). Returns 1.0
+    with no reference plan."""
+    traj = run.trajectory
+    plan = case.rubric.get("plan") or case.rubric.get("expected_steps")
+    if not plan or not traj or not traj.steps:
+        return MetricResult(name="plan_adherence", value=1.0, details={"plan": bool(plan)})
+    expected = [_normalize(str(p)) for p in plan]
+    token_sets = [_step_tokens(s) for s in traj.steps]
+    matched = _lcs_against_tokens(expected, token_sets)
+    value = matched / len(expected)
+    return MetricResult(
+        name="plan_adherence", value=round(value, 4), passed=value == 1.0,
+        details={"plan_steps": len(expected), "matched": matched, "actual_steps": len(traj.steps)},
+    )
+
+
+def _step_signature(step: Any) -> tuple[Any, ...]:
+    return (
+        step.type,
+        step.tool_name,
+        tuple(sorted((str(k), str(v)) for k, v in (step.tool_arguments or {}).items())),
+    )
+
+
+_FAILED_STATUSES = {"failed", "error", "denied", "timeout"}
+
+
+@register_metric("plan_quality")
+def plan_quality(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Structural quality of the executed plan (reference-free): penalizes failed
+    steps and redundant back-to-back repeats of the same step/tool/args."""
+    traj = run.trajectory
+    if not traj or not traj.steps:
+        return MetricResult(name="plan_quality", value=1.0, details={"steps": 0})
+    steps = traj.steps
+    failed = sum(1 for s in steps if s.status in _FAILED_STATUSES)
+    redundant = 0
+    previous: tuple[Any, ...] | None = None
+    for step in steps:
+        signature = _step_signature(step)
+        if signature == previous:
+            redundant += 1
+        previous = signature
+    value = max(0.0, 1.0 - (failed + redundant) / len(steps))
+    return MetricResult(
+        name="plan_quality", value=round(value, 4), passed=value >= 0.999,
+        details={"steps": len(steps), "failed": failed, "redundant": redundant},
+    )
+
+
+@register_metric("step_efficiency")
+def step_efficiency(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Steps taken vs an optimal path (``rubric['optimal_steps']``), capped at
+    1.0. Without an optimum, the fraction of non-redundant, successful steps —
+    rewarding the shortest correct path."""
+    traj = run.trajectory
+    if not traj or not traj.steps:
+        return MetricResult(name="step_efficiency", value=1.0, details={"steps": 0})
+    steps = traj.steps
+    optimal = case.rubric.get("optimal_steps")
+    if optimal:
+        value = min(1.0, float(optimal) / max(1, len(steps)))
+        return MetricResult(
+            name="step_efficiency", value=round(value, 4), passed=len(steps) <= optimal,
+            details={"steps": len(steps), "optimal": optimal},
+        )
+    useful = 0
+    previous: tuple[Any, ...] | None = None
+    for step in steps:
+        signature = _step_signature(step)
+        if signature != previous and step.status not in _FAILED_STATUSES:
+            useful += 1
+        previous = signature
+    return MetricResult(
+        name="step_efficiency", value=round(useful / len(steps), 4),
+        details={"steps": len(steps), "useful": useful},
+    )
+
+
+@register_metric("topic_adherence")
+def topic_adherence(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Whether the agent's steps stay on the objective's topic. Each step's text
+    is compared to the objective (``rubric['topic']`` / trajectory objective /
+    input). Lexical and offline; a model judge can replace it via judges."""
+    traj = run.trajectory
+    objective = str(case.rubric.get("topic") or (traj.objective if traj else "") or case.input_text)
+    if not traj or not traj.steps or not objective:
+        return MetricResult(name="topic_adherence", value=1.0, details={"steps": 0})
+    on_topic = 0
+    for step in traj.steps:
+        text = step.text
+        if not text or lexical_similarity(objective, text) >= 0.06:
+            on_topic += 1
+    return MetricResult(
+        name="topic_adherence", value=round(on_topic / len(traj.steps), 4),
+        details={"steps": len(traj.steps), "on_topic": on_topic},
     )
 
 

@@ -11,6 +11,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
 from typing import Any
@@ -30,6 +32,7 @@ from ..context.compiler import ContextCompiler, ContextCompilerOptions
 from ..documents.loaders import load_directory, load_document
 from ..evals.datasets import Dataset, EvalCase
 from ..evals.metrics import RunOutput
+from ..evals.online import OnlineEvaluator
 from ..evals.runners import EvalRunner
 from ..input.routers import InputRouter
 from ..memory.engine import MemoryEngine
@@ -88,6 +91,8 @@ from .types import (
 )
 
 __all__ = ["ContextApp"]
+
+logger = logging.getLogger("vincio.app")
 
 
 class _SourceConfig(BaseModel):
@@ -251,6 +256,8 @@ class ContextApp:
         self.repairer = Repairer(self.output_contract.repair_policy)
         self.evaluators: list[str] = []
         self.optimizers: list[str] = []
+        self.online_evaluators: list[OnlineEvaluator] = []
+        self._online_tasks: set[asyncio.Task[Any]] = set()
         self.schema_router: SchemaRouter | None = None
         self.self_correction: dict[str, Any] | None = None
 
@@ -830,6 +837,85 @@ class ContextApp:
             self.optimizers.append(name)
         return self
 
+    @experimental(since="1.2")
+    def add_online_evaluator(
+        self, metric: str | Callable, *, sample_rate: float = 1.0, name: str | None = None
+    ) -> ContextApp:
+        """Score a sampled fraction of live runs with ``metric`` after each run
+        completes, writing the score as a time series on the metadata store
+        (no traffic mirrored anywhere). Scoring runs off the hot path; sampling
+        bounds the overhead. The same metric object can gate releases offline
+        and act as a runtime guardrail::
+
+            app.add_online_evaluator("answer_relevance", sample_rate=0.1)
+            app.add_online_evaluator("goal_accuracy", sample_rate=0.2)
+        """
+        self.online_evaluators.append(
+            OnlineEvaluator(metric, name=name, sample_rate=sample_rate, store=self.store, app_name=self.name)
+        )
+        return self
+
+    @experimental(since="1.2")
+    def add_metric_rail(
+        self,
+        metric: str | Callable,
+        *,
+        threshold: float,
+        direction: str = "output",
+        action: str = "block",
+        name: str | None = None,
+        **params: Any,
+    ) -> ContextApp:
+        """Use an eval metric as a runtime guardrail. The same metric that gates
+        releases offline blocks (or warns on) generations at run time::
+
+            app.add_metric_rail("toxicity", threshold=0.0)
+            app.add_metric_rail("answer_relevance", threshold=0.3, action="warn")
+        """
+        from ..evals.guardrails import metric_guardrail
+
+        metric_name = metric if isinstance(metric, str) else getattr(metric, "__name__", "metric")
+        predicate_name = name or f"{metric_name}_guard"
+        self.register_rail_predicate(predicate_name, metric_guardrail(metric, threshold=threshold, name=predicate_name))
+        self.add_rail(
+            name=predicate_name, kind="custom", direction=direction, action=action,
+            predicate=predicate_name, params=params,
+        )
+        return self
+
+    @experimental(since="1.2")
+    def experiment(
+        self,
+        name: str,
+        *,
+        variants: dict[str, dict[str, Any]] | None = None,
+        dataset: Dataset | str | None = None,
+        metrics: list[str] | None = None,
+    ) -> Any:
+        """A production-style A/B over prompt/model/config variants of this app,
+        compared on eval metrics *and* cost with significance tests. Returns an
+        :class:`~vincio.evals.experiments.Experiment` handle; if ``variants`` and
+        ``dataset`` are given, every variant is evaluated first::
+
+            exp = app.experiment(
+                "prompt_ab",
+                variants={"baseline": {}, "concise": {"prompt": concise_spec}},
+                dataset=golden, metrics=["goal_accuracy", "cost"],
+            )
+            exp.compare(); exp.significance("goal_accuracy"); exp.cost()
+        """
+        from ..evals.experiments import Experiment
+
+        handle = Experiment(self, name, metrics=metrics)
+        if variants and dataset is not None:
+            for variant, config in variants.items():
+                config = config or {}
+                handle.run_variant(
+                    variant, dataset, model=config.get("model"), prompt=config.get("prompt"),
+                    apply=config.get("apply"), params=config.get("params"),
+                )
+        return handle
+
     # -- structured output (0.7) -------------------------------------------------
 
     def add_output_schema(
@@ -952,10 +1038,18 @@ class ContextApp:
             user_input.user_id = user_id
         if session_id is not None:
             user_input.session_id = session_id
-        return await self._runtime.execute(user_input, config)
+        result = await self._runtime.execute(user_input, config)
+        if self.online_evaluators:
+            self._spawn_online(result, user_input)
+        return result
 
     def run(self, user_input: str | UserInput, **kwargs: Any) -> RunResult:
-        return run_sync(self.arun(user_input, **kwargs))
+        return run_sync(self._run_and_flush(user_input, **kwargs))
+
+    async def _run_and_flush(self, user_input: str | UserInput, **kwargs: Any) -> RunResult:
+        result = await self.arun(user_input, **kwargs)
+        await self.aflush_online()
+        return result
 
     async def astream(
         self,
@@ -1175,8 +1269,32 @@ class ContextApp:
 
     async def eval_target(self, case: EvalCase) -> RunOutput:
         """EvalRunner adapter: run one case through the app."""
-        text = case.input_text
-        result = await self.arun(text)
+        result = await self.arun(case.input_text)
+        return self._run_output_from_result(result)
+
+    @staticmethod
+    def _run_output_from_result(result: RunResult) -> RunOutput:
+        """Project a RunResult onto a RunOutput, carrying a lightweight trajectory
+        built from the run's tool results so trajectory metrics can score it."""
+        from ..evals.trajectory import Trajectory, TrajectoryStep
+
+        steps = [
+            TrajectoryStep(
+                type="tool", name=tr.tool_name, tool_name=tr.tool_name, status=tr.status
+            )
+            for tr in result.tool_results
+        ]
+        trajectory = Trajectory(
+            steps=steps,
+            final_answer=result.output,
+            raw_text=result.raw_text,
+            terminated=True,
+            termination_reason=result.status.value if hasattr(result.status, "value") else str(result.status),
+            success=result.error is None,
+            source="run",
+            usage={"steps": float(len(steps)), "tool_calls": float(len(steps)),
+                   "cost_usd": float(result.cost_usd)},
+        )
         return RunOutput(
             output=result.output,
             raw_text=result.raw_text,
@@ -1188,7 +1306,44 @@ class ContextApp:
             schema_valid=result.validation.get("valid") if result.validation else None,
             error=result.error,
             trace_id=result.trace_id,
+            trajectory=trajectory if steps else None,
+            metadata={"input": result.metadata.get("input", "")},
         )
+
+    # -- online / continuous evaluation (1.2) --------------------------------
+
+    def _spawn_online(self, result: RunResult, user_input: UserInput) -> None:
+        """Schedule online scoring off the hot path; run inline if no loop."""
+        coro = self._score_online(result, user_input)
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            run_sync(coro)
+            return
+        task = loop.create_task(coro)
+        self._online_tasks.add(task)
+        task.add_done_callback(self._online_tasks.discard)
+
+    async def _score_online(self, result: RunResult, user_input: UserInput) -> None:
+        run_output = self._run_output_from_result(result)
+        run_output.metadata.setdefault("input", user_input.text or "")
+        case = EvalCase(id=result.trace_id or result.run_id, input=user_input.text or "")
+        for evaluator in self.online_evaluators:
+            try:
+                metric_result = evaluator.observe(run_output, case=case, run_id=result.trace_id or result.run_id)
+            except Exception:  # noqa: BLE001 - online eval must never break a run
+                logger.exception("online evaluator %s failed", evaluator.name)
+                continue
+            if metric_result is not None:
+                self.events.emit(
+                    "eval.online",
+                    {"metric": evaluator.name, "value": metric_result.value, "run_id": result.trace_id},
+                )
+
+    async def aflush_online(self) -> None:
+        """Await any in-flight online evaluations (for tests and shutdown)."""
+        if self._online_tasks:
+            await asyncio.gather(*list(self._online_tasks), return_exceptions=True)
 
     def evaluate(
         self,

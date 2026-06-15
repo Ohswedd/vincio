@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-698%20passing-2ea44f" alt="698 tests passing">
+  <img src="https://img.shields.io/badge/tests-740%20passing-2ea44f" alt="740 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -210,14 +210,15 @@ for any engine directly.
 | **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events; runtime backends exporting to LangGraph and the OpenAI Agents SDK. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates that pause the run and resume without re-executing finished steps. |
 | **Structured output** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
-| **Evaluation** | Golden JSONL datasets, 25+ task / grounding / quality / safety / conversational / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
+| **Evaluation** | Golden JSONL datasets, 30+ task / grounding / quality / safety / conversational / **trajectory & tool-use** / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention, tool-call accuracy/F1, goal accuracy, plan adherence, step efficiency), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
+| **Agentic eval & continuous quality** | Score *how* a run reached its answer, not just the text: trajectory & tool-use metrics over a `Trajectory` projected from any crew / graph / trace (no re-instrumentation); a deterministic multi-turn `Simulator`; **online evaluation** on a sampled slice of live traffic (score time series, off the hot path); **drift detection** (score + embedding-distribution) raising a `drift.detected` event; human annotation with **Cohen's-κ** judge calibration; production A/B with cost + significance per variant. Every metric doubles as a runtime guardrail (`add_metric_rail`) and optimizer fitness term. |
 | **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
 | **The closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
 | **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
 | **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB behind one `build_vector_index` factory), and graph (Neo4j) backends. |
 | **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. |
-| **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. All via `app.add_mcp_server` / `serve_mcp` / `serve_a2a` / `add_skill` (experimental, 1.1). |
+| **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. All via `app.add_mcp_server` / `serve_mcp` / `serve_a2a` / `add_skill` (experimental, since 1.1). |
 | **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
 | **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. |
 | **Integrations & DX** | LangChain + LlamaIndex interop (`vincio.interop`) for tools, retrievers, loaders, and embeddings — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
@@ -330,10 +331,11 @@ and the vector store you already run. See the
 | Expose a crew over A2A and delegate across vendor agents | A2A agent card + task lifecycle + remote delegate | [`23_a2a_delegation.py`](examples/23_a2a_delegation.py) |
 | Drop in portable `SKILL.md` knowledge with budgeting | Agent Skills + progressive disclosure | [`24_agent_skills.py`](examples/24_agent_skills.py) |
 | Control reasoning effort across providers with honest cost | unified reasoning control + Responses API | [`25_reasoning_control.py`](examples/25_reasoning_control.py) |
+| Score agents over their trajectory and live traffic | trajectory & tool-use metrics, multi-turn simulator, online eval + drift, Cohen's-κ annotation, A/B + metric-as-guardrail | [`26_agentic_eval.py`](examples/26_agentic_eval.py) |
 
 ## More examples
 
-All twenty-five examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
+All twenty-six examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
 at a real model with environment variables:
 
 ```bash
@@ -426,18 +428,20 @@ infrastructure. Hosted services and managed control planes are not part of this 
 - **Concepts** — [context packets](docs/concepts/context-packets.md) ·
   [prompt compiler](docs/concepts/prompt-compiler.md) · [memory](docs/concepts/memory.md) ·
   [retrieval](docs/concepts/retrieval.md) · [agents & workflows](docs/concepts/agents.md) ·
-  [evaluation](docs/concepts/evals.md)
+  [evaluation](docs/concepts/evals.md) · [observability](docs/concepts/observability.md)
 - **Guides** — [build a RAG app](docs/guides/build-rag-app.md) ·
   [connect data sources](docs/guides/connectors.md) ·
   [structured output](docs/guides/structured-output.md) ·
   [reliability & guardrails](docs/guides/reliability-guardrails.md) ·
   [add tools](docs/guides/add-tools.md) ·
   [orchestrate multi-agent systems](docs/guides/orchestrate-agents.md) ·
-  [run evals](docs/guides/run-evals.md) · [optimize](docs/guides/optimize-context.md) ·
-  [close the loop](docs/guides/close-the-loop.md) ·
+  [run evals](docs/guides/run-evals.md) · [test LLM apps](docs/guides/test-llm-apps.md) ·
+  [optimize](docs/guides/optimize-context.md) · [close the loop](docs/guides/close-the-loop.md) ·
   [performance & streaming](docs/guides/performance.md) ·
   [integrations](docs/guides/integrations.md)
-- **Protocols & interoperability (1.1)** — [MCP client + server](docs/guides/mcp.md) ·
+- **Agentic evaluation & continuous quality** —
+  [trajectory metrics, simulator, online eval, drift & annotation](docs/guides/agentic-eval.md)
+- **Protocols & interoperability** — [MCP client + server](docs/guides/mcp.md) ·
   [A2A agent-to-agent](docs/guides/a2a.md) · [Agent Skills](docs/guides/agent-skills.md) ·
   [reasoning control & Responses API](docs/guides/reasoning.md)
 - **Migrating** — coming from [LangChain](docs/guides/migrate-from-langchain.md) ·
@@ -461,7 +465,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 698 tests, no network or API keys required
+python -m pytest tests/ -q     # 740 tests, no network or API keys required
 ruff check vincio/ tests/
 ```
 

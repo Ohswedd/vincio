@@ -22,6 +22,7 @@ from .search import Candidate, EvaluateFn, FitnessWeights, _promotion_safe, fitn
 __all__ = [
     "ObjectiveSpec",
     "DEFAULT_OBJECTIVES",
+    "AGENTIC_OBJECTIVES",
     "objective_vector",
     "dominates",
     "ParetoPoint",
@@ -45,6 +46,16 @@ DEFAULT_OBJECTIVES: list[ObjectiveSpec] = [
     ObjectiveSpec(name="groundedness", metric="groundedness"),
     ObjectiveSpec(name="cost", metric="cost", direction="min"),
     ObjectiveSpec(name="latency_s", metric="latency", direction="min", scale=0.001),
+]
+
+# Frontier for agent optimization: trade goal success and tool correctness off
+# against step count and cost. The 1.2 trajectory metrics are ordinary metrics,
+# so they drop straight into the optimizer as fitness/Pareto terms.
+AGENTIC_OBJECTIVES: list[ObjectiveSpec] = [
+    ObjectiveSpec(name="goal", metric="goal_accuracy"),
+    ObjectiveSpec(name="tools", metric="tool_call_accuracy"),
+    ObjectiveSpec(name="efficiency", metric="step_efficiency"),
+    ObjectiveSpec(name="cost", metric="cost", direction="min"),
 ]
 
 

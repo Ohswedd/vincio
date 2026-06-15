@@ -38,7 +38,17 @@ vincio eval report REPORT.json|DIR
     Print a saved report (latest in a directory).
 
 vincio eval dataset OUTPUT.jsonl [--traces-dir DIR] [--name N] [--min-feedback X]
+        [--group-by-session]
     Curate captured traces into an eval dataset (provenance + scores ride along).
+    --group-by-session stitches a session's traces into one multi-turn case.
+
+vincio eval drift BASELINE.json CURRENT.json [--metric NAME]... [--threshold X]
+        [--output drift.json]
+    Report per-metric drift between two eval reports; exits non-zero on drift.
+
+vincio eval annotate LABELS.jsonl [--threshold X] [--bins N]
+    Report human↔judge Cohen's κ from {judge, human} score pairs; exits
+    non-zero until κ clears the threshold (the judge's CI-gating bar).
 
 vincio prompt lint PATH
     Lint prompt spec YAML files (PROMPT001–PROMPT009); exits non-zero on errors.

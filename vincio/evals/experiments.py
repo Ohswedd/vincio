@@ -21,7 +21,7 @@ from ..storage.base import MetadataStore
 from .metrics import LOWER_IS_BETTER
 from .reports import EvalReport
 
-__all__ = ["ExperimentRun", "ExperimentTracker", "ab_test"]
+__all__ = ["ExperimentRun", "ExperimentTracker", "Experiment", "ab_test"]
 
 
 class ExperimentRun(BaseModel):
@@ -170,6 +170,90 @@ class ExperimentTracker:
                 }
             deltas[variant] = entry
         return {"experiment": experiment, "baseline": baseline, "ablation": deltas}
+
+
+class Experiment:
+    """A production-style A/B over prompt/model/config variants of one app.
+
+    Each variant is evaluated over the same dataset; results are logged to an
+    :class:`ExperimentTracker` (in the app's own store) so variants are compared
+    on eval metrics **and** cost, with the significance tests this module already
+    ships. Returned by :meth:`ContextApp.experiment`.
+    """
+
+    def __init__(
+        self,
+        app: Any,
+        name: str,
+        *,
+        tracker: ExperimentTracker | None = None,
+        metrics: list[str] | None = None,
+    ) -> None:
+        self.app = app
+        self.name = name
+        self.tracker = tracker or ExperimentTracker(app.store)
+        self.metrics = metrics
+
+    async def arun_variant(
+        self,
+        variant: str,
+        dataset: Any,
+        *,
+        model: str | None = None,
+        prompt: Any = None,
+        apply: Any = None,
+        params: dict[str, Any] | None = None,
+    ) -> EvalReport:
+        from .runners import EvalRunner
+
+        app = self.app
+        saved_model = app.model
+        had_prompt = hasattr(app, "prompt_spec")
+        saved_prompt = getattr(app, "prompt_spec", None)
+        try:
+            if model is not None:
+                app.model = model
+            if prompt is not None:
+                app.prompt_spec = prompt
+            if apply is not None:
+                apply(app)
+            runner = EvalRunner(app, metrics=self.metrics)
+            report = await runner.arun(dataset, name=f"{self.name}:{variant}")
+        finally:
+            app.model = saved_model
+            if had_prompt:
+                app.prompt_spec = saved_prompt
+        merged = dict(params or {})
+        if model is not None:
+            merged.setdefault("model", model)
+        self.tracker.log(self.name, report, variant=variant, params=merged)
+        return report
+
+    def run_variant(self, variant: str, dataset: Any, **kwargs: Any) -> EvalReport:
+        from ..providers.base import run_sync
+
+        return run_sync(self.arun_variant(variant, dataset, **kwargs))
+
+    def compare(self, *, metrics: list[str] | None = None) -> dict[str, Any]:
+        return self.tracker.compare(self.name, metrics=metrics or self.metrics)
+
+    def significance(self, metric: str, *, baseline: str = "baseline") -> dict[str, Any]:
+        """Per-variant significance vs the baseline variant on one metric."""
+        latest = self.tracker._latest_per_variant(self.name)
+        if baseline not in latest:
+            raise EvalError(f"experiment {self.name!r} has no baseline variant {baseline!r}")
+        base = latest[baseline]
+        out: dict[str, Any] = {}
+        for variant, run in latest.items():
+            if variant == baseline:
+                continue
+            out[variant] = ab_test(base.report, run.report, metric)
+        return out
+
+    def cost(self) -> dict[str, float]:
+        """Total cost (USD) per variant's latest run."""
+        latest = self.tracker._latest_per_variant(self.name)
+        return {variant: round(run.report.total_cost_usd, 6) for variant, run in latest.items()}
 
 
 # -- statistical significance (pure Python) -----------------------------------

@@ -4,6 +4,90 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-06-14
+
+Agentic evaluation & continuous quality. Vincio could run and trace a crew, a
+graph, and a tool loop — 1.2 makes it **score** them: over the trajectory, over a
+multi-turn conversation, and over live traffic. Every new metric is the same
+object reused as an offline gate, a runtime guardrail, and an optimizer fitness
+term. Like 1.1, the milestone is **additive under the frozen 1.0 API** — new
+surfaces sit behind `@experimental` entry points, no public symbol is removed or
+repurposed — and runs in your process with no hosted dependency.
+
+### Added
+
+- **Trajectory & tool-use metrics** (`vincio.evals.metrics`) — `tool_call_accuracy`
+  / `tool_call_f1` (right tool, right args, in the right order),  `goal_accuracy`
+  (successful termination + answer match), `plan_adherence` (LCS vs the expected
+  plan), `plan_quality` (failed/redundant steps, reference-free),
+  `step_efficiency` (steps vs an optimal path), and `topic_adherence`. They read a
+  provider-neutral `Trajectory` (`vincio.evals.trajectory`) carried on the
+  `RunOutput`, built with `RunOutput.from_agent_state(state)` /
+  `from_crew_result(result)` / `from_trace(trace)` — a crew, a `StateGraph` run,
+  or a captured trace is scored without re-instrumentation. Expected/optimal
+  references live in `rubric['expected_tools' | 'plan' | 'optimal_steps' |
+  'topic']`. `EvalReport.metric_families()` splits the report into final-output-only
+  vs trajectory evaluation.
+- **Conversational metrics** — `conversation_outcome` (did the thread achieve the
+  user's goal) and `intent_resolution` (fraction of user turns addressed), joining
+  `knowledge_retention` / `conversation_relevance`.
+- **Multi-turn simulator** (`vincio.evals.Simulator`, `Persona`,
+  `SimulatedConversation`, experimental) — drives multi-turn sessions from a
+  persona + goal; LLM-backed with a seeded template fallback, so it is
+  deterministic offline (same seed → identical conversation).
+  `SimulatedConversation.to_eval_case()` feeds the conversational metrics;
+  `dataset_from_traces(..., group_by_session=True)` stitches a session's traces
+  into a multi-turn golden case.
+- **Online / continuous eval** — `app.add_online_evaluator(metric,
+  sample_rate=...)` (experimental) scores a sampled fraction of live runs after
+  the response is finalized (scheduled off the hot path; `app.aflush_online()`
+  drains in tests), writing each score as a time series on the metadata store
+  (`OnlineEvaluator.series()`). No traffic mirrored to any external service.
+- **Drift detection** (`vincio.evals.DriftMonitor`, `DriftReport`) — rolling
+  score drift and embedding-distribution drift of inputs against the golden-set
+  distribution; raises a `drift.detected` event on the bus and persists baselines
+  (`drift_baselines`). `vincio eval drift baseline.json current.json` reports it.
+- **Human-in-the-loop annotation** (`vincio.evals.AnnotationQueue`,
+  `cohens_kappa`) — records human labels next to LLM-judge scores and tracks
+  **Cohen's κ**; `GEvalJudge.calibrate()` now also returns `cohens_kappa`, and
+  `judge.gating_weight(threshold)` / `queue.judge_trusted()` gate a judge on
+  agreement. `vincio eval annotate labels.jsonl` reports it.
+- **Production A/B** — `app.experiment(name, variants=..., dataset=...,
+  metrics=...)` (experimental) returns an `Experiment` comparing variants on eval
+  metrics **and** cost (`.compare()` / `.cost()` / `.significance(metric)`) with
+  the paired/Welch tests `ExperimentTracker` already ships.
+- **Metric-as-guardrail** — `app.add_metric_rail(metric, threshold=...)` /
+  `vincio.evals.metric_guardrail(metric, threshold=...)` wrap any metric as a
+  deterministic runtime rail predicate (direction from `LOWER_IS_BETTER`).
+- **Optimizer interconnection** — `vincio.optimize.AGENTIC_OBJECTIVES`, a Pareto
+  objective preset over `goal_accuracy` / `tool_call_accuracy` / `step_efficiency`
+  / `cost`; trajectory metrics are ordinary metrics, so they flow into
+  `report.metric_values` and the frontier unchanged.
+- **VincioBench `agentic_evals` family** — gates trajectory-metric agreement
+  against labeled traces, the output-only/trajectory gap, simulator determinism,
+  drift sensitivity/specificity, and κ tracking; six new SLOs hold them (94
+  budgets total, all green).
+- Example `26_agentic_eval.py` and a labeled golden set
+  `tests/golden/agentic_eval.jsonl` (26 examples, all run offline). New guide:
+  [Agentic evaluation & continuous quality](docs/guides/agentic-eval.md).
+
+### Fixed
+
+- **Gemini embedding cost tracked as $0** — the cost table referenced the dead
+  `text-embedding-004` while the Google provider defaults to `gemini-embedding-001`,
+  which was absent from the table, so a price lookup fell through to the zero
+  default and embedding cost was billed at $0. `gemini-embedding-001` is now priced
+  ($0.15 / 1M input tokens), with a regression test.
+
+### Changed
+
+- `__version__` is now `1.2.0`. `RunOutput` gains an optional `trajectory` field
+  and `from_agent_state` / `from_crew_result` / `from_trace` constructors;
+  `dataset_from_traces` gains `group_by_session`; `GEvalJudge.calibrate` also
+  returns `cohens_kappa`. All additive and backward-compatible.
+
+See the [roadmap](ROADMAP.md) (1.2 milestone) for the full picture.
+
 ## [1.1.0] - 2026-06-13
 
 Protocols & interoperability — the first post-1.0 milestone. Vincio now speaks

@@ -31,6 +31,10 @@ ContextApp(name, *, objective=None, output_schema=None, config=None,
 | `graph(name, state_schema=, reducers=)` | durable `StateGraph` checkpointed in the app's metadata store |
 | `workflow(name)` | deterministic `Workflow` builder (approval gates pause; `resume(result, approvals=)` continues) |
 | `evaluate(dataset, metrics=, concurrency=, gates=, judges=)` | `EvalReport` |
+| `add_online_evaluator(metric, sample_rate=, name=)` *(experimental, 1.2)* | score a sampled fraction of live runs off the hot path; writes a score time series to the store |
+| `add_metric_rail(metric, threshold=, direction=, action=, name=, **params)` *(experimental, 1.2)* | use an eval metric as a runtime guardrail |
+| `experiment(name, variants=, dataset=, metrics=)` *(experimental, 1.2)* | production A/B over prompt/model/config variants → `Experiment` (`compare`/`cost`/`significance`) |
+| `aflush_online()` *(1.2)* | await in-flight online evaluations (tests/shutdown) |
 | `improvement_loop(metrics=, weights=, gates=, experiment=, ...)` | `ImprovementLoop`: trace → dataset → eval → optimize → promote on this app |
 | `use_learned_budgets(source)` | install eval-tuned per-task budget allocations (`LearnedAllocations`, path, or mapping) |
 | `use_pack(pack, set_schema=, merge_rules=)` | apply a domain pack (`"support"`/`"engineering"`/`"finance"`/`"legal"` or a `Pack`): prompt config + schema + policies + evaluators + rails |
@@ -71,8 +75,8 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.agents` | `AgentExecutor`, `Planner`, `StepDAG`, `HandoffRouter`, `Crew`, `AgentRole`, `Blackboard`, `StateGraph`, `Checkpointer`, `interrupt`, `compose`, `parallel`, `branch`, `LangGraphBackend`, `OpenAIAgentsBackend` |
 | `vincio.workflows` | `Workflow` (pause/resume approval gates, edit-and-resume) |
 | `vincio.output` | `OutputSchema`, `OutputContract`, `OutputValidator`, `Repairer`, `to_strict_json_schema`, `choice_schema`, `regex_schema`, `StreamingValidator`, `SelfCorrector`, `SchemaRouter` |
-| `vincio.evals` | `Dataset`, `dataset_from_traces`, `EvalRunner`, `ModelJudge`, `GEvalJudge`, `evaluate_gates`, `METRICS`, `SyntheticGenerator`, `RedTeamSuite`, `ExperimentTracker`, `ab_test` |
-| `vincio.optimize` | `PromptOptimizer`, `ContextOptimizer`, `RoutingPolicy`, `evolution_loop`, `fitness`, `ImprovementLoop`, `pareto_loop`, `ParetoFrontier`, `ObjectiveSpec`, `RetrievalFeedback`, `recommend_chunking`, `BudgetLearner`, `LearnedAllocations`, `guided_search` |
+| `vincio.evals` | `Dataset`, `dataset_from_traces`, `EvalRunner`, `RunOutput`, `ModelJudge`, `GEvalJudge`, `evaluate_gates`, `METRICS`, `SyntheticGenerator`, `RedTeamSuite`, `ExperimentTracker`, `ab_test`, and *(1.2)* `Trajectory` / `trajectory_from_agent_state` / `Simulator` / `Persona` / `SimulatedConversation` / `OnlineEvaluator` / `DriftMonitor` / `DriftReport` / `AnnotationQueue` / `cohens_kappa` / `Experiment` / `metric_guardrail` |
+| `vincio.optimize` | `PromptOptimizer`, `ContextOptimizer`, `RoutingPolicy`, `evolution_loop`, `fitness`, `ImprovementLoop`, `pareto_loop`, `ParetoFrontier`, `ObjectiveSpec`, `DEFAULT_OBJECTIVES`, `AGENTIC_OBJECTIVES`, `RetrievalFeedback`, `recommend_chunking`, `BudgetLearner`, `LearnedAllocations`, `guided_search` |
 | `vincio.observability` | `Tracer`, `JSONLExporter`, `OTelExporter`, `CostTracker`, `trace_diff`, `Session`, `sessions_from_traces`, `record_feedback`, `trace_to_html`, `render_trace_text` |
 | `vincio.testing` | `assert_eval`, `assert_grounded`, `assert_metric`, `assert_safe`, `Snapshot` (+ pytest plugin: `vincio_snapshot` fixture, `--vincio-update-snapshots`) |
 | `vincio.security` | `PIIDetector`, `SecretScanner`, `InjectionDetector`, `AccessController`, `PolicyEngine`, `Rail`, `RailEngine`, `AuditLog` |

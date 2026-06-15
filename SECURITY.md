@@ -7,10 +7,10 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.2.x   | ✅        |
 | 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
-| 0.9.x   | ⚠️ critical fixes only |
-| < 0.9   | ❌ (upgrade to 1.1.x) |
+| < 1.0   | ❌ (upgrade to 1.2.x) |
 
 ## Threat model
 
@@ -28,6 +28,11 @@ audited runtime, and MCP resources enter as untrusted, injection-scanned
 evidence; an MCP/A2A server you expose validates bearer tokens (OAuth 2.1
 resource server) and enforces the policy engine + audit log on every inbound
 call; Agent-Skill bundled scripts run only in the subprocess sandbox.
+
+The 1.2 agentic-evaluation features stay in-process: online-eval scores, drift
+baselines, and human annotations are written to your own metadata store (no
+traffic mirrored to any external service), and the user simulator runs against
+your app, not a third party.
 
 ## Supply-chain integrity
 

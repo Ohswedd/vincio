@@ -1282,6 +1282,102 @@ async def bench_protocols() -> dict[str, Any]:
     }
 
 
+async def bench_agentic_evals() -> dict[str, Any]:
+    """AgenticEvalsBench (1.2): does agentic evaluation hold up?
+
+    Measures trajectory-metric agreement against labeled traces, the gap between
+    output-only and trajectory evaluation (vs naive output-only), user-simulator
+    determinism, drift-detection sensitivity/specificity (vs no-detector), and
+    Cohen's-κ judge agreement tracking — all offline and deterministic.
+    """
+    from vincio.evals import (
+        AnnotationQueue,
+        DriftMonitor,
+        RunOutput,
+        Simulator,
+        cohens_kappa,
+    )
+    from vincio.evals.datasets import Dataset
+    from vincio.evals.metrics import METRICS
+    from vincio.evals.simulator import Persona
+    from vincio.evals.trajectory import Trajectory
+
+    golden = Dataset.load(Path(__file__).resolve().parent.parent / "tests" / "golden" / "agentic_eval.jsonl")
+
+    # 1. trajectory-metric agreement with labeled traces.
+    agreed = total = 0
+    output_only_pass = traj_pass = traj_cases = 0
+    for case in golden:
+        traj_payload = case.context.get("trajectory")
+        if traj_payload:
+            run = RunOutput(output=traj_payload.get("final_answer"),
+                            trajectory=Trajectory.model_validate(traj_payload))
+        else:
+            messages = case.context.get("messages", [])
+            last = next((m["content"] for m in reversed(messages) if m["role"] == "assistant"), "")
+            run = RunOutput(output=last)
+        for metric, label in case.rubric.get("labels", {}).items():
+            total += 1
+            agreed += abs(METRICS[metric](case, run).value - label) < 0.02
+        # output-only vs trajectory pass (the "agents pass more output-only" gap).
+        if traj_payload:
+            traj_cases += 1
+            output_only_pass += METRICS["semantic_similarity"](case, run).value >= 0.5
+            traj_pass += (
+                METRICS["tool_call_accuracy"](case, run).value == 1.0
+                and METRICS["goal_accuracy"](case, run).value == 1.0
+            )
+    trajectory_agreement = agreed / total if total else 0.0
+    output_only_pass_rate = output_only_pass / traj_cases if traj_cases else 0.0
+    trajectory_pass_rate = traj_pass / traj_cases if traj_cases else 0.0
+
+    # 2. simulator determinism: same seed → identical conversation.
+    def agent(messages: list[dict[str, str]]) -> str:
+        return "Open settings then security then reset your password. Takes 5 minutes."
+
+    persona = Persona(name="sam", goal="reset password", max_turns=3)
+    convo_a = Simulator(seed=7).simulate(agent, persona)
+    convo_b = Simulator(seed=7).simulate(agent, persona)
+    simulator_determinism = [t["content"] for t in convo_a.turns] == [t["content"] for t in convo_b.turns]
+
+    # 3. drift sensitivity/specificity vs known drifted/stable windows.
+    drifted_windows = [[0.6, 0.62, 0.58], [0.5, 0.52, 0.48], [0.7, 0.69, 0.71]]
+    stable_windows = [[0.9, 0.9, 0.91], [0.88, 0.9, 0.89], [0.91, 0.9, 0.92]]
+    detected = stable_quiet = 0
+    for window in drifted_windows:
+        monitor = DriftMonitor(score_threshold=0.1)
+        monitor.set_score_baseline("m", [0.9, 0.91, 0.89, 0.92])
+        detected += monitor.check_scores("m", window).drifted
+    for window in stable_windows:
+        monitor = DriftMonitor(score_threshold=0.1)
+        monitor.set_score_baseline("m", [0.9, 0.91, 0.89, 0.92])
+        stable_quiet += not monitor.check_scores("m", window).drifted
+    drift_sensitivity = detected / len(drifted_windows)
+    drift_specificity = stable_quiet / len(stable_windows)
+
+    # 4. Cohen's κ tracking: agreeing labels score high; the queue trusts the judge.
+    pairs = [(0.9, 1.0), (0.2, 0.0), (0.8, 0.7), (0.1, 0.0), (0.95, 0.9), (0.3, 0.2)]
+    kappa = cohens_kappa(pairs, bins=2)
+    queue = AnnotationQueue(name="bench")
+    for index, (judge, human) in enumerate(pairs):
+        item = queue.add(run_id=f"r{index}", judge_score=judge)
+        queue.label(item.id, human)
+    judge_trusted = queue.judge_trusted(threshold=0.6)
+
+    return {
+        "trajectory_agreement": round(trajectory_agreement, 4),
+        "labeled_metrics_checked": total,
+        "output_only_pass_rate": round(output_only_pass_rate, 4),
+        "trajectory_pass_rate": round(trajectory_pass_rate, 4),
+        "trajectory_catches_more": trajectory_pass_rate < output_only_pass_rate,
+        "simulator_determinism": simulator_determinism,
+        "drift_sensitivity": round(drift_sensitivity, 4),
+        "drift_specificity": round(drift_specificity, 4),
+        "cohen_kappa_tracked": round(kappa, 4),
+        "judge_trusted_above_threshold": judge_trusted,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -1293,6 +1389,7 @@ FAMILIES = {
     "cost": bench_cost,
     "security": bench_security,
     "evals": bench_evals,
+    "agentic_evals": bench_agentic_evals,
     "loop": bench_loop,
     "protocols": bench_protocols,
     "perf": bench_perf,

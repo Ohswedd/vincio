@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from ..core.errors import GateFailedError
 from ..core.utils import utcnow
 from .metrics import LOWER_IS_BETTER
+from .trajectory import TRAJECTORY_METRICS
 
 __all__ = ["CaseResult", "GateSpec", "EvalReport", "evaluate_gates"]
 
@@ -105,6 +106,15 @@ class EvalReport(BaseModel):
                 "n": len(values),
             }
         return table
+
+    def metric_families(self) -> dict[str, dict[str, dict[str, float]]]:
+        """Split the summary into final-output-only and trajectory evaluation,
+        so a report can show them side by side (agents pass materially more
+        output-only cases than trajectory eval reveals)."""
+        summary = self.summary()
+        trajectory = {k: v for k, v in summary.items() if k in TRAJECTORY_METRICS}
+        output = {k: v for k, v in summary.items() if k not in TRAJECTORY_METRICS}
+        return {"output": output, "trajectory": trajectory}
 
     def distribution(self, metric: str, *, bins: int = 10) -> dict[str, int]:
         values = self.metric_values(metric)

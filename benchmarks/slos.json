@@ -161,6 +161,66 @@
       "threshold": 0.5,
       "enforced_by": "families.protocols.skills.disclosure_savings",
       "rationale": "Skills must cost context only when used; otherwise loading many skills defeats budgeting."
+    },
+    {
+      "id": "trajectory_metric_agreement",
+      "category": "quality",
+      "statement": "Trajectory and tool-use metrics agree with labeled agent traces at 0.90 or higher.",
+      "metric": "families.agentic_evals.trajectory_agreement",
+      "direction": "gte",
+      "threshold": 0.9,
+      "enforced_by": "families.agentic_evals.trajectory_agreement",
+      "rationale": "Trajectory scores must track ground truth, or trajectory-gated releases would be meaningless."
+    },
+    {
+      "id": "trajectory_eval_adds_signal",
+      "category": "quality",
+      "statement": "Trajectory evaluation flags runs that final-output-only evaluation passes.",
+      "metric": "families.agentic_evals.trajectory_catches_more",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agentic_evals.trajectory_catches_more",
+      "rationale": "A wrong path with a right-looking answer must be catchable; output-only eval cannot see it."
+    },
+    {
+      "id": "simulator_determinism",
+      "category": "reliability",
+      "statement": "The user simulator is seed-deterministic: same seed produces the same conversation.",
+      "metric": "families.agentic_evals.simulator_determinism",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agentic_evals.simulator_determinism",
+      "rationale": "Simulated multi-turn cases are only usable as CI goldens if they replay identically."
+    },
+    {
+      "id": "drift_detection_sensitivity",
+      "category": "quality",
+      "statement": "Drift detection catches at least 85% of known metric regressions.",
+      "metric": "families.agentic_evals.drift_sensitivity",
+      "direction": "gte",
+      "threshold": 0.85,
+      "enforced_by": "families.agentic_evals.drift_sensitivity",
+      "rationale": "Continuous quality depends on catching real regressions early."
+    },
+    {
+      "id": "drift_detection_specificity",
+      "category": "quality",
+      "statement": "Drift detection raises no alarm on at least 90% of stable windows.",
+      "metric": "families.agentic_evals.drift_specificity",
+      "direction": "gte",
+      "threshold": 0.9,
+      "enforced_by": "families.agentic_evals.drift_specificity",
+      "rationale": "False drift alarms erode trust and trigger needless rollbacks."
+    },
+    {
+      "id": "judge_kappa_tracking",
+      "category": "quality",
+      "statement": "Cohen's κ between an agreeing judge and human labels is tracked at 0.75 or higher before the judge earns gating weight.",
+      "metric": "families.agentic_evals.cohen_kappa_tracked",
+      "direction": "gte",
+      "threshold": 0.75,
+      "enforced_by": "families.agentic_evals.cohen_kappa_tracked",
+      "rationale": "An LLM judge should only gate CI once it has demonstrably agreed with people."
     }
   ]
 }

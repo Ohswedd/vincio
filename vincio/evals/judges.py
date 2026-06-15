@@ -211,6 +211,7 @@ class GEvalJudge(Judge):
         self.threshold = threshold
         self.include_evidence = include_evidence
         self._calibration: tuple[float, float] | None = None  # (scale, offset)
+        self._kappa: float | None = None  # human↔judge agreement from calibrate()
 
     async def _ensure_steps(self) -> list[str]:
         if self.steps:
@@ -309,11 +310,15 @@ class GEvalJudge(Judge):
             },
         )
 
-    def calibrate(self, pairs: list[tuple[float, float]]) -> dict[str, float]:
-        """Fit a linear correction from (judge_score, human_score) pairs.
+    def calibrate(self, pairs: list[tuple[float, float]], *, kappa_bins: int = 2) -> dict[str, float]:
+        """Fit a linear correction from (judge_score, human_score) pairs and
+        track agreement.
 
         Stores ``human ≈ scale * judge + offset`` and applies it to future
-        scores. Returns the fit: scale, offset, and Pearson correlation.
+        scores. Returns the fit (scale, offset, Pearson r) plus **Cohen's κ**
+        between judge and human (binned into ``kappa_bins`` categories). The κ is
+        also remembered so :meth:`gating_weight` can decide whether the judge has
+        earned CI-gating weight.
         """
         if len(pairs) < 2:
             raise ValueError("calibration requires at least 2 (judge, human) pairs")
@@ -328,7 +333,20 @@ class GEvalJudge(Judge):
         var_y = sum((y - mean_y) ** 2 for y in ys)
         pearson = cov / ((var_x * var_y) ** 0.5) if var_x and var_y else 0.0
         self._calibration = (scale, offset)
-        return {"scale": round(scale, 4), "offset": round(offset, 4), "pearson_r": round(pearson, 4), "n": n}
+        from .annotation import cohens_kappa
+
+        self._kappa = cohens_kappa(pairs, bins=kappa_bins)
+        return {
+            "scale": round(scale, 4), "offset": round(offset, 4),
+            "pearson_r": round(pearson, 4), "cohens_kappa": self._kappa, "n": n,
+        }
+
+    def gating_weight(self, *, threshold: float = 0.6) -> float:
+        """1.0 once the judge's calibrated κ clears ``threshold``, else 0.0 — so
+        an uncalibrated or low-agreement judge cannot gate CI on its own."""
+        if self._kappa is None:
+            return 0.0
+        return 1.0 if self._kappa >= threshold else 0.0
 
 
 class EmbeddingJudge(Judge):

@@ -12,6 +12,9 @@ Commands::
     vincio run app.py --input "..."
     vincio eval run golden.jsonl --app app.py
     vincio eval report <report.json>
+    vincio eval dataset golden.jsonl [--group-by-session]
+    vincio eval drift baseline.json current.json [--threshold 0.1]
+    vincio eval annotate labels.jsonl [--threshold 0.6] [--bins 2]
     vincio prompt lint prompts/
     vincio prompt compile prompt.yaml
     vincio trace show <trace_id>
@@ -608,10 +611,66 @@ def cmd_eval_dataset(args: argparse.Namespace) -> int:
         traces,
         name=args.name or Path(args.output).stem,
         min_feedback_score=args.min_feedback,
+        group_by_session=getattr(args, "group_by_session", False),
     )
     dataset.save(args.output)
     print(f"wrote {len(dataset)} case(s) from {len(traces)} trace(s) to {args.output}")
     return 0
+
+
+def cmd_eval_drift(args: argparse.Namespace) -> int:
+    from ..evals.drift import DriftMonitor
+    from ..evals.reports import EvalReport
+
+    baseline = EvalReport.load(args.baseline)
+    current = EvalReport.load(args.current)
+    monitor = DriftMonitor(score_threshold=args.threshold)
+    shared = sorted(set(baseline.summary()) & set(current.summary()))
+    if args.metric:
+        shared = [m for m in shared if m in args.metric]
+    if not shared:
+        return _fail("no shared metrics between the two reports")
+    print(f"drift: baseline `{baseline.name}` vs `{current.name}` (threshold {args.threshold})")
+    drifted: list[dict[str, Any]] = []
+    for metric in shared:
+        monitor.set_score_baseline(metric, baseline.metric_values(metric))
+        report = monitor.check_scores(metric, current.metric_values(metric))
+        flag = "DRIFT" if report.drifted else "ok"
+        print(
+            f"  [{flag:5s}] {metric:22s} baseline={report.baseline:.4f} "
+            f"current={report.current:.4f} delta={report.delta:+.4f}"
+        )
+        if report.drifted:
+            drifted.append(report.model_dump())
+    if args.output:
+        Path(args.output).write_text(json_dumps(drifted), encoding="utf-8")
+        print(f"\nsaved {len(drifted)} drift record(s) to {args.output}")
+    print(f"\n{len(drifted)} metric(s) drifted")
+    return 1 if drifted else 0
+
+
+def cmd_eval_annotate(args: argparse.Namespace) -> int:
+    from ..evals.annotation import cohens_kappa
+
+    pairs: list[tuple[float, float]] = []
+    for line in Path(args.labels).read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        record = json.loads(line)
+        judge = record.get("judge", record.get("judge_score"))
+        human = record.get("human", record.get("human_score"))
+        if judge is None or human is None:
+            continue
+        pairs.append((float(judge), float(human)))
+    if len(pairs) < 2:
+        return _fail("need at least 2 (judge, human) score pairs in the labels file")
+    kappa = cohens_kappa(pairs, bins=args.bins)
+    trusted = kappa >= args.threshold
+    print(f"annotation agreement over {len(pairs)} pair(s):")
+    print(f"  cohens_kappa = {kappa:.4f}  (threshold {args.threshold}, bins {args.bins})")
+    print(f"  judge {'EARNS' if trusted else 'does NOT earn'} CI-gating weight")
+    return 0 if trusted else 1
 
 
 def cmd_optimize_run(args: argparse.Namespace) -> int:
@@ -1007,7 +1066,23 @@ def build_parser() -> argparse.ArgumentParser:
         "--min-feedback", type=float, default=None,
         help="keep only traces with mean feedback score >= this",
     )
+    p_eval_dataset.add_argument(
+        "--group-by-session", action="store_true",
+        help="stitch traces of one session into a multi-turn case",
+    )
     p_eval_dataset.set_defaults(fn=cmd_eval_dataset)
+    p_eval_drift = eval_sub.add_parser("drift", help="detect metric drift between two reports")
+    p_eval_drift.add_argument("baseline", help="baseline report JSON")
+    p_eval_drift.add_argument("current", help="current report JSON")
+    p_eval_drift.add_argument("--metric", action="append", help="restrict to metric (repeatable)")
+    p_eval_drift.add_argument("--threshold", type=float, default=0.1, help="mean-shift drift threshold")
+    p_eval_drift.add_argument("--output", default=None, help="save drift records JSON here")
+    p_eval_drift.set_defaults(fn=cmd_eval_drift)
+    p_eval_annotate = eval_sub.add_parser("annotate", help="track human↔judge agreement (Cohen's κ)")
+    p_eval_annotate.add_argument("labels", help="JSONL of {judge, human} score pairs (or a dataset)")
+    p_eval_annotate.add_argument("--threshold", type=float, default=0.6, help="κ needed for CI gating weight")
+    p_eval_annotate.add_argument("--bins", type=int, default=2, help="number of score bins for κ")
+    p_eval_annotate.set_defaults(fn=cmd_eval_annotate)
 
     p_prompt = sub.add_parser("prompt", help="prompt tooling")
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", required=True)
