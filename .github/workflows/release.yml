@@ -38,7 +38,7 @@ jobs:
             --output-format JSON \
             --output-file dist/vincio.sbom.cdx.json
       - name: Attest build provenance (SLSA)
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@v4
         with:
           subject-path: "dist/*"
       - uses: actions/upload-artifact@v7
