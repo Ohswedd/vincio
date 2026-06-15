@@ -470,7 +470,86 @@ class TestBootstrapFinetune:
         assert not res.promoted and "same model" in res.reason
 
 
+def fake_run(rid, inp, out, *, evidence=None, status="succeeded", trace_id="tr"):
+    return SimpleNamespace(
+        run_id=rid, trace_id=trace_id, status=status, raw_text=out, output=out,
+        evidence=list(evidence or []), citations=[], metadata={"input": inp},
+    )
+
+
+class TestExportTrainingSetFromRuns:
+    def test_faithful_grounded_export_no_flag(self):
+        from vincio.optimize import export_training_set_from_runs
+
+        runs = [
+            fake_run("r1", "Refund window?", "The Pro plan refund window is 30 days.", evidence=REFUND_EVIDENCE),
+            fake_run("r2", "Mascot?", "The mascot is a purple axolotl with 12 legs.", evidence=REFUND_EVIDENCE),
+        ]
+        ts = export_training_set_from_runs(runs, require_grounding=True, min_support=0.4)
+        assert ts.metadata["source"] == "runs"
+        assert len(ts) == 1 and ts.metadata["dropped_ungrounded"] == 1
+        assert ts.examples[0].provenance["run_id"] == "r1"
+        assert ts.grounded_fraction == 1.0
+
+    def test_dedupes_and_filters_status(self):
+        from vincio.optimize import export_training_set_from_runs
+
+        runs = [
+            fake_run("r1", "q", "30 days for Pro.", evidence=REFUND_EVIDENCE),
+            fake_run("r2", "q", "30 days for Pro.", evidence=REFUND_EVIDENCE),  # dup
+            fake_run("r3", "q2", "30 days for Pro.", evidence=REFUND_EVIDENCE, status="failed"),
+        ]
+        ts = export_training_set_from_runs(runs, require_grounding=False)
+        assert len(ts) == 1  # dup collapsed, failed dropped
+
+    def test_uses_full_untruncated_output(self):
+        from vincio.optimize import export_training_set_from_runs
+
+        long_answer = "The Pro plan refund window is 30 days. " + "Extra detail. " * 60
+        runs = [fake_run("r1", "q", long_answer, evidence=REFUND_EVIDENCE)]
+        ts = export_training_set_from_runs(runs, require_grounding=True, min_support=0.4)
+        # The full answer (well over the 500-char span truncation) is preserved.
+        assert len(ts.examples[0].messages[-1]["content"]) > 500
+
+
 class TestDistillAppIntegration:
+    def test_export_from_runs_flag_free(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg = VincioConfig()
+        cfg.storage.metadata = "memory://"
+        cfg.observability.exporter = "memory"
+        cfg.security.audit_log = False
+        app = ContextApp(
+            name="d", provider=MockProvider(responder=lambda r: "The Pro plan refund window is 30 days."),
+            model="teacher", config=cfg,
+        )
+        app.pending_evidence = list(REFUND_EVIDENCE)
+        # No enable_training_capture() — RunResults are faithful by construction.
+        results = [app.run("What is the Pro plan refund window?")]
+        assert results[0].metadata.get("input")  # runtime stamped the input
+        ts = app.export_training_set(runs=results, require_grounding=True, min_support=0.4)
+        assert len(ts) >= 1 and ts.grounded_fraction == 1.0
+        assert ts.metadata["source"] == "runs"
+
+    async def test_streaming_capture_records_full_artifacts(self, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        cfg = VincioConfig()
+        cfg.storage.metadata = "memory://"
+        cfg.observability.exporter = "memory"
+        cfg.security.audit_log = False
+        app = ContextApp(
+            name="s", provider=MockProvider(responder=lambda r: "The Pro plan refund window is 30 days."),
+            model="mock-1", config=cfg,
+        )
+        app.enable_training_capture()
+        app.pending_evidence = list(REFUND_EVIDENCE)
+        async for ev in app.astream("Refund window for Pro plan?"):
+            if ev.type == "done":
+                break
+        captured = [t for t in app.tracer.exporter.traces if t.attributes.get("output_full")]
+        assert captured, "streaming run should record full output when training_capture is on"
+        assert captured[-1].attributes.get("evidence")
+
     def test_export_and_distill(self, tmp_path, monkeypatch):
         monkeypatch.chdir(tmp_path)
         cfg = VincioConfig()

@@ -1687,6 +1687,7 @@ class ContextApp:
         self,
         *,
         name: str = "distilled",
+        runs: list[Any] | None = None,
         traces: list[Any] | None = None,
         limit: int = 500,
         min_feedback_score: float | None = None,
@@ -1696,36 +1697,57 @@ class ContextApp:
         path: str | None = None,
         format: str = "openai",
     ):
-        """Curate captured traces into a grounded fine-tuning :class:`TrainingSet`.
+        """Curate runs or captured traces into a grounded fine-tuning :class:`TrainingSet`.
 
-        Reuses the traces production runs already write — feedback-filtered,
-        grounding-checked against cited evidence, deduped, with full provenance —
-        and emits provider-ready fine-tuning JSONL. Nothing ungrounded is
-        exported. With ``path`` the JSONL is written for ``format`` ("openai" or
-        "anthropic")::
+        Two faithful sources, both grounding-checked, deduped, and
+        provenance-stamped, emitting provider-ready JSONL (nothing ungrounded is
+        exported):
 
-            ts = app.export_training_set(min_feedback_score=0.5, path="train.jsonl")
-            ts.grounded_fraction  # 1.0 — every example is evidence-supported
+        - ``runs=[...]`` — :class:`RunResult` objects (the natural output of
+          :meth:`run`). These carry the **full** output and cited evidence, so
+          the export is faithful with **no opt-in capture** required — the
+          recommended path::
+
+              results = [app.run(q) for q in prompts]
+              ts = app.export_training_set(runs=results, path="train.jsonl")
+
+        - traces (default) — reuses the traces production runs already write,
+          feedback-filtered (``min_feedback_score``). Faithful only when
+          :meth:`enable_training_capture` recorded the full artifacts; otherwise
+          the span output is truncated.
+
+        With ``path`` the JSONL is written for ``format`` ("openai"/"anthropic").
         """
-        from ..optimize.distill import export_training_set
+        from ..optimize.distill import export_training_set, export_training_set_from_runs
 
-        if traces is None:
-            exporter = self.tracer.exporter
-            if hasattr(exporter, "load_all"):
-                traces = exporter.load_all(limit=limit)
-            elif hasattr(exporter, "traces"):
-                traces = list(exporter.traces)[-limit:]
-            else:
-                traces = []
-        training_set = export_training_set(
-            traces,
-            name=name,
-            system=self.prompt_spec.role or self.prompt_spec.objective,
-            min_feedback_score=min_feedback_score,
-            require_grounding=require_grounding,
-            min_support=min_support,
-            max_examples=max_examples,
-        )
+        system = self.prompt_spec.role or self.prompt_spec.objective
+        if runs is not None:
+            training_set = export_training_set_from_runs(
+                runs,
+                name=name,
+                system=system,
+                require_grounding=require_grounding,
+                min_support=min_support,
+                max_examples=max_examples,
+            )
+        else:
+            if traces is None:
+                exporter = self.tracer.exporter
+                if hasattr(exporter, "load_all"):
+                    traces = exporter.load_all(limit=limit)
+                elif hasattr(exporter, "traces"):
+                    traces = list(exporter.traces)[-limit:]
+                else:
+                    traces = []
+            training_set = export_training_set(
+                traces,
+                name=name,
+                system=system,
+                min_feedback_score=min_feedback_score,
+                require_grounding=require_grounding,
+                min_support=min_support,
+                max_examples=max_examples,
+            )
         if path is not None:
             training_set.save(path, format=format)  # type: ignore[arg-type]
             self.events.emit(

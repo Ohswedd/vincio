@@ -998,8 +998,10 @@ behind `@experimental` entry points on the frozen 1.0 API, dependency-free.*
   `BootstrapFinetune` teacher→student loop measures whether a cheaper student (optionally fine-tuned via
   an injected trainer) holds quality on the eval suite before it is promoted into a runtime
   `ModelCascade`. Every exported example is grounded and gated — the flywheel never trains on
-  hallucinations. Opt-in `enable_training_capture()` records the full output and cited evidence on each
-  trace so the export is faithful, not truncated.
+  hallucinations. Export from `RunResult`s (`app.export_training_set(runs=[...])` /
+  `export_training_set_from_runs`) is faithful by construction — they carry the full output and cited
+  evidence and the runtime stamps the input — so no opt-in is needed; the trace path adds
+  `enable_training_capture()` (covering streaming runs too) for teams curating from captured traces.
 - ✅ **Learned prompt compression** — an `LLMLinguaCompressor` compiler pass (token-importance
   compression with a deterministic offline scorer and an optional learned hook) that sits alongside the
   extractive compressor as a drop-in `ContextCompiler.compressor`, protects the answer-bearing tokens
@@ -1020,10 +1022,11 @@ behind `@experimental` entry points on the frozen 1.0 API, dependency-free.*
   budget, compression) *and* exports the result as cheaper inference — with every step grounded, gated,
   and on one trace. See the updated [docs/comparisons/dspy.md](docs/comparisons/dspy.md) and the
   [close-the-loop guide](docs/guides/close-the-loop.md).
-- **854 tests passing offline in ~4s; ruff clean; VincioBench 112/112 budgets**; twenty-eight runnable
+- **866 tests passing offline in ~4s; ruff clean; VincioBench 112/112 budgets**; twenty-eight runnable
   examples. The reflective optimizer (promotion, determinism, budget bound, safety-gated rejection,
-  MIPRO), grounded export + dedup + feedback filter, the teacher→student gate, the LLMLingua pass +
-  faithfulness gate, and judge-step calibration are all covered offline; example
+  MIPRO), grounded export from runs and traces + dedup + feedback filter + streaming capture, the
+  teacher→student gate, the LLMLingua pass + faithfulness gate, and judge-step calibration are all
+  covered offline; example
   `28_reflective_optimization.py`; the VincioBench `loop` family gates reflective-search-vs-baseline
   lift, distillation grounded-only export + quality-hold, and compression fidelity + faithfulness gating
   (nine new budgets, three new SLOs).

@@ -43,6 +43,7 @@ __all__ = [
     "TrainingExample",
     "TrainingSet",
     "export_training_set",
+    "export_training_set_from_runs",
     "DistillationResult",
     "BootstrapFinetune",
 ]
@@ -142,6 +143,50 @@ def _evidence_from_trace(trace: Trace) -> list[EvidenceItem]:
     return items
 
 
+def _grounded_example(
+    input_text: str,
+    output_text: str,
+    evidence: list[EvidenceItem],
+    *,
+    system: str,
+    require_grounding: bool,
+    min_support: float,
+    provenance: dict[str, Any],
+) -> TrainingExample | None:
+    """Build one grounded training example, or ``None`` if it fails the gate.
+
+    Grounding reuses the deterministic extractor 0.8 uses for auto-memory: the
+    output must contain at least one claim the supplied evidence supports at
+    ``min_support``. With ``require_grounding`` off, an example whose evidence
+    does not support it is kept but flagged ``grounded=False``.
+    """
+    support = 1.0
+    evidence_ids: list[str] = []
+    grounded = True
+    if evidence:
+        facts = extract_grounded_facts(str(output_text), evidence, min_support=min_support)
+        grounded = bool(facts)
+        support = max((f.support for f in facts), default=0.0)
+        evidence_ids = sorted({eid for f in facts for eid in f.evidence_ids})
+    elif require_grounding:
+        grounded = False
+        support = 0.0
+    if require_grounding and not grounded:
+        return None
+    messages: list[dict[str, str]] = []
+    if system:
+        messages.append({"role": "system", "content": str(system)})
+    messages.append({"role": "user", "content": str(input_text)})
+    messages.append({"role": "assistant", "content": str(output_text)})
+    return TrainingExample(
+        messages=messages,
+        support=round(support, 4),
+        grounded=grounded,
+        evidence_ids=evidence_ids,
+        provenance=provenance,
+    )
+
+
 def export_training_set(
     traces: list[Trace],
     *,
@@ -165,6 +210,12 @@ def export_training_set(
     collapsed. Every surviving example keeps trace/run/session provenance and
     its measured support — so a reviewer can audit exactly what the student
     will learn from.
+
+    Note: trace spans truncate the recorded output, so this path is faithful
+    only when ``training_capture`` recorded the full artifacts (``output_full`` /
+    ``evidence``). For a flag-free, always-faithful export, build from
+    :class:`~vincio.core.types.RunResult` objects with
+    :func:`export_training_set_from_runs` instead.
     """
     resolver = evidence_for or _evidence_from_trace
     examples: list[TrainingExample] = []
@@ -191,41 +242,23 @@ def export_training_set(
                 continue
             seen.add(key)
 
-        evidence = resolver(trace)
-        support = 1.0
-        evidence_ids: list[str] = []
-        grounded = True
-        if evidence:
-            facts = extract_grounded_facts(str(output_text), evidence, min_support=min_support)
-            grounded = bool(facts)
-            support = max((f.support for f in facts), default=0.0)
-            evidence_ids = sorted({eid for f in facts for eid in f.evidence_ids})
-        elif require_grounding:
-            grounded = False
-            support = 0.0
-        if require_grounding and not grounded:
+        example = _grounded_example(
+            input_text,
+            output_text,
+            resolver(trace),
+            system=str(trace.attributes.get("system") or system),
+            require_grounding=require_grounding,
+            min_support=min_support,
+            provenance={
+                "trace_id": trace.id,
+                "run_id": trace.run_id,
+                "session_id": trace.session_id,
+            },
+        )
+        if example is None:
             dropped_ungrounded += 1
             continue
-
-        messages: list[dict[str, str]] = []
-        sys_prompt = str(trace.attributes.get("system") or system)
-        if sys_prompt:
-            messages.append({"role": "system", "content": sys_prompt})
-        messages.append({"role": "user", "content": str(input_text)})
-        messages.append({"role": "assistant", "content": str(output_text)})
-        examples.append(
-            TrainingExample(
-                messages=messages,
-                support=round(support, 4),
-                grounded=grounded,
-                evidence_ids=evidence_ids,
-                provenance={
-                    "trace_id": trace.id,
-                    "run_id": trace.run_id,
-                    "session_id": trace.session_id,
-                },
-            )
-        )
+        examples.append(example)
         if max_examples is not None and len(examples) >= max_examples:
             break
 
@@ -235,6 +268,91 @@ def export_training_set(
         metadata={
             "source": "traces",
             "traces": len(traces),
+            "considered": considered,
+            "dropped_ungrounded": dropped_ungrounded,
+            "require_grounding": require_grounding,
+            "min_support": min_support,
+        },
+    )
+
+
+def export_training_set_from_runs(
+    runs: list[Any],
+    *,
+    name: str = "distilled",
+    system: str = "",
+    only_ok: bool = True,
+    require_grounding: bool = True,
+    min_support: float = 0.5,
+    dedupe: bool = True,
+    max_examples: int | None = None,
+) -> TrainingSet:
+    """Curate :class:`~vincio.core.types.RunResult` objects into a grounded
+    fine-tuning :class:`TrainingSet` — faithful by construction, no opt-in.
+
+    Unlike the trace path, a ``RunResult`` already carries the **full**
+    untruncated output (``raw_text``) and the **full** cited evidence
+    (``evidence`` / ``citations``), and the runtime stamps the original input on
+    ``metadata['input']`` — so grounding-checked, faithful training data needs no
+    ``training_capture`` flag. The natural usage is to keep the results you run::
+
+        results = [app.run(q) for q in prompts]
+        ts = app.export_training_set(runs=results)
+
+    A run is admitted only when it succeeded (``only_ok``), carries an input and
+    an output, and — with ``require_grounding`` on — has at least one output
+    claim its evidence supports at ``min_support``. Feedback filtering is not
+    applied here (feedback attaches to traces, not results); use the trace path
+    when you need it.
+    """
+    examples: list[TrainingExample] = []
+    seen: set[str] = set()
+    considered = 0
+    dropped_ungrounded = 0
+    for run in runs:
+        status = getattr(run, "status", None)
+        if only_ok and str(getattr(status, "value", status)) != "succeeded":
+            continue
+        metadata = getattr(run, "metadata", {}) or {}
+        input_text = metadata.get("input")
+        output_text = getattr(run, "raw_text", "") or (
+            getattr(run, "output", "") if isinstance(getattr(run, "output", None), str) else ""
+        )
+        if not input_text or not output_text:
+            continue
+        considered += 1
+        if dedupe:
+            key = hashlib.sha256(f"{input_text}\x00{output_text}".encode()).hexdigest()
+            if key in seen:
+                continue
+            seen.add(key)
+
+        evidence = [e for e in (getattr(run, "evidence", None) or []) if isinstance(e, EvidenceItem)]
+        example = _grounded_example(
+            input_text,
+            output_text,
+            evidence,
+            system=system,
+            require_grounding=require_grounding,
+            min_support=min_support,
+            provenance={
+                "run_id": getattr(run, "run_id", None),
+                "trace_id": getattr(run, "trace_id", None),
+            },
+        )
+        if example is None:
+            dropped_ungrounded += 1
+            continue
+        examples.append(example)
+        if max_examples is not None and len(examples) >= max_examples:
+            break
+
+    return TrainingSet(
+        name=name,
+        examples=examples,
+        metadata={
+            "source": "runs",
+            "runs": len(runs),
             "considered": considered,
             "dropped_ungrounded": dropped_ungrounded,
             "require_grounding": require_grounding,

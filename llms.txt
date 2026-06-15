@@ -243,10 +243,14 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `LLMReflector` with fallback), evolves a `ParetoFrontier` under a hard rollout
   budget, deterministic under seed; also `ImprovementLoop(optimizer="reflective")`
   / `vincio optimize reflective` / `vincio loop run --reflective`. Distillation
-  flywheel: `app.enable_training_capture()` then `ts = app.export_training_set(
-  min_feedback_score=, require_grounding=True, path=, format="openai|anthropic")`
-  → `TrainingSet` (grounded, deduped, provenance; `export_training_set(traces,...)`
-  standalone); `vincio distill --traces-dir --output --format`; gate a cheaper
+  flywheel: faithful flag-free export from RunResults — `results=[app.run(q) for q
+  in prompts]; ts = app.export_training_set(runs=results, require_grounding=True,
+  path=, format="openai|anthropic")` (RunResults carry full output + cited evidence,
+  runtime stamps `metadata['input']`; `export_training_set_from_runs(runs,...)`
+  standalone) → `TrainingSet` (grounded, deduped, provenance). Trace path
+  (feedback-filtered) needs `app.enable_training_capture()` (covers streaming):
+  `app.export_training_set(min_feedback_score=)` / `export_training_set(traces,...)`;
+  `vincio distill --traces-dir --output --format`. Gate a cheaper
   student `app.distill(ts, held_out, teacher=, student=, min_quality_ratio=)` →
   `DistillationResult` (promotes a `ModelCascade` only on quality-hold + cost cut;
   `BootstrapFinetune` with an injected `trainer`). Learned compression:

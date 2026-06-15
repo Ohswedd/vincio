@@ -201,6 +201,11 @@ class VincioRuntime:
                 result.error = exc.message
                 yield RunStreamEvent(type="error", error=result.error)
             result.latency_ms = int((time.monotonic() - started) * 1000)
+            trace.attributes["output"] = (result.raw_text or "")[:500]
+            if app.config.observability.training_capture:
+                self._capture_training_artifacts(trace, result, user_input)
+            for metric_name, score in (result.eval_scores or {}).items():
+                trace.add_score(metric_name, score)
 
         self._persist_run(result, run_id, user_input)
         app.events.emit(
@@ -1138,6 +1143,11 @@ class VincioRuntime:
                 )
 
         result.evidence = compiled_context.ir.evidence
+        # Stamp the full input on the result so the distillation flywheel can
+        # build faithful training data straight from a RunResult — no truncation,
+        # no opt-in trace capture required (1.4). Cheap (a string reference);
+        # covers run / stream / batch since all paths call _finalize.
+        result.metadata.setdefault("input", user_input.text or "")
 
         # 14. evaluate output with attached evaluators.
         if app.evaluators:
