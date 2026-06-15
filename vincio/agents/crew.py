@@ -28,6 +28,7 @@ from ..core.concurrency import gather_bounded
 from ..core.errors import AgentEngineError
 from ..core.types import Budget, BudgetUsage, Message, ModelRequest, Objective
 from ..observability.costs import CostTracker
+from ..observability.finops import CostLedger
 from ..observability.traces import Tracer
 from ..providers.base import ModelProvider, run_sync
 from .blackboard import Blackboard
@@ -144,6 +145,7 @@ class Crew:
         max_rounds: int = 4,
         concurrency: int = 4,
         cost_tracker: CostTracker | None = None,
+        cost_ledger: CostLedger | None = None,
     ) -> None:
         if process not in ("sequential", "parallel", "hierarchical"):
             raise AgentEngineError(
@@ -152,6 +154,10 @@ class Crew:
         self.name = name
         self.process = process
         self.costs = cost_tracker or CostTracker()
+        # Cost attribution (1.3): the manager's and every member's model calls
+        # are attributed when an app wires its ledger in; set per run.
+        self.cost_ledger = cost_ledger
+        self.attribution: dict[str, Any] = {}
         self.blackboard = blackboard or Blackboard()
         self.tracer = tracer or Tracer()
         self.manager_provider = manager_provider
@@ -231,6 +237,7 @@ class Crew:
             state: AgentState = await member.executor.run(
                 self._member_objective(role, task),
                 budget=self._member_budget(role, budget, usage),
+                attribution=self.attribution or None,
             )
             span.set(termination_reason=state.termination_reason)
         usage.add(state.usage)
@@ -291,9 +298,21 @@ class Crew:
                 span.set(crew=self.name)
                 response = await self.manager_provider.generate(request)
             cost = self.costs.record_model_call(self.manager_model, response.usage)
+            spent = cost if cost else response.cost_usd
             usage.input_tokens += response.usage.input_tokens
             usage.output_tokens += response.usage.output_tokens
-            usage.cost_usd += cost if cost else response.cost_usd
+            usage.cost_usd += spent
+            if self.cost_ledger is not None:
+                self.cost_ledger.record_model_call(
+                    model=self.manager_model,
+                    usage=response.usage,
+                    cost_usd=spent,
+                    provider=response.provider or "",
+                    tenant_id=self.attribution.get("tenant_id"),
+                    user_id=self.attribution.get("user_id"),
+                    feature=self.attribution.get("feature"),
+                    run_id=self.attribution.get("run_id"),
+                )
             return response.structured or json.loads(response.text)
         except Exception:  # noqa: BLE001 - manager degrades to the heuristic
             return None
@@ -333,10 +352,28 @@ class Crew:
         *,
         tasks: list[str] | dict[str, str] | None = None,
         budget: Budget | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        feature: str | None = None,
     ) -> CrewResult:
-        """Run the crew on ``objective``; ``tasks`` optionally assigns per-member work."""
+        """Run the crew on ``objective``; ``tasks`` optionally assigns per-member work.
+
+        ``tenant_id`` / ``user_id`` / ``feature`` attribute the manager's and every
+        member's model calls on the app cost ledger (1.3)."""
         if not self._members:
             raise AgentEngineError(f"crew {self.name!r} has no members")
+        from ..core.utils import new_id
+
+        self.attribution = {
+            k: v
+            for k, v in {
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "feature": feature,
+                "run_id": new_id("crew_run"),
+            }.items()
+            if v is not None
+        }
         objective_text = objective.text if isinstance(objective, Objective) else objective
         budget = budget or Budget()
         usage = BudgetUsage()
@@ -427,5 +464,13 @@ class Crew:
         *,
         tasks: list[str] | dict[str, str] | None = None,
         budget: Budget | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        feature: str | None = None,
     ) -> CrewResult:
-        return run_sync(self.arun(objective, tasks=tasks, budget=budget))
+        return run_sync(
+            self.arun(
+                objective, tasks=tasks, budget=budget,
+                tenant_id=tenant_id, user_id=user_id, feature=feature,
+            )
+        )

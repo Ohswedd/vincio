@@ -928,8 +928,8 @@ entry points on the frozen 1.0 API, using only the core `httpx` dependency — n
   metric, and the routing optimizer keeps tuning the thresholds offline.
 - ✅ **Cost attribution & budget SLOs** — every run carries request-time metadata
   (`user` / `tenant` / `feature` / `run`); cost is recorded as an attributed `CostEvent` at each model
-  call in a run (tool loop, self-correction, and batch included) against the versioned price table and
-  rolled up by any dimension (`app.cost_report(by=...)` /
+  call in a run (tool loop, self-correction, batch, and the `agent`/`crew` handles included) against
+  the versioned price table and rolled up by any dimension (`app.cost_report(by=...)` /
   `vincio cost report --by tenant|feature`). Per-tenant/feature/user **budgets** (`app.set_cost_budget`)
   enforce a policy on breach — **hard cap** (deny), **degrade-to-cheaper-model**, or
   **queue-to-batch** — as a `PolicyViolation` on the same audit path as every other decision; an
@@ -957,7 +957,7 @@ entry points on the frozen 1.0 API, using only the core `httpx` dependency — n
   enforced budgets, batch — **in-process, governed by your policy engine, and on one trace** with the
   rest of the run. See [docs/comparisons/litellm.md](docs/comparisons/litellm.md) and the new guide
   [docs/guides/cost-and-reliability.md](docs/guides/cost-and-reliability.md).
-- **791 tests passing offline; ruff clean; VincioBench 103/103 budgets**; twenty-seven runnable
+- **797 tests passing offline; ruff clean; VincioBench 103/103 budgets**; twenty-seven runnable
   examples. Batch reconciliation (in-process and both wire backends via `httpx.MockTransport`),
   circuit-breaker state machine + half-open recovery, health-aware failover, key-pool round-robin and
   429 backoff, cascade escalation, cost attribution/rollup, budget cap/degrade/queue-to-batch + anomaly

@@ -114,12 +114,35 @@ class _AgentHandle:
         self._executor = executor
         self._max_steps = max_steps
 
-    async def arun(self, objective: str, *, budget: Budget | None = None):
+    async def arun(
+        self,
+        objective: str,
+        *,
+        budget: Budget | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        feature: str | None = None,
+    ):
         budget = budget or self._app.budget.model_copy(update={"max_steps": self._max_steps})
-        return await self._executor.run(objective, budget=budget)
+        attribution = {
+            k: v
+            for k, v in {"tenant_id": tenant_id, "user_id": user_id, "feature": feature}.items()
+            if v is not None
+        }
+        return await self._executor.run(objective, budget=budget, attribution=attribution or None)
 
-    def run(self, objective: str, *, budget: Budget | None = None):
-        return run_sync(self.arun(objective, budget=budget))
+    def run(
+        self,
+        objective: str,
+        *,
+        budget: Budget | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        feature: str | None = None,
+    ):
+        return run_sync(
+            self.arun(objective, budget=budget, tenant_id=tenant_id, user_id=user_id, feature=feature)
+        )
 
 
 class ContextApp:
@@ -468,8 +491,9 @@ class ContextApp:
         is not). Pass a custom ``confidence`` callable ``(ModelResponse) -> float``
         to drive escalation from your own metric. The offline routing optimizer
         keeps tuning the thresholds. An explicit per-run ``config.model`` or a
-        budget degrade overrides the cascade; streaming runs (``astream``) start
-        on the first rung but do not escalate mid-stream::
+        budget degrade overrides the cascade; streaming runs (``astream``) buffer
+        each rung and stream the accepted (escalated) answer, never a discarded
+        cheap attempt::
 
             app.use_cascade(["gpt-5.2-mini", "gpt-5.2"])
             app.use_cascade(rungs=[{"model": "haiku", "min_confidence": 0.6}, {"model": "opus"}])
@@ -1344,6 +1368,7 @@ class ContextApp:
             output_validator=validator,
             tracer=self.tracer,
             cost_tracker=self.cost_tracker,
+            cost_ledger=self.cost_ledger,
             system_prompt=system_prompt,
         )
 
@@ -1400,6 +1425,7 @@ class ContextApp:
             manager_model=model or self.model,
             max_rounds=max_rounds,
             cost_tracker=self.cost_tracker,
+            cost_ledger=self.cost_ledger,
         )
         role_fields = set(AgentRole.model_fields)
         override_fields = {"tools", "planner", "model", "max_steps"}

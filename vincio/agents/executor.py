@@ -22,6 +22,7 @@ from ..core.types import (
     ToolSpec,
 )
 from ..observability.costs import CostTracker
+from ..observability.finops import CostLedger
 from ..observability.traces import Tracer
 from ..output.validators import OutputValidator
 from ..providers.base import ModelProvider
@@ -81,6 +82,7 @@ class AgentExecutor:
         principal: Principal | None = None,
         tracer: Tracer | None = None,
         cost_tracker: CostTracker | None = None,
+        cost_ledger: CostLedger | None = None,
         human_gate: HumanGate | None = None,
         system_prompt: str = "",
         max_validation_rounds: int = 2,
@@ -95,6 +97,11 @@ class AgentExecutor:
         self.principal = principal or Principal()
         self.tracer = tracer or Tracer()
         self.costs = cost_tracker or CostTracker()
+        # Cost attribution (1.3): when an app wires its ledger here, every agent
+        # model call is attributed by tenant/user/feature/run, exactly like a
+        # ContextApp run. ``attribution`` is set per run by the caller.
+        self.cost_ledger = cost_ledger
+        self.attribution: dict[str, Any] = {}
         self.human_gate = human_gate
         self.system_prompt = system_prompt
         self.max_validation_rounds = max_validation_rounds
@@ -118,10 +125,22 @@ class AgentExecutor:
         request = ModelRequest(model=self.model, messages=messages, **kwargs)
         response = await self.provider.generate(request)
         cost = self.costs.record_model_call(self.model, response.usage)
+        spent = cost if cost else response.cost_usd
         state.usage.input_tokens += response.usage.input_tokens
         state.usage.output_tokens += response.usage.output_tokens
-        state.usage.cost_usd += cost if cost else response.cost_usd
+        state.usage.cost_usd += spent
         state.usage.latency_ms += response.latency_ms
+        if self.cost_ledger is not None:
+            self.cost_ledger.record_model_call(
+                model=self.model,
+                usage=response.usage,
+                cost_usd=spent,
+                provider=response.provider or "",
+                tenant_id=self.attribution.get("tenant_id"),
+                user_id=self.attribution.get("user_id"),
+                feature=self.attribution.get("feature"),
+                run_id=self.attribution.get("run_id"),
+            )
         return response
 
     # -- context rendering ----------------------------------------------------------------
@@ -359,9 +378,13 @@ class AgentExecutor:
         *,
         budget: Budget | None = None,
         initial_evidence: list[EvidenceItem] | None = None,
+        attribution: dict[str, Any] | None = None,
     ) -> AgentState:
         objective = Objective(text=objective) if isinstance(objective, str) else objective
         state = AgentState(objective=objective, budget=budget or Budget())
+        # Cost-attribution dimensions for this run's model calls (1.3); default
+        # the run id to the agent state's id so events are always grouped.
+        self.attribution = {"run_id": state.id, **(attribution or {})}
         if initial_evidence:
             state.evidence.extend(initial_evidence)
 

@@ -4,6 +4,41 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] - 2026-06-15
+
+Completes the 1.3 cost-and-reliability layer so it has no attribution or
+behavioral gaps. All additive/fixes under the frozen 1.0 API.
+
+### Added
+
+- **Cost attribution now spans agents and crews.** `app.agent(...).run(...)` and
+  `Crew.run` / `arun` accept `tenant_id` / `user_id` / `feature`, and every agent
+  step and crew (manager + member) model call is recorded on the app's
+  `CostLedger` — `app.cost_report` and budgets now cover agentic workloads, not
+  just the `run` / `arun` / `astream` / `batch` pipeline.
+
+### Fixed
+
+- **Runtime cascades now escalate on streaming runs.** `app.astream` with a
+  cascade buffers each rung and streams the accepted (escalated) answer, instead
+  of silently using only the first rung — streaming and non-streaming runs now
+  behave identically.
+- **Response-cache hits are free.** A `response_cache` hit served the answer
+  without an API call, so it is billed `$0` (and recorded as a `$0` cost event)
+  rather than at the full uncached price; `cost_report` reflects real spend.
+
+### Internal
+
+- Hardened from an adversarial review: `RateLimiter.acquire` is lock-guarded;
+  `KeyPool.stream` no longer falls back to a known-open breaker; the circuit
+  breaker releases a half-open probe slot on a cancelled probe; self-correction
+  cost is recorded on the ledger; `LiveIndex` keeps unchanged chunks' freshness
+  consistent; Anthropic multi-part messages honor `cache_hint`. Strengthened
+  offline batch-wire tests (OpenAI error files / failed status; Anthropic errored
+  results / cancel). 797 tests; ruff clean; VincioBench 103/103.
+
+See the [roadmap](ROADMAP.md) (1.3 milestone).
+
 ## [1.3.0] - 2026-06-15
 
 Cost, reliability & scale (FinOps + resilience). What real teams hit when an LLM

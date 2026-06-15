@@ -205,10 +205,20 @@ On breach the `BudgetManager` returns a `BudgetDecision`
 `cost.budget_exceeded` fires on the bus. From the shell:
 `vincio cost report --by tenant|feature|user|model|provider|run [--db .vincio/vincio.db] [--json]`.
 
-Attribution and budgets cover `ContextApp` runs — `run` / `arun` / `astream` /
-`batch`, including their tool loops and self-correction. Lower-level
-`app.agent()` / `app.crew()` handles still aggregate spend on `app.cost_tracker`
-but do not carry per-run attribution dimensions.
+Attribution and budgets cover the whole runtime — `run` / `arun` / `astream` /
+`batch` (including tool loops and self-correction) **and** the `app.agent()` /
+`app.crew()` handles. Pass `tenant_id` / `user_id` / `feature` to a handle's
+`run`/`arun` and every agent or crew (manager + member) model call is attributed
+on the same ledger:
+
+```python
+app.agent(tools=[...]).run("research the refund policy", tenant_id="acme", feature="research")
+app.crew(members=[...]).run("draft the report", tenant_id="acme", feature="report")
+```
+
+A response-cache hit costs nothing — it is billed `$0` and recorded as a free
+event, so `cost_report` reflects real spend, not what an uncached run would have
+cost.
 
 ## Provider-aware prompt caching
 
