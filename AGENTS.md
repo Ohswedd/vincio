@@ -14,7 +14,7 @@ vincio/prompts      PromptSpec, AST, compiler (cache-aware), lint, variants, ver
 vincio/context      ContextIR/Packet, scoring, budgeting, compression, compiler
 vincio/input        normalization, language/task classification, routing
 vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, multimodal
-vincio/retrieval    chunkers, embeddings (local + hosted jina/voyage/cohere + build_embedder), BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers (heuristic/recency/authority/llm + hosted cohere/jina/voyage), graph+GraphRAG, live indexes, reasoning
+vincio/retrieval    chunkers, embeddings (local + hosted jina/voyage/cohere + build_embedder), BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers (heuristic/recency/authority/llm + hosted cohere/jina/voyage), graph+GraphRAG, live indexes (1.3: content-hash upsert re-embeds only changed chunks), reasoning; (1.3) sharded.py ShardedIndex (parallel fan-out shards over the Index protocol)
 vincio/connectors   data connectors (web/github/sql/s3/gcs/notion/confluence/slack) feeding the document engine
 vincio/interop      LangChain + LlamaIndex bridges (tools/retrievers/loaders/embeddings, both directions; from_* duck-typed, to_* needs the extra)
 vincio/mcp          (1.1, experimental) MCP client + server over stdio/Streamable HTTP/in-process; tools→permissioned runtime, resources→evidence, prompts→PromptSpec, sampling→provider, elicitation→human gate; app.add_mcp_server / app.serve_mcp
@@ -27,13 +27,13 @@ vincio/agents       bounded DAG executor, planners, ReAct, handoffs, crews + bla
 vincio/workflows    deterministic DAG workflows (retries/compensation/approval gates with pause+resume)
 vincio/output       schemas, robust parsers, validation pipeline, principled repair, constrained decoding (strict schema transform), streaming validation, self-correction loops, multi-schema routing
 vincio/evals        datasets (+synthetic, +from-traces, +multi-turn), metrics (task/grounding/quality/conversational/+1.2 trajectory & tool-use), judges (+G-Eval +Cohen's-κ calibration), runner, gates, reports, experiments (A/B significance), red-teaming; (1.2) Trajectory + RunOutput.from_*, Simulator, OnlineEvaluator (app.add_online_evaluator), DriftMonitor, AnnotationQueue, Experiment (app.experiment), metric_guardrail (app.add_metric_rail)
-vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimization, improvement loop (trace→dataset→eval→optimize→promote), Pareto frontier, retrieval feedback, learned budgets, guided search strategies
-vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenAI semconv) exporters, viewer (TUI/HTML/diff), cost tracking
+vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimization, improvement loop (trace→dataset→eval→optimize→promote), Pareto frontier, retrieval feedback, learned budgets, guided search strategies; (1.3) ModelCascade in routing.py (confidence-gated model escalation)
+vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenAI semconv) exporters, viewer (TUI/HTML/diff), cost tracking; (1.3) finops.py — CostLedger, CostBudget, BudgetManager (cost attribution & budget SLOs)
 vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packet/trace snapshots, pytest plugin (pytest11 entry point)
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, programmable rails, audit
 vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic + compile/chunk caches, invalidation
 vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/pgvector/chroma/pinecone/lancedb vector adapters (build_vector_index), neo4j/redis/duckdb adapters
-vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible passthrough & presets (groq/together/fireworks/openrouter/deepseek/perplexity/xai/nvidia) + OpenAI Responses adapter; unified reasoning control (reasoning_effort/thinking budget, billed); over pooled httpx + coalescing + deterministic mock
+vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible passthrough & presets (groq/together/fireworks/openrouter/deepseek/perplexity/xai/nvidia) + OpenAI Responses adapter; unified reasoning control (reasoning_effort/thinking budget, billed); over pooled httpx + coalescing + deterministic mock; (1.3) batch.py (BatchRunner + in-process/OpenAI/Anthropic backends, ~50% cost), circuit.py (CircuitBreaker, HealthAwareFailover), keypool.py (KeyPool, RateLimiter), cache_strategy.py (PromptCacheStrategy)
 vincio/notebook     rich Jupyter reprs (enable_rich_reprs) for RunResult/Trace/EvalReport/MemoryItem/SearchHit
 vincio/tui          interactive terminal inspector (TUI) for runs/traces/memory; pure renderers + injectable IO
 vincio/server       FastAPI app (API key + JWT auth, real-token SSE streaming)

@@ -7,10 +7,11 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.3.x   | ✅        |
 | 1.2.x   | ✅        |
 | 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
-| < 1.0   | ❌ (upgrade to 1.2.x) |
+| < 1.0   | ❌ (upgrade to 1.3.x) |
 
 ## Threat model
 
@@ -33,6 +34,11 @@ The 1.2 agentic-evaluation features stay in-process: online-eval scores, drift
 baselines, and human annotations are written to your own metadata store (no
 traffic mirrored to any external service), and the user simulator runs against
 your app, not a third party.
+
+The 1.3 cost/reliability features (batch, circuit breakers, key pools,
+cascades, cost attribution, budgets, prompt caching, sharded indexing) are all
+in-process and additive — they introduce no new external services. Budget
+breaches surface as `PolicyViolation`s on the existing hash-chained audit path.
 
 ## Supply-chain integrity
 

@@ -47,8 +47,10 @@ makes Vincio speak the ecosystem's interoperability protocols** — an MCP clien
 agent-to-agent delegation, and Anthropic Agent Skills, plus a unified reasoning control across
 providers. **1.2 makes Vincio *score* what it runs** — trajectory, tool-use, multi-turn, and online
 metrics that double as runtime guardrails and optimizer fitness, plus drift detection and Cohen's-κ
-judge calibration. All additive behind `@experimental` entry points on the frozen 1.0 API, in your
-process, never a hosted dependency.
+judge calibration. **1.3 makes Vincio *survive and account for* production traffic** — batch execution
+at half cost, circuit breakers and health-aware failover, key pooling, runtime model cascades, cost
+attribution by tenant/feature, enforced budget SLOs, and provider-aware prompt caching. All additive
+behind `@experimental` entry points on the frozen 1.0 API, in your process, never a hosted dependency.
 
 ---
 
@@ -706,9 +708,11 @@ six concrete gaps:
    closes this gap** with trajectory/tool-use/goal/plan metrics, a multi-turn simulator, online eval,
    drift detection, and Cohen's-κ annotation, every metric reusable as a guardrail and optimizer term.
 3. **Cost and reliability at scale outgrew retry-and-cache.** Provider **Batch APIs** (a flat 50% cut)
-   are absent; `FailoverChain` and `RetryingProvider` exist but there is no **circuit breaker**, no
+   were absent; `FailoverChain` and `RetryingProvider` existed but there was no **circuit breaker**, no
    key/region load balancing, no **health-aware** routing; per-tenant/per-feature **cost attribution**
-   and enforced **budget/cost SLOs** are not first-class.
+   and enforced **budget/cost SLOs** were not first-class. **1.3 (shipped) closes this gap** with batch
+   execution, circuit breakers + health-aware failover, key pooling, runtime model cascades, cost
+   attribution, and enforced budget SLOs — all in-process.
 4. **Optimization got reflective, and the data flywheel got real.** **GEPA** (reflective genetic-
    Pareto, beating RL with ~35× fewer rollouts) and MIPROv2/SIMBA reset the optimizer bar beyond
    Vincio's evolution/anneal/hill-climb/bandit search; **distillation / fine-tuning data export**
@@ -751,8 +755,8 @@ multimodal/embedding breadth, then the governance layer that ties the audit spin
 | **A2A (Linux Foundation)** | Cross-vendor agent-to-agent delegation | A2A client/server + Agent Cards over the existing crew/graph model, *plus* bounded budgets, termination guarantees, and one trace across the delegation | 1.1 ✅ |
 | **Anthropic Agent Skills** | Portable `SKILL.md` procedural knowledge | A Skills loader with progressive disclosure into the compiler, *plus* skills that are budgeted, cited, and eval-gated like any other context | 1.1 ✅ |
 | **LangSmith / Ragas / DeepEval (agentic)** | Trajectory, tool-use, multi-turn, online eval | Trajectory/tool-use/goal/plan metrics over the spans Vincio already emits, online eval + drift, *plus* the same metrics reused as runtime guardrails and optimizer fitness | 1.2 ✅ |
-| **OpenAI/Anthropic Batch APIs** | 50% async cost cut for offline work | A `BatchRunner` behind the provider interface for evals/extraction/synthetic data, *plus* the same call sites, cost-tracked and traced | 1.3 🚧 |
-| **LiteLLM / gateways** | Failover, circuit breaking, key/region LB, cost attribution | Circuit breakers + health-aware routing on the existing `FailoverChain`, per-tenant/feature cost attribution + enforced budget SLOs, *plus* it lives in-process with your policies, not as a proxy hop | 1.3 🚧 |
+| **OpenAI/Anthropic Batch APIs** | 50% async cost cut for offline work | A `BatchRunner` behind the provider interface for evals/extraction/synthetic data, *plus* the same call sites, cost-tracked and traced | 1.3 ✅ |
+| **LiteLLM / gateways** | Failover, circuit breaking, key/region LB, cost attribution | Circuit breakers + health-aware routing on the existing `FailoverChain`, per-tenant/feature cost attribution + enforced budget SLOs, *plus* it lives in-process with your policies, not as a proxy hop | 1.3 ✅ |
 | **DSPy 3 (GEPA / MIPROv2 / SIMBA)** | Reflective program optimization | A reflective optimizer over the whole context lifecycle (not just the prompt), *plus* gated promotion, Pareto cost/quality, and the closed loop already shipped | 1.4 🚧 |
 | **DSPy BootstrapFinetune / distillation** | Teacher-trace → cheaper student | A distillation/fine-tune data flywheel from production traces, *plus* grounding, provenance, and eval-gating on every exported example | 1.4 🚧 |
 | **LLMLingua** | Learned prompt compression | A learned compressor as a compiler pass alongside extractive compression, *plus* per-task budget integration and faithfulness gating | 1.4 🚧 |
@@ -894,52 +898,75 @@ runtime guardrails and optimizer fitness, all in-process and dependency-free. Ad
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 1.2.0 notes.
 
-### 🚧 1.3 — Cost, reliability & scale (FinOps + resilience)
+### ✅ 1.3 — Cost, reliability & scale (FinOps + resilience) (shipped)
 
 *What real teams hit when an LLM app meets production traffic: provider outages, rate limits, runaway
-spend, and the need to attribute every dollar. Vincio already has failover, retries-with-cooldown, a
+spend, and the need to attribute every dollar. Vincio already had failover, retries-with-cooldown, a
 routing policy, prompt caching, and cost tracking — 1.3 turns those into a complete, enforced cost-and-
-reliability layer that lives in your application, not in a proxy.*
+reliability layer that lives in your application, not in a proxy. Additive behind `@experimental`
+entry points on the frozen 1.0 API, using only the core `httpx` dependency — no SDKs.*
 
-- 🚧 **Batch execution** — `vincio.providers.BatchRunner` / `app.batch([...])` and `vincio batch`
-  submit request sets to the OpenAI and Anthropic **Batch APIs** (flat ~50% cost), poll job status,
-  and reconcile results by custom ID with partial-failure surfacing — same call sites, switchable
-  sync↔batch for latency-tolerant work (evals, bulk extraction, synthetic-data generation, the
-  improvement loop). Cost-tracked and traced like any other call.
-- 🚧 **Circuit breakers & health-aware routing** — a `CircuitBreaker` wrapper tracks per-provider
-  failure rate and latency, opens on threshold (with half-open probing), and steers `FailoverChain` to
-  healthy entries in milliseconds; `KeyPool` round-robins health-aware across multiple API keys and
-  regions with dual TPM+RPM queueing and full-jitter backoff. The documented pattern made explicit:
-  retries for transient, fallback for persistent, circuit-break for systemic.
-- 🚧 **Runtime model cascades** — the existing offline-optimized `RoutingPolicy` gains **confidence-
-  based escalation at run time**: start cheap, escalate to a stronger model only when validation or a
-  confidence metric fails, with per-route cost/quality tracked. `app.use_cascade(...)` wires it as a
-  first-class app feature; the routing optimizer keeps tuning the thresholds offline.
-- 🚧 **Cost attribution & budget SLOs** — every run carries request-time metadata
-  (`user` / `tenant` / `feature` / `run`); cost is computed at span close against the versioned price
-  table and rolled up by any dimension (`vincio cost report --by tenant|feature`). Per-tenant/feature
-  **budgets** enforce a policy on breach — hard cap, **degrade-to-cheaper-model**, or
-  **queue-to-batch** — and anomaly thresholds raise a `cost.anomaly` event. (Attribution is captured
-  at request creation, not retrofitted from logs, so long agentic traces are counted honestly.)
-- 🚧 **Provider-aware prompt-cache strategy** — automatic Anthropic `cache_control` breakpoint
-  placement around stable prefixes (system, tools, long retrieved context) with TTL choice (5-min /
-  1-hour), stable→volatile content ordering to maximize OpenAI/Gemini auto-cache hits, and cache-hit-
-  rate telemetry on the trace — building on the cache-aware stable-prefix layout the compiler already
-  produces and the `cached_input_tokens` the providers already report.
-- 🚧 **Incremental indexing at scale** — `LiveIndex` gains content-hash change detection so only
-  changed documents re-embed, streaming ingestion for freshness, and a sharded-index protocol so a
-  corpus can be split across backends and queried in parallel through the existing `Index` interface.
-- *Interconnection:* batch, failover, cascades, and caching all sit behind the one `ModelProvider`
-  interface, so the compiler, evals, guardrails, and security apply unchanged; cost attribution reuses
-  the trace/cost model and the span attributes (`tenant_id` is already on sessions); budget breaches
-  are `PolicyViolation`s on the same audit path as every other policy decision.
-- *Edge over gateways:* LiteLLM/Bifrost give you failover and cost tracking as a **proxy hop** you
-  operate separately; Vincio gives you the same — circuit breaking, cascades, attribution, enforced
-  budgets — **in-process, governed by your policy engine, and on one trace** with the rest of the run.
-- *Target:* batch reconciliation, circuit-breaker state machine, cascade escalation, and budget
-  enforcement covered offline with `httpx.MockTransport` and the mock provider; example
-  `27_cost_and_reliability.py`; a VincioBench `scale` family gating batch-result correctness,
-  failover/circuit recovery, cache-hit-rate, and attribution accuracy.
+- ✅ **Batch execution** — `vincio.providers.BatchRunner` / `app.batch([...])` / `app.abatch` and
+  `vincio batch` submit request sets to the OpenAI **Batch API** and Anthropic **Message Batches API**
+  (flat ~50% cost), poll job status, and reconcile results **by custom id** with partial-failure
+  surfacing — missing ids become failed results, never silently dropped. `InProcessBatchBackend` is the
+  offline/default path; `OpenAIBatchBackend` / `AnthropicBatchBackend` drive the real endpoints over the
+  provider's own `httpx` client, reusing its payload-building and response-parsing so a batched call is
+  byte-for-byte the sync one. Same `RunResult` contract, cost-tracked at the discounted rate and traced.
+- ✅ **Circuit breakers & health-aware routing** — a `CircuitBreaker` wrapper tracks per-provider
+  failure rate **and** latency over a rolling window, opens on threshold with half-open probing, and
+  fast-fails (non-retryable `CircuitOpenError`) so `HealthAwareFailover` steers to healthy entries in
+  microseconds; `KeyPool` round-robins health-aware across multiple API keys and regions with dual
+  RPM+TPM token-bucket queueing and full-jitter backoff that honors `retry_after`. The documented
+  pattern, made explicit: retries for transient (`RetryingProvider`), fallback for persistent
+  (`HealthAwareFailover`), circuit-break for systemic (`CircuitBreaker`) — composed inner-to-outer.
+- ✅ **Runtime model cascades** — the offline-optimized `RoutingPolicy` gains a runtime counterpart,
+  `ModelCascade`: start on the cheapest rung and escalate to a stronger model only when a response's
+  confidence falls below the rung threshold (default signal: a clean, schema-valid stop is confident; a
+  truncated/filtered/unparseable answer is not), with per-route cost tracked. `app.use_cascade(...)`
+  wires it as a first-class app feature; a custom confidence callable drives escalation from your own
+  metric, and the routing optimizer keeps tuning the thresholds offline.
+- ✅ **Cost attribution & budget SLOs** — every run carries request-time metadata
+  (`user` / `tenant` / `feature` / `run`); cost is recorded as an attributed `CostEvent` at each model
+  call in a run (tool loop, self-correction, and batch included) against the versioned price table and
+  rolled up by any dimension (`app.cost_report(by=...)` /
+  `vincio cost report --by tenant|feature`). Per-tenant/feature/user **budgets** (`app.set_cost_budget`)
+  enforce a policy on breach — **hard cap** (deny), **degrade-to-cheaper-model**, or
+  **queue-to-batch** — as a `PolicyViolation` on the same audit path as every other decision; an
+  `anomaly_factor` raises a `cost.anomaly` event on a spend spike. Attribution is captured at request
+  creation, not retrofitted from logs, so long agentic traces are counted honestly.
+- ✅ **Provider-aware prompt-cache strategy** — `PromptCacheStrategy` / `app.enable_prompt_caching`
+  attaches an Anthropic `cache_control` breakpoint with a **TTL choice (5-minute / 1-hour)** to the
+  compiler's stable prefix when it is long enough to be worth caching (Anthropic caches tools → system,
+  so one system breakpoint covers both); auto-cache providers (OpenAI/Gemini) rely on the stable→volatile
+  ordering the compiler already produces. **Cache-hit rate** is recorded on every model span from the
+  `cached_input_tokens` providers report. The pass is purely additive — it only adds a TTL to
+  breakpoints the compiler already chose.
+- ✅ **Incremental indexing at scale** — `LiveIndex` gained **content-hash change detection** so only
+  changed chunks re-embed (`UpsertStats` reports the re-embedding avoided), `upsert_stream` for
+  streaming ingestion, and `ShardedIndex` — a corpus split across N backends, queried in parallel and
+  merged, behind the existing `Index` protocol (a document's chunks co-locate by default), so it drops
+  into the retrieval engine, behind a `LiveIndex`, or anywhere a single index would go.
+- *Interconnection (held):* batch, circuit breakers, key pools, and cascades all implement the one
+  `ModelProvider` interface, so the compiler, evals, guardrails, and security apply unchanged; cost
+  attribution reuses the trace/cost model and the `tenant_id`/`user_id` already on traces; budget
+  breaches are `PolicyViolation`s on the hash-chained audit path; the cache strategy builds on the
+  compiler's cache-aware stable-prefix layout; `ShardedIndex`/`LiveIndex` keep full chunk provenance.
+- *Edge over gateways (delivered):* LiteLLM/Bifrost give you failover and cost tracking as a **proxy
+  hop** you operate separately; Vincio gives you the same — circuit breaking, cascades, attribution,
+  enforced budgets, batch — **in-process, governed by your policy engine, and on one trace** with the
+  rest of the run. See [docs/comparisons/litellm.md](docs/comparisons/litellm.md) and the new guide
+  [docs/guides/cost-and-reliability.md](docs/guides/cost-and-reliability.md).
+- **791 tests passing offline; ruff clean; VincioBench 103/103 budgets**; twenty-seven runnable
+  examples. Batch reconciliation (in-process and both wire backends via `httpx.MockTransport`),
+  circuit-breaker state machine + half-open recovery, health-aware failover, key-pool round-robin and
+  429 backoff, cascade escalation, cost attribution/rollup, budget cap/degrade/queue-to-batch + anomaly
+  events, the Anthropic cache-control TTL wire format, cache-hit telemetry, and incremental/sharded
+  indexing are all covered offline; example `27_cost_and_reliability.py`; the VincioBench `scale` family
+  gates batch-result correctness, failover/circuit recovery, cache-hit rate, attribution accuracy, and
+  cascade savings (with four new SLOs).
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.3.0 notes.
 
 ### 🚧 1.4 — Reflective optimization & the data flywheel (vs DSPy 3)
 

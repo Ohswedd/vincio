@@ -137,6 +137,13 @@ class CacheConfig(BaseModel):
     prompt_compile_cache: bool = True
     chunk_cache: bool = True
     context_compile_cache: bool = True
+    # Provider-aware prompt caching (1.3): attach a TTL to the compiler's stable
+    # prefix for providers with explicit breakpoints (Anthropic) and record
+    # cache-hit-rate telemetry. Auto-cache providers (OpenAI/Gemini) rely on the
+    # stable→volatile ordering the compiler already produces.
+    provider_cache: bool = True
+    provider_cache_ttl: str = "5m"  # 5m | 1h
+    provider_cache_min_prefix_tokens: int = 1024
 
 
 class PerformanceConfig(BaseModel):

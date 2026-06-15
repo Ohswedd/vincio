@@ -35,6 +35,7 @@ from ..core.types import (
     RunResult,
     RunStatus,
     RunStreamEvent,
+    TokenUsage,
     ToolCall,
     ToolResult,
     UserInput,
@@ -47,6 +48,7 @@ from ..output.correction import SelfCorrector
 from ..output.schemas import OutputContract
 from ..output.streaming import StreamingValidator
 from ..output.validators import OutputValidator
+from ..providers.cache_strategy import cache_hit_rate
 from ..retrieval.chunking import extract_entities
 from .concurrency import gather_bounded
 
@@ -72,6 +74,8 @@ class _PreparedRun:
     contract: OutputContract
     decoding: DecodingMode = DecodingMode.NONE
     request_kwargs: dict[str, Any] = field(default_factory=dict)
+    cache_info: dict[str, Any] = field(default_factory=dict)
+    cascade_active: bool = False  # this run routes through app.cascade (cheap→strong)
 
 
 class VincioRuntime:
@@ -202,6 +206,123 @@ class VincioRuntime:
         )
         yield RunStreamEvent(type="done", result=result, usage=result.usage)
 
+    async def execute_batch(
+        self,
+        inputs: list[str | UserInput],
+        *,
+        run_config: RunConfig | None = None,
+        backend: Any | None = None,
+        discount: float = 0.5,
+        timeout_s: float | None = None,
+    ) -> list[RunResult]:
+        """Run a set of inputs through a provider Batch API (1.3).
+
+        Prepares every input (steps 1-11) under its own trace, submits the
+        model requests as one batch (at the discounted rate), then validates and
+        finalizes each result by custom id. Latency-tolerant work — evals, bulk
+        extraction, synthetic data — at ~half the cost, same RunResult contract.
+        """
+        from ..providers.batch import BatchRequest, BatchRunner
+
+        app = self.app
+        run_config = run_config or RunConfig()
+        budget = run_config.budget or app.budget
+        policies = run_config.policies or app.policies
+
+        prepared_runs: list[tuple[Any, RunResult, str, UserInput, Any]] = []
+        batch_requests: list[BatchRequest] = []
+        for user_input in inputs:
+            if isinstance(user_input, str):
+                user_input = UserInput(text=user_input)
+            else:
+                user_input = user_input.model_copy(deep=True)
+            run_id = new_id("run")
+            result = RunResult(run_id=run_id, status=RunStatus.RUNNING)
+            trace = app.tracer.new_trace(
+                run_id=run_id,
+                session_id=user_input.session_id,
+                user_id=user_input.user_id,
+                tenant_id=user_input.tenant_id,
+                input=(user_input.text or "")[:500],
+                batch=True,
+            )
+            result.trace_id = trace.id
+            with app.tracer.bind(trace):
+                # Batch runs are the queue-to-batch target, so they are exempt
+                # from the interactive cost cap (they pay the discounted rate).
+                prepared = await self._prepare(
+                    user_input, run_config, budget, policies, result, run_id, enforce_budget=False
+                )
+            if prepared is None:
+                app.tracer.export(trace)
+                self._persist_run(result, run_id, user_input)
+                prepared_runs.append((None, result, run_id, user_input, trace))
+                continue
+            request = ModelRequest(
+                model=prepared.model,
+                messages=prepared.messages,
+                tools=prepared.tool_specs,
+                **prepared.request_kwargs,
+            )
+            batch_requests.append(BatchRequest(custom_id=run_id, request=request))
+            prepared_runs.append((prepared, result, run_id, user_input, trace))
+
+        by_id: dict[str, Any] = {}
+        if batch_requests:
+            runner = BatchRunner(
+                backend or app.resolve_provider(run_config),
+                price_table=app.cost_tracker.price_table,
+                tracer=app.tracer,
+                discount=discount,
+                poll_interval_s=0.0,
+                timeout_s=timeout_s,
+            )
+            run_result = await runner.run(batch_requests, timeout_s=timeout_s)
+            by_id = run_result.by_id()
+
+        results: list[RunResult] = []
+        for prepared, result, run_id, user_input, trace in prepared_runs:
+            if prepared is None:
+                results.append(result)
+                continue
+            with app.tracer.bind(trace):
+                batch_result = by_id.get(run_id)
+                if batch_result is None or not batch_result.ok:
+                    result.status = RunStatus.FAILED
+                    result.error = (
+                        batch_result.error if batch_result else "missing from batch output"
+                    )
+                else:
+                    response = batch_result.response
+                    # Discounted cost (already applied by the runner) flows into
+                    # the run, the app cost tracker, and the attribution ledger.
+                    app.cost_tracker.usage.add(response.usage)
+                    app.cost_tracker.model_cost_usd += response.cost_usd
+                    result.usage.add(response.usage)
+                    result.cost_usd += response.cost_usd
+                    app.cost_ledger.record_model_call(
+                        model=prepared.model,
+                        usage=response.usage,
+                        cost_usd=response.cost_usd,
+                        provider=response.provider or "",
+                        tenant_id=user_input.tenant_id,
+                        user_id=user_input.user_id,
+                        feature=user_input.feature,
+                        run_id=run_id,
+                        trace_id=result.trace_id,
+                        batch=True,
+                    )
+                    await self._finalize(prepared, response, result, run_id, user_input, policies)
+            app.tracer.export(trace)
+            self._persist_run(result, run_id, user_input)
+            app.events.emit(
+                "run.completed",
+                {"run_id": run_id, "status": result.status.value, "batch": True},
+                trace_id=result.trace_id,
+            )
+            results.append(result)
+        return results
+
     # ------------------------------------------------------------------
     # steps 1-11: prepare (shared)
     # ------------------------------------------------------------------
@@ -214,6 +335,8 @@ class VincioRuntime:
         policies: Any,
         result: RunResult,
         run_id: str,
+        *,
+        enforce_budget: bool = True,
     ) -> _PreparedRun | None:
         app = self.app
 
@@ -246,6 +369,50 @@ class VincioRuntime:
                 return None
             if check.transformed_text is not None:
                 routed.input.text = check.transformed_text
+
+        # 4c. cost-budget SLO enforcement (1.3): per-tenant/feature budgets are
+        # enforced on the same audit path as every other policy decision. A hard
+        # cap (or queue-to-batch) denies the interactive run; degrade-to-cheaper
+        # swaps in a cheaper model for this run.
+        budget_model_override: str | None = None
+        if enforce_budget and app.budget_manager.budgets:
+            decision = app.budget_manager.check(
+                tenant_id=routed.input.tenant_id,
+                user_id=routed.input.user_id,
+                feature=routed.input.feature,
+            )
+            if decision.action != "allow":
+                app.audit.record(
+                    "cost_budget",
+                    run_id=run_id,
+                    user_id=user_input.user_id,
+                    tenant_id=user_input.tenant_id,
+                    trace_id=result.trace_id,
+                    resource=decision.scope,
+                    decision="deny" if not decision.allowed else "degrade",
+                    details={
+                        "action": decision.action,
+                        "spent_usd": decision.spent_usd,
+                        "limit_usd": decision.limit_usd,
+                        "reason": decision.reason,
+                    },
+                )
+                app.events.emit(
+                    "cost.budget_exceeded",
+                    {"action": decision.action, "scope": decision.scope, "reason": decision.reason},
+                    trace_id=result.trace_id,
+                )
+                result.metadata["budget"] = decision.model_dump()
+                if not decision.allowed:
+                    result.status = RunStatus.DENIED
+                    hint = (
+                        " — resubmit via app.batch() for the discounted batch rate"
+                        if decision.action == "queue_to_batch"
+                        else ""
+                    )
+                    result.error = f"cost budget exceeded: {decision.reason}{hint}"
+                    return None
+                budget_model_override = decision.model_override
 
         # 4b. multi-schema routing: pick the output contract for this task.
         contract = app.output_contract
@@ -383,7 +550,19 @@ class VincioRuntime:
 
         # 11. render provider request via the prompt compiler.
         provider = app.resolve_provider(run_config)
-        model = run_config.model or app.model
+        # A runtime cascade applies only when the caller did not pin a model and
+        # a budget did not force a degrade; it sets the cheapest rung as the
+        # baseline so streaming and non-streaming runs start on the same model
+        # (escalation itself happens in the non-streaming model loop).
+        cascade_active = (
+            app.cascade is not None
+            and budget_model_override is None
+            and run_config.model is None
+        )
+        if cascade_active:
+            model = app.cascade.first().model
+        else:
+            model = budget_model_override or run_config.model or app.model
         capabilities = provider.capabilities(model)
         decoding = negotiate_decoding(capabilities, contract.schema_def)
         with app.tracer.span("prompt_render", type="prompt_render") as span:
@@ -415,6 +594,13 @@ class VincioRuntime:
             )
 
         messages = list(compiled_prompt.messages)
+        # Provider-aware prompt caching (1.3): attach a TTL to the stable prefix
+        # for caching-capable providers; auto-cache providers rely on ordering.
+        cache_info: dict[str, Any] = {}
+        if app.prompt_cache is not None:
+            messages, cache_info = app.prompt_cache.apply(
+                messages, capabilities=capabilities, model=model
+            )
         request_kwargs: dict[str, Any] = {}
         if decoding == DecodingMode.NATIVE and contract.schema_def is not None:
             # Strict-sanitized schema rides the provider's constrained
@@ -444,6 +630,8 @@ class VincioRuntime:
             contract=contract,
             decoding=decoding,
             request_kwargs=request_kwargs,
+            cache_info=cache_info,
+            cascade_active=cascade_active,
         )
 
     # ------------------------------------------------------------------
@@ -507,6 +695,112 @@ class VincioRuntime:
             name=tool_call.name,
         )
 
+    def _confidence(self, response: ModelResponse, *, expects_schema: bool) -> float:
+        """Runtime confidence for cascade escalation (custom signal or default)."""
+        fn = self.app._cascade_confidence
+        if fn is not None:
+            try:
+                return float(fn(response))
+            except Exception:  # noqa: BLE001 - a bad signal must not break the run
+                pass
+        from ..optimize.routing import response_confidence
+
+        return response_confidence(response, expects_schema=expects_schema)
+
+    def _cascade_provider(self, provider_name: str | None) -> ModelProvider | None:
+        if not provider_name:
+            return None
+        return self.app.resolve_provider(RunConfig(provider=provider_name))
+
+    def _attribute_cost(
+        self,
+        *,
+        model: str,
+        response: ModelResponse,
+        cost: float,
+        result: RunResult,
+        user_input: UserInput,
+        run_id: str,
+        span: Any,
+        batch: bool = False,
+    ) -> None:
+        """Record an attributed cost event and run anomaly detection."""
+        app = self.app
+        event = app.cost_ledger.record_model_call(
+            model=model,
+            usage=response.usage,
+            cost_usd=cost,
+            provider=response.provider or "",
+            tenant_id=user_input.tenant_id,
+            user_id=user_input.user_id,
+            feature=user_input.feature,
+            run_id=run_id,
+            trace_id=result.trace_id,
+            batch=batch,
+        )
+        app.budget_manager.observe(event)
+        if user_input.tenant_id or user_input.feature or user_input.user_id:
+            span.set(
+                tenant_id=user_input.tenant_id,
+                feature=user_input.feature,
+                user_id=user_input.user_id,
+            )
+
+    async def _call_model(
+        self,
+        prepared: _PreparedRun,
+        messages: list[Message],
+        model: str,
+        result: RunResult,
+        user_input: UserInput,
+        run_id: str,
+        *,
+        provider: ModelProvider | None = None,
+    ) -> ModelResponse:
+        """One model call: cache-checked, cost-tracked, attributed, traced."""
+        app = self.app
+        provider = provider or prepared.provider
+        request = ModelRequest(
+            model=model, messages=messages, tools=prepared.tool_specs, **prepared.request_kwargs
+        )
+        cached = app.response_cache.get(request) if app.response_cache else None
+        with app.tracer.span("model", type="model_call") as span:
+            span.set(model=model, request_hash=request.hash, cached=cached is not None)
+            if prepared.cache_info.get("applied"):
+                span.set(
+                    cache_strategy_ttl=prepared.cache_info.get("ttl"),
+                    cache_breakpoints=prepared.cache_info.get("breakpoints"),
+                )
+            if cached is not None:
+                response = cached
+            else:
+                response = await provider.generate(request)
+                if app.response_cache is not None and not response.tool_calls:
+                    app.response_cache.set(
+                        request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
+                    )
+            cost = app.cost_tracker.record_model_call(model, response.usage)
+            spent = cost if cost else response.cost_usd
+            result.usage.add(response.usage)
+            result.cost_usd += spent
+            self._attribute_cost(
+                model=model, response=response, cost=spent, result=result,
+                user_input=user_input, run_id=run_id, span=span,
+            )
+            span.set(
+                finish=response.finish_reason,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                reasoning_tokens=response.usage.reasoning_tokens,
+                cached_input_tokens=response.usage.cached_input_tokens,
+                cache_hit_rate=round(
+                    cache_hit_rate(response.usage.input_tokens, response.usage.cached_input_tokens), 4
+                ),
+                cost_usd=round(result.cost_usd, 8),
+                response_text=response.text[:500],
+            )
+        return response
+
     async def _model_tool_loop(
         self,
         prepared: _PreparedRun,
@@ -515,50 +809,53 @@ class VincioRuntime:
         user_input: UserInput,
         run_id: str,
     ) -> ModelResponse:
-        app = self.app
-        messages = prepared.messages
+        """Model + tool loop with optional confidence-based cascade escalation.
+
+        Runs start on ``prepared.model`` — which ``_prepare`` already set to the
+        cascade's cheapest rung when one is active. A terminal answer below the
+        rung's confidence threshold is regenerated on the next stronger rung
+        (clean: the prior answer is never appended to the transcript), bounded by
+        the cascade's escalation cap. Tool rounds use the current rung and are
+        bounded by ``max_tool_calls``. Streaming runs use the first rung without
+        runtime escalation (see ``_model_tool_loop_stream``).
+        """
+        cascade = self.app.cascade if prepared.cascade_active else None
+        expects_schema = prepared.contract.schema_def is not None
+        rung = cascade.first() if cascade is not None else None
+        model = prepared.model  # already the cascade's first rung when active
+        provider = self._cascade_provider(rung.provider) if rung is not None else None
         response: ModelResponse | None = None
-        for _round in range(budget.max_tool_calls + 1):
-            request = ModelRequest(
-                model=prepared.model,
-                messages=messages,
-                tools=prepared.tool_specs,
-                **prepared.request_kwargs,
+        tool_rounds = 0
+        escalations = 0
+        while True:
+            response = await self._call_model(
+                prepared, prepared.messages, model, result, user_input, run_id, provider=provider
             )
-            cached = app.response_cache.get(request) if app.response_cache else None
-            with app.tracer.span("model", type="model_call") as span:
-                span.set(model=prepared.model, request_hash=request.hash, cached=cached is not None)
-                if cached is not None:
-                    response = cached
-                else:
-                    response = await prepared.provider.generate(request)
-                    if app.response_cache is not None and not response.tool_calls:
-                        app.response_cache.set(
-                            request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
-                        )
-                cost = app.cost_tracker.record_model_call(prepared.model, response.usage)
-                result.usage.add(response.usage)
-                result.cost_usd += cost if cost else response.cost_usd
-                span.set(
-                    finish=response.finish_reason,
-                    input_tokens=response.usage.input_tokens,
-                    output_tokens=response.usage.output_tokens,
-                    reasoning_tokens=response.usage.reasoning_tokens,
-                    cost_usd=round(result.cost_usd, 8),
-                    response_text=response.text[:500],
+            if response.tool_calls and prepared.tool_specs and tool_rounds < budget.max_tool_calls:
+                tool_rounds += 1
+                prepared.messages.append(
+                    Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
                 )
-            if not response.tool_calls or not prepared.tool_specs:
-                break
-            # Tool execution round (concurrent fan-out).
-            messages.append(
-                Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
-            )
-            executed = await self._run_tool_round(
-                response.tool_calls, prepared, budget, result, user_input, run_id
-            )
-            for tool_call, tool_result in executed:
-                messages.append(self._tool_message(tool_call, tool_result))
+                executed = await self._run_tool_round(
+                    response.tool_calls, prepared, budget, result, user_input, run_id
+                )
+                for tool_call, tool_result in executed:
+                    prepared.messages.append(self._tool_message(tool_call, tool_result))
+                continue
+            # Terminal answer: consider a cascade escalation.
+            if cascade is not None and escalations < cascade.escalation_cap:
+                confidence = self._confidence(response, expects_schema=expects_schema)
+                nxt = cascade.next_rung(model, confidence)
+                if nxt is not None:
+                    escalations += 1
+                    model = nxt.model
+                    provider = self._cascade_provider(nxt.provider)
+                    continue
+            break
         assert response is not None
+        if cascade is not None:
+            result.metadata.setdefault("cascade", {})["model"] = model
+            result.metadata["cascade"]["escalations"] = escalations
         return response
 
     async def _model_tool_loop_stream(
@@ -652,13 +949,25 @@ class VincioRuntime:
                             request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
                         )
                 cost = app.cost_tracker.record_model_call(prepared.model, response.usage)
+                spent = cost if cost else response.cost_usd
                 result.usage.add(response.usage)
-                result.cost_usd += cost if cost else response.cost_usd
+                result.cost_usd += spent
+                self._attribute_cost(
+                    model=prepared.model, response=response, cost=spent, result=result,
+                    user_input=user_input, run_id=run_id, span=span,
+                )
                 span.set(
                     finish=response.finish_reason,
                     input_tokens=response.usage.input_tokens,
                     output_tokens=response.usage.output_tokens,
                     reasoning_tokens=response.usage.reasoning_tokens,
+                    cached_input_tokens=response.usage.cached_input_tokens,
+                    cache_hit_rate=round(
+                        cache_hit_rate(
+                            response.usage.input_tokens, response.usage.cached_input_tokens
+                        ),
+                        4,
+                    ),
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
                 )
@@ -732,6 +1041,20 @@ class VincioRuntime:
                     initial_report=report,
                 )
                 result.cost_usd += correction.cost_usd
+                # Attribute the correction's model spend too, so the cost ledger
+                # stays consistent with result.cost_usd (1.3).
+                if correction.cost_usd:
+                    app.cost_ledger.record_model_call(
+                        model=prepared.model,
+                        usage=TokenUsage(),
+                        cost_usd=correction.cost_usd,
+                        provider=getattr(prepared.provider, "name", ""),
+                        tenant_id=user_input.tenant_id,
+                        user_id=user_input.user_id,
+                        feature=user_input.feature,
+                        run_id=run_id,
+                        trace_id=result.trace_id,
+                    )
                 correction_cycles = correction.cycles
                 span.add_event(
                     "self_correction",

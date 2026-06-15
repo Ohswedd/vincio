@@ -9,6 +9,15 @@ from .exporters import (
     NullExporter,
     TraceExporter,
 )
+from .finops import (
+    BudgetDecision,
+    BudgetManager,
+    CostBudget,
+    CostEvent,
+    CostLedger,
+    CostReport,
+    CostRow,
+)
 from .sessions import Session, record_feedback, sessions_from_traces
 from .spans import Feedback, Span, SpanType, Trace, TraceEvent
 from .traces import Tracer, trace_diff, trace_replay_plan
@@ -24,6 +33,13 @@ __all__ = [
     "ModelPrice",
     "PriceTable",
     "default_price_table",
+    "CostEvent",
+    "CostRow",
+    "CostReport",
+    "CostLedger",
+    "CostBudget",
+    "BudgetDecision",
+    "BudgetManager",
     "ConsoleExporter",
     "InMemoryExporter",
     "JSONLExporter",

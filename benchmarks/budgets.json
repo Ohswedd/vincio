@@ -282,6 +282,33 @@
     },
     "families.agentic_evals.cohen_kappa_tracked": {
       "gte": 0.75
+    },
+    "families.scale.batch.reconciled_ok": {
+      "eq": true
+    },
+    "families.scale.batch.partial_failures_surfaced": {
+      "eq": true
+    },
+    "families.scale.batch.cost_discount": {
+      "gte": 0.5
+    },
+    "families.scale.circuit.opens_on_systemic": {
+      "eq": true
+    },
+    "families.scale.circuit.half_open_recovers": {
+      "eq": true
+    },
+    "families.scale.circuit.failover_steers_healthy": {
+      "eq": true
+    },
+    "families.scale.cache.hit_rate": {
+      "gte": 0.5
+    },
+    "families.scale.attribution.accuracy": {
+      "gte": 0.99
+    },
+    "families.scale.cascade.cost_savings": {
+      "gte": 0.2
     }
   }
 }

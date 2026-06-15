@@ -35,6 +35,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `24_agent_skills.py` | Agent Skills: load `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools |
 | `25_reasoning_control.py` | unified `reasoning_effort` across providers, thinking-token cost accounting, Responses API adapter |
 | `26_agentic_eval.py` | trajectory & tool-use metrics, multi-turn `Simulator`, online eval + drift, Cohen's-κ annotation, A/B + metric-as-guardrail |
+| `27_cost_and_reliability.py` | batch execution at ~50% cost, circuit breaking + health-aware failover, key pooling with RPM+TPM limits, runtime model cascades, cost attribution + budget SLOs, prompt-cache strategy, incremental + sharded indexing |
 
 Run any of them:
 

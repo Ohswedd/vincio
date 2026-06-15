@@ -20,7 +20,7 @@ from .graphrag import Community, GraphRAG, detect_communities
 from .hierarchy import AutoMergingIndex, contextualize_chunks
 from .indexes import BM25Index, Index, SearchFilter, SearchHit, VectorIndex, build_filter
 from .late_interaction import LateInteractionIndex
-from .live import LiveIndex
+from .live import LiveIndex, UpsertStats
 from .query_understanding import QUERY_STRATEGIES, QueryExpansion, QueryUnderstanding
 from .reasoning_retrieval import FactCoverage, FactRequirement, FactSchema, ReasoningRetriever
 from .rerankers import (
@@ -36,6 +36,7 @@ from .rerankers import (
     VoyageReranker,
     build_reranker,
 )
+from .sharded import ShardedIndex
 from .sparse import CallableSparseEncoder, LocalImpactEncoder, SparseEncoder, SparseIndex
 
 __all__ = [
@@ -71,6 +72,8 @@ __all__ = [
     "build_filter",
     "LateInteractionIndex",
     "LiveIndex",
+    "UpsertStats",
+    "ShardedIndex",
     "QUERY_STRATEGIES",
     "QueryExpansion",
     "QueryUnderstanding",

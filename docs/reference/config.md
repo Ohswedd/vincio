@@ -80,6 +80,13 @@ cache:
   prompt_compile_cache: true   # content-addressed; unchanged inputs never recompile
   chunk_cache: true            # content-addressed; unchanged docs never re-chunk
   context_compile_cache: true  # content-addressed; unchanged compile inputs hit
+  provider_cache: true         # provider-aware prompt caching: attach an Anthropic
+                               # cache_control breakpoint with a TTL to the compiler's
+                               # stable prefix, and record cache-hit-rate telemetry;
+                               # auto-cache providers rely on stable→volatile ordering
+  provider_cache_ttl: 5m       # breakpoint TTL: "5m" or "1h"
+  provider_cache_min_prefix_tokens: 1024  # min stable-prefix length before a breakpoint
+                                          # TTL is applied
 
 performance:
   max_concurrency: 8           # bound for retrieval/memory/ingest fan-out

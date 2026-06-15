@@ -226,6 +226,28 @@ class HTTPProvider(ModelProvider):
         self._raise_for_status(response)
         return response.json()
 
+    async def _get_json(self, path: str) -> dict[str, Any]:
+        self._check_key()
+        try:
+            response = await self.client.get(f"{self.base_url}{path}", headers=self._headers())
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError(str(exc), provider=self.name) from exc
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailableError(str(exc), provider=self.name) from exc
+        self._raise_for_status(response)
+        return response.json()
+
+    async def _get_text(self, path: str) -> str:
+        self._check_key()
+        try:
+            response = await self.client.get(f"{self.base_url}{path}", headers=self._headers())
+        except httpx.TimeoutException as exc:
+            raise ProviderTimeoutError(str(exc), provider=self.name) from exc
+        except httpx.HTTPError as exc:
+            raise ProviderUnavailableError(str(exc), provider=self.name) from exc
+        self._raise_for_status(response)
+        return response.text
+
     async def _post_stream(self, path: str, payload: dict[str, Any]) -> AsyncIterator[str]:
         self._check_key()
         try:

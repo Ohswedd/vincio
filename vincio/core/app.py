@@ -50,6 +50,7 @@ from ..prompts.signatures import Predict, Signature
 from ..prompts.templates import PromptSpec
 from ..providers import build_provider
 from ..providers.base import ModelProvider, run_sync
+from ..providers.cache_strategy import PromptCacheStrategy
 from ..retrieval.chunking import chunk_document
 from ..retrieval.embeddings import CachedEmbedder, LocalHashEmbedder, ProviderEmbedder
 from ..retrieval.engine import RetrievalEngine
@@ -221,6 +222,19 @@ class ContextApp:
         )
         self.prompt_compiler = PromptCompiler(CompilerOptions(), cache=self.prompt_compile_cache)
 
+        # Provider-aware prompt caching (1.3): attach a TTL to the compiler's
+        # stable prefix for caching-capable providers and record cache-hit-rate
+        # telemetry on the model span. On by default; tune via config or
+        # ``enable_prompt_caching``.
+        self.prompt_cache: PromptCacheStrategy | None = (
+            PromptCacheStrategy(
+                ttl=self.config.cache.provider_cache_ttl,  # type: ignore[arg-type]
+                min_prefix_tokens=self.config.cache.provider_cache_min_prefix_tokens,
+            )
+            if self.config.cache.provider_cache
+            else None
+        )
+
         # retrieval
         self.embedder = self._build_embedder()
         self.sources: dict[str, _SourceConfig] = {}
@@ -260,6 +274,18 @@ class ContextApp:
         self._online_tasks: set[asyncio.Task[Any]] = set()
         self.schema_router: SchemaRouter | None = None
         self.self_correction: dict[str, Any] | None = None
+
+        # cost & reliability (1.3): runtime model cascade, cost attribution
+        # ledger, and per-tenant/feature budget enforcement. All opt-in.
+        from ..observability.finops import BudgetManager, CostLedger
+        from ..optimize.routing import ModelCascade
+
+        self.cascade: ModelCascade | None = None
+        self._cascade_confidence: Callable[[Any], float] | None = None
+        self.cost_ledger: CostLedger = CostLedger(
+            price_table=self.cost_tracker.price_table, store=self.store
+        )
+        self.budget_manager: BudgetManager = BudgetManager(self.cost_ledger, events=self.events)
 
         self._runtime = VincioRuntime(self)
 
@@ -401,6 +427,156 @@ class ContextApp:
         """Register a custom rail predicate: ``(text, params) -> falsy | message``."""
         self.rail_engine.register(name, predicate)
         return self
+
+    # -- cost & reliability (1.3) -----------------------------------------------
+
+    @experimental(since="1.3")
+    def enable_prompt_caching(
+        self, *, ttl: str = "5m", min_prefix_tokens: int = 1024
+    ) -> ContextApp:
+        """Turn on provider-aware prompt caching (default on).
+
+        For providers with explicit breakpoints (Anthropic) the compiler's
+        stable prefix gets a ``cache_control`` breakpoint with the chosen
+        ``ttl`` ("5m" or "1h") when it is at least ``min_prefix_tokens`` long;
+        for auto-cache providers (OpenAI/Gemini) the stable→volatile ordering
+        already maximizes hits. Cache-hit rate is recorded on every model
+        span::
+
+            app.enable_prompt_caching(ttl="1h")  # long-lived stable context
+        """
+        self.prompt_cache = PromptCacheStrategy(
+            enabled=True, ttl=ttl, min_prefix_tokens=min_prefix_tokens  # type: ignore[arg-type]
+        )
+        return self
+
+    @experimental(since="1.3")
+    def use_cascade(
+        self,
+        models: list[str] | None = None,
+        *,
+        rungs: list[Any] | None = None,
+        min_confidence: float = 0.5,
+        max_escalations: int | None = None,
+        confidence: Callable[[Any], float] | None = None,
+    ) -> ContextApp:
+        """Route runs through a cheap→strong model cascade at run time.
+
+        A run starts on the cheapest model and escalates to the next only when a
+        response's confidence falls below the rung threshold (default: a clean,
+        schema-valid stop is confident; a truncated/filtered/unparseable answer
+        is not). Pass a custom ``confidence`` callable ``(ModelResponse) -> float``
+        to drive escalation from your own metric. The offline routing optimizer
+        keeps tuning the thresholds. An explicit per-run ``config.model`` or a
+        budget degrade overrides the cascade; streaming runs (``astream``) start
+        on the first rung but do not escalate mid-stream::
+
+            app.use_cascade(["gpt-5.2-mini", "gpt-5.2"])
+            app.use_cascade(rungs=[{"model": "haiku", "min_confidence": 0.6}, {"model": "opus"}])
+        """
+        from ..optimize.routing import CascadeRung, ModelCascade
+
+        if rungs is not None:
+            parsed: list[CascadeRung] = []
+            for rung in rungs:
+                if isinstance(rung, CascadeRung):
+                    parsed.append(rung)
+                elif isinstance(rung, dict):
+                    parsed.append(CascadeRung(**rung))
+                else:
+                    parsed.append(CascadeRung(model=str(rung)))
+            self.cascade = ModelCascade(rungs=parsed, max_escalations=max_escalations)
+        elif models:
+            self.cascade = ModelCascade.from_models(
+                list(models), min_confidence=min_confidence, max_escalations=max_escalations
+            )
+        else:
+            raise ConfigError("use_cascade requires models=[...] or rungs=[...]")
+        self._cascade_confidence = confidence
+        return self
+
+    @experimental(since="1.3")
+    def set_cost_budget(
+        self,
+        *,
+        limit_usd: float,
+        scope: str = "tenant",
+        id: str | None = None,
+        period: str = "day",
+        on_breach: str = "cap",
+        degrade_model: str | None = None,
+        anomaly_factor: float | None = None,
+    ) -> ContextApp:
+        """Enforce a per-tenant/feature/user cost budget.
+
+        When the scope's spend over ``period`` reaches ``limit_usd``, ``on_breach``
+        decides the action: ``"cap"`` denies the run, ``"degrade"`` swaps in
+        ``degrade_model`` (a cheaper model), and ``"queue_to_batch"`` denies the
+        interactive run and points the caller at :meth:`batch`. Set
+        ``anomaly_factor`` to raise a ``cost.anomaly`` event on a spend spike::
+
+            app.set_cost_budget(scope="tenant", id="acme", limit_usd=10.0, period="day")
+            app.set_cost_budget(scope="feature", id="chat", limit_usd=5.0,
+                                 on_breach="degrade", degrade_model="gpt-5.2-mini")
+        """
+        from ..observability.finops import CostBudget
+
+        self.budget_manager.add(
+            CostBudget(
+                scope=scope,  # type: ignore[arg-type]
+                id=id,
+                limit_usd=limit_usd,
+                period=period,  # type: ignore[arg-type]
+                on_breach=on_breach,  # type: ignore[arg-type]
+                degrade_model=degrade_model,
+                anomaly_factor=anomaly_factor,
+            )
+        )
+        return self
+
+    @experimental(since="1.3")
+    def cost_report(self, *, by: str = "tenant", since: Any | None = None):
+        """Roll up attributed model cost by ``tenant``/``feature``/``user``/
+        ``model``/``provider``/``run`` (returns a :class:`CostReport`)."""
+        return self.cost_ledger.report(by, since=since)  # type: ignore[arg-type]
+
+    @experimental(since="1.3")
+    def batch(
+        self,
+        inputs: list[str | UserInput],
+        *,
+        backend: Any | None = None,
+        config: RunConfig | None = None,
+        discount: float = 0.5,
+        timeout_s: float | None = None,
+    ) -> list[RunResult]:
+        """Run a set of inputs through a provider Batch API at ~half the cost.
+
+        Latency-tolerant work — evals, bulk extraction, synthetic data — with the
+        same :class:`RunResult` contract as :meth:`run`. ``backend`` is a
+        :class:`~vincio.providers.BatchBackend` (or a provider; defaults to the
+        app's provider run in-process)::
+
+            results = app.batch(["summarize doc A", "summarize doc B"])
+        """
+        return run_sync(
+            self.abatch(inputs, backend=backend, config=config, discount=discount, timeout_s=timeout_s)
+        )
+
+    @experimental(since="1.3")
+    async def abatch(
+        self,
+        inputs: list[str | UserInput],
+        *,
+        backend: Any | None = None,
+        config: RunConfig | None = None,
+        discount: float = 0.5,
+        timeout_s: float | None = None,
+    ) -> list[RunResult]:
+        """Async :meth:`batch`."""
+        return await self._runtime.execute_batch(
+            inputs, run_config=config, backend=backend, discount=discount, timeout_s=timeout_s
+        )
 
     # -- sources / retrieval ----------------------------------------------------------------
 
@@ -1024,6 +1200,7 @@ class ContextApp:
         tenant_id: str | None = None,
         user_id: str | None = None,
         session_id: str | None = None,
+        feature: str | None = None,
         config: RunConfig | None = None,
     ) -> RunResult:
         if isinstance(user_input, str):
@@ -1038,6 +1215,8 @@ class ContextApp:
             user_input.user_id = user_id
         if session_id is not None:
             user_input.session_id = session_id
+        if feature is not None:
+            user_input.feature = feature
         result = await self._runtime.execute(user_input, config)
         if self.online_evaluators:
             self._spawn_online(result, user_input)
@@ -1059,6 +1238,7 @@ class ContextApp:
         tenant_id: str | None = None,
         user_id: str | None = None,
         session_id: str | None = None,
+        feature: str | None = None,
         config: RunConfig | None = None,
     ) -> AsyncIterator[RunStreamEvent]:
         """Run the full pipeline with end-to-end streaming.
@@ -1085,6 +1265,8 @@ class ContextApp:
             user_input.user_id = user_id
         if session_id is not None:
             user_input.session_id = session_id
+        if feature is not None:
+            user_input.feature = feature
         config = config or RunConfig()
         config = config.model_copy(update={"stream": True})
         async for event in self._runtime.execute_stream(user_input, config):

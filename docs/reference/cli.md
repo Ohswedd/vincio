@@ -29,6 +29,20 @@ vincio tui [--traces-dir DIR] [--db FILE]
 vincio run APP.py --input "..." [--file F]... [--tenant T] [--user U]
     Run the app once and print status, trace id, cost, and output.
 
+vincio batch APP.py --input X --input Y [--input-file lines.txt]
+        [--discount 0.5] [--output results.json]
+    Run a set of inputs through the provider's Batch API at ~50% cost
+    (--discount). Inputs come from repeated --input flags and/or one per line
+    from --input-file. Prints N/M succeeded, total cost, and a per-result
+    trace id; --output writes the results as JSON. Exits non-zero if any
+    request failed.
+
+vincio cost report --by tenant|feature|user|model|provider|run
+        [--db .vincio/vincio.db] [--json]
+    Roll up attributed model cost by a dimension from the metadata store's
+    cost_events (--db). Prints per-key cost, calls, and tokens with a total;
+    --json emits the report as JSON.
+
 vincio eval run DATASET.jsonl --app APP.py
         [--metric NAME]... [--gate "metric=>= 0.9"]...
         [--compare baseline.json] [--output report.json] [--concurrency N]
