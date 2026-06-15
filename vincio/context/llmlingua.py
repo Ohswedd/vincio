@@ -43,6 +43,9 @@ __all__ = [
 _PROTECTED_RE = re.compile(r"\d|%|\$|€|£")
 _CITATION_RE = re.compile(r"\[[^\]]{1,60}\]")
 _ENTITY_RE = re.compile(r"^[A-Z][a-zA-Z]")
+# Tokenizer that keeps a bracketed citation span atomic (even when it contains
+# spaces, e.g. "[Smith and Jones 2020]") so fine pruning can protect it whole.
+_TOKEN_RE = re.compile(r"\[[^\]]{1,60}\]|\S+")
 
 # High-frequency function words carry little information and compress away first.
 _STOPWORDS = frozenset(
@@ -139,7 +142,9 @@ class LLMLinguaCompressor:
         working = coarse.text if coarse.compressed_tokens <= coarse_budget else text
 
         # Fine: token-level pruning by importance, protecting the answer tokens.
-        tokens = working.split()
+        # Citation spans are tokenized atomically so a multi-word marker like
+        # "[Smith and Jones 2020]" is protected whole, not fragmented.
+        tokens = _TOKEN_RE.findall(working)
         if not tokens:
             return truncate_to_tokens(text, max_tokens, model=model)
         scores = self.scorer.score(tokens, query)

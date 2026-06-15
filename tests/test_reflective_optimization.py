@@ -522,6 +522,13 @@ class TestLLMLinguaCompressor:
         res = LLMLinguaCompressor()(text, "amount", count_tokens(text) // 2)
         assert "$4,200" in res.text
 
+    def test_multiword_citation_kept_atomic(self):
+        # A bracketed citation with spaces must survive whole, not fragmented.
+        text = ("According to the detailed quarterly report per [Smith and Jones 2020] "
+                "the revenue grew substantially across every region last year.")
+        res = LLMLinguaCompressor()(text, "revenue", count_tokens(text) // 2)
+        assert "[Smith and Jones 2020]" in res.text
+
     def test_drop_in_signature_matches_extractive(self):
         # Both callables accept (text, query, max_tokens) positionally.
         budget = count_tokens(LONG_TEXT) // 2
