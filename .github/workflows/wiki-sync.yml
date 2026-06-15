@@ -1,0 +1,66 @@
+name: Sync Wiki
+
+# Mirrors the in-repo docs/ tree into the GitHub Wiki so the wiki is always
+# current with the shipped library. The wiki is generated, not hand-edited:
+# change a page by editing its source under docs/ and merging to main.
+#
+# One-time setup: a GitHub wiki cannot be created via the API or by pushing —
+# its first page must be created once in the repository's Wiki tab
+# ("Create the first page" → Save). Until then this job soft-skips with a notice.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "scripts/sync_wiki.py"
+      - ".github/workflows/wiki-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wiki-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    name: Build & publish wiki
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build wiki pages from docs/
+        run: python scripts/sync_wiki.py --out wiki_build --repo "${{ github.repository }}"
+
+      - name: Publish to wiki
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          REMOTE="https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.wiki.git"
+
+          if ! git clone --depth 1 "$REMOTE" wiki 2> clone_err; then
+            if grep -qi "not found" clone_err; then
+              echo "::warning title=Wiki not initialized::Create the first wiki page once via the repository's Wiki tab (Create the first page → Save), then re-run this workflow. Skipping for now."
+              exit 0
+            fi
+            echo "Unexpected clone failure:"; cat clone_err; exit 1
+          fi
+
+          rsync -a --delete --exclude='.git' wiki_build/ wiki/
+          cd wiki
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "Wiki already up to date — nothing to publish."
+          else
+            git commit -m "docs: sync wiki from ${{ github.sha }}"
+            git push
+            echo "Wiki updated."
+          fi
