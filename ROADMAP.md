@@ -49,8 +49,12 @@ providers. **1.2 makes Vincio *score* what it runs** — trajectory, tool-use, m
 metrics that double as runtime guardrails and optimizer fitness, plus drift detection and Cohen's-κ
 judge calibration. **1.3 makes Vincio *survive and account for* production traffic** — batch execution
 at half cost, circuit breakers and health-aware failover, key pooling, runtime model cascades, cost
-attribution by tenant/feature, enforced budget SLOs, and provider-aware prompt caching. All additive
-behind `@experimental` entry points on the frozen 1.0 API, in your process, never a hosted dependency.
+attribution by tenant/feature, enforced budget SLOs, and provider-aware prompt caching. **1.4 makes
+Vincio *optimize itself and get cheaper*** — a reflective (GEPA-style) optimizer and MIPRO joint
+proposal evolving a Pareto frontier from eval failures, a grounded-and-gated distillation flywheel that
+turns production traces into a cheaper student in the routing cascade, faithfulness-gated learned
+prompt compression, and reflective calibration of the optimizer's own judge. All additive behind
+`@experimental` entry points on the frozen 1.0 API, in your process, never a hosted dependency.
 
 ---
 
@@ -718,6 +722,10 @@ six concrete gaps:
    Vincio's evolution/anneal/hill-climb/bandit search; **distillation / fine-tuning data export**
    (teacher-trace → training set → cheaper student) is genuine whitespace across the whole field; and
    **learned prompt compression** (LLMLingua-class) goes beyond Vincio's extractive compression.
+   **1.4 (shipped) closes this gap** with a reflective (GEPA-style) optimizer and MIPRO joint proposal
+   over the whole context lifecycle, a grounded-and-gated distillation flywheel from production traces
+   into cheaper inference, a faithfulness-gated learned compressor, and reflective calibration of the
+   optimizer's own judge.
 5. **Multimodal and embedding breadth advanced.** **Matryoshka** dimension truncation, **contextual**
    chunk embeddings (Voyage `context-3`), unified text+image embeddings (Cohere v4), and vector stores
    Vincio doesn't yet adapt (Weaviate, Milvus, Elasticsearch/OpenSearch, Vespa) are now standard.
@@ -757,9 +765,9 @@ multimodal/embedding breadth, then the governance layer that ties the audit spin
 | **LangSmith / Ragas / DeepEval (agentic)** | Trajectory, tool-use, multi-turn, online eval | Trajectory/tool-use/goal/plan metrics over the spans Vincio already emits, online eval + drift, *plus* the same metrics reused as runtime guardrails and optimizer fitness | 1.2 ✅ |
 | **OpenAI/Anthropic Batch APIs** | 50% async cost cut for offline work | A `BatchRunner` behind the provider interface for evals/extraction/synthetic data, *plus* the same call sites, cost-tracked and traced | 1.3 ✅ |
 | **LiteLLM / gateways** | Failover, circuit breaking, key/region LB, cost attribution | Circuit breakers + health-aware routing on the existing `FailoverChain`, per-tenant/feature cost attribution + enforced budget SLOs, *plus* it lives in-process with your policies, not as a proxy hop | 1.3 ✅ |
-| **DSPy 3 (GEPA / MIPROv2 / SIMBA)** | Reflective program optimization | A reflective optimizer over the whole context lifecycle (not just the prompt), *plus* gated promotion, Pareto cost/quality, and the closed loop already shipped | 1.4 🚧 |
-| **DSPy BootstrapFinetune / distillation** | Teacher-trace → cheaper student | A distillation/fine-tune data flywheel from production traces, *plus* grounding, provenance, and eval-gating on every exported example | 1.4 🚧 |
-| **LLMLingua** | Learned prompt compression | A learned compressor as a compiler pass alongside extractive compression, *plus* per-task budget integration and faithfulness gating | 1.4 🚧 |
+| **DSPy 3 (GEPA / MIPROv2 / SIMBA)** | Reflective program optimization | A reflective optimizer over the whole context lifecycle (not just the prompt), *plus* gated promotion, Pareto cost/quality, and the closed loop already shipped | 1.4 ✅ |
+| **DSPy BootstrapFinetune / distillation** | Teacher-trace → cheaper student | A distillation/fine-tune data flywheel from production traces, *plus* grounding, provenance, and eval-gating on every exported example | 1.4 ✅ |
+| **LLMLingua** | Learned prompt compression | A learned compressor as a compiler pass alongside extractive compression, *plus* per-task budget integration and faithfulness gating | 1.4 ✅ |
 | **Voyage / Cohere v4 / LlamaParse** | Matryoshka, contextual & multimodal embeddings, rich extraction | MRL truncation, contextual & multimodal embedders, and more vector stores behind the existing `Embedder`/`Index`, *plus* one scored, budgeted, cited packet | 1.5 🚧 |
 | **DeepTeam / NeMo / governance** | OWASP/NIST/MITRE mapping, safety classifiers | Red-team + audit mapped to OWASP LLM 2025 / OWASP Agents / NIST AI RMF / MITRE ATLAS, model/system cards, AI-BOM, lineage, residency, multilingual — all from the existing audit/security spine | 1.6 🚧 |
 
@@ -968,42 +976,59 @@ entry points on the frozen 1.0 API, using only the core `httpx` dependency — n
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 1.3.0 notes.
 
-### 🚧 1.4 — Reflective optimization & the data flywheel (vs DSPy 3)
+### ✅ 1.4 — Reflective optimization & the data flywheel (vs DSPy 3) (shipped)
 
 *0.8 shipped the closed loop: trace → dataset → eval → optimize → promote. 1.4 sharpens the optimizer
 to the 2025–26 state of the art and adds the one lever the whole field is missing — turning production
-traces into cheaper models — while keeping every promotion gated, grounded, and audited.*
+traces into cheaper models — while keeping every promotion gated, grounded, and audited. Additive
+behind `@experimental` entry points on the frozen 1.0 API, dependency-free.*
 
-- 🚧 **Reflective optimizer (GEPA-style)** — a `ReflectiveOptimizer` that, instead of blind mutation,
-  reads the eval report's failures, **reflects in natural language** on why a prompt/context lost, and
-  proposes targeted edits, evolving a **Pareto frontier** (it slots into the existing `ParetoFrontier`
-  and `guided_search`). MIPROv2-style joint instruction+example proposal is offered as a second
-  strategy. The same sample-efficiency win GEPA reports (beating RL with far fewer rollouts) under
-  Vincio's hard evaluation budget, deterministic under seed.
-- 🚧 **Distillation / fine-tune flywheel** — `app.export_training_set(...)` /
-  `vincio distill` curates production traces (feedback-filtered, grounding-checked, deduped, with full
-  provenance) into provider-ready fine-tuning **JSONL**, and a `BootstrapFinetune`-style teacher→student
-  loop measures whether a cheaper student fine-tuned on a strong teacher's grounded traces holds quality
-  on the eval suite before it is promoted into the routing cascade. Every exported example is grounded
-  and gated — the flywheel never trains on hallucinations.
-- 🚧 **Learned prompt compression** — an `LLMLinguaCompressor` compiler pass (token-importance
-  compression with a deterministic offline scorer and an optional learned model) that sits alongside
-  the existing extractive compressor, integrates with per-task budget allocation, and is **faithfulness-
-  gated**: compression is adopted only when it preserves the cited-fact set under eval.
-- 🚧 **Optimizer-judge calibration** — judge prompts used by the optimizer can themselves be tuned by
-  the reflective optimizer against κ-validated human labels (1.2), closing the loop on the loop.
-- *Interconnection:* the reflective optimizer reuses the fitness function, the eval runner, the
-  registry, the tracker, and gated promotion — no new stores; distillation reuses `dataset_from_traces`
-  and the grounding extractor from 0.8; the compressor is just another compiler pass measured by the
-  same VincioBench budgets.
-- *Edge over DSPy:* DSPy optimizes a program's prompts; Vincio applies reflective, Pareto-aware
-  optimization across the **whole context lifecycle** (prompt, examples, retrieval weights, budget,
-  compression) *and* exports the result as cheaper inference — with every step grounded, gated, and on
-  one trace.
-- *Target:* reflective-optimizer convergence and bound, distillation grounding/gating, and compression
-  faithfulness covered offline; example `28_reflective_optimization.py`; VincioBench `loop` family
-  extended with reflective-search-vs-baseline lift, distillation-quality-hold, and compression-fidelity
-  gates.
+- ✅ **Reflective optimizer (GEPA-style)** — a `ReflectiveOptimizer` that, instead of blind mutation,
+  reads the eval report's failures, **reflects** on why a prompt lost (a deterministic
+  `HeuristicReflector`, or an `LLMReflector` with a deterministic fallback), and proposes targeted
+  edits, evolving a **Pareto frontier** (it reuses `ParetoFrontier`). A child is screened on a minibatch
+  and only earns a full rollout when it beats its parent, so the GEPA sample-efficiency win holds under a
+  **hard evaluation budget**, deterministic under seed. MIPROv2-style joint instruction+example proposal
+  is the second strategy (`strategy="mipro"`). The result is a drop-in `OptimizationResult`, so
+  `ImprovementLoop(optimizer="reflective")` / `app.reflective_optimize(...)` / `vincio optimize
+  reflective` promote through the identical gated path.
+- ✅ **Distillation / fine-tune flywheel** — `app.export_training_set(...)` / `vincio distill` curates
+  production traces (feedback-filtered, grounding-checked against the cited evidence, deduped, with full
+  provenance) into provider-ready fine-tuning **JSONL** (OpenAI and Anthropic shapes), and a
+  `BootstrapFinetune` teacher→student loop measures whether a cheaper student (optionally fine-tuned via
+  an injected trainer) holds quality on the eval suite before it is promoted into a runtime
+  `ModelCascade`. Every exported example is grounded and gated — the flywheel never trains on
+  hallucinations. Opt-in `enable_training_capture()` records the full output and cited evidence on each
+  trace so the export is faithful, not truncated.
+- ✅ **Learned prompt compression** — an `LLMLinguaCompressor` compiler pass (token-importance
+  compression with a deterministic offline scorer and an optional learned hook) that sits alongside the
+  extractive compressor as a drop-in `ContextCompiler.compressor`, protects the answer-bearing tokens
+  (numbers, entities, citations, query terms), and is **faithfulness-gated**: `CompressionTuner` /
+  `app.gate_compression(...)` adopt it only when it preserves the cited-fact set and holds quality under
+  eval. `app.use_learned_compression()` installs it directly for opt-in users.
+- ✅ **Optimizer-judge calibration** — `JudgeCalibrator` / `app.calibrate_judge(...)` reflectively tunes
+  a `GEvalJudge`'s evaluation steps against κ-validated human labels (1.2), adopting a new procedure only
+  when its Cohen's κ strictly beats the incumbent — and leaving the judge's gating weight reflecting the
+  higher agreement. The judge that gates the optimizer is itself optimized.
+- *Interconnection (held):* the reflective optimizer reuses the fitness function, the eval runner, the
+  registry, the tracker, the Pareto frontier, and gated promotion — no new stores; distillation reuses
+  the grounded-fact extractor from 0.8 and promotes into the 1.3 routing cascade; the compressor is just
+  another compiler pass measured by the same VincioBench budgets; judge calibration reuses the 1.2
+  Cohen's-κ machinery.
+- *Edge over DSPy (delivered):* DSPy optimizes a program's prompts; Vincio applies reflective,
+  Pareto-aware optimization across the **whole context lifecycle** (prompt, examples, retrieval weights,
+  budget, compression) *and* exports the result as cheaper inference — with every step grounded, gated,
+  and on one trace. See the updated [docs/comparisons/dspy.md](docs/comparisons/dspy.md) and the
+  [close-the-loop guide](docs/guides/close-the-loop.md).
+- **854 tests passing offline in ~4s; ruff clean; VincioBench 112/112 budgets**; twenty-eight runnable
+  examples. The reflective optimizer (promotion, determinism, budget bound, safety-gated rejection,
+  MIPRO), grounded export + dedup + feedback filter, the teacher→student gate, the LLMLingua pass +
+  faithfulness gate, and judge-step calibration are all covered offline; example
+  `28_reflective_optimization.py`; the VincioBench `loop` family gates reflective-search-vs-baseline
+  lift, distillation grounded-only export + quality-hold, and compression fidelity + faithfulness gating
+  (nine new budgets, three new SLOs).
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.4.0 notes.
 
 ### 🚧 1.5 — Multimodal, embeddings & retrieval breadth (vs LlamaIndex, Voyage/Cohere)
 

@@ -92,6 +92,11 @@ class ContextCompiler:
         self.allocator = BudgetAllocator()
         self.cache = cache  # ContextCompileCache | None
         self.cache_hits = 0
+        # The inline evidence compressor (1.4). Defaults to extractive
+        # compression; a learned compressor (e.g. ``LLMLinguaCompressor``) is a
+        # drop-in with the same signature, installed via
+        # ``app.use_learned_compression(...)`` once faithfulness-gated.
+        self.compressor: Any = extractive_compress
 
     def _signature(
         self,
@@ -346,7 +351,7 @@ class ContextCompiler:
                 if self.options.compress_evidence and best.type == "evidence":
                     remaining_budget = budget_tokens - used
                     if remaining_budget >= 32:
-                        compressed = extractive_compress(best.content, query, remaining_budget)
+                        compressed = self.compressor(best.content, query, remaining_budget)
                         if compressed.compressed_tokens <= remaining_budget:
                             best.content = compressed.text
                             best.token_cost = compressed.compressed_tokens

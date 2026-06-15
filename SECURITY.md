@@ -7,11 +7,12 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.4.x   | ✅        |
 | 1.3.x   | ✅        |
 | 1.2.x   | ✅        |
 | 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
-| < 1.0   | ❌ (upgrade to 1.3.x) |
+| < 1.0   | ❌ (upgrade to 1.4.x) |
 
 ## Threat model
 
@@ -39,6 +40,16 @@ The 1.3 cost/reliability features (batch, circuit breakers, key pools,
 cascades, cost attribution, budgets, prompt caching, sharded indexing) are all
 in-process and additive — they introduce no new external services. Budget
 breaches surface as `PolicyViolation`s on the existing hash-chained audit path.
+
+The 1.4 reflective-optimization and flywheel features run in-process and add no
+external services: the reflective optimizer reuses the existing eval/registry/
+audit path, and judge calibration uses your own labelled data. The distillation
+flywheel writes a fine-tuning **JSONL file you own** from your captured traces;
+treat it as you would any export of model inputs/outputs — it may contain
+business data, so `enable_training_capture()` is opt-in (off by default), every
+exported example is grounding-checked, and feedback/grounding filters bound what
+is written. Apply your own retention and access controls to the exported file
+before sending it to a provider's fine-tuning API.
 
 ## Supply-chain integrity
 

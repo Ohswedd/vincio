@@ -77,6 +77,10 @@ class ObservabilityConfig(BaseModel):
     traces_dir: str = ".vincio/traces"
     redact_pii_in_traces: bool = False
     sample_rate: float = 1.0
+    # Opt-in: record the full (untruncated) output and cited evidence on each
+    # trace so the distillation flywheel (1.4) can curate faithful, grounded
+    # fine-tuning data. Off by default — the span output stays truncated.
+    training_capture: bool = False
 
 
 class SecurityConfig(BaseModel):

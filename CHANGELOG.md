@@ -4,6 +4,70 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] - 2026-06-15
+
+Reflective optimization & the data flywheel (vs DSPy 3). 0.8 shipped the closed
+loop; 1.4 sharpens the optimizer to the 2025–26 state of the art and adds the
+lever the field is missing — turning production traces into cheaper inference —
+while keeping every promotion gated, grounded, and audited. Like the rest of the
+1.x line, the milestone is **additive under the frozen 1.0 API**: new surfaces sit
+behind `@experimental` entry points, no public symbol is removed or repurposed,
+and it uses only the core `httpx` dependency — no SDKs.
+
+### Added
+
+- **Reflective optimizer (GEPA-style)** (`vincio.optimize.ReflectiveOptimizer`,
+  `ReflectiveResult`, `Reflector`, `HeuristicReflector`, `LLMReflector`,
+  `MIPROProposer`, `ProposedEdit`, `Reflection`, `apply_edits`). Instead of blind
+  mutation, the optimizer reads the eval report's failures, reflects on why a
+  prompt lost, and proposes targeted edits, evolving a `ParetoFrontier`. A child
+  is screened on a minibatch and earns a full rollout only when it beats its
+  parent, so the GEPA sample-efficiency win holds under a **hard evaluation
+  budget**, deterministic under seed. `strategy="mipro"` switches to MIPROv2-style
+  joint instruction+example proposal. The result is a drop-in `OptimizationResult`:
+  `ImprovementLoop(optimizer="reflective")`, `app.reflective_optimize(...)`, and
+  `vincio optimize reflective` (and `vincio loop run --reflective`) promote through
+  the identical gated path (registry push, eval-link, audit, event).
+- **Distillation / fine-tune flywheel** (`vincio.optimize.export_training_set`,
+  `TrainingSet`, `TrainingExample`, `BootstrapFinetune`, `DistillationResult`).
+  `app.export_training_set(...)` / `vincio distill` curate production traces
+  (feedback-filtered, grounding-checked against cited evidence, deduped, with full
+  provenance) into provider-ready fine-tuning **JSONL** (OpenAI and Anthropic
+  shapes); a teacher→student loop measures whether a cheaper student holds quality
+  on the eval suite before promoting it into a runtime `ModelCascade`. Every
+  exported example is grounded and gated. Opt-in `app.enable_training_capture()`
+  (config `observability.training_capture`) records the full output and cited
+  evidence on each trace so the export is faithful, not truncated to the span.
+- **Learned prompt compression** (`vincio.context.LLMLinguaCompressor`,
+  `TokenImportanceScorer`, `compression_faithfulness`, `faithfulness_preserved`,
+  `salient_units`). A token-importance compressor that drops low-information tokens
+  while protecting numbers, entities, citations, and query terms — a drop-in
+  `ContextCompiler.compressor` alongside extractive compression.
+  `vincio.optimize.CompressionTuner` / `app.gate_compression(...)` adopt it only
+  when it preserves the cited-fact set and holds quality under eval;
+  `app.use_learned_compression()` installs it directly.
+- **Optimizer-judge calibration** (`vincio.optimize.JudgeCalibrator`,
+  `JudgeStepReflector`, `JudgeStepProposal`, `JudgeCalibrationResult`).
+  `app.calibrate_judge(...)` reflectively tunes a `GEvalJudge`'s evaluation steps
+  against κ-validated human labels, adopting a new procedure only when its Cohen's
+  κ strictly beats the incumbent, and leaving the judge's gating weight reflecting
+  the higher agreement.
+- New top-level exports: `ReflectiveOptimizer`, `TrainingSet`, `BootstrapFinetune`,
+  `LLMLinguaCompressor`, `JudgeCalibrator`. New example
+  `28_reflective_optimization.py`. The VincioBench `loop` family gains
+  reflective-search-vs-baseline lift, distillation grounded-only export +
+  quality-hold, and compression fidelity + faithfulness-gating gates (nine new
+  budgets, three new SLOs).
+
+### Notes
+
+- **854 tests passing offline; ruff clean; VincioBench 112/112 budgets**;
+  twenty-eight runnable examples. All 1.4 surfaces are `@experimental(since="1.4")`
+  on the frozen 1.0 API — no existing behaviour changes, and the default compressor
+  remains extractive until a learned one is installed.
+
+See the [roadmap](ROADMAP.md) (1.4 milestone).
+
 ## [1.3.1] - 2026-06-15
 
 Completes the 1.3 cost-and-reliability layer so it has no attribution or

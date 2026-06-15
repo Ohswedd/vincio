@@ -214,6 +214,7 @@ for any engine directly.
 | **Agentic eval & continuous quality** | Score *how* a run reached its answer, not just the text: trajectory & tool-use metrics over a `Trajectory` projected from any crew / graph / trace (no re-instrumentation); a deterministic multi-turn `Simulator`; **online evaluation** on a sampled slice of live traffic (score time series, off the hot path); **drift detection** (score + embedding-distribution) raising a `drift.detected` event; human annotation with **Cohen's-κ** judge calibration; production A/B with cost + significance per variant. Every metric doubles as a runtime guardrail (`add_metric_rail`) and optimizer fitness term. |
 | **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
 | **The closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
+| **Reflective optimization & the flywheel** | A GEPA-style `ReflectiveOptimizer` that reads eval failures, reflects on why a prompt lost, and proposes targeted edits, evolving a Pareto frontier under a hard rollout budget (plus MIPRO joint instruction+example proposal); a **distillation flywheel** (`app.export_training_set` / `vincio distill`) that curates grounded production traces into provider-ready fine-tuning JSONL and gates a cheaper student into the routing cascade only when it holds quality; **learned prompt compression** (`LLMLinguaCompressor`) as a faithfulness-gated compiler pass; and reflective calibration of the optimizer's own LLM judge against κ-validated labels. |
 | **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
 | **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB behind one `build_vector_index` factory), and graph (Neo4j) backends. |
@@ -267,6 +268,9 @@ baseline. Representative results on the bundled reference corpus:
 | | circuit opens on systemic failure → half-open recovers · failover steers healthy | **pass** | one slow timeout/request |
 | | prompt-cache hit rate (warm stable prefix) · cost-attribution accuracy | **72% · 100%** | — |
 | | cascade savings vs always-strong (cheap-first, escalate on low confidence) | **−70%** | — |
+| **Reflective optimization & flywheel** | reflective search beats baseline within rollout budget · deterministic | **pass** | blind mutation |
+| | distillation exports grounded-only · gates student on quality hold | **pass** | trains on hallucinations |
+| | learned compression preserves cited facts under faithfulness gate | **pass** | drops evidence |
 
 > **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
 > demonstrate the mechanisms, not to be quoted as universal gains. The context-compression
@@ -339,10 +343,11 @@ and the vector store you already run. See the
 | Control reasoning effort across providers with honest cost | unified reasoning control + Responses API | [`25_reasoning_control.py`](examples/25_reasoning_control.py) |
 | Score agents over their trajectory and live traffic | trajectory & tool-use metrics, multi-turn simulator, online eval + drift, Cohen's-κ annotation, A/B + metric-as-guardrail | [`26_agentic_eval.py`](examples/26_agentic_eval.py) |
 | Survive outages and account for every dollar at scale | batch execution, circuit breaking + failover, key pooling, model cascades, cost attribution + budgets, prompt caching, sharded indexing | [`27_cost_and_reliability.py`](examples/27_cost_and_reliability.py) |
+| Optimize prompts reflectively and distill traces into a cheaper model | GEPA/MIPRO reflective optimizer, distillation flywheel, learned compression, optimizer-judge calibration | [`28_reflective_optimization.py`](examples/28_reflective_optimization.py) |
 
 ## More examples
 
-All twenty-seven examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
+All twenty-eight examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
 at a real model with environment variables:
 
 ```bash
@@ -368,7 +373,9 @@ vincio trace diff a b --html diff.html  # visual side-by-side diff
 vincio trace sessions            # list sessions with aggregates
 vincio trace feedback trace_123 --score 1.0
 vincio optimize run --target groundedness
+vincio optimize reflective --app app.py --dataset golden.jsonl  # GEPA-style reflective optimization
 vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"  # one closed-loop cycle
+vincio distill --traces-dir .vincio/traces --output train.jsonl  # grounded fine-tuning JSONL
 vincio index build ./docs        # build a retrieval index
 vincio memory inspect --user u1  # inspect a user's memory
 vincio memory recall "answer style" --user u1  # scored hybrid recall

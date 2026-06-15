@@ -124,6 +124,8 @@ class VincioRuntime:
                 trace.attributes["cancelled"] = True
             result.latency_ms = int((time.monotonic() - started) * 1000)
             trace.attributes["output"] = (result.raw_text or "")[:500]
+            if app.config.observability.training_capture:
+                self._capture_training_artifacts(trace, result, user_input)
             for metric_name, score in (result.eval_scores or {}).items():
                 trace.add_score(metric_name, score)
 
@@ -1267,6 +1269,37 @@ class VincioRuntime:
             return
         response = await self._model_tool_loop(prepared, budget, result, user_input, run_id)
         await self._finalize(prepared, response, result, run_id, user_input, policies)
+
+    def _capture_training_artifacts(
+        self, trace: Any, result: RunResult, user_input: UserInput
+    ) -> None:
+        """Record the full output and cited evidence on the trace for the
+        distillation flywheel (opt-in via ``observability.training_capture``).
+
+        The span's ``output`` stays truncated for cost; these untruncated
+        attributes let ``export_training_set`` build faithful, grounded training
+        examples and run the grounding check against the evidence the answer
+        actually cited.
+        """
+        trace.attributes["input_full"] = user_input.text or ""
+        trace.attributes["output_full"] = result.raw_text or ""
+        cited = set(result.citations or [])
+        evidence = [
+            {
+                "id": item.id,
+                "source_id": item.source_id,
+                "text": item.text,
+                "citation_ref": item.citation_ref,
+            }
+            for item in result.evidence
+            if not cited or item.id in cited or item.citation_ref in cited
+        ] or [
+            {"id": item.id, "source_id": item.source_id, "text": item.text,
+             "citation_ref": item.citation_ref}
+            for item in result.evidence
+        ]
+        if evidence:
+            trace.attributes["evidence"] = evidence
 
     def _persist_run(self, result: RunResult, run_id: str, user_input: UserInput) -> None:
         self.app.store.save(

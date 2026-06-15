@@ -782,6 +782,7 @@ def cmd_loop_run(args: argparse.Namespace) -> int:
         gates=gates or None,
         experiment=args.experiment,
         concurrency=args.concurrency,
+        optimizer="reflective" if getattr(args, "reflective", False) else "evolution",
     )
     dataset = Dataset.load(args.dataset) if args.dataset else None
     result = loop.run(
@@ -805,6 +806,73 @@ def cmd_loop_run(args: argparse.Namespace) -> int:
     print(f"promoted: {result.promoted} — {result.reason}")
     if result.promoted_ref:
         print(f"prompt registry: {result.promoted_ref} (tag: {args.tag})")
+    return 0
+
+
+def cmd_optimize_reflective(args: argparse.Namespace) -> int:
+    """GEPA-style reflective prompt optimization against a dataset."""
+    from ..evals.datasets import Dataset
+    from ..optimize.search import FitnessWeights
+
+    app = _load_app(args.app)
+    dataset = Dataset.load(args.dataset)
+    weights = FitnessWeights()
+    if args.target == "groundedness":
+        weights.groundedness = 2.0
+    elif args.target == "cost":
+        weights.cost = 2.0
+    elif args.target == "quality":
+        weights.accuracy = 2.0
+    metrics = ["semantic_similarity", "groundedness", "schema_validity", "cost", "latency"]
+    result = app.reflective_optimize(
+        dataset,
+        strategy=args.strategy,
+        metrics=metrics,
+        budget=args.budget,
+        minibatch_size=args.minibatch,
+        seed=args.seed,
+        weights=weights,
+        concurrency=args.concurrency,
+        apply=args.apply,
+    )
+    print(f"strategy: {result.strategy} · baseline fitness: {result.baseline_fitness:.4f}")
+    for reflection in result.reflections:
+        if reflection.edits:
+            print(f"  reflect: {reflection.diagnosis}")
+    print(f"rollouts: {result.evaluations} · frontier: "
+          f"{len(result.frontier.front) if result.frontier else 0} non-dominated")
+    print(f"promoted: {result.promoted} — {result.reason}")
+    if result.promoted and result.best is not None and args.output:
+        Path(args.output).write_text(
+            yaml.safe_dump(result.best.payload.spec.model_dump(mode="json"), sort_keys=False),
+            encoding="utf-8",
+        )
+        print(f"wrote winning prompt spec to {args.output}")
+    return 0
+
+
+def cmd_distill(args: argparse.Namespace) -> int:
+    """Curate captured traces into grounded fine-tuning JSONL."""
+    from ..observability.exporters import JSONLExporter
+    from ..optimize.distill import export_training_set
+
+    exporter = JSONLExporter(args.traces_dir)
+    traces = exporter.load_all()
+    training_set = export_training_set(
+        traces,
+        name=Path(args.output).stem,
+        min_feedback_score=args.min_feedback,
+        require_grounding=not args.allow_ungrounded,
+        min_support=args.min_support,
+        max_examples=args.max_examples,
+    )
+    training_set.save(args.output, format=args.format)
+    dropped = training_set.metadata.get("dropped_ungrounded", 0)
+    print(
+        f"wrote {len(training_set)} example(s) ({args.format} format) from {len(traces)} trace(s) "
+        f"to {args.output}; dropped {dropped} ungrounded; grounded "
+        f"fraction {training_set.grounded_fraction}"
+    )
     return 0
 
 
@@ -1223,6 +1291,34 @@ def build_parser() -> argparse.ArgumentParser:
     p_opt_run.add_argument("--output", default=None, help="write winning spec YAML here")
     p_opt_run.set_defaults(fn=cmd_optimize_run)
 
+    p_opt_refl = optimize_sub.add_parser(
+        "reflective", help="GEPA-style reflective prompt optimization (1.4)"
+    )
+    p_opt_refl.add_argument("--app", required=True)
+    p_opt_refl.add_argument("--dataset", required=True)
+    p_opt_refl.add_argument("--strategy", default="reflective", choices=["reflective", "mipro"])
+    p_opt_refl.add_argument("--target", default="quality", choices=["quality", "groundedness", "cost"])
+    p_opt_refl.add_argument("--budget", type=int, default=12, help="max evaluation rollouts")
+    p_opt_refl.add_argument("--minibatch", type=int, default=8, help="screening minibatch size")
+    p_opt_refl.add_argument("--seed", type=int, default=7)
+    p_opt_refl.add_argument("--concurrency", type=int, default=4)
+    p_opt_refl.add_argument("--apply", action="store_true", help="apply the winner to the app spec")
+    p_opt_refl.add_argument("--output", default=None, help="write winning spec YAML here")
+    p_opt_refl.set_defaults(fn=cmd_optimize_reflective)
+
+    p_distill = sub.add_parser("distill", help="curate traces into grounded fine-tuning JSONL (1.4)")
+    p_distill.add_argument("--traces-dir", default=".vincio/traces", help="directory of captured traces")
+    p_distill.add_argument("--output", required=True, help="output JSONL path")
+    p_distill.add_argument("--format", default="openai", choices=["openai", "anthropic"])
+    p_distill.add_argument("--min-feedback", type=float, default=None, help="min mean feedback score")
+    p_distill.add_argument("--min-support", type=float, default=0.5, help="evidence support a claim needs")
+    p_distill.add_argument("--max-examples", type=int, default=None)
+    p_distill.add_argument(
+        "--allow-ungrounded", action="store_true",
+        help="keep examples without evidence support (default: drop them)",
+    )
+    p_distill.set_defaults(fn=cmd_distill)
+
     p_loop = sub.add_parser("loop", help="closed improvement loop (0.8)")
     loop_sub = p_loop.add_subparsers(dest="loop_command", required=True)
     p_loop_run = loop_sub.add_parser(
@@ -1238,6 +1334,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_loop_run.add_argument("--tag", default="production", help="registry tag for the promoted version")
     p_loop_run.add_argument("--experiment", default="improvement_loop")
     p_loop_run.add_argument("--dry-run", action="store_true", help="report the decision without promoting")
+    p_loop_run.add_argument(
+        "--reflective", action="store_true", help="use the GEPA-style reflective optimizer (1.4)"
+    )
     p_loop_run.set_defaults(fn=cmd_loop_run)
 
     p_index = sub.add_parser("index", help="index commands")

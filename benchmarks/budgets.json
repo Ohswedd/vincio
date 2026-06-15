@@ -244,6 +244,33 @@
     "families.loop.guided_search.found_optimum": {
       "eq": true
     },
+    "families.loop.reflective.search_beats_baseline": {
+      "eq": true
+    },
+    "families.loop.reflective.budget_respected": {
+      "eq": true
+    },
+    "families.loop.reflective.deterministic": {
+      "eq": true
+    },
+    "families.loop.distillation.grounded_only_exported": {
+      "eq": true
+    },
+    "families.loop.distillation.quality_hold_promoted": {
+      "eq": true
+    },
+    "families.loop.distillation.quality_drop_rejected": {
+      "eq": true
+    },
+    "families.loop.compression.fidelity_preserved": {
+      "eq": true
+    },
+    "families.loop.compression.token_reduction": {
+      "gte": 0.2
+    },
+    "families.loop.compression.faithfulness_gated": {
+      "eq": true
+    },
     "families.protocols.mcp.schema_fidelity": {
       "gte": 1.0
     },

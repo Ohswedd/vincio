@@ -261,6 +261,36 @@
       "threshold": 0.99,
       "enforced_by": "families.scale.attribution.accuracy",
       "rationale": "FinOps decisions and per-tenant budgets are only trustworthy if attribution is exact, not estimated."
+    },
+    {
+      "id": "reflective_search_lift",
+      "category": "quality",
+      "statement": "The reflective optimizer promotes a candidate that beats the baseline on a failing prompt, within its rollout budget.",
+      "metric": "families.loop.reflective.search_beats_baseline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.reflective.search_beats_baseline",
+      "rationale": "Failure-driven reflection must produce a real improvement, not just churn, to justify the rollouts it spends."
+    },
+    {
+      "id": "distillation_quality_hold",
+      "category": "quality",
+      "statement": "A distilled student is promoted into the cascade only when it holds the teacher's quality; a quality drop is rejected.",
+      "metric": "families.loop.distillation.quality_drop_rejected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.distillation.quality_drop_rejected",
+      "rationale": "Turning traces into cheaper inference must never silently trade away accuracy; the gate is the whole point."
+    },
+    {
+      "id": "compression_fidelity",
+      "category": "quality",
+      "statement": "Learned prompt compression hits its token budget while preserving the cited-fact set.",
+      "metric": "families.loop.compression.fidelity_preserved",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.compression.fidelity_preserved",
+      "rationale": "A compressor that drops the evidence an answer cites trades tokens for hallucination; faithfulness is the floor."
     }
   ]
 }

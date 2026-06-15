@@ -1586,6 +1586,298 @@ class ContextApp:
 
         return ImprovementLoop(self, **kwargs)
 
+    # -- reflective optimization & the data flywheel (1.4) -------------------------
+
+    def _evaluate_variant_fn(self, metrics: list[str], *, concurrency: int = 4):
+        """Build a memory-write-free variant evaluator for the optimizers.
+
+        Candidate evaluations must never mutate user memory or hand later
+        candidates different recall state than earlier ones saw, so the prompt
+        spec, compiler options, and ``memory.write_back`` are saved, neutralized,
+        and restored around every evaluation — the same discipline the
+        improvement loop uses.
+        """
+        from ..evals.runners import EvalRunner
+
+        async def evaluate_variant(variant, ds):
+            original_spec = self.prompt_spec
+            original_options = self.prompt_compiler.options
+            original_write_back = self.config.memory.write_back
+            self.prompt_spec = variant.spec
+            self.prompt_compiler.options = variant.compiler_options
+            self.config.memory.write_back = []
+            try:
+                runner = EvalRunner(self, metrics=metrics, concurrency=concurrency)
+                return await runner.arun(ds, name=variant.name)
+            finally:
+                self.prompt_spec = original_spec
+                self.prompt_compiler.options = original_options
+                self.config.memory.write_back = original_write_back
+
+        return evaluate_variant
+
+    @experimental(since="1.4")
+    def reflective_optimize(
+        self,
+        dataset: Dataset,
+        *,
+        strategy: str = "reflective",
+        metrics: list[str] | None = None,
+        budget: int = 12,
+        minibatch_size: int = 8,
+        seed: int = 7,
+        weights: Any | None = None,
+        gates: dict[str, str] | None = None,
+        objectives: Any | None = None,
+        concurrency: int = 4,
+        apply: bool = False,
+    ):
+        """Run the GEPA-style reflective optimizer against ``dataset``.
+
+        Instead of blind variant search, the optimizer reads the eval report's
+        failures, reflects on why the prompt lost, and proposes targeted edits,
+        evolving a Pareto frontier under a hard ``budget`` of rollouts —
+        deterministic under ``seed``. ``strategy="mipro"`` switches to joint
+        instruction+example proposal. With ``apply=True`` a promoted winner is
+        installed on the app::
+
+            result = app.reflective_optimize(dataset, gates={"groundedness": ">= 0.8"})
+            result.promoted, result.reason, result.frontier.front
+        """
+        from ..optimize.loop import DEFAULT_LOOP_METRICS
+        from ..optimize.reflective import ReflectiveOptimizer
+
+        metric_list = metrics or (self.evaluators or DEFAULT_LOOP_METRICS)
+        optimizer = ReflectiveOptimizer(
+            self._evaluate_variant_fn(metric_list, concurrency=concurrency),
+            weights=weights,
+            gates=gates,
+            objectives=objectives,
+        )
+        result = run_sync(
+            optimizer.optimize(
+                self.prompt_spec,
+                dataset,
+                strategy=strategy,  # type: ignore[arg-type]
+                budget=budget,
+                minibatch_size=minibatch_size,
+                seed=seed,
+            )
+        )
+        if apply and result.promoted and result.best is not None:
+            winner = result.best.payload
+            self.prompt_spec = winner.spec
+            self.prompt_compiler.options = winner.compiler_options
+            self.events.emit("optimize.reflective", {"reason": result.reason})
+        return result
+
+    @experimental(since="1.4")
+    def enable_training_capture(self, enabled: bool = True) -> ContextApp:
+        """Record the full output and cited evidence on every trace, so
+        :meth:`export_training_set` can curate faithful, grounded fine-tuning
+        data. Off by default (the span output stays truncated for cost)::
+
+            app.enable_training_capture()  # then run production traffic
+        """
+        self.config.observability.training_capture = enabled
+        return self
+
+    @experimental(since="1.4")
+    def export_training_set(
+        self,
+        *,
+        name: str = "distilled",
+        traces: list[Any] | None = None,
+        limit: int = 500,
+        min_feedback_score: float | None = None,
+        require_grounding: bool = True,
+        min_support: float = 0.5,
+        max_examples: int | None = None,
+        path: str | None = None,
+        format: str = "openai",
+    ):
+        """Curate captured traces into a grounded fine-tuning :class:`TrainingSet`.
+
+        Reuses the traces production runs already write — feedback-filtered,
+        grounding-checked against cited evidence, deduped, with full provenance —
+        and emits provider-ready fine-tuning JSONL. Nothing ungrounded is
+        exported. With ``path`` the JSONL is written for ``format`` ("openai" or
+        "anthropic")::
+
+            ts = app.export_training_set(min_feedback_score=0.5, path="train.jsonl")
+            ts.grounded_fraction  # 1.0 — every example is evidence-supported
+        """
+        from ..optimize.distill import export_training_set
+
+        if traces is None:
+            exporter = self.tracer.exporter
+            if hasattr(exporter, "load_all"):
+                traces = exporter.load_all(limit=limit)
+            elif hasattr(exporter, "traces"):
+                traces = list(exporter.traces)[-limit:]
+            else:
+                traces = []
+        training_set = export_training_set(
+            traces,
+            name=name,
+            system=self.prompt_spec.role or self.prompt_spec.objective,
+            min_feedback_score=min_feedback_score,
+            require_grounding=require_grounding,
+            min_support=min_support,
+            max_examples=max_examples,
+        )
+        if path is not None:
+            training_set.save(path, format=format)  # type: ignore[arg-type]
+            self.events.emit(
+                "distill.exported", {"path": path, "examples": len(training_set), "format": format}
+            )
+        return training_set
+
+    @experimental(since="1.4")
+    def distill(
+        self,
+        training_set: Any,
+        dataset: Dataset,
+        *,
+        teacher: str,
+        student: str,
+        trainer: Any | None = None,
+        quality_metric: str = "semantic_similarity",
+        min_quality_ratio: float = 0.97,
+        gates: dict[str, str] | None = None,
+        concurrency: int = 4,
+        apply: bool = True,
+    ):
+        """Teacher → student distillation, gated on holding quality.
+
+        Evaluates teacher and student on the held-out ``dataset`` and promotes
+        the (optionally fine-tuned) student into a cheap→strong runtime cascade
+        only when it preserves ``min_quality_ratio`` of the teacher's quality at
+        strictly lower cost, with no safety/schema regression. With
+        ``apply=True`` a promoted cascade is installed via :meth:`use_cascade`::
+
+            ts = app.export_training_set(min_feedback_score=0.5)
+            result = app.distill(ts, held_out, teacher="gpt-5.2", student="gpt-5.2-mini")
+            result.promoted, result.cost_savings
+        """
+        from ..optimize.distill import BootstrapFinetune
+
+        async def evaluate_model(model, ds):
+            from ..evals.runners import EvalRunner
+
+            original_model = self.model
+            original_write_back = self.config.memory.write_back
+            self.model = model
+            self.config.memory.write_back = []
+            try:
+                runner = EvalRunner(
+                    self, metrics=[quality_metric, "cost", "safety", "schema_validity"],
+                    concurrency=concurrency,
+                )
+                return await runner.arun(ds, name=f"distill:{model}")
+            finally:
+                self.model = original_model
+                self.config.memory.write_back = original_write_back
+
+        loop = BootstrapFinetune(
+            evaluate_model,
+            quality_metric=quality_metric,
+            min_quality_ratio=min_quality_ratio,
+            gates=gates,
+            trainer=trainer,
+        )
+        result = run_sync(loop.distill(training_set, dataset, teacher=teacher, student=student))
+        if apply and result.promoted and result.cascade is not None:
+            self.cascade = result.cascade
+            self.events.emit(
+                "distill.promoted",
+                {"student": result.trained_student, "cost_savings": result.cost_savings},
+            )
+        return result
+
+    @experimental(since="1.4")
+    def use_learned_compression(self, compressor: Any | None = None) -> ContextApp:
+        """Install a learned token-importance compressor on the compiler.
+
+        Replaces the default extractive compressor with a learned one (default:
+        :class:`~vincio.context.LLMLinguaCompressor`) for the inline
+        budget-overflow compression step. Prefer :meth:`gate_compression` to
+        adopt one only after it passes the faithfulness gate::
+
+            app.use_learned_compression()  # opt-in, ungated
+        """
+        from ..context.llmlingua import LLMLinguaCompressor
+
+        self.context_compiler.compressor = compressor or LLMLinguaCompressor()
+        return self
+
+    @experimental(since="1.4")
+    def gate_compression(
+        self,
+        dataset: Dataset,
+        *,
+        compressor: Any | None = None,
+        metrics: list[str] | None = None,
+        min_faithfulness: float = 0.9,
+        min_quality_ratio: float = 0.98,
+        concurrency: int = 4,
+    ):
+        """Adopt a learned compressor only if it preserves cited facts and quality.
+
+        Runs the dataset with the baseline and the learned compressor, compares
+        faithfulness, quality, and token usage, and installs the learned
+        compressor only when it shrinks the prompt without losing the cited-fact
+        set or regressing quality — returning the :class:`CompressionTuningResult`
+        with the decision::
+
+            result = app.gate_compression(golden)
+            result.adopted, result.token_savings, result.learned_faithfulness
+        """
+        from ..context.compression import extractive_compress
+        from ..context.llmlingua import LLMLinguaCompressor
+        from ..evals.runners import EvalRunner
+        from ..optimize.compression_tuning import CompressionTuner
+
+        learned = compressor or LLMLinguaCompressor()
+        metric_list = metrics or ["semantic_similarity", "faithfulness", "input_tokens"]
+
+        async def evaluate(compressor_choice, ds):
+            original = self.context_compiler.compressor
+            original_write_back = self.config.memory.write_back
+            self.context_compiler.compressor = compressor_choice or extractive_compress
+            self.config.memory.write_back = []
+            try:
+                runner = EvalRunner(self, metrics=metric_list, concurrency=concurrency)
+                return await runner.arun(ds)
+            finally:
+                self.context_compiler.compressor = original
+                self.config.memory.write_back = original_write_back
+
+        tuner = CompressionTuner(
+            evaluate, min_faithfulness=min_faithfulness, min_quality_ratio=min_quality_ratio
+        )
+        result, chosen = run_sync(tuner.tune(learned, dataset))
+        if chosen is not None:
+            self.context_compiler.compressor = chosen
+            self.events.emit("compression.adopted", {"token_savings": result.token_savings})
+        return result
+
+    @experimental(since="1.4")
+    def calibrate_judge(self, judge: Any, samples: list[Any], *, budget: int = 4):
+        """Reflectively tune an LLM judge's evaluation steps for κ agreement.
+
+        Proposes alternative evaluation procedures, scores each against the
+        labelled ``samples`` (``(case, output, human_score)``), and installs the
+        procedure that best agrees with people — only when it strictly beats the
+        incumbent — leaving the judge calibrated for CI gating::
+
+            result = app.calibrate_judge(geval, labelled_samples)
+            result.adopted, result.kappa_before, result.kappa_after
+        """
+        from ..optimize.judge_calibration import JudgeCalibrator
+
+        return JudgeCalibrator(judge).calibrate(samples, budget=budget)
+
     def use_learned_budgets(self, source: Any) -> ContextApp:
         """Install eval-tuned per-task budget allocations (0.8).
 

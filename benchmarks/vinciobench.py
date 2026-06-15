@@ -872,12 +872,16 @@ async def bench_loop() -> dict[str, Any]:
     from vincio.evals import Dataset, EvalCase
     from vincio.memory.facts import extract_grounded_facts
     from vincio.optimize import (
+        BootstrapFinetune,
         BudgetLearner,
+        CompressionTuner,
         ImprovementLoop,
         ParetoFrontier,
         ParetoPoint,
+        ReflectiveOptimizer,
         RelevanceRecord,
         RetrievalFeedback,
+        export_training_set,
         guided_search,
     )
     from vincio.prompts.registry import PromptRegistry
@@ -1046,6 +1050,90 @@ async def bench_loop() -> dict[str, Any]:
     history = await guided_search(space, screen, strategy="hill_climb", budget=5, seed=7)
     best_config, _best_score = max(history, key=lambda entry: entry[1])
 
+    # -- 1.4 additions: reflective optimizer, distillation, learned compression --
+    from types import SimpleNamespace
+
+    from vincio.context.llmlingua import LLMLinguaCompressor, faithfulness_preserved
+    from vincio.evals.reports import CaseResult, EvalReport
+    from vincio.prompts.templates import PromptSpec
+
+    def metrics_report(rows: list[dict[str, float]]) -> EvalReport:
+        return EvalReport(cases=[CaseResult(case_id=f"c{i}", metrics=dict(m)) for i, m in enumerate(rows)])
+
+    # 7. Reflective optimizer (1.4): failure-driven edits beat a blind baseline
+    # under a hard rollout budget, deterministically.
+    async def reflective_eval(variant, ds):
+        # A grounded answer needs a citation policy; the reflector reads the low
+        # groundedness from the failures and proposes exactly that edit.
+        strong = bool(variant.spec.citation_policy) or variant.spec.reasoning_mode == "evidence_first"
+        q = 0.95 if strong else 0.5
+        return metrics_report([{
+            "semantic_similarity": q, "groundedness": q,
+            "schema_validity": 1.0, "safety": 1.0, "cost": 0.001, "latency": 100.0,
+        }] * len(ds))
+
+    refl_spec = PromptSpec(name="reflectbench", objective="Answer the question.")
+    refl_a = await ReflectiveOptimizer(reflective_eval).optimize(
+        refl_spec, dataset, budget=8, minibatch_size=4, seed=7
+    )
+    refl_b = await ReflectiveOptimizer(reflective_eval).optimize(
+        refl_spec, dataset, budget=8, minibatch_size=4, seed=7
+    )
+
+    # 8. Distillation flywheel (1.4): grounded-only export + quality-hold gate.
+    distill_traces = [
+        SimpleNamespace(
+            id="t1", run_id="t1", session_id=None, status="ok", feedback=[],
+            attributes={"input": "Refund window?", "output": "The Pro plan refund window is 30 days.",
+                        "evidence": [e.model_dump() for e in evidence]},
+        ),
+        SimpleNamespace(
+            id="t2", run_id="t2", session_id=None, status="ok", feedback=[],
+            attributes={"input": "Mascot?", "output": "The mascot is a purple axolotl with 12 legs.",
+                        "evidence": [e.model_dump() for e in evidence]},
+        ),
+    ]
+    training_set = export_training_set(distill_traces, require_grounding=True, min_support=0.4)
+
+    async def distill_eval(model, ds):
+        quality, cost = (0.95, 0.01) if model == "teacher" else (
+            (0.93, 0.002) if model == "student" else (0.5, 0.002)
+        )
+        return metrics_report([{"semantic_similarity": quality, "cost": cost}] * len(ds))
+
+    promote_result = await BootstrapFinetune(distill_eval, min_quality_ratio=0.9).distill(
+        training_set, dataset, teacher="teacher", student="student"
+    )
+    reject_result = await BootstrapFinetune(distill_eval, min_quality_ratio=0.95).distill(
+        training_set, dataset, teacher="teacher", student="weakstudent"
+    )
+
+    # 9. Learned compression (1.4): hits budget while preserving the cited facts,
+    # and adoption is faithfulness-gated.
+    passage = (
+        "The Pro plan offers a refund window of 30 days from the date of purchase. "
+        "Customers who are not satisfied may contact support to request a full refund. "
+        "The Enterprise plan provides a 90 day evaluation period and dedicated onboarding."
+    )
+    comp_budget = count_tokens(passage) // 2
+    compressed = LLMLinguaCompressor()(passage, "Pro plan refund window", comp_budget)
+    fidelity_ok = (
+        compressed.compressed_tokens <= comp_budget
+        and faithfulness_preserved(["The Pro plan refund window is 30 days."], compressed.text, threshold=0.8)
+    )
+
+    async def comp_eval(compressor, ds):
+        learned = compressor is not None
+        faithful = 0.5 if (learned and getattr(compressor, "_lossy", False)) else (0.95 if learned else 1.0)
+        tokens = 60.0 if learned else 100.0
+        return metrics_report([{"semantic_similarity": 0.99 if learned else 1.0,
+                                "faithfulness": faithful, "input_tokens": tokens}] * len(ds))
+
+    adopt_result, _ = await CompressionTuner(comp_eval).tune(LLMLinguaCompressor(), dataset)
+    lossy = LLMLinguaCompressor()
+    lossy._lossy = True
+    comp_gate_result, _ = await CompressionTuner(comp_eval, min_faithfulness=0.9).tune(lossy, dataset)
+
     return {
         "promotion": {
             "promoted": result_a.promoted,
@@ -1077,6 +1165,25 @@ async def bench_loop() -> dict[str, Any]:
         "guided_search": {
             "budget_respected": evaluations == len(history) == 5,
             "found_optimum": best_config["top_k"] == 12 and best_config["reranker"] == "heuristic",
+        },
+        "reflective": {
+            "search_beats_baseline": refl_a.promoted
+            and (refl_a.best.full_fitness or 0.0) > refl_a.baseline_fitness,
+            "budget_respected": refl_a.evaluations <= 8,
+            "deterministic": refl_a.promoted == refl_b.promoted
+            and (refl_a.best.params if refl_a.best else None)
+            == (refl_b.best.params if refl_b.best else None),
+        },
+        "distillation": {
+            "grounded_only_exported": len(training_set) == 1
+            and training_set.metadata["dropped_ungrounded"] == 1,
+            "quality_hold_promoted": promote_result.promoted,
+            "quality_drop_rejected": not reject_result.promoted,
+        },
+        "compression": {
+            "fidelity_preserved": fidelity_ok,
+            "token_reduction": round(1.0 - compressed.compressed_tokens / compressed.original_tokens, 4),
+            "faithfulness_gated": adopt_result.adopted and not comp_gate_result.adopted,
         },
     }
 

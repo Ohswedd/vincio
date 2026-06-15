@@ -77,6 +77,8 @@ class ImprovementLoop:
         experiment: str = "improvement_loop",
         prompt_name: str | None = None,
         concurrency: int = 4,
+        optimizer: str = "evolution",
+        strategy: str = "reflective",
     ) -> None:
         self.app = app
         self.registry = registry or PromptRegistry()
@@ -88,6 +90,12 @@ class ImprovementLoop:
         self.experiment = experiment
         self.prompt_name = prompt_name or app.prompt_spec.name
         self.concurrency = concurrency
+        # "evolution" (0.8 blind variant search) or "reflective" (1.4 GEPA-style
+        # failure-driven search). The reflective path proposes targeted edits
+        # from the eval report's failures and evolves a Pareto frontier; both
+        # promote through the identical gated path below.
+        self.optimizer = optimizer
+        self.strategy = strategy
 
     # -- stage 1: capture --------------------------------------------------------
 
@@ -173,19 +181,36 @@ class ImprovementLoop:
                 app.prompt_compiler.options = original_options
                 app.config.memory.write_back = original_write_back
 
-        optimizer = PromptOptimizer(
-            evaluate_variant,
-            weights=self.weights,
-            gates=self.gates,
-            max_cost_per_case=self.max_cost_per_case,
-        )
-        optimization = await optimizer.optimize(
-            app.prompt_spec,
-            dataset,
-            max_variants=max_variants,
-            subset_size=subset_size,
-            top_n=top_n,
-        )
+        if self.optimizer == "reflective":
+            from .reflective import ReflectiveOptimizer
+
+            reflective = ReflectiveOptimizer(
+                evaluate_variant,
+                weights=self.weights,
+                gates=self.gates,
+                max_cost_per_case=self.max_cost_per_case,
+            )
+            optimization = await reflective.optimize(
+                app.prompt_spec,
+                dataset,
+                strategy=self.strategy,
+                budget=max_variants,
+                minibatch_size=subset_size,
+            )
+        else:
+            optimizer = PromptOptimizer(
+                evaluate_variant,
+                weights=self.weights,
+                gates=self.gates,
+                max_cost_per_case=self.max_cost_per_case,
+            )
+            optimization = await optimizer.optimize(
+                app.prompt_spec,
+                dataset,
+                max_variants=max_variants,
+                subset_size=subset_size,
+                top_n=top_n,
+            )
         result.optimization = optimization
         result.steps.append(
             {

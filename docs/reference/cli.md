@@ -100,14 +100,30 @@ vincio optimize run --app APP.py --dataset DATASET.jsonl
         [--budget N] [--subset N] [--output winning.yaml]
     Prompt-variant optimization with gated promotion.
 
+vincio optimize reflective --app APP.py --dataset DATASET.jsonl
+        [--strategy reflective|mipro] [--target quality|groundedness|cost]
+        [--budget N] [--minibatch N] [--seed N] [--apply] [--output winning.yaml]
+    GEPA-style reflective optimization (1.4): reads eval failures, reflects on
+    why the prompt lost, proposes targeted edits, and evolves a Pareto frontier
+    under a hard rollout budget. --strategy mipro switches to joint
+    instruction+example proposal; --apply installs the winner on the app.
+
 vincio loop run --app APP.py [--dataset DATASET.jsonl | --min-feedback X]
         [--gate "metric=>= 0.9"]... [--budget N] [--subset N]
-        [--tag production] [--experiment NAME] [--dry-run]
+        [--tag production] [--experiment NAME] [--dry-run] [--reflective]
     One closed-loop cycle: trace → dataset → eval → optimize → promote.
     Without --dataset, curates the dataset from captured traces (feedback-
     filtered). The promoted version is pushed to the prompt registry,
     tagged, eval-linked, applied to the app, and audited; --dry-run
-    reports the decision without acting on it.
+    reports the decision without acting on it; --reflective uses the
+    GEPA-style reflective optimizer (1.4).
+
+vincio distill --output TRAIN.jsonl [--traces-dir DIR]
+        [--format openai|anthropic] [--min-feedback X] [--min-support X]
+        [--max-examples N] [--allow-ungrounded]
+    Curate captured traces into grounded fine-tuning JSONL (1.4): feedback-
+    filtered, grounding-checked against cited evidence, deduped, with full
+    provenance. Ungrounded examples are dropped unless --allow-ungrounded.
 
 vincio index build PATH [--db FILE] [--chunking STRATEGY] [--chunk-size N]
     Load, chunk, and persist documents into a SQLite index store.

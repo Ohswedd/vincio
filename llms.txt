@@ -235,6 +235,29 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")`
   or `guided_search(space, evaluate, strategy=, budget=, seed=)` —
   deterministic, budget-bounded, gate-respecting.
+- Reflective optimization & the data flywheel (1.4, all `@experimental`):
+  reflective optimizer `app.reflective_optimize(dataset, strategy="reflective|
+  mipro", budget=, minibatch_size=, gates=, apply=)` → `ReflectiveResult`
+  (drop-in `OptimizationResult` with `.frontier` / `.reflections`); reads eval
+  failures, proposes targeted edits (`HeuristicReflector` deterministic /
+  `LLMReflector` with fallback), evolves a `ParetoFrontier` under a hard rollout
+  budget, deterministic under seed; also `ImprovementLoop(optimizer="reflective")`
+  / `vincio optimize reflective` / `vincio loop run --reflective`. Distillation
+  flywheel: `app.enable_training_capture()` then `ts = app.export_training_set(
+  min_feedback_score=, require_grounding=True, path=, format="openai|anthropic")`
+  → `TrainingSet` (grounded, deduped, provenance; `export_training_set(traces,...)`
+  standalone); `vincio distill --traces-dir --output --format`; gate a cheaper
+  student `app.distill(ts, held_out, teacher=, student=, min_quality_ratio=)` →
+  `DistillationResult` (promotes a `ModelCascade` only on quality-hold + cost cut;
+  `BootstrapFinetune` with an injected `trainer`). Learned compression:
+  `from vincio.context import LLMLinguaCompressor` (drop-in
+  `ContextCompiler.compressor`, protects numbers/entities/citations/query terms);
+  faithfulness-gated adoption via `app.gate_compression(dataset)` →
+  `CompressionTuningResult`, or `app.use_learned_compression()` (ungated);
+  `compression_faithfulness` / `faithfulness_preserved`. Optimizer-judge
+  calibration: `app.calibrate_judge(geval, samples)` (samples are
+  `(case, output, human_score)`) reflectively tunes the judge's steps to maximize
+  Cohen's κ, adopting only on a strict gain → `JudgeCalibrationResult`.
 - Integrations & DX: framework interop `from vincio.interop import
   add_langchain_tool, from_langchain_loader, from_langchain_retriever,
   from_langchain_embeddings, from_llamaindex_reader, from_llamaindex_retriever,
@@ -269,8 +292,9 @@ result.output; result.citations; result.trace_id; result.cost_usd
   config schema/validate/show, packs list/show, tui,
   eval run/report/dataset (`--group-by-session`)/drift/annotate,
   prompt lint/compile/push/versions/diff/rollback, trace
-  show/view/replay/diff/export/sessions/feedback, optimize run, loop run,
-  index build, memory inspect/remember/recall/forget/export/consolidate/decay,
+  show/view/replay/diff/export/sessions/feedback, optimize run, optimize
+  reflective, loop run (`--reflective`), distill, index build, memory
+  inspect/remember/recall/forget/export/consolidate/decay,
   audit verify, mcp tools/add/serve.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).
 - Protocols & interoperability (1.1, experimental): MCP client + server
