@@ -10,6 +10,13 @@ from .compression import (
     truncate_to_tokens,
 )
 from .ir import ContextIR, OutputContractRef
+from .llmlingua import (
+    LLMLinguaCompressor,
+    TokenImportanceScorer,
+    compression_faithfulness,
+    faithfulness_preserved,
+    salient_units,
+)
 from .packet import ContextPacket
 from .scoring import (
     ContextCandidate,
@@ -33,6 +40,11 @@ __all__ = [
     "extractive_compress",
     "split_sentences",
     "truncate_to_tokens",
+    "LLMLinguaCompressor",
+    "TokenImportanceScorer",
+    "compression_faithfulness",
+    "faithfulness_preserved",
+    "salient_units",
     "ContextIR",
     "OutputContractRef",
     "ContextPacket",

@@ -5,6 +5,7 @@ optimized, validated, observable, provider-neutral context packets.
 """
 
 from .agents import AgentRole, Blackboard, Crew, StateGraph, compose
+from .context.llmlingua import LLMLinguaCompressor
 from .core.app import ContextApp
 from .core.config import VincioConfig, load_config
 from .core.errors import VincioError
@@ -29,7 +30,10 @@ from .evals.datasets import Dataset
 from .memory.engine import MemoryEngine, ScopedMemory
 from .notebook import enable_rich_reprs
 from .observability.finops import BudgetManager, CostBudget, CostLedger
+from .optimize.distill import BootstrapFinetune, TrainingSet
+from .optimize.judge_calibration import JudgeCalibrator
 from .optimize.loop import ImprovementLoop, LoopResult
+from .optimize.reflective import ReflectiveOptimizer
 from .optimize.routing import ModelCascade
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
@@ -50,7 +54,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.3.1"
+__version__ = "1.4.0"
 
 __all__ = [
     "ContextApp",
@@ -82,6 +86,11 @@ __all__ = [
     "Dataset",
     "ImprovementLoop",
     "LoopResult",
+    "ReflectiveOptimizer",
+    "TrainingSet",
+    "BootstrapFinetune",
+    "LLMLinguaCompressor",
+    "JudgeCalibrator",
     "OutputContract",
     "OutputSchema",
     "SchemaRouter",

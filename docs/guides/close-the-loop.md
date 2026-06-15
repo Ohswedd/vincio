@@ -161,6 +161,105 @@ the same gated promotion path — a guided search can never bypass the safety
 rules. `guided_search(space, evaluate, strategy=...)` exposes the primitive
 for custom spaces.
 
+## Reflective optimization (GEPA-style)
+
+Blind search proposes; reflection *diagnoses*. The `ReflectiveOptimizer` reads
+the eval report's failures, reflects on why the prompt lost, and proposes
+targeted edits — then verifies each child on the same gated, Pareto-aware
+machinery:
+
+```python
+result = app.reflective_optimize(
+    dataset,
+    metrics=["semantic_similarity", "groundedness", "cost", "latency"],
+    gates={"groundedness": ">= 0.8"},
+    budget=12,            # hard cap on evaluation rollouts
+    minibatch_size=8,     # cheap screening before a full rollout
+)
+result.promoted, result.reason
+result.frontier.front     # the evolved Pareto frontier
+[r.diagnosis for r in result.reflections]  # why each edit was proposed
+```
+
+A child is screened on a minibatch and earns a full-dataset rollout *only* when
+it beats its parent, so the sample-efficiency win GEPA reports (beating RL with
+far fewer rollouts) holds under a hard budget — deterministic under a seed.
+`strategy="mipro"` switches to MIPROv2-style joint instruction+example proposal.
+The result is a drop-in `OptimizationResult`, so the improvement loop runs it
+unchanged:
+
+```python
+loop = app.improvement_loop(optimizer="reflective", gates={"groundedness": ">= 0.8"})
+result = loop.run(min_feedback_score=0.5)   # promotes through the same gated path
+```
+
+```bash
+vincio optimize reflective --app app.py --dataset golden.jsonl --strategy mipro
+vincio loop run --app app.py --reflective --gate groundedness=">= 0.8"
+```
+
+The default `HeuristicReflector` is deterministic and offline (it maps a sagging
+metric to the edit a careful prompt engineer would make); `LLMReflector` adds a
+model-backed reflection with the heuristic as a fallback, so behaviour stays
+reproducible in tests and air-gapped runs.
+
+## The distillation flywheel
+
+The one lever the rest of the field is missing: turn the traces you already
+write into *cheaper inference*. `export_training_set` curates production traces —
+feedback-filtered, grounding-checked against the cited evidence, deduped, full
+provenance — into provider-ready fine-tuning JSONL:
+
+```python
+app.enable_training_capture()          # record full output + cited evidence on traces
+# ... run production traffic ...
+ts = app.export_training_set(min_feedback_score=0.5, path="train.jsonl")
+ts.grounded_fraction                   # 1.0 — every example is evidence-supported
+ts.save("train_anthropic.jsonl", format="anthropic")
+```
+
+Nothing ungrounded is exported — an example whose answer the evidence does not
+support is dropped, not trained on. The teacher→student loop then promotes a
+cheaper student into the runtime cascade **only** when it holds quality:
+
+```python
+result = app.distill(ts, held_out, teacher="gpt-5.2", student="gpt-5.2-mini")
+result.promoted, result.quality_ratio, result.cost_savings
+# on promotion, result.cascade (student → teacher) is installed via use_cascade
+```
+
+The student is gated like every other promotion: it must preserve a quality
+ratio of the teacher, cost strictly less, and regress neither safety nor schema
+validity. `vincio distill --traces-dir .vincio/traces --output train.jsonl`
+exports from the CLI.
+
+## Learned prompt compression
+
+Extractive compression keeps whole sentences; learned compression goes finer.
+`LLMLinguaCompressor` scores every token's importance and drops the
+low-information ones while protecting the answer (numbers, amounts, entities,
+citation markers, query terms):
+
+```python
+from vincio.context import LLMLinguaCompressor, compression_faithfulness
+
+c = LLMLinguaCompressor()
+result = c(evidence_text, query="refund window", max_tokens=120)
+result.method                          # "llmlingua"
+compression_faithfulness(evidence_text, result.text)  # salient units preserved
+```
+
+It is a drop-in for the compiler's inline compression step, but adoption is
+**faithfulness-gated** — installed only when it shrinks the prompt without
+losing the cited-fact set or regressing quality under eval:
+
+```python
+result = app.gate_compression(golden)   # measures faithfulness + quality + tokens
+result.adopted, result.token_savings, result.learned_faithfulness
+# or opt in directly, ungated:
+app.use_learned_compression()
+```
+
 ## Continuous quality
 
 The same metric objects that gate releases offline also watch live traffic
@@ -213,6 +312,18 @@ q.gating_weight(threshold=0.6)      # 0.0 until κ clears the bar, then 1.0
 `vincio eval annotate labels.jsonl` reports it from the CLI — the LLM judge
 only joins the gate after it has earned the trust.
 
+And the judge that gates the optimizer can itself be optimized.
+`app.calibrate_judge(judge, samples)` reflectively proposes alternative
+evaluation procedures, scores each against the labelled samples, and installs
+the one that best agrees with people — only when its κ strictly beats the
+incumbent — leaving the judge calibrated for CI gating:
+
+```python
+result = app.calibrate_judge(geval, labelled_samples)  # (case, output, human_score)
+result.adopted, result.kappa_before, result.kappa_after
+result.gating_weight_before, result.gating_weight_after
+```
+
 ## What lands where (interconnection)
 
 | Event | Where it's recorded |
@@ -225,10 +336,16 @@ only joins the gate after it has earned the trust.
 | Learned budgets | `LearnedAllocations` JSON → `BudgetAllocator(learned=...)` |
 | Online scores | metadata store time series (kind `eval_results`) + `eval.online` event |
 | Detected drift | persisted baseline (kind `drift_baselines`) + `drift.detected` event |
+| Reflective promotion | same as loop promotion (registry + audit + event); `optimize.reflective` event when applied to the app |
+| Exported training set | grounded fine-tuning JSONL + `distill.exported` event |
+| Promoted student | runtime `ModelCascade` (cheap→strong) + `distill.promoted` event |
+| Adopted compressor | `ContextCompiler.compressor` + `compression.adopted` event (only when faithfulness-gated) |
 
 The VincioBench `loop` family measures all of it offline — promotion fires
 and is deterministic, gates block regressions, the registry is tagged and
 eval-linked, grounded facts are written (and ungrounded ones never are),
 retrieval tuning is gated, the frontier excludes dominated points, learned
-budgets promote, and guided search respects its budget — under 14 CI-gated
-budgets.
+budgets promote, guided search respects its budget, the reflective optimizer
+beats the baseline within its rollout budget, distillation exports only grounded
+examples and gates the student on quality, and learned compression preserves the
+cited-fact set under a faithfulness gate — under 23 CI-gated budgets.

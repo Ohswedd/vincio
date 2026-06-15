@@ -8,7 +8,21 @@ from .cache_tuning import (
     analyze_prompt_cacheability,
     cache_hit_economics,
 )
+from .compression_tuning import CompressionTuner, CompressionTuningResult
 from .context_search import ContextOptimizer, ContextSearchSpace
+from .distill import (
+    BootstrapFinetune,
+    DistillationResult,
+    TrainingExample,
+    TrainingSet,
+    export_training_set,
+)
+from .judge_calibration import (
+    JudgeCalibrationResult,
+    JudgeCalibrator,
+    JudgeStepProposal,
+    JudgeStepReflector,
+)
 from .loop import DEFAULT_LOOP_METRICS, ImprovementLoop, LoopResult
 from .pareto import (
     AGENTIC_OBJECTIVES,
@@ -22,6 +36,17 @@ from .pareto import (
     pareto_loop,
 )
 from .prompt_search import PromptOptimizer
+from .reflective import (
+    HeuristicReflector,
+    LLMReflector,
+    MIPROProposer,
+    ProposedEdit,
+    Reflection,
+    ReflectiveOptimizer,
+    ReflectiveResult,
+    Reflector,
+    apply_edits,
+)
 from .retrieval_feedback import (
     ChunkingRecommendation,
     RelevanceRecord,
@@ -61,6 +86,26 @@ __all__ = [
     "cache_hit_economics",
     "ContextOptimizer",
     "ContextSearchSpace",
+    "CompressionTuner",
+    "CompressionTuningResult",
+    "TrainingExample",
+    "TrainingSet",
+    "export_training_set",
+    "DistillationResult",
+    "BootstrapFinetune",
+    "ProposedEdit",
+    "Reflection",
+    "Reflector",
+    "HeuristicReflector",
+    "LLMReflector",
+    "MIPROProposer",
+    "ReflectiveOptimizer",
+    "ReflectiveResult",
+    "apply_edits",
+    "JudgeStepProposal",
+    "JudgeStepReflector",
+    "JudgeCalibrationResult",
+    "JudgeCalibrator",
     "DEFAULT_LOOP_METRICS",
     "ImprovementLoop",
     "LoopResult",
