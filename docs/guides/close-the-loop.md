@@ -205,17 +205,26 @@ reproducible in tests and air-gapped runs.
 
 ## The distillation flywheel
 
-The one lever the rest of the field is missing: turn the traces you already
-write into *cheaper inference*. `export_training_set` curates production traces —
-feedback-filtered, grounding-checked against the cited evidence, deduped, full
-provenance — into provider-ready fine-tuning JSONL:
+The one lever the rest of the field is missing: turn the runs you already make
+into *cheaper inference*. The faithful, flag-free path is to keep the
+`RunResult`s — they carry the full output and cited evidence, and the runtime
+stamps the input — and export from them:
 
 ```python
-app.enable_training_capture()          # record full output + cited evidence on traces
-# ... run production traffic ...
-ts = app.export_training_set(min_feedback_score=0.5, path="train.jsonl")
+results = [app.run(q) for q in prompts]
+ts = app.export_training_set(runs=results, path="train.jsonl")
 ts.grounded_fraction                   # 1.0 — every example is evidence-supported
 ts.save("train_anthropic.jsonl", format="anthropic")
+```
+
+If you'd rather curate from the traces production already writes (with feedback
+filtering), enable capture so the full output and evidence are recorded — this
+covers streaming runs too:
+
+```python
+app.enable_training_capture()          # record full output + cited evidence on every trace
+# ... run production traffic (incl. app.astream) ...
+ts = app.export_training_set(min_feedback_score=0.5, path="train.jsonl")
 ```
 
 Nothing ungrounded is exported — an example whose answer the evidence does not

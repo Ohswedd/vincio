@@ -4,6 +4,39 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.1] - 2026-06-16
+
+Completes the 1.4 distillation-flywheel capture so faithful, grounded training
+data needs no opt-in and covers every run path. Additive under the frozen 1.0
+API; no public symbol removed or repurposed.
+
+### Added
+
+- **Flag-free faithful export from `RunResult`s.** A `RunResult` already carries
+  the full untruncated output (`raw_text`) and the full cited evidence
+  (`evidence` / `citations`), and the runtime now stamps the original input on
+  `result.metadata["input"]` — so `app.export_training_set(runs=[...])` /
+  `export_training_set_from_runs(...)` build grounding-checked, deduped,
+  provenance-stamped fine-tuning JSONL **without `enable_training_capture()`**.
+  The trace-based path stays for the "I only have traces" case.
+
+### Fixed
+
+- **Training capture now covers streaming runs.** `app.astream` records the full
+  output and cited evidence on its trace when `training_capture` is on (and a
+  truncated `output` span attribute for parity with non-streaming), so
+  streaming-sourced traces curate into faithful training data too — previously
+  only the `run` / `arun` / `batch` / eval path was instrumented.
+
+### Notes
+
+- 866 tests passing offline; ruff clean; VincioBench 112/112 budgets;
+  twenty-eight examples. The two follow-ups documented in the 1.4.0 release are
+  now closed: faithful capture no longer requires an opt-in flag (via the
+  `RunResult` path), and streaming runs are covered.
+
+See the [roadmap](ROADMAP.md) (1.4 milestone).
+
 ## [1.4.0] - 2026-06-15
 
 Reflective optimization & the data flywheel (vs DSPy 3). 0.8 shipped the closed

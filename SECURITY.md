@@ -44,12 +44,14 @@ breaches surface as `PolicyViolation`s on the existing hash-chained audit path.
 The 1.4 reflective-optimization and flywheel features run in-process and add no
 external services: the reflective optimizer reuses the existing eval/registry/
 audit path, and judge calibration uses your own labelled data. The distillation
-flywheel writes a fine-tuning **JSONL file you own** from your captured traces;
-treat it as you would any export of model inputs/outputs — it may contain
-business data, so `enable_training_capture()` is opt-in (off by default), every
-exported example is grounding-checked, and feedback/grounding filters bound what
-is written. Apply your own retention and access controls to the exported file
-before sending it to a provider's fine-tuning API.
+flywheel writes a fine-tuning **JSONL file you own** from the runs/traces you
+choose; treat it as you would any export of model inputs/outputs — it may
+contain business data. Every exported example is grounding-checked, and the
+grounding/feedback filters bound what is written. The trace-based path's full
+capture (`enable_training_capture()`) is opt-in and off by default; the faithful
+`runs=` path reads only the `RunResult`s you pass it. Apply your own retention
+and access controls to the exported file before sending it to a provider's
+fine-tuning API.
 
 ## Supply-chain integrity
 
