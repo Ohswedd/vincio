@@ -20,7 +20,19 @@ from ..retrieval.embeddings import Embedder
 
 __all__ = ["VECTOR_BACKENDS", "build_vector_index"]
 
-VECTOR_BACKENDS = ("memory", "qdrant", "pgvector", "chroma", "pinecone", "lancedb")
+VECTOR_BACKENDS = (
+    "memory",
+    "qdrant",
+    "pgvector",
+    "chroma",
+    "pinecone",
+    "lancedb",
+    "weaviate",
+    "milvus",
+    "elasticsearch",
+    "opensearch",
+    "vespa",
+)
 
 
 def build_vector_index(kind: str, embedder: Embedder, **options: Any) -> Any:
@@ -57,4 +69,24 @@ def build_vector_index(kind: str, embedder: Embedder, **options: Any) -> Any:
         from .lancedb import LanceDBVectorIndex
 
         return LanceDBVectorIndex(embedder, **options)
+    if kind == "weaviate":
+        from .weaviate import WeaviateVectorIndex
+
+        return WeaviateVectorIndex(embedder, **options)
+    if kind == "milvus":
+        from .milvus import MilvusVectorIndex
+
+        return MilvusVectorIndex(embedder, **options)
+    if kind in ("elasticsearch", "es"):
+        from .elasticsearch import ElasticsearchVectorIndex
+
+        return ElasticsearchVectorIndex(embedder, **options)
+    if kind == "opensearch":
+        from .elasticsearch import OpenSearchVectorIndex
+
+        return OpenSearchVectorIndex(embedder, **options)
+    if kind == "vespa":
+        from .vespa import VespaVectorIndex
+
+        return VespaVectorIndex(embedder, **options)
     raise ConfigError(f"unknown vector backend {kind!r}; known: {list(VECTOR_BACKENDS)}")

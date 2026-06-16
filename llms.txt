@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.2 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.5 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -268,11 +268,20 @@ result.output; result.citations; result.trace_id; result.cost_usd
   from_llamaindex_embedding, add_llamaindex_tool` (duck-typed, no heavy import)
   + `to_langchain_*` / `to_llamaindex_*` (extras `vincio[langchain]` /
   `vincio[llamaindex]`); embedders `build_embedder("local|jina|voyage|cohere|
-  <provider>")`; rerankers `build_reranker("heuristic|recency|authority|llm|
-  cohere|jina|voyage")` (hosted ones are httpx-only); vector stores
-  `from vincio.storage import build_vector_index` over memory | qdrant |
-  pgvector | chroma | pinecone | lancedb (extras `vincio[chroma|pinecone|
-  lancedb]`); domain packs `app.use_pack("support|engineering|finance|legal")`,
+  voyage-context|voyage-multimodal|cohere-multimodal|<provider>", dimensions=N)`
+  (1.5: Matryoshka/MRL truncation, contextual & unified text+image multimodal
+  embedders, query/document `input_type` hints via `embed_texts`); rerankers
+  `build_reranker("heuristic|recency|authority|llm|cohere|jina|voyage")` (hosted
+  ones are httpx-only); vector stores `from vincio.storage import
+  build_vector_index` over memory | qdrant | pgvector | chroma | pinecone |
+  lancedb | weaviate | milvus | elasticsearch | opensearch | vespa (extras
+  `vincio[chroma|pinecone|lancedb|weaviate|milvus|elasticsearch|opensearch|
+  vespa]`); layout-aware PDF extraction `load_document(path, layout=True)` /
+  `extract_pdf_layout` (extra `vincio[pdf-layout]`); voice/realtime (1.5,
+  optional) `from vincio.realtime import RealtimeSession, connect_realtime`
+  (backends inprocess|openai|gemini; VAD, interruption, in-session tools via the
+  permissioned runtime; `app.realtime_session(...)`; extra `vincio[realtime]`);
+  domain packs `app.use_pack("support|engineering|finance|legal")`,
   `from vincio import load_pack, available_packs` (+ `register_pack`); notebook
   reprs `from vincio import enable_rich_reprs` (RunResult/Trace/EvalReport/
   MemoryItem/SearchHit); interactive inspector `vincio.tui.TUI` / `vincio tui`;

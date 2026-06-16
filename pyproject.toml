@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "1.4.1"
+version = "1.5.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -48,10 +48,17 @@ redis = ["redis>=5.0"]
 chroma = ["chromadb>=0.5"]
 pinecone = ["pinecone>=5.0"]
 lancedb = ["lancedb>=0.10"]
+weaviate = ["weaviate-client>=4.5"]
+milvus = ["pymilvus>=2.4"]
+elasticsearch = ["elasticsearch>=8.0"]
+opensearch = ["opensearch-py>=2.4"]
+vespa = ["pyvespa>=0.40"]
 otel = ["opentelemetry-api>=1.24", "opentelemetry-sdk>=1.24"]
 server = ["fastapi>=0.110", "uvicorn>=0.29", "pydantic-settings>=2.2"]
 pdf = ["pypdf>=4.0"]
+pdf-layout = ["pdfplumber>=0.11"]
 docx = ["python-docx>=1.1"]
+realtime = ["websockets>=12.0"]
 langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.11"]
 dev = [
@@ -61,7 +68,7 @@ dev = [
   "mypy>=1.9",
 ]
 all = [
-  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,otel,server,pdf,docx,langchain,llamaindex]",
+  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex]",
 ]
 
 [project.scripts]

@@ -1,5 +1,15 @@
-"""Vincio document engine: loaders, parsers, OCR, multimodal."""
+"""Vincio document engine: loaders, parsers, OCR, layout, multimodal."""
 
+from .layout import (
+    LayoutBlock,
+    LayoutFigure,
+    LayoutWord,
+    PageLayout,
+    assemble_layout,
+    extract_pdf_layout,
+    group_words_into_lines,
+    order_blocks,
+)
 from .loaders import (
     SUPPORTED_EXTENSIONS,
     load_directory,
@@ -33,6 +43,14 @@ __all__ = [
     "ImageAnalyzer",
     "ImageObservation",
     "image_evidence_items",
+    "LayoutWord",
+    "LayoutBlock",
+    "LayoutFigure",
+    "PageLayout",
+    "group_words_into_lines",
+    "order_blocks",
+    "assemble_layout",
+    "extract_pdf_layout",
     "OCREngine",
     "TesseractOCR",
     "VisionModelOCR",

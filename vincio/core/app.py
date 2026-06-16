@@ -52,7 +52,7 @@ from ..providers import build_provider
 from ..providers.base import ModelProvider, run_sync
 from ..providers.cache_strategy import PromptCacheStrategy
 from ..retrieval.chunking import chunk_document
-from ..retrieval.embeddings import CachedEmbedder, LocalHashEmbedder, ProviderEmbedder
+from ..retrieval.embeddings import CachedEmbedder, build_embedder
 from ..retrieval.engine import RetrievalEngine
 from ..retrieval.graph_retrieval import EntityGraph
 from ..retrieval.indexes import BM25Index, SearchFilter, VectorIndex, build_filter
@@ -330,11 +330,17 @@ class ContextApp:
         return OutputContract.from_schema(schema, require_citations=self.policies.require_citations if hasattr(self, "policies") else False)
 
     def _build_embedder(self):
-        kind = self.config.retrieval.embedder
-        if kind == "local":
-            return CachedEmbedder(LocalHashEmbedder())
-        provider = build_provider(kind, self.config.provider)
-        return CachedEmbedder(ProviderEmbedder(provider))
+        # Delegate to the one factory so the app and the standalone
+        # `build_embedder` agree on every embedder kind (local, hosted
+        # jina/voyage/cohere/contextual/multimodal, or any provider) and on
+        # Matryoshka handling — hosted embedders truncate server-side, others
+        # are wrapped. The cache stores the already-truncated vector.
+        base = build_embedder(
+            self.config.retrieval.embedder,
+            config=self.config.provider,
+            dimensions=self.config.retrieval.embedding_dimensions,
+        )
+        return CachedEmbedder(base)
 
     def resolve_provider(self, run_config: RunConfig | None = None) -> ModelProvider:
         name = (run_config.provider if run_config else None) or self._provider_name
@@ -955,6 +961,44 @@ class ContextApp:
             expose_prompts=expose_prompts,
             token_validator=token_validator,
         )
+
+    # -- realtime / voice (1.5, optional module) ------------------------------------------------------
+
+    @experimental(since="1.5")
+    def realtime_session(
+        self,
+        *,
+        backend: str = "inprocess",
+        config: Any | None = None,
+        **backend_kwargs: Any,
+    ) -> Any:
+        """Open a voice/realtime session (returns a :class:`RealtimeSession`).
+
+        In-session tool calls route through this app's **permissioned,
+        sandboxed, audited** tool runtime — exactly like a native tool call.
+        ``backend`` is ``inprocess`` (offline default), ``openai`` (OpenAI
+        Realtime), or ``gemini`` (Gemini Live); the hosted backends need
+        ``pip install "vincio[realtime]"``. Optional module — see
+        :mod:`vincio.realtime`.
+        """
+        from ..core.types import ToolCall
+        from ..realtime import RealtimeConfig, connect_realtime
+
+        async def _dispatch(name: str, arguments: dict[str, Any]) -> Any:
+            # Route through the permissioned runtime exactly like a native tool
+            # call: validation, scopes, and the approval gate all apply. We do
+            # NOT pre-approve — an approval-required tool hits the same gate
+            # (and raises ToolApprovalRequiredError, surfaced as an error event)
+            # as on the text path, so voice cannot auto-run a write tool.
+            result = await self.tool_runtime.execute(
+                ToolCall(tool_name=name, arguments=arguments),
+                principal=Principal(scopes=list(self.policies.custom.get("scopes", ["*"]))),
+            )
+            return result.output if result.status == "ok" else {"error": result.error}
+
+        if config is None:
+            config = RealtimeConfig(model=backend_kwargs.pop("model", "gpt-realtime"))
+        return connect_realtime(backend, config=config, tool_dispatcher=_dispatch, **backend_kwargs)
 
     # -- A2A (1.1) ------------------------------------------------------------------------------------
 

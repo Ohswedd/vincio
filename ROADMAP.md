@@ -729,6 +729,9 @@ six concrete gaps:
 5. **Multimodal and embedding breadth advanced.** **Matryoshka** dimension truncation, **contextual**
    chunk embeddings (Voyage `context-3`), unified text+image embeddings (Cohere v4), and vector stores
    Vincio doesn't yet adapt (Weaviate, Milvus, Elasticsearch/OpenSearch, Vespa) are now standard.
+   **1.5 (shipped) closes this gap** with MRL truncation and contextual/multimodal embedders behind the
+   existing `build_embedder`, the five new stores behind `build_vector_index`, layout-aware extraction,
+   and an opt-in voice/realtime module — every one behind an interface that already existed.
 6. **Enterprise governance hardened into law.** The EU AI Act's GenAI transparency duties land
    **2 Aug 2026** (machine-readable synthetic-content marking); **model/system cards**, **OWASP LLM
    Top 10 (2025)** / **OWASP Agents** / **NIST AI RMF** / **MITRE ATLAS** mapping, **AI-BOM**, data
@@ -768,7 +771,7 @@ multimodal/embedding breadth, then the governance layer that ties the audit spin
 | **DSPy 3 (GEPA / MIPROv2 / SIMBA)** | Reflective program optimization | A reflective optimizer over the whole context lifecycle (not just the prompt), *plus* gated promotion, Pareto cost/quality, and the closed loop already shipped | 1.4 ✅ |
 | **DSPy BootstrapFinetune / distillation** | Teacher-trace → cheaper student | A distillation/fine-tune data flywheel from production traces, *plus* grounding, provenance, and eval-gating on every exported example | 1.4 ✅ |
 | **LLMLingua** | Learned prompt compression | A learned compressor as a compiler pass alongside extractive compression, *plus* per-task budget integration and faithfulness gating | 1.4 ✅ |
-| **Voyage / Cohere v4 / LlamaParse** | Matryoshka, contextual & multimodal embeddings, rich extraction | MRL truncation, contextual & multimodal embedders, and more vector stores behind the existing `Embedder`/`Index`, *plus* one scored, budgeted, cited packet | 1.5 🚧 |
+| **Voyage / Cohere v4 / LlamaParse** | Matryoshka, contextual & multimodal embeddings, rich extraction | MRL truncation, contextual & multimodal embedders, and more vector stores behind the existing `Embedder`/`Index`, *plus* one scored, budgeted, cited packet | 1.5 ✅ |
 | **DeepTeam / NeMo / governance** | OWASP/NIST/MITRE mapping, safety classifiers | Red-team + audit mapped to OWASP LLM 2025 / OWASP Agents / NIST AI RMF / MITRE ATLAS, model/system cards, AI-BOM, lineage, residency, multilingual — all from the existing audit/security spine | 1.6 🚧 |
 
 ---
@@ -1033,32 +1036,56 @@ behind `@experimental` entry points on the frozen 1.0 API, dependency-free.*
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 1.4.0 notes.
 
-### 🚧 1.5 — Multimodal, embeddings & retrieval breadth (vs LlamaIndex, Voyage/Cohere)
+### ✅ 1.5 — Multimodal, embeddings & retrieval breadth (vs LlamaIndex, Voyage/Cohere) (shipped)
 
 *Keep retrieval best-in-field as the embedding and ingestion frontier moves — every new embedder, store,
-and parser sits behind an interface that already exists, so breadth costs no new concepts.*
+and parser sits behind an interface that already exists, so breadth costs no new concepts. Additive
+behind the frozen 1.0 API; the hosted embedders use only the core `httpx` dependency, and every store,
+parser, and the realtime module is an opt-in extra.*
 
-- 🚧 **Matryoshka embeddings** — output-dimension truncation (MRL) per model on the existing `Embedder`
-  interface (`dimensions=`), so vectors shrink with minimal quality loss; index storage and latency
-  tracked against recall in the `rag` benchmark family.
-- 🚧 **Contextual & multimodal embedders** — adapters for contextual chunk embeddings (Voyage
-  `context-3`, where the chunk vector carries document context — complementing Vincio's existing
-  `contextualize_chunks` LLM-prefix approach) and unified text+image embedders (Cohere v4, Voyage
-  multimodal), behind `build_embedder`; task/input-type hints (query vs document) plumbed through.
-- 🚧 **More vector stores** — Weaviate, Milvus, Elasticsearch/OpenSearch, and Vespa adapters behind the
-  one `Index` protocol and `build_vector_index` factory, joining Qdrant, pgvector, Chroma, Pinecone,
-  and LanceDB — with helpful missing-dependency errors, as the existing adapters have.
-- 🚧 **Richer extraction** — an advanced document-extraction path (layout-aware tables, figures, and
-  reading order) for complex PDFs behind the existing document engine, with the offline loaders kept as
-  the dependency-free default.
-- 🔭 **Voice / realtime (optional module)** — a separate `vincio[realtime]` extra for OpenAI Realtime /
-  Gemini Live (WebRTC/WebSocket session, VAD, interruption, in-session tool calls). Explicitly scoped as
-  a stateful bidirectional module, *not* core context engineering — built only if voice becomes a target.
-- *Interconnection:* every new embedder, store, and parser feeds the same compiler — chunked, scored,
-  budgeted, cited, and benchmarked exactly like a local file; nothing downstream changes.
-- *Target:* MRL recall-vs-dimension curve, multimodal-embedding retrieval, and each store adapter
-  covered with mock transports / local instances; example `29_multimodal_retrieval.py`; `rag` family
-  extended with MRL and multimodal recall/MRR budgets.
+- ✅ **Matryoshka embeddings** — output-dimension truncation (MRL) on the existing `Embedder` interface:
+  `build_embedder(kind, dimensions=N)` (or `MatryoshkaEmbedder` / `app` config `embedding_dimensions`)
+  truncates and L2-renormalizes to `N` leading dimensions; hosted embedders request the shorter vector
+  natively, everything else is wrapped, so the output is exactly `N` long. Storage/latency vs. recall is
+  tracked per dimension in the `rag` benchmark family (recall@3 holds to one-eighth of the base
+  dimension on the reference corpus).
+- ✅ **Contextual & multimodal embedders** — `VoyageContextualEmbedder` (`voyage-context-3`, where the
+  chunk vector carries document context, complementing `contextualize_chunks`) and unified text+image
+  embedders `VoyageMultimodalEmbedder` (`voyage-multimodal-3`) and `CohereMultimodalEmbedder`
+  (`embed-v4.0`) via `build_embedder` and `MultimodalInput` / `embed_multimodal`. Query-vs-document
+  `input_type` hints are plumbed through `VectorIndex` (document on add, query on search) for every
+  input-type-aware embedder, with `embed_texts` keeping custom embedders working unchanged.
+- ✅ **More vector stores** — Weaviate, Milvus, Elasticsearch/OpenSearch, and Vespa adapters behind the
+  one `Index` protocol and `build_vector_index` factory, joining Qdrant, pgvector, Chroma, Pinecone, and
+  LanceDB — each lazy-imports its SDK with a helpful `StorageError` and accepts an injected client for
+  offline round-trip tests.
+- ✅ **Richer extraction** — a layout-aware document-extraction path (`load_document(path, layout=True)` /
+  `extract_pdf_layout`) that recovers column-aware reading order, tables with bounding boxes, and figure
+  regions for complex PDFs via `vincio[pdf-layout]` (pdfplumber); the dependency-free pypdf text path
+  stays the default. The reading-order/assembly logic is pure and offline-tested.
+- ✅ **Voice / realtime (optional module)** — `vincio.realtime`: a provider-neutral `RealtimeSession`
+  over OpenAI Realtime / Gemini Live (WebSocket) or a deterministic in-process backend, with VAD,
+  interruption (barge-in), and **in-session tool calls routed through the same permissioned, sandboxed,
+  audited tool runtime** (`app.realtime_session(...)`). A separate `vincio[realtime]` extra, explicitly
+  scoped as a stateful bidirectional module (`@experimental`), *not* core context engineering.
+- *Interconnection (held):* every new embedder, store, and parser feeds the same compiler — chunked,
+  scored, budgeted, cited, and benchmarked exactly like a local file; nothing downstream changes.
+  Realtime tool calls ride the existing tool registry, so they are permissioned and audited like any
+  other tool.
+- *Edge over specialists (delivered):* Voyage/Cohere give you MRL, contextual, and multimodal embeddings,
+  and LlamaIndex gives you the store integrations; Vincio gives you all of them **behind one
+  `build_embedder` / `build_vector_index` and inside one scored, budgeted, cited packet** — see the
+  updated [docs/comparisons/llamaindex.md](docs/comparisons/llamaindex.md) and
+  [ragatouille.md](docs/comparisons/ragatouille.md).
+- **919 tests passing offline; ruff clean; VincioBench 116/116 budgets**; twenty-nine runnable examples.
+  MRL truncation + native dimensions, input-type plumbing, contextual and multimodal embedder wire
+  formats (httpx `MockTransport`), the four vector stores (injected-fake round trips + helpful
+  missing-dependency errors), layout reading-order/table/figure assembly, and the realtime session
+  (lifecycle, VAD, interruption, tool dispatch, wire-event translation) are all covered offline; example
+  `29_multimodal_retrieval.py`; the VincioBench `rag` family gates MRL recall-vs-dimension and unified
+  multimodal recall/MRR (four new budgets, three new SLOs).
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.5.0 notes.
 
 ### 🚧 1.6 — Enterprise governance & compliance
 

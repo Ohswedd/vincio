@@ -61,15 +61,22 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="latin-1")
 
 
-def load_document(path: str | Path, *, tenant_id: str | None = None) -> Document:
-    """Load a single file into a Document. Raises LoaderError on failure."""
+def load_document(
+    path: str | Path, *, tenant_id: str | None = None, layout: bool = False
+) -> Document:
+    """Load a single file into a Document. Raises LoaderError on failure.
+
+    Set ``layout=True`` for PDFs to use the layout-aware extraction path
+    (reading order, tables, figures via ``vincio[pdf-layout]``); the
+    dependency-free text path is the default for every format.
+    """
     path = Path(path)
     if not path.is_file():
         raise LoaderError(f"file not found: {path}")
     suffix = path.suffix.lower()
     try:
         if suffix == ".pdf":
-            document = load_pdf(path)
+            document = load_pdf(path, layout=layout)
         elif suffix == ".docx":
             document = load_docx(path)
         elif suffix == ".xlsx":
@@ -142,8 +149,15 @@ def load_document(path: str | Path, *, tenant_id: str | None = None) -> Document
     return document
 
 
-def load_pdf(path: str | Path) -> Document:
-    """PDF text extraction via pypdf (``pip install "vincio[pdf]"``)."""
+def load_pdf(path: str | Path, *, layout: bool = False) -> Document:
+    """PDF text extraction via pypdf (``pip install "vincio[pdf]"``).
+
+    With ``layout=True``, uses the layout-aware path (reading order, tables,
+    figures) via ``vincio[pdf-layout]`` instead of stream-order text."""
+    if layout:
+        from .layout import extract_pdf_layout
+
+        return extract_pdf_layout(path)
     try:
         from pypdf import PdfReader
     except ImportError as exc:

@@ -12,10 +12,10 @@ time, so you can migrate incrementally without rewriting your ingestion.
 |---|---|---|
 | `SimpleDirectoryReader` / readers | `from_llamaindex_reader(reader)` → `app.add_source(documents=...)` | or `app.add_source("kb", path="./docs")` directly |
 | `VectorStoreIndex.from_documents` | `app.add_source(..., retrieval="hybrid")` | hybrid (dense + sparse) by default |
-| vector store integrations | `build_vector_index("qdrant"|"chroma"|"pinecone"|"pgvector"|"lancedb", embedder)` | `pgvector` needs `dsn=...` |
+| vector store integrations | `build_vector_index("qdrant"|"chroma"|"pinecone"|"pgvector"|"lancedb"|"weaviate"|"milvus"|"elasticsearch"|"opensearch"|"vespa", embedder)` | `pgvector` needs `dsn=...` |
 | `index.as_retriever()` | `from_llamaindex_retriever(li_retriever)` | read-only index with async `.search()` |
 | node postprocessors / rerankers | `build_reranker("cohere"|"jina"|"voyage"|"heuristic"|"recency")` | set `retrieval.reranker` in `vincio.yaml` |
-| embedding models | `from_llamaindex_embedding(li_embedding)` / `build_embedder(...)` | local, jina, voyage, cohere, openai |
+| embedding models | `from_llamaindex_embedding(li_embedding)` / `build_embedder(...)` | local, jina, voyage, cohere, openai; Matryoshka truncation (`dimensions=`), contextual (`voyage-context`), multimodal (`voyage-multimodal`/`cohere-multimodal`) |
 | `index.as_query_engine().query(...)` | `result = app.run("question")` | returns `output`, `citations`, `cost_usd`, `trace_id` |
 | `FunctionTool` | `add_llamaindex_tool(app, li_tool)` | registers and enables the tool |
 | `Settings.llm` / model config | `ContextApp(provider=..., model=...)` | provider-neutral; OpenAI-compatible presets too |
@@ -112,6 +112,13 @@ embedder = build_embedder("voyage", model="voyage-3")
 index = build_vector_index("qdrant", embedder, collection="kb")
 reranker = build_reranker("cohere")        # or set retrieval.reranker in vincio.yaml
 ```
+
+The same factories span the wider breadth: `build_vector_index` also targets
+Weaviate, Milvus, Elasticsearch, OpenSearch, and Vespa, and `build_embedder`
+adds Matryoshka dimension truncation (`build_embedder(kind, dimensions=N)`),
+contextual (`voyage-context`), and multimodal (`voyage-multimodal` /
+`cohere-multimodal`) embedders — all behind the same `Embedder` interface and
+feeding the same scored retrieval.
 
 ## What Vincio adds
 

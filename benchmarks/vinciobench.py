@@ -69,6 +69,7 @@ from vincio.retrieval import (
     GraphRAG,
     LateInteractionIndex,
     LocalHashEmbedder,
+    MatryoshkaEmbedder,
     RetrievalEngine,
     SparseIndex,
     VectorIndex,
@@ -109,6 +110,30 @@ def corpus_chunks() -> list[Chunk]:
     chunks: list[Chunk] = []
     for document in corpus_documents():
         chunks.extend(chunk_document(document, strategy="recursive", size=120))
+    return chunks
+
+
+# Image-derived evidence (observations from figures/charts) embedded in the
+# SAME vector space as text, so a multimodal query retrieves them alongside
+# text — the unified text+image retrieval the 1.5 embedders enable.
+MULTIMODAL_CORPUS = [
+    ("chart_q3", "Figure: the bar chart shows third quarter revenue rose to 4.2 million dollars, up from 3.1 million the prior quarter."),
+    ("diagram_arch", "Figure: the architecture diagram shows the API gateway routing requests to three backend microservices and a cache."),
+]
+
+MULTIMODAL_QA = [
+    ("What does the Q3 revenue bar chart show?", "revenue rose to 4.2 million", "chart_q3"),
+    ("What does the architecture diagram depict?", "API gateway routing to microservices", "diagram_arch"),
+]
+
+
+def multimodal_image_chunks() -> list[Chunk]:
+    chunks: list[Chunk] = []
+    for name, text in MULTIMODAL_CORPUS:
+        document = Document(id=f"doc_{name}", title=name, text=text, media_type="image/png")
+        for chunk in chunk_document(document, strategy="recursive", size=120):
+            chunk.kind = "image_region"
+            chunks.append(chunk)
     return chunks
 
 
@@ -158,9 +183,11 @@ async def bench_prompt() -> dict[str, Any]:
     return results
 
 
-async def _retrieval_quality(engine: RetrievalEngine, **retrieve_kwargs: Any) -> dict[str, Any]:
+async def _retrieval_quality(
+    engine: RetrievalEngine, *, cases: list[tuple[str, str, str]] | None = None, **retrieve_kwargs: Any
+) -> dict[str, Any]:
     recalls, mrrs = [], []
-    for question, _expected, source in QA_CASES:
+    for question, _expected, source in cases or QA_CASES:
         result = await engine.retrieve(question, top_k=3, use_planner=False, **retrieve_kwargs)
         hit_ranks = [
             rank
@@ -213,6 +240,28 @@ async def bench_rag() -> dict[str, Any]:
         "What are the main themes across these policies?", mode="global"
     )
 
+    # Matryoshka (MRL): recall vs. output dimension. One 512-d base embedder
+    # truncated to shrinking dimensions — storage/latency fall with dimension,
+    # recall is the quality we trade against (tracked here per dimension).
+    base_dim = 512
+    mrl_dimensions = [512, 256, 128, 64, 32]
+    mrl_by_dimension: dict[str, Any] = {}
+    for dimension in mrl_dimensions:
+        mrl_index = VectorIndex(MatryoshkaEmbedder(LocalHashEmbedder(dim=base_dim), dimension))
+        await mrl_index.add(chunks)
+        quality = await _retrieval_quality(RetrievalEngine([mrl_index]))
+        quality["bytes_per_vector"] = dimension * 4  # float32 storage cost
+        mrl_by_dimension[str(dimension)] = quality
+
+    # Multimodal: image-derived evidence indexed in the same space as text, so
+    # a multimodal query retrieves figures alongside passages.
+    multimodal_chunks = chunks + multimodal_image_chunks()
+    multimodal_index = VectorIndex(LocalHashEmbedder())
+    await multimodal_index.add(multimodal_chunks)
+    multimodal = await _retrieval_quality(
+        RetrievalEngine([multimodal_index]), cases=MULTIMODAL_QA
+    )
+
     return {
         "recall_at_3": hybrid["recall_at_3"],
         "mrr": hybrid["mrr"],
@@ -221,6 +270,18 @@ async def bench_rag() -> dict[str, Any]:
             "communities": len(communities),
             "summarized": sum(1 for c in communities if c.summary),
             "global_evidence": len(global_evidence),
+        },
+        "mrl": {
+            "base_dimension": base_dim,
+            "dimensions": mrl_dimensions,
+            "recalls_by_dimension": mrl_by_dimension,
+            "full_recall_at_3": mrl_by_dimension[str(base_dim)]["recall_at_3"],
+            "truncated_recall_at_3": mrl_by_dimension[str(mrl_dimensions[-2])]["recall_at_3"],
+        },
+        "multimodal": {
+            "recall_at_3": multimodal["recall_at_3"],
+            "mrr": multimodal["mrr"],
+            "index_size": len(multimodal_chunks),
         },
         "index_size": len(chunks),
     }

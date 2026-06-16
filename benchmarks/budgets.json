@@ -55,6 +55,18 @@
     "families.rag.graphrag.global_evidence": {
       "gte": 1
     },
+    "families.rag.mrl.full_recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.mrl.recalls_by_dimension.64.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.multimodal.recall_at_3.mean": {
+      "gte": 0.8
+    },
+    "families.rag.multimodal.mrr.mean": {
+      "gte": 0.6
+    },
     "families.memory.preference_recall": {
       "gte": 0.66
     },

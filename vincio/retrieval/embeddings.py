@@ -11,36 +11,63 @@
   :class:`~vincio.caching.base.CacheBackend` for persistence).
 - :class:`BatchingEmbedder` — micro-batches concurrent ``embed`` calls into
   one provider call (request coalescing for embeddings).
+- :class:`MatryoshkaEmbedder` — truncates any embedder's output to a smaller
+  dimension (MRL), so vectors shrink with minimal quality loss.
+- :class:`VoyageContextualEmbedder` — contextual chunk embeddings whose
+  per-chunk vector carries the surrounding document context.
+- :class:`MultimodalEmbedder` (Cohere v4 / Voyage multimodal) — unified
+  text+image embeddings in one vector space.
+
+All embedders accept an optional ``input_type`` hint (``"document"`` for the
+corpus, ``"query"`` at search time); embedders that don't use it ignore it.
+:func:`embed_texts` dispatches the hint only to embedders that advertise
+support, so custom embedders implementing only ``embed(texts)`` keep working.
 """
 
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import math
 import threading
 from collections import OrderedDict
-from typing import Any, Protocol
+from pathlib import Path
+from typing import Any, Literal, Protocol
 
 import httpx
+from pydantic import BaseModel
 
 from ..core.concurrency import gather_bounded
 from ..core.errors import ConfigError, ProviderAuthError, ProviderError
+from ..core.types import ImageRef
 from ..providers.base import ModelProvider, run_sync
+from ..stability import experimental
 
 __all__ = [
     "Embedder",
+    "InputType",
     "LocalHashEmbedder",
     "ProviderEmbedder",
     "CachedEmbedder",
     "BatchingEmbedder",
+    "MatryoshkaEmbedder",
     "HTTPEmbedder",
     "JinaEmbedder",
     "VoyageEmbedder",
     "CohereEmbedder",
+    "VoyageContextualEmbedder",
+    "MultimodalInput",
+    "MultimodalEmbedder",
+    "VoyageMultimodalEmbedder",
+    "CohereMultimodalEmbedder",
     "build_embedder",
+    "embed_texts",
+    "mrl_truncate",
     "cosine",
 ]
+
+InputType = Literal["document", "query"]
 
 
 class Embedder(Protocol):
@@ -48,6 +75,29 @@ class Embedder(Protocol):
 
     async def embed(self, texts: list[str]) -> list[list[float]]:  # pragma: no cover
         ...
+
+
+async def embed_texts(
+    embedder: Embedder, texts: list[str], *, input_type: InputType | None = None
+) -> list[list[float]]:
+    """Embed *texts*, passing the ``input_type`` hint only to embedders that
+    advertise support (``supports_input_type``). Custom embedders implementing
+    only ``embed(texts)`` are called the old way, so nothing breaks."""
+    if input_type is not None and getattr(embedder, "supports_input_type", False):
+        return await embedder.embed(texts, input_type=input_type)  # type: ignore[call-arg]
+    return await embedder.embed(texts)
+
+
+def mrl_truncate(vector: list[float], dimensions: int) -> list[float]:
+    """Matryoshka truncation: keep the first ``dimensions`` components and
+    L2-renormalize. MRL-trained models pack the most information into the
+    leading dimensions, so a truncated vector stays a faithful, comparable
+    embedding. A no-op when ``dimensions`` covers the whole vector."""
+    if dimensions <= 0 or dimensions >= len(vector):
+        return list(vector)
+    head = vector[:dimensions]
+    norm = math.sqrt(sum(x * x for x in head)) or 1.0
+    return [x / norm for x in head]
 
 
 def cosine(a: list[float], b: list[float]) -> float:
@@ -145,6 +195,8 @@ class CachedEmbedder:
     any path (chunking, queries, semantic cache) reuses one vector. An
     optional persistent ``backend`` (any :class:`~vincio.caching.base
     .CacheBackend`) survives process restarts; the in-memory LRU fronts it.
+    When the inner embedder is input-type-aware the hint is folded into the
+    key, so a ``"query"`` vector never aliases a ``"document"`` vector.
     """
 
     def __init__(self, inner: Embedder, *, max_entries: int = 50_000, backend: Any | None = None) -> None:
@@ -159,6 +211,16 @@ class CachedEmbedder:
     @property
     def dim(self) -> int:
         return self.inner.dim
+
+    @property
+    def supports_input_type(self) -> bool:
+        return bool(getattr(self.inner, "supports_input_type", False))
+
+    def _key(self, text: str, input_type: InputType | None) -> str:
+        base = _content_key(text)
+        if input_type is not None and self.supports_input_type:
+            return f"{input_type}:{base}"
+        return base
 
     def _get_cached(self, key: str) -> list[float] | None:
         with self._lock:
@@ -180,8 +242,10 @@ class CachedEmbedder:
             while len(self._cache) > self.max_entries:
                 self._cache.popitem(last=False)
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        keys = [_content_key(text) for text in texts]
+    async def embed(
+        self, texts: list[str], *, input_type: InputType | None = None
+    ) -> list[list[float]]:
+        keys = [self._key(text, input_type) for text in texts]
         resolved: dict[str, list[float]] = {}
         missing_texts: list[str] = []
         missing_keys: list[str] = []
@@ -195,7 +259,7 @@ class CachedEmbedder:
                 missing_keys.append(key)
                 missing_texts.append(text)
         if missing_texts:
-            vectors = await self.inner.embed(missing_texts)
+            vectors = await embed_texts(self.inner, missing_texts, input_type=input_type)
             for key, vector in zip(missing_keys, vectors, strict=True):
                 resolved[key] = vector
                 self._store_memory(key, vector)
@@ -215,7 +279,8 @@ class BatchingEmbedder:
     Callers that issue small ``embed`` requests at the same time (parallel
     retrieval subqueries, agent steps) are merged into one provider call,
     flushed when the batch fills or after ``window_ms`` of quiet — fewer
-    round-trips, same results. Duplicate texts within a flush are sent once.
+    round-trips, same results. Duplicate texts within a flush are sent once;
+    differing ``input_type`` hints never share a coalesced vector.
     """
 
     def __init__(self, inner: Embedder, *, max_batch: int = 64, window_ms: float = 5.0) -> None:
@@ -223,23 +288,29 @@ class BatchingEmbedder:
         self.max_batch = max(1, max_batch)
         self.window_ms = window_ms
         self.flushes = 0
-        self._pending: list[tuple[str, asyncio.Future[list[float]]]] = []
+        self._pending: list[tuple[str, InputType | None, asyncio.Future[list[float]]]] = []
         self._timer: asyncio.Task | None = None
 
     @property
     def dim(self) -> int:
         return self.inner.dim
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
+    @property
+    def supports_input_type(self) -> bool:
+        return bool(getattr(self.inner, "supports_input_type", False))
+
+    async def embed(
+        self, texts: list[str], *, input_type: InputType | None = None
+    ) -> list[list[float]]:
         if not texts:
             return []
         loop = asyncio.get_running_loop()
         futures: list[asyncio.Future[list[float]]] = []
         for text in texts:
             future: asyncio.Future[list[float]] = loop.create_future()
-            self._pending.append((text, future))
+            self._pending.append((text, input_type, future))
             futures.append(future)
-        full_batch: list[tuple[str, asyncio.Future[list[float]]]] | None = None
+        full_batch: list[tuple[str, InputType | None, asyncio.Future[list[float]]]] | None = None
         if len(self._pending) >= self.max_batch:
             full_batch, self._pending = self._pending, []
         elif self._timer is None or self._timer.done():
@@ -266,27 +337,68 @@ class BatchingEmbedder:
         if batch:
             await self._flush(batch)
 
-    async def _flush(self, batch: list[tuple[str, asyncio.Future[list[float]]]]) -> None:
+    async def _flush(
+        self, batch: list[tuple[str, InputType | None, asyncio.Future[list[float]]]]
+    ) -> None:
         self.flushes += 1
-        unique: dict[str, list[asyncio.Future[list[float]]]] = {}
-        for text, future in batch:
-            unique.setdefault(text, []).append(future)
-        texts = list(unique)
-        try:
-            vectors = await self.inner.embed(texts)
-        except BaseException as exc:  # propagate to every waiter
-            for waiters in unique.values():
-                for future in waiters:
+        # Group by input-type so a "query" vector never satisfies a "document"
+        # waiter; within a group, identical texts are sent once.
+        groups: dict[InputType | None, dict[str, list[asyncio.Future[list[float]]]]] = {}
+        for text, input_type, future in batch:
+            groups.setdefault(input_type, {}).setdefault(text, []).append(future)
+        for input_type, unique in groups.items():
+            texts = list(unique)
+            try:
+                vectors = await embed_texts(self.inner, texts, input_type=input_type)
+            except BaseException as exc:  # propagate to every waiter
+                for waiters in unique.values():
+                    for future in waiters:
+                        if not future.done():
+                            future.set_exception(exc)
+                            future.exception()  # consumed below or by the waiter
+                if isinstance(exc, asyncio.CancelledError):
+                    raise
+                continue
+            for text, vector in zip(texts, vectors, strict=True):
+                for future in unique[text]:
                     if not future.done():
-                        future.set_exception(exc)
-                        future.exception()  # consumed below or by the waiter
-            if isinstance(exc, asyncio.CancelledError):
-                raise
-            return
-        for text, vector in zip(texts, vectors, strict=True):
-            for future in unique[text]:
-                if not future.done():
-                    future.set_result(vector)
+                        future.set_result(vector)
+
+
+@experimental(since="1.5")
+class MatryoshkaEmbedder:
+    """Matryoshka (MRL) dimension truncation over any embedder.
+
+    Wraps an inner embedder and truncates every output vector to
+    ``dimensions`` (then L2-renormalizes), so storage and search cost shrink
+    with the leading-dimension quality MRL-trained models preserve. Works with
+    any embedder — provider, hosted, or the offline hash embedder — and
+    composes with :class:`CachedEmbedder` / :class:`BatchingEmbedder`. The
+    ``input_type`` hint passes through to the inner embedder.
+    """
+
+    def __init__(self, inner: Embedder, dimensions: int) -> None:
+        if dimensions <= 0:
+            raise ConfigError("MatryoshkaEmbedder requires dimensions > 0")
+        self.inner = inner
+        self.dimensions = dimensions
+
+    @property
+    def dim(self) -> int:
+        return self.dimensions
+
+    @property
+    def supports_input_type(self) -> bool:
+        return bool(getattr(self.inner, "supports_input_type", False))
+
+    async def embed(
+        self, texts: list[str], *, input_type: InputType | None = None
+    ) -> list[list[float]]:
+        vectors = await embed_texts(self.inner, texts, input_type=input_type)
+        return [mrl_truncate(vector, self.dimensions) for vector in vectors]
+
+    def embed_sync(self, texts: list[str]) -> list[list[float]]:
+        return run_sync(self.embed(texts))
 
 
 class HTTPEmbedder:
@@ -295,11 +407,19 @@ class HTTPEmbedder:
     Jina and Voyage speak the OpenAI embedding dialect, so they subclass this
     directly; Cohere's v2 shape overrides payload/parse. An
     ``httpx.AsyncClient`` can be injected for offline testing.
+
+    Set ``dimensions`` for Matryoshka output truncation (sent to the provider
+    when it supports it, then enforced client-side so the returned vector is
+    exactly that long). Set ``input_type`` per call (``"document"`` /
+    ``"query"``) for providers that distinguish corpus from query encodings.
     """
 
     name = "http"
     default_base_url = ""
     default_model = ""
+    supports_input_type = True
+    supports_dimensions = True
+    _dimensions_field = "dimensions"  # native MRL field name in the request
 
     def __init__(
         self,
@@ -308,13 +428,15 @@ class HTTPEmbedder:
         model: str | None = None,
         base_url: str | None = None,
         dim: int = 1024,
+        dimensions: int | None = None,
         client: httpx.AsyncClient | None = None,
         timeout_s: float = 60.0,
     ) -> None:
         self.api_key = api_key
         self.model = model or self.default_model
         self.base_url = (base_url or self.default_base_url).rstrip("/")
-        self.dim = dim
+        self.dimensions = dimensions
+        self.dim = dimensions or dim
         self._client = client
         self.timeout_s = timeout_s
 
@@ -323,19 +445,20 @@ class HTTPEmbedder:
             raise ProviderAuthError(f"missing API key for embedder {self.name!r}", provider=self.name)
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
-    def _payload(self, texts: list[str]) -> dict[str, Any]:
-        return {"model": self.model, "input": texts}
+    def _payload(self, texts: list[str], input_type: InputType | None) -> dict[str, Any]:
+        payload: dict[str, Any] = {"model": self.model, "input": texts}
+        if self.dimensions is not None:
+            payload[self._dimensions_field] = self.dimensions
+        return payload
 
     def _parse(self, data: dict[str, Any]) -> list[list[float]]:
         items = sorted(data.get("data") or [], key=lambda item: item.get("index", 0))
         return [item["embedding"] for item in items]
 
-    async def embed(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
+    async def _post(self, payload: dict[str, Any]) -> list[list[float]]:
         client = self._client or httpx.AsyncClient(timeout=self.timeout_s)
         try:
-            response = await client.post(self.base_url, json=self._payload(texts), headers=self._headers())
+            response = await client.post(self.base_url, json=payload, headers=self._headers())
             if response.status_code >= 400:
                 raise ProviderError(
                     f"embedder {self.name!r} error {response.status_code}: {response.text[:500]}",
@@ -345,25 +468,53 @@ class HTTPEmbedder:
         finally:
             if self._client is None:
                 await client.aclose()
+        if self.dimensions is not None:
+            vectors = [mrl_truncate(vector, self.dimensions) for vector in vectors]
         if vectors:
             self.dim = len(vectors[0])
         return vectors
 
+    async def embed(
+        self, texts: list[str], *, input_type: InputType | None = None
+    ) -> list[list[float]]:
+        if not texts:
+            return []
+        return await self._post(self._payload(texts, input_type))
+
 
 class JinaEmbedder(HTTPEmbedder):
-    """Jina AI embeddings (``/v1/embeddings``); OpenAI-compatible shape."""
+    """Jina AI embeddings (``/v1/embeddings``); OpenAI-compatible shape with a
+    ``task`` hint for retrieval (passage vs query) and ``dimensions`` MRL."""
 
     name = "jina"
     default_base_url = "https://api.jina.ai/v1/embeddings"
     default_model = "jina-embeddings-v3"
 
+    _JINA_TASK = {"document": "retrieval.passage", "query": "retrieval.query"}
+
+    def _payload(self, texts: list[str], input_type: InputType | None) -> dict[str, Any]:
+        payload = super()._payload(texts, input_type)
+        if input_type is not None:
+            payload["task"] = self._JINA_TASK[input_type]
+        return payload
+
 
 class VoyageEmbedder(HTTPEmbedder):
-    """Voyage AI embeddings (``/v1/embeddings``); OpenAI-compatible shape."""
+    """Voyage AI embeddings (``/v1/embeddings``); OpenAI-compatible shape.
+
+    Voyage names its MRL field ``output_dimension`` and takes a document/query
+    ``input_type``."""
 
     name = "voyage"
     default_base_url = "https://api.voyageai.com/v1/embeddings"
     default_model = "voyage-3"
+    _dimensions_field = "output_dimension"
+
+    def _payload(self, texts: list[str], input_type: InputType | None) -> dict[str, Any]:
+        payload = super()._payload(texts, input_type)
+        if input_type is not None:
+            payload["input_type"] = input_type
+        return payload
 
 
 class CohereEmbedder(HTTPEmbedder):
@@ -372,23 +523,31 @@ class CohereEmbedder(HTTPEmbedder):
     Cohere asks for an ``input_type`` (``search_document`` for the corpus,
     ``search_query`` at query time) and returns vectors under
     ``embeddings.float`` rather than the OpenAI ``data[].embedding`` shape.
+    Pass ``dimensions`` for Matryoshka output truncation (``embed-v4.0``).
     """
 
     name = "cohere"
     default_base_url = "https://api.cohere.com/v2/embed"
     default_model = "embed-english-v3.0"
+    _dimensions_field = "output_dimension"
+
+    _COHERE_INPUT_TYPE = {"document": "search_document", "query": "search_query"}
 
     def __init__(self, *, input_type: str = "search_document", **kwargs: Any) -> None:
         super().__init__(**kwargs)
         self.input_type = input_type
 
-    def _payload(self, texts: list[str]) -> dict[str, Any]:
-        return {
+    def _payload(self, texts: list[str], input_type: InputType | None) -> dict[str, Any]:
+        resolved = self._COHERE_INPUT_TYPE[input_type] if input_type is not None else self.input_type
+        payload: dict[str, Any] = {
             "model": self.model,
             "texts": texts,
-            "input_type": self.input_type,
+            "input_type": resolved,
             "embedding_types": ["float"],
         }
+        if self.dimensions is not None:
+            payload[self._dimensions_field] = self.dimensions
+        return payload
 
     def _parse(self, data: dict[str, Any]) -> list[list[float]]:
         embeddings = data.get("embeddings") or {}
@@ -397,30 +556,257 @@ class CohereEmbedder(HTTPEmbedder):
         return list(embeddings)  # older "embed-floats" responses returned a bare list
 
 
+class VoyageContextualEmbedder(HTTPEmbedder):
+    """Voyage contextual chunk embeddings (``/v1/contextualizedembeddings``).
+
+    Each chunk's vector is computed *with* its sibling chunks as context, so
+    the embedding encodes where the chunk sits in the document — complementing
+    Vincio's ``contextualize_chunks`` LLM-prefix approach without rewriting the
+    text. ``embed(texts)`` treats the batch as one document's chunks;
+    :meth:`embed_grouped` embeds several documents at once (each inner list is
+    one document). Default model ``voyage-context-3``.
+    """
+
+    name = "voyage-context"
+    default_base_url = "https://api.voyageai.com/v1/contextualizedembeddings"
+    default_model = "voyage-context-3"
+    _dimensions_field = "output_dimension"
+
+    def _grouped_payload(
+        self, documents: list[list[str]], input_type: InputType | None
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {"model": self.model, "inputs": documents}
+        if input_type is not None:
+            payload["input_type"] = input_type
+        if self.dimensions is not None:
+            payload[self._dimensions_field] = self.dimensions
+        return payload
+
+    def _parse_grouped(self, data: dict[str, Any]) -> list[list[list[float]]]:
+        groups = sorted(data.get("data") or [], key=lambda g: g.get("index", 0))
+        out: list[list[list[float]]] = []
+        for group in groups:
+            chunks = sorted(group.get("data") or [], key=lambda c: c.get("index", 0))
+            vectors = [c["embedding"] for c in chunks]
+            if self.dimensions is not None:
+                vectors = [mrl_truncate(v, self.dimensions) for v in vectors]
+            out.append(vectors)
+        return out
+
+    async def embed_grouped(
+        self, documents: list[list[str]], *, input_type: InputType | None = None
+    ) -> list[list[list[float]]]:
+        """Embed several documents at once; returns one vector list per document."""
+        if not documents:
+            return []
+        client = self._client or httpx.AsyncClient(timeout=self.timeout_s)
+        try:
+            response = await client.post(
+                self.base_url, json=self._grouped_payload(documents, input_type), headers=self._headers()
+            )
+            if response.status_code >= 400:
+                raise ProviderError(
+                    f"embedder {self.name!r} error {response.status_code}: {response.text[:500]}",
+                    provider=self.name,
+                )
+            groups = self._parse_grouped(response.json())
+        finally:
+            if self._client is None:
+                await client.aclose()
+        flat = [v for group in groups for v in group]
+        if flat:
+            self.dim = len(flat[0])
+        return groups
+
+    async def embed(
+        self, texts: list[str], *, input_type: InputType | None = None
+    ) -> list[list[float]]:
+        if not texts:
+            return []
+        groups = await self.embed_grouped([texts], input_type=input_type)
+        return groups[0] if groups else []
+
+
+class MultimodalInput(BaseModel):
+    """One multimodal embedding input: text, an image, or both."""
+
+    text: str | None = None
+    image: ImageRef | None = None
+
+
+class MultimodalEmbedder(HTTPEmbedder):
+    """Base for unified text+image embedders (one shared vector space).
+
+    ``embed(texts)`` embeds text-only inputs; :meth:`embed_multimodal` accepts
+    :class:`MultimodalInput` items (text, image, or both) so an image and the
+    text that describes it land near each other and can be retrieved together.
+    Images are sent inline as base64 data URLs (or by ``url`` when set).
+    """
+
+    def _encode_image(self, image: ImageRef) -> str:
+        if image.url:
+            return image.url
+        if image.path:
+            data = Path(image.path).read_bytes()
+            media_type = image.media_type or "image/png"
+            return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
+        raise ConfigError("MultimodalInput image needs a path or url")
+
+    def _multimodal_payload(
+        self, items: list[MultimodalInput], input_type: InputType | None
+    ) -> dict[str, Any]:  # pragma: no cover - overridden
+        raise NotImplementedError
+
+    async def embed_multimodal(
+        self, items: list[MultimodalInput], *, input_type: InputType | None = None
+    ) -> list[list[float]]:
+        if not items:
+            return []
+        return await self._post(self._multimodal_payload(items, input_type))
+
+    async def embed(
+        self, texts: list[str], *, input_type: InputType | None = None
+    ) -> list[list[float]]:
+        if not texts:
+            return []
+        return await self.embed_multimodal(
+            [MultimodalInput(text=text) for text in texts], input_type=input_type
+        )
+
+
+class VoyageMultimodalEmbedder(MultimodalEmbedder):
+    """Voyage multimodal embeddings (``/v1/multimodalembeddings``).
+
+    Each input is a content list of text and image parts; the returned vector
+    lives in the same space as text-only Voyage vectors. Default model
+    ``voyage-multimodal-3``."""
+
+    name = "voyage-multimodal"
+    default_base_url = "https://api.voyageai.com/v1/multimodalembeddings"
+    default_model = "voyage-multimodal-3"
+    _dimensions_field = "output_dimension"
+
+    def _content(self, item: MultimodalInput) -> list[dict[str, Any]]:
+        parts: list[dict[str, Any]] = []
+        if item.text:
+            parts.append({"type": "text", "text": item.text})
+        if item.image is not None:
+            encoded = self._encode_image(item.image)
+            if encoded.startswith("data:"):
+                parts.append({"type": "image_base64", "image_base64": encoded})
+            else:
+                parts.append({"type": "image_url", "image_url": encoded})
+        return parts
+
+    def _multimodal_payload(
+        self, items: list[MultimodalInput], input_type: InputType | None
+    ) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "inputs": [{"content": self._content(item)} for item in items],
+        }
+        if input_type is not None:
+            payload["input_type"] = input_type
+        if self.dimensions is not None:
+            payload[self._dimensions_field] = self.dimensions
+        return payload
+
+
+class CohereMultimodalEmbedder(MultimodalEmbedder):
+    """Cohere v4 unified text+image embeddings (``/v2/embed``, ``embed-v4.0``).
+
+    Cohere v4 embeds text and images into one space; inputs carry a content
+    list and the corpus/query ``input_type``. Returns ``embeddings.float``."""
+
+    name = "cohere-multimodal"
+    default_base_url = "https://api.cohere.com/v2/embed"
+    default_model = "embed-v4.0"
+    _dimensions_field = "output_dimension"
+
+    _COHERE_INPUT_TYPE = {"document": "search_document", "query": "search_query"}
+
+    def __init__(self, *, input_type: str = "search_document", **kwargs: Any) -> None:
+        super().__init__(**kwargs)
+        self.input_type = input_type
+
+    def _content(self, item: MultimodalInput) -> list[dict[str, Any]]:
+        parts: list[dict[str, Any]] = []
+        if item.text:
+            parts.append({"type": "text", "text": item.text})
+        if item.image is not None:
+            parts.append({"type": "image_url", "image_url": {"url": self._encode_image(item.image)}})
+        return parts
+
+    def _multimodal_payload(
+        self, items: list[MultimodalInput], input_type: InputType | None
+    ) -> dict[str, Any]:
+        resolved = self._COHERE_INPUT_TYPE[input_type] if input_type is not None else self.input_type
+        payload: dict[str, Any] = {
+            "model": self.model,
+            "input_type": resolved,
+            "embedding_types": ["float"],
+            "inputs": [{"content": self._content(item)} for item in items],
+        }
+        if self.dimensions is not None:
+            payload[self._dimensions_field] = self.dimensions
+        return payload
+
+    def _parse(self, data: dict[str, Any]) -> list[list[float]]:
+        embeddings = data.get("embeddings") or {}
+        if isinstance(embeddings, dict):
+            return list(embeddings.get("float") or [])
+        return list(embeddings)
+
+
 _HTTP_EMBEDDERS: dict[str, type[HTTPEmbedder]] = {
     "jina": JinaEmbedder,
     "voyage": VoyageEmbedder,
     "cohere": CohereEmbedder,
+    "voyage-context": VoyageContextualEmbedder,
+    "voyage_context": VoyageContextualEmbedder,
+    "voyage-multimodal": VoyageMultimodalEmbedder,
+    "voyage_multimodal": VoyageMultimodalEmbedder,
+    "cohere-multimodal": CohereMultimodalEmbedder,
+    "cohere-v4": CohereMultimodalEmbedder,
 }
 
 
-def build_embedder(kind: str = "local", *, config: Any | None = None, **kwargs: Any) -> Embedder:
+def build_embedder(
+    kind: str = "local",
+    *,
+    config: Any | None = None,
+    dimensions: int | None = None,
+    **kwargs: Any,
+) -> Embedder:
     """Construct an embedder by name.
 
     - ``local`` → :class:`LocalHashEmbedder` (deterministic, dependency-free)
     - ``jina`` / ``voyage`` / ``cohere`` → hosted HTTP embedders (httpx only)
+    - ``voyage-context`` → :class:`VoyageContextualEmbedder` (contextual chunks)
+    - ``voyage-multimodal`` / ``cohere-multimodal`` (``cohere-v4``) →
+      unified text+image embedders
     - any provider name (``openai``, ``google``, ``mistral``, ``groq``, …) →
       :class:`ProviderEmbedder` over :func:`vincio.providers.build_provider`
+
+    ``dimensions`` enables Matryoshka (MRL) truncation: hosted embedders that
+    support it request the shorter vector natively; everything else is wrapped
+    in :class:`MatryoshkaEmbedder` so the output is exactly ``dimensions`` long.
     """
     if kind == "local":
-        return LocalHashEmbedder(**kwargs)
-    if kind in _HTTP_EMBEDDERS:
-        return _HTTP_EMBEDDERS[kind](**kwargs)
-    try:
-        from ..providers import build_provider
+        base: Embedder = LocalHashEmbedder(**kwargs)
+    elif kind in _HTTP_EMBEDDERS:
+        if dimensions is not None:
+            kwargs.setdefault("dimensions", dimensions)
+        base = _HTTP_EMBEDDERS[kind](**kwargs)
+    else:
+        try:
+            from ..providers import build_provider
 
-        provider = build_provider(kind, config)
-    except Exception as exc:  # noqa: BLE001 - surface a clear configuration error
-        raise ConfigError(f"unknown embedder {kind!r}: {exc}") from exc
-    model = kwargs.pop("model", None)
-    return ProviderEmbedder(provider, model=model, **kwargs)
+            provider = build_provider(kind, config)
+        except Exception as exc:  # noqa: BLE001 - surface a clear configuration error
+            raise ConfigError(f"unknown embedder {kind!r}: {exc}") from exc
+        model = kwargs.pop("model", None)
+        base = ProviderEmbedder(provider, model=model, **kwargs)
+    if dimensions is not None and not getattr(base, "supports_dimensions", False):
+        base = MatryoshkaEmbedder(base, dimensions)
+    return base

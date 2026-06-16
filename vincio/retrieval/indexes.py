@@ -14,7 +14,7 @@ from typing import Any, Protocol
 from pydantic import BaseModel
 
 from ..core.types import Chunk
-from .embeddings import Embedder, LocalHashEmbedder, cosine
+from .embeddings import Embedder, LocalHashEmbedder, cosine, embed_texts
 
 __all__ = ["SearchHit", "SearchFilter", "Index", "BM25Index", "VectorIndex"]
 
@@ -164,7 +164,7 @@ class VectorIndex:
     async def add(self, chunks: list[Chunk]) -> None:
         if not chunks:
             return
-        vectors = await self.embedder.embed([c.text for c in chunks])
+        vectors = await embed_texts(self.embedder, [c.text for c in chunks], input_type="document")
         for chunk, vector in zip(chunks, vectors, strict=False):
             self.chunks[chunk.id] = chunk
             self.vectors[chunk.id] = vector
@@ -195,7 +195,7 @@ class VectorIndex:
     ) -> list[SearchHit]:
         if not self.chunks:
             return []
-        [query_vector] = await self.embedder.embed([query])
+        [query_vector] = await embed_texts(self.embedder, [query], input_type="query")
         hits: list[SearchHit] = []
         for chunk_id, vector in self.vectors.items():
             chunk = self.chunks[chunk_id]
