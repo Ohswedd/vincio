@@ -63,7 +63,8 @@ _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
 def extract_markdown_sections(text: str) -> list[Section]:
     sections: list[Section] = []
-    current_title, current_level, current_lines, current_start = "", 0, [], 0
+    current_title, current_level, current_start = "", 0, 0
+    current_lines: list[str] = []
     stack: list[tuple[int, str]] = []
 
     def flush() -> None:

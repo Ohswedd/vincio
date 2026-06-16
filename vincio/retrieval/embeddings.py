@@ -33,7 +33,7 @@ import math
 import threading
 from collections import OrderedDict
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, cast
 
 import httpx
 from pydantic import BaseModel
@@ -808,5 +808,7 @@ def build_embedder(
         model = kwargs.pop("model", None)
         base = ProviderEmbedder(provider, model=model, **kwargs)
     if dimensions is not None and not getattr(base, "supports_dimensions", False):
-        base = MatryoshkaEmbedder(base, dimensions)
+        # MatryoshkaEmbedder wraps any Embedder; it exposes ``dim`` as a
+        # read-only property, which the Protocol's settable attr can't express.
+        base = cast("Embedder", MatryoshkaEmbedder(base, dimensions))
     return base

@@ -50,6 +50,9 @@ TaskState = Literal[
 class A2AError(VincioError):
     """An A2A protocol or transport error (``code`` is the JSON-RPC error code)."""
 
+    # JSON-RPC codes are numeric; this intentionally narrows the str base ``code``.
+    code: int = -32603  # type: ignore[assignment]
+
     def __init__(self, message: str, *, code: int = -32603, data: Any = None) -> None:
         super().__init__(message)
         self.code = code

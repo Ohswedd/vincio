@@ -12,7 +12,7 @@ re-derived from the same dataset and reports.
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic import BaseModel, Field
 
@@ -190,10 +190,10 @@ class ImprovementLoop:
                 gates=self.gates,
                 max_cost_per_case=self.max_cost_per_case,
             )
-            optimization = await reflective.optimize(
+            optimization: OptimizationResult = await reflective.optimize(
                 app.prompt_spec,
                 dataset,
-                strategy=self.strategy,
+                strategy=cast('Literal["reflective", "mipro"]', self.strategy),
                 budget=max_variants,
                 minibatch_size=subset_size,
             )

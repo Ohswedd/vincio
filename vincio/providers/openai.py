@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from ..core.errors import ProviderResponseError
 from ..core.types import (
+    FinishReason,
     Message,
     ModelCapabilities,
     ModelEvent,
@@ -175,7 +176,7 @@ class OpenAIProvider(HTTPProvider):
             text=text,
             tool_calls=tool_calls,
             structured=structured,
-            finish_reason=finish_map.get(choice.get("finish_reason"), "stop"),
+            finish_reason=cast(FinishReason, finish_map.get(choice.get("finish_reason"), "stop")),
             usage=usage,
             cost_usd=self.price_table.cost(request.model, usage),
             latency_ms=latency_ms,
@@ -252,7 +253,7 @@ class OpenAIProvider(HTTPProvider):
             text=text,
             tool_calls=tool_calls,
             structured=structured,
-            finish_reason=finish_map.get(finish_reason, "stop"),
+            finish_reason=cast(FinishReason, finish_map.get(finish_reason, "stop")),
             usage=usage,
             cost_usd=self.price_table.cost(request.model, usage),
             latency_ms=int((time.monotonic() - started) * 1000),

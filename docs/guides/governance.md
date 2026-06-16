@@ -88,7 +88,7 @@ From the CLI: `vincio governance aibom app.py --output vincio.aibom.cdx.json`.
 ## EU AI Act transparency
 
 For the 2 Aug 2026 GenAI transparency duties, Vincio supplies the artifacts and
-hooks — deadline-agnostic, no signing authority assumed:
+hooks — deadline-agnostic:
 
 ```python
 from vincio.governance import ai_disclosure, data_summary, mark_synthetic_content
@@ -101,6 +101,23 @@ print(data_summary(result))                # grounding/training-data summary
 Enable automatic marking on every run with `governance.content_marking: true`
 (or `app.content_marking = True`); the manifest and disclosure are attached to
 `result.metadata["content_credentials"]` / `["ai_disclosure"]`.
+
+**Signing the manifest.** A manifest is bound to the output by SHA-256; pass a
+`signer` to additionally sign the binding payload, and verify it later:
+
+```python
+from vincio.governance import HmacSigner, mark_synthetic_content, verify_manifest
+
+signer = HmacSigner("shared-secret", key_id="prod-2026")   # or your own ContentSigner
+manifest = mark_synthetic_content(result.raw_text, model_id=app.model, signer=signer)
+verify_manifest(manifest, result.raw_text, signer=signer)  # True; tamper/wrong-key -> False
+```
+
+`HmacSigner` is symmetric (HMAC-SHA256, dependency-free) — good for internal
+integrity. For third-party-verifiable provenance, implement the `ContentSigner`
+protocol with an asymmetric key. Set `app.content_signer = signer` to sign every
+auto-marked run. `verify_manifest` always checks the content binding and fails
+closed when a signature is present but no verifier is supplied.
 
 ## Data lineage & erasure-by-source
 
@@ -130,10 +147,25 @@ app.set_residency(["eu"], provider_regions={"openai": "us"})
 # recorded as a residency_check deny on the audit log.
 ```
 
+The strongest posture is to point at a **region-pinned endpoint** — an Azure
+OpenAI regional resource, an AWS Bedrock regional endpoint, a Vertex AI regional
+host, or a sovereign/EU gateway. Vincio infers the region from the configured
+`provider.base_urls` (e.g. `bedrock-runtime.eu-west-1.amazonaws.com` →
+`eu-west-1`, `europe-west4-aiplatform.googleapis.com` → `europe-west4`,
+`https://eu.gateway.example.com` → `eu`) and matches it jurisdiction-aware, so
+`allowed_regions=["eu"]` admits `eu-west-1` and `europe-west4` but refuses a US
+endpoint:
+
+```python
+# provider.base_urls: {bedrock: "https://bedrock-runtime.eu-west-1.amazonaws.com"}
+app.set_residency(["eu"])     # the eu-west-1 endpoint resolves; a us endpoint is refused
+```
+
 Or configure it: `governance.allowed_regions: ["eu"]` plus
 `governance.provider_regions: {openai: us}`. Vincio can refuse to *send* a
 request; it cannot guarantee where a global provider runs it — the control is
-egress refusal, which is what an in-jurisdiction policy needs from the client.
+client-side egress refusal, which, paired with a region-pinned endpoint, is what
+an in-jurisdiction policy needs.
 
 ## Multilingual PII & the token tax
 

@@ -127,7 +127,7 @@ class MCPServer:
                 raise MCPError("tools/call requires 'name'", code=INVALID_PARAMS)
             output = await self._call_tool(name, params.get("arguments") or {})
             is_error = isinstance(output, dict) and output.get("_mcp_error") is True
-            text = output.get("text") if isinstance(output, dict) and "text" in output else _stringify(output)
+            text = str(output["text"]) if isinstance(output, dict) and "text" in output else _stringify(output)
             return {"content": [text_content(text)], "isError": is_error}
         if method == "resources/list":
             return {"resources": self._list_resources() if self._list_resources else []}

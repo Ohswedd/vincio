@@ -67,7 +67,7 @@ class ScopedMemory:
         self.scope = scope
         self.owner_id = owner_id
 
-    def _owner_kwargs(self) -> dict[str, str]:
+    def _owner_kwargs(self) -> dict[str, Any]:
         key = {
             MemoryScope.USER: "user_id",
             MemoryScope.AGENT: "agent_id",

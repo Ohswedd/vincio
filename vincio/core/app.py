@@ -217,6 +217,9 @@ class ContextApp:
         self.lineage = LineageIndex()
         self.fertility = FertilityTracker(model=model or self.config.provider.model)
         self.content_marking = self.config.governance.content_marking
+        # Optional signer for synthetic-content manifests (e.g. HmacSigner);
+        # set it to cryptographically sign every marked output.
+        self.content_signer: Any = None
         self.input_router = InputRouter()
 
         # provider
@@ -378,7 +381,10 @@ class ContextApp:
             return
         name = (run_config.provider if run_config else None) or self._provider_name
         model = (run_config.model if run_config else None) or self.model
-        violation = self.residency.check(provider=name, model=model)
+        # The region is inferred from the configured endpoint when set, so a
+        # region-pinned base_url drives the egress decision.
+        base_url = self.config.provider.base_urls.get(name)
+        violation = self.residency.check(provider=name, model=model, base_url=base_url)
         if violation is None:
             return
         self.audit.record(
@@ -716,13 +722,19 @@ class ContextApp:
         return self.lineage.trace(source)
 
     @experimental(since="1.6")
-    def mark_output(self, content: str, *, model: str | None = None):
+    def mark_output(self, content: str, *, model: str | None = None, signer: Any | None = None):
         """Build a C2PA-style synthetic-content provenance manifest for output
-        (:class:`~vincio.governance.ProvenanceManifest`)."""
+        (:class:`~vincio.governance.ProvenanceManifest`).
+
+        Signs the manifest when a ``signer`` is passed or ``app.content_signer``
+        is set (e.g. an :class:`~vincio.governance.HmacSigner`)."""
         from ..governance.transparency import mark_synthetic_content
 
         return mark_synthetic_content(
-            content, model_id=model or self.model, provider=self._provider_name
+            content,
+            model_id=model or self.model,
+            provider=self._provider_name,
+            signer=signer or self.content_signer,
         )
 
     @experimental(since="1.6")

@@ -16,6 +16,7 @@ Singapore NRIC) without changing the built-in path: pass ``locales=`` to
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
@@ -141,7 +142,7 @@ class PIIDetector:
         self,
         *,
         enabled_types: set[str] | None = None,
-        locales: list[str | LocalePack] | None = None,
+        locales: Sequence[str | LocalePack] | None = None,
     ) -> None:
         self.enabled_types = enabled_types
         self._locale_patterns: list[tuple[str, str, re.Pattern[str], float]] = []
@@ -216,10 +217,10 @@ class PIIDetector:
         # Drop overlapping lower-confidence matches.
         matches.sort(key=lambda m: (m.start, -m.confidence))
         kept: list[PIIMatch] = []
-        for match in matches:
-            if kept and match.start < kept[-1].end and match.type == kept[-1].type:
+        for candidate in matches:
+            if kept and candidate.start < kept[-1].end and candidate.type == kept[-1].type:
                 continue
-            kept.append(match)
+            kept.append(candidate)
         return kept
 
     def contains_pii(self, text: str, *, min_confidence: float = 0.7) -> bool:

@@ -31,7 +31,7 @@ import json
 import time
 from collections.abc import Callable
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol, cast
 
 from pydantic import BaseModel, Field
 
@@ -461,7 +461,7 @@ class BatchRunner:
             if isinstance(item, BatchRequest):
                 out.append(item)
             else:
-                out.append(BatchRequest(custom_id=f"req-{i}", request=item))
+                out.append(BatchRequest(custom_id=f"req-{i}", request=cast("ModelRequest", item)))
         return out
 
     async def submit(
@@ -474,7 +474,8 @@ class BatchRunner:
         return job, {i.custom_id: i.request for i in items}
 
     async def await_job(self, job: BatchJob, *, timeout_s: float | None = None) -> BatchJob:
-        deadline = self._clock() + (timeout_s or self.timeout_s) if (timeout_s or self.timeout_s) else None
+        effective_timeout = timeout_s or self.timeout_s
+        deadline = self._clock() + effective_timeout if effective_timeout else None
         while not job.done:
             if deadline is not None and self._clock() >= deadline:
                 raise BatchError(
@@ -546,5 +547,5 @@ class _NullSpan:
     def __enter__(self) -> None:
         return None
 
-    def __exit__(self, *exc: object) -> bool:
-        return False
+    def __exit__(self, *exc: object) -> None:
+        return None

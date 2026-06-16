@@ -17,7 +17,7 @@ from __future__ import annotations
 import hashlib
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, Field
 
@@ -170,7 +170,7 @@ def generate_aibom(
     """
     import vincio
 
-    cfg = getattr(target, "config", None) or target  # type: ignore[assignment]
+    cfg: VincioConfig = cast("VincioConfig", getattr(target, "config", None) or target)
     price_table = default_price_table()
     tracker = getattr(target, "cost_tracker", None)
     if tracker is not None and getattr(tracker, "price_table", None) is not None:

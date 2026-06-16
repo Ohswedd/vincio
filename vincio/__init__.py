@@ -68,7 +68,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 
 __all__ = [
     "ContextApp",

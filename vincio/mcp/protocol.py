@@ -46,6 +46,9 @@ INTERNAL_ERROR = -32603
 class MCPError(VincioError):
     """An MCP protocol or transport error. ``code`` is the JSON-RPC error code."""
 
+    # JSON-RPC codes are numeric; this intentionally narrows the str base ``code``.
+    code: int = INTERNAL_ERROR  # type: ignore[assignment]
+
     def __init__(self, message: str, *, code: int = INTERNAL_ERROR, data: Any = None) -> None:
         super().__init__(message)
         self.code = code

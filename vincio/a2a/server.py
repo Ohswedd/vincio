@@ -10,7 +10,7 @@ raw A2A SDK does not provide.
 from __future__ import annotations
 
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any
+from typing import Any, cast
 
 from .protocol import (
     A2AArtifact,
@@ -107,7 +107,7 @@ class A2AServer:
 
     def _get_task(self, params: dict[str, Any]) -> A2ATask:
         task_id = params.get("id")
-        task = self.tasks.get(task_id)
+        task = self.tasks.get(cast("str", task_id))
         if task is None:
             raise A2AError(f"unknown task {task_id!r}", code=INVALID_PARAMS)
         return task
@@ -222,7 +222,7 @@ def crew_a2a_server(
 ) -> A2AServer:
     """Expose a :class:`Crew` over A2A — bounded and traced by construction."""
     card = AgentCard(
-        name=name or getattr(crew, "name", "crew"),
+        name=name or str(getattr(crew, "name", "crew")),
         description=description or "A Vincio crew exposed over A2A.",
         url=url,
         skills=_crew_skills(crew),

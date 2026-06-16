@@ -1148,15 +1148,19 @@ behind `@experimental` entry points on the frozen 1.0 API, dependency-free.*
   **mechanical and measured** — cards and BOMs generated from the live config, framework mappings
   backed by red-team and eval evidence, erasure enforced through the same lineage that cites your
   answers. See the new guide [docs/guides/governance.md](docs/guides/governance.md).
-- **980 tests passing offline; ruff clean; VincioBench 129/129 budgets**; thirty runnable examples.
-  Cards/AI-BOM completeness, framework-mapping coverage and red-team/eval evidence, erasure
+- **986 tests passing offline; ruff clean; mypy clean; VincioBench 131/131 budgets**; thirty runnable
+  examples. Cards/AI-BOM completeness, framework-mapping coverage and red-team/eval evidence, erasure
   correctness across indexes + audit, residency egress refusal, multilingual PII recall + English-path
   intactness, RAG-poisoning FP/FN telemetry, fertility token-tax, and eval slicing are all covered
   offline; example `30_governance_compliance.py`; the VincioBench `governance` family gates card/BOM
-  completeness, mapping coverage, erasure correctness, and multilingual PII recall (13 new budgets,
-  three new SLOs).
+  completeness, mapping coverage, erasure correctness, multilingual PII recall, residency
+  endpoint-inference, and signature verification (15 budgets, three SLOs).
+- *1.6.1 (no gaps):* the type-checker is now a CI gate (`mypy vincio` clean across the package);
+  residency infers the region from a **region-pinned endpoint** (AWS/GCP/Vertex/sovereign URLs) with
+  jurisdiction-aware matching, not just a hand-maintained map; and synthetic-content manifests are
+  **signable** (`HmacSigner` / custom `ContentSigner`) and verifiable (`verify_manifest`).
 
-See the [CHANGELOG](CHANGELOG.md) for the complete 1.6.0 notes.
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.6.0 and 1.6.1 notes.
 
 ### 🔭 Exploring — later, and 2.0
 

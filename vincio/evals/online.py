@@ -38,7 +38,7 @@ class OnlineEvaluator:
             self.name = name or metric
         else:
             self.metric = metric
-            self.name = name or getattr(metric, "__name__", "online_metric")
+            self.name = name or str(getattr(metric, "__name__", "online_metric"))
         self.sample_rate = max(0.0, min(1.0, sample_rate))
         self.store = store
         self.app_name = app_name

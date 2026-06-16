@@ -138,14 +138,14 @@ def deprecated(
         )
 
         if isinstance(obj, type):
-            orig_init = obj.__init__
+            orig_init = obj.__init__  # type: ignore[misc]  # intentional __init__ wrapping
 
             @functools.wraps(orig_init)
             def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
                 warnings.warn(message, VincioDeprecationWarning, stacklevel=2)
                 orig_init(self, *args, **kwargs)
 
-            obj.__init__ = __init__  # type: ignore[method-assign]
+            obj.__init__ = __init__  # type: ignore[method-assign,misc]
             _attach(obj, record)
             obj.__doc__ = f"[DEPRECATED] {message}\n\n{obj.__doc__ or ''}".rstrip()
             return obj  # type: ignore[return-value]
@@ -185,14 +185,14 @@ def experimental(*, since: str, note: str | None = None) -> Callable[[F], F]:
                 warned["done"] = True
 
         if isinstance(obj, type):
-            orig_init = obj.__init__
+            orig_init = obj.__init__  # type: ignore[misc]  # intentional __init__ wrapping
 
             @functools.wraps(orig_init)
             def __init__(self: Any, *args: Any, **kwargs: Any) -> None:
                 _warn()
                 orig_init(self, *args, **kwargs)
 
-            obj.__init__ = __init__  # type: ignore[method-assign]
+            obj.__init__ = __init__  # type: ignore[method-assign,misc]
             _attach(obj, record)
             return obj  # type: ignore[return-value]
 

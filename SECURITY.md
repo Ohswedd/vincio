@@ -64,10 +64,15 @@ to disallowed provider regions as a blocking `PolicyViolation` on the audit
 path; right-to-erasure-by-source (`app.erase_source`) purges a source from every
 index, memory, and cache and is logged on the hash-chained audit chain.
 Non-English PII locale packs and RAG-poisoning detection extend the existing
-detectors. Vincio refuses to *send* a request to a disallowed region; it cannot
-guarantee where a global provider runs it — the control is client-side egress
-refusal. Synthetic-content marking emits a C2PA-style manifest you sign and
-attach in your pipeline (Vincio assumes no signing authority).
+detectors. Residency resolves the provider region from a region-pinned endpoint
+(`provider.base_urls`; AWS/GCP/Vertex/sovereign URLs) with jurisdiction-aware
+matching, then refuses to *send* a request to a disallowed region — Vincio cannot
+guarantee where a global provider runs it, so the strongest posture is a
+region-pinned endpoint plus this client-side egress refusal. Synthetic-content
+marking emits a C2PA-style manifest bound by SHA-256; it can be cryptographically
+**signed** (built-in symmetric `HmacSigner`, or your own asymmetric
+`ContentSigner`) and verified with `verify_manifest` (Vincio assumes no signing
+authority — the key and any PKI are yours).
 
 ## Supply-chain integrity
 

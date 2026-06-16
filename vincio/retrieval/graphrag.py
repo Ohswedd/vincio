@@ -251,10 +251,10 @@ class GraphRAG:
     async def retrieve(self, query: str, *, top_k: int = 8, mode: str | None = None) -> list[EvidenceItem]:
         mode = mode or self.route(query)
         if mode == "local":
-            evidence = self.graph.retrieve(query, top_k=top_k)
-            for item in evidence:
+            local_evidence = self.graph.retrieve(query, top_k=top_k)
+            for item in local_evidence:
                 item.metadata["graphrag_mode"] = "local"
-            return evidence
+            return local_evidence
         if not self.communities:
             await self.build()
         scored = sorted(

@@ -126,7 +126,7 @@ class Composable(Generic[TIn, TOut]):
         return [name for name, _ in self._nodes]
 
     def __or__(self, other: Any) -> Composable:
-        merged = Composable(name=self.name, tracer=self.tracer)
+        merged: Composable = Composable(name=self.name, tracer=self.tracer)
         merged._nodes = list(self._nodes)
         if isinstance(other, Composable):
             merged._nodes.extend(other._nodes)
@@ -135,7 +135,7 @@ class Composable(Generic[TIn, TOut]):
         return merged
 
     def __ror__(self, other: Any) -> Composable:
-        merged = Composable(name=self.name, tracer=self.tracer)
+        merged: Composable = Composable(name=self.name, tracer=self.tracer)
         merged._nodes = [_wrap(other), *self._nodes]
         return merged
 

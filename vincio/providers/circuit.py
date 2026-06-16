@@ -244,9 +244,10 @@ class HealthAwareFailover(ModelProvider):
             return 0
         return {CircuitState.CLOSED: 0, CircuitState.HALF_OPEN: 1, CircuitState.OPEN: 2}[state()]
 
-    def _ordered(self) -> list[tuple[ModelProvider, str | None]]:
-        # Stable sort keeps original priority within each health tier.
-        return sorted(enumerate(self.entries), key=lambda iv: (self._rank(iv[1][0]), iv[0]))  # type: ignore[index]
+    def _ordered(self) -> list[tuple[int, tuple[ModelProvider, str | None]]]:
+        # Stable sort keeps original priority within each health tier. Returns
+        # ``(original_index, (provider, model_override))`` pairs.
+        return sorted(enumerate(self.entries), key=lambda iv: (self._rank(iv[1][0]), iv[0]))
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
         errors: list[str] = []

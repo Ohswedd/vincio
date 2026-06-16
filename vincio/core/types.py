@@ -557,13 +557,16 @@ class ModelRequest(BaseModel):
         return stable_hash(self.model_dump(mode="json"))
 
 
+FinishReason = Literal["stop", "length", "tool_calls", "content_filter", "error"]
+
+
 class ModelResponse(BaseModel):
     id: str = Field(default_factory=lambda: new_id("resp"))
     model: str = ""
     text: str = ""
     tool_calls: list[ToolCallRequest] = Field(default_factory=list)
     structured: dict[str, Any] | None = None
-    finish_reason: Literal["stop", "length", "tool_calls", "content_filter", "error"] = "stop"
+    finish_reason: FinishReason = "stop"
     usage: TokenUsage = Field(default_factory=TokenUsage)
     cost_usd: float = 0.0
     latency_ms: int = 0

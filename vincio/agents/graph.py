@@ -276,7 +276,11 @@ class CompiledGraph:
                 targets.extend(self.graph.edges.get(name, []) or [END])
         # Deterministic, deduplicated; END only survives if nothing else runs.
         seen: set[str] = set()
-        frontier = [t for t in targets if t != END and not (t in seen or seen.add(t))]
+        frontier: list[str] = []
+        for target in targets:
+            if target != END and target not in seen:
+                seen.add(target)
+                frontier.append(target)
         return frontier or [END]
 
     def _checkpoint(
