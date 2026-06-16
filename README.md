@@ -218,7 +218,8 @@ for any engine directly.
 | **The closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
 | **Reflective optimization & the flywheel** | A GEPA-style `ReflectiveOptimizer` that reads eval failures, reflects on why a prompt lost, and proposes targeted edits, evolving a Pareto frontier under a hard rollout budget (plus MIPRO joint instruction+example proposal); a **distillation flywheel** (`app.export_training_set` / `vincio distill`) that curates grounded production traces into provider-ready fine-tuning JSONL and gates a cheaper student into the routing cascade only when it holds quality; **learned prompt compression** (`LLMLinguaCompressor`) as a faithfulness-gated compiler pass; and reflective calibration of the optimizer's own LLM judge against κ-validated labels. |
 | **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
-| **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
+| **Security** | Deterministic PII / secret detection and redaction (with non-English locale packs for France/Germany/Spain/India/Singapore/Brazil/UK), prompt-injection defense, **authority/provenance RAG-poisoning detection** on retrieved evidence, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
+| **Governance & compliance** | Evidence generated from the running system, as files you own: machine-readable **model & system cards** (`app.model_card` / `system_card`), a **compliance coverage matrix** across OWASP LLM Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE ATLAS backed by red-team and eval evidence (`app.compliance_report`), an **AI-BOM** with SHA-256 model-hash verification (`app.aibom`), EU AI Act **synthetic-content marking** + AI-interaction disclosure, **data lineage** with right-to-erasure-by-source (`app.erase_source`), **data-residency-aware** egress refusal (`app.set_residency`), and the non-English **token tax** surfaced per language/tenant — see the [governance guide](docs/guides/governance.md). |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB / Weaviate / Milvus / Elasticsearch / OpenSearch / Vespa behind one `build_vector_index` factory), and graph (Neo4j) backends. |
 | **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. Opt-in **voice/realtime** sessions (OpenAI Realtime, Gemini Live) via `vincio.realtime` — VAD, interruption, and in-session tool calls through the permissioned runtime. |
 | **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. All via `app.add_mcp_server` / `serve_mcp` / `serve_a2a` / `add_skill` (experimental, since 1.1). |
@@ -273,6 +274,9 @@ baseline. Representative results on the bundled reference corpus:
 | **Reflective optimization & flywheel** | reflective search beats baseline within rollout budget · deterministic | **pass** | blind mutation |
 | | distillation exports grounded-only · gates student on quality hold | **pass** | trains on hallucinations |
 | | learned compression preserves cited facts under faithfulness gate | **pass** | drops evidence |
+| **Governance** | card/AI-BOM completeness · framework-mapping coverage | **pass · 79%** | — |
+| | erasure correctness (chunks removed = lineage) · audited | **pass** | — |
+| | multilingual PII recall · RAG-poisoning detection (FP rate) | **100% · 100% (0%)** | English-only |
 
 > **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
 > demonstrate the mechanisms, not to be quoted as universal gains. The context-compression
@@ -304,6 +308,7 @@ in-library** capabilities — not what is reachable by bolting on a separate pro
 | **Deterministic security** (PII / injection / audit) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **MCP** client *and* server + **A2A** + **Agent Skills** | ✅ | ➖ | ➖ | ➖ | ❌ |
 | **In-process FinOps**: batch · circuit-break · cascades · cost attribution + budgets | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Governance evidence**: cards · OWASP/NIST/MITRE mapping · AI-BOM · erasure · residency | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 <sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Reflects
 mid-2026; ecosystems evolve. Vincio is built to *interoperate* — it speaks MCP (client *and* server),
@@ -347,10 +352,11 @@ and the vector store you already run. See the
 | Survive outages and account for every dollar at scale | batch execution, circuit breaking + failover, key pooling, model cascades, cost attribution + budgets, prompt caching, sharded indexing | [`27_cost_and_reliability.py`](examples/27_cost_and_reliability.py) |
 | Optimize prompts reflectively and distill traces into a cheaper model | GEPA/MIPRO reflective optimizer, distillation flywheel, learned compression, optimizer-judge calibration | [`28_reflective_optimization.py`](examples/28_reflective_optimization.py) |
 | Shrink embeddings, retrieve across text+image, and add stores | Matryoshka (MRL) truncation, contextual & multimodal embedders, new vector stores, layout-aware extraction, voice/realtime | [`29_multimodal_retrieval.py`](examples/29_multimodal_retrieval.py) |
+| Generate compliance evidence and satisfy a data-erasure request | model/system cards, OWASP/NIST/MITRE mapping, AI-BOM, lineage + erasure, residency, multilingual PII | [`30_governance_compliance.py`](examples/30_governance_compliance.py) |
 
 ## More examples
 
-All twenty-nine examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
+All thirty examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
 at a real model with environment variables:
 
 ```bash
@@ -429,8 +435,9 @@ a resource-limited tool sandbox; and releases ship a CycloneDX SBOM with SLSA pr
 
 New capabilities are added without breaking working code: each one sits behind a new entry point or an
 opt-in extra, and unproven surface is marked [`@experimental`](docs/reference/stability.md). Vincio
-adopts the ecosystem's standards — including the MCP, A2A, and Agent Skills protocols — *in your
-process*; it never becomes a hosted service to do so.
+adopts the ecosystem's standards — the MCP, A2A, and Agent Skills protocols, and the OWASP LLM 2025 /
+OWASP Agentic / NIST AI RMF / MITRE ATLAS governance frameworks — *in your process*; it never becomes
+a hosted service to do so.
 
 See **[ROADMAP.md](ROADMAP.md)** for what ships today, what's planned, and what's intentionally out of
 scope.
@@ -469,8 +476,9 @@ infrastructure. Hosted services and managed control planes are not part of this 
 - **Reference** — [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
   [config](docs/reference/config.md) · [API stability & deprecation policy](docs/reference/stability.md) ·
   [performance & quality SLOs](docs/reference/slo.md)
-- **Security** — [threat model](docs/security/threat-model.md) ·
-  [security policy](SECURITY.md) · [reliability & guardrails guide](docs/guides/reliability-guardrails.md)
+- **Security & governance** — [threat model](docs/security/threat-model.md) ·
+  [security policy](SECURITY.md) · [reliability & guardrails guide](docs/guides/reliability-guardrails.md) ·
+  [governance & compliance](docs/guides/governance.md)
 - **Comparisons** — [LangChain](docs/comparisons/langchain.md) ·
   [LlamaIndex](docs/comparisons/llamaindex.md) · [RAGatouille](docs/comparisons/ragatouille.md) ·
   [Mem0](docs/comparisons/mem0.md) · [CrewAI](docs/comparisons/crewai.md) ·

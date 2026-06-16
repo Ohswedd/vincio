@@ -737,7 +737,11 @@ six concrete gaps:
    Top 10 (2025)** / **OWASP Agents** / **NIST AI RMF** / **MITRE ATLAS** mapping, **AI-BOM**, data
    lineage with right-to-erasure-by-source, data-residency-aware routing, and **multilingual** support
    (non-English PII, per-language eval slicing, the tokenizer "token tax") are what regulated buyers
-   now require. Vincio has the audit/security spine but not the compliance evidence on top of it.
+   now require. Vincio had the audit/security spine but not the compliance evidence on top of it —
+   **1.6 (shipped) closes this gap** with model/system cards, OWASP/NIST/MITRE framework mapping backed
+   by red-team and eval evidence, an AI-BOM with model-hash verification, EU AI Act synthetic-content
+   marking, data lineage with right-to-erasure-by-source, data-residency-aware egress refusal, and
+   non-English PII locale packs with per-language eval slicing and token-tax telemetry.
 
 The three principles from the road to 1.0 still govern every item below — **beat the specialist at its
 own game and add what it structurally cannot** (provenance, budgeting, eval-gating, one trace);
@@ -772,7 +776,7 @@ multimodal/embedding breadth, then the governance layer that ties the audit spin
 | **DSPy BootstrapFinetune / distillation** | Teacher-trace → cheaper student | A distillation/fine-tune data flywheel from production traces, *plus* grounding, provenance, and eval-gating on every exported example | 1.4 ✅ |
 | **LLMLingua** | Learned prompt compression | A learned compressor as a compiler pass alongside extractive compression, *plus* per-task budget integration and faithfulness gating | 1.4 ✅ |
 | **Voyage / Cohere v4 / LlamaParse** | Matryoshka, contextual & multimodal embeddings, rich extraction | MRL truncation, contextual & multimodal embedders, and more vector stores behind the existing `Embedder`/`Index`, *plus* one scored, budgeted, cited packet | 1.5 ✅ |
-| **DeepTeam / NeMo / governance** | OWASP/NIST/MITRE mapping, safety classifiers | Red-team + audit mapped to OWASP LLM 2025 / OWASP Agents / NIST AI RMF / MITRE ATLAS, model/system cards, AI-BOM, lineage, residency, multilingual — all from the existing audit/security spine | 1.6 🚧 |
+| **DeepTeam / NeMo / governance** | OWASP/NIST/MITRE mapping, safety classifiers | Red-team + audit mapped to OWASP LLM 2025 / OWASP Agents / NIST AI RMF / MITRE ATLAS, model/system cards, AI-BOM, lineage, residency, multilingual — all from the existing audit/security spine | 1.6 ✅ |
 
 ---
 
@@ -1087,51 +1091,72 @@ parser, and the realtime module is an opt-in extra.*
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 1.5.0 notes.
 
-### 🚧 1.6 — Enterprise governance & compliance
+### ✅ 1.6 — Enterprise governance & compliance (shipped)
 
 *Turn the audit and security spine Vincio already has into the evidence regulated buyers now require —
 all generated in the library, on your infrastructure. No hosted compliance program (that stays
-[out of scope](#out-of-scope)); just the artifacts and controls, emitted as files you own.*
+[out of scope](#out-of-scope)); just the artifacts and controls, emitted as files you own. Additive
+behind `@experimental` entry points on the frozen 1.0 API, dependency-free.*
 
-- 🚧 **Model & system cards** — `vincio governance card` generates machine-readable **model cards**
-  (model id/version, capabilities, limitations, pricing) and **system cards** (model + retrieval +
-  memory + safety filters + human-oversight points) from the live app configuration and eval evidence;
-  pluggable schema (Open Model Card / AI Cards) since no format has won.
-- 🚧 **Compliance-framework mapping** — the `RedTeamSuite` and audit log map findings to **OWASP LLM Top
-  10 (2025)**, **OWASP Agents**, **NIST AI RMF (GenAI profile)**, and **MITRE ATLAS**; `vincio
-  governance report` emits the coverage matrix as compliance evidence, and evaluation results (1.2)
-  attach as measured evidence for the relevant controls.
-- 🚧 **EU AI Act artifacts** — a synthetic-content **output marking** hook (C2PA-style provenance
-  manifest / watermark metadata) for the 2 Aug 2026 transparency duty, an AI-interaction-disclosure
-  helper, and a training-/grounding-data summary export — all configurable and dated-deadline-agnostic.
-- 🚧 **AI-BOM & supply chain** — extend the shipped CycloneDX SBOM + SLSA provenance with an **AI-BOM**
-  (base-model identity and version, embedding/rerank models, fine-tune datasets, prompt/registry
-  versions) and SHA-256 model-hash verification, for blast-radius assessment when a model or dataset is
-  found compromised.
-- 🚧 **Data lineage & erasure-by-source** — first-class lineage from source document → chunk → evidence
-  → output (extending the evidence ledger's provenance), so `app.erase_source(...)` can satisfy a GDPR
-  right-to-erasure across indexes, caches, and memory, logged on the audit chain.
-- 🚧 **Data-residency-aware routing** — pin a run (or tenant) to provider regions and refuse egress when
-  policy requires in-jurisdiction processing, enforced by the deterministic policy engine.
-- 🚧 **Multilingual** — non-English PII/secret detectors (locale packs) extending today's English-centric
-  detectors, per-language **eval slicing** (so the ~24% high-vs-low-resource accuracy gap can't hide in
-  an aggregate), and tokenizer-aware **fertility/cost telemetry** that surfaces the non-English "token
-  tax" per tenant/language and makes it routable.
-- 🚧 **RAG-poisoning & injection hardening** — authority/provenance-based poisoning detection on
-  retrieved evidence (a handful of crafted docs can flip ~90% of answers) and a hook for a
-  PromptArmor-class injection classifier, extending the existing trust-tag/heuristic defense, with
-  FP/FN telemetry.
-- *Interconnection:* every artifact is generated from data Vincio already holds — the audit chain, the
-  evidence ledger, eval reports, the price table, the registry — so governance is a *view* over the
-  running system, not a parallel bookkeeping burden; residency and poisoning controls are
-  `PolicyViolation`s on the same audit path.
-- *Edge over the field:* governance bolted onto an app is documentation; Vincio's is **mechanical and
-  measured** — cards and BOMs generated from the live config, framework mappings backed by red-team and
-  eval evidence, erasure enforced through the same lineage that cites your answers.
-- *Target:* card/BOM generation, framework-mapping coverage, erasure completeness, residency
-  enforcement, and a non-English PII suite covered offline; example `30_governance_compliance.py`; a
-  VincioBench `governance` family gating card/BOM completeness, mapping coverage, erasure correctness,
-  and multilingual PII recall.
+- ✅ **Model & system cards** — `vincio.governance.generate_model_card` / `generate_system_card`,
+  `app.model_card()` / `app.system_card()`, and `vincio governance card` generate machine-readable
+  **model cards** (id/version, capabilities, limitations, live pricing) and **system cards** (model +
+  retrieval + memory + safety filters + human-oversight + governance controls) from the running
+  configuration and optional eval evidence. The schema is pluggable (`CardFormat`: Vincio native,
+  Open Model Card, EU "AI Cards") since no format has won; cards render from one captured fact set.
+- ✅ **Compliance-framework mapping** — `ComplianceMapper` / `app.compliance_report()` / `vincio
+  governance report` map a data-driven control catalog for **OWASP LLM Top 10 (2025)**, **OWASP
+  Agentic AI**, **NIST AI RMF (GenAI profile)**, and **MITRE ATLAS** onto Vincio's capabilities,
+  backed by *measured* evidence — `RedTeamSuite` probe outcomes, the security configuration, and
+  `EvalReport` metrics. The `ComplianceReport` is a coverage matrix (`covered`/`partial`/`not_covered`
+  with the evidence string for each, `to_markdown()` for auditors); uncovered controls are reported
+  honestly, never hidden in an aggregate.
+- ✅ **EU AI Act artifacts** — `mark_synthetic_content` emits a **C2PA-style provenance manifest**
+  (IPTC `trainedAlgorithmicMedia`, bound to the output by SHA-256), `ai_disclosure` returns a
+  localized **AI-interaction disclosure**, and `data_summary` exports a **grounding-data summary**.
+  `governance.content_marking` attaches the manifest + disclosure to every run's `result.metadata`.
+  Deadline-agnostic and configurable; signing is left to your pipeline.
+- ✅ **AI-BOM & supply chain** — `generate_aibom` / `app.aibom()` / `vincio governance aibom` extend
+  the shipped CycloneDX SBOM + SLSA provenance with an **AI-BOM** (base model + version,
+  embedding/rerank models, fine-tune datasets, prompt/registry versions) as CycloneDX-1.6
+  `machine-learning-model` / `data` components, each with an optional **SHA-256 hash**;
+  `AIComponent.verify` / `AIBOM.verify_all` confirm artifacts for blast-radius assessment.
+- ✅ **Data lineage & erasure-by-source** — a `LineageIndex` records source → document → chunk →
+  evidence → output as the app ingests and runs (`app.trace_lineage(...)`), so
+  `app.erase_source(...)` satisfies a GDPR right-to-erasure across **every index, memory, and cache**,
+  logged on the hash-chained audit chain (`erase_source`) and idempotent by construction.
+- ✅ **Data-residency-aware routing** — `ResidencyPolicy` / `app.set_residency(...)` /
+  `governance.allowed_regions` pin allowed provider regions and **refuse egress** to others as a
+  blocking `PolicyViolation` recorded as a `residency_check` deny — enforced deterministically at the
+  provider-resolution choke point before any request leaves the process.
+- ✅ **Multilingual** — non-English PII **locale packs** (`vincio.security.locales`: France, Germany,
+  Spain, India, Singapore, Brazil, UK national-ID and phone formats) via `PIIDetector(locales=[...])`
+  and `governance.locales`, layered on the English path without changing it; per-language **eval
+  slicing** (`EvalReport.slice_by_tag` / `tag_gap`) surfaces the high-vs-low-resource gap; and a
+  tokenizer **fertility tracker** (`app.fertility`) makes the non-English "token tax" visible and
+  routable per language and tenant.
+- ✅ **RAG-poisoning & injection hardening** — `PoisoningDetector` flags likely-poisoned retrieved
+  evidence from **authority/provenance** signals (embedded instructions, low-authority/high-promotion
+  sources, consensus outliers) before it reaches the model, with an optional async PromptArmor-class
+  classifier hook and **FP/FN telemetry** (`PoisoningReport.telemetry`), extending the existing
+  trust-tag/heuristic defense.
+- *Interconnection (held):* every artifact is generated from data Vincio already holds — the audit
+  chain, the evidence ledger, eval reports, the price table, the registry — so governance is a *view*
+  over the running system, not a parallel bookkeeping burden; residency and erasure are
+  `PolicyViolation`s and audit entries on the same hash-chained path as every other decision.
+- *Edge over the field (delivered):* governance bolted onto an app is documentation; Vincio's is
+  **mechanical and measured** — cards and BOMs generated from the live config, framework mappings
+  backed by red-team and eval evidence, erasure enforced through the same lineage that cites your
+  answers. See the new guide [docs/guides/governance.md](docs/guides/governance.md).
+- **980 tests passing offline; ruff clean; VincioBench 129/129 budgets**; thirty runnable examples.
+  Cards/AI-BOM completeness, framework-mapping coverage and red-team/eval evidence, erasure
+  correctness across indexes + audit, residency egress refusal, multilingual PII recall + English-path
+  intactness, RAG-poisoning FP/FN telemetry, fertility token-tax, and eval slicing are all covered
+  offline; example `30_governance_compliance.py`; the VincioBench `governance` family gates card/BOM
+  completeness, mapping coverage, erasure correctness, and multilingual PII recall (13 new budgets,
+  three new SLOs).
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 1.6.0 notes.
 
 ### 🔭 Exploring — later, and 2.0
 

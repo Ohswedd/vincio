@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.5 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.6 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -47,6 +47,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 - [A2A (agent-to-agent)](docs/guides/a2a.md)
 - [Agent Skills (SKILL.md)](docs/guides/agent-skills.md)
 - [Reasoning control & the Responses API](docs/guides/reasoning.md)
+- [Enterprise governance & compliance](docs/guides/governance.md)
 - [Coming from LangChain](docs/guides/migrate-from-langchain.md)
 - [Coming from LlamaIndex](docs/guides/migrate-from-llamaindex.md)
 - [Coming from Ragas](docs/guides/migrate-from-ragas.md)
@@ -301,6 +302,28 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `SandboxedPython(max_cpu_seconds=, max_memory_bytes=, max_open_files=)`);
   releases ship a CycloneDX SBOM + SLSA provenance attestations. Threat model
   in `docs/security/threat-model.md`.
+- Governance & compliance (1.6, experimental; `vincio.governance`): generated
+  from the running system, no hosted dependency. Model/system cards
+  `app.model_card()` / `app.system_card()` (`CardFormat` vincio|open_model_card|
+  ai_card) / `vincio governance card`. Compliance mapping `app.compliance_report()`
+  / `ComplianceMapper().map(redteam=, eval_report=, target=app)` over OWASP LLM
+  Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE ATLAS, evidence from
+  `RedTeamSuite` + `EvalReport` + config (`ComplianceReport.coverage_rate` /
+  `to_markdown()`); `vincio governance report --red-team --markdown`. AI-BOM
+  `app.aibom()` (CycloneDX 1.6, `AIComponent.verify` / `sha256_file`); `vincio
+  governance aibom`. EU AI Act: `from vincio.governance import
+  mark_synthetic_content, ai_disclosure, data_summary` (C2PA-style manifest,
+  bound by SHA-256); `governance.content_marking: true` marks every run.
+  Lineage + erasure: `app.trace_lineage(source)`, `app.erase_source(source)`
+  (purges every index/memory/cache, audited, idempotent); `vincio governance
+  lineage|erase`. Residency: `app.set_residency(["eu"], provider_regions={...})`
+  / `governance.allowed_regions` refuse egress as a blocking PolicyViolation
+  (`ResidencyViolationError`). Multilingual PII: `PIIDetector(locales=["fr",
+  "de","es","in","sg","br","uk"])` / `governance.locales`; per-language eval
+  slicing `EvalReport.slice_by_tag("lang:")` / `tag_gap`; token tax
+  `app.fertility.token_tax(lang)`. RAG-poisoning: `from vincio.security import
+  PoisoningDetector` (authority/provenance signals + classifier hook; FP/FN via
+  `PoisoningReport.telemetry`).
 - CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
   config schema/validate/show, packs list/show, tui,
   eval run/report/dataset (`--group-by-session`)/drift/annotate,
@@ -308,7 +331,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   show/view/replay/diff/export/sessions/feedback, optimize run, optimize
   reflective, loop run (`--reflective`), distill, index build, memory
   inspect/remember/recall/forget/export/consolidate/decay,
-  audit verify, mcp tools/add/serve.
+  audit verify, governance card/report/aibom/lineage/erase, mcp tools/add/serve.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).
 - Protocols & interoperability (1.1, experimental): MCP client + server
   (`vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,

@@ -348,6 +348,45 @@
     },
     "families.scale.cascade.cost_savings": {
       "gte": 0.2
+    },
+    "families.governance.card.model_card_complete": {
+      "eq": true
+    },
+    "families.governance.card.system_card_complete": {
+      "eq": true
+    },
+    "families.governance.aibom.components": {
+      "gte": 3
+    },
+    "families.governance.aibom.has_model_and_embedder": {
+      "eq": true
+    },
+    "families.governance.frameworks.count": {
+      "eq": 4
+    },
+    "families.governance.frameworks.coverage_rate": {
+      "gte": 0.7
+    },
+    "families.governance.erasure.chunks_removed_match": {
+      "eq": true
+    },
+    "families.governance.erasure.lineage_forgotten": {
+      "eq": true
+    },
+    "families.governance.erasure.audited": {
+      "eq": true
+    },
+    "families.governance.multilingual.pii_recall": {
+      "gte": 0.8
+    },
+    "families.governance.multilingual.english_path_intact": {
+      "eq": true
+    },
+    "families.governance.poisoning.detection_rate": {
+      "gte": 0.8
+    },
+    "families.governance.poisoning.false_positive_rate": {
+      "lte": 0.2
     }
   }
 }

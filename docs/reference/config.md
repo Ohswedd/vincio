@@ -43,6 +43,14 @@ security:
   audit_dir: .vincio/audit
   retention_days: null
 
+governance:                  # enterprise governance & compliance (1.6); all opt-in
+  allowed_regions: []        # non-empty pins data-residency: runs may only egress to these regions
+  provider_regions: {}       # e.g. {openai: us, anthropic: us} — region per provider/model
+  deny_on_unknown_region: true
+  content_marking: false     # attach a synthetic-content manifest + AI disclosure to every run
+  locales: []                # non-English PII packs: fr | de | es | in | sg | br | uk
+  card_format: vincio        # vincio | open_model_card | ai_card
+
 retrieval:
   top_k: 8
   candidate_multiplier: 4

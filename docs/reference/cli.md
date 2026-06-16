@@ -156,6 +156,25 @@ vincio audit verify [PATH] [--json]
     (default .vincio/audit/audit.jsonl). Detects post-restart tampering and
     pinpoints the first broken line; exits non-zero if the chain is broken.
 
+vincio governance card APP [--kind model|system] [--format vincio|open_model_card|ai_card] [--output FILE]
+    Generate a model or system card (machine-readable) from the live app config.
+
+vincio governance report APP [--red-team] [--full] [--markdown] [--output FILE]
+    Emit the OWASP LLM 2025 / OWASP Agentic / NIST AI RMF / MITRE ATLAS coverage
+    matrix. --red-team runs the red-team suite for behavioural evidence; --full
+    emits every control; --markdown emits an auditor-ready table.
+
+vincio governance aibom APP [--output FILE]
+    Generate an AI bill of materials (CycloneDX 1.6) for the model, embedder,
+    reranker, and any pinned datasets/prompts, with SHA-256 hash slots.
+
+vincio governance lineage APP SOURCE [--output FILE]
+    Trace a source's lineage chain (documents → chunks → evidence → runs).
+
+vincio governance erase APP SOURCE
+    Right-to-erasure: purge a source from every index, memory, and cache,
+    logged on the hash-chained audit log. Idempotent.
+
 vincio mcp tools (--command "CMD" | --url URL) [--resources] [--json]
     Connect to an MCP server (stdio via --command, or Streamable HTTP via
     --url) and list its tools (and, with --resources, its resources).

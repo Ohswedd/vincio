@@ -64,6 +64,9 @@ __all__ = [
     "StorageError",
     "ServerError",
     "AuthenticationError",
+    "GovernanceError",
+    "ResidencyViolationError",
+    "ErasureError",
 ]
 
 
@@ -410,6 +413,44 @@ class InjectionDetectedError(SecurityError):
 
 class PIIPolicyError(SecurityError):
     code = "PII_POLICY"
+
+
+# --- governance & compliance -------------------------------------------------
+
+
+class GovernanceError(VincioError):
+    """Enterprise governance / compliance failure (cards, BOM, lineage)."""
+
+    code = "GOVERNANCE_ERROR"
+
+
+class ResidencyViolationError(GovernanceError):
+    """A run would route to a provider region the residency policy forbids.
+
+    Raised (or surfaced as a blocking :class:`~vincio.security.PolicyViolation`)
+    when in-jurisdiction processing is required and the resolved provider/model
+    is not pinned to an allowed region.
+    """
+
+    code = "RESIDENCY_VIOLATION"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        region: str | None = None,
+        allowed: list[str] | None = None,
+        **kw: Any,
+    ) -> None:
+        super().__init__(message, **kw)
+        self.region = region
+        self.allowed = allowed or []
+
+
+class ErasureError(GovernanceError):
+    """A right-to-erasure-by-source operation could not complete atomically."""
+
+    code = "ERASURE_ERROR"
 
 
 # --- storage -----------------------------------------------------------------

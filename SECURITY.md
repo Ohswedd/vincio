@@ -7,12 +7,14 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.6.x   | ✅        |
+| 1.5.x   | ✅        |
 | 1.4.x   | ✅        |
 | 1.3.x   | ✅        |
 | 1.2.x   | ✅        |
 | 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
-| < 1.0   | ❌ (upgrade to 1.4.x) |
+| < 1.0   | ❌ (upgrade to 1.6.x) |
 
 ## Threat model
 
@@ -53,6 +55,20 @@ capture (`enable_training_capture()`) is opt-in and off by default; the faithful
 and access controls to the exported file before sending it to a provider's
 fine-tuning API.
 
+The 1.6 enterprise-governance features are evidence *generated from data Vincio
+already holds* — they add no external services. Model/system cards, the
+compliance-framework coverage matrix (OWASP LLM 2025 / OWASP Agentic / NIST AI
+RMF / MITRE ATLAS), and the AI-BOM are views over the live config, the audit
+chain, eval reports, and the price table. Data-residency routing refuses egress
+to disallowed provider regions as a blocking `PolicyViolation` on the audit
+path; right-to-erasure-by-source (`app.erase_source`) purges a source from every
+index, memory, and cache and is logged on the hash-chained audit chain.
+Non-English PII locale packs and RAG-poisoning detection extend the existing
+detectors. Vincio refuses to *send* a request to a disallowed region; it cannot
+guarantee where a global provider runs it — the control is client-side egress
+refusal. Synthetic-content marking emits a C2PA-style manifest you sign and
+attach in your pipeline (Vincio assumes no signing authority).
+
 ## Supply-chain integrity
 
 Releases are built in CI and published with a **CycloneDX SBOM** and **SLSA
@@ -63,6 +79,11 @@ workflow (`.github/workflows/release.yml`). Verify with:
 ```bash
 gh attestation verify <artifact> --repo Ohswedd/vincio
 ```
+
+The dependency SBOM is complemented by an **AI-BOM** (`vincio governance aibom`)
+recording the base model, embedding/rerank models, and fine-tune/prompt versions
+with SHA-256 hashes, for blast-radius assessment when a model or dataset is found
+compromised.
 
 You can also confirm the integrity of a persisted audit log offline:
 

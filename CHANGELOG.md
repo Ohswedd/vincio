@@ -4,6 +4,105 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0] - 2026-06-16
+
+Enterprise governance & compliance. Turns the audit and security spine into the
+evidence regulated buyers require — model/system cards, OWASP/NIST/MITRE control
+coverage, an AI-BOM, EU AI Act transparency artifacts, data lineage with
+right-to-erasure, data-residency routing, multilingual PII, and RAG-poisoning
+detection — all generated in the library from data Vincio already holds.
+Additive behind `@experimental` 1.6 entry points on the frozen 1.0 API,
+dependency-free; no public symbol removed or repurposed.
+
+### Added
+
+- **Model & system cards.** `vincio.governance.generate_model_card` /
+  `generate_system_card`, `app.model_card()` / `app.system_card()`, and `vincio
+  governance card` generate machine-readable cards from the live configuration
+  and optional `EvalReport` evidence. A model card carries id/version,
+  capabilities, limitations, and live pricing; a system card adds retrieval,
+  memory, safety filters, human-oversight points, and governance controls. The
+  schema is pluggable (`CardFormat`: Vincio native, Open Model Card, EU "AI
+  Cards") and rendered from one captured fact set.
+- **Compliance-framework mapping.** `ComplianceMapper` / `map_compliance` /
+  `app.compliance_report()` / `vincio governance report` map a data-driven
+  control catalog (`CONTROL_CATALOG`) for **OWASP LLM Top 10 (2025)**, **OWASP
+  Agentic AI**, **NIST AI RMF (GenAI profile)**, and **MITRE ATLAS** onto
+  Vincio's capabilities, backed by measured evidence — `RedTeamSuite` probe
+  outcomes, the security configuration, and `EvalReport` metrics. The
+  `ComplianceReport` is a `covered`/`partial`/`not_covered` matrix with the
+  evidence string for each control, `coverage_rate`, `by_framework()`, `gaps()`,
+  and `to_markdown()`.
+- **AI-BOM.** `generate_aibom` / `app.aibom()` / `vincio governance aibom`
+  produce a CycloneDX-1.6 AI bill of materials (base model + version,
+  embedding/rerank models, fine-tune datasets, prompt/registry versions) as
+  `machine-learning-model` / `data` components with optional **SHA-256 hashes**;
+  `sha256_file` / `sha256_text`, `AIComponent.verify`, and `AIBOM.verify_all`
+  support blast-radius assessment. Complements the shipped dependency SBOM + SLSA
+  provenance.
+- **EU AI Act transparency.** `mark_synthetic_content` emits a C2PA-style
+  `ProvenanceManifest` (IPTC `trainedAlgorithmicMedia`, bound to the output by
+  SHA-256), `ai_disclosure` returns a localized AI-interaction disclosure, and
+  `data_summary` exports a grounding-data summary. `governance.content_marking`
+  (or `app.content_marking`) attaches the manifest + disclosure to every run's
+  `result.metadata`.
+- **Data lineage & erasure-by-source.** A `LineageIndex` records source →
+  document → chunk → evidence → output as the app ingests and runs
+  (`app.trace_lineage(...)`); `app.erase_source(...)` / `vincio governance erase`
+  satisfies a GDPR right-to-erasure across **every index, memory, and cache**,
+  logged on the hash-chained audit chain (`erase_source`) and idempotent. Returns
+  an `ErasureResult`.
+- **Data-residency-aware routing.** `ResidencyPolicy` / `app.set_residency(...)`
+  / `governance.allowed_regions` pin allowed provider regions and **refuse
+  egress** to others as a blocking `PolicyViolation` recorded as a
+  `residency_check` deny (raising `ResidencyViolationError`), enforced at the
+  provider-resolution choke point before any request leaves the process.
+- **Multilingual PII.** Non-English locale packs (`vincio.security.locales`:
+  France, Germany, Spain, India, Singapore, Brazil, UK national-ID and phone
+  formats) via `PIIDetector(locales=[...])`, `available_locales`,
+  `get_locale_pack`, and `governance.locales` — layered on the English path
+  without changing it (`PIIMatch.type` widened to `str` with a `locale` tag;
+  built-in `PIIType` unchanged and still accepted).
+- **Per-language eval slicing.** `EvalReport.slice`, `slice_by_tag`, and
+  `tag_gap` surface the high-vs-low-resource accuracy gap so it can't hide in an
+  aggregate.
+- **Tokenizer fertility telemetry.** `FertilityTracker` / `app.fertility` track
+  tokens-per-word/char per language and tenant, exposing the non-English "token
+  tax" (`token_tax(language)`) so it is visible and routable; recorded
+  automatically on each run from `UserInput.locale`.
+- **RAG-poisoning detection.** `PoisoningDetector` / `PoisonVerdict` /
+  `PoisoningReport` flag likely-poisoned retrieved evidence from
+  authority/provenance signals (embedded instructions, low-authority/high-
+  promotion sources, consensus outliers), with an optional async classifier hook
+  and FP/FN telemetry (`PoisoningReport.telemetry`).
+- **Config.** A new `governance` section (`GovernanceConfig`): `allowed_regions`,
+  `provider_regions`, `deny_on_unknown_region`, `content_marking`, `locales`,
+  `card_format`.
+- **CLI.** `vincio governance card | report | aibom | lineage | erase`.
+- **Errors.** `GovernanceError`, `ResidencyViolationError`, `ErasureError`.
+- **Example & docs.** `examples/30_governance_compliance.py`; a new
+  [governance guide](docs/guides/governance.md); API/CLI/config reference and
+  SECURITY/ROADMAP updates.
+- **VincioBench.** A new `governance` family gating card/AI-BOM completeness,
+  framework-mapping coverage, erasure correctness, multilingual PII recall, and
+  RAG-poisoning telemetry — 13 new `budgets.json` budgets (129 total) and three
+  new SLOs.
+
+### Changed
+
+- `vincio.__all__` gains `ModelCard`, `SystemCard`, `ComplianceReport`,
+  `ComplianceFramework`, `AIBOM`, `ResidencyPolicy`, `LineageRecord`,
+  `ErasureResult`, `ProvenanceManifest`, `FertilityTracker`, and
+  `PoisoningDetector` (additive; the frozen surface only grows).
+- `PIIMatch.type` is now `str` (was a closed `Literal`) with a new optional
+  `locale` field, so locale packs can contribute new category labels. Backward
+  compatible — the built-in categories are unchanged and still accepted.
+
+### Quality
+
+- **980 tests passing offline; ruff clean; VincioBench 129/129 budgets**; thirty
+  runnable examples.
+
 ## [1.5.0] - 2026-06-16
 
 Multimodal, embeddings & retrieval breadth (vs LlamaIndex, Voyage/Cohere).

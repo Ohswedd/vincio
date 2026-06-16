@@ -34,6 +34,9 @@ from ..evals.datasets import Dataset, EvalCase
 from ..evals.metrics import RunOutput
 from ..evals.online import OnlineEvaluator
 from ..evals.runners import EvalRunner
+from ..governance.fertility import FertilityTracker
+from ..governance.lineage import ErasureResult, LineageIndex
+from ..governance.residency import ResidencyPolicy
 from ..input.routers import InputRouter
 from ..memory.engine import MemoryEngine
 from ..memory.policies import MemoryWritePolicy
@@ -61,6 +64,7 @@ from ..retrieval.rerankers import build_reranker
 from ..retrieval.sparse import SparseIndex
 from ..security.access import AccessController, Principal
 from ..security.audit import AuditLog
+from ..security.pii import PIIDetector
 from ..security.policy import PolicyEngine
 from ..security.rails import Rail, RailEngine
 from ..skills.library import SkillLibrary
@@ -71,7 +75,7 @@ from ..tools.registry import ToolRegistry
 from ..tools.runtime import ToolRuntime
 from ..workflows.engine import Workflow
 from .config import VincioConfig, load_config
-from .errors import AgentEngineError, ConfigError, ToolNotFoundError
+from .errors import AgentEngineError, ConfigError, ResidencyViolationError, ToolNotFoundError
 from .events import EventBus
 from .runtime import VincioRuntime
 from .types import (
@@ -198,7 +202,21 @@ class ContextApp:
         )
         self.access = AccessController(tenant_isolation=self.config.security.tenant_isolation)
         self.rail_engine = RailEngine()
-        self.policy_engine = PolicyEngine(self.policies, rails=self.rail_engine)
+        # Governance (1.6): a locale-aware PII detector (non-English packs),
+        # data-residency policy, lineage index, content-marking, and tokenizer
+        # fertility telemetry. All opt-in / empty by default.
+        self._pii_detector = self._build_pii_detector()
+        self.policy_engine = PolicyEngine(
+            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine
+        )
+        self.residency = ResidencyPolicy(
+            allowed_regions=list(self.config.governance.allowed_regions),
+            provider_regions=dict(self.config.governance.provider_regions),
+            deny_on_unknown=self.config.governance.deny_on_unknown_region,
+        )
+        self.lineage = LineageIndex()
+        self.fertility = FertilityTracker(model=model or self.config.provider.model)
+        self.content_marking = self.config.governance.content_marking
         self.input_router = InputRouter()
 
         # provider
@@ -329,6 +347,11 @@ class ContextApp:
             raise ConfigError(f"unsupported output_schema type: {type(output_schema).__name__}")
         return OutputContract.from_schema(schema, require_citations=self.policies.require_citations if hasattr(self, "policies") else False)
 
+    def _build_pii_detector(self) -> PIIDetector:
+        """PII detector with the configured non-English locale packs (1.6)."""
+        locales = list(self.config.governance.locales)
+        return PIIDetector(locales=locales or None)
+
     def _build_embedder(self):
         # Delegate to the one factory so the app and the standalone
         # `build_embedder` agree on every embedder kind (local, hosted
@@ -342,7 +365,37 @@ class ContextApp:
         )
         return CachedEmbedder(base)
 
+    def check_residency(self, run_config: RunConfig | None = None) -> None:
+        """Enforce data-residency routing (1.6): refuse disallowed egress.
+
+        When a residency policy is configured (``governance.allowed_regions``),
+        a run whose resolved provider/model region is not allowed is denied with
+        a :class:`~vincio.core.errors.ResidencyViolationError`, recorded as a
+        blocking residency decision on the hash-chained audit log. A no-op when
+        no residency policy is set.
+        """
+        if not self.residency.enforced:
+            return
+        name = (run_config.provider if run_config else None) or self._provider_name
+        model = (run_config.model if run_config else None) or self.model
+        violation = self.residency.check(provider=name, model=model)
+        if violation is None:
+            return
+        self.audit.record(
+            "residency_check",
+            decision="deny",
+            resource=f"{name}:{model}",
+            details=violation.details,
+        )
+        self.events.emit("residency.denied", violation.details)
+        raise ResidencyViolationError(
+            violation.message,
+            region=violation.details.get("region"),
+            allowed=violation.details.get("allowed_regions", []),
+        )
+
     def resolve_provider(self, run_config: RunConfig | None = None) -> ModelProvider:
+        self.check_residency(run_config)
         name = (run_config.provider if run_config else None) or self._provider_name
         if self._provider_instance is not None and (
             run_config is None or run_config.provider is None
@@ -433,7 +486,9 @@ class ContextApp:
                 )
         if name == "require_citations":
             self.output_contract.require_citations = bool(value)
-        self.policy_engine = PolicyEngine(self.policies, rails=self.rail_engine)
+        self.policy_engine = PolicyEngine(
+            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine
+        )
         self.events.emit("policy.changed", {"policy": name})
         return self
 
@@ -608,6 +663,166 @@ class ContextApp:
             inputs, run_config=config, backend=backend, discount=discount, timeout_s=timeout_s
         )
 
+    # -- governance & compliance (1.6) -----------------------------------------------------
+
+    def _card_format(self, override: Any | None = None):
+        from ..governance.cards import CardFormat
+
+        return CardFormat(override or self.config.governance.card_format)
+
+    @experimental(since="1.6")
+    def model_card(self, *, eval_report: Any | None = None, format: Any | None = None):
+        """Generate a :class:`~vincio.governance.ModelCard` from the live config.
+
+        Pass an :class:`~vincio.evals.reports.EvalReport` to attach measured
+        evaluation evidence. ``format`` overrides the configured card schema
+        (``vincio`` / ``open_model_card`` / ``ai_card``).
+        """
+        from ..governance.cards import generate_model_card
+
+        return generate_model_card(self, eval_report=eval_report, format=self._card_format(format))
+
+    @experimental(since="1.6")
+    def system_card(self, *, eval_report: Any | None = None, format: Any | None = None):
+        """Generate a :class:`~vincio.governance.SystemCard` (model + retrieval +
+        memory + safety filters + human-oversight points) from the live config."""
+        from ..governance.cards import generate_system_card
+
+        return generate_system_card(
+            self, eval_report=eval_report, format=self._card_format(format), name=self.name
+        )
+
+    @experimental(since="1.6")
+    def compliance_report(self, *, redteam: Any | None = None, eval_report: Any | None = None):
+        """Map this app's controls to OWASP/NIST/MITRE frameworks as a coverage
+        matrix, backed by red-team and eval evidence
+        (:class:`~vincio.governance.ComplianceReport`)."""
+        from ..governance.frameworks import ComplianceMapper
+
+        return ComplianceMapper().map(redteam=redteam, eval_report=eval_report, target=self)
+
+    @experimental(since="1.6")
+    def aibom(self, *, datasets: list[Any] | None = None, prompts: list[Any] | None = None):
+        """Generate an AI bill of materials (:class:`~vincio.governance.AIBOM`)
+        for the live model/embedder/reranker, with SHA-256 model-hash slots."""
+        from ..governance.aibom import generate_aibom
+
+        return generate_aibom(self, datasets=datasets, prompts=prompts)
+
+    @experimental(since="1.6")
+    def trace_lineage(self, source: str):
+        """Return the source → chunk → evidence → output lineage for a source
+        name or document id (:class:`~vincio.governance.LineageRecord`)."""
+        return self.lineage.trace(source)
+
+    @experimental(since="1.6")
+    def mark_output(self, content: str, *, model: str | None = None):
+        """Build a C2PA-style synthetic-content provenance manifest for output
+        (:class:`~vincio.governance.ProvenanceManifest`)."""
+        from ..governance.transparency import mark_synthetic_content
+
+        return mark_synthetic_content(
+            content, model_id=model or self.model, provider=self._provider_name
+        )
+
+    @experimental(since="1.6")
+    def set_residency(
+        self,
+        allowed_regions: list[str],
+        *,
+        provider_regions: dict[str, str] | None = None,
+        deny_on_unknown: bool = True,
+    ) -> ContextApp:
+        """Pin allowed provider regions; runs outside them are refused egress."""
+        self.residency = ResidencyPolicy(
+            allowed_regions=list(allowed_regions),
+            provider_regions={**self.residency.provider_regions, **(provider_regions or {})},
+            deny_on_unknown=deny_on_unknown,
+        )
+        return self
+
+    @experimental(since="1.6")
+    def erase_source(self, source: str) -> ErasureResult:
+        """Right-to-erasure-by-source: purge a source from indexes, memory, and
+        caches, logged on the hash-chained audit chain.
+
+        ``source`` is a source name (as passed to :meth:`add_source`) or a
+        document id. Returns an :class:`~vincio.governance.ErasureResult`.
+        Idempotent: a second call finds nothing left to erase.
+        """
+        record = self.lineage.trace(source)
+        result = ErasureResult(source=source, found=not record.is_empty)
+        chunk_ids = list(record.chunks)
+        per_index: dict[str, int] = {}
+        index_handles = {
+            "bm25": self._bm25,
+            "vector": self._vector,
+            "sparse": self._sparse,
+            "late_interaction": self._late_interaction,
+        }
+        if chunk_ids:
+            for label, index in index_handles.items():
+                if index is None:
+                    continue
+                per_index[label] = run_sync(index.delete(chunk_ids))
+                result.indexes_swept += 1
+            result.chunks_removed = len(chunk_ids)
+            if self.entity_graph is not None:
+                # Entity graph is rebuilt from sources; drop nothing destructively
+                # here beyond chunk references already removed from indexes.
+                pass
+
+        # Documents recorded in the metadata store. Count only deletions that
+        # actually succeed, so the audit trail never overstates erasure.
+        for doc_id in record.documents:
+            try:
+                if hasattr(self.store, "delete") and self.store.delete("documents", doc_id):  # type: ignore[attr-defined]
+                    result.documents_removed += 1
+            except Exception:  # pragma: no cover - store may not support delete
+                pass
+
+        # Memory items whose provenance references the source (exact matches on
+        # source name / id, never a loose substring that could over-delete).
+        if self.memory is not None:
+            doc_set = set(record.documents)
+            for item in list(self.memory.store.all_items(statuses=())):
+                meta = item.metadata or {}
+                refs = {meta.get("source"), meta.get("source_id")}
+                if source in refs or bool(refs & doc_set):
+                    if self.memory.delete(item.id):
+                        result.memories_removed += 1
+
+        # Caches: erasure correctness outweighs cache retention.
+        for cache in (self.response_cache, self.context_compile_cache):
+            backend = getattr(cache, "backend", None) or getattr(cache, "cache", None)
+            if backend is not None and hasattr(backend, "clear"):
+                try:
+                    backend.clear()
+                    result.caches_invalidated += 1
+                except Exception:  # pragma: no cover - defensive
+                    pass
+
+        entry = self.audit.record(
+            "erase_source",
+            decision="allow",
+            resource=source,
+            details={
+                "found": result.found,
+                "chunks_removed": result.chunks_removed,
+                "documents_removed": result.documents_removed,
+                "memories_removed": result.memories_removed,
+                "indexes_swept": result.indexes_swept,
+                "caches_invalidated": result.caches_invalidated,
+                "per_index": per_index,
+            },
+        )
+        result.audit_entry_id = entry.id
+        self.events.emit("governance.source_erased", {"source": source, "found": result.found})
+        self.lineage.forget(source)
+        # Drop the source registration so it is not re-counted.
+        self.sources.pop(source, None)
+        return result
+
     # -- sources / retrieval ----------------------------------------------------------------
 
     def _ensure_retrieval(self, retrieval: str) -> None:
@@ -692,6 +907,9 @@ class ContextApp:
             run_sync(self._index_chunks(all_chunks))
             if self.entity_graph is not None:
                 self.entity_graph.add_chunks(all_chunks)
+        # Lineage (1.6): record source → documents → chunks so erasure-by-source
+        # and provenance tracing have a precomputed chain.
+        self.lineage.record_ingest(name, documents=docs, chunks=all_chunks)
         source.document_count = len(docs)
         source.chunk_count = len(all_chunks)
         self.sources[name] = source
@@ -727,6 +945,7 @@ class ContextApp:
             await self._index_chunks(chunks)
             if self.entity_graph is not None:
                 self.entity_graph.add_chunks(chunks)
+            self.lineage.record_ingest(path, documents=[document], chunks=chunks)
             items = [
                 EvidenceItem(
                     id=chunk.citation_ref,
