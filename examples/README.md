@@ -38,6 +38,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `27_cost_and_reliability.py` | batch execution at ~50% cost, circuit breaking + health-aware failover, key pooling with RPM+TPM limits, runtime model cascades, cost attribution + budget SLOs, prompt-cache strategy, incremental + sharded indexing |
 | `28_reflective_optimization.py` | GEPA-style reflective optimizer + MIPRO joint proposal, distillation flywheel (grounded fine-tuning JSONL + gated teacher→student), learned prompt compression (faithfulness-gated), optimizer-judge calibration |
 | `29_multimodal_retrieval.py` | Matryoshka (MRL) embeddings, query/document input-type hints, contextual (Voyage context-3) & multimodal (Cohere v4 / Voyage) embedders, new vector stores (Weaviate/Milvus/Elasticsearch/OpenSearch/Vespa), layout-aware PDF extraction, and the optional voice/realtime module |
+| `30_governance_compliance.py` | model/system cards, OWASP/NIST/MITRE compliance mapping, AI-BOM with model-hash verification, EU AI Act content marking, data lineage + erasure-by-source, data-residency routing, multilingual PII + token tax, RAG-poisoning detection |
 
 Run any of them:
 

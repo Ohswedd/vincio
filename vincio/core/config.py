@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -21,6 +21,7 @@ __all__ = [
     "StorageConfig",
     "ObservabilityConfig",
     "SecurityConfig",
+    "GovernanceConfig",
     "RetrievalConfig",
     "MemoryConfig",
     "CacheConfig",
@@ -90,6 +91,27 @@ class SecurityConfig(BaseModel):
     audit_log: bool = True
     audit_dir: str = ".vincio/audit"
     retention_days: int | None = None
+
+
+class GovernanceConfig(BaseModel):
+    """Enterprise governance & compliance settings (1.6).
+
+    All fields are off/empty by default, so governance is opt-in and
+    backward-compatible. Enable residency by listing ``allowed_regions``; enable
+    non-English PII by listing ``locales`` (see :mod:`vincio.security.locales`).
+    """
+
+    # Data-residency-aware routing: when non-empty, runs may only egress to
+    # these provider regions (else a blocking residency PolicyViolation).
+    allowed_regions: list[str] = Field(default_factory=list)
+    provider_regions: dict[str, str] = Field(default_factory=dict)
+    deny_on_unknown_region: bool = True
+    # Synthetic-content (EU AI Act) output marking on every run's output.
+    content_marking: bool = False
+    # Non-English PII locale packs applied by the security PII detector.
+    locales: list[str] = Field(default_factory=list)
+    # Default machine-readable card schema (validated at config-load time).
+    card_format: Literal["vincio", "open_model_card", "ai_card"] = "vincio"
 
 
 class RetrievalConfig(BaseModel):
@@ -183,6 +205,7 @@ class VincioConfig(BaseModel):
     storage: StorageConfig = Field(default_factory=StorageConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     security: SecurityConfig = Field(default_factory=SecurityConfig)
+    governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
     retrieval: RetrievalConfig = Field(default_factory=RetrievalConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     cache: CacheConfig = Field(default_factory=CacheConfig)

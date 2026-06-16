@@ -129,6 +129,7 @@ class VincioRuntime:
             for metric_name, score in (result.eval_scores or {}).items():
                 trace.add_score(metric_name, score)
 
+        self._apply_governance(result, user_input)
         # 15. persist run + packet (trace export happens in the tracer).
         self._persist_run(result, run_id, user_input)
         app.events.emit(
@@ -137,6 +138,37 @@ class VincioRuntime:
         if cancelled:
             raise asyncio.CancelledError
         return result
+
+    def _apply_governance(self, result: RunResult, user_input: UserInput) -> None:
+        """Post-run governance (1.6): lineage links, fertility telemetry, and
+        synthetic-content marking. Best-effort — never breaks a run."""
+        app = self.app
+        try:
+            app.lineage.record_run(result)
+        except Exception:  # pragma: no cover - defensive
+            pass
+        try:
+            if user_input.text:
+                app.fertility.record(
+                    user_input.text,
+                    language=user_input.locale or "en",
+                    tenant=user_input.tenant_id,
+                )
+        except Exception:  # pragma: no cover - defensive
+            pass
+        if app.content_marking and result.raw_text:
+            try:
+                from ..governance.transparency import ai_disclosure, mark_synthetic_content
+
+                manifest = mark_synthetic_content(
+                    result.raw_text, model_id=app.model, provider=app._provider_name
+                )
+                result.metadata["content_credentials"] = manifest.to_dict()
+                result.metadata["ai_disclosure"] = ai_disclosure(
+                    language=(user_input.locale or "en")
+                )
+            except Exception:  # pragma: no cover - defensive
+                pass
 
     async def execute_stream(
         self, user_input: UserInput, run_config: RunConfig | None = None
@@ -207,6 +239,7 @@ class VincioRuntime:
             for metric_name, score in (result.eval_scores or {}).items():
                 trace.add_score(metric_name, score)
 
+        self._apply_governance(result, user_input)
         self._persist_run(result, run_id, user_input)
         app.events.emit(
             "run.completed", {"run_id": run_id, "status": result.status.value}, trace_id=result.trace_id

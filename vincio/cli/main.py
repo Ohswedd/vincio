@@ -1031,6 +1031,67 @@ def cmd_audit_verify(args: argparse.Namespace) -> int:
     return 1
 
 
+def _governance_output(payload: Any, output: str | None) -> int:
+    text = payload if isinstance(payload, str) else json_dumps(payload, indent=2)
+    if output:
+        Path(output).write_text(text + ("\n" if not text.endswith("\n") else ""), encoding="utf-8")
+        print(f"saved to {output}")
+    else:
+        print(text)
+    return 0
+
+
+def cmd_governance_card(args: argparse.Namespace) -> int:
+    app = _load_app(args.app)
+    fmt = args.format
+    if args.kind == "system":
+        card = app.system_card(format=fmt)
+    else:
+        card = app.model_card(format=fmt)
+    return _governance_output(card.to_json(), args.output)
+
+
+def cmd_governance_report(args: argparse.Namespace) -> int:
+    app = _load_app(args.app)
+    redteam = None
+    if args.red_team:
+        from ..evals.redteam import RedTeamSuite
+
+        redteam = RedTeamSuite().run(app)
+    report = app.compliance_report(redteam=redteam)
+    if args.markdown:
+        return _governance_output(report.to_markdown(), args.output)
+    payload = report.model_dump(mode="json") if args.full else report.summary()
+    return _governance_output(payload, args.output)
+
+
+def cmd_governance_aibom(args: argparse.Namespace) -> int:
+    app = _load_app(args.app)
+    bom = app.aibom()
+    return _governance_output(bom.to_json(), args.output)
+
+
+def cmd_governance_lineage(args: argparse.Namespace) -> int:
+    app = _load_app(args.app)
+    record = app.trace_lineage(args.source)
+    if record.is_empty:
+        return _fail(f"no lineage for source {args.source!r} (ingest a source first)")
+    return _governance_output(record.model_dump(mode="json"), args.output)
+
+
+def cmd_governance_erase(args: argparse.Namespace) -> int:
+    app = _load_app(args.app)
+    result = app.erase_source(args.source)
+    print(
+        f"erase {args.source!r}: found={result.found} "
+        f"chunks={result.chunks_removed} documents={result.documents_removed} "
+        f"memories={result.memories_removed} indexes_swept={result.indexes_swept}"
+    )
+    if result.audit_entry_id:
+        print(f"audit: {result.audit_entry_id}")
+    return 0 if result.found else 1
+
+
 def _mcp_client(args: argparse.Namespace):
     import shlex
 
@@ -1356,6 +1417,39 @@ def build_parser() -> argparse.ArgumentParser:
     p_audit_verify.add_argument("path", nargs="?", default=".vincio/audit/audit.jsonl")
     p_audit_verify.add_argument("--json", action="store_true", help="emit the result as JSON")
     p_audit_verify.set_defaults(fn=cmd_audit_verify)
+
+    p_gov = sub.add_parser("governance", help="enterprise governance & compliance artifacts")
+    gov_sub = p_gov.add_subparsers(dest="governance_command", required=True)
+    p_gov_card = gov_sub.add_parser("card", help="generate a model or system card")
+    p_gov_card.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_gov_card.add_argument("--kind", choices=["model", "system"], default="system")
+    p_gov_card.add_argument(
+        "--format", choices=["vincio", "open_model_card", "ai_card"], default="vincio"
+    )
+    p_gov_card.add_argument("--output", default=None, help="write the card JSON here")
+    p_gov_card.set_defaults(fn=cmd_governance_card)
+    p_gov_report = gov_sub.add_parser(
+        "report", help="emit the OWASP/NIST/MITRE compliance coverage matrix"
+    )
+    p_gov_report.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_gov_report.add_argument("--red-team", action="store_true", help="run the red-team suite for evidence")
+    p_gov_report.add_argument("--full", action="store_true", help="emit the full per-control matrix")
+    p_gov_report.add_argument("--markdown", action="store_true", help="emit a Markdown matrix")
+    p_gov_report.add_argument("--output", default=None, help="write the report here")
+    p_gov_report.set_defaults(fn=cmd_governance_report)
+    p_gov_aibom = gov_sub.add_parser("aibom", help="generate an AI bill of materials (CycloneDX)")
+    p_gov_aibom.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_gov_aibom.add_argument("--output", default=None, help="write the AI-BOM JSON here")
+    p_gov_aibom.set_defaults(fn=cmd_governance_aibom)
+    p_gov_lineage = gov_sub.add_parser("lineage", help="trace a source's lineage chain")
+    p_gov_lineage.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_gov_lineage.add_argument("source", help="source name or document id")
+    p_gov_lineage.add_argument("--output", default=None, help="write the lineage JSON here")
+    p_gov_lineage.set_defaults(fn=cmd_governance_lineage)
+    p_gov_erase = gov_sub.add_parser("erase", help="right-to-erasure: purge a source everywhere")
+    p_gov_erase.add_argument("app", help="python file exposing a ContextApp as `app`")
+    p_gov_erase.add_argument("source", help="source name or document id to erase")
+    p_gov_erase.set_defaults(fn=cmd_governance_erase)
 
     p_mcp = sub.add_parser("mcp", help="Model Context Protocol client/server")
     mcp_sub = p_mcp.add_subparsers(dest="mcp_command", required=True)

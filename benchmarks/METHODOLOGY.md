@@ -43,6 +43,7 @@ where they are, so you can run it yourself and audit the claims.
 | **EvalBench** | metric agreement, red-team judging, synthetic determinism, A/B significance | naive target |
 | **LoopBench** | the closed loop end to end: promotion, gating, auto-memory, Pareto, learned budgets | ungated optimization |
 | **ProtocolsBench** | MCP tool schema-fidelity + resource provenance, A2A delegation termination, Agent-Skill progressive-disclosure savings | thin protocol adapter |
+| **GovernanceBench** | card/AI-BOM completeness, OWASP/NIST/MITRE mapping coverage, erasure correctness + audit, multilingual PII recall, RAG-poisoning detection rate/FP | English-only / ungoverned |
 | **PerfBench** | compile/retrieval/run latency, cache speedups, concurrent throughput, TTFT | cold paths |
 
 ## Corpora and provenance

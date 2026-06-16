@@ -27,6 +27,18 @@ from .core.types import (
     UserInput,
 )
 from .evals.datasets import Dataset
+from .governance import (
+    AIBOM,
+    ComplianceFramework,
+    ComplianceReport,
+    ErasureResult,
+    FertilityTracker,
+    LineageRecord,
+    ModelCard,
+    ProvenanceManifest,
+    ResidencyPolicy,
+    SystemCard,
+)
 from .memory.engine import MemoryEngine, ScopedMemory
 from .notebook import enable_rich_reprs
 from .observability.finops import BudgetManager, CostBudget, CostLedger
@@ -43,6 +55,7 @@ from .prompts.templates import PromptSpec
 from .providers import BatchRunner, CircuitBreaker, HealthAwareFailover, KeyPool
 from .realtime import RealtimeSession
 from .retrieval import MatryoshkaEmbedder, ShardedIndex
+from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
 from .stability import (
     API_VERSION,
@@ -55,7 +68,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.5.0"
+__version__ = "1.6.0"
 
 __all__ = [
     "ContextApp",
@@ -118,6 +131,17 @@ __all__ = [
     "ShardedIndex",
     "MatryoshkaEmbedder",
     "RealtimeSession",
+    "ModelCard",
+    "SystemCard",
+    "ComplianceReport",
+    "ComplianceFramework",
+    "AIBOM",
+    "ResidencyPolicy",
+    "LineageRecord",
+    "ErasureResult",
+    "ProvenanceManifest",
+    "FertilityTracker",
+    "PoisoningDetector",
     "API_VERSION",
     "StabilityLevel",
     "VincioDeprecationWarning",

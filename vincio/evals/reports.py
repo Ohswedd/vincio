@@ -116,6 +116,50 @@ class EvalReport(BaseModel):
         output = {k: v for k, v in summary.items() if k not in TRAJECTORY_METRICS}
         return {"output": output, "trajectory": trajectory}
 
+    def slice(self, predicate: Any, *, name: str | None = None) -> EvalReport:
+        """A sub-report over the cases matching ``predicate(case) -> bool``."""
+        kept = [c for c in self.cases if predicate(c)]
+        return EvalReport(
+            name=name or self.name, dataset=self.dataset, cases=kept,
+            metadata={**self.metadata, "sliced_from": self.name})
+
+    def slice_by_tag(self, prefix: str = "lang:") -> dict[str, EvalReport]:
+        """Group cases into sub-reports by a tag value (e.g. ``lang:fr``).
+
+        Surfaces per-language (or any tagged dimension) results so a quality
+        gap can't hide in the aggregate. The value is the tag text after
+        ``prefix``; cases lacking a matching tag fall under ``"untagged"``.
+        """
+        groups: dict[str, list[CaseResult]] = {}
+        for case in self.cases:
+            value = next((t[len(prefix):] for t in case.tags if t.startswith(prefix)), None)
+            if value is None:
+                value = str(case.details.get(prefix.rstrip(":"), "untagged"))
+            groups.setdefault(value, []).append(case)
+        return {
+            value: EvalReport(name=f"{self.name}[{prefix}{value}]", dataset=self.dataset, cases=cases)
+            for value, cases in sorted(groups.items())
+        }
+
+    def tag_gap(self, metric: str, *, prefix: str = "lang:") -> dict[str, Any]:
+        """Per-slice mean of ``metric`` and the worst-vs-best gap across slices."""
+        slices = self.slice_by_tag(prefix)
+        means: dict[str, float] = {}
+        for value, report in slices.items():
+            values = report.metric_values(metric)
+            if values:
+                means[value] = round(sum(values) / len(values), 4)
+        if not means:
+            return {"means": {}, "gap": 0.0, "best": None, "worst": None}
+        best = max(means, key=means.__getitem__)
+        worst = min(means, key=means.__getitem__)
+        return {
+            "means": means,
+            "best": best,
+            "worst": worst,
+            "gap": round(means[best] - means[worst], 4),
+        }
+
     def distribution(self, metric: str, *, bins: int = 10) -> dict[str, int]:
         values = self.metric_values(metric)
         if not values:
