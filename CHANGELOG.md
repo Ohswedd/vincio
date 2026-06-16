@@ -4,6 +4,63 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0] - 2026-06-16
+
+Multimodal, embeddings & retrieval breadth (vs LlamaIndex, Voyage/Cohere).
+Keeps retrieval best-in-field as the embedding and ingestion frontier moves —
+every new embedder, store, and parser sits behind an interface that already
+existed. Additive under the frozen 1.0 API; no public symbol removed or
+repurposed.
+
+### Added
+
+- **Matryoshka (MRL) embeddings.** `build_embedder(kind, dimensions=N)` (and the
+  experimental `MatryoshkaEmbedder`, the `retrieval.embedding_dimensions` config
+  field, and `mrl_truncate`) truncate each output vector to its `N` leading
+  dimensions and L2-renormalize. Hosted embedders (Jina/Voyage/Cohere) request
+  the shorter vector natively; everything else is wrapped, so the result is
+  exactly `N` long. Storage/latency vs. recall is gated per dimension in the
+  VincioBench `rag` family.
+- **Query-vs-document input-type hints.** All built-in embedders accept an
+  optional `input_type` (`"document"` / `"query"`); `VectorIndex` passes the
+  right one on add vs. search. The `embed_texts(embedder, texts, input_type=...)`
+  helper dispatches the hint only to embedders that support it, so custom
+  embedders implementing only `embed(texts)` keep working unchanged.
+- **Contextual & multimodal embedders.** `VoyageContextualEmbedder`
+  (`voyage-context-3`, chunk vectors carry document context — complements
+  `contextualize_chunks`) and unified text+image embedders
+  `VoyageMultimodalEmbedder` (`voyage-multimodal-3`) and
+  `CohereMultimodalEmbedder` (`embed-v4.0`) via `build_embedder`,
+  `MultimodalInput`, and `embed_multimodal`. All ride core `httpx` — no SDK.
+- **Five new vector stores.** Weaviate, Milvus, Elasticsearch/OpenSearch, and
+  Vespa behind the one `build_vector_index` factory and the `Index` protocol,
+  joining Qdrant, pgvector, Chroma, Pinecone, and LanceDB. Each lazy-imports its
+  SDK with a helpful `StorageError` and accepts an injected client for offline
+  round-trip tests. New extras: `vincio[weaviate|milvus|elasticsearch|opensearch|vespa]`.
+- **Layout-aware PDF extraction.** `load_document(path, layout=True)` /
+  `load_pdf(path, layout=True)` / `extract_pdf_layout` recover column-aware
+  reading order, tables with bounding boxes, and figure regions for complex PDFs
+  via `vincio[pdf-layout]` (pdfplumber); the dependency-free pypdf text path
+  stays the default. Pure, offline-tested helpers `group_words_into_lines` /
+  `order_blocks` / `assemble_layout`.
+- **Voice / realtime (optional module).** `vincio.realtime`: a provider-neutral
+  `RealtimeSession` over OpenAI Realtime / Gemini Live (WebSocket) or a
+  deterministic in-process backend, with VAD, interruption (barge-in), and
+  **in-session tool calls routed through the permissioned, sandboxed, audited
+  tool runtime** (`app.realtime_session(...)`). A separate `vincio[realtime]`
+  extra, `@experimental`, explicitly scoped as a stateful bidirectional module —
+  not core context engineering.
+- **New top-level symbols:** `MatryoshkaEmbedder`, `RealtimeSession`
+  (both `@experimental`, since 1.5). Example `29_multimodal_retrieval.py`.
+
+### Notes
+
+- 919 tests passing offline; ruff clean; VincioBench 116/116 budgets;
+  twenty-nine examples. The `rag` family gained MRL recall-vs-dimension and
+  unified multimodal recall/MRR (four new budgets, three new SLOs).
+
+See the [roadmap](ROADMAP.md) (1.5 milestone).
+
 ## [1.4.1] - 2026-06-16
 
 Completes the 1.4 distillation-flywheel capture so faithful, grounded training

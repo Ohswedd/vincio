@@ -36,6 +36,12 @@ converts LlamaIndex readers, retrievers, tools, and embeddings directly:
 `from_llamaindex_reader(reader)` → `app.add_source(documents=...)`,
 `from_llamaindex_retriever(r)`, `add_llamaindex_tool(app, t)`,
 `from_llamaindex_embedding(e)` (and `to_llamaindex_*` with
-`vincio[llamaindex]`). New vector stores — Chroma, Pinecone, LanceDB —
-join Qdrant and pgvector behind one `build_vector_index` factory. See
+`vincio[llamaindex]`). Vector stores — Chroma, Pinecone, LanceDB,
+Weaviate, Milvus, Elasticsearch, OpenSearch, Vespa — join Qdrant and
+pgvector behind one `build_vector_index` factory, and `build_embedder`
+spans local, jina, voyage, cohere, and openai plus Matryoshka dimension
+truncation (`dimensions=`), contextual (`voyage-context`), and multimodal
+(`voyage-multimodal` / `cohere-multimodal`) variants. Document extraction
+includes a layout-aware PDF path that recovers reading order, tables, and
+figures. See
 [Coming from LlamaIndex to Vincio](../guides/migrate-from-llamaindex.md).

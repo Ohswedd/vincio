@@ -13,8 +13,8 @@ vincio/core         types, errors, events, config, tokens, concurrency, ContextA
 vincio/prompts      PromptSpec, AST, compiler (cache-aware), lint, variants, versioned registry, typed signatures (DSPy-style Signature/Predict)
 vincio/context      ContextIR/Packet, scoring, budgeting, compression, compiler; (1.4) llmlingua.py — LLMLinguaCompressor (learned token-importance compression, drop-in ContextCompiler.compressor) + faithfulness helpers
 vincio/input        normalization, language/task classification, routing
-vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, multimodal
-vincio/retrieval    chunkers, embeddings (local + hosted jina/voyage/cohere + build_embedder), BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers (heuristic/recency/authority/llm + hosted cohere/jina/voyage), graph+GraphRAG, live indexes (1.3: content-hash upsert re-embeds only changed chunks), reasoning; (1.3) sharded.py ShardedIndex (parallel fan-out shards over the Index protocol)
+vincio/documents    loaders (md/html/csv/pdf/docx/xlsx/eml/code), parsers, OCR, multimodal; (1.5) layout.py — layout-aware PDF extraction (load_document(layout=True)/extract_pdf_layout: reading order, tables, figures; vincio[pdf-layout])
+vincio/retrieval    chunkers, embeddings (local + hosted jina/voyage/cohere + build_embedder), BM25/vector/sparse/late-interaction indexes, hybrid RRF, query understanding, rerankers (heuristic/recency/authority/llm + hosted cohere/jina/voyage), graph+GraphRAG, live indexes (1.3: content-hash upsert re-embeds only changed chunks), reasoning; (1.3) sharded.py ShardedIndex (parallel fan-out shards over the Index protocol); (1.5) Matryoshka embeddings (build_embedder(kind, dimensions=)/MatryoshkaEmbedder), contextual (voyage-context) and multimodal (voyage-multimodal/cohere-multimodal) embedders, query/document input-type hints through VectorIndex
 vincio/connectors   data connectors (web/github/sql/s3/gcs/notion/confluence/slack) feeding the document engine
 vincio/interop      LangChain + LlamaIndex bridges (tools/retrievers/loaders/embeddings, both directions; from_* duck-typed, to_* needs the extra)
 vincio/mcp          (1.1, experimental) MCP client + server over stdio/Streamable HTTP/in-process; tools→permissioned runtime, resources→evidence, prompts→PromptSpec, sampling→provider, elicitation→human gate; app.add_mcp_server / app.serve_mcp
@@ -32,11 +32,12 @@ vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenA
 vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packet/trace snapshots, pytest plugin (pytest11 entry point)
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, programmable rails, audit
 vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic + compile/chunk caches, invalidation
-vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/pgvector/chroma/pinecone/lancedb vector adapters (build_vector_index), neo4j/redis/duckdb adapters
+vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/pgvector/chroma/pinecone/lancedb/weaviate/milvus/elasticsearch/opensearch/vespa vector adapters (build_vector_index), neo4j/redis/duckdb adapters
 vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible passthrough & presets (groq/together/fireworks/openrouter/deepseek/perplexity/xai/nvidia) + OpenAI Responses adapter; unified reasoning control (reasoning_effort/thinking budget, billed); over pooled httpx + coalescing + deterministic mock; (1.3) batch.py (BatchRunner + in-process/OpenAI/Anthropic backends, ~50% cost), circuit.py (CircuitBreaker, HealthAwareFailover), keypool.py (KeyPool, RateLimiter), cache_strategy.py (PromptCacheStrategy)
 vincio/notebook     rich Jupyter reprs (enable_rich_reprs) for RunResult/Trace/EvalReport/MemoryItem/SearchHit
 vincio/tui          interactive terminal inspector (TUI) for runs/traces/memory; pure renderers + injectable IO
 vincio/server       FastAPI app (API key + JWT auth, real-token SSE streaming)
+vincio/realtime     (1.5, optional) voice/realtime module — RealtimeSession, connect_realtime (inprocess/openai/gemini backends), VAD, interruption, in-session tool calls through the permissioned runtime; app.realtime_session; extra vincio[realtime]
 vincio/cli          argparse CLI (init --template, config schema/validate/show, packs, tui, run, eval, prompt, trace, optimize run/reflective, loop, distill, index, memory, audit verify, mcp tools/add/serve)
 vincio/stability    API-stability contract (1.0): @deprecated/@experimental, deprecated_alias, stability_of, public_api, API_VERSION, VincioDeprecationWarning/VincioExperimentalWarning
 ```

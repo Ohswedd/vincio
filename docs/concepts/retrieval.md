@@ -19,9 +19,14 @@ any mix fuses in a single weighted reciprocal-rank-fusion merge:
 - **BM25** — pure-python Okapi BM25.
 - **Dense** — vector index (local hash embeddings offline; provider or hosted
   embeddings — `build_embedder("local"|"jina"|"voyage"|"cohere"|<provider>)` —
-  with Qdrant, pgvector, Chroma, Pinecone, or LanceDB in production, all behind
-  one `build_vector_index(kind, embedder, ...)` factory). `VectorIndex.migrate()`
-  re-embeds in place for embedding-model migrations.
+  with Qdrant, pgvector, Chroma, Pinecone, LanceDB, Weaviate, Milvus,
+  Elasticsearch/OpenSearch, or Vespa in production, all behind one
+  `build_vector_index(kind, embedder, ...)` factory). `VectorIndex.migrate()`
+  re-embeds in place for embedding-model migrations. Embedders support
+  Matryoshka dimension truncation (`build_embedder(..., dimensions=N)`),
+  contextual chunk embeddings (`voyage-context`), and unified text+image
+  multimodal embeddings (`voyage-multimodal` / `cohere-multimodal`), plus
+  query-vs-document `input_type` hints applied automatically on add/search.
 - **Learned sparse** — `SparseIndex` over SPLADE-style impact vectors:
   the offline `LocalImpactEncoder` (sublinear tf + morphological expansion)
   or any served model via `CallableSparseEncoder`.
@@ -104,6 +109,10 @@ report["missing_facts"]   # feeds insufficient-evidence behavior
 (section-path prefixed), `table_aware` (tables stay intact), `code_aware`
 (symbol boundaries), `sentence_window`, `hierarchical` / `parent_document`,
 `contextual`, `adaptive` (auto-select per document).
+
+Layout-aware PDF extraction (`load_document(path, layout=True)`) recovers
+column-aware reading order, tables, and figures before chunking; the
+dependency-free text path stays the default.
 
 ## Rerankers
 

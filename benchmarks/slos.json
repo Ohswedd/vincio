@@ -291,6 +291,36 @@
       "threshold": true,
       "enforced_by": "families.loop.compression.fidelity_preserved",
       "rationale": "A compressor that drops the evidence an answer cites trades tokens for hallucination; faithfulness is the floor."
+    },
+    {
+      "id": "mrl_full_dimension_recall",
+      "category": "quality",
+      "statement": "Matryoshka embeddings at full output dimension hold at least 0.80 recall@3 on the reference corpus.",
+      "metric": "families.rag.mrl.full_recall_at_3.mean",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.rag.mrl.full_recall_at_3.mean",
+      "rationale": "MRL is only useful if the full-dimension vector is a no-regression baseline for the truncated ones."
+    },
+    {
+      "id": "mrl_truncated_dimension_recall",
+      "category": "quality",
+      "statement": "Matryoshka truncation to one-eighth of the base dimension still holds at least 0.80 recall@3.",
+      "metric": "families.rag.mrl.recalls_by_dimension.64.recall_at_3.mean",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.rag.mrl.recalls_by_dimension.64.recall_at_3.mean",
+      "rationale": "The point of MRL is shrinking storage/latency without giving up recall; the truncated floor proves the trade is real."
+    },
+    {
+      "id": "multimodal_retrieval_recall",
+      "category": "quality",
+      "statement": "Unified text+image retrieval achieves at least 0.80 recall@3 over the multimodal evidence set.",
+      "metric": "families.rag.multimodal.recall_at_3.mean",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.rag.multimodal.recall_at_3.mean",
+      "rationale": "Multimodal embeddings only help if image-derived evidence is retrievable in the same space as text."
     }
   ]
 }

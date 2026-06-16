@@ -50,7 +50,8 @@ retrieval:
   chunk_overlap_tokens: 50
   chunking: recursive        # fixed | recursive | semantic | heading_aware | table_aware | code_aware | sentence_window | hierarchical | parent_document | contextual | adaptive
   reranker: heuristic        # heuristic | recency | authority | llm | cohere | jina | voyage | null
-  embedder: local            # local | jina | voyage | cohere | openai | google | mistral | <provider>
+  embedder: local            # local | jina | voyage | cohere | voyage-context | voyage-multimodal | cohere-multimodal | openai | google | mistral | <provider>
+  embedding_dimensions: null # int | None — Matryoshka output-dimension truncation; null keeps the native dimension
   query_strategies: []       # hyde | multi_query | decompose | step_back
 
 memory:

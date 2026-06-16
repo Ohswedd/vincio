@@ -100,7 +100,10 @@ class RetrievalConfig(BaseModel):
     chunk_overlap_tokens: int = 50
     chunking: str = "recursive"
     reranker: str | None = "heuristic"
-    embedder: str = "local"  # local | openai | <provider>
+    embedder: str = "local"  # local | jina | voyage | cohere | voyage-context | <provider>
+    # Matryoshka (MRL) output-dimension truncation; None keeps the model's
+    # native dimension. Hosted embedders that support it truncate server-side.
+    embedding_dimensions: int | None = None
     # Query-understanding strategies applied per retrieve():
     # hyde | multi_query | decompose | step_back
     query_strategies: list[str] = Field(default_factory=list)

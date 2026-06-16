@@ -41,7 +41,8 @@ from .packs import Pack, available_packs, load_pack
 from .prompts.signatures import InputField, OutputField, Predict, Signature, signature
 from .prompts.templates import PromptSpec
 from .providers import BatchRunner, CircuitBreaker, HealthAwareFailover, KeyPool
-from .retrieval import ShardedIndex
+from .realtime import RealtimeSession
+from .retrieval import MatryoshkaEmbedder, ShardedIndex
 from .security.rails import Rail
 from .stability import (
     API_VERSION,
@@ -54,7 +55,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.4.1"
+__version__ = "1.5.0"
 
 __all__ = [
     "ContextApp",
@@ -115,6 +116,8 @@ __all__ = [
     "CostBudget",
     "BudgetManager",
     "ShardedIndex",
+    "MatryoshkaEmbedder",
+    "RealtimeSession",
     "API_VERSION",
     "StabilityLevel",
     "VincioDeprecationWarning",

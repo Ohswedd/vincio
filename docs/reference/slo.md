@@ -42,6 +42,9 @@ portable.
 |---|---|---|
 | Evidence-token reduction vs naive stuffing | ≥ 20% | `cost.token_reduction` |
 | Hybrid retrieval recall@3 | ≥ 0.80 | `rag.recall_at_3.mean` |
+| Matryoshka full output dimension recall@3 | ≥ 0.80 | `rag.mrl.full_recall_at_3.mean` |
+| Matryoshka truncated dimension recall@3 (one-eighth of base) | ≥ 0.80 | `rag.mrl.recalls_by_dimension.64.recall_at_3.mean` |
+| Unified text+image retrieval recall@3 | ≥ 0.80 | `rag.multimodal.recall_at_3.mean` |
 | Self-correction recovery | 100% within cycle bound | `reliability.self_correction.recovery_rate` |
 
 ## Security

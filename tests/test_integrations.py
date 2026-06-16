@@ -174,7 +174,10 @@ def test_vector_factory_memory_backend():
     assert index.name == "vector"
 
 
-@pytest.mark.parametrize("backend", ["chroma", "pinecone", "lancedb"])
+@pytest.mark.parametrize(
+    "backend",
+    ["chroma", "pinecone", "lancedb", "weaviate", "milvus", "elasticsearch", "opensearch", "vespa"],
+)
 def test_vector_factory_missing_dep_is_helpful(backend):
     with pytest.raises(StorageError):
         build_vector_index(backend, LocalHashEmbedder())
@@ -187,5 +190,6 @@ def test_vector_factory_pgvector_needs_dsn():
 
 def test_vector_factory_unknown_backend():
     with pytest.raises(ConfigError):
-        build_vector_index("weaviate", LocalHashEmbedder())
-    assert "memory" in VECTOR_BACKENDS
+        build_vector_index("not-a-real-store", LocalHashEmbedder())
+    for known in ("memory", "weaviate", "milvus", "elasticsearch", "opensearch", "vespa"):
+        assert known in VECTOR_BACKENDS

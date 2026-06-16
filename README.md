@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-740%20passing-2ea44f" alt="740 tests passing">
+  <img src="https://img.shields.io/badge/tests-919%20passing-2ea44f" alt="919 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -65,7 +65,9 @@ Vincio treats context as a compiled artifact with a clear contract:
 pip install vincio                  # core — runs fully offline with the mock provider
 pip install "vincio[openai]"        # + OpenAI provider
 pip install "vincio[anthropic]"     # + Anthropic provider
-pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, postgres)
+pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, postgres,
+                                    #   weaviate, milvus, elasticsearch, opensearch, vespa)
+pip install "vincio[realtime]"      # + voice/realtime sessions (OpenAI Realtime, Gemini Live)
 pip install "vincio[langchain]"     # + LangChain interop export (also: llamaindex)
 pip install "vincio[all]"           # every optional integration
 ```
@@ -203,7 +205,7 @@ for any engine directly.
 |---|---|
 | **Prompt compiler** | Typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, diffing, variant generation. |
 | **Context compiler** | Scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget — with an *excluded-context report* explaining every omission. |
-| **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; citations. |
+| **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; **Matryoshka (MRL) dimension truncation**, **contextual (Voyage context-3)** and **unified text+image multimodal (Cohere v4 / Voyage)** embedders, and query-vs-document input-type hints behind one `build_embedder`; citations. |
 | **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. |
 | **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, a resource-limited sandbox (timeout, output caps, scrubbed env, POSIX CPU/memory/fd `setrlimit`), reliability scoring, idempotent write-action guardrails with approval callbacks. |
 | **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement. |
@@ -217,8 +219,8 @@ for any engine directly.
 | **Reflective optimization & the flywheel** | A GEPA-style `ReflectiveOptimizer` that reads eval failures, reflects on why a prompt lost, and proposes targeted edits, evolving a Pareto frontier under a hard rollout budget (plus MIPRO joint instruction+example proposal); a **distillation flywheel** (`app.export_training_set` / `vincio distill`) that curates grounded production traces into provider-ready fine-tuning JSONL and gates a cheaper student into the routing cascade only when it holds quality; **learned prompt compression** (`LLMLinguaCompressor`) as a faithfulness-gated compiler pass; and reflective calibration of the optimizer's own LLM judge against κ-validated labels. |
 | **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
 | **Security** | Deterministic PII / secret detection and redaction, prompt-injection defense, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
-| **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB behind one `build_vector_index` factory), and graph (Neo4j) backends. |
-| **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. |
+| **Storage** | Pluggable metadata (in-memory / SQLite / Postgres), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB / Weaviate / Milvus / Elasticsearch / OpenSearch / Vespa behind one `build_vector_index` factory), and graph (Neo4j) backends. |
+| **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, failover, and in-flight request coalescing. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. Opt-in **voice/realtime** sessions (OpenAI Realtime, Gemini Live) via `vincio.realtime` — VAD, interruption, and in-session tool calls through the permissioned runtime. |
 | **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. All via `app.add_mcp_server` / `serve_mcp` / `serve_a2a` / `add_skill` (experimental, since 1.1). |
 | **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
 | **Cost & reliability (FinOps)** | Production-traffic resilience in-process, not a proxy hop: **batch execution** at ~50% cost (OpenAI Batch + Anthropic Message Batches, `app.batch`), **circuit breaking** + **health-aware failover** and **key pooling** with RPM+TPM rate limiting (retry → fallback → circuit-break), **runtime model cascades** (start cheap, escalate on low confidence, `app.use_cascade`), **cost attribution** by tenant/feature (`app.cost_report` / `vincio cost report`) with enforced **budget SLOs** (cap / degrade / queue-to-batch + `cost.anomaly`), provider-aware **prompt caching** with TTL choice and cache-hit telemetry, and **incremental** (content-hash) + **sharded** indexing at scale. |
@@ -344,10 +346,11 @@ and the vector store you already run. See the
 | Score agents over their trajectory and live traffic | trajectory & tool-use metrics, multi-turn simulator, online eval + drift, Cohen's-κ annotation, A/B + metric-as-guardrail | [`26_agentic_eval.py`](examples/26_agentic_eval.py) |
 | Survive outages and account for every dollar at scale | batch execution, circuit breaking + failover, key pooling, model cascades, cost attribution + budgets, prompt caching, sharded indexing | [`27_cost_and_reliability.py`](examples/27_cost_and_reliability.py) |
 | Optimize prompts reflectively and distill traces into a cheaper model | GEPA/MIPRO reflective optimizer, distillation flywheel, learned compression, optimizer-judge calibration | [`28_reflective_optimization.py`](examples/28_reflective_optimization.py) |
+| Shrink embeddings, retrieve across text+image, and add stores | Matryoshka (MRL) truncation, contextual & multimodal embedders, new vector stores, layout-aware extraction, voice/realtime | [`29_multimodal_retrieval.py`](examples/29_multimodal_retrieval.py) |
 
 ## More examples
 
-All twenty-eight examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
+All twenty-nine examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
 at a real model with environment variables:
 
 ```bash
@@ -458,7 +461,8 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [trajectory metrics, simulator, online eval, drift & annotation](docs/guides/agentic-eval.md)
 - **Protocols & interoperability** — [MCP client + server](docs/guides/mcp.md) ·
   [A2A agent-to-agent](docs/guides/a2a.md) · [Agent Skills](docs/guides/agent-skills.md) ·
-  [reasoning control & Responses API](docs/guides/reasoning.md)
+  [reasoning control & Responses API](docs/guides/reasoning.md) ·
+  [voice & realtime](docs/guides/realtime.md)
 - **Migrating** — coming from [LangChain](docs/guides/migrate-from-langchain.md) ·
   [LlamaIndex](docs/guides/migrate-from-llamaindex.md) ·
   [Ragas](docs/guides/migrate-from-ragas.md) · [Mem0](docs/guides/migrate-from-mem0.md)

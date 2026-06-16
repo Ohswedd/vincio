@@ -53,15 +53,34 @@ use the `local`, `ollama`, or `vllm` provider names.
 from vincio.retrieval import build_embedder
 
 local = build_embedder("local")                       # deterministic, offline
-jina = build_embedder("jina", api_key="...")          # also voyage | cohere
+jina = build_embedder("jina", api_key="...", dimensions=512)  # Matryoshka truncation
 openai = build_embedder("openai", model="text-embedding-3-small")
+context = build_embedder("voyage-context")            # per-chunk vectors carry doc context
+mm = build_embedder("voyage-multimodal")              # unified text+image vector space
 ```
+
+`dimensions=N` truncates each output vector to N dims and L2-renormalizes
+(the leading dimensions carry the most signal — `retrieval.embedding_dimensions`
+in config); hosted embedders request the shorter vector natively, others wrap
+in `MatryoshkaEmbedder`. All built-in embedders accept an `input_type`
+(`"document"` | `"query"`); `VectorIndex` passes the right one on add/search.
 
 | Kind | Backend | Dependency |
 |---|---|---|
 | `local` | deterministic hash embedder | none |
 | `jina` / `voyage` / `cohere` | hosted embedding API | none (core `httpx`) |
+| `voyage-context` | contextual hosted embedder (`voyage-context-3`) | none (core `httpx`) |
+| `voyage-multimodal` / `cohere-multimodal` | multimodal text+image hosted embedder | none (core `httpx`) |
 | `openai` / `google` / `mistral` / preset names | provider `embed` | the provider's extra |
+
+`voyage-context` (model `voyage-context-3`) embeds each chunk with surrounding
+document context — it complements the `contextualize_chunks` LLM-prefix path
+rather than replacing it, with `embed_grouped(documents)` for explicit
+per-document grouping. The multimodal embedders — `voyage-multimodal`
+(`voyage-multimodal-3`) and `cohere-multimodal` (alias `cohere-v4`, model
+`embed-v4.0`) — share one text+image vector space; pass
+`MultimodalInput(text=..., image=ImageRef(path=...|url=...))` to
+`embedder.embed_multimodal([...])`.
 
 ## Rerankers
 
@@ -105,6 +124,11 @@ chroma = build_vector_index("chroma", embedder, path="./chroma")
 pinecone = build_vector_index("pinecone", embedder, api_key="...")
 lancedb = build_vector_index("lancedb", embedder, uri=".vincio/lancedb")
 pg = build_vector_index("pgvector", embedder, dsn="postgresql://localhost/vincio")
+weaviate = build_vector_index("weaviate", embedder, url="http://localhost:8080")
+milvus = build_vector_index("milvus", embedder, uri="http://localhost:19530")
+es = build_vector_index("elasticsearch", embedder, url="http://localhost:9200")
+opensearch = build_vector_index("opensearch", embedder, url="http://localhost:9200")
+vespa = build_vector_index("vespa", embedder, url="http://localhost", port=8080)
 ```
 
 | Backend | Extra |
@@ -115,6 +139,20 @@ pg = build_vector_index("pgvector", embedder, dsn="postgresql://localhost/vincio
 | `chroma` | `vincio[chroma]` |
 | `pinecone` | `vincio[pinecone]` |
 | `lancedb` | `vincio[lancedb]` |
+| `weaviate` | `vincio[weaviate]` |
+| `milvus` | `vincio[milvus]` |
+| `elasticsearch` (alias `es`) | `vincio[elasticsearch]` |
+| `opensearch` | `vincio[opensearch]` |
+| `vespa` | `vincio[vespa]` |
+
+## Layout-aware extraction
+
+The dependency-free pypdf text path stays the default, but
+`load_document(path, layout=True)` (or `load_pdf(path, layout=True)` /
+`extract_pdf_layout(path)`) recovers column-aware reading order, tables (with
+bounding boxes), and figures via `vincio[pdf-layout]` (pdfplumber). The pure
+helpers `group_words_into_lines`, `order_blocks`, and `assemble_layout` are
+available for custom pipelines.
 
 ## LangChain & LlamaIndex assets
 

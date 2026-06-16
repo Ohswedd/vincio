@@ -14,7 +14,9 @@ index, and search multi-vector representations with PLAID compression.
   token vectors into centroids, generates candidates over inverted centroid
   lists, and exact-reranks survivors. Token embeddings come from any
   `Embedder` — the offline hash embedder for tests, a served ColBERT
-  checkpoint in production.
+  checkpoint in production. The same `Embedder` interface and `build_embedder`
+  also reach contextual (`voyage-context-3`) and multimodal (Cohere v4 /
+  Voyage) embedders, plus Matryoshka dimension truncation (`dimensions=`).
 - **Learned sparse rides along.** `SparseIndex` covers the
   SPLADE/uniCOIL-style impact-weighted family (offline approximation
   built in, any served encoder via `CallableSparseEncoder`), so you can fuse

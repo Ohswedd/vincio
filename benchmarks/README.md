@@ -18,7 +18,7 @@ Results are printed as JSON and saved to `benchmarks/results/`.
 | Family | Measures | Baseline |
 |---|---|---|
 | **PromptBench** | cacheability/tokens per render format, lint defect detection | naive string concatenation |
-| **RAGBench** | recall@3 / MRR per retrieval mode (bm25, dense, sparse, late_interaction, PLAID-compressed, hybrid, hybrid_full, + query understanding); GraphRAG community building | single-index BM25 |
+| **RAGBench** | recall@3 / MRR per retrieval mode (bm25, dense, sparse, late_interaction, PLAID-compressed, hybrid, hybrid_full, + query understanding); GraphRAG community building; (1.5) MRL recall-vs-dimension (`families.rag.mrl`) and unified multimodal recall/MRR (`families.rag.multimodal`) | single-index BM25 |
 | **MemoryBench** | preference recall, contradiction supersede, cross-user isolation | — |
 | **AgentBench** | budget adherence under an adversarial looping model, DAG success; crew over-budget termination, full-crew success, delegation recording; durable-graph interrupt→resume and fork-replay determinism; composition streaming coverage | unbounded loop |
 | **ToolBench** | reliability, runtime overhead (p50 ms), invalid-arg rejection, cache hits | — |
