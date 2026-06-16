@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, Field
 
@@ -433,9 +433,9 @@ class ComplianceMapper:
     ) -> ComplianceReport:
         import vincio
 
-        cfg = None
+        cfg: VincioConfig | None = None
         if target is not None:
-            cfg = getattr(target, "config", None) or target  # type: ignore[assignment]
+            cfg = cast("VincioConfig", getattr(target, "config", None) or target)
         evidence = self._collect(redteam=redteam, eval_report=eval_report, cfg=cfg, target=target)
 
         order = {"covered": 2, "partial": 1, "not_covered": 0}

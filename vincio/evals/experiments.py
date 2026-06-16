@@ -134,7 +134,7 @@ class ExperimentTracker:
                 continue
             table[metric] = row
             chooser = min if metric in LOWER_IS_BETTER else max
-            best[metric] = chooser(row, key=row.get)
+            best[metric] = chooser(row, key=row.__getitem__)
         return {
             "experiment": experiment,
             "variants": {variant: run.id for variant, run in latest.items()},

@@ -9,8 +9,8 @@ every in-flight subtask, and the first failure cancels the rest of the group.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable, Coroutine, Iterable
-from typing import Any, TypeVar
+from collections.abc import Awaitable, Callable, Iterable
+from typing import TypeVar, cast
 
 __all__ = ["gather_bounded", "map_bounded", "race_with_timeout", "DEFAULT_CONCURRENCY"]
 
@@ -21,7 +21,7 @@ DEFAULT_CONCURRENCY = 8
 
 
 async def gather_bounded(
-    coros: Iterable[Coroutine[Any, Any, T]],
+    coros: Iterable[Awaitable[T]],
     *,
     limit: int = DEFAULT_CONCURRENCY,
     return_exceptions: bool = False,
@@ -38,13 +38,15 @@ async def gather_bounded(
         return []
     semaphore = asyncio.Semaphore(max(1, limit))
 
-    async def bounded(coro: Coroutine[Any, Any, T]) -> T:
+    async def bounded(coro: Awaitable[T]) -> T:
         async with semaphore:
             return await coro
 
     tasks = [asyncio.ensure_future(bounded(coro)) for coro in coros]
     try:
-        return list(await asyncio.gather(*tasks, return_exceptions=return_exceptions))
+        # With return_exceptions the caller opts into receiving exceptions in
+        # place of results; the declared list[T] is the success-path contract.
+        return cast("list[T]", list(await asyncio.gather(*tasks, return_exceptions=return_exceptions)))
     except BaseException:
         for task in tasks:
             task.cancel()

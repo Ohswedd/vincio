@@ -9,6 +9,7 @@ run within the boundaries of the :class:`RepairPolicy`.
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -145,8 +146,8 @@ class OutputValidator:
                     return report
                 continue
             result = validator(data, {**context, **spec.params})
-            if hasattr(result, "__await__"):
-                result = await result  # type: ignore[assignment]
+            if inspect.isawaitable(result):
+                result = await result
             if result:
                 report.step(f"semantic:{spec.name}", False, str(result))
                 if spec.blocking:

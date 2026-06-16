@@ -338,7 +338,12 @@ class BudgetManager:
                 continue
             key = f"{budget.scope}:{budget.id or event.dimension_value(budget.scope)}"  # type: ignore[arg-type]
             count, mean = self._anomaly_state.get(key, (0, 0.0))
-            if count >= 5 and mean > 0 and event.cost_usd > budget.anomaly_factor * mean:
+            if (
+                count >= 5
+                and mean > 0
+                and budget.anomaly_factor
+                and event.cost_usd > budget.anomaly_factor * mean
+            ):
                 if self.events is not None:
                     self.events.emit(
                         "cost.anomaly",

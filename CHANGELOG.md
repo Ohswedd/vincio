@@ -4,6 +4,50 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.1] - 2026-06-16
+
+Completes the 1.6 governance follow-ups (no gaps): a real type-check gate, a
+stronger residency control, and signable content credentials. Additive and
+backward-compatible.
+
+### Added
+
+- **mypy is now a CI gate.** A new `Types (mypy)` job runs `mypy vincio` on every
+  PR; the whole package type-checks clean (0 errors across 230 modules). Fixing
+  the type errors this surfaced also hardened several latent issues — a
+  mislabeled `HealthAwareFailover._ordered` return type, a `StateGraph` frontier
+  dedup that used `set.add` as a value, an unguarded `anomaly_factor` multiply,
+  and tightened `evidence_ids` / event-handler / finish-reason typing.
+- **Residency endpoint-region inference.** `ResidencyPolicy` now infers the
+  provider region from a region-bearing endpoint URL (AWS `us-east-1`-style,
+  GCP/Vertex `europe-west4`-style, and sovereign-gateway jurisdiction
+  subdomains) via the new `infer_region_from_url`, and run egress checks read the
+  configured `provider.base_urls`. Matching is jurisdiction-aware:
+  `allowed_regions=["eu"]` admits `eu-west-1` and `europe-west4`. Combined with a
+  region-pinned endpoint, the egress-refusal control now reflects the real
+  endpoint rather than only a hand-maintained map.
+- **Signable synthetic-content manifests.** `mark_synthetic_content(...,
+  signer=...)` attaches a cryptographic signature over a deterministic binding
+  payload, and `verify_manifest(manifest, content, signer=...)` checks both the
+  SHA-256 content binding and the signature (failing closed when a signature is
+  present but no verifier is supplied). A dependency-free `HmacSigner`
+  (HMAC-SHA256 over a `SecretString`) ships built in; supply your own
+  `ContentSigner` for asymmetric, third-party-verifiable provenance.
+  `app.content_signer` signs every auto-marked run.
+
+### Changed
+
+- `vincio.governance` gains `infer_region_from_url`, `ContentSigner`,
+  `HmacSigner`, and `verify_manifest` (additive). `EvalRunner` and
+  `gather_bounded` accept `Sequence` inputs; `PIIDetector(locales=...)` accepts
+  any `Sequence`. `GovernanceConfig.card_format` is now a validated `Literal`.
+
+### Quality
+
+- **986 tests passing offline; ruff clean; mypy clean; VincioBench 131/131
+  budgets** (two new governance budgets gate residency inference and signature
+  verification); thirty runnable examples.
+
 ## [1.6.0] - 2026-06-16
 
 Enterprise governance & compliance. Turns the audit and security spine into the

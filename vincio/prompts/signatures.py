@@ -26,7 +26,7 @@ String form: ``signature("ticket -> label, confidence: float")``.
 from __future__ import annotations
 
 import re
-from typing import Any, get_type_hints
+from typing import Any, ClassVar, get_type_hints
 
 from pydantic import BaseModel, Field, create_model
 
@@ -57,6 +57,9 @@ class Signature(BaseModel):
     Subclass with annotated fields marked :func:`InputField` /
     :func:`OutputField`; the docstring becomes the instruction.
     """
+
+    # Per-subclass cache of the derived output model (set lazily in output_model()).
+    _output_model: ClassVar[type[BaseModel] | None] = None
 
     @classmethod
     def _io_fields(cls, direction: str) -> dict[str, Any]:

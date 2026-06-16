@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 import time
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from ..core.errors import ProviderResponseError
 from ..core.types import (
+    FinishReason,
     ModelCapabilities,
     ModelEvent,
     ModelRequest,
@@ -231,7 +232,7 @@ class AnthropicProvider(HTTPProvider):
             "tool_use": "tool_calls",
             "refusal": "content_filter",
         }
-        finish = stop_map.get(data.get("stop_reason"), "stop")
+        finish: FinishReason = cast(FinishReason, stop_map.get(data.get("stop_reason") or "", "stop"))
         if finish == "tool_calls" and not tool_calls and structured is not None:
             finish = "stop"
         text = "".join(text_parts)

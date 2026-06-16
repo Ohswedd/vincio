@@ -387,6 +387,12 @@
     },
     "families.governance.poisoning.false_positive_rate": {
       "lte": 0.2
+    },
+    "families.governance.residency.endpoint_inference": {
+      "eq": true
+    },
+    "families.governance.transparency.signature_verifies": {
+      "eq": true
     }
   }
 }

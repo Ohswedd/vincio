@@ -161,7 +161,8 @@ class VincioRuntime:
                 from ..governance.transparency import ai_disclosure, mark_synthetic_content
 
                 manifest = mark_synthetic_content(
-                    result.raw_text, model_id=app.model, provider=app._provider_name
+                    result.raw_text, model_id=app.model, provider=app._provider_name,
+                    signer=app.content_signer,
                 )
                 result.metadata["content_credentials"] = manifest.to_dict()
                 result.metadata["ai_disclosure"] = ai_disclosure(
@@ -599,7 +600,7 @@ class VincioRuntime:
             and budget_model_override is None
             and run_config.model is None
         )
-        if cascade_active:
+        if cascade_active and app.cascade is not None:
             model = app.cascade.first().model
         else:
             model = budget_model_override or run_config.model or app.model
@@ -1079,9 +1080,9 @@ class VincioRuntime:
 
         # 13. parse and validate output.
         contract = prepared.contract
-        evidence_ids = {e.id for e in compiled_context.ir.evidence} | {
+        evidence_ids: set[str] = {e.id for e in compiled_context.ir.evidence} | {
             e.citation_ref for e in compiled_context.ir.evidence
-        } | {entry.get("id") for entry in compiled_context.ir.evidence_ledger if entry.get("id")}
+        } | {str(entry["id"]) for entry in compiled_context.ir.evidence_ledger if entry.get("id")}
         with app.tracer.span("output_validation", type="output_validation") as span:
             validator = OutputValidator(
                 contract,

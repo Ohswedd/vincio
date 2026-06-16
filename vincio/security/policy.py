@@ -82,7 +82,7 @@ class PolicyEngine:
         if self.policies.safety != "minimal":
             verdict = self.injection.detect(text)
             if verdict.detected:
-                severity = "block" if (
+                severity: Literal["block", "warn"] = "block" if (
                     self.policies.safety == "strict" or not trust.allowed_to_instruct_model
                 ) else "warn"
                 violations.append(
@@ -124,7 +124,9 @@ class PolicyEngine:
         violations: list[PolicyViolation] = []
         verdict = self.injection.detect(text)
         if verdict.detected:
-            severity = "block" if self.policies.block_untrusted_instructions else "warn"
+            severity: Literal["block", "warn"] = (
+                "block" if self.policies.block_untrusted_instructions else "warn"
+            )
             violations.append(
                 PolicyViolation(
                     policy="untrusted_instruction",

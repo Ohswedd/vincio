@@ -31,7 +31,7 @@ vincio/optimize     fitness, evolution loop, prompt/context/routing/cache optimi
 vincio/observability traces/spans (sessions, feedback, scores), JSONL/OTel (GenAI semconv) exporters, viewer (TUI/HTML/diff), cost tracking; (1.3) finops.py — CostLedger, CostBudget, BudgetManager (cost attribution & budget SLOs)
 vincio/testing      assert_eval/assert_grounded/assert_metric/assert_safe, packet/trace snapshots, pytest plugin (pytest11 entry point)
 vincio/security     PII/secrets, injection defense, RBAC/ABAC, policy engine, programmable rails, audit; (1.6) locales.py (non-English PII locale packs, PIIDetector(locales=[...])), poisoning.py (PoisoningDetector — authority/provenance RAG-poisoning + classifier hook, FP/FN telemetry)
-vincio/governance   (1.6, experimental) compliance evidence over the live system — cards.py (model/system cards, CardFormat), frameworks.py (OWASP LLM 2025/Agentic/NIST AI RMF/MITRE ATLAS mapping), aibom.py (AI-BOM + SHA-256 hashes), transparency.py (C2PA marking, AI disclosure, data summary), lineage.py (source→chunk→evidence→output + erasure), residency.py (egress refusal), fertility.py (token tax); app.model_card/system_card/compliance_report/aibom/trace_lineage/erase_source/set_residency
+vincio/governance   (1.6, experimental) compliance evidence over the live system — cards.py (model/system cards, CardFormat), frameworks.py (OWASP LLM 2025/Agentic/NIST AI RMF/MITRE ATLAS mapping), aibom.py (AI-BOM + SHA-256 hashes), transparency.py (C2PA marking + HmacSigner/ContentSigner + verify_manifest, AI disclosure, data summary), lineage.py (source→chunk→evidence→output + erasure), residency.py (endpoint-region inference via infer_region_from_url + jurisdiction-aware egress refusal), fertility.py (token tax); app.model_card/system_card/compliance_report/aibom/trace_lineage/erase_source/set_residency/mark_output (app.content_signer)
 vincio/caching      LRU/SQLite backends, response/retrieval/packet/semantic + compile/chunk caches, invalidation
 vincio/storage      metadata stores (memory/sqlite/postgres), qdrant/pgvector/chroma/pinecone/lancedb/weaviate/milvus/elasticsearch/opensearch/vespa vector adapters (build_vector_index), neo4j/redis/duckdb adapters
 vincio/providers    openai/anthropic/google/mistral/local + OpenAI-compatible passthrough & presets (groq/together/fireworks/openrouter/deepseek/perplexity/xai/nvidia) + OpenAI Responses adapter; unified reasoning control (reasoning_effort/thinking budget, billed); over pooled httpx + coalescing + deterministic mock; (1.3) batch.py (BatchRunner + in-process/OpenAI/Anthropic backends, ~50% cost), circuit.py (CircuitBreaker, HealthAwareFailover), keypool.py (KeyPool, RateLimiter), cache_strategy.py (PromptCacheStrategy)
@@ -50,7 +50,11 @@ vincio/stability    API-stability contract (1.0): @deprecated/@experimental, dep
 .venv/bin/python -m pytest tests/ -q  # full suite (offline, must stay green; example smoke tests add a few seconds)
 .venv/bin/python -m pytest tests/ -q --ignore=tests/test_examples.py  # fast core suite (~2s)
 .venv/bin/ruff check vincio/ tests/   # lint
+.venv/bin/python -m mypy vincio        # type check (CI gate; must stay clean)
 ```
+
+CI gates (`.github/workflows/ci.yml`): ruff, **mypy (`mypy vincio`)**, pytest on
+py3.11/3.12/3.13, VincioBench budgets, and a package build.
 
 ## Rules
 

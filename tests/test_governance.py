@@ -23,13 +23,16 @@ from vincio.governance import (
     ComplianceFramework,
     ComplianceMapper,
     FertilityTracker,
+    HmacSigner,
     LineageIndex,
     ResidencyPolicy,
     ai_disclosure,
     data_summary,
     generate_model_card,
+    infer_region_from_url,
     mark_synthetic_content,
     sha256_text,
+    verify_manifest,
 )
 from vincio.security import PIIDetector, PoisoningDetector, available_locales, get_locale_pack
 
@@ -229,6 +232,32 @@ class TestTransparency:
         assert "content_credentials" in result.metadata
         assert "ai_disclosure" in result.metadata
 
+    def test_unsigned_manifest_verifies_by_hash(self):
+        manifest = mark_synthetic_content("answer")
+        assert manifest.signature is None
+        assert verify_manifest(manifest, "answer") is True
+        assert verify_manifest(manifest, "tampered") is False
+
+    def test_hmac_signing_roundtrip(self):
+        signer = HmacSigner("topsecret", key_id="k1")
+        manifest = mark_synthetic_content("answer", model_id="gpt-5.2-mini", signer=signer)
+        assert manifest.signature["alg"] == "HMAC-SHA256"
+        assert manifest.signature["key_id"] == "k1"
+        assert verify_manifest(manifest, "answer", signer=signer) is True
+        # Tampered content, wrong key, and a missing verifier all fail closed.
+        assert verify_manifest(manifest, "tampered", signer=signer) is False
+        assert verify_manifest(manifest, "answer", signer=HmacSigner("wrong")) is False
+        assert verify_manifest(manifest, "answer") is False
+
+    def test_app_content_signer_signs_runs(self, offline_config, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        app = ContextApp("m", provider="mock", model="gpt-5.2-mini", config=offline_config)
+        app.content_marking = True
+        app.content_signer = HmacSigner("runsecret")
+        result = app.run(UserInput(text="hello there, tell me about refunds"))
+        creds = result.metadata["content_credentials"]
+        assert creds["signature"]["alg"] == "HMAC-SHA256"
+
 
 # ------------------------------------------------------------------------------ lineage
 
@@ -347,6 +376,29 @@ class TestResidency:
     def test_app_allows_compliant_region(self, gov_app):
         gov_app.set_residency(["us"], provider_regions={"mock": "us"})
         assert gov_app.resolve_provider() is not None
+
+    def test_infer_region_from_endpoint(self):
+        assert infer_region_from_url("https://bedrock-runtime.eu-west-1.amazonaws.com") == "eu-west-1"
+        assert infer_region_from_url("https://europe-west4-aiplatform.googleapis.com") == "europe-west4"
+        assert infer_region_from_url("https://eu.api.example.com/v1") == "eu"
+        assert infer_region_from_url("https://api.openai.com") is None
+        assert infer_region_from_url(None) is None
+
+    def test_jurisdiction_matching_admits_specific_region(self):
+        # allowed "eu" admits AWS eu-west-1 and GCP europe-west4 by jurisdiction.
+        policy = ResidencyPolicy(allowed_regions=["eu"])
+        assert policy.check(provider="bedrock", base_url="https://x.eu-west-1.amazonaws.com") is None
+        assert policy.check(provider="vertex", base_url="https://europe-west4-aiplatform.googleapis.com") is None
+        # but blocks a us region.
+        assert policy.check(provider="bedrock", base_url="https://x.us-east-1.amazonaws.com") is not None
+
+    def test_region_inferred_from_configured_endpoint(self, offline_config, tmp_path, monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        offline_config.provider.base_urls = {"mock": "https://api.us-east-1.amazonaws.com"}
+        app = ContextApp("m", provider="mock", config=offline_config)
+        app.set_residency(["eu"])  # us endpoint must be refused
+        with pytest.raises(ResidencyViolationError):
+            app.resolve_provider()
 
 
 # --------------------------------------------------------------------------- multilingual

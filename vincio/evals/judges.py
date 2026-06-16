@@ -39,7 +39,7 @@ class Judge(ABC):
 class DeterministicJudge(Judge):
     def __init__(self, metric: Metric, *, name: str | None = None) -> None:
         self.metric = metric
-        self.name = name or getattr(metric, "__name__", "deterministic")
+        self.name = name or str(getattr(metric, "__name__", "deterministic"))
 
     async def score(self, case: EvalCase, output: RunOutput) -> MetricResult:
         return self.metric(case, output)
@@ -77,6 +77,8 @@ def _judgment_payload(response: Any) -> dict[str, Any] | None:
 def _judgment_score(payload: dict[str, Any], *, low: float, high: float) -> float | None:
     """Clamped numeric score from a judge payload, or None if malformed."""
     raw = payload.get("score")
+    if raw is None:
+        return None
     try:
         return max(low, min(high, float(raw)))
     except (TypeError, ValueError):

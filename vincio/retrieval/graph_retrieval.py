@@ -102,7 +102,9 @@ class EntityGraph:
                 continue
             if len(path) >= max_depth:
                 continue
-            for neighbor in sorted(self.edges[current], key=self.edges[current].get, reverse=True)[:8]:
+            for neighbor in sorted(
+                self.edges[current], key=self.edges[current].__getitem__, reverse=True
+            )[:8]:
                 if neighbor in path:
                     continue
                 key = tuple(path + [neighbor])

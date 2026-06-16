@@ -4,7 +4,7 @@ metrics, judges, gates, and baseline comparison."""
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from typing import Any
 
 from ..core.errors import EvalError
@@ -26,7 +26,7 @@ class EvalRunner:
         self,
         target: Any,
         *,
-        metrics: list[str | Metric] | None = None,
+        metrics: Sequence[str | Metric] | None = None,
         judges: list[Judge] | None = None,
         concurrency: int = 8,
         gates: dict[str, str] | None = None,
@@ -48,7 +48,7 @@ class EvalRunner:
         raise EvalError(f"cannot evaluate target of type {type(target).__name__}")
 
     @staticmethod
-    def _resolve_metrics(metrics: list[str | Metric]) -> list[Metric]:
+    def _resolve_metrics(metrics: Sequence[str | Metric]) -> list[Metric]:
         resolved: list[Metric] = []
         for metric in metrics:
             if callable(metric):

@@ -80,9 +80,9 @@ class TokenImportanceScorer:
 
     def score(self, tokens: list[str], query: str) -> list[float]:
         if self.learned is not None:
-            scores = list(self.learned(tokens, query))
-            if len(scores) == len(tokens):
-                return [max(0.0, min(1.0, float(s))) for s in scores]
+            learned_scores = list(self.learned(tokens, query))
+            if len(learned_scores) == len(tokens):
+                return [max(0.0, min(1.0, float(s))) for s in learned_scores]
         query_terms = {t.lower() for t in re.findall(r"\w+", query)}
         scores: list[float] = []
         for token in tokens:

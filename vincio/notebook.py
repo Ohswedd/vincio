@@ -204,9 +204,9 @@ def enable_rich_reprs() -> None:
         (SearchHit, search_hit_html, None),
     ]
     for cls, html_fn, md_fn in bindings:
-        cls._repr_html_ = (lambda fn: lambda self: fn(self))(html_fn)
+        cls._repr_html_ = (lambda fn: lambda self: fn(self))(html_fn)  # type: ignore[attr-defined]
         if md_fn is not None:
-            cls._repr_markdown_ = (lambda fn: lambda self: fn(self))(md_fn)
+            cls._repr_markdown_ = (lambda fn: lambda self: fn(self))(md_fn)  # type: ignore[attr-defined]
         setattr(cls, _RICH_FLAG, True)
 
 

@@ -18,6 +18,7 @@ matter most for compliance.
 from __future__ import annotations
 
 import re
+from collections.abc import Sequence
 
 from pydantic import BaseModel, Field
 
@@ -126,7 +127,7 @@ def get_locale_pack(code: str) -> LocalePack:
 
 
 def resolve_locales(
-    locales: list[str | LocalePack],
+    locales: Sequence[str | LocalePack],
 ) -> list[tuple[str, str, re.Pattern[str], float]]:
     """Compile a list of locale codes / packs into detector patterns."""
     compiled: list[tuple[str, str, re.Pattern[str], float]] = []

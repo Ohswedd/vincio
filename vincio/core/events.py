@@ -11,8 +11,8 @@ import asyncio
 import inspect
 import logging
 from collections import defaultdict
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Awaitable, Callable, Coroutine
+from typing import Any, cast
 
 from pydantic import BaseModel, Field
 
@@ -31,7 +31,9 @@ class Event(BaseModel):
     created_at: Any = Field(default_factory=utcnow)
 
 
-EventHandler = Callable[[Event], None] | Callable[[Event], Awaitable[None]]
+# Handlers may be sync or async; emit() ignores any return value (it only checks
+# for awaitables to schedule), so the return type is intentionally permissive.
+EventHandler = Callable[[Event], Any] | Callable[[Event], Awaitable[Any]]
 
 
 class EventBus:
@@ -81,12 +83,13 @@ class EventBus:
             try:
                 result = handler(event)
                 if inspect.isawaitable(result):
+                    coro = cast("Coroutine[Any, Any, Any]", result)
                     try:
                         loop = asyncio.get_running_loop()
                     except RuntimeError:
-                        asyncio.run(result)  # no loop: run to completion
+                        asyncio.run(coro)  # no loop: run to completion
                     else:
-                        loop.create_task(result)
+                        loop.create_task(coro)
             except Exception:  # noqa: BLE001 - handlers must not break runs
                 logger.exception("event handler failed for %s", name)
         return event

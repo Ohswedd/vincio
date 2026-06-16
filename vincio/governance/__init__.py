@@ -44,12 +44,15 @@ from .frameworks import (
     map_compliance,
 )
 from .lineage import ErasureResult, LineageIndex, LineageRecord
-from .residency import ResidencyPolicy, residency_violation
+from .residency import ResidencyPolicy, infer_region_from_url, residency_violation
 from .transparency import (
+    ContentSigner,
+    HmacSigner,
     ProvenanceManifest,
     ai_disclosure,
     data_summary,
     mark_synthetic_content,
+    verify_manifest,
 )
 
 __all__ = [
@@ -75,7 +78,10 @@ __all__ = [
     "sha256_text",
     # transparency
     "ProvenanceManifest",
+    "ContentSigner",
+    "HmacSigner",
     "mark_synthetic_content",
+    "verify_manifest",
     "ai_disclosure",
     "data_summary",
     # lineage
@@ -85,6 +91,7 @@ __all__ = [
     # residency
     "ResidencyPolicy",
     "residency_violation",
+    "infer_region_from_url",
     # fertility
     "LanguageFertility",
     "FertilityTracker",

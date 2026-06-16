@@ -19,20 +19,26 @@ they are the manifest and the hook, which you sign and attach in your pipeline.
 from __future__ import annotations
 
 import hashlib
+import hmac
+import json
 from collections import Counter
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
 from ..core.utils import utcnow
+from ..security.secrets import SecretString
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..core.types import EvidenceItem, RunResult
 
 __all__ = [
     "ProvenanceManifest",
+    "ContentSigner",
+    "HmacSigner",
     "mark_synthetic_content",
+    "verify_manifest",
     "ai_disclosure",
     "data_summary",
 ]
@@ -59,11 +65,30 @@ class ProvenanceManifest(BaseModel):
     created_at: datetime = Field(default_factory=utcnow)
     content_sha256: str | None = None
     assertions: list[dict[str, Any]] = Field(default_factory=list)
+    # Optional cryptographic signature over the manifest's binding payload
+    # (``{alg, key_id, value}``); attached when a signer is supplied.
+    signature: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+    def signing_payload(self) -> str:
+        """Deterministic bytes the signature covers (binds the credential)."""
+        return json.dumps(
+            {
+                "claim_generator": self.claim_generator,
+                "is_synthetic": self.is_synthetic,
+                "digital_source_type": self.digital_source_type,
+                "model_id": self.model_id,
+                "provider": self.provider,
+                "created_at": self.created_at.isoformat(),
+                "content_sha256": self.content_sha256,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Render in a C2PA-manifest-shaped dict (attach as content credentials)."""
-        return {
+        manifest: dict[str, Any] = {
             "claim_generator": self.claim_generator,
             "assertions": [
                 {
@@ -91,11 +116,44 @@ class ProvenanceManifest(BaseModel):
             ],
             "content_binding": {"alg": "SHA-256", "hash": self.content_sha256},
         }
+        if self.signature is not None:
+            manifest["signature"] = self.signature
+        return manifest
 
     def to_json(self, *, indent: int = 2) -> str:
-        import json
-
         return json.dumps(self.to_dict(), indent=indent, default=str)
+
+
+@runtime_checkable
+class ContentSigner(Protocol):
+    """Signs a manifest's binding payload. ``key_id`` labels the key used."""
+
+    key_id: str
+
+    def sign(self, payload: str) -> str: ...
+
+    def verify(self, payload: str, signature: str) -> bool: ...
+
+
+class HmacSigner:
+    """HMAC-SHA256 signer over a shared secret (symmetric).
+
+    A pragmatic, dependency-free signer for environments without a full PKI:
+    the same secret signs and verifies. For third-party-verifiable provenance,
+    supply your own asymmetric :class:`ContentSigner` instead.
+    """
+
+    def __init__(self, secret: str | SecretString, *, key_id: str = "hmac-default") -> None:
+        self._secret = secret if isinstance(secret, SecretString) else SecretString(secret)
+        self.key_id = key_id
+
+    def sign(self, payload: str) -> str:
+        return hmac.new(
+            self._secret.reveal().encode("utf-8"), payload.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
+
+    def verify(self, payload: str, signature: str) -> bool:
+        return hmac.compare_digest(self.sign(payload), signature)
 
 
 def mark_synthetic_content(
@@ -104,21 +162,54 @@ def mark_synthetic_content(
     model_id: str | None = None,
     provider: str | None = None,
     extra_assertions: list[dict[str, Any]] | None = None,
+    signer: ContentSigner | None = None,
 ) -> ProvenanceManifest:
     """Build a provenance manifest marking ``content`` as AI-generated.
 
     The manifest is bound to the exact output by SHA-256, so a downstream
-    consumer can confirm the credential matches the content it received.
+    consumer can confirm the credential matches the content it received. Pass a
+    ``signer`` (e.g. :class:`HmacSigner`, or your own :class:`ContentSigner`) to
+    attach a cryptographic signature over the binding payload — verify it later
+    with :func:`verify_manifest`.
     """
     import vincio
 
-    return ProvenanceManifest(
+    manifest = ProvenanceManifest(
         claim_generator=f"vincio/{vincio.__version__}",
         model_id=model_id,
         provider=provider,
         content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
         assertions=list(extra_assertions or []),
     )
+    if signer is not None:
+        manifest.signature = {
+            "alg": "HMAC-SHA256" if isinstance(signer, HmacSigner) else "custom",
+            "key_id": getattr(signer, "key_id", "default"),
+            "value": signer.sign(manifest.signing_payload()),
+        }
+    return manifest
+
+
+def verify_manifest(
+    manifest: ProvenanceManifest,
+    content: str,
+    *,
+    signer: ContentSigner | None = None,
+) -> bool:
+    """Verify a manifest against the content it claims to describe.
+
+    Always checks the SHA-256 content binding. If the manifest carries a
+    signature, a ``signer`` with the matching key must be supplied to verify it
+    (returns ``False`` when a signature is present but no verifier is given, so
+    an unverifiable credential is never reported as valid).
+    """
+    if manifest.content_sha256 != hashlib.sha256(content.encode("utf-8")).hexdigest():
+        return False
+    if manifest.signature is not None:
+        if signer is None:
+            return False
+        return signer.verify(manifest.signing_payload(), manifest.signature.get("value", ""))
+    return True
 
 
 def ai_disclosure(*, language: str = "en", system_name: str | None = None) -> str:

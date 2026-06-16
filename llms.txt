@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.6 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.6.1 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -318,7 +318,13 @@ result.output; result.citations; result.trace_id; result.cost_usd
   (purges every index/memory/cache, audited, idempotent); `vincio governance
   lineage|erase`. Residency: `app.set_residency(["eu"], provider_regions={...})`
   / `governance.allowed_regions` refuse egress as a blocking PolicyViolation
-  (`ResidencyViolationError`). Multilingual PII: `PIIDetector(locales=["fr",
+  (`ResidencyViolationError`); region is inferred from a region-pinned endpoint
+  (`provider.base_urls`) via `infer_region_from_url` (AWS/GCP/Vertex/sovereign)
+  with jurisdiction-aware matching (eu admits eu-west-1/europe-west4). Content
+  signing: `mark_synthetic_content(..., signer=HmacSigner(secret))` +
+  `verify_manifest(manifest, content, signer=)` (built-in symmetric HMAC, or your
+  own `ContentSigner`); `app.content_signer` signs every marked run. Multilingual
+  PII: `PIIDetector(locales=["fr",
   "de","es","in","sg","br","uk"])` / `governance.locales`; per-language eval
   slicing `EvalReport.slice_by_tag("lang:")` / `tag_gap`; token tax
   `app.fertility.token_tax(lang)`. RAG-poisoning: `from vincio.security import

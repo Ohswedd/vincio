@@ -1747,6 +1747,33 @@ async def bench_governance() -> dict[str, Any]:
     poison_report = PoisoningDetector().scan(poison_evidence)
     poison_telemetry = poison_report.telemetry(poisoned_ids={"bad1", "bad2"})
 
+    # -- residency: region inferred from a region-pinned endpoint --
+    from vincio.governance import (
+        HmacSigner,
+        ResidencyPolicy,
+        infer_region_from_url,
+        mark_synthetic_content,
+        verify_manifest,
+    )
+
+    eu_endpoint = "https://bedrock-runtime.eu-west-1.amazonaws.com"
+    us_endpoint = "https://bedrock-runtime.us-east-1.amazonaws.com"
+    eu_policy = ResidencyPolicy(allowed_regions=["eu"])
+    residency_infers = (
+        infer_region_from_url(eu_endpoint) == "eu-west-1"
+        and eu_policy.check(provider="bedrock", base_url=eu_endpoint) is None
+        and eu_policy.check(provider="bedrock", base_url=us_endpoint) is not None
+    )
+
+    # -- transparency: signed manifest verifies, tamper/wrong-key fail closed --
+    signer = HmacSigner("benchmark-secret", key_id="bench")
+    signed = mark_synthetic_content("benchmark output", model_id="gpt-5.2-mini", signer=signer)
+    signature_verifies = (
+        verify_manifest(signed, "benchmark output", signer=signer) is True
+        and verify_manifest(signed, "tampered", signer=signer) is False
+        and verify_manifest(signed, "benchmark output", signer=HmacSigner("other")) is False
+    )
+
     return {
         "card": {
             "model_card_complete": model_card_complete,
@@ -1773,6 +1800,12 @@ async def bench_governance() -> dict[str, Any]:
         "poisoning": {
             "detection_rate": poison_telemetry["recall"],
             "false_positive_rate": poison_telemetry["false_positive_rate"],
+        },
+        "residency": {
+            "endpoint_inference": residency_infers,
+        },
+        "transparency": {
+            "signature_verifies": signature_verifies,
         },
     }
 

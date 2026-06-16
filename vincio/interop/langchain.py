@@ -218,10 +218,12 @@ def to_langchain_document(doc: Document | Chunk) -> Any:
     except ImportError as exc:
         raise _missing(exc) from exc
     metadata = {**dict(getattr(doc, "metadata", {}) or {})}
-    if getattr(doc, "source_uri", None):
-        metadata.setdefault("source", doc.source_uri)
-    if getattr(doc, "title", None):
-        metadata.setdefault("title", doc.title)
+    source_uri = getattr(doc, "source_uri", None)
+    if source_uri:
+        metadata.setdefault("source", source_uri)
+    title = getattr(doc, "title", None)
+    if title:
+        metadata.setdefault("title", title)
     return LCDocument(page_content=doc.text, metadata=metadata)
 
 
