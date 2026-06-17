@@ -505,6 +505,9 @@
     "families.generation.media.tamper_rejected": {
       "eq": true
     },
+    "families.generation.media.embedded_self_verifies": {
+      "eq": true
+    },
     "families.generation.media.disclosure_present": {
       "eq": true
     },

@@ -428,21 +428,23 @@ class TestMediaProvenance:
         with pytest.raises(GenerationError):
             embed_provenance(png, manifest, watermark_hook=lambda d: b"")
 
-    def test_embedded_manifest_carries_no_stale_hash(self):
-        # Embedding changes the bytes, so the embedded credential must not claim a
-        # content hash; the returned/sidecar manifest binds the final bytes.
-        import json
-        import re
-
+    def test_embedded_manifest_is_self_verifying(self):
+        # The embedded credential binds the pre-insert bytes and is independently
+        # verifiable (chunk-removal reconstructs the original); the returned/
+        # sidecar manifest binds the final bytes.
         from vincio.generation.media import attach_media_provenance
+        from vincio.governance import extract_embedded_manifest, verify_embedded_manifest
 
         png = b"\x89PNG\r\n\x1a\n" + b"\x00\x00\x00\x00IEND\xaeB`\x82"
         stamped, manifest = attach_media_provenance(png, media_type="image/png", model="m")
         assert verify_manifest(manifest, stamped)  # returned manifest binds final bytes
-        blob = stamped[stamped.find(b"{"): stamped.rfind(b"}") + 1]
-        embedded = json.loads(blob)
-        assert embedded["content_binding"]["hash"] is None
-        assert re.search(rb"c2pa.manifest", stamped)
+        assert b"c2pa.manifest" in stamped
+        embedded = extract_embedded_manifest(stamped)
+        assert embedded is not None and embedded.content_sha256 and embedded.model_id == "m"
+        assert verify_embedded_manifest(stamped) is True
+        # Tampering with the asset bytes breaks the embedded binding.
+        tampered = stamped[:-4] + b"XXXX"
+        assert verify_embedded_manifest(tampered) is False
 
 
 # -- Audio input wiring (chat providers) -------------------------------------

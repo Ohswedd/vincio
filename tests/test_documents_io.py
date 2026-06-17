@@ -236,6 +236,129 @@ class TestForms:
         assert {f.name for f in fields} == {"name", "total"}
 
 
+class TestCloudDocumentAI:
+    """The cloud adapters are dependency-injected (you pass the SDK client); the
+    response parsers are pure and tested offline against synthetic responses."""
+
+    def test_textract_parse(self):
+        from vincio.documents.forms import TextractDocumentAI
+
+        response = {
+            "Blocks": [
+                {"Id": "k1", "BlockType": "KEY_VALUE_SET", "EntityTypes": ["KEY"],
+                 "Confidence": 99.0, "Page": 1,
+                 "Geometry": {"BoundingBox": {"Left": 0.1, "Top": 0.2, "Width": 0.3, "Height": 0.05}},
+                 "Relationships": [{"Type": "VALUE", "Ids": ["v1"]}, {"Type": "CHILD", "Ids": ["w1"]}]},
+                {"Id": "v1", "BlockType": "KEY_VALUE_SET", "EntityTypes": ["VALUE"],
+                 "Relationships": [{"Type": "CHILD", "Ids": ["w2"]}]},
+                {"Id": "w1", "BlockType": "WORD", "Text": "Name"},
+                {"Id": "w2", "BlockType": "WORD", "Text": "Jane Doe"},
+            ]
+        }
+        fields = TextractDocumentAI.parse(response)
+        assert len(fields) == 1
+        f = fields[0]
+        assert f.name == "name" and f.value == "Jane Doe" and f.page == 1
+        assert abs(f.confidence - 0.99) < 1e-6
+        assert f.bbox == (0.1, 0.2, pytest.approx(0.4), pytest.approx(0.25))
+
+    async def test_textract_async_with_fake_client(self, tmp_path):
+        from vincio.documents.forms import TextractDocumentAI
+
+        captured = {}
+
+        class FakeTextract:
+            def analyze_document(self, **kwargs):
+                captured.update(kwargs)
+                return {"Blocks": [
+                    {"Id": "k", "BlockType": "KEY_VALUE_SET", "EntityTypes": ["KEY"],
+                     "Relationships": [{"Type": "VALUE", "Ids": ["v"]}, {"Type": "CHILD", "Ids": ["wk"]}]},
+                    {"Id": "v", "BlockType": "KEY_VALUE_SET", "EntityTypes": ["VALUE"],
+                     "Relationships": [{"Type": "CHILD", "Ids": ["wv"]}]},
+                    {"Id": "wk", "BlockType": "WORD", "Text": "Total"},
+                    {"Id": "wv", "BlockType": "WORD", "Text": "$5"},
+                ]}
+
+        doc = tmp_path / "scan.png"
+        doc.write_bytes(b"\x89PNG bytes")
+        fields = await TextractDocumentAI(FakeTextract()).extract_fields(doc)
+        assert captured["FeatureTypes"] == ["FORMS"] and captured["Document"]["Bytes"]
+        assert fields[0].name == "total" and fields[0].value == "$5"
+
+    def test_azure_parse(self):
+        from vincio.documents.forms import AzureDocumentAI
+
+        result = {"key_value_pairs": [
+            {"key": {"content": "Date of Birth",
+                     "bounding_regions": [{"page_number": 1, "polygon": [0.1, 0.1, 0.4, 0.1, 0.4, 0.2, 0.1, 0.2]}]},
+             "value": {"content": "1990-01-01"}, "confidence": 0.97},
+            {"key": {"content": ""}, "value": {"content": "skip"}, "confidence": 0.5},
+        ]}
+        fields = AzureDocumentAI.parse(result)
+        assert len(fields) == 1
+        assert fields[0].name == "date_of_birth" and fields[0].value == "1990-01-01"
+        assert fields[0].page == 1 and fields[0].bbox == (0.1, 0.1, 0.4, 0.2)
+
+    def test_google_parse(self):
+        from vincio.documents.forms import GoogleDocumentAI
+
+        document = {
+            "text": "Invoice Number: INV-9\n",
+            "pages": [{"page_number": 1, "form_fields": [
+                {"field_name": {"text_anchor": {"text_segments": [{"start_index": 0, "end_index": 14}]}},
+                 "field_value": {"text_anchor": {"text_segments": [{"start_index": 16, "end_index": 21}]}},
+                 "field_name_confidence": 0.9}]}],
+        }
+        fields = GoogleDocumentAI.parse(document)
+        assert len(fields) == 1
+        assert fields[0].name == "invoice_number" and fields[0].value == "INV-9" and fields[0].page == 1
+
+
+class TestOptionalDepErrors:
+    """Missing optional deps must fail with a clear, actionable message."""
+
+    def test_pptx_render_without_lib(self):
+        try:
+            import pptx  # noqa: F401
+        except ImportError:
+            from vincio.core.errors import GenerationError
+            from vincio.generation.model import DocumentModel
+            from vincio.generation.render import render
+
+            model = DocumentModel(title="T")
+            model.paragraph("body")
+            with pytest.raises(GenerationError, match="gen-pptx"):
+                render(model, "pptx")
+        else:
+            pytest.skip("python-pptx installed; missing-dep path not exercisable")
+
+    def test_parquet_loader_without_lib(self, tmp_path):
+        try:
+            import pyarrow  # noqa: F401
+        except ImportError:
+            from vincio.core.errors import LoaderError
+
+            p = tmp_path / "x.parquet"
+            p.write_bytes(b"not really parquet")
+            with pytest.raises(LoaderError, match="parquet"):
+                load_document(p)
+        else:
+            pytest.skip("pyarrow installed; missing-dep path not exercisable")
+
+    def test_msg_loader_without_lib(self, tmp_path):
+        try:
+            import extract_msg  # noqa: F401
+        except ImportError:
+            from vincio.core.errors import LoaderError
+
+            p = tmp_path / "x.msg"
+            p.write_bytes(b"\xd0\xcf\x11\xe0 fake ole")
+            with pytest.raises(LoaderError, match="extract-msg"):
+                load_document(p)
+        else:
+            pytest.skip("extract-msg installed; missing-dep path not exercisable")
+
+
 # -- figure → evidence -------------------------------------------------------
 
 
