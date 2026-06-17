@@ -96,7 +96,7 @@ class TestMetrics:
 
     def test_registry_complete(self):
         expected = {
-            "exact_match", "semantic_similarity", "classification_accuracy", "extraction_f1",
+            "exact_match", "lexical_overlap", "classification_accuracy", "extraction_f1",
             "schema_validity", "groundedness", "unsupported_claim_rate", "citation_accuracy",
             "citation_recall", "context_precision", "context_recall", "cost", "latency",
             "recall_at_k", "precision_at_k", "mrr", "ndcg",
@@ -178,7 +178,7 @@ class TestOptimize:
                 CaseResult(
                     case_id=f"c{i}",
                     metrics={
-                        "semantic_similarity": quality,
+                        "lexical_overlap": quality,
                         "schema_validity": schema,
                         "cost": 0.001,
                         "latency": 100.0,

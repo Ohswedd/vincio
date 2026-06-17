@@ -190,7 +190,7 @@ def _template_files(template: str, project: str, provider: str) -> dict[str, str
             "README.md": (
                 f"# {project}\n\nRun the eval suite:\n\n"
                 "```sh\nvincio eval run golden/eval.jsonl --app app.py \\\n"
-                '  --metric semantic_similarity --gate "semantic_similarity=>= 0.6"\n```\n'
+                '  --metric lexical_overlap --gate "lexical_overlap=>= 0.6"\n```\n'
             ),
         }
     # minimal (default)
@@ -905,7 +905,7 @@ def cmd_optimize_run(args: argparse.Namespace) -> int:
 
     app = _load_app(args.app)
     dataset = Dataset.load(args.dataset)
-    metrics = ["semantic_similarity", "schema_validity", "groundedness", "cost", "latency"]
+    metrics = ["lexical_overlap", "schema_validity", "groundedness", "cost", "latency"]
     weights = FitnessWeights()
     if args.target == "groundedness":
         weights.groundedness = 2.0
@@ -1005,7 +1005,7 @@ def cmd_optimize_reflective(args: argparse.Namespace) -> int:
         weights.cost = 2.0
     elif args.target == "quality":
         weights.accuracy = 2.0
-    metrics = ["semantic_similarity", "groundedness", "schema_validity", "cost", "latency"]
+    metrics = ["lexical_overlap", "groundedness", "schema_validity", "cost", "latency"]
     result = app.reflective_optimize(
         dataset,
         strategy=args.strategy,
@@ -1463,7 +1463,7 @@ def build_parser() -> argparse.ArgumentParser:
                                 help="defaults to the app's configured model")
     p_eval_regress.add_argument("--candidate-model", required=True, dest="candidate_model")
     p_eval_regress.add_argument("--metric", action="append", help="metric name (repeatable)")
-    p_eval_regress.add_argument("--quality-metric", default="semantic_similarity",
+    p_eval_regress.add_argument("--quality-metric", default="lexical_overlap",
                                 dest="quality_metric")
     p_eval_regress.add_argument("--alpha", type=float, default=0.05)
     p_eval_regress.add_argument("--repeats", type=int, default=1,
@@ -1770,7 +1770,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_prov_regress.add_argument("--trace", action="append", help="golden trace id (repeatable)")
     p_prov_regress.add_argument("--traces-dir", default=".vincio/traces")
     p_prov_regress.add_argument("--gate", action="append", help="gate, e.g. groundedness='>= 0.9'")
-    p_prov_regress.add_argument("--quality-metric", default="semantic_similarity",
+    p_prov_regress.add_argument("--quality-metric", default="lexical_overlap",
                                 dest="quality_metric")
     p_prov_regress.add_argument("--alpha", type=float, default=0.05)
     p_prov_regress.add_argument("--repeats", type=int, default=1)

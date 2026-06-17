@@ -231,10 +231,16 @@ class GoogleProvider(HTTPProvider):
 
     # -- API ---------------------------------------------------------------------
 
+    def _content_path(self, request: ModelRequest, action: str) -> str:
+        """generateContent / streamGenerateContent path. Overridden by Vertex
+        for project/region-scoped publisher endpoints."""
+        suffix = "?alt=sse" if action == "streamGenerateContent" else ""
+        return f"/models/{request.model}:{action}{suffix}"
+
     async def generate(self, request: ModelRequest) -> ModelResponse:
         started = time.monotonic()
         data = await self._post_json(
-            f"/models/{request.model}:generateContent", self._payload(request)
+            self._content_path(request, "generateContent"), self._payload(request)
         )
         latency_ms = int((time.monotonic() - started) * 1000)
         return self._parse_response(data, request, latency_ms)
@@ -246,7 +252,7 @@ class GoogleProvider(HTTPProvider):
         usage = TokenUsage()
         model_name = request.model
         async for line in self._post_stream(
-            f"/models/{request.model}:streamGenerateContent?alt=sse", self._payload(request)
+            self._content_path(request, "streamGenerateContent"), self._payload(request)
         ):
             data_str = parse_sse_lines(line)
             if data_str is None:

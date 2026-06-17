@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.10.0 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.0.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -64,6 +64,20 @@ result.output; result.citations; result.trace_id; result.cost_usd
 
 - All public data contracts are Pydantic v2 models.
 - Async-first: every engine has `arun`/async methods plus sync wrappers.
+- 2.0 (breaking window): `ContextApp`'s surface is grouped into lazy capability
+  facades (`app.runs` / `.knowledge` / `.governance` / `.optimization` /
+  `.serving` / `.training`); the flat `app.<method>` API still works.
+  `EvidenceItem`/`ContextCandidate` carry a `modality` (text/image/table) and
+  image/table payloads — the compiler scores, budgets, orders, and cites them
+  together. Filter retrieval with a structured `FilterSpec`
+  (`from vincio.retrieval import eq, in_, range_, and_, or_, not_, FilterSpec`)
+  passed as `where=`; it pushes down to native backend filters. Enterprise
+  providers `bedrock` / `vertex` / `azure` via `build_provider(...)` behind a
+  pluggable `AuthStrategy`. Egress DLP is always-on (`security.egress_dlp`:
+  off/warn/block); audit chains can be HMAC/Ed25519-signed
+  (`security.audit_signing_key`). Eval: `lexical_overlap` is the lexical metric;
+  `semantic_similarity` is embedding-backed; unscoreable cases return
+  `MetricResult(skipped=True)` and are excluded from gates.
 - Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
   mock (deterministic, offline; generates schema-valid structured output);
   plus OpenAI-compatible presets groq | together | fireworks | openrouter |

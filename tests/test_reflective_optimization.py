@@ -58,7 +58,7 @@ from vincio.providers import MockProvider
 
 def report(quality: float, *, grounded: float | None = None, n: int = 6, **extra) -> EvalReport:
     metrics = {
-        "semantic_similarity": quality,
+        "lexical_overlap": quality,
         "groundedness": quality if grounded is None else grounded,
         "schema_validity": 1.0,
         "safety": 1.0,
@@ -321,7 +321,7 @@ class TestReflectiveLoopIntegration:
                             expected="The Pro plan refund window is 30 days.") for i in range(6)],
         )
         loop = ImprovementLoop(
-            app, metrics=["semantic_similarity", "cost", "latency"],
+            app, metrics=["lexical_overlap", "cost", "latency"],
             weights=FitnessWeights(latency=0.0), optimizer="reflective", experiment="refl_exp",
         )
         result = loop.run(dataset=ds, max_variants=8, subset_size=3)
@@ -339,7 +339,7 @@ class TestReflectiveLoopIntegration:
                             expected="The Pro plan refund window is 30 days.") for i in range(6)],
         )
         res = app.reflective_optimize(
-            ds, metrics=["semantic_similarity", "cost", "latency"],
+            ds, metrics=["lexical_overlap", "cost", "latency"],
             weights=FitnessWeights(latency=0.0), budget=8, minibatch_size=3, apply=True,
         )
         assert res.promoted

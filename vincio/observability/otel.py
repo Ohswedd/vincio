@@ -19,8 +19,16 @@ __all__ = ["OTelExporter"]
 logger = logging.getLogger("vincio.observability.otel")
 
 
+# Span types that represent invoking an agent (crew member, graph node, a
+# composed step, or a single agent run). 2.0 maps them to the finalized OTel
+# GenAI **agentic** convention: an ``invoke_agent`` operation with
+# ``gen_ai.agent.*`` attributes, so agent activity is first-class telemetry.
+_AGENT_SPAN_TYPES = frozenset({"agent", "crew", "crew_agent", "graph_node", "compose_node"})
+
+
 def _genai_span(span: Span) -> tuple[str, dict[str, Any]]:
-    """Span name + gen_ai.* attributes per the OTel GenAI semantic conventions."""
+    """Span name + gen_ai.* attributes per the OTel GenAI semantic conventions
+    (including the 2.0 agentic conventions for agent/tool spans)."""
     if span.type == "model_call":
         model = str(span.attributes.get("model") or "unknown")
         attributes: dict[str, Any] = {
@@ -32,6 +40,9 @@ def _genai_span(span: Span) -> tuple[str, dict[str, Any]]:
             attributes["gen_ai.usage.output_tokens"] = int(span.attributes["output_tokens"])
         if span.attributes.get("input_tokens") is not None:
             attributes["gen_ai.usage.input_tokens"] = int(span.attributes["input_tokens"])
+        if span.attributes.get("cost_usd") is not None:
+            # Cost is a first-class telemetry signal, not just a vincio.attr.
+            attributes["gen_ai.usage.cost"] = float(span.attributes["cost_usd"])
         if span.attributes.get("finish"):
             attributes["gen_ai.response.finish_reasons"] = [str(span.attributes["finish"])]
         return f"chat {model}", attributes
@@ -39,8 +50,25 @@ def _genai_span(span: Span) -> tuple[str, dict[str, Any]]:
         tool = str(span.attributes.get("tool") or span.name)
         return f"execute_tool {tool}", {
             "gen_ai.operation.name": "execute_tool",
+            "gen_ai.system": "vincio",
             "gen_ai.tool.name": tool,
         }
+    if span.type in _AGENT_SPAN_TYPES:
+        agent_name = str(
+            span.attributes.get("agent")
+            or span.attributes.get("role")
+            or span.attributes.get("node")
+            or span.name
+        )
+        agent_attrs: dict[str, Any] = {
+            "gen_ai.operation.name": "invoke_agent",
+            "gen_ai.system": "vincio",
+            "gen_ai.agent.name": agent_name,
+        }
+        agent_id = span.attributes.get("agent_id") or span.attributes.get("id")
+        if agent_id is not None:
+            agent_attrs["gen_ai.agent.id"] = str(agent_id)
+        return f"invoke_agent {agent_name}", agent_attrs
     return f"{span.type}:{span.name}", {}
 
 
@@ -52,7 +80,9 @@ class OTelExporter:
     faithful copy of the Vincio trace.
     """
 
-    def __init__(self, tracer_provider=None, service_name: str = "vincio") -> None:
+    def __init__(
+        self, tracer_provider=None, service_name: str = "vincio", *, meter_provider=None
+    ) -> None:
         try:
             from opentelemetry import trace as otel_trace
         except ImportError as exc:  # pragma: no cover - optional dep
@@ -63,6 +93,49 @@ class OTelExporter:
         if tracer_provider is None:
             tracer_provider = otel_trace.get_tracer_provider()
         self._tracer = tracer_provider.get_tracer(service_name)
+        # 2.0 unified telemetry: the same trace is fanned out to spans *and* to
+        # OTel metric histograms (token usage, operation duration, cost), so the
+        # standard GenAI metrics are emitted once from one source. Metrics are
+        # best-effort: if the metrics API is unavailable, spans still export.
+        self._token_hist = self._duration_hist = self._cost_hist = None
+        try:  # pragma: no cover - exercised only with the otel SDK installed
+            from opentelemetry import metrics as otel_metrics
+
+            meter = (meter_provider or otel_metrics.get_meter_provider()).get_meter(service_name)
+            self._token_hist = meter.create_histogram(
+                "gen_ai.client.token.usage", unit="token", description="GenAI token usage"
+            )
+            self._duration_hist = meter.create_histogram(
+                "gen_ai.client.operation.duration", unit="s", description="GenAI operation duration"
+            )
+            self._cost_hist = meter.create_histogram(
+                "gen_ai.client.operation.cost", unit="usd", description="GenAI operation cost"
+            )
+        except Exception:  # noqa: BLE001 - metrics are optional
+            logger.debug("OTel metrics unavailable; exporting spans only", exc_info=True)
+
+    def _record_metrics(self, span: Span, genai_attributes: dict[str, Any]) -> None:
+        """Emit GenAI metric histograms for a span (best-effort)."""
+        operation = genai_attributes.get("gen_ai.operation.name")
+        if operation is None:
+            return
+        base = {"gen_ai.operation.name": operation, "gen_ai.system": "vincio"}
+        model = genai_attributes.get("gen_ai.request.model")
+        if model:
+            base["gen_ai.request.model"] = model
+        if self._duration_hist is not None and span.end_time is not None:
+            duration_s = max(0.0, (span.end_time - span.start_time).total_seconds())
+            self._duration_hist.record(duration_s, attributes=base)
+        if self._token_hist is not None:
+            input_tokens = genai_attributes.get("gen_ai.usage.input_tokens")
+            output_tokens = genai_attributes.get("gen_ai.usage.output_tokens")
+            if input_tokens is not None:
+                self._token_hist.record(int(input_tokens), attributes={**base, "gen_ai.token.type": "input"})
+            if output_tokens is not None:
+                self._token_hist.record(int(output_tokens), attributes={**base, "gen_ai.token.type": "output"})
+        cost = genai_attributes.get("gen_ai.usage.cost")
+        if self._cost_hist is not None and cost is not None:
+            self._cost_hist.record(float(cost), attributes=base)
 
     def export(self, trace: Trace) -> None:
         try:
@@ -125,6 +198,7 @@ class OTelExporter:
                 otel_span.set_status(Status(StatusCode.ERROR, span.error or ""))
             otel_ids[span.id] = otel_span
             otel_span.end(end_time=ns(span.end_time or span.start_time))
+            self._record_metrics(span, genai_attributes)
         if trace.status == "error":
             root.set_status(Status(StatusCode.ERROR, str(trace.attributes.get("error", ""))))
         root.end(end_time=ns(trace.end_time or trace.start_time))

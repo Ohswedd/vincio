@@ -38,7 +38,7 @@ __all__ = [
 ]
 
 DEFAULT_LOOP_METRICS = [
-    "semantic_similarity",
+    "lexical_overlap",
     "groundedness",
     "schema_validity",
     "cost",
@@ -339,7 +339,7 @@ class ImprovementLoop:
         # Grow the held-out suite with the cases this promotion newly passes, so
         # every future promotion must keep clearing them.
         if self.golden_suite is not None and best.full_report is not None:
-            metric = self.weights.accuracy_metric if self.weights else "semantic_similarity"
+            metric = self.weights.accuracy_metric if self.weights else "lexical_overlap"
             self.golden_suite.add_from_report(
                 best.full_report, dataset, fixed_by=version.ref, guard_metric=metric
             )
@@ -356,7 +356,7 @@ class ImprovementLoop:
 # Higher-is-better quality targets a healthy app should clear. Cost/latency are
 # ceilings (lower is better) and only ranked when supplied in ``targets``.
 _DEFAULT_TARGETS = {
-    "semantic_similarity": 0.8,
+    "lexical_overlap": 0.8,
     "groundedness": 0.85,
     "faithfulness": 0.85,
     "answer_relevance": 0.8,
@@ -370,7 +370,7 @@ _METRIC_EXPERIMENTS: dict[str, list[str]] = {
     "groundedness": ["retrieval", "prompt"],
     "faithfulness": ["retrieval", "prompt"],
     "answer_relevance": ["prompt", "retrieval"],
-    "semantic_similarity": ["prompt"],
+    "lexical_overlap": ["prompt"],
     "schema_validity": ["prompt"],
     "safety": ["prompt"],
     "cost": ["routing", "distillation", "budget"],

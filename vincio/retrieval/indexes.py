@@ -15,13 +15,14 @@ from pydantic import BaseModel
 
 from ..core.types import Chunk
 from .embeddings import Embedder, LocalHashEmbedder, cosine, embed_texts
+from .filters import FilterSpec, as_predicate
 
 try:  # optional acceleration — pure-Python cosine stays the zero-dependency default
     import numpy as _np
 except ImportError:  # pragma: no cover - exercised only when numpy is absent
     _np = None
 
-__all__ = ["SearchHit", "SearchFilter", "Index", "BM25Index", "VectorIndex"]
+__all__ = ["SearchHit", "SearchFilter", "Where", "Index", "BM25Index", "VectorIndex"]
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 
@@ -36,7 +37,13 @@ class SearchHit(BaseModel):
     source: str = ""  # which index produced it
 
 
+# A legacy opaque predicate. Retained for back-compat; it can only post-filter.
 SearchFilter = Callable[[Chunk], bool]
+
+# 2.0: ``where`` accepts either a structured, pushdown-capable :class:`FilterSpec`
+# or the legacy callable predicate. Backends push a FilterSpec into their native
+# query; a callable still post-filters client-side.
+Where = FilterSpec | SearchFilter
 
 
 def build_filter(
@@ -46,6 +53,13 @@ def build_filter(
     kinds: list[str] | None = None,
     metadata_equals: dict[str, Any] | None = None,
 ) -> SearchFilter:
+    """Legacy callable-filter builder (post-filter only).
+
+    Prefer :func:`build_filter_spec`, which produces a pushdown-capable
+    :class:`FilterSpec` so selective predicates run in the engine and tenant
+    scope never round-trips other tenants' rows to the client.
+    """
+
     def predicate(chunk: Chunk) -> bool:
         if tenant_id is not None and chunk.tenant_id not in (None, tenant_id):
             return False
@@ -62,11 +76,40 @@ def build_filter(
     return predicate
 
 
+def build_filter_spec(
+    *,
+    tenant_id: str | None = None,
+    document_ids: list[str] | None = None,
+    kinds: list[str] | None = None,
+    metadata_equals: dict[str, Any] | None = None,
+) -> FilterSpec | None:
+    """Build a structured :class:`FilterSpec` (pushdown-capable). Returns
+    ``None`` when no constraints are supplied."""
+    from .filters import and_, eq, exists, in_, not_, or_
+
+    clauses: list[FilterSpec] = []
+    if tenant_id is not None:
+        # Shared-or-mine: a tenant sees its own rows plus untagged/shared rows
+        # (tenant_id is null), and never another tenant's. Pushing this into the
+        # backend is what closes the fetch-to-filter exfiltration gap — other
+        # tenants' rows are filtered server-side, not read and dropped.
+        clauses.append(or_(not_(exists("tenant_id")), eq("tenant_id", tenant_id)))
+    if document_ids is not None:
+        clauses.append(in_("document_id", document_ids))
+    if kinds is not None:
+        clauses.append(in_("kind", kinds))
+    if metadata_equals:
+        clauses.extend(eq(f"metadata.{key}", value) for key, value in metadata_equals.items())
+    if not clauses:
+        return None
+    return clauses[0] if len(clauses) == 1 else and_(*clauses)
+
+
 class Index(Protocol):
     async def add(self, chunks: list[Chunk]) -> None: ...
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]: ...
 
     async def delete(self, chunk_ids: list[str]) -> int: ...
@@ -135,10 +178,11 @@ class BM25Index:
         return math.log(1 + (n - df + 0.5) / (df + 0.5))
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         if not self.chunks:
             return []
+        predicate = as_predicate(where)
         query_terms = _tokenize(query)
         average_length = self._total_len / max(1, len(self.chunks))
         scores: dict[str, float] = defaultdict(float)
@@ -153,7 +197,7 @@ class BM25Index:
         hits = []
         for chunk_id, score in scores.items():
             chunk = self.chunks[chunk_id]
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             hits.append(SearchHit(chunk=chunk, score=score, source=self.name))
         hits.sort(key=lambda h: h.score, reverse=True)
@@ -231,10 +275,11 @@ class VectorIndex:
         return len(chunk_ids)
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         if not self.chunks:
             return []
+        predicate = as_predicate(where)
         [query_vector] = await embed_texts(self.embedder, [query], input_type="query")
         # Optional vectorized path: a single matrix-vector product over the
         # row-normalized matrix replaces the per-chunk Python cosine loop.
@@ -248,7 +293,7 @@ class VectorIndex:
             for idx in _np.argsort(-sims, kind="stable"):
                 chunk_id = self._matrix_ids[int(idx)]
                 chunk = self.chunks[chunk_id]
-                if where is not None and not where(chunk):
+                if predicate is not None and not predicate(chunk):
                     continue
                 hits.append(SearchHit(chunk=chunk, score=float(sims[int(idx)]), source=self.name))
                 if len(hits) >= top_k:
@@ -257,7 +302,7 @@ class VectorIndex:
         hits = []
         for chunk_id, vector in self.vectors.items():
             chunk = self.chunks[chunk_id]
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             hits.append(
                 SearchHit(chunk=chunk, score=cosine(query_vector, vector), source=self.name)

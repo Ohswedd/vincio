@@ -403,7 +403,7 @@ class BootstrapFinetune:
         self,
         evaluate_model: ModelEvaluateFn,
         *,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         min_quality_ratio: float = 0.97,
         gates: dict[str, str] | None = None,
         trainer: StudentTrainer | None = None,

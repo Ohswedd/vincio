@@ -187,7 +187,7 @@ class HeuristicReflector(Reflector):
     ) -> Reflection:
         accuracy_metric = next(
             (o.metric for o in objectives if o.name in ("accuracy", "goal")),
-            "semantic_similarity",
+            "lexical_overlap",
         )
         grounded = _signal(report, "groundedness", 1.0)
         schema = _signal(report, "schema_validity", 1.0)
@@ -363,7 +363,7 @@ def cluster_failures(
     report: EvalReport | None,
     dataset: Dataset | None,
     *,
-    accuracy_metric: str = "semantic_similarity",
+    accuracy_metric: str = "lexical_overlap",
     max_cases: int = 12,
 ) -> list[dict[str, Any]]:
     """Group failing cases into deterministic failure modes for reflection.
@@ -478,7 +478,7 @@ class LLMReflector(Reflector):
     ) -> Reflection:
         accuracy_metric = next(
             (o.metric for o in objectives if o.name in ("accuracy", "goal")),
-            "semantic_similarity",
+            "lexical_overlap",
         )
         diagnosis = "model-proposed edits"
         raw: list[dict[str, Any]] | None = None

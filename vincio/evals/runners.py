@@ -50,7 +50,7 @@ class EvalRunner:
         flake_threshold: float = 0.15,
     ) -> None:
         self.target = self._coerce_target(target)
-        self.metric_fns = self._resolve_metrics(metrics or ["schema_validity", "semantic_similarity", "cost", "latency"])
+        self.metric_fns = self._resolve_metrics(metrics or ["schema_validity", "lexical_overlap", "cost", "latency"])
         self.judges = judges or []
         self.concurrency = max(1, concurrency)
         self.gates = gates or {}
@@ -103,9 +103,14 @@ class EvalRunner:
             except Exception as exc:  # noqa: BLE001
                 details[getattr(metric_fn, "__name__", "metric")] = f"metric error: {exc}"
                 continue
-            metrics[metric_result.name] = metric_result.value
             if metric_result.details:
                 details[metric_result.name] = metric_result.details
+            # 2.0: unscoreable metrics are excluded from aggregation entirely so
+            # they cannot inflate a mean or silently pass a gate.
+            if metric_result.skipped:
+                details.setdefault("_skipped_metrics", []).append(metric_result.name)
+                continue
+            metrics[metric_result.name] = metric_result.value
         for judge in self.judges:
             try:
                 judge_result = await judge.score(case, output)

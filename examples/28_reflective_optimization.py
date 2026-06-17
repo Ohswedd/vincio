@@ -76,7 +76,7 @@ def reflective_demo() -> None:
 
     app = _app(responder)
     result = app.reflective_optimize(
-        REFUND_DATASET, metrics=["semantic_similarity", "cost", "latency"],
+        REFUND_DATASET, metrics=["lexical_overlap", "cost", "latency"],
         weights=FitnessWeights(latency=0.0), budget=8, minibatch_size=3,
     )
     for reflection in result.reflections:
@@ -96,7 +96,7 @@ def mipro_demo() -> None:
 
     app = _app(responder)
     result = app.reflective_optimize(
-        REFUND_DATASET, strategy="mipro", metrics=["semantic_similarity", "cost", "latency"],
+        REFUND_DATASET, strategy="mipro", metrics=["lexical_overlap", "cost", "latency"],
         weights=FitnessWeights(latency=0.0), budget=10, minibatch_size=3,
     )
     print(f"  strategy: {result.strategy} · promoted: {result.promoted}")
@@ -126,7 +126,7 @@ def distill_demo() -> None:
         from vincio.evals.reports import CaseResult, EvalReport
 
         q, cost = (0.95, 0.01) if model == "teacher" else (0.93, 0.002)
-        return EvalReport(cases=[CaseResult(case_id=f"c{i}", metrics={"semantic_similarity": q, "cost": cost})
+        return EvalReport(cases=[CaseResult(case_id=f"c{i}", metrics={"lexical_overlap": q, "cost": cost})
                                  for i in range(len(ds))])
 
     loop = BootstrapFinetune(evaluate_model, min_quality_ratio=0.9)
@@ -159,7 +159,7 @@ def compression_demo() -> None:
 
         learned = compressor is not None
         return EvalReport(cases=[CaseResult(case_id=f"c{i}", metrics={
-            "semantic_similarity": 0.99 if learned else 1.0,
+            "lexical_overlap": 0.99 if learned else 1.0,
             "faithfulness": 0.95 if learned else 1.0,
             "input_tokens": 60.0 if learned else 100.0,
         }) for i in range(len(ds))])

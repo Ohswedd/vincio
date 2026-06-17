@@ -74,7 +74,7 @@ def reflector_demo() -> None:
     from vincio.evals.reports import CaseResult
 
     report = EvalReport(cases=[
-        CaseResult(case_id="c1", metrics={"groundedness": 0.2, "semantic_similarity": 0.3},
+        CaseResult(case_id="c1", metrics={"groundedness": 0.2, "lexical_overlap": 0.3},
                    output_text="an uncited claim"),
     ])
     dataset = Dataset(cases=[EvalCase(id="c1", input="What is the refund window?", expected="30 days")])
@@ -104,11 +104,11 @@ def experiment_proposer_demo() -> None:
 
     suite = GoldenRegressionSuite(".vincio/frontier_golden.jsonl")
     suite.add(EvalCase(id="g1", input="refund window?", expected="30 days"),
-              fixed_by="qa@v2", guard_metric="semantic_similarity", guard_threshold=0.8)
+              fixed_by="qa@v2", guard_metric="lexical_overlap", guard_threshold=0.8)
     from vincio.evals import EvalReport
     from vincio.evals.reports import CaseResult
 
-    regressing = EvalReport(cases=[CaseResult(case_id="g1", metrics={"semantic_similarity": 0.3})])
+    regressing = EvalReport(cases=[CaseResult(case_id="g1", metrics={"lexical_overlap": 0.3})])
     print(f"  golden suite ({len(suite)} guard) blocks a regressing promotion: "
           f"{not suite.gate(regressing).passed}")
 

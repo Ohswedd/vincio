@@ -19,7 +19,7 @@ from ..core.tokens import count_tokens
 from ..core.types import Chunk, EvidenceItem, Message, ModelRequest, TrustLevel
 from ..core.utils import utcnow
 from ..providers.base import ModelProvider
-from .indexes import Index, SearchFilter, SearchHit
+from .indexes import Index, SearchHit, Where
 from .query_understanding import QueryExpansion, QueryUnderstanding
 from .rerankers import Reranker
 
@@ -159,7 +159,7 @@ class RetrievalEngine:
     # -- retrieval ---------------------------------------------------------------------
 
     async def _search_all(
-        self, query: str, *, top_k: int, where: SearchFilter | None
+        self, query: str, *, top_k: int, where: Where | None
     ) -> list[list[SearchHit]]:
         return await gather_bounded(
             (index.search(query, top_k=top_k, where=where) for index in self.indexes),
@@ -167,7 +167,7 @@ class RetrievalEngine:
         )
 
     async def _search_many(
-        self, queries: list[str], *, top_k: int, where: SearchFilter | None
+        self, queries: list[str], *, top_k: int, where: Where | None
     ) -> list[list[SearchHit]]:
         """Fan out every (query, index) pair concurrently, preserving the
         query-major ordering of the sequential implementation."""
@@ -186,7 +186,7 @@ class RetrievalEngine:
         query: str,
         *,
         top_k: int = 8,
-        where: SearchFilter | None = None,
+        where: Where | None = None,
         objective: str = "",
         use_planner: bool = True,
         multi_hop: bool = False,

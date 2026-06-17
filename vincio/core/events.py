@@ -12,15 +12,36 @@ import inspect
 import logging
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Coroutine
-from typing import Any, cast
+from typing import Any, ClassVar, cast
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from .utils import new_id, utcnow
 
-__all__ = ["Event", "EventBus", "EventHandler"]
+__all__ = [
+    "Event",
+    "EventBus",
+    "EventHandler",
+    "EventPayload",
+    "EVENT_CATALOG",
+    "EVENT_SCHEMA_VERSION",
+    "RunCompleted",
+    "BudgetExceeded",
+    "CostBudgetExceeded",
+    "CostAnomaly",
+    "ModelUnknown",
+    "ModelRouted",
+    "PolicyChanged",
+    "EgressDLP",
+    "DriftDetected",
+    "payload_model_for",
+]
 
 logger = logging.getLogger("vincio.events")
+
+# Bumped only when a payload model changes incompatibly; stamped on every Event
+# so external sinks can bind to a stable schema and detect version skew.
+EVENT_SCHEMA_VERSION = "2.0"
 
 
 class Event(BaseModel):
@@ -28,7 +49,113 @@ class Event(BaseModel):
     name: str
     payload: dict[str, Any] = Field(default_factory=dict)
     trace_id: str | None = None
+    schema_version: str = EVENT_SCHEMA_VERSION
     created_at: Any = Field(default_factory=utcnow)
+
+
+# ---------------------------------------------------------------------------
+# Typed, versioned event catalog
+# ---------------------------------------------------------------------------
+
+
+class EventPayload(BaseModel):
+    """Base for documented event payloads.
+
+    2.0 promotes events from stringly-typed names + free-form dicts to a typed,
+    versioned catalog: each documented event has a payload model with a stable
+    ``event`` name, so observers and external sinks bind to a schema instead of
+    guessing dict keys. ``extra="allow"`` keeps it forward-compatible — emitting
+    extra keys never rejects an event — while the documented fields are typed.
+    """
+
+    model_config = ConfigDict(extra="allow")
+    # The canonical event name this payload is published under.
+    event: ClassVar[str] = ""
+
+
+class RunCompleted(EventPayload):
+    event: ClassVar[str] = "run.completed"
+    run_id: str
+    status: str
+    batch: bool = False
+
+
+class BudgetExceeded(EventPayload):
+    event: ClassVar[str] = "budget.exceeded"
+    breaches: list[str] = Field(default_factory=list)
+    stage: str = ""
+
+
+class CostBudgetExceeded(EventPayload):
+    event: ClassVar[str] = "cost.budget_exceeded"
+    action: str
+    scope: str = ""
+    reason: str = ""
+
+
+class CostAnomaly(EventPayload):
+    event: ClassVar[str] = "cost.anomaly"
+    scope: str = ""
+    cost_usd: float = 0.0
+    mean_usd: float = 0.0
+    factor: float = 0.0
+    run_id: str | None = None
+
+
+class ModelUnknown(EventPayload):
+    event: ClassVar[str] = "model.unknown"
+    model: str
+
+
+class ModelRouted(EventPayload):
+    event: ClassVar[str] = "model.routed"
+    # Routing decisions dump a richer record; the model id is the headline field
+    # but stays optional so any decision shape validates without a false warning.
+    model: str = ""
+    strategy: str = ""
+    reason: str = ""
+
+
+class PolicyChanged(EventPayload):
+    event: ClassVar[str] = "policy.changed"
+    policy: str
+
+
+class EgressDLP(EventPayload):
+    event: ClassVar[str] = "security.egress_dlp"
+    run_id: str | None = None
+    blocked: bool = False
+    findings: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class DriftDetected(EventPayload):
+    event: ClassVar[str] = "drift.detected"
+    metric: str = ""
+    score: float = 0.0
+    method: str = ""
+
+
+# name -> payload model. Observers can look up the schema for an event name;
+# the bus validates dict payloads against it (leniently) on emit.
+EVENT_CATALOG: dict[str, type[EventPayload]] = {
+    cls.event: cls
+    for cls in (
+        RunCompleted,
+        BudgetExceeded,
+        CostBudgetExceeded,
+        CostAnomaly,
+        ModelUnknown,
+        ModelRouted,
+        PolicyChanged,
+        EgressDLP,
+        DriftDetected,
+    )
+}
+
+
+def payload_model_for(name: str) -> type[EventPayload] | None:
+    """The documented payload model for an event name, or ``None`` if untyped."""
+    return EVENT_CATALOG.get(name)
 
 
 # Handlers may be sync or async; emit() ignores any return value (it only checks
@@ -76,9 +203,31 @@ class EventBus:
                 handlers.extend(hs)
         return handlers
 
+    def publish(self, payload: EventPayload, *, trace_id: str | None = None) -> Event:
+        """Emit a typed payload from the catalog (preferred over :meth:`emit`).
+
+        The event name and schema come from the payload model, so callers and
+        sinks share one contract instead of an ad-hoc dict.
+        """
+        return self.emit(type(payload).event, payload.model_dump(), trace_id=trace_id)
+
+    @staticmethod
+    def _validate_payload(name: str, payload: dict[str, Any]) -> None:
+        """Best-effort validation of a dict payload against the catalog. Never
+        raises — a schema mismatch is logged, not allowed to break the run."""
+        model = EVENT_CATALOG.get(name)
+        if model is None:
+            return
+        try:
+            model.model_validate(payload)
+        except Exception as exc:  # noqa: BLE001 - validation must not break emit
+            logger.warning("event %s payload does not match catalog schema: %s", name, exc)
+
     def emit(self, name: str, payload: dict[str, Any] | None = None, *, trace_id: str | None = None) -> Event:
         """Emit synchronously. Async handlers are scheduled if a loop is running."""
-        event = Event(name=name, payload=payload or {}, trace_id=trace_id)
+        data = payload or {}
+        self._validate_payload(name, data)
+        event = Event(name=name, payload=data, trace_id=trace_id)
         for handler in self._matching(name):
             try:
                 result = handler(event)
@@ -98,7 +247,9 @@ class EventBus:
         self, name: str, payload: dict[str, Any] | None = None, *, trace_id: str | None = None
     ) -> Event:
         """Emit and await all handlers (async handlers awaited in order)."""
-        event = Event(name=name, payload=payload or {}, trace_id=trace_id)
+        data = payload or {}
+        self._validate_payload(name, data)
+        event = Event(name=name, payload=data, trace_id=trace_id)
         for handler in self._matching(name):
             try:
                 result = handler(event)

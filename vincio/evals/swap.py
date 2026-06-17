@@ -43,7 +43,7 @@ __all__ = [
     "SHAPE_METRICS",
 ]
 
-_DEFAULT_METRICS = ["semantic_similarity", "schema_validity", "cost", "latency"]
+_DEFAULT_METRICS = ["lexical_overlap", "schema_validity", "cost", "latency"]
 
 _REFUSAL_RE = re.compile(
     r"(?i)\b(i (?:can('?|no)t|cannot|am unable|'m unable|won'?t)|i am sorry|i'm sorry|"
@@ -318,7 +318,7 @@ async def model_swap_regression(
     baseline_model: str | None = None,
     candidate_model: str,
     metrics: list[str] | None = None,
-    quality_metric: str = "semantic_similarity",
+    quality_metric: str = "lexical_overlap",
     alpha: float = 0.05,
     repeats: int = 1,
     flake_quarantine: bool = True,
@@ -360,7 +360,7 @@ class SwapGate:
         app: Any,
         *,
         metrics: list[str] | None = None,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         gates: dict[str, str] | None = None,
         alpha: float = 0.05,
         drift_threshold: float = 0.1,

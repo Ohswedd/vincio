@@ -56,7 +56,7 @@ class CompressionTuner:
         self,
         evaluate: CompressorEvaluateFn,
         *,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         faithfulness_metric: str = "faithfulness",
         token_metric: str = "input_tokens",
         min_quality_ratio: float = 0.98,

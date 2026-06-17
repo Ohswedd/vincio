@@ -199,7 +199,7 @@ class RoutingOptimizer:
         policy: RoutingPolicy,
         reports: dict[str, EvalReport],  # tier name -> report ("cheap"/"default"/"strong")
         *,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         min_quality_ratio: float = 0.97,
     ) -> RoutingPolicy:
         cheap = reports.get("cheap")

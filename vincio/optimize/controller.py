@@ -95,7 +95,7 @@ class ContinuousImprovementController:
         clock: Callable[[], float] | None = None,
     ) -> None:
         self.app = app
-        self.metrics = metrics or [e.name for e in app.online_evaluators] or ["semantic_similarity"]
+        self.metrics = metrics or [e.name for e in app.online_evaluators] or ["lexical_overlap"]
         self.golden = golden
         self.prompt_name = prompt_name or app.prompt_spec.name
         self.sustain = max(1, sustain)

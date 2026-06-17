@@ -17,7 +17,7 @@ the prompt registry, and the experiment tracker — into one call:
 
 ```python
 loop = app.improvement_loop(
-    metrics=["semantic_similarity", "groundedness", "cost", "latency"],
+    metrics=["lexical_overlap", "groundedness", "cost", "latency"],
     gates={"groundedness": ">= 0.8"},      # promotion gates
     experiment="support_qa",
 )
@@ -110,7 +110,7 @@ from vincio.optimize import ObjectiveSpec, pareto_loop
 result = await pareto_loop(
     candidates, evaluate_fn, dataset, baseline=baseline,
     objectives=[
-        ObjectiveSpec(name="accuracy", metric="semantic_similarity"),
+        ObjectiveSpec(name="accuracy", metric="lexical_overlap"),
         ObjectiveSpec(name="cost", metric="cost", direction="min"),
     ],
     constraints={"cost": 0.01},   # at most a cent per case
@@ -171,7 +171,7 @@ machinery:
 ```python
 result = app.reflective_optimize(
     dataset,
-    metrics=["semantic_similarity", "groundedness", "cost", "latency"],
+    metrics=["lexical_overlap", "groundedness", "cost", "latency"],
     gates={"groundedness": ">= 0.8"},
     budget=12,            # hard cap on evaluation rollouts
     minibatch_size=8,     # cheap screening before a full rollout

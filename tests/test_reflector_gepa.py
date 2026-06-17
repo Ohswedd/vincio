@@ -27,11 +27,11 @@ def _report() -> EvalReport:
         name="r",
         dataset="d",
         cases=[
-            CaseResult(case_id="c1", metrics={"semantic_similarity": 0.3, "groundedness": 0.2,
+            CaseResult(case_id="c1", metrics={"lexical_overlap": 0.3, "groundedness": 0.2,
                                               "schema_validity": 1.0}, output_text="wrong, no cite"),
-            CaseResult(case_id="c2", metrics={"semantic_similarity": 0.9, "groundedness": 0.95,
+            CaseResult(case_id="c2", metrics={"lexical_overlap": 0.9, "groundedness": 0.95,
                                               "schema_validity": 0.4}, output_text="{bad json"),
-            CaseResult(case_id="c3", metrics={"semantic_similarity": 0.95, "groundedness": 0.95,
+            CaseResult(case_id="c3", metrics={"lexical_overlap": 0.95, "groundedness": 0.95,
                                               "schema_validity": 1.0}, output_text="good"),
         ],
     )

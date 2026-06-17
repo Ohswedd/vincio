@@ -256,15 +256,24 @@ class ContextCompiler:
     ) -> list[ContextCandidate]:
         candidates: list[ContextCandidate] = []
         for item in evidence:
-            text = (item.text or "").strip()
-            if not text:
+            # 2.0: text, image, and table evidence are all candidates. The
+            # scorable surrogate (text / caption / table Markdown) drives
+            # relevance/dedup/ordering; image/table carry the non-text payload.
+            text = item.scorable_text.strip()
+            if not text and item.modality == "text":
                 continue
+            if not text and item.image is None and item.table is None:
+                continue
+            token_cost = item.token_cost or item.estimated_token_cost() or count_tokens(text)
             candidates.append(
                 ContextCandidate(
                     id=item.id,
                     type="evidence",
                     content=text,
-                    token_cost=item.token_cost or count_tokens(text),
+                    modality=item.modality,
+                    image=item.image,
+                    table=item.table,
+                    token_cost=token_cost,
                     source=item,
                     authority=item.authority,
                     provenance=item.provenance,
@@ -272,6 +281,7 @@ class ContextCompiler:
                     metadata={
                         "citation_ref": item.citation_ref,
                         "source_id": item.source_id,
+                        "modality": item.modality,
                         # Relevance assigned upstream (retrieval/reranker); the
                         # lexical gate must not discard semantically-matched
                         # evidence that shares no surface terms with the query.

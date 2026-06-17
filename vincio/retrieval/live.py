@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from ..core.types import Chunk
 from ..core.utils import stable_hash, utcnow
-from .indexes import Index, SearchFilter, SearchHit
+from .indexes import Index, SearchHit, Where
 
 __all__ = ["LiveIndex", "UpsertStats"]
 
@@ -145,7 +145,7 @@ class LiveIndex:
         return await self.delete(expired)
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         await self.purge_expired()
         return await self.inner.search(query, top_k=top_k, where=where)

@@ -21,7 +21,7 @@ from ..core.concurrency import gather_bounded
 from ..core.tokens import count_tokens
 from ..core.types import Chunk, Document, Message, ModelRequest
 from ..providers.base import ModelProvider
-from .indexes import Index, SearchFilter, SearchHit
+from .indexes import Index, SearchHit, Where
 
 __all__ = ["AutoMergingIndex", "contextualize_chunks"]
 
@@ -69,7 +69,7 @@ class AutoMergingIndex:
         return removed
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         # Over-fetch children so sibling co-occurrence is observable.
         hits = await self.inner.search(query, top_k=top_k * 3, where=where)

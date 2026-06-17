@@ -157,7 +157,7 @@ class GoldenRegressionSuite:
         case: EvalCase,
         *,
         fixed_by: str,
-        guard_metric: str = "semantic_similarity",
+        guard_metric: str = "lexical_overlap",
         guard_threshold: float = 0.5,
     ) -> EvalCase:
         """Record a case the latest fix must keep passing (idempotent on id)."""
@@ -187,7 +187,7 @@ class GoldenRegressionSuite:
         dataset: Dataset,
         *,
         fixed_by: str,
-        guard_metric: str = "semantic_similarity",
+        guard_metric: str = "lexical_overlap",
         guard_threshold: float = 0.5,
     ) -> list[str]:
         """Record every case the candidate now passes above the floor, drawn from
@@ -216,7 +216,7 @@ class GoldenRegressionSuite:
         by_id = {c.case_id: c for c in report.cases}
         result = GoldenGateResult(checked=len(self.dataset.cases))
         for case in self.dataset.cases:
-            metric = case.metadata.get("guard_metric", "semantic_similarity")
+            metric = case.metadata.get("guard_metric", "lexical_overlap")
             threshold = float(case.metadata.get("guard_threshold", 0.5))
             scored = by_id.get(case.id)
             if scored is None or metric not in scored.metrics:

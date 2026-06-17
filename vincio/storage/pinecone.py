@@ -12,7 +12,8 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder
-from ..retrieval.indexes import SearchFilter, SearchHit
+from ..retrieval.filters import as_predicate
+from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["PineconeVectorIndex"]
 
@@ -79,9 +80,10 @@ class PineconeVectorIndex:
         return len(chunk_ids)
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await self.embedder.embed([query])
+        predicate = as_predicate(where)
         fetch = top_k * 4 if where is not None else top_k
         response = self.index.query(
             vector=list(vector), top_k=fetch, include_metadata=True, namespace=self.namespace
@@ -90,7 +92,7 @@ class PineconeVectorIndex:
         for match in response.get("matches") or []:
             metadata = match.get("metadata") or {}
             chunk = Chunk.model_validate_json(metadata["_chunk"])
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             hits.append(SearchHit(chunk=chunk, score=float(match.get("score", 0.0)), source=self.name))
             if len(hits) >= top_k:

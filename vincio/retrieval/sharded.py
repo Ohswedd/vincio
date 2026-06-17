@@ -19,7 +19,7 @@ from collections.abc import Callable
 from ..core.concurrency import gather_bounded
 from ..core.types import Chunk
 from ..core.utils import stable_hash
-from .indexes import Index, SearchFilter, SearchHit
+from .indexes import Index, SearchHit, Where
 
 __all__ = ["ShardedIndex"]
 
@@ -63,7 +63,7 @@ class ShardedIndex:
         )
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         # Each shard returns its own top_k; merge and keep the global top_k.
         per_shard = await gather_bounded(

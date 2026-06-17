@@ -35,7 +35,7 @@ dataset = Dataset(
     ],
 )
 
-METRICS = ["semantic_similarity", "groundedness", "schema_validity", "cost", "latency"]
+METRICS = ["lexical_overlap", "groundedness", "schema_validity", "cost", "latency"]
 
 
 async def evaluate_variant(variant, ds):

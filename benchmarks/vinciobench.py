@@ -1235,7 +1235,7 @@ async def bench_evals() -> dict[str, Any]:
     good_verdict = await swap_app.agate_swap("gpt-5.2-mini", baseline_model="gpt-5.2", dataset=swap_ds)
     swap_gate_blocks_regression = (not bad_verdict.passed) and good_verdict.passed
     swap_gate_significant = bool(
-        bad_verdict.regression and "semantic_similarity" in bad_verdict.regression.regressions
+        bad_verdict.regression and "lexical_overlap" in bad_verdict.regression.regressions
     )
 
     cap = _CaptureExporter(swap_app.tracer.exporter)
@@ -1314,7 +1314,7 @@ async def bench_loop() -> dict[str, Any]:
                 CaseResult(
                     case_id=f"c{i}",
                     metrics={
-                        "semantic_similarity": quality,
+                        "lexical_overlap": quality,
                         "cost": 0.001,
                         "latency": 100.0,
                     },
@@ -1353,7 +1353,7 @@ async def bench_loop() -> dict[str, Any]:
             for index, (question, expected, _source) in enumerate(QA_CASES)
         ],
     )
-    metrics = ["semantic_similarity", "cost", "latency"]
+    metrics = ["lexical_overlap", "cost", "latency"]
 
     async def run_loop(gates=None):
         from vincio.optimize import FitnessWeights
@@ -1383,7 +1383,7 @@ async def bench_loop() -> dict[str, Any]:
         and (result_a.optimization.best.params if result_a.optimization.best else None)
         == (result_b.optimization.best.params if result_b.optimization.best else None)
     )
-    _gate_loop, gate_result = await run_loop(gates={"semantic_similarity": ">= 1.1"})
+    _gate_loop, gate_result = await run_loop(gates={"lexical_overlap": ">= 1.1"})
 
     # 2. Auto-memory: grounded claims become candidate memories; ungrounded
     # claims never do.
@@ -1437,7 +1437,7 @@ async def bench_loop() -> dict[str, Any]:
     from vincio.optimize import ObjectiveSpec
 
     specs = [
-        ObjectiveSpec(name="accuracy", metric="semantic_similarity"),
+        ObjectiveSpec(name="accuracy", metric="lexical_overlap"),
         ObjectiveSpec(name="cost", metric="cost", direction="min"),
     ]
     frontier = ParetoFrontier.build(points, specs=specs)
@@ -1487,7 +1487,7 @@ async def bench_loop() -> dict[str, Any]:
         strong = bool(variant.spec.citation_policy) or variant.spec.reasoning_mode == "evidence_first"
         q = 0.95 if strong else 0.5
         return metrics_report([{
-            "semantic_similarity": q, "groundedness": q,
+            "lexical_overlap": q, "groundedness": q,
             "schema_validity": 1.0, "safety": 1.0, "cost": 0.001, "latency": 100.0,
         }] * len(ds))
 
@@ -1518,7 +1518,7 @@ async def bench_loop() -> dict[str, Any]:
         quality, cost = (0.95, 0.01) if model == "teacher" else (
             (0.93, 0.002) if model == "student" else (0.5, 0.002)
         )
-        return metrics_report([{"semantic_similarity": quality, "cost": cost}] * len(ds))
+        return metrics_report([{"lexical_overlap": quality, "cost": cost}] * len(ds))
 
     promote_result = await BootstrapFinetune(distill_eval, min_quality_ratio=0.9).distill(
         training_set, dataset, teacher="teacher", student="student"
@@ -1545,7 +1545,7 @@ async def bench_loop() -> dict[str, Any]:
         learned = compressor is not None
         faithful = 0.5 if (learned and getattr(compressor, "_lossy", False)) else (0.95 if learned else 1.0)
         tokens = 60.0 if learned else 100.0
-        return metrics_report([{"semantic_similarity": 0.99 if learned else 1.0,
+        return metrics_report([{"lexical_overlap": 0.99 if learned else 1.0,
                                 "faithfulness": faithful, "input_tokens": tokens}] * len(ds))
 
     adopt_result, _ = await CompressionTuner(comp_eval).tune(LLMLinguaCompressor(), dataset)
@@ -1623,9 +1623,9 @@ async def bench_loop() -> dict[str, Any]:
     # recorded fix is blocked.
     suite = GoldenRegressionSuite(tempfile.mktemp(suffix=".jsonl"))
     suite.add(EvalCase(id="g1", input="q", expected="a"),
-              fixed_by="seed@v1", guard_metric="semantic_similarity", guard_threshold=0.8)
-    pass_report = _ER(cases=[_CR(case_id="g1", metrics={"semantic_similarity": 0.95})])
-    fail_report = _ER(cases=[_CR(case_id="g1", metrics={"semantic_similarity": 0.3})])
+              fixed_by="seed@v1", guard_metric="lexical_overlap", guard_threshold=0.8)
+    pass_report = _ER(cases=[_CR(case_id="g1", metrics={"lexical_overlap": 0.95})])
+    fail_report = _ER(cases=[_CR(case_id="g1", metrics={"lexical_overlap": 0.3})])
     guard_blocks = not suite.gate(fail_report).passed and suite.gate(pass_report).passed
 
     # Online state: the sampling counter is restart-safe and worker-aggregatable.
@@ -2003,7 +2003,7 @@ async def bench_agentic_evals() -> dict[str, Any]:
         # output-only vs trajectory pass (the "agents pass more output-only" gap).
         if traj_payload:
             traj_cases += 1
-            output_only_pass += METRICS["semantic_similarity"](case, run).value >= 0.5
+            output_only_pass += METRICS["lexical_overlap"](case, run).value >= 0.5
             traj_pass += (
                 METRICS["tool_call_accuracy"](case, run).value == 1.0
                 and METRICS["goal_accuracy"](case, run).value == 1.0
@@ -2061,7 +2061,7 @@ async def bench_agentic_evals() -> dict[str, Any]:
 
     objs = objectives_from_weights(FitnessWeights())
     fail_report = EvalReport(cases=[
-        CaseResult(case_id="c1", metrics={"groundedness": 0.2, "semantic_similarity": 0.3,
+        CaseResult(case_id="c1", metrics={"groundedness": 0.2, "lexical_overlap": 0.3,
                                           "schema_validity": 1.0}, output_text="uncited claim"),
     ])
     refl_ds = Dataset(cases=[EvalCase(id="c1", input="what is the refund window?", expected="30 days")])
@@ -2531,6 +2531,133 @@ async def bench_generation() -> dict[str, Any]:
     }
 
 
+async def bench_breaking_2_0() -> dict[str, Any]:
+    """Breaking2.0Bench: the 2.0 structural guarantees, all offline & deterministic —
+    facade decomposition, async-first stores, typed events, multimodal packet,
+    FilterSpec pushdown + tenant scope, enterprise auth, egress DLP, signed audit."""
+    import json as _json
+
+    from vincio import ContextApp
+    from vincio.context.compiler import ContextCompiler
+    from vincio.context.evidence_store import InMemoryEvidenceStore
+    from vincio.context.ir import ContextIR
+    from vincio.context.packet import ContextPacket
+    from vincio.core.events import EventBus, RunCompleted
+    from vincio.core.types import EvidenceItem, ImageRef, Message, ModelRequest, Objective
+    from vincio.evals.datasets import EvalCase
+    from vincio.evals.metrics import METRICS, RunOutput
+    from vincio.providers.enterprise import SigV4Auth
+    from vincio.retrieval.indexes import BM25Index, build_filter_spec
+    from vincio.security.audit import (
+        AuditLog,
+        HMACSigner,
+        merkle_proof,
+        merkle_root,
+        verify_merkle_proof,
+    )
+    from vincio.security.policy import PolicyEngine
+    from vincio.storage.base import InMemoryMetadataStore, aget, asave
+
+    app = ContextApp(name="bench_2_0", provider=MockProvider(), model="gpt-5.2-mini")
+
+    # -- facade decomposition --
+    facade_delegates = app.runs.run == app.run and app.governance.model_card == app.model_card
+
+    # -- async-first store --
+    store = InMemoryMetadataStore()
+    await asave(store, "runs", {"id": "r1", "status": "ok"})
+    async_roundtrip = (await aget(store, "runs", "r1")) == {"id": "r1", "status": "ok"}
+
+    # -- typed event catalog --
+    bus = EventBus()
+    seen: list[Any] = []
+    bus.subscribe("run.completed", seen.append)
+    event = bus.publish(RunCompleted(run_id="r1", status="succeeded"))
+    event_catalog_ok = bool(seen) and event.payload["run_id"] == "r1" and event.schema_version
+
+    # -- multimodal packet: image+table candidates + cross-process materialize --
+    evidence = [
+        EvidenceItem(source_id="d1", text="The annual fee is $99.", relevance=0.9),
+        EvidenceItem(source_id="d2", modality="image", source_type="image", relevance=0.8,
+                     image=ImageRef(path="/p.png", metadata={"caption": "pricing image"})),
+        EvidenceItem(source_id="d3", modality="table", relevance=0.7,
+                     table={"columns": ["plan", "fee"], "rows": [["pro", 99]], "markdown": "pro 99"}),
+    ]
+    candidates = ContextCompiler()._collect(evidence=evidence, memory=[], tool_results=[])
+    multimodal_selected = len({c.modality for c in candidates} & {"text", "image", "table"})
+    evstore = InMemoryEvidenceStore()
+    ir = ContextIR(objective=Objective("q"),
+                   evidence=[EvidenceItem(id="e1", source_id="d", text="Bordeaux is in France.")])
+    slim = ContextPacket.from_ir(ir, slim=True, evidence_store=evstore)
+    shipped = ContextPacket.model_validate_json(slim.model_dump_json())
+    shipped.materialize(store=evstore)
+    cross_process_materialize = not shipped.slim and shipped.evidence_items[0].get("text") == "Bordeaux is in France."
+
+    # -- FilterSpec native pushdown + tenant scope (shared-or-mine) --
+    bm = BM25Index()
+    from vincio.core.types import Chunk
+    await bm.add([
+        Chunk(document_id="d1", text="alpha report", tenant_id="t1"),
+        Chunk(document_id="d2", text="alpha report", tenant_id="t2"),
+        Chunk(document_id="d3", text="alpha report"),  # untagged/shared
+    ])
+    scope = build_filter_spec(tenant_id="t1")
+    hits = await bm.search("alpha report", top_k=10, where=scope)
+    seen_tenants = {h.chunk.tenant_id for h in hits}
+    tenant_scope_correct = "t2" not in seen_tenants and "t1" in seen_tenants and None in seen_tenants
+    sql, params = build_filter_spec(tenant_id="t1", kinds=["text"]).to_sql_where(column="json")
+    filter_compiles = "(json ->> %s)" in sql and "t1" in params
+
+    # -- enterprise auth (SigV4) --
+    sig = SigV4Auth("AKIA", "secret", region="us-east-1", clock=lambda: __import__("datetime").datetime(2026, 6, 17, tzinfo=__import__("datetime").UTC))
+    sig_headers = sig.headers(method="POST", url="https://bedrock-runtime.us-east-1.amazonaws.com/model/m/converse", body=b"{}", base_headers={})
+    sigv4_signed = sig_headers["Authorization"].startswith("AWS4-HMAC-SHA256 Credential=AKIA/")
+
+    # -- egress DLP blocks a credential --
+    secret = "sk-live-ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+    egress = PolicyEngine(egress_dlp="block").scan_egress(
+        ModelRequest(model="m", messages=[Message(role="user", content=f"key {secret}")])
+    )
+    egress_blocks_secret = not egress.allowed
+
+    # -- signed audit chain detects a re-hashed forgery + merkle inclusion --
+    signer = HMACSigner("k")
+    log = AuditLog(directory=None, signer=signer)
+    log.record("run", run_id="r1", details={"x": "orig"})
+    log.record("output", run_id="r1")
+    from vincio.security.audit import AuditEntry
+    entries = [AuditEntry.model_validate(_json.loads(e.model_dump_json())) for e in log.entries]
+    entries[0].details = {"x": "TAMPERED"}
+    entries[0].entry_hash = entries[0].compute_hash()  # attacker recomputes public hash
+    forged_chain_ok = all(
+        e.prev_hash == (entries[i - 1].entry_hash if i else "") and e.entry_hash == e.compute_hash()
+        for i, e in enumerate([entries[0]])
+    )
+    signed_detects_forgery = not signer.verify(entries[0].entry_hash, entries[0].signature)
+    hashes = [e.entry_hash for e in log.entries]
+    root = merkle_root(hashes)
+    merkle_ok = verify_merkle_proof(hashes[0], merkle_proof(hashes, 0), root)
+
+    # -- eval semantics: unscoreable metric is skipped --
+    skip_result = METRICS["faithfulness"](EvalCase(id="c", input="q", expected="x"), RunOutput(output="ok"))
+    eval_skipped = skip_result.skipped
+
+    return {
+        "facade_delegates": facade_delegates,
+        "async_store_roundtrip": async_roundtrip,
+        "event_catalog_validates": bool(event_catalog_ok),
+        "multimodal_modalities_selected": multimodal_selected,
+        "cross_process_materialize": cross_process_materialize,
+        "tenant_scope_correct": tenant_scope_correct,
+        "filter_pushdown_compiles": filter_compiles,
+        "enterprise_sigv4_signed": sigv4_signed,
+        "egress_dlp_blocks_secret": egress_blocks_secret,
+        "signed_chain_detects_forgery": signed_detects_forgery and forged_chain_ok,
+        "merkle_inclusion_verified": merkle_ok,
+        "eval_unscoreable_skipped": eval_skipped,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -2549,6 +2676,7 @@ FAMILIES = {
     "governance": bench_governance,
     "generation": bench_generation,
     "perf": bench_perf,
+    "breaking_2_0": bench_breaking_2_0,
 }
 
 

@@ -85,7 +85,7 @@ def trajectory_eval() -> None:
     # Output-only eval is shown alongside trajectory eval (agents pass more
     # output-only cases than the trajectory reveals).
     print("  final-output-only:")
-    for name in ("semantic_similarity", "answer_relevance"):
+    for name in ("lexical_overlap", "answer_relevance"):
         print(f"    {name:20s} {METRICS[name](case, run).value}")
     print("  trajectory eval:")
     for name in (
@@ -152,10 +152,10 @@ def ab_and_guardrail() -> None:
         "prompt_ab",
         variants={"baseline": {"model": "mock-1"}, "variant_b": {"model": "mock-1"}},
         dataset=dataset,
-        metrics=["semantic_similarity", "cost"],
+        metrics=["lexical_overlap", "cost"],
     )
     print(f"  cost per variant: {exp.cost()}")
-    print(f"  significance test: {exp.significance('semantic_similarity')['variant_b']['test']}")
+    print(f"  significance test: {exp.significance('lexical_overlap')['variant_b']['test']}")
 
     # The same metric, now a runtime guardrail.
     guard = metric_guardrail("toxicity", threshold=0.0)

@@ -8,7 +8,8 @@ import uuid
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder
-from ..retrieval.indexes import SearchFilter, SearchHit
+from ..retrieval.filters import FilterSpec, as_predicate
+from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["QdrantVectorIndex"]
 
@@ -74,17 +75,27 @@ class QdrantVectorIndex:
         return len(chunk_ids)
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await self.embedder.embed([query])
-        fetch = top_k * 4 if where is not None else top_k
+        # 2.0: push a FilterSpec into Qdrant's native filter so selectivity is
+        # applied server-side — fetch exactly top_k (no over-fetch under-fill)
+        # and never round-trip other tenants' rows. A legacy callable still
+        # post-filters client-side over a 4x over-fetch.
+        native = where.to_qdrant() if isinstance(where, FilterSpec) else None
+        predicate = None if native is not None else as_predicate(where)
+        fetch = top_k if (native is not None or where is None) else top_k * 4
         response = self.client.query_points(
-            collection_name=self.collection, query=vector, limit=fetch, with_payload=True
+            collection_name=self.collection,
+            query=vector,
+            limit=fetch,
+            with_payload=True,
+            query_filter=native,
         )
         hits: list[SearchHit] = []
         for point in response.points:
             chunk = Chunk.model_validate(point.payload)
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             hits.append(SearchHit(chunk=chunk, score=float(point.score), source=self.name))
             if len(hits) >= top_k:

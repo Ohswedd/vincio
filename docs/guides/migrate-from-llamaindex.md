@@ -128,7 +128,7 @@ feeding the same scored retrieval.
 - **Scored, budgeted context packets** — every piece of evidence is ranked
   and fitted to a budget, so you see exactly what went into each answer.
 - **Built-in evals, gates, and an optimization loop** — `groundedness`,
-  `semantic_similarity`, `schema_validity`, `cost`, and `latency` metrics with
+  `lexical_overlap`, `schema_validity`, `cost`, and `latency` metrics with
   CI gates, no separate harness to wire up.
 - **Native, provider-neutral observability** — every run writes a trace with
   cost tracking and a `trace_id`; view it with `vincio trace view`.

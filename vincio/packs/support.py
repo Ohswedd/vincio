@@ -35,7 +35,7 @@ PACK = Pack(
     },
     output_schema_name="support_resolution",
     policies={"answer_only_from_sources": True, "require_citations": True},
-    evaluators=["groundedness", "schema_validity", "semantic_similarity"],
+    evaluators=["groundedness", "schema_validity", "lexical_overlap"],
     eval_cases=[
         EvalCase(
             id="support_billing_dup",

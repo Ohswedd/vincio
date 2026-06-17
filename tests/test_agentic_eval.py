@@ -338,12 +338,12 @@ class TestExperiment:
             "ab1",
             variants={"baseline": {"model": "mock-1"}, "variant_b": {"model": "mock-1"}},
             dataset=self._dataset(),
-            metrics=["semantic_similarity", "cost"],
+            metrics=["lexical_overlap", "cost"],
         )
         comparison = exp.compare()
         assert set(comparison["variants"]) == {"baseline", "variant_b"}
         assert set(exp.cost()) == {"baseline", "variant_b"}
-        sig = exp.significance("semantic_similarity")
+        sig = exp.significance("lexical_overlap")
         assert "variant_b" in sig and "p_value" in sig["variant_b"]
 
 

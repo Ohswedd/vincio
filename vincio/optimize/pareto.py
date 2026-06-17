@@ -43,7 +43,7 @@ class ObjectiveSpec(BaseModel):
 
 
 DEFAULT_OBJECTIVES: list[ObjectiveSpec] = [
-    ObjectiveSpec(name="accuracy", metric="semantic_similarity"),
+    ObjectiveSpec(name="accuracy", metric="lexical_overlap"),
     ObjectiveSpec(name="groundedness", metric="groundedness"),
     ObjectiveSpec(name="cost", metric="cost", direction="min"),
     ObjectiveSpec(name="latency_s", metric="latency", direction="min", scale=0.001),
@@ -77,7 +77,7 @@ def objectives_from_weights(weights: Any) -> list[ObjectiveSpec]:
         "cost": getattr(weights, "cost", 1.0),
         "latency_s": getattr(weights, "latency", 1.0),
     }
-    accuracy_metric = getattr(weights, "accuracy_metric", "semantic_similarity")
+    accuracy_metric = getattr(weights, "accuracy_metric", "lexical_overlap")
     kept: list[ObjectiveSpec] = []
     for spec in DEFAULT_OBJECTIVES:
         if weight_by_objective.get(spec.name, 1.0) == 0.0:

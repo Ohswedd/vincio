@@ -12,7 +12,7 @@ and gating over case by case.
 | Ragas | Vincio | Notes |
 |---|---|---|
 | `faithfulness` | `groundedness` | are claims supported by retrieved context |
-| `answer_relevancy` / `answer_correctness` | `semantic_similarity` | answer vs `expected` |
+| `answer_relevancy` / `answer_correctness` | `lexical_overlap` | answer vs `expected` |
 | response / schema conformance | `schema_validity` | validates against `output_schema` |
 | (not measured) | `cost`, `latency` | first-class metrics in every run |
 | `EvaluationDataset` / test set | `Dataset` (JSONL) | `{id, input, expected, rubric, tags, difficulty}` |
@@ -69,7 +69,7 @@ app.set_policy("require_citations", True)
 
 report = EvalRunner(
     app,
-    metrics=["groundedness", "semantic_similarity", "schema_validity", "cost", "latency"],
+    metrics=["groundedness", "lexical_overlap", "schema_validity", "cost", "latency"],
     gates={"groundedness": ">= 0.8", "schema_validity": "== 1.0"},
 ).run("golden/refunds.jsonl")
 report.print_summary()
@@ -79,7 +79,7 @@ The same run from the command line, with baseline comparison and a CI gate:
 
 ```bash
 vincio eval run golden/refunds.jsonl --app app.py \
-  --metric groundedness --metric semantic_similarity --metric schema_validity \
+  --metric groundedness --metric lexical_overlap --metric schema_validity \
   --gate "groundedness=>= 0.8"
 ```
 

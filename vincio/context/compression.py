@@ -28,6 +28,7 @@ __all__ = [
     "truncate_to_tokens",
     "extractive_compress",
     "distill_evidence_ledger",
+    "link_entailments",
 ]
 
 _SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])|\n{2,}")
@@ -148,11 +149,11 @@ async def distill_evidence_ledger(
     by lexical relevance as a confidence proxy.
     """
     if distiller is not None:
-        return await distiller(evidence, query)
+        return link_entailments(await distiller(evidence, query))
     ledger: list[dict[str, Any]] = []
     counter = 1
     for item in evidence:
-        text = item.text or ""
+        text = item.scorable_text or item.text or ""
         if not text:
             continue
         sentences = split_sentences(text)
@@ -175,4 +176,43 @@ async def distill_evidence_ledger(
                 }
             )
             counter += 1
+    return link_entailments(ledger)
+
+
+_LEDGER_NUMERIC_RE = re.compile(r"\d")
+
+
+def link_entailments(
+    ledger: list[dict[str, Any]], *, support_threshold: float = 0.5
+) -> list[dict[str, Any]]:
+    """Populate ``supports`` / ``contradicts`` links between ledger claims via
+    entailment (2.0), turning a flat claim list into a claim/contradiction graph.
+
+    Two claims that are topically similar (lexical overlap ≥ ``support_threshold``)
+    *corroborate* each other when they come from different sources and agree on
+    their salient numeric units, and *contradict* when those numeric units
+    disagree — so a downstream check can surface conflicting evidence instead of
+    silently averaging it.
+    """
+    from .llmlingua import salient_units  # lazy: llmlingua imports this module
+
+    for entry in ledger:
+        entry.setdefault("supports", [])
+        entry["contradicts"] = []
+    numeric: dict[str, set[str]] = {
+        entry["id"]: {u for u in salient_units(entry.get("claim", "")) if _LEDGER_NUMERIC_RE.search(u)}
+        for entry in ledger
+    }
+    for a in ledger:
+        a_claim = a.get("claim", "")
+        for b in ledger:
+            if a["id"] == b["id"]:
+                continue
+            if lexical_similarity(a_claim, b.get("claim", "")) < support_threshold:
+                continue
+            a_nums, b_nums = numeric[a["id"]], numeric[b["id"]]
+            if a_nums and b_nums and a_nums.isdisjoint(b_nums):
+                a["contradicts"].append(b["id"])
+            elif b.get("source") != a.get("source") and b["id"] not in a["supports"]:
+                a["supports"].append(b["id"])
     return ledger

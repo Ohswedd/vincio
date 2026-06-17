@@ -35,7 +35,7 @@ and provenance (`metadata.source_ids`, source sentences in `rubric.facts`).
 
 ## Metrics
 
-- **Task** — `exact_match`, `semantic_similarity`, `classification_accuracy`, `extraction_f1`
+- **Task** — `exact_match`, `lexical_overlap`, `classification_accuracy`, `extraction_f1`
 - **Grounding** — `groundedness`, `unsupported_claim_rate`, `citation_accuracy`,
   `citation_recall`, `context_precision`, `context_recall`
 - **Quality & safety** — `faithfulness`, `answer_relevance`, `hallucination`

@@ -57,8 +57,13 @@ from ..providers.cache_strategy import PromptCacheStrategy
 from ..retrieval.chunking import chunk_document
 from ..retrieval.embeddings import CachedEmbedder, build_embedder
 from ..retrieval.engine import RetrievalEngine
+from ..retrieval.filters import FilterSpec
 from ..retrieval.graph_retrieval import EntityGraph
-from ..retrieval.indexes import BM25Index, SearchFilter, VectorIndex, build_filter
+from ..retrieval.indexes import (
+    BM25Index,
+    VectorIndex,
+    build_filter_spec,
+)
 from ..retrieval.late_interaction import LateInteractionIndex
 from ..retrieval.rerankers import build_reranker
 from ..retrieval.sparse import SparseIndex
@@ -77,6 +82,14 @@ from ..workflows.engine import Workflow
 from .config import VincioConfig, load_config
 from .errors import AgentEngineError, ConfigError, ResidencyViolationError, ToolNotFoundError
 from .events import EventBus
+from .facades import (
+    GovernanceFacade,
+    OptimizationFacade,
+    RetrievalFacade,
+    RunFacade,
+    ServingFacade,
+    TrainingFacade,
+)
 from .runtime import VincioRuntime
 from .types import (
     Budget,
@@ -233,8 +246,17 @@ class ContextApp:
 
         self._media_usage = _BudgetUsage()
         self.store = create_metadata_store(self.config.storage.metadata)
+        _audit_signer = None
+        if self.config.security.audit_signing_key:
+            from ..security.audit import HMACSigner
+
+            _audit_signer = HMACSigner(
+                self.config.security.audit_signing_key,
+                key_id=self.config.security.audit_signing_key_id,
+            )
         self.audit = AuditLog(
-            self.config.security.audit_dir if self.config.security.audit_log else None
+            self.config.security.audit_dir if self.config.security.audit_log else None,
+            signer=_audit_signer,
         )
         self.access = AccessController(tenant_isolation=self.config.security.tenant_isolation)
         self.rail_engine = RailEngine()
@@ -243,7 +265,8 @@ class ContextApp:
         # fertility telemetry. All opt-in / empty by default.
         self._pii_detector = self._build_pii_detector()
         self.policy_engine = PolicyEngine(
-            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine
+            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine,
+            egress_dlp=self.config.security.egress_dlp,
         )
         self.residency = ResidencyPolicy(
             allowed_regions=list(self.config.governance.allowed_regions),
@@ -536,10 +559,17 @@ class ContextApp:
             scopes=list(self.policies.custom.get("scopes", ["*"])),
         )
 
-    def tenant_filter(self, tenant_id: str | None) -> SearchFilter | None:
+    def tenant_filter(self, tenant_id: str | None) -> FilterSpec | None:
+        """Tenant-scope filter for retrieval.
+
+        2.0: returns a pushdown-capable :class:`FilterSpec` so the tenant
+        predicate is applied in the vector store (Qdrant/pgvector/...) and other
+        tenants' rows are never fetched to the client and dropped — closing the
+        fetch-to-filter exfiltration gap. In-memory indexes evaluate it directly.
+        """
         if tenant_id is None or not self.config.security.tenant_isolation:
             return None
-        return build_filter(tenant_id=tenant_id)
+        return build_filter_spec(tenant_id=tenant_id)
 
     # -- public configuration API ----------------------------------------------
 
@@ -596,7 +626,8 @@ class ContextApp:
         if name == "require_citations":
             self.output_contract.require_citations = bool(value)
         self.policy_engine = PolicyEngine(
-            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine
+            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine,
+            egress_dlp=self.config.security.egress_dlp,
         )
         self.events.emit("policy.changed", {"policy": name})
         return self
@@ -821,7 +852,7 @@ class ContextApp:
         dataset: Any = None,
         traces: list[Any] | None = None,
         metrics: list[str] | None = None,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         gates: dict[str, str] | None = None,
         alpha: float = 0.05,
         repeats: int = 1,
@@ -857,7 +888,7 @@ class ContextApp:
         candidate_model: str,
         baseline_model: str | None = None,
         metrics: list[str] | None = None,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         alpha: float = 0.05,
         repeats: int = 1,
         flake_quarantine: bool = True,
@@ -2816,7 +2847,7 @@ class ContextApp:
         teacher: str,
         student: str,
         trainer: Any | None = None,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         min_quality_ratio: float = 0.97,
         gates: dict[str, str] | None = None,
         concurrency: int = 4,
@@ -2935,7 +2966,7 @@ class ContextApp:
         from ..optimize.compression_tuning import CompressionTuner
 
         learned = compressor or LLMLinguaCompressor()
-        metric_list = metrics or ["semantic_similarity", "faithfulness", "input_tokens"]
+        metric_list = metrics or ["lexical_overlap", "faithfulness", "input_tokens"]
 
         async def evaluate(compressor_choice, ds):
             original = self.context_compiler.compressor
@@ -3013,6 +3044,46 @@ class ContextApp:
         pack.apply(self, set_schema=set_schema, merge_rules=merge_rules)
         self.events.emit("pack.applied", {"pack": pack.name})
         return self
+
+    # -- capability facades (2.0) ------------------------------------------------------------------------------------
+
+    def _facade(self, key: str, factory: Any) -> Any:
+        """Build a capability facade once, on first access, and cache it — so
+        cold start and footprint scale with the facades an app actually uses."""
+        cache = self.__dict__.setdefault("_facade_cache", {})
+        if key not in cache:
+            cache[key] = factory(self)
+        return cache[key]
+
+    @property
+    def runs(self) -> RunFacade:
+        """Execution facade: run / arun / stream / astream / submit / batch / evaluate."""
+        return self._facade("runs", RunFacade)
+
+    @property
+    def knowledge(self) -> RetrievalFacade:
+        """Knowledge facade: sources, ingestion, and scoped memory."""
+        return self._facade("knowledge", RetrievalFacade)
+
+    @property
+    def governance(self) -> GovernanceFacade:
+        """Governance & compliance facade: residency, erasure, cards, lineage, EU AI Act."""
+        return self._facade("governance", GovernanceFacade)
+
+    @property
+    def optimization(self) -> OptimizationFacade:
+        """Cost, evaluation, rotation, and self-improvement facade."""
+        return self._facade("optimization", OptimizationFacade)
+
+    @property
+    def serving(self) -> ServingFacade:
+        """Serving facade: MCP server, A2A server, realtime sessions."""
+        return self._facade("serving", ServingFacade)
+
+    @property
+    def training(self) -> TrainingFacade:
+        """Training facade: capture, dataset export, and gated distillation."""
+        return self._facade("training", TrainingFacade)
 
     # -- maintenance -------------------------------------------------------------------------------------------------
 
