@@ -1,8 +1,22 @@
 """Vincio evaluation engine."""
 
 from .annotation import AnnotationItem, AnnotationQueue, cohens_kappa
-from .datasets import Dataset, EvalCase, dataset_from_traces
-from .drift import DriftMonitor, DriftReport
+from .datasets import (
+    Dataset,
+    EvalCase,
+    GoldenGateResult,
+    GoldenRegressionSuite,
+    dataset_from_traces,
+)
+from .drift import (
+    CUSUMDetector,
+    DriftMonitor,
+    DriftReport,
+    ks_drift,
+    ks_statistic,
+    psi,
+    rbf_mmd2,
+)
 from .experiments import Experiment, ExperimentRun, ExperimentTracker, ab_test
 from .guardrails import metric_guardrail
 from .judges import (
@@ -47,6 +61,8 @@ __all__ = [
     "Dataset",
     "EvalCase",
     "dataset_from_traces",
+    "GoldenGateResult",
+    "GoldenRegressionSuite",
     "ExperimentRun",
     "ExperimentTracker",
     "Experiment",
@@ -97,6 +113,11 @@ __all__ = [
     "OnlineEvaluator",
     "DriftMonitor",
     "DriftReport",
+    "CUSUMDetector",
+    "ks_statistic",
+    "ks_drift",
+    "psi",
+    "rbf_mmd2",
     "AnnotationQueue",
     "AnnotationItem",
     "cohens_kappa",

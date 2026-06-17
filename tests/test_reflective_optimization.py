@@ -185,7 +185,9 @@ class TestLLMReflector:
         def boom(spec, rep):
             raise RuntimeError("provider down")
 
-        r = LLMReflector(boom).reflect(PromptSpec(name="p"), report(0.9, grounded=0.3), objectives=_objs())
+        r = LLMReflector(propose=boom).reflect(
+            PromptSpec(name="p"), report(0.9, grounded=0.3), objectives=_objs()
+        )
         assert r.edits  # used the heuristic fallback
 
     def test_honors_valid_model_edits(self):
@@ -193,7 +195,7 @@ class TestLLMReflector:
             return [{"field": "objective", "op": "set", "value": "Be precise."},
                     {"field": "bogus", "op": "set", "value": "x"}]
 
-        r = LLMReflector(propose).reflect(PromptSpec(name="p"), report(0.5), objectives=_objs())
+        r = LLMReflector(propose=propose).reflect(PromptSpec(name="p"), report(0.5), objectives=_objs())
         fields = {e.field for e in r.edits}
         assert "objective" in fields and "bogus" not in fields
 

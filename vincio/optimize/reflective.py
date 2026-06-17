@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -37,6 +37,9 @@ from ..evals.reports import EvalReport
 from ..prompts.compiler import CompilerOptions
 from ..prompts.optimizers import PromptVariant
 from ..prompts.templates import PromptSpec
+
+if TYPE_CHECKING:
+    from ..providers.base import ModelProvider
 from .pareto import (
     ObjectiveSpec,
     ParetoFrontier,
@@ -64,6 +67,7 @@ __all__ = [
     "ReflectiveResult",
     "ReflectiveOptimizer",
     "apply_edits",
+    "cluster_failures",
 ]
 
 # evaluate_variant(variant, dataset) -> EvalReport (the app supplies this).
@@ -113,6 +117,7 @@ class Reflector:
         report: EvalReport | None,
         *,
         objectives: list[ObjectiveSpec],
+        dataset: Dataset | None = None,
     ) -> Reflection:  # pragma: no cover - interface
         raise NotImplementedError
 
@@ -122,6 +127,26 @@ def _signal(report: EvalReport | None, metric: str, default: float) -> float:
         return default
     values = report.metric_values(metric)
     return sum(values) / len(values) if values else default
+
+
+def _invoke_reflect(
+    reflector: Reflector,
+    spec: PromptSpec,
+    report: EvalReport | None,
+    *,
+    objectives: list[ObjectiveSpec],
+    dataset: Dataset | None,
+) -> Reflection:
+    """Call ``reflect`` with the dataset when the reflector accepts it.
+
+    The ``dataset`` keyword is additive (1.10): a custom :class:`Reflector`
+    written against the older 4-argument signature still works — we retry
+    without it on the resulting ``TypeError``.
+    """
+    try:
+        return reflector.reflect(spec, report, objectives=objectives, dataset=dataset)
+    except TypeError:
+        return reflector.reflect(spec, report, objectives=objectives)
 
 
 class HeuristicReflector(Reflector):
@@ -158,6 +183,7 @@ class HeuristicReflector(Reflector):
         report: EvalReport | None,
         *,
         objectives: list[ObjectiveSpec],
+        dataset: Dataset | None = None,
     ) -> Reflection:
         accuracy_metric = next(
             (o.metric for o in objectives if o.name in ("accuracy", "goal")),
@@ -314,25 +340,133 @@ class HeuristicReflector(Reflector):
         )
 
 
-class LLMReflector(Reflector):
-    """Optional model-backed reflection with a deterministic offline fallback.
+_REFLECT_SYSTEM = """\
+You are a prompt-optimization analyst. You are given the failing evaluation cases \
+of a prompt, already clustered into failure modes, plus the prompt's current \
+fields. Diagnose *why* the prompt loses on these cases, then propose the one or \
+two highest-leverage, minimal edits that would fix the dominant failure mode \
+without regressing the others.
 
-    Given a provider, the reflector asks the model to diagnose the failures and
-    return structured edits; offline (or on any parse failure) it falls back to
-    :class:`HeuristicReflector`, so behaviour stays reproducible in tests and
-    air-gapped runs. The proposed edits are validated against the same allowed
-    field set as every other reflector — a model can only move the knobs the
-    optimizer already understands.
+Return ONLY a JSON object of the form:
+{"diagnosis": "<one sentence>", "edits": [{"field": "<field>", "op": "<op>", \
+"value": <value>, "rationale": "<why>"}]}
+
+Allowed fields: objective, rules, soft_rules, citation_policy, \
+insufficient_evidence_behavior, output_instructions, reasoning_mode, \
+safety_policies, examples, format, max_examples.
+Allowed ops: set, append, prepend, reduce_examples.
+reasoning_mode values: direct, plan, evidence_first, react.
+Do not invent fields or ops outside the lists."""
+
+
+def cluster_failures(
+    report: EvalReport | None,
+    dataset: Dataset | None,
+    *,
+    accuracy_metric: str = "semantic_similarity",
+    max_cases: int = 12,
+) -> list[dict[str, Any]]:
+    """Group failing cases into deterministic failure modes for reflection.
+
+    Each failing case is assigned to the metric on which it falls furthest below
+    a nominal floor (groundedness / schema_validity / accuracy / safety / errors),
+    so the model reflects on *modes* — "answers were under-cited", "output was
+    malformed" — rather than a flat list. Joins the report's cases with the
+    dataset's :class:`EvalCase`\\ s by id to surface the input, expected answer,
+    and grounding evidence the case actually saw.
+    """
+    if report is None:
+        return []
+    floors = {
+        "groundedness": ("below", 0.85),
+        "schema_validity": ("below", 0.98),
+        accuracy_metric: ("below", 0.8),
+        "safety": ("below", 0.99),
+        "toxicity": ("above", 0.05),
+    }
+    by_id = {case.id: case for case in (dataset.cases if dataset else [])}
+    modes: dict[str, list[dict[str, Any]]] = {}
+    for case in report.cases:
+        if case.failed:
+            mode = "error"
+            severity = 1.0
+        else:
+            worst_mode = None
+            worst_gap = 0.0
+            for metric, (direction, floor) in floors.items():
+                value = case.metrics.get(metric)
+                if value is None:
+                    continue
+                gap = (floor - value) if direction == "below" else (value - floor)
+                if gap > worst_gap:
+                    worst_gap = gap
+                    worst_mode = metric
+            if worst_mode is None:
+                continue  # case passed every floor — not a failure
+            mode, severity = worst_mode, worst_gap
+        eval_case = by_id.get(case.case_id)
+        modes.setdefault(mode, []).append(
+            {
+                "case_id": case.case_id,
+                "severity": round(severity, 4),
+                "input": (eval_case.input_text[:280] if eval_case else ""),
+                "expected": (str(eval_case.expected)[:280] if eval_case and eval_case.expected else ""),
+                "output": case.output_text[:280],
+                "error": case.error,
+            }
+        )
+    clusters: list[dict[str, Any]] = [
+        {"mode": mode, "count": len(cases),
+         "cases": sorted(cases, key=lambda c: c["severity"], reverse=True)[:3]}
+        for mode, cases in modes.items()
+    ]
+    clusters.sort(key=lambda c: int(c["count"]), reverse=True)
+    # Bound the total sample cases handed to the model.
+    budget = max_cases
+    for cluster in clusters:
+        sample: list[dict[str, Any]] = cluster["cases"]
+        cluster["cases"] = sample[: max(1, budget)]
+        budget -= len(cluster["cases"])
+        if budget <= 0:
+            budget = 1
+    return clusters
+
+
+class LLMReflector(Reflector):
+    """Provider-backed reflection (GEPA proper) with a deterministic fallback.
+
+    Wired to the app's own provider, the reflector reads the *actual* failing
+    cases — input, model output, expected answer, and the evidence that grounded
+    them — clusters them into failure modes (:func:`cluster_failures`), and asks
+    the model to diagnose the dominant mode and propose targeted edits. The edits
+    are validated against the same allowed field/op set as every other reflector,
+    so the model can only move knobs the optimizer already understands.
+
+    Offline, on any provider error, or on an unparseable / empty proposal, it
+    falls back to :class:`HeuristicReflector`, so air-gapped and test runs stay
+    reproducible. An explicit ``propose`` callable overrides the provider path
+    entirely (deterministic injection); supplying neither a provider nor a
+    callable makes the reflector a thin pass-through to the heuristic floor.
     """
 
     def __init__(
         self,
-        propose: Callable[[PromptSpec, EvalReport | None], list[dict[str, Any]]] | None = None,
+        provider: ModelProvider | None = None,
+        model: str | None = None,
         *,
+        propose: Callable[[PromptSpec, EvalReport | None], list[dict[str, Any]]] | None = None,
         fallback: Reflector | None = None,
+        max_edits: int = 3,
+        max_cases: int = 12,
+        temperature: float = 0.0,
     ) -> None:
+        self.provider = provider
+        self.model = model
         self._propose = propose
         self._fallback = fallback or HeuristicReflector()
+        self.max_edits = max_edits
+        self.max_cases = max_cases
+        self.temperature = temperature
 
     def reflect(
         self,
@@ -340,13 +474,42 @@ class LLMReflector(Reflector):
         report: EvalReport | None,
         *,
         objectives: list[ObjectiveSpec],
+        dataset: Dataset | None = None,
     ) -> Reflection:
-        if self._propose is None:
-            return self._fallback.reflect(spec, report, objectives=objectives)
-        try:
-            raw = self._propose(spec, report)
-        except Exception:
-            return self._fallback.reflect(spec, report, objectives=objectives)
+        accuracy_metric = next(
+            (o.metric for o in objectives if o.name in ("accuracy", "goal")),
+            "semantic_similarity",
+        )
+        diagnosis = "model-proposed edits"
+        raw: list[dict[str, Any]] | None = None
+        if self._propose is not None:
+            try:
+                raw = self._propose(spec, report)
+            except Exception:  # noqa: BLE001 - any proposer error → deterministic floor
+                raw = None
+        elif self.provider is not None:
+            proposal = self._reflect_via_provider(spec, report, dataset, accuracy_metric)
+            if proposal is not None:
+                raw, diagnosis = proposal
+        else:
+            return self._fallback.reflect(spec, report, objectives=objectives, dataset=dataset)
+
+        edits = self._validate(raw)
+        if not edits:
+            return self._fallback.reflect(spec, report, objectives=objectives, dataset=dataset)
+        return Reflection(
+            parent=spec.name,
+            failures_observed=len(report.failures(metric=accuracy_metric)) if report else 0,
+            diagnosis=diagnosis,
+            signals={
+                "groundedness": round(_signal(report, "groundedness", 1.0), 4),
+                "schema_validity": round(_signal(report, "schema_validity", 1.0), 4),
+                "accuracy": round(_signal(report, accuracy_metric, 1.0), 4),
+            },
+            edits=edits[: self.max_edits],
+        )
+
+    def _validate(self, raw: list[dict[str, Any]] | None) -> list[ProposedEdit]:
         edits: list[ProposedEdit] = []
         for item in raw or []:
             try:
@@ -355,14 +518,69 @@ class LLMReflector(Reflector):
                 continue
             if edit.field in _EDIT_FIELDS:
                 edits.append(edit)
-        if not edits:
-            return self._fallback.reflect(spec, report, objectives=objectives)
-        return Reflection(
-            parent=spec.name,
-            failures_observed=len(report.failures()) if report else 0,
-            diagnosis="model-proposed edits",
-            edits=edits,
+        return edits
+
+    def _reflect_via_provider(
+        self,
+        spec: PromptSpec,
+        report: EvalReport | None,
+        dataset: Dataset | None,
+        accuracy_metric: str,
+    ) -> tuple[list[dict[str, Any]], str] | None:
+        from ..core.types import Message, ModelRequest
+        from ..output.parsers import extract_json
+        from ..providers.base import run_sync
+
+        clusters = cluster_failures(
+            report, dataset, accuracy_metric=accuracy_metric, max_cases=self.max_cases
         )
+        if not clusters:
+            return None
+        user = self._build_user_prompt(spec, clusters)
+        request = ModelRequest(
+            model=self.model or "",
+            messages=[
+                Message(
+                    role="system",
+                    content=f"{_REFLECT_SYSTEM}\nPropose at most {self.max_edits} edits.",
+                ),
+                Message(role="user", content=user),
+            ],
+            temperature=self.temperature,
+            max_output_tokens=1024,
+        )
+        try:
+            response = run_sync(self.provider.generate(request))  # type: ignore[union-attr]
+            parsed = extract_json(response.text or "")
+        except Exception:  # noqa: BLE001 - provider/parse failure → caller falls back
+            return None
+        if isinstance(parsed, dict):
+            edits = parsed.get("edits")
+            diagnosis = str(parsed.get("diagnosis") or "model-proposed edits")
+        elif isinstance(parsed, list):
+            edits, diagnosis = parsed, "model-proposed edits"
+        else:
+            return None
+        if not isinstance(edits, list):
+            return None
+        return edits, diagnosis
+
+    @staticmethod
+    def _build_user_prompt(spec: PromptSpec, clusters: list[dict[str, Any]]) -> str:
+        import json
+
+        lines = ["Current prompt fields:"]
+        lines.append(f"- objective: {spec.objective!r}")
+        lines.append(f"- reasoning_mode: {spec.reasoning_mode!r}")
+        lines.append(f"- citation_policy: {spec.citation_policy!r}")
+        lines.append(f"- rules: {list(spec.rules)}")
+        lines.append(f"- examples: {len(spec.examples)} few-shot example(s)")
+        lines.append("\nFailure modes (most common first):")
+        for cluster in clusters:
+            lines.append(f"\n## {cluster['mode']} — {cluster['count']} case(s)")
+            for case in cluster["cases"]:
+                lines.append(json.dumps(case, ensure_ascii=False))
+        return "\n".join(lines)
 
 
 def apply_edits(
@@ -631,8 +849,9 @@ class ReflectiveOptimizer:
             parent = parent_point.candidate or baseline
             rounds += 1
 
-            reflection = self.reflector.reflect(
-                parent.payload.spec, parent.full_report, objectives=self.objectives
+            reflection = _invoke_reflect(
+                self.reflector, parent.payload.spec, parent.full_report,
+                objectives=self.objectives, dataset=dataset,
             )
             reflections.append(reflection)
             if not reflection.edits:

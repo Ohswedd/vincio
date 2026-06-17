@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "1.9.1"
+version = "1.10.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -68,6 +68,8 @@ gen-pptx = ["python-pptx>=0.6"]
 ocr = ["pypdfium2>=4.0", "pytesseract>=0.3", "pillow>=10.0"]
 parquet = ["pyarrow>=14.0"]
 msg = ["extract-msg>=0.48"]
+# 1.10 — computer-use / agentic browsing (real browser backend)
+computer-use = ["playwright>=1.40"]
 dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
@@ -75,7 +77,7 @@ dev = [
   "mypy>=1.9",
 ]
 all = [
-  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,gen-docx,gen-pdf,gen-pptx,ocr,parquet,msg]",
+  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,gen-docx,gen-pdf,gen-pptx,ocr,parquet,msg,computer-use]",
 ]
 
 [project.scripts]

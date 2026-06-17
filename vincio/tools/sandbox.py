@@ -14,16 +14,31 @@ from __future__ import annotations
 
 import asyncio
 import os
+import shutil
 import sys
 import tempfile
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel
 
-from ..core.errors import ToolTimeoutError
+from ..core.errors import SandboxError, ToolTimeoutError
 
-__all__ = ["SandboxResult", "run_subprocess_sandboxed", "SandboxedPython"]
+__all__ = [
+    "SandboxResult",
+    "run_subprocess_sandboxed",
+    "SandboxedPython",
+    "IsolationBackend",
+    "SubprocessIsolation",
+    "ContainerIsolation",
+    "MicroVMIsolation",
+    "GVisorIsolation",
+    "WASMIsolation",
+    "ISOLATION_BACKENDS",
+    "get_isolation_backend",
+    "require_real_isolation",
+]
 
 _SAFE_ENV_KEYS = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "TERM")
 
@@ -150,6 +165,8 @@ class SandboxedPython:
         max_cpu_seconds: int | None = 10,
         max_memory_bytes: int | None = 512 * 1024 * 1024,
         max_open_files: int | None = 64,
+        isolation: IsolationBackend | str | None = None,
+        require_isolation: bool = False,
     ) -> None:
         self.timeout_s = timeout_s
         self.max_output_bytes = max_output_bytes
@@ -157,12 +174,19 @@ class SandboxedPython:
         self.max_cpu_seconds = max_cpu_seconds
         self.max_memory_bytes = max_memory_bytes
         self.max_open_files = max_open_files
+        self.isolation = (
+            get_isolation_backend(isolation) if isinstance(isolation, str) else isolation
+        ) or SubprocessIsolation()
+        # Code execution is a prime adversarial workload: when ``require_isolation``
+        # is set, refuse to run on the zero-dep subprocess backend (1.10).
+        if require_isolation:
+            require_real_isolation(self.isolation)
 
     async def run(self, code: str) -> SandboxResult:
         with tempfile.TemporaryDirectory(prefix="vincio_sandbox_") as tmp:
             script = Path(tmp) / "snippet.py"
             script.write_text(code, encoding="utf-8")
-            return await run_subprocess_sandboxed(
+            return await self.isolation.run(
                 [self.python_executable, "-I", str(script)],
                 timeout_s=self.timeout_s,
                 max_output_bytes=self.max_output_bytes,
@@ -171,3 +195,152 @@ class SandboxedPython:
                 max_memory_bytes=self.max_memory_bytes,
                 max_open_files=self.max_open_files,
             )
+
+
+# ---------------------------------------------------------------------------
+# Pluggable isolation backends (1.10)
+# ---------------------------------------------------------------------------
+
+
+class IsolationBackend:
+    """A pluggable isolation boundary behind the sandbox interface.
+
+    The default :class:`SubprocessIsolation` is OS-process isolation with
+    ``setrlimit`` — zero-dependency, but *not* a security boundary against a
+    hostile kernel (``real`` is ``False``). Code-executing and computer-use
+    workloads should run on a backend whose ``real`` is ``True``
+    (container / microVM / gVisor / WASM); :func:`require_real_isolation`
+    enforces it. Each real backend wraps a command in its runtime and shells out,
+    degrading with a clear :class:`~vincio.core.errors.SandboxError` when the
+    runtime binary is absent — so the abstraction is uniform whether or not the
+    host has Docker/Firecracker/gVisor/Wasmtime installed.
+    """
+
+    name: str = "subprocess"
+    level: str = "process"  # process | container | microvm | gvisor | wasm
+    real: bool = False  # True only for backends that are a real security boundary
+    runtime_binary: str | None = None
+
+    def available(self) -> bool:
+        if self.runtime_binary is None:
+            return True
+        return shutil.which(self.runtime_binary) is not None
+
+    def _wrap(self, command: list[str], *, cwd: str | Path | None) -> list[str]:
+        """Wrap *command* in this backend's runtime invocation. Override in
+        real backends; the base runs the command unchanged (process isolation)."""
+        return command
+
+    async def run(self, command: list[str], **kwargs: Any) -> SandboxResult:
+        if not self.available():
+            raise SandboxError(
+                f"isolation backend {self.name!r} requires {self.runtime_binary!r}, "
+                "which is not installed; install it or choose another backend"
+            )
+        return await run_subprocess_sandboxed(self._wrap(command, cwd=kwargs.get("cwd")), **kwargs)
+
+
+class SubprocessIsolation(IsolationBackend):
+    """Zero-dependency process isolation (the default). Not a security boundary."""
+
+    name = "subprocess"
+    level = "process"
+    real = False
+
+
+class ContainerIsolation(IsolationBackend):
+    """OCI-container isolation via Docker/Podman (``docker run --network none``)."""
+
+    name = "container"
+    level = "container"
+    real = True
+
+    def __init__(self, *, image: str = "python:3.12-slim", runtime: str = "docker",
+                 network: str = "none") -> None:
+        self.image = image
+        self.runtime_binary = runtime
+        self.network = network
+
+    def _wrap(self, command: list[str], *, cwd: str | Path | None) -> list[str]:
+        runtime = self.runtime_binary or "docker"
+        mount = ["-v", f"{cwd}:{cwd}", "-w", str(cwd)] if cwd else []
+        return [
+            runtime, "run", "--rm", f"--network={self.network}",
+            "--read-only", "--cap-drop=ALL", *mount, self.image, *command,
+        ]
+
+
+class GVisorIsolation(ContainerIsolation):
+    """gVisor user-space-kernel isolation (``runsc`` via the Docker runtime)."""
+
+    name = "gvisor"
+    level = "gvisor"
+    real = True
+
+    def __init__(self, *, image: str = "python:3.12-slim", runtime: str = "docker") -> None:
+        super().__init__(image=image, runtime=runtime)
+
+    def _wrap(self, command: list[str], *, cwd: str | Path | None) -> list[str]:
+        wrapped = super()._wrap(command, cwd=cwd)
+        # Insert the gVisor runtime selector after `docker run`.
+        return [*wrapped[:2], "--runtime=runsc", *wrapped[2:]]
+
+
+class MicroVMIsolation(IsolationBackend):
+    """microVM isolation via Firecracker-class runtimes (``ignite``/``firecracker``)."""
+
+    name = "microvm"
+    level = "microvm"
+    real = True
+
+    def __init__(self, *, runtime: str = "ignite", image: str = "python:3.12-slim") -> None:
+        self.runtime_binary = runtime
+        self.image = image
+
+    def _wrap(self, command: list[str], *, cwd: str | Path | None) -> list[str]:
+        runtime = self.runtime_binary or "ignite"
+        return [runtime, "run", self.image, "--", *command]
+
+
+class WASMIsolation(IsolationBackend):
+    """WebAssembly isolation via Wasmtime (capability-based, deny-by-default)."""
+
+    name = "wasm"
+    level = "wasm"
+    real = True
+
+    def __init__(self, *, runtime: str = "wasmtime") -> None:
+        self.runtime_binary = runtime
+
+    def _wrap(self, command: list[str], *, cwd: str | Path | None) -> list[str]:
+        runtime = self.runtime_binary or "wasmtime"
+        mount = ["--dir", str(cwd)] if cwd else []
+        return [runtime, "run", *mount, *command]
+
+
+ISOLATION_BACKENDS: dict[str, type[IsolationBackend]] = {
+    "subprocess": SubprocessIsolation,
+    "container": ContainerIsolation,
+    "gvisor": GVisorIsolation,
+    "microvm": MicroVMIsolation,
+    "wasm": WASMIsolation,
+}
+
+
+def get_isolation_backend(name: str) -> IsolationBackend:
+    """Construct an isolation backend by name (``subprocess`` is the default)."""
+    if name not in ISOLATION_BACKENDS:
+        raise SandboxError(
+            f"unknown isolation backend {name!r}; known: {sorted(ISOLATION_BACKENDS)}"
+        )
+    return ISOLATION_BACKENDS[name]()
+
+
+def require_real_isolation(backend: IsolationBackend) -> None:
+    """Raise unless *backend* is a real security boundary (not bare subprocess)."""
+    if not backend.real:
+        raise SandboxError(
+            f"isolation backend {backend.name!r} is process-level only and is not a "
+            "security boundary; code-executing / computer-use workloads require a real "
+            "backend (container / microvm / gvisor / wasm)"
+        )

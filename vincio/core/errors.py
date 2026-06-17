@@ -42,6 +42,7 @@ __all__ = [
     "ToolValidationError",
     "ToolTimeoutError",
     "ToolApprovalRequiredError",
+    "SandboxError",
     "AgentEngineError",
     "AgentStepError",
     "AgentBudgetExhaustedError",
@@ -323,6 +324,12 @@ class ToolTimeoutError(ToolError):
 
 class ToolApprovalRequiredError(ToolError):
     code = "TOOL_APPROVAL_REQUIRED"
+
+
+class SandboxError(ToolError):
+    """Isolation/sandbox failure: backend unavailable or isolation too weak."""
+
+    code = "SANDBOX_ERROR"
 
 
 # --- agents -----------------------------------------------------------------

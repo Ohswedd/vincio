@@ -133,6 +133,27 @@ class ToolRegistry:
             return wrap(handler)
         return wrap
 
+    def register_spec(self, spec: ToolSpec, *, handler: Callable | None = None) -> RegisteredTool:
+        """Register a pre-built :class:`ToolSpec` (e.g. a provider-native hosted
+        tool that executes server-side, so it has no local handler). The spec —
+        including its ``metadata`` marker — is preserved verbatim."""
+
+        def _hosted_stub(*args: Any, **kwargs: Any) -> Any:
+            raise ToolNotFoundError(
+                f"tool {spec.name!r} is a provider-native hosted tool; it is executed "
+                "by the provider, not locally",
+                tool=spec.name,
+            )
+
+        registered = RegisteredTool(spec=spec, handler=handler or _hosted_stub)
+        self._tools[spec.name] = registered
+        self.stats.setdefault(
+            spec.name,
+            {"calls": 0.0, "successes": 0.0, "failures": 0.0, "total_ms": 0.0,
+             "quality_lift_sum": 0.0, "quality_samples": 0.0},
+        )
+        return registered
+
     def get(self, name: str) -> RegisteredTool:
         if name not in self._tools:
             raise ToolNotFoundError(f"tool {name!r} not registered; known: {self.names}", tool=name)

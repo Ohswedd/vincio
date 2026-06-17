@@ -17,8 +17,15 @@ from ..core.errors import DatasetError
 
 if TYPE_CHECKING:
     from ..observability.spans import Trace
+    from .reports import EvalReport
 
-__all__ = ["EvalCase", "Dataset", "dataset_from_traces"]
+__all__ = [
+    "EvalCase",
+    "Dataset",
+    "dataset_from_traces",
+    "GoldenGateResult",
+    "GoldenRegressionSuite",
+]
 
 
 class EvalCase(BaseModel):
@@ -109,6 +116,119 @@ class Dataset(BaseModel):
             Dataset(name=f"{self.name}_train", cases=shuffled[:cut]),
             Dataset(name=f"{self.name}_held", cases=shuffled[cut:]),
         )
+
+
+class GoldenGateResult(BaseModel):
+    """Verdict of replaying a candidate against the growing golden suite."""
+
+    passed: bool = True
+    checked: int = 0
+    regressed: list[str] = Field(default_factory=list)  # case ids that fell below their floor
+    missing: list[str] = Field(default_factory=list)  # cases the candidate did not run
+    details: dict[str, Any] = Field(default_factory=dict)
+
+
+class GoldenRegressionSuite:
+    """A held-out, *growing* golden regression set with per-case provenance.
+
+    Every time a promotion fixes a previously-failing case, that case is recorded
+    here with the metric and floor it must keep clearing and *which* fix added it
+    (``fixed_by``). Before any later promotion lands, the candidate is replayed
+    against the whole suite and gated: a sequential auto-promotion can never
+    silently undo a prior fix, because regressing any recorded case fails the
+    gate. Backed by a JSONL file (no hosted service); the provenance rides each
+    case's ``metadata`` so the suite is itself a reproducible artifact.
+    """
+
+    def __init__(self, path: str | Path = ".vincio/golden_regression.jsonl",
+                 *, name: str = "golden_regression") -> None:
+        self.path = Path(path)
+        self.name = name
+        self.dataset = Dataset.load(self.path, name=name) if self.path.is_file() else Dataset(name=name)
+
+    def __len__(self) -> int:
+        return len(self.dataset)
+
+    def case_ids(self) -> list[str]:
+        return [c.id for c in self.dataset.cases]
+
+    def add(
+        self,
+        case: EvalCase,
+        *,
+        fixed_by: str,
+        guard_metric: str = "semantic_similarity",
+        guard_threshold: float = 0.5,
+    ) -> EvalCase:
+        """Record a case the latest fix must keep passing (idempotent on id)."""
+        from ..core.utils import utcnow
+
+        recorded = case.model_copy(deep=True)
+        recorded.metadata = {
+            **recorded.metadata,
+            "fixed_by": fixed_by,
+            "guard_metric": guard_metric,
+            "guard_threshold": guard_threshold,
+            "added_at": utcnow().isoformat(),
+        }
+        if "regression_guard" not in recorded.tags:
+            recorded.tags = [*recorded.tags, "regression_guard"]
+        existing = {c.id: i for i, c in enumerate(self.dataset.cases)}
+        if recorded.id in existing:
+            self.dataset.cases[existing[recorded.id]] = recorded
+        else:
+            self.dataset.cases.append(recorded)
+        self.dataset.save(self.path)
+        return recorded
+
+    def add_from_report(
+        self,
+        report: EvalReport,
+        dataset: Dataset,
+        *,
+        fixed_by: str,
+        guard_metric: str = "semantic_similarity",
+        guard_threshold: float = 0.5,
+    ) -> list[str]:
+        """Record every case the candidate now passes above the floor, drawn from
+        the dataset it was evaluated on (so input + expected ride along)."""
+        by_id = {c.id: c for c in dataset.cases}
+        added: list[str] = []
+        for case in report.cases:
+            if case.metrics.get(guard_metric, 0.0) >= guard_threshold and case.case_id in by_id:
+                self.add(by_id[case.case_id], fixed_by=fixed_by,
+                         guard_metric=guard_metric, guard_threshold=guard_threshold)
+                added.append(case.case_id)
+        return added
+
+    def as_dataset(self) -> Dataset:
+        return Dataset(name=self.name, cases=list(self.dataset.cases), metadata=dict(self.dataset.metadata))
+
+    def gate(self, report: EvalReport) -> GoldenGateResult:
+        """Check a candidate's report against every recorded case's floor.
+
+        ``report`` must be the candidate evaluated on :meth:`as_dataset`. A case
+        regresses when its guard metric falls below the floor it was recorded
+        with; an absent case counts as missing (treated as a regression, since
+        the guard cannot be verified)."""
+        from .metrics import LOWER_IS_BETTER
+
+        by_id = {c.case_id: c for c in report.cases}
+        result = GoldenGateResult(checked=len(self.dataset.cases))
+        for case in self.dataset.cases:
+            metric = case.metadata.get("guard_metric", "semantic_similarity")
+            threshold = float(case.metadata.get("guard_threshold", 0.5))
+            scored = by_id.get(case.id)
+            if scored is None or metric not in scored.metrics:
+                result.missing.append(case.id)
+                continue
+            value = scored.metrics[metric]
+            ok = value <= threshold if metric in LOWER_IS_BETTER else value >= threshold
+            if not ok:
+                result.regressed.append(case.id)
+        result.passed = not result.regressed and not result.missing
+        result.details = {"regressed": len(result.regressed), "missing": len(result.missing)}
+        return result
 
 
 def dataset_from_traces(

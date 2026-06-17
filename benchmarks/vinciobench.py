@@ -802,6 +802,27 @@ async def bench_memory() -> dict[str, Any]:
     provenance_retained = bool(report.items) and all(
         item.metadata.get("consolidated_from") for item in report.items
     )
+
+    # 1.10 — self-editing memory OS (append/search/archive over the audited write
+    # pipeline) + a context-pressure pager.
+    from vincio.memory.agent_os import MemoryOS
+
+    os_engine = MemoryEngine(embedder=LocalHashEmbedder())
+    mos = MemoryOS(os_engine, scope="agent", owner_id="agent-1", max_core_tokens=24)
+    appended_id = mos.append("The customer is on the enterprise plan.")
+    memory_os_append_search = bool(appended_id) and any(
+        "enterprise" in hit for hit in mos.search("plan tier")
+    )
+    archived = mos.archive(appended_id)
+    memory_os_archive_pages_out = (
+        archived and appended_id not in mos.core_ids
+        and not any("enterprise" in h for h in mos.search("plan tier"))
+    )
+    for i in range(8):
+        mos.append(f"The account region for customer {i} is the European Union zone.",
+                   importance=0.5 + i * 0.04)
+    memory_os_pager_bounded = mos.core_tokens() <= 24 or len(mos.core_ids) == 1
+
     return {
         "preference_recall": round(recall_hits / len(queries), 4),
         "contradiction_superseded": new.supersedes == old.id,
@@ -814,6 +835,12 @@ async def bench_memory() -> dict[str, Any]:
         "personalization_lift": harness.metrics["personalization_lift"],
         "consolidation_promoted": report.promoted,
         "consolidation_provenance_retained": provenance_retained,
+        # 1.10 — self-editing memory OS + context-pressure pager
+        "memory_os": {
+            "append_search": memory_os_append_search,
+            "archive_pages_out": memory_os_archive_pages_out,
+            "pager_bounded": memory_os_pager_bounded,
+        },
     }
 
 
@@ -912,6 +939,39 @@ async def bench_agent() -> dict[str, Any]:
     starts = sum(1 for e in events if e.type == "node_start")
     ends = sum(1 for e in events if e.type == "node_end")
 
+    # 1.10 — level-parallel DAG execution, plan-and-execute replanning, and
+    # in-loop context compaction.
+    from vincio.agents.compaction import ContextCompactor
+    from vincio.agents.dag import StepDAG
+    from vincio.agents.state import AgentState, AgentStep
+    from vincio.core.types import Message, Objective
+
+    parallel_exec = AgentExecutor(MockProvider(), model="mock-1", planner=Planner(mode="static"))
+    level_dag = StepDAG()
+    level_dag.add(AgentStep(type="think", name="p1", instruction="branch one"))
+    level_dag.add(AgentStep(type="think", name="p2", instruction="branch two"))
+    await parallel_exec._execute_dag(AgentState(objective=Objective(text="parallel")), level_dag)
+    level_parallel = (
+        len(level_dag.topological_levels()[0]) == 2
+        and all(s.status in ("done", "skipped") for s in level_dag.steps.values())
+    )
+
+    pe_executor = AgentExecutor(good, model="mock-1", planner=Planner(mode="plan_and_execute"))
+    pe_state = await pe_executor.run("Answer the question.", budget=Budget(max_steps=12))
+    plan_and_execute_ran = "_replans" in pe_state.working_memory and pe_state.terminated
+
+    compactor = ContextCompactor(max_tokens=40, keep_recent=2, summary_tokens=30)
+    long_blocks = [f"Observation {i} with descriptive content to exceed the budget." for i in range(12)]
+    summary, kept = compactor.compact_blocks(long_blocks)
+    compaction_summarizes = summary is not None and len(kept) < len(long_blocks)
+    short_summary, short_kept = ContextCompactor(max_tokens=10_000).compact_blocks(["a", "b"])
+    compaction_under_budget_intact = short_summary is None and short_kept == ["a", "b"]
+    msgs = [Message(role="system", content="sys"),
+            Message(role="user", content="solve with much detail and length here please now"),
+            *[Message(role="assistant", content=f"step {i} padded reasoning text here") for i in range(8)]]
+    compacted_msgs = compactor.compact_messages(msgs)
+    compaction_keeps_anchor = compacted_msgs[0].role == "system" and len(compacted_msgs) < len(msgs)
+
     return {
         "adversarial_terminated": state.terminated,
         "termination_reason": state.termination_reason,
@@ -928,6 +988,16 @@ async def bench_agent() -> dict[str, Any]:
         "graph_fork_replay_deterministic": replayed.state == straight.state,
         "graph_checkpoints_per_run": len(interrupted_graph.history(paused.thread_id)),
         "compose_stream_coverage": (starts == 3 and ends == 3 and events[-1].type == "done"),
+        # 1.10 — level-parallel DAG, plan-and-execute, in-loop compaction
+        "parallel": {
+            "level_parallel": level_parallel,
+            "plan_and_execute_ran": plan_and_execute_ran,
+        },
+        "compaction": {
+            "summarizes_over_budget": compaction_summarizes,
+            "intact_under_budget": compaction_under_budget_intact,
+            "keeps_anchor": compaction_keeps_anchor,
+        },
     }
 
 
@@ -961,10 +1031,70 @@ async def bench_security() -> dict[str, Any]:
     pii_hits = sum(
         1 for kind, text in pii_samples.items() if any(m.type == kind for m in pii.detect(text))
     )
+
+    # 1.10 — hardened isolation backends + provider-native hosted-tool permissioning.
+    from vincio import ContextApp, VincioConfig
+    from vincio.core.errors import SandboxError
+    from vincio.providers import MockProvider
+    from vincio.providers.hosted_tools import HOSTED_TOOLS, hosted_tool_specs, is_hosted
+    from vincio.tools.sandbox import (
+        ContainerIsolation,
+        GVisorIsolation,
+        SubprocessIsolation,
+        WASMIsolation,
+        require_real_isolation,
+    )
+
+    subprocess_not_real = SubprocessIsolation().real is False
+    real_backends_flagged = all(
+        b.real for b in (ContainerIsolation(), GVisorIsolation(), WASMIsolation())
+    )
+    try:
+        require_real_isolation(SubprocessIsolation())
+        require_blocks_subprocess = False
+    except SandboxError:
+        require_blocks_subprocess = True
+
+    hosted = hosted_tool_specs(["web_search", "computer_use"])
+    hosted_namespaced = all(is_hosted(s) and s.name.startswith("openai:") for s in hosted)
+    computer_use_gated = (
+        HOSTED_TOOLS["computer_use"].approval_required
+        and HOSTED_TOOLS["computer_use"].permissions == ["computer:use"]
+    )
+
+    sec_cfg = VincioConfig()
+    sec_cfg.storage.metadata = "memory://"
+    sec_cfg.observability.exporter = "memory"
+    cu_app = ContextApp(name="secbench", provider=MockProvider(), model="mock-1", config=sec_cfg)
+    cu_app.enable_computer_use("mock")
+    cu_spec = cu_app.tool_registry.get("computer_navigate").spec
+    computer_use_permissioned = (
+        "computer:use" in cu_spec.permissions and cu_spec.side_effects == "external"
+        and cu_spec.approval_required
+    )
+    cu_app.use_hosted_tools(["web_search"])
+    hosted_registered = "openai:web_search" in cu_app.tool_registry
+    isolation_audited = cu_app.audit.verify_chain()
+
     return {
         "injection_detection_rate": round(detected / len(attacks), 4),
         "injection_false_positive_rate": round(false_positives / len(benign), 4),
         "pii_coverage": round(pii_hits / len(pii_samples), 4),
+        # 1.10 — hardened isolation + hosted-tool permissioning
+        "isolation": {
+            "subprocess_not_a_boundary": subprocess_not_real,
+            "real_backends_flagged": real_backends_flagged,
+            "require_real_blocks_subprocess": require_blocks_subprocess,
+        },
+        "hosted_tools": {
+            "namespaced_and_marked": hosted_namespaced,
+            "computer_use_gated": computer_use_gated,
+            "registered_on_app": hosted_registered,
+        },
+        "computer_use": {
+            "permissioned": computer_use_permissioned,
+            "audited": isolation_audited,
+        },
     }
 
 
@@ -1443,6 +1573,75 @@ async def bench_loop() -> dict[str, Any]:
     replay = await ReplayRunner(replay_app).replay([original_trace])
     replay_output_match = replay.cases[0].output_match if replay.cases else False
 
+    # -- 1.10: the continual loop closes itself (drift → gated action / rollback,
+    # held-out non-regression, distributional drift, restart-safe online state) --
+    from vincio.evals import EvalReport as _ER
+    from vincio.evals import GoldenRegressionSuite
+    from vincio.evals.drift import CUSUMDetector, ks_drift, psi
+    from vincio.evals.metrics import RunOutput
+    from vincio.evals.online import OnlineEvaluator
+    from vincio.evals.reports import CaseResult as _CR
+    from vincio.optimize.controller import ContinuousImprovementController
+    from vincio.storage.base import InMemoryMetadataStore
+
+    # Drift detectors: CUSUM catches a sustained shift; KS/PSI separate a moved
+    # distribution from a stable one.
+    cusum = CUSUMDetector(target=0.9, sigma=0.05, slack=0.5, threshold=3.0)
+    cusum_fires = any(cusum.observe(v) for v in [0.5, 0.45, 0.4, 0.4, 0.4])
+    _ks_d, _ks_p, ks_shift = ks_drift(list(range(20)), [x + 50 for x in range(20)])
+    _, _, ks_clean = ks_drift(list(range(20)), list(range(20)))
+    psi_shift = psi(list(range(20)), [x + 100 for x in range(20)]) > 0.25
+
+    # Controller: a safety regression rolls back to the last known-good version;
+    # a false alarm is cleared by a targeted re-eval; state is restart-safe.
+    def _controller_app():
+        c = VincioConfig()
+        c.storage.metadata = "memory://"
+        c.observability.exporter = "memory"
+        c.security.audit_log = False
+        return ContextApp(name="ctlbench", provider=MockProvider(), model="mock-1", config=c)
+
+    ctl_app = _controller_app()
+    ctl_reg = PromptRegistry(tempfile.mkdtemp(prefix="vinciobench_ctl_"))
+    good_v = ctl_reg.push(ctl_app.prompt_spec, tags=["production"])
+    ctl_reg.push(ctl_app.prompt_spec.model_copy(update={"objective": "regressed head"}))
+    ctl_app.prompt_spec = ctl_reg.get(ctl_app.prompt_spec.name).spec
+    controller = ContinuousImprovementController(
+        ctl_app, metrics=["safety"], sustain=1, registry=ctl_reg,
+        prompt_name=ctl_app.prompt_spec.name,
+    )
+    rollback_decision = controller.evaluate("safety", {"method": "cusum"})
+    controller_rolled_back = (
+        rollback_decision.action == "rolled_back" and rollback_decision.rolled_back_to == good_v.ref
+    )
+    controller_restart_safe = (
+        ContinuousImprovementController(ctl_app, metrics=["safety"], sustain=5)._budget_spent
+        == controller._budget_spent
+    )
+
+    # Held-out, growing golden regression suite: a candidate that regresses a
+    # recorded fix is blocked.
+    suite = GoldenRegressionSuite(tempfile.mktemp(suffix=".jsonl"))
+    suite.add(EvalCase(id="g1", input="q", expected="a"),
+              fixed_by="seed@v1", guard_metric="semantic_similarity", guard_threshold=0.8)
+    pass_report = _ER(cases=[_CR(case_id="g1", metrics={"semantic_similarity": 0.95})])
+    fail_report = _ER(cases=[_CR(case_id="g1", metrics={"semantic_similarity": 0.3})])
+    guard_blocks = not suite.gate(fail_report).passed and suite.gate(pass_report).passed
+
+    # Online state: the sampling counter is restart-safe and worker-aggregatable.
+    online_store = InMemoryMetadataStore()
+    ev1 = OnlineEvaluator("groundedness", sample_rate=0.5, store=online_store, app_name="ob", worker_id="w1")
+    for _ in range(4):
+        ev1.observe(RunOutput(raw_text="x", metadata={"input": "q"}), run_id="r")
+    online_restart_safe = (
+        OnlineEvaluator("groundedness", sample_rate=0.5, store=online_store, app_name="ob", worker_id="w1")._counter
+        == ev1._counter
+    )
+    ev2 = OnlineEvaluator("groundedness", sample_rate=0.5, store=online_store, app_name="ob", worker_id="w2")
+    for _ in range(6):
+        ev2.observe(RunOutput(raw_text="x", metadata={"input": "q"}), run_id="r")
+    online_worker_aggregated = ev1.observed_total() == 10
+
     return {
         "promotion": {
             "promoted": result_a.promoted,
@@ -1502,6 +1701,24 @@ async def bench_loop() -> dict[str, Any]:
             "fidelity_preserved": fidelity_ok,
             "token_reduction": round(1.0 - compressed.compressed_tokens / compressed.original_tokens, 4),
             "faithfulness_gated": adopt_result.adopted and not comp_gate_result.adopted,
+        },
+        # 1.10 — the loop closes itself
+        "drift": {
+            "cusum_detects_shift": cusum_fires,
+            "ks_detects_shift": ks_shift,
+            "ks_clean_no_drift": not ks_clean,
+            "psi_detects_shift": psi_shift,
+        },
+        "continual": {
+            "drift_triggers_rollback": controller_rolled_back,
+            "restart_safe": controller_restart_safe,
+        },
+        "non_regression": {
+            "guard_blocks_regression": guard_blocks,
+        },
+        "online_state": {
+            "counter_restart_safe": online_restart_safe,
+            "worker_aggregated": online_worker_aggregated,
         },
     }
 
@@ -1828,6 +2045,66 @@ async def bench_agentic_evals() -> dict[str, Any]:
         queue.label(item.id, human)
     judge_trusted = queue.judge_trusted(threshold=0.6)
 
+    # 5. 1.10 — the real provider-backed reflector reads the actual failures and
+    # clusters them into modes, proposing the targeted edit the mode calls for.
+    import json as _json
+    import re
+
+    from vincio import ContextApp, VincioConfig
+    from vincio.evals.datasets import EvalCase
+    from vincio.evals.reports import CaseResult, EvalReport
+    from vincio.optimize.pareto import objectives_from_weights
+    from vincio.optimize.reflective import LLMReflector, cluster_failures
+    from vincio.optimize.search import FitnessWeights
+    from vincio.prompts.templates import PromptSpec
+    from vincio.providers import MockProvider
+
+    objs = objectives_from_weights(FitnessWeights())
+    fail_report = EvalReport(cases=[
+        CaseResult(case_id="c1", metrics={"groundedness": 0.2, "semantic_similarity": 0.3,
+                                          "schema_validity": 1.0}, output_text="uncited claim"),
+    ])
+    refl_ds = Dataset(cases=[EvalCase(id="c1", input="what is the refund window?", expected="30 days")])
+    clusters = cluster_failures(fail_report, refl_ds)
+    cluster_mode_correct = bool(clusters) and clusters[0]["mode"] == "groundedness"
+
+    def _reflect_responder(request):
+        return _json.dumps({
+            "diagnosis": "answers were under-cited",
+            "edits": [{"field": "citation_policy", "op": "set",
+                       "value": "Cite [Ek] for every claim.", "rationale": "low groundedness"}],
+        })
+
+    reflector = LLMReflector(MockProvider(responder=_reflect_responder), "mock-1")
+    reflection = reflector.reflect(
+        PromptSpec(name="r", objective="answer"), fail_report, objectives=objs, dataset=refl_ds
+    )
+    reflector_diagnoses_fix = any(e.field == "citation_policy" for e in reflection.edits)
+
+    # 6. 1.10 — deep research: cited, grounded, budgeted, deduped.
+    research_cfg = VincioConfig()
+    research_cfg.storage.metadata = "memory://"
+    research_cfg.observability.exporter = "memory"
+    research_cfg.security.audit_log = False
+
+    def _research_responder(request):
+        text = "\n".join(m.text for m in request.messages)
+        match = re.search(r"\[([\w.:-]+)\]", text)
+        ref = match.group(1) if match else "E1"
+        return f"The Pro plan refund window is 30 days. [{ref}]"
+
+    research_app = ContextApp(name="researchbench",
+                              provider=MockProvider(responder=_research_responder),
+                              model="mock-1", config=research_cfg)
+    research_app.add_source("corpus", documents=corpus_documents())
+    from vincio.agents.research import ResearchAgent, ResearchBudget
+
+    research = ResearchAgent(research_app, budget=ResearchBudget(breadth=3, depth=1, max_sources=6)).run(
+        "What is the refund window for the Pro plan?"
+    )
+    source_ids = [s.id for s in research.sources]
+    research_deduped = len(source_ids) == len(set(source_ids))
+
     return {
         "trajectory_agreement": round(trajectory_agreement, 4),
         "labeled_metrics_checked": total,
@@ -1839,6 +2116,18 @@ async def bench_agentic_evals() -> dict[str, Any]:
         "drift_specificity": round(drift_specificity, 4),
         "cohen_kappa_tracked": round(kappa, 4),
         "judge_trusted_above_threshold": judge_trusted,
+        # 1.10 — real reflector + deep research
+        "reflector": {
+            "cluster_mode_correct": cluster_mode_correct,
+            "diagnoses_fix": reflector_diagnoses_fix,
+        },
+        "deep_research": {
+            "citation_coverage": research.metrics.get("citation_coverage", 0.0),
+            "grounding": research.metrics.get("grounding", 0.0),
+            "sources_within_budget": len(research.sources) <= 6,
+            "deduped": research_deduped,
+            "has_sources": len(research.sources) >= 1,
+        },
     }
 
 
