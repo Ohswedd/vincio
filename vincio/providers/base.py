@@ -15,7 +15,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import AsyncIterator, Iterator
-from typing import Any
+from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
@@ -42,6 +42,7 @@ from .capabilities import RequestNeeds, capability_check, requirements_for
 __all__ = [
     "ModelProvider",
     "HTTPProvider",
+    "AuthStrategy",
     "RetryingProvider",
     "FailoverChain",
     "ProviderRegistry",
@@ -251,6 +252,26 @@ class ModelProvider(ABC):
         return None
 
 
+@runtime_checkable
+class AuthStrategy(Protocol):
+    """Computes the auth headers for a single outbound provider request.
+
+    2.0 introduces this so :class:`HTTPProvider` is no longer limited to a
+    static api-key header: enterprise endpoints (AWS Bedrock SigV4, Google
+    Vertex service-account OAuth, Azure ``api-key``/AAD) plug their per-request
+    signing in here, routed through the same registry, capability guards, swap
+    gate, residency, and audit chain as every other provider.
+
+    Given the exact ``method`` / ``url`` / ``body`` bytes about to be sent (so a
+    signature binds them) plus the provider's ``base_headers``, return the full
+    header set to send.
+    """
+
+    def headers(
+        self, *, method: str, url: str, body: bytes, base_headers: dict[str, str]
+    ) -> dict[str, str]: ...
+
+
 class HTTPProvider(ModelProvider):
     """Shared httpx plumbing for HTTP API providers."""
 
@@ -263,6 +284,7 @@ class HTTPProvider(ModelProvider):
         client: httpx.AsyncClient | None = None,
         max_connections: int = 100,
         max_keepalive_connections: int = 20,
+        auth: AuthStrategy | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = (base_url or self.default_base_url).rstrip("/")
@@ -272,6 +294,9 @@ class HTTPProvider(ModelProvider):
         self._client = client
         self._owns_client = client is None
         self._client_loop: asyncio.AbstractEventLoop | None = None
+        # 2.0: optional per-request auth strategy. When None, the static
+        # ``_headers()`` path is used unchanged (every 1.x provider).
+        self.auth = auth
 
     default_base_url: str = ""
     requires_api_key: bool = True
@@ -317,6 +342,24 @@ class HTTPProvider(ModelProvider):
     def _headers(self) -> dict[str, str]:
         return {"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"}
 
+    def _prepare(
+        self, method: str, url: str, payload: dict[str, Any] | None
+    ) -> tuple[dict[str, str], dict[str, Any]]:
+        """Resolve (headers, httpx-call-kwargs) for one request.
+
+        When an :class:`AuthStrategy` is set, the body is serialized once and
+        signed over those exact bytes (sent via ``content=`` so httpx does not
+        re-serialize and break the signature). Otherwise the legacy ``json=``
+        path with static ``_headers()`` is used unchanged.
+        """
+        if self.auth is None:
+            return self._headers(), ({} if payload is None else {"json": payload})
+        body = json.dumps(payload).encode("utf-8") if payload is not None else b""
+        headers = self.auth.headers(
+            method=method, url=url, body=body, base_headers=self._headers()
+        )
+        return headers, ({} if payload is None else {"content": body})
+
     def _raise_for_status(self, response: httpx.Response) -> None:
         if response.status_code < 400:
             return
@@ -344,10 +387,10 @@ class HTTPProvider(ModelProvider):
 
     async def _post_json(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         self._check_key()
+        url = f"{self.base_url}{path}"
+        headers, call_kwargs = self._prepare("POST", url, payload)
         try:
-            response = await self.client.post(
-                f"{self.base_url}{path}", json=payload, headers=self._headers()
-            )
+            response = await self.client.post(url, headers=headers, **call_kwargs)
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(str(exc), provider=self.name) from exc
         except httpx.HTTPError as exc:
@@ -357,8 +400,10 @@ class HTTPProvider(ModelProvider):
 
     async def _get_json(self, path: str) -> dict[str, Any]:
         self._check_key()
+        url = f"{self.base_url}{path}"
+        headers, _ = self._prepare("GET", url, None)
         try:
-            response = await self.client.get(f"{self.base_url}{path}", headers=self._headers())
+            response = await self.client.get(url, headers=headers)
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(str(exc), provider=self.name) from exc
         except httpx.HTTPError as exc:
@@ -368,8 +413,10 @@ class HTTPProvider(ModelProvider):
 
     async def _get_text(self, path: str) -> str:
         self._check_key()
+        url = f"{self.base_url}{path}"
+        headers, _ = self._prepare("GET", url, None)
         try:
-            response = await self.client.get(f"{self.base_url}{path}", headers=self._headers())
+            response = await self.client.get(url, headers=headers)
         except httpx.TimeoutException as exc:
             raise ProviderTimeoutError(str(exc), provider=self.name) from exc
         except httpx.HTTPError as exc:
@@ -379,9 +426,11 @@ class HTTPProvider(ModelProvider):
 
     async def _post_stream(self, path: str, payload: dict[str, Any]) -> AsyncIterator[str]:
         self._check_key()
+        url = f"{self.base_url}{path}"
+        headers, call_kwargs = self._prepare("POST", url, payload)
         try:
             async with self.client.stream(
-                "POST", f"{self.base_url}{path}", json=payload, headers=self._headers()
+                "POST", url, headers=headers, **call_kwargs
             ) as response:
                 if response.status_code >= 400:
                     await response.aread()

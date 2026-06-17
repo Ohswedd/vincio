@@ -6,6 +6,7 @@ from ..core.config import ProviderConfig
 from ..core.errors import ConfigError
 from .anthropic import AnthropicProvider
 from .base import (
+    AuthStrategy,
     FailoverChain,
     HTTPProvider,
     ModelProvider,
@@ -35,6 +36,14 @@ from .capabilities import (
 )
 from .circuit import CircuitBreaker, CircuitState, HealthAwareFailover
 from .discovery import discover_models
+from .enterprise import (
+    AzureKeyAuth,
+    AzureOpenAIProvider,
+    BearerTokenAuth,
+    BedrockProvider,
+    SigV4Auth,
+    VertexProvider,
+)
 from .google import GoogleProvider
 from .keypool import KeyPool, RateLimiter
 from .lifecycle import LifecycleAlert, LifecycleWatcher, MigrationProposal
@@ -117,6 +126,13 @@ __all__ = [
     "instance_from_schema",
     "default_registry",
     "build_provider",
+    "AuthStrategy",
+    "BedrockProvider",
+    "VertexProvider",
+    "AzureOpenAIProvider",
+    "SigV4Auth",
+    "AzureKeyAuth",
+    "BearerTokenAuth",
 ]
 
 _registry = ProviderRegistry()
@@ -134,6 +150,13 @@ _registry.register("mock", lambda **kw: MockProvider(**{k: v for k, v in kw.item
 # presets (groq, together, fireworks, openrouter, deepseek, perplexity, xai,
 # nvidia). Their API keys resolve from the conventional <NAME>_API_KEY env var.
 _registry.register("openai_compat", OpenAICompatibleProvider)
+# 2.0: enterprise deployment endpoints behind the pluggable AuthStrategy —
+# routed through the same registry, capability guards, swap gate, residency, and
+# audit chain as every other provider. Bedrock requires (region + AWS creds),
+# Vertex requires (project + access token), Azure requires (endpoint + key/AAD).
+_registry.register("bedrock", BedrockProvider)
+_registry.register("vertex", VertexProvider)
+_registry.register("azure", AzureOpenAIProvider)
 for _preset in PRESETS:
     _registry.register(_preset, _preset_factory(_preset))
 

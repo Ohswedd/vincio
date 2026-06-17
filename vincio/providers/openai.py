@@ -203,9 +203,13 @@ class OpenAIProvider(HTTPProvider):
 
     # -- API --------------------------------------------------------------------
 
+    def _chat_path(self, request: ModelRequest) -> str:
+        """Chat-completions path. Overridden by Azure for deployment routing."""
+        return "/chat/completions"
+
     async def generate(self, request: ModelRequest) -> ModelResponse:
         started = time.monotonic()
-        data = await self._post_json("/chat/completions", self._payload(request))
+        data = await self._post_json(self._chat_path(request), self._payload(request))
         latency_ms = int((time.monotonic() - started) * 1000)
         return self._parse_response(data, request, latency_ms)
 
@@ -216,7 +220,7 @@ class OpenAIProvider(HTTPProvider):
         tool_accumulator: dict[int, dict[str, Any]] = {}
         finish_reason = "stop"
         model_name = request.model
-        async for line in self._post_stream("/chat/completions", self._payload(request, stream=True)):
+        async for line in self._post_stream(self._chat_path(request), self._payload(request, stream=True)):
             data_str = parse_sse_lines(line)
             if data_str is None or data_str == "[DONE]":
                 continue
