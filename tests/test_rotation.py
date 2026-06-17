@@ -520,6 +520,102 @@ class TestDiscoveryAndBatch:
         assert table.cost("gemini-2.5-flash", usage, batch=True) < table.cost("gemini-2.5-flash", usage)
 
 
+class TestGoogleBatchCassette:
+    """Verify the real GoogleBatchBackend wire format offline, against recorded
+    Gemini-shaped responses served by an httpx mock transport — so the URL paths,
+    inlined request/response envelope, status mapping, parsing, reconciliation,
+    and half-cost billing are all exercised without a live endpoint."""
+
+    @staticmethod
+    def _provider(handler):
+        import httpx
+
+        from vincio.providers.google import GoogleProvider
+
+        return GoogleProvider(api_key="test", client=httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+
+    async def test_submit_poll_results_lifecycle(self):
+        import json as _json
+
+        import httpx
+
+        from vincio.observability.costs import PriceTable
+
+        captured: dict = {}
+        completed = {
+            "name": "batches/abc", "done": True,
+            "metadata": {"state": "BATCH_STATE_SUCCEEDED",
+                         "requestCounts": {"succeeded": 1, "failed": 1}},
+            "response": {"inlinedResponses": {"inlinedResponses": [
+                {"metadata": {"key": "r0"}, "response": {
+                    "candidates": [{"content": {"parts": [{"text": "Paris"}]}, "finishReason": "STOP"}],
+                    "usageMetadata": {"promptTokenCount": 5, "candidatesTokenCount": 2}}},
+                {"metadata": {"key": "r1"}, "error": {"code": 3, "message": "bad request"}},
+            ]}},
+        }
+
+        def handler(request):
+            path = request.url.path
+            if request.method == "POST" and path.endswith(":batchGenerateContent"):
+                captured["path"] = path
+                captured["body"] = _json.loads(request.content)
+                return httpx.Response(200, json={"name": "batches/abc",
+                                                 "metadata": {"state": "BATCH_STATE_PENDING"}})
+            if request.method == "GET" and path.endswith("/batches/abc"):
+                return httpx.Response(200, json=completed)
+            return httpx.Response(404, json={"error": {"message": f"unexpected {request.method} {path}"}})
+
+        provider = self._provider(handler)
+        runner = BatchRunner(GoogleBatchBackend(provider), discount=0.5, poll_interval_s=0.0)
+        reqs = [
+            BatchRequest(custom_id="r0", request=ModelRequest(
+                model="gemini-2.5-flash", messages=[Message(role="user", content="capital of France?")])),
+            BatchRequest(custom_id="r1", request=ModelRequest(
+                model="gemini-2.5-flash", messages=[Message(role="user", content="x")])),
+        ]
+        result = await runner.run(reqs)
+
+        # wire: model in the path + inlined envelope keyed by custom_id
+        assert "gemini-2.5-flash:batchGenerateContent" in captured["path"]
+        inlined = captured["body"]["batch"]["inputConfig"]["requests"]["requests"]
+        assert [e["metadata"]["key"] for e in inlined] == ["r0", "r1"]
+        assert "contents" in inlined[0]["request"]  # GoogleProvider._payload output
+
+        # reconciliation + parse via the real provider response parser
+        by_id = result.by_id()
+        assert by_id["r0"].ok and by_id["r0"].response.text == "Paris"
+        assert not by_id["r1"].ok and "bad request" in by_id["r1"].error
+
+        # half-cost billed on the succeeded response
+        sync = PriceTable().cost("gemini-2.5-flash", by_id["r0"].response.usage)
+        assert by_id["r0"].response.cost_usd <= sync * 0.5 + 1e-12
+        await runner.aclose()
+
+    async def test_cancel(self):
+        import httpx
+
+        def handler(request):
+            path = request.url.path
+            if request.method == "POST" and path.endswith(":batchGenerateContent"):
+                return httpx.Response(200, json={"name": "batches/xyz",
+                                                 "metadata": {"state": "BATCH_STATE_PENDING"}})
+            if request.method == "POST" and path.endswith(":cancel"):
+                return httpx.Response(200, json={"name": "batches/xyz",
+                                                 "metadata": {"state": "BATCH_STATE_CANCELLED"}})
+            return httpx.Response(404, json={"error": {"message": "unexpected"}})
+
+        backend = GoogleBatchBackend(self._provider(handler))
+        job, _ = await BatchRunner(backend).submit([
+            BatchRequest(custom_id="r0", request=ModelRequest(
+                model="gemini-2.5-flash", messages=[Message(role="user", content="x")]))
+        ])
+        cancelled = await backend.cancel(job)
+        from vincio.providers.batch import BatchStatus
+
+        assert cancelled.status == BatchStatus.CANCELLED
+        await backend.aclose()
+
+
 # --------------------------------------------------------------------------- #
 # ContextApp wiring
 # --------------------------------------------------------------------------- #
@@ -626,6 +722,88 @@ class TestReviewHardening:
         app.residency = _Deny()
         with pytest.raises(ResidencyViolationError):
             app.use_router(["gpt-5.2", "gpt-5.2-nano"])
+
+
+class _DenyModelResidency:
+    """A residency stub that denies one specific model id (region-agnostic)."""
+
+    enforced = True
+
+    def __init__(self, denied: str):
+        self.denied = denied
+
+    def check(self, *, provider, model, base_url):
+        from types import SimpleNamespace
+
+        if model == self.denied:
+            return SimpleNamespace(message=f"{model} region not allowed",
+                                   details={"region": "eu", "allowed_regions": ["us"]})
+        return None
+
+
+class TestResidencyRunBoundary:
+    """Residency is a run-boundary choke point over EVERY reachable model, not
+    only the primary — even for candidates added before residency was tightened."""
+
+    def _app(self):
+        from vincio.core.config import VincioConfig
+
+        cfg = VincioConfig()
+        cfg.observability.exporter = "memory"
+        return ContextApp(name="resb", provider=MockProvider(default_text="ok"),
+                          model="gpt-5.2", config=cfg)
+
+    def test_router_candidate_caught_at_run_boundary(self):
+        from vincio.core.errors import ResidencyViolationError
+
+        app = self._app()
+        app.use_router(["gpt-5.2", "gpt-5.2-nano"])  # wiring under no residency
+        app.residency = _DenyModelResidency("gpt-5.2-nano")  # tighten after wiring
+        # The choke point (resolve_provider) now refuses the reachable candidate.
+        with pytest.raises(ResidencyViolationError):
+            app.resolve_provider()
+
+    def test_cascade_rung_caught_at_run_boundary(self):
+        from vincio.core.errors import ResidencyViolationError
+
+        app = self._app()
+        app.use_cascade(["gpt-5.2-nano", "gpt-5.2"])  # wiring under no residency
+        app.residency = _DenyModelResidency("gpt-5.2")  # the strong rung
+        with pytest.raises(ResidencyViolationError):
+            app.resolve_provider()
+
+    def test_budget_degrade_model_caught_at_run_boundary(self):
+        from vincio.core.errors import ResidencyViolationError
+
+        app = self._app()
+        app.set_cost_budget(limit_usd=10.0, scope="global", on_breach="degrade",
+                            degrade_model="gpt-5.2-nano")
+        app.residency = _DenyModelResidency("gpt-5.2-nano")
+        with pytest.raises(ResidencyViolationError):
+            app.resolve_provider()
+
+    def test_primary_model_still_enforced(self):
+        from vincio.core.errors import ResidencyViolationError
+
+        app = self._app()
+        app.residency = _DenyModelResidency("gpt-5.2")
+        with pytest.raises(ResidencyViolationError):
+            app.resolve_provider()
+
+    def test_allowed_models_pass(self):
+        app = self._app()
+        app.use_router(["gpt-5.2", "gpt-5.2-nano"])
+        app.residency = _DenyModelResidency("some-other-model")  # none reachable denied
+        assert app.resolve_provider() is not None
+
+    async def test_denied_run_is_surfaced_end_to_end(self):
+        # A reachable disallowed candidate fails the run (not a silent egress).
+        app = self._app()
+        app.use_router(["gpt-5.2", "gpt-5.2-nano"])
+        app.residency = _DenyModelResidency("gpt-5.2-nano")
+        result = await app.arun("hi")
+        assert result.status.value != "succeeded"
+        assert "region" in (result.error or "").lower() or result.status.value in ("denied", "failed")
 
     async def test_repeats_cost_latency_aggregate_consistent(self):
         from vincio.evals.metrics import MetricResult, RunOutput

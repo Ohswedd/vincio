@@ -424,15 +424,23 @@ class AnthropicBatchBackend:
 
 
 class GoogleBatchBackend:
-    """Drives the Gemini Batch API over a :class:`GoogleProvider` (1.8).
+    """Drives the Gemini (Google Developer API) Batch Mode over a
+    :class:`GoogleProvider` (1.8).
 
-    Completes batch parity with OpenAI/Anthropic for the half-cost offline path
-    the eval/regression workloads lean on. Requests are submitted **inline** to
-    ``models/{model}:batchGenerateContent`` keyed by ``custom_id``, the resulting
-    batch operation is polled to a terminal state, and the inlined responses are
-    reconciled by key — reusing :class:`GoogleProvider`'s own payload builder and
-    response parser so a batched call is byte-for-byte the sync one. Vertex AI's
-    batch surface shares this shape (regional endpoint + service-account auth).
+    Completes half-cost batch parity with OpenAI/Anthropic for the eval/regression
+    workloads the swap gate's replay leans on. Requests are submitted **inline**
+    to ``models/{model}:batchGenerateContent`` keyed by ``custom_id``, the
+    resulting batch operation is polled (``GET /{operation}``) to a terminal
+    state, and the inlined responses are reconciled by key — reusing
+    :class:`GoogleProvider`'s own payload builder and response parser so a batched
+    call is byte-for-byte the sync one. The wire handling (URL paths, inlined
+    request/response envelope, ``BATCH_STATE_*`` mapping) is covered offline by
+    recorded-cassette tests against an ``httpx`` mock transport.
+
+    The state map also accepts Vertex AI's ``JOB_STATE_*`` values, but Vertex's
+    batch surface proper (service-account auth + GCS-staged I/O, a distinct
+    request/response shape) lands with the 2.0 enterprise-endpoint providers; this
+    backend targets the Developer API.
     """
 
     name = "google"

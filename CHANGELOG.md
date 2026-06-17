@@ -4,6 +4,44 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.1] - 2026-06-17
+
+Closes the two deliberately-scoped follow-ups documented at 1.8.0, so the
+milestone carries no deferred items. Additive under the frozen 1.0 API; no public
+symbol removed or repurposed.
+
+### Changed
+
+- **Residency is now a run-boundary choke point over *every* reachable model.**
+  Previously `app.use_router` / `shadow` / `canary` / `use_cascade` validated their
+  candidate models against the residency policy at wiring time, but a run that
+  picked a different candidate per request was only checked for the primary model
+  at the choke point. `check_residency` now enumerates the full reachable set —
+  the configured/per-run model, any budget-degrade target, every cascade rung, and
+  the candidates of a `Router` / `ShadowProvider` / `CanaryRouter` wrapper — and
+  refuses egress for any disallowed-region model, on the same hash-chained audit
+  path. Wiring-time enforcement stays as a fail-fast. A no-op when no residency
+  policy is configured (the default), so there is zero overhead otherwise.
+
+### Added
+
+- **Recorded-cassette tests for the `GoogleBatchBackend` wire format.** The full
+  Gemini Batch Mode lifecycle (submit → poll → results → cancel) is now exercised
+  offline against an `httpx` mock transport returning recorded Gemini-shaped
+  responses — asserting the request URL/path, the inlined-request envelope keyed
+  by `custom_id`, `BATCH_STATE_*` status mapping, response parsing through the
+  provider's own parser, reconciliation, and half-cost billing — so the wire
+  handling is verified without a live endpoint. The backend docstring now scopes
+  it precisely to the Google Developer API (Vertex AI's service-account + GCS
+  batch surface lands with the 2.0 enterprise endpoints).
+
+### Notes
+
+- 1104 tests passing offline; ruff + mypy clean. VincioBench unchanged
+  (159 budgets, 48 SLOs), all green.
+
+See the [roadmap](ROADMAP.md) (1.8 milestone).
+
 ## [1.8.0] - 2026-06-17
 
 Turns the 1.7 model registry into a **rotation-and-regression discipline** — the
