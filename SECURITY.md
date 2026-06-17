@@ -3,10 +3,12 @@
 ## Supported versions
 
 Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
-1.0. Security fixes land on the latest 1.x line.
+1.0. Security fixes land on the latest 2.x line.
 
 | Version | Supported |
 | ------- | --------- |
+| 2.0.x   | ✅        |
+| 1.10.x  | ✅        |
 | 1.9.x   | ✅        |
 | 1.8.x   | ✅        |
 | 1.7.x   | ✅        |
@@ -146,6 +148,28 @@ path as any tool, and provider-native hosted tools (`web_search` / `file_search`
 / `code_interpreter` / `computer_use`, executed server-side) are surfaced as
 namespaced, permissioned tools — `computer_use` is approval-gated — so a hosted
 capability is governed exactly like a local one.
+
+The 2.0 breaking window hardens the data-exfiltration and tamper-evidence
+boundaries. A **mandatory egress DLP scan** (`PolicyEngine.scan_egress`, mode
+`security.egress_dlp`: `off` / `warn` / `block`) inspects the *fully-assembled*
+provider request — system prompt, every message, and tool schemas — at both the
+non-streaming and streaming provider-dispatch points, independent of how earlier
+input/output checks were wired. It is the always-on last line of defense: a call
+site that bypassed every other check still passes through it, and in `block` mode
+an outbound credential or sensitive identifier raises `EgressBlockedError`,
+recorded as a deny on the audit chain. **Tenant/ACL scope is pushed into the
+retrieval engine**: `app.tenant_filter` returns a structured `FilterSpec` that the
+vector store applies server-side (Qdrant native filter, pgvector `jsonb` `WHERE`),
+so other tenants' rows are never fetched to the client and dropped — closing the
+fetch-to-filter exfiltration gap and the over-fetch under-fill bug together. The
+hash-chained **audit log becomes tamper-evident against a privileged attacker**:
+with a `ChainSigner` configured (`security.audit_signing_key` for HMAC, or an
+`Ed25519Signer` for third-party verifiability) every entry is signed over its
+`entry_hash`, so forging history requires the key, not just the public hash
+algorithm; periodic Merkle-root checkpoints (`AuditLog.checkpoint`) let a root be
+witnessed externally to pin history irreversibly. Unsigned logs keep the 1.x
+format and still verify. Generated media and image/table evidence ride the same
+content-addressed, provenance-stamped path as text.
 
 ## Supply-chain integrity
 

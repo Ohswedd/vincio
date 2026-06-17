@@ -4,6 +4,81 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-06-17
+
+The one breaking window. Five milestones of additive growth exposed structural
+debt the frozen 1.0 surface could not pay down. 2.0 is the single deliberate
+breaking release — nothing breaks outside it — and it lands the flagship
+multimodal-native Context Packet that genuinely needs the schema change. The
+public-API contract (`API_VERSION`) moves to `2.0`.
+
+### Added
+
+- **Capability facades** — `ContextApp`'s surface is decomposed into six narrow,
+  lazily-constructed, independently-testable views (`vincio.core.facades`):
+  `app.runs` / `.knowledge` / `.governance` / `.optimization` / `.serving` /
+  `.training`. Each exposes one cohesive method group and delegates to the app's
+  implementation; reaching across a boundary raises `AttributeError`. Built on
+  first access, so cold start and footprint scale with what an app uses.
+- **Multimodal-native Context Packet** — `EvidenceItem` and `ContextCandidate`
+  generalize from text-only to typed `modality` (`text` / `image` / `table`)
+  with `image` (`ImageRef`) / `table` carriers and modality-aware token cost, so
+  the compiler selects, budgets, orders, and cites image and table evidence in
+  the same scored packet as text. Slim packets are backed by a content-addressed
+  evidence store (`vincio.context.evidence_store`: `InMemoryEvidenceStore` /
+  `BlobEvidenceStore`) so `ContextPacket.materialize(store=...)` recovers text
+  after cross-process deserialization. The evidence ledger gains entailment
+  `supports` / `contradicts` links (`link_entailments`).
+- **Structured `FilterSpec`** (`vincio.retrieval.filters`) — a declarative,
+  serializable filter (`eq` / `ne` / `in_` / `range_` / `exists` / `contains`
+  over `and_` / `or_` / `not_`) compiled to each backend's native filter (Qdrant
+  `Filter`, pgvector GIN-indexed `jsonb` `WHERE`, Pinecone, Weaviate, Milvus,
+  Elasticsearch). Qdrant and pgvector push down server-side and fetch exactly
+  `top_k`, fixing the over-fetch under-fill bug; `app.tenant_filter` returns a
+  pushdown `FilterSpec` (shared-or-mine), closing the cross-tenant
+  fetch-to-filter exfiltration risk.
+- **Enterprise endpoints behind a pluggable `AuthStrategy`** — AWS Bedrock
+  (pure-stdlib SigV4 Converse), Google Vertex (regional service-account OAuth),
+  and Azure OpenAI (deployment routing + `api-version`), registered as
+  `bedrock` / `vertex` / `azure` through the same `ProviderRegistry`, capability
+  guards, swap gate, residency, and audit chain as every other provider.
+- **Async-first storage + typed event catalog + unified telemetry** — an
+  `AsyncMetadataStore` protocol with `aget` / `adelete` / `acount` alongside
+  `asave` / `aquery` (native async or threaded shim) and a psycopg3
+  `AsyncConnectionPool` Postgres fast path; a typed, versioned event catalog
+  (`vincio.core.events`: `EVENT_CATALOG`, Pydantic payload models, `publish()`,
+  `EVENT_SCHEMA_VERSION`); and one trace fanned out to spans **and** OTel metric
+  histograms under the GenAI **agentic** conventions (`invoke_agent`,
+  `gen_ai.agent.*`, `gen_ai.usage.cost`).
+- **Mandatory egress DLP + signed audit chain** — `PolicyEngine.scan_egress`
+  scans the fully-assembled provider request (system + messages + tool schemas)
+  at both provider-dispatch boundaries regardless of call-site wiring
+  (`security.egress_dlp`: `off` / `warn` / `block`); the hash-chained audit log
+  gains per-entry HMAC/Ed25519 signatures and Merkle-root checkpoints
+  (`security.audit_signing_key`), making it tamper-evident against a privileged
+  attacker who can recompute the public hashes.
+
+### Changed (breaking)
+
+- **Eval metric semantics** — unscoreable cases (no ground truth, no claims, no
+  trajectory) return `MetricResult(skipped=True)` and are excluded from gate
+  aggregation instead of a neutral `1.0` that inflated means and silently passed
+  gates. The lexical metric formerly named `semantic_similarity` is renamed to
+  its true identity `lexical_overlap`; `semantic_similarity` is now a real
+  embedding-backed metric (configurable via `set_semantic_embedder`).
+- **`Index.search` `where` type** widens to `Where = FilterSpec | SearchFilter`;
+  the `MetadataStore` async methods are the canonical contract.
+- **`HTTPProvider` auth** is refactored behind `AuthStrategy` (`_prepare`); the
+  audit-entry schema gains `signature` / `key_id` and `verify` validates them.
+- `API_VERSION` → `2.0`; `EvidenceItem` / `ContextCandidate` carry `modality`.
+
+### Notes
+
+- 1386 tests passing offline in ~5s; ruff + mypy clean. VincioBench: 18 families,
+  217 CI budgets, 65 SLOs. Thirty-five runnable examples. Every change is retired
+  or introduced through the mechanical deprecation runway 1.0 established; the
+  flat `app.<method>` API remains fully supported alongside the facades.
+
 ## [1.10.0] - 2026-06-17
 
 The loop closes itself. Vincio could already *measure* drift and run an offline

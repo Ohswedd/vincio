@@ -129,7 +129,7 @@ hits = app.recall("contact preference", user_id="u1")
   tools, and policies compile into one scored, budgeted, provenance-aware
   packet with an excluded-context report for every omission.
 - **Built-in evals + gates + optimization** — `groundedness`,
-  `semantic_similarity`, `schema_validity`, `cost`, and `latency` ship in the
+  `lexical_overlap`, `schema_validity`, `cost`, and `latency` ship in the
   core library and gate CI; no separate eval SaaS.
 - **Native, provider-neutral observability** — every run writes a full trace
   (JSONL or OTEL) with cost tracking and `result.trace_id`; no LangSmith

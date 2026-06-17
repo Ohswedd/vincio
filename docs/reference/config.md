@@ -42,6 +42,9 @@ security:
   audit_log: true
   audit_dir: .vincio/audit
   retention_days: null
+  egress_dlp: warn           # (2.0) always-on egress DLP of the assembled request: off | warn | block
+  audit_signing_key: ""      # (2.0) HMAC key → tamper-evident signed audit chain (empty = unsigned, 1.x behavior)
+  audit_signing_key_id: hmac # (2.0) key id recorded on each signed entry
 
 governance:                  # enterprise governance & compliance (1.6); all opt-in
   allowed_regions: []        # non-empty pins data-residency: runs may only egress to these regions

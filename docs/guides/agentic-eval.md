@@ -45,7 +45,7 @@ comes for free from the run's tool calls — and read both families side by side
 
 ```python
 report = app.evaluate(dataset, metrics=[
-    "semantic_similarity", "answer_relevance",       # output-only
+    "lexical_overlap", "answer_relevance",       # output-only
     "goal_accuracy", "tool_call_accuracy", "step_efficiency",
 ])
 report.metric_families()    # {"output": {...}, "trajectory": {...}}
