@@ -24,9 +24,10 @@ from typing import TYPE_CHECKING, Any
 
 from ..context.compiler import CompiledContext
 from ..context.ir import OutputContractRef
-from ..core.errors import VincioError
+from ..core.errors import BudgetExceededError, VincioError
 from ..core.types import (
     Budget,
+    BudgetUsage,
     EvidenceItem,
     Message,
     ModelRequest,
@@ -50,6 +51,7 @@ from ..output.streaming import StreamingValidator
 from ..output.validators import OutputValidator
 from ..providers.cache_strategy import cache_hit_rate
 from ..retrieval.chunking import extract_entities
+from ..storage.base import asave
 from .concurrency import gather_bounded
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -129,12 +131,8 @@ class VincioRuntime:
             for metric_name, score in (result.eval_scores or {}).items():
                 trace.add_score(metric_name, score)
 
-        self._apply_governance(result, user_input)
-        # 15. persist run + packet (trace export happens in the tracer).
-        self._persist_run(result, run_id, user_input)
-        app.events.emit(
-            "run.completed", {"run_id": run_id, "status": result.status.value}, trace_id=result.trace_id
-        )
+        # 15. shared epilogue: governance + terminal audit + persist + event.
+        await self._finish(result, run_id, user_input)
         if cancelled:
             raise asyncio.CancelledError
         return result
@@ -188,6 +186,7 @@ class VincioRuntime:
         budget = run_config.budget or app.budget
         policies = run_config.policies or app.policies
         result = RunResult(run_id=run_id, status=RunStatus.RUNNING)
+        cancelled = False
 
         with app.tracer.trace(
             run_id=run_id,
@@ -199,40 +198,53 @@ class VincioRuntime:
         ) as trace:
             result.trace_id = trace.id
             try:
-                prepared = await self._prepare(
-                    user_input, run_config, budget, policies, result, run_id
-                )
-                if prepared is not None:
-                    yield RunStreamEvent(
-                        type="stage",
-                        stage="context_compiled",
-                        data={
-                            "packet_id": result.context_packet_id,
-                            "token_count": prepared.compiled_context.token_count,
-                            "evidence": len(prepared.compiled_context.ir.evidence),
-                        },
+                # Same latency-deadline + cancellation wrapper as the
+                # non-streaming path, so the two paths can't drift (1.7).
+                async with asyncio.timeout(budget.max_latency_ms / 1000):
+                    prepared = await self._prepare(
+                        user_input, run_config, budget, policies, result, run_id
                     )
-                    response: ModelResponse | None = None
-                    async for item in self._model_tool_loop_stream(
-                        prepared, budget, result, user_input, run_id
-                    ):
-                        if isinstance(item, RunStreamEvent):
-                            yield item
-                        else:
-                            response = item
-                    assert response is not None
-                    await self._finalize(
-                        prepared, response, result, run_id, user_input, policies
-                    )
-                    yield RunStreamEvent(
-                        type="stage",
-                        stage="validated",
-                        data={"valid": result.validation.get("valid")} if result.validation else {},
-                    )
+                    if prepared is not None:
+                        yield RunStreamEvent(
+                            type="stage",
+                            stage="context_compiled",
+                            data={
+                                "packet_id": result.context_packet_id,
+                                "token_count": prepared.compiled_context.token_count,
+                                "evidence": len(prepared.compiled_context.ir.evidence),
+                            },
+                        )
+                        response: ModelResponse | None = None
+                        async for item in self._model_tool_loop_stream(
+                            prepared, budget, result, user_input, run_id,
+                            enforce_caps=run_config.enforce_budget_caps,
+                        ):
+                            if isinstance(item, RunStreamEvent):
+                                yield item
+                            else:
+                                response = item
+                        assert response is not None
+                        await self._finalize(
+                            prepared, response, result, run_id, user_input, policies
+                        )
+                        yield RunStreamEvent(
+                            type="stage",
+                            stage="validated",
+                            data={"valid": result.validation.get("valid")} if result.validation else {},
+                        )
             except VincioError as exc:
                 result.status = RunStatus.FAILED
                 result.error = exc.message
                 yield RunStreamEvent(type="error", error=result.error)
+            except TimeoutError:
+                result.status = RunStatus.FAILED
+                result.error = f"run exceeded max_latency_ms budget ({budget.max_latency_ms} ms)"
+                yield RunStreamEvent(type="error", error=result.error)
+            except asyncio.CancelledError:
+                result.status = RunStatus.CANCELLED
+                result.error = "run cancelled"
+                cancelled = True
+                trace.attributes["cancelled"] = True
             result.latency_ms = int((time.monotonic() - started) * 1000)
             trace.attributes["output"] = (result.raw_text or "")[:500]
             if app.config.observability.training_capture:
@@ -240,11 +252,10 @@ class VincioRuntime:
             for metric_name, score in (result.eval_scores or {}).items():
                 trace.add_score(metric_name, score)
 
-        self._apply_governance(result, user_input)
-        self._persist_run(result, run_id, user_input)
-        app.events.emit(
-            "run.completed", {"run_id": run_id, "status": result.status.value}, trace_id=result.trace_id
-        )
+        # 15. shared epilogue: a cancelled stream is still fully recorded.
+        await self._finish(result, run_id, user_input)
+        if cancelled:
+            raise asyncio.CancelledError
         yield RunStreamEvent(type="done", result=result, usage=result.usage)
 
     async def execute_batch(
@@ -577,7 +588,10 @@ class VincioRuntime:
                 excluded=len(compiled_context.excluded_report),
                 cached=compiled_context.from_cache,
             )
-            app.store.save(
+            # Persist off the event loop so the packet write doesn't block the
+            # pipeline mid-run (1.7 async store contract).
+            await asave(
+                app.store,
                 "context_packets",
                 {
                     "id": packet.id,
@@ -632,6 +646,35 @@ class VincioRuntime:
                     else "off"
                 ),
                 schema=contract.schema_name if contract.schema_def else None,
+            )
+
+        # Pre-flight input-token cap (1.7): estimate the full first-call input
+        # against ``max_input_tokens`` before spending a single token, at the
+        # same choke point as policy and the cost SLO. Batch runs are exempt
+        # (``enforce_budget=False``), as is the soft-cap opt-out.
+        if (
+            enforce_budget
+            and run_config.enforce_budget_caps
+            and compiled_prompt.token_count > budget.max_input_tokens
+        ):
+            app.audit.record(
+                "budget", run_id=run_id, user_id=user_input.user_id,
+                tenant_id=user_input.tenant_id, trace_id=result.trace_id, decision="deny",
+                details={
+                    "breaches": ["input_tokens"], "stage": "preflight",
+                    "estimated_input_tokens": compiled_prompt.token_count,
+                    "max_input_tokens": budget.max_input_tokens,
+                },
+            )
+            app.events.emit(
+                "budget.exceeded",
+                {"breaches": ["input_tokens"], "stage": "preflight"},
+                trace_id=result.trace_id,
+            )
+            raise BudgetExceededError(
+                f"estimated input ({compiled_prompt.token_count} tokens) exceeds "
+                f"max_input_tokens ({budget.max_input_tokens})",
+                used=compiled_prompt.token_count, limit=budget.max_input_tokens,
             )
 
         messages = list(compiled_prompt.messages)
@@ -787,6 +830,74 @@ class VincioRuntime:
                 user_id=user_input.user_id,
             )
 
+    def _note_unknown_model(self, model: str, result: RunResult, span: Any) -> None:
+        """Emit ``model.unknown`` (once per run per model) when the resolved
+        model has no registry/price entry, so a $0 bill is observable instead of
+        silent. The price table already warns once per process."""
+        if self.app.cost_tracker.price_table.is_known(model):
+            return
+        seen = result.metadata.setdefault("unknown_models", [])
+        if model in seen:
+            return
+        seen.append(model)
+        span.add_event("model_unknown", model=model)
+        self.app.events.emit("model.unknown", {"model": model}, trace_id=result.trace_id)
+
+    def _enforce_budget(
+        self,
+        usage: BudgetUsage,
+        budget: Budget,
+        result: RunResult,
+        run_id: str,
+        user_input: UserInput,
+        *,
+        enforce: bool,
+        stage: str,
+    ) -> None:
+        """Hard-cap the full Budget on the run path (1.7).
+
+        After each model call and tool round, raise :class:`BudgetExceededError`
+        when ``max_cost_usd`` / ``max_input_tokens`` / ``max_output_tokens`` /
+        ``max_steps`` / ``max_tool_calls`` are breached — recorded on the same
+        audit chain and event stream as residency, policy, and the cost SLO.
+        ``latency_ms`` is excluded (the ``asyncio.timeout`` deadline owns it).
+        When ``enforce`` is False, legacy soft-cap behavior is preserved.
+        """
+        if not enforce:
+            return
+        breaches = [dim for dim in usage.exceeds(budget) if dim != "latency_ms"]
+        if not breaches:
+            return
+        app = self.app
+        used = {
+            "cost_usd": usage.cost_usd,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "steps": usage.steps,
+            "tool_calls": usage.tool_calls,
+        }
+        limits = {
+            "cost_usd": budget.max_cost_usd,
+            "input_tokens": budget.max_input_tokens,
+            "output_tokens": budget.max_output_tokens,
+            "steps": budget.max_steps,
+            "tool_calls": budget.max_tool_calls,
+        }
+        app.audit.record(
+            "budget", run_id=run_id, user_id=user_input.user_id,
+            tenant_id=user_input.tenant_id, trace_id=result.trace_id, decision="deny",
+            details={"breaches": breaches, "stage": stage, "used": used, "limits": limits},
+        )
+        app.events.emit(
+            "budget.exceeded",
+            {"breaches": breaches, "stage": stage}, trace_id=result.trace_id,
+        )
+        primary = breaches[0]
+        raise BudgetExceededError(
+            f"run exceeded budget ({', '.join(breaches)})",
+            used=used.get(primary, 0), limit=limits.get(primary, 0),
+        )
+
     async def _call_model(
         self,
         prepared: _PreparedRun,
@@ -832,6 +943,7 @@ class VincioRuntime:
                 model=model, response=response, cost=spent, result=result,
                 user_input=user_input, run_id=run_id, span=span,
             )
+            self._note_unknown_model(model, result, span)
             span.set(
                 finish=response.finish_reason,
                 input_tokens=response.usage.input_tokens,
@@ -853,6 +965,8 @@ class VincioRuntime:
         result: RunResult,
         user_input: UserInput,
         run_id: str,
+        *,
+        enforce_caps: bool = True,
     ) -> ModelResponse:
         """Model + tool loop with optional confidence-based cascade escalation.
 
@@ -872,9 +986,21 @@ class VincioRuntime:
         response: ModelResponse | None = None
         tool_rounds = 0
         escalations = 0
+        usage = BudgetUsage()
         while True:
             response = await self._call_model(
                 prepared, prepared.messages, model, result, user_input, run_id, provider=provider
+            )
+            usage.steps += 1
+            # max_input_tokens is a per-call context-window limit, not a
+            # cumulative-across-the-run cap, so track the peak single-call input
+            # (the re-sent transcript grows each tool round / cascade rung).
+            usage.input_tokens = max(usage.input_tokens, response.usage.input_tokens)
+            usage.output_tokens += response.usage.output_tokens
+            usage.cost_usd = result.cost_usd
+            self._enforce_budget(
+                usage, budget, result, run_id, user_input,
+                enforce=enforce_caps, stage="model_call",
             )
             if response.tool_calls and prepared.tool_specs and tool_rounds < budget.max_tool_calls:
                 tool_rounds += 1
@@ -886,6 +1012,11 @@ class VincioRuntime:
                 )
                 for tool_call, tool_result in executed:
                     prepared.messages.append(self._tool_message(tool_call, tool_result))
+                usage.tool_calls = len(result.tool_results)
+                self._enforce_budget(
+                    usage, budget, result, run_id, user_input,
+                    enforce=enforce_caps, stage="tool_round",
+                )
                 continue
             # Terminal answer: consider a cascade escalation.
             if cascade is not None and escalations < cascade.escalation_cap:
@@ -910,6 +1041,8 @@ class VincioRuntime:
         result: RunResult,
         user_input: UserInput,
         run_id: str,
+        *,
+        enforce_caps: bool = True,
     ) -> AsyncIterator[RunStreamEvent | ModelResponse]:
         """Streaming model loop: yields RunStreamEvents and, finally, the
         terminal ModelResponse (the caller filters by type)."""
@@ -920,6 +1053,7 @@ class VincioRuntime:
         )
         min_parse_chars = app.config.performance.partial_parse_min_chars
         response: ModelResponse | None = None
+        usage = BudgetUsage()
 
         # Cascade runs buffer each rung and stream the accepted answer: run the
         # non-streaming cascade loop (which escalates on low confidence) to
@@ -927,7 +1061,9 @@ class VincioRuntime:
         # consumer sees only the final, escalated answer — never a discarded
         # cheap attempt.
         if prepared.cascade_active:
-            response = await self._model_tool_loop(prepared, budget, result, user_input, run_id)
+            response = await self._model_tool_loop(
+                prepared, budget, result, user_input, run_id, enforce_caps=enforce_caps
+            )
             chunk = 16
             for start in range(0, len(response.text), chunk):
                 yield RunStreamEvent(type="text_delta", text=response.text[start : start + chunk])
@@ -1027,6 +1163,7 @@ class VincioRuntime:
                     model=prepared.model, response=response, cost=spent, result=result,
                     user_input=user_input, run_id=run_id, span=span,
                 )
+                self._note_unknown_model(prepared.model, result, span)
                 span.set(
                     finish=response.finish_reason,
                     input_tokens=response.usage.input_tokens,
@@ -1042,6 +1179,16 @@ class VincioRuntime:
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
                 )
+            usage.steps += 1
+            # Peak single-call input (per-call window), not a cumulative sum —
+            # see _model_tool_loop.
+            usage.input_tokens = max(usage.input_tokens, response.usage.input_tokens)
+            usage.output_tokens += response.usage.output_tokens
+            usage.cost_usd = result.cost_usd
+            self._enforce_budget(
+                usage, budget, result, run_id, user_input,
+                enforce=enforce_caps, stage="model_call",
+            )
             if not response.tool_calls or not prepared.tool_specs:
                 break
             messages.append(
@@ -1057,6 +1204,11 @@ class VincioRuntime:
                 yield RunStreamEvent(
                     type="tool_result", tool_name=tool_call.name, tool_result=tool_result
                 )
+            usage.tool_calls = len(result.tool_results)
+            self._enforce_budget(
+                usage, budget, result, run_id, user_input,
+                enforce=enforce_caps, stage="tool_round",
+            )
         assert response is not None
         yield response
 
@@ -1292,6 +1444,9 @@ class VincioRuntime:
                 "cost_usd": result.cost_usd,
             },
         )
+        # The shared epilogue (_finish) writes a terminal audit only when one
+        # wasn't already recorded here; mark it so a successful run audits once.
+        result.metadata["_run_audited"] = True
         if result.status == RunStatus.RUNNING:
             result.status = RunStatus.SUCCEEDED
 
@@ -1311,7 +1466,10 @@ class VincioRuntime:
         prepared = await self._prepare(user_input, run_config, budget, policies, result, run_id)
         if prepared is None:
             return
-        response = await self._model_tool_loop(prepared, budget, result, user_input, run_id)
+        response = await self._model_tool_loop(
+            prepared, budget, result, user_input, run_id,
+            enforce_caps=run_config.enforce_budget_caps,
+        )
         await self._finalize(prepared, response, result, run_id, user_input, policies)
 
     def _capture_training_artifacts(
@@ -1345,19 +1503,60 @@ class VincioRuntime:
         if evidence:
             trace.attributes["evidence"] = evidence
 
+    @staticmethod
+    def _run_record(result: RunResult, run_id: str, user_input: UserInput, app_id: str) -> dict[str, Any]:
+        return {
+            "id": run_id,
+            "app_id": app_id,
+            "user_id": user_input.user_id,
+            "tenant_id": user_input.tenant_id,
+            "objective": (user_input.text or "")[:300],
+            "status": result.status.value,
+            "started_at": utcnow().isoformat(),
+            "cost_usd": result.cost_usd,
+            "latency_ms": result.latency_ms,
+            "trace_id": result.trace_id,
+        }
+
     def _persist_run(self, result: RunResult, run_id: str, user_input: UserInput) -> None:
-        self.app.store.save(
-            "runs",
-            {
-                "id": run_id,
-                "app_id": self.app.name,
-                "user_id": user_input.user_id,
-                "tenant_id": user_input.tenant_id,
-                "objective": (user_input.text or "")[:300],
-                "status": result.status.value,
-                "started_at": utcnow().isoformat(),
-                "cost_usd": result.cost_usd,
-                "latency_ms": result.latency_ms,
-                "trace_id": result.trace_id,
-            },
+        self.app.store.save("runs", self._run_record(result, run_id, user_input, self.app.name))
+
+    # ------------------------------------------------------------------
+    # shared epilogue (both run paths, including cancellation)
+    # ------------------------------------------------------------------
+
+    _TERMINAL_DECISION = {
+        RunStatus.SUCCEEDED: "allow",
+        RunStatus.CANCELLED: "cancel",
+        RunStatus.FAILED: "deny",
+        RunStatus.DENIED: "deny",
+    }
+
+    async def _finish(self, result: RunResult, run_id: str, user_input: UserInput) -> None:
+        """Governance + terminal audit + persistence + ``run.completed`` — the
+        single epilogue both the streaming and non-streaming paths run, including
+        on cancellation/timeout, so every run (success, failure, or cancelled) is
+        fully recorded on one trace and the same audit chain. Persistence is
+        awaited off the event loop via the async store contract."""
+        app = self.app
+        self._apply_governance(result, user_input)
+        # A successful run already audited in _finalize; cancelled/failed/denied
+        # runs that never reached _finalize get their terminal audit here so the
+        # audit chain has exactly one terminal entry per run.
+        if not result.metadata.get("_run_audited"):
+            app.audit.record(
+                "run", run_id=run_id, user_id=user_input.user_id,
+                tenant_id=user_input.tenant_id, trace_id=result.trace_id,
+                decision=self._TERMINAL_DECISION.get(result.status, "deny"),
+                details={
+                    "status": result.status.value,
+                    "cost_usd": result.cost_usd,
+                    "error": (result.error or "")[:300] or None,
+                },
+            )
+            result.metadata["_run_audited"] = True
+        await asave(app.store, "runs", self._run_record(result, run_id, user_input, app.name))
+        app.events.emit(
+            "run.completed", {"run_id": run_id, "status": result.status.value},
+            trace_id=result.trace_id,
         )

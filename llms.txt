@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.6.1 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.7.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -330,6 +330,42 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `app.fertility.token_tax(lang)`. RAG-poisoning: `from vincio.security import
   PoisoningDetector` (authority/provenance signals + classifier hook; FP/FN via
   `PoisoningReport.telemetry`).
+- The honest, fast spine (1.7, experimental): the advertised `Budget` is a hard
+  cap on `app.run()`/`arun()` — `max_cost_usd`/`max_input_tokens`/
+  `max_output_tokens`/`max_steps` raise `BudgetExceededError` (on the same audit
+  chain as residency/policy), with a pre-flight input-token check and
+  `RunConfig(enforce_budget_caps=False)` restoring the legacy soft cap for one
+  minor. Data-driven `ModelRegistry` (`from vincio import default_model_registry`
+  / `ModelRegistry`): a versioned, config-overridable (`VINCIO_MODEL_REGISTRY`
+  JSON/YAML overlay) catalog keyed by exact model id binding `ModelProfile`
+  (capabilities + standard/batch pricing + context window + modalities + GA/
+  deprecation/retirement dates); `capabilities()` and `PriceTable` derive from it
+  (substring sniffing demoted to fallback) and an unknown model warns +
+  emits `model.unknown` instead of billing $0. Provider-native token counters
+  register behind the `TokenCounter` Protocol (`register_token_counter`);
+  third-party adapters auto-register via the `vincio.providers`/`embedders`/
+  `stores` entry-point groups. Opt-in semantic context scoring
+  (`app.use_semantic_context_scoring()` / `retrieval.semantic_context_scoring`):
+  embedding-cosine relevance, MMR selection (`mmr_lambda`), reranker
+  `upstream_relevance` blended into relevance, and salient-unit value-level
+  contradiction (numbers/dates) emitted as structured packet conflicts; default
+  stays lexical. Unified run pipeline: streaming and non-streaming share one
+  latency-deadline + cancellation epilogue; `app.submit(...)` returns a
+  `RunHandle` whose `cancel()` propagates cooperative cancellation and still
+  records the cancelled run; async store contract (`storage.base.asave`/`aquery`)
+  keeps persistence off the event loop. Significance-gated promotion: `ab_test`
+  now returns p-value + confidence interval + effect size, and `evolution_loop`
+  blocks significant regressions / warns under-powered runs (loop audit records
+  the verdict). Trace-replay executor `ReplayRunner(app).replay(traces,
+  pin_tools=)` re-runs captured trace inputs and diffs output/trajectory/cost
+  (reusing `trace_diff` + `EvalReport.diff`); `vincio trace replay --against
+  <app>`. Sub-quadratic hot paths: inverted-index BM25, incremental MMR
+  `_select`, memoized `count_tokens`, optional numpy vector path. Hardened
+  detectors: injection normalization + recursive base64/hex/rot13 decode pre-pass
+  (catches obfuscated attacks), a pluggable `DetectorBackend` Protocol on the
+  PII/injection/secret detectors, `AccessController(require_explicit_tenant=True)`
+  fails closed on untagged tenants, and `ComplianceMapper` marks a control
+  `covered` only with measured red-team/eval evidence (config flags ⇒ `partial`).
 - CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
   config schema/validate/show, packs list/show, tui,
   eval run/report/dataset (`--group-by-session`)/drift/annotate,

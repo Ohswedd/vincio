@@ -277,7 +277,15 @@ class ToolRuntime:
             output, sanitize_notes = self._sanitize_output(output, call.tool_name)
 
             self.registry.record_call(call.tool_name, success=True, duration_ms=duration_ms)
-            span.set(duration_ms=duration_ms, output=str(output)[:500], **sanitize_notes)
+            # ``output`` stays truncated for the human-facing trace view;
+            # ``output_full`` carries the structured (or, for strings, generously
+            # capped) value so the trace-replay executor can pin a faithful tool
+            # output instead of a 500-char preview.
+            output_full = output if not isinstance(output, str) else output[:50_000]
+            span.set(
+                duration_ms=duration_ms, output=str(output)[:500],
+                output_full=output_full, **sanitize_notes,
+            )
 
             result = ToolResult(
                 call_id=call.id,

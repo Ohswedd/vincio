@@ -97,8 +97,11 @@ class ModelProvider(ABC):
         yield ModelEvent(type="done", response=response)
 
     def capabilities(self, model: str) -> ModelCapabilities:
-        """Capability matrix for *model*."""
-        return ModelCapabilities()
+        """Capability matrix for *model*, from the model registry when known."""
+        from .registry import default_model_registry
+
+        profile = default_model_registry().resolve(model)
+        return profile.capabilities if profile is not None else ModelCapabilities()
 
     def generate_sync(self, request: ModelRequest) -> ModelResponse:
         return run_sync(self.generate(request))

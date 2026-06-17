@@ -29,6 +29,12 @@ class MistralProvider(OpenAIProvider):
         return payload
 
     def capabilities(self, model: str) -> ModelCapabilities:
+        from .registry import default_model_registry
+
+        profile = default_model_registry().resolve(model)
+        if profile is not None:
+            return profile.capabilities
+        # Fallback: substring sniffing for ids not in the registry.
         return ModelCapabilities(
             structured_output=True,
             tool_calling=True,

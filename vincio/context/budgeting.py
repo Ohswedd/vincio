@@ -168,6 +168,7 @@ class BudgetAllocator:
         *,
         task_type: TaskType = TaskType.GENERAL,
         fixed_costs: dict[str, int] | None = None,
+        reserve_tokens: int = 0,
     ) -> BudgetAllocation:
         """Allocate *total_tokens* across blocks.
 
@@ -175,13 +176,18 @@ class BudgetAllocator:
         known (instructions, schema, user task): those are charged at cost,
         and the remainder is distributed over the flexible blocks
         proportionally to their configured fractions.
+
+        ``reserve_tokens`` (1.7) is headroom held back from the flexible blocks
+        for the model's response and tool-loop turns, so the allocator accounts
+        for the *full* window (input + output + tool loop) instead of input
+        only. Defaults to 0 (no reservation), so it is fully additive.
         """
         fractions = self.allocation_for(task_type)
         fixed_costs = fixed_costs or {}
         allocation = BudgetAllocation(total_tokens=total_tokens)
 
         fixed_total = sum(fixed_costs.values())
-        remaining = max(0, total_tokens - fixed_total)
+        remaining = max(0, total_tokens - fixed_total - max(0, reserve_tokens))
         flexible = {k: v for k, v in fractions.items() if k not in fixed_costs}
         flexible_total = sum(flexible.values()) or 1.0
 

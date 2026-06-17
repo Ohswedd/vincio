@@ -129,6 +129,12 @@ class RetrievalConfig(BaseModel):
     # Query-understanding strategies applied per retrieve():
     # hyde | multi_query | decompose | step_back
     query_strategies: list[str] = Field(default_factory=list)
+    # Opt-in embedding-driven context scoring (1.7): when True *and* a semantic
+    # ``embedder`` is configured, the context compiler scores relevance, novelty,
+    # dedup, and conflict by embedding cosine and selects via MMR. Off by default
+    # (the local hash embedder is not semantic), so selection stays lexical.
+    semantic_context_scoring: bool = False
+    mmr_lambda: float = 0.7  # MMR relevance/diversity trade-off when semantic scoring is on
 
 
 class MemoryConfig(BaseModel):

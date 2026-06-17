@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from ..core.errors import ProviderResponseError
+from ..core.media import encode_image_bytes
 from ..core.types import (
     ModelCapabilities,
     ModelEvent,
@@ -73,20 +74,29 @@ class GoogleProvider(HTTPProvider):
                 for part in message.content:
                     if part.type == "text" and part.text:
                         parts.append({"text": part.text})
-                    elif part.type == "image" and part.image is not None and part.image.path:
-                        import base64
-                        from pathlib import Path
-
-                        parts.append(
-                            {
-                                "inlineData": {
-                                    "mimeType": part.image.media_type or "image/png",
-                                    "data": base64.standard_b64encode(
-                                        Path(part.image.path).read_bytes()
-                                    ).decode(),
+                    elif part.type == "image" and part.image is not None:
+                        if part.image.path:
+                            media_type, data = encode_image_bytes(part.image)
+                            parts.append(
+                                {"inlineData": {"mimeType": media_type, "data": data}}
+                            )
+                        elif part.image.url and (
+                            part.image.url.startswith("gs://")
+                            or "generativelanguage.googleapis.com" in part.image.url
+                        ):
+                            # Gemini fileData only accepts Google-hosted URIs
+                            # (GCS gs:// or the Files API host); it does not fetch
+                            # arbitrary public URLs. Other remote URLs would be
+                            # rejected at request time, so they are not sent here
+                            # (supply a local path to inline them instead).
+                            parts.append(
+                                {
+                                    "fileData": {
+                                        "mimeType": part.image.media_type or "image/png",
+                                        "fileUri": part.image.url,
+                                    }
                                 }
-                            }
-                        )
+                            )
             for tc in message.tool_calls:
                 parts.append({"functionCall": {"name": tc.name, "args": tc.arguments}})
             contents.append({"role": role, "parts": parts or [{"text": ""}]})
@@ -278,6 +288,12 @@ class GoogleProvider(HTTPProvider):
         return [item["values"] for item in data.get("embeddings") or []]
 
     def capabilities(self, model: str) -> ModelCapabilities:
+        from .registry import default_model_registry
+
+        profile = default_model_registry().resolve(model)
+        if profile is not None:
+            return profile.capabilities
+        # Fallback: substring sniffing for ids not in the registry.
         return ModelCapabilities(
             structured_output=True,
             tool_calling=True,

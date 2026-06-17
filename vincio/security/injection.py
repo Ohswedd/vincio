@@ -14,12 +14,16 @@ Layers:
 
 from __future__ import annotations
 
+import base64
+import codecs
 import re
+import unicodedata
 from collections.abc import Awaitable, Callable
 
 from pydantic import BaseModel, Field
 
 from ..core.types import TrustLevel
+from .backends import DetectorBackend
 
 __all__ = ["InjectionSignal", "InjectionVerdict", "InjectionDetector", "wrap_untrusted"]
 
@@ -106,6 +110,76 @@ _SIGNALS: list[tuple[str, re.Pattern[str], float]] = [
 
 ClassifierFn = Callable[[str], Awaitable[float]]
 
+# --- normalization + decode pre-pass --------------------------------------
+# Obfuscated attacks ("ignore previous instructions" written in homoglyphs,
+# leetspeak, or base64) slip past raw regex. Before scanning, fold the text and
+# also scan decoded payloads, so the same signals catch the obfuscated form.
+
+_ZERO_WIDTH = dict.fromkeys(map(ord, "​‌‍⁠﻿"), None)
+# Leetspeak: digits/symbols → letters (applied to a lowercased copy only).
+_LEET = str.maketrans({"4": "a", "3": "e", "1": "i", "0": "o", "5": "s", "7": "t",
+                       "@": "a", "$": "s", "|": "i"})
+# Confusable homoglyphs NFKC does not fold (Cyrillic/Greek look-alikes → Latin).
+_HOMOGLYPH = str.maketrans({
+    "а": "a", "е": "e", "о": "o", "р": "p", "с": "c", "х": "x", "у": "y", "і": "i",
+    "ѕ": "s", "ԁ": "d", "ո": "n", "α": "a", "ο": "o", "ε": "e", "ρ": "p", "τ": "t", "χ": "x",
+})
+_B64_RE = re.compile(r"[A-Za-z0-9+/]{16,}={0,2}")
+_HEX_RE = re.compile(r"(?:[0-9a-fA-F]{2}){8,}")
+
+
+def _normalize_for_detection(text: str) -> str:
+    """NFKC fold, strip zero-width, fold homoglyphs and leetspeak."""
+    folded = unicodedata.normalize("NFKC", text).translate(_ZERO_WIDTH)
+    folded = folded.translate(_HOMOGLYPH)
+    return folded.lower().translate(_LEET)
+
+
+def _decode_once(text: str) -> list[str]:
+    found: list[str] = []
+    for match in _B64_RE.finditer(text):
+        blob = match.group(0)
+        try:
+            raw = base64.b64decode(blob + "=" * (-len(blob) % 4), validate=False)
+            decoded = raw.decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if any(c.isalpha() for c in decoded):
+            found.append(decoded)
+    for match in _HEX_RE.finditer(text):
+        try:
+            decoded = bytes.fromhex(match.group(0)).decode("utf-8")
+        except (ValueError, UnicodeDecodeError):
+            continue
+        if any(c.isalpha() for c in decoded):
+            found.append(decoded)
+    rot = codecs.decode(text, "rot13")
+    if rot != text:
+        found.append(rot)
+    return found
+
+
+def _decode_obfuscations(text: str, *, max_depth: int = 3, max_total: int = 20_000) -> list[str]:
+    """Recursively decode base64/hex/rot13 payloads, depth- and size-bounded
+    (so a hostile blob can't cause unbounded decode work)."""
+    found: list[str] = []
+    frontier = [text]
+    total = 0
+    for _ in range(max_depth):
+        nxt: list[str] = []
+        for chunk in frontier:
+            for decoded in _decode_once(chunk):
+                if decoded and decoded not in found:
+                    found.append(decoded)
+                    nxt.append(decoded)
+                    total += len(decoded)
+                    if total >= max_total:
+                        return found
+        frontier = nxt
+        if not frontier:
+            break
+    return found
+
 
 class InjectionDetector:
     def __init__(
@@ -113,26 +187,63 @@ class InjectionDetector:
         *,
         threshold: float = 0.5,
         classifier: ClassifierFn | None = None,
+        backend: DetectorBackend | None = None,
+        normalize: bool = True,
     ) -> None:
         self.threshold = threshold
         self.classifier = classifier
+        # Optional ML backend, additive to the deterministic signals.
+        self.backend = backend
+        # Normalization + decode pre-pass (defends against obfuscated attacks).
+        self.normalize = normalize
+
+    def _views(self, text: str) -> list[str]:
+        """The text variants scanned for signals: raw, normalized, and decoded
+        payloads. A signal in *any* view counts once (no risk inflation)."""
+        if not self.normalize:
+            return [text]
+        views = [text, _normalize_for_detection(text)]
+        views.extend(_decode_obfuscations(text))
+        return views
 
     def detect(self, text: str) -> InjectionVerdict:
-        signals: list[InjectionSignal] = []
         if not text:
             return InjectionVerdict(detected=False, risk=0.0)
-        for name, pattern, weight in _SIGNALS:
-            match = pattern.search(text)
-            if match:
-                excerpt = text[max(0, match.start() - 20) : match.end() + 20]
-                signals.append(InjectionSignal(pattern=name, excerpt=excerpt.strip(), weight=weight))
+        # A pattern matched in any view contributes its weight exactly once, so
+        # scanning normalized/decoded views catches obfuscation without
+        # saturating the noisy-or risk.
+        matched: dict[str, tuple[str, float]] = {}
+        for view in self._views(text):
+            for name, pattern, weight in _SIGNALS:
+                if name in matched:
+                    continue
+                match = pattern.search(view)
+                if match:
+                    excerpt = view[max(0, match.start() - 20) : match.end() + 20]
+                    matched[name] = (excerpt.strip(), weight)
+        signals = [
+            InjectionSignal(pattern=name, excerpt=excerpt, weight=weight)
+            for name, (excerpt, weight) in matched.items()
+        ]
+        # An ML backend contributes its injection-labeled spans as signals.
+        backend_risk = 0.0
+        if self.backend is not None:
+            for span in self.backend.detect(text):
+                if span.label in ("injection", "prompt_injection", "jailbreak"):
+                    backend_risk = max(backend_risk, max(0.0, min(1.0, span.score)))
+                    signals.append(
+                        InjectionSignal(pattern=f"backend:{span.label}", excerpt=span.text[:60],
+                                        weight=max(0.0, min(1.0, span.score)))
+                    )
         if not signals:
             return InjectionVerdict(detected=False, risk=0.0)
-        # Combined risk: noisy-or over signal weights.
+        # Combined risk: noisy-or over distinct signal weights, then bounded-blend
+        # the backend risk via max (never inflate past 1.0).
         risk = 1.0
-        for signal in signals:
-            risk *= 1.0 - signal.weight
+        for _excerpt, weight in matched.values():
+            risk *= 1.0 - weight
         risk = 1.0 - risk
+        risk = max(risk, backend_risk)
         return InjectionVerdict(detected=risk >= self.threshold, risk=round(risk, 4), signals=signals)
 
     async def detect_with_classifier(self, text: str) -> InjectionVerdict:

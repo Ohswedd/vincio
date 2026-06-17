@@ -393,6 +393,42 @@
     },
     "families.governance.transparency.signature_verifies": {
       "eq": true
+    },
+    "families.cost.budget_cap_enforced": {
+      "eq": true
+    },
+    "families.cost.budget_opt_out_soft": {
+      "eq": true
+    },
+    "families.cost.unknown_model_warned": {
+      "eq": true
+    },
+    "families.rag.semantic_mmr.value_contradiction_detected": {
+      "eq": true
+    },
+    "families.rag.semantic_mmr.mmr_dedups_paraphrase": {
+      "eq": true
+    },
+    "families.reliability.unified_pipeline.stream_nonstream_parity": {
+      "eq": true
+    },
+    "families.reliability.unified_pipeline.cancellation_recorded": {
+      "eq": true
+    },
+    "families.perf.hot_paths.bm25_inverted_index": {
+      "eq": true
+    },
+    "families.perf.hot_paths.count_tokens_memoized": {
+      "eq": true
+    },
+    "families.loop.promotion.significance_gated": {
+      "eq": true
+    },
+    "families.loop.registry.lookup_correct": {
+      "eq": true
+    },
+    "families.loop.replay.output_match": {
+      "eq": true
     }
   }
 }

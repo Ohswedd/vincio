@@ -22,6 +22,7 @@ from .redteam import (
     RedTeamReport,
     RedTeamSuite,
 )
+from .replay import ReplayCase, ReplayResult, ReplayRunner
 from .reports import CaseResult, EvalReport, GateSpec, evaluate_gates
 from .runners import EvalRunner, EvalTarget
 from .simulator import Persona, SimulatedConversation, Simulator
@@ -66,6 +67,9 @@ __all__ = [
     "evaluate_gates",
     "EvalRunner",
     "EvalTarget",
+    "ReplayRunner",
+    "ReplayResult",
+    "ReplayCase",
     "SyntheticGenerator",
     # 1.2 — agentic evaluation & continuous quality
     "Trajectory",

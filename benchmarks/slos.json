@@ -351,6 +351,76 @@
       "threshold": 0.8,
       "enforced_by": "families.governance.multilingual.pii_recall",
       "rationale": "An English-only PII control under-reports risk everywhere else; the locale packs must actually fire."
+    },
+    {
+      "id": "cost_budget_cap_enforced",
+      "category": "cost",
+      "statement": "The advertised Budget is a hard cap: a run exceeding max_cost_usd fails instead of overspending.",
+      "metric": "families.cost.budget_cap_enforced",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cost.budget_cap_enforced",
+      "rationale": "A budget that is silently ignored is not a budget; the cap must bite on the single-shot run path."
+    },
+    {
+      "id": "cost_unknown_model_observable",
+      "category": "cost",
+      "statement": "An unknown model warns instead of silently billing $0.",
+      "metric": "families.cost.unknown_model_warned",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cost.unknown_model_warned",
+      "rationale": "Silent $0 pricing hides real spend and capability gaps; unknown models must be observable."
+    },
+    {
+      "id": "rag_value_contradiction_detected",
+      "category": "quality",
+      "statement": "Same-topic evidence that disagrees on a numeric/date value is flagged as a conflict.",
+      "metric": "families.rag.semantic_mmr.value_contradiction_detected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.rag.semantic_mmr.value_contradiction_detected",
+      "rationale": "A negation-only conflict check misses every value disagreement; the compiler must catch them."
+    },
+    {
+      "id": "reliability_pipeline_parity",
+      "category": "reliability",
+      "statement": "The streaming and non-streaming run paths produce the same answer.",
+      "metric": "families.reliability.unified_pipeline.stream_nonstream_parity",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reliability.unified_pipeline.stream_nonstream_parity",
+      "rationale": "Two divergent pipelines drift as features land; one inner pipeline keeps them identical."
+    },
+    {
+      "id": "reliability_cancellation_recorded",
+      "category": "reliability",
+      "statement": "A cancelled run is still fully recorded on the audit chain.",
+      "metric": "families.reliability.unified_pipeline.cancellation_recorded",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reliability.unified_pipeline.cancellation_recorded",
+      "rationale": "Cancellation must not lose the trail; the run epilogue audits even on cancel."
+    },
+    {
+      "id": "loop_promotion_significance_gated",
+      "category": "quality",
+      "statement": "Auto-promotion is gated on statistical significance, not a point estimate.",
+      "metric": "families.loop.promotion.significance_gated",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.promotion.significance_gated",
+      "rationale": "A point-estimate gate promotes noise; promotions must be defensible at a confidence level."
+    },
+    {
+      "id": "perf_bm25_inverted_index",
+      "category": "performance",
+      "statement": "BM25 search scans inverted posting lists, not every document per query term.",
+      "metric": "families.perf.hot_paths.bm25_inverted_index",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.hot_paths.bm25_inverted_index",
+      "rationale": "Rescanning every document per term is quadratic at corpus scale; posting lists keep it sub-linear."
     }
   ]
 }

@@ -14,6 +14,8 @@ Context Packet, evidence ledger, excluded-context report, budget report.
 
 from __future__ import annotations
 
+import re
+from collections import defaultdict
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -37,13 +39,13 @@ from ..core.utils import new_id
 from .budgeting import BudgetAllocator
 from .compression import distill_evidence_ledger, extractive_compress
 from .ir import ContextIR, OutputContractRef
+from .llmlingua import salient_units
 from .packet import ContextPacket
 from .scoring import (
     ContextCandidate,
     ContextScorer,
     ScoringWeights,
-    near_duplicate_score,
-    shingle_similarity,
+    _terms,
 )
 
 __all__ = ["ContextCompilerOptions", "CompiledContext", "ContextCompiler"]
@@ -62,6 +64,18 @@ class ContextCompilerOptions(BaseModel):
     ordering: Literal["relevance", "authority", "recency", "boundary_sandwich"] = "relevance"
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
     slim_packets: bool = False  # packets reference evidence text by hash
+    # Opt-in embedding-driven selection (1.7). When enabled *and* a semantic
+    # embedder is threaded in, relevance/novelty/dedup/conflict use cosine over
+    # cached embeddings and ``_select`` runs MMR with ``mmr_lambda``. Off by
+    # default — the default hash embedder is not semantic, so selection stays
+    # lexical unless a real embedder is configured and this is turned on.
+    semantic_scoring: bool = False
+    mmr_lambda: float = 0.7  # MMR relevance/diversity trade-off (1.0 = pure relevance)
+    # Reserve response (and one tool-loop round) tokens out of the input budget
+    # so the allocator accounts for the full window, not input only (1.7). Capped
+    # so it never starves context. On by default; small corpora are unaffected
+    # because the flexible blocks still fit everything.
+    reserve_response_tokens: bool = True
 
 
 class CompiledContext(BaseModel):
@@ -79,16 +93,66 @@ class CompiledContext(BaseModel):
     source_tool_results: list[ToolResult] = Field(default_factory=list, exclude=True)
 
 
-def _looks_negated(text: str) -> bool:
-    import re
+_NEGATION_RE = re.compile(r"\b(not|no|never|cannot|can't|won't|isn't|doesn't|without)\b")
+_NUMERIC_RE = re.compile(r"\d")
+# Numbers that index a document structure (Section 5, Clause 7, Figure 2) are
+# references, not values: two passages that agree but cite different section
+# numbers are not in conflict, so these are excluded from value comparison.
+_STRUCTURAL_REF_RE = re.compile(
+    r"(?i)\b(?:section|clause|chapter|article|appendix|annex|schedule|exhibit|part|rule|"
+    r"paragraph|para|page|line|note|figure|fig|table|step|item|version|v|no)\.?\s*#?\s*"
+    r"(\d+(?:\.\d+)*)"
+)
 
-    return bool(re.search(r"\b(not|no|never|cannot|can't|won't|isn't|doesn't|without)\b", text.lower()))
+
+def _looks_negated(text: str) -> bool:
+    return bool(_NEGATION_RE.search(text.lower()))
+
+
+def _value_units(text: str) -> set[str]:
+    """The numeric/date salient units of *text* (numbers, percentages,
+    currency, dates) — the values two same-topic passages can disagree on.
+    Bare structural references (section/clause/figure numbers) are excluded."""
+    structural = {m.group(1) for m in _STRUCTURAL_REF_RE.finditer(text)}
+    return {u for u in salient_units(text) if _NUMERIC_RE.search(u) and u not in structural}
+
+
+def _value_disagreement(a: str, b: str) -> dict[str, Any] | None:
+    """Detect a value-level contradiction between two same-topic passages.
+
+    Replaces the old negation-XOR trigger (which missed every value
+    disagreement): two near-paraphrases that cite *different* numbers/dates
+    (e.g. "refund within 30 days" vs "within 14 days"), or that differ in
+    polarity (one negates, the other does not), are in conflict. Returns a
+    structured delta, or ``None`` when there is no disagreement.
+    """
+    units_a, units_b = _value_units(a), _value_units(b)
+    if units_a and units_b and units_a != units_b:
+        return {
+            "kind": "value_disagreement",
+            "a_values": sorted(units_a),
+            "b_values": sorted(units_b),
+            "differing": sorted(units_a.symmetric_difference(units_b)),
+        }
+    if _looks_negated(a) != _looks_negated(b):
+        return {"kind": "polarity_disagreement", "a_values": [], "b_values": [], "differing": []}
+    return None
 
 
 class ContextCompiler:
-    def __init__(self, options: ContextCompilerOptions | None = None, *, cache: Any | None = None) -> None:
+    def __init__(
+        self,
+        options: ContextCompilerOptions | None = None,
+        *,
+        cache: Any | None = None,
+        embedder: Any | None = None,
+    ) -> None:
         self.options = options or ContextCompilerOptions()
         self.scorer = ContextScorer(self.options.weights)
+        # Semantic embedder threaded in by the app when semantic scoring is on
+        # (opt-in). Used only to build per-compile embedding vectors; the shared
+        # ``self.scorer`` stays vector-less so concurrent compiles never race.
+        self.embedder = embedder
         self.allocator = BudgetAllocator()
         self.cache = cache  # ContextCompileCache | None
         self.cache_hits = 0
@@ -97,6 +161,40 @@ class ContextCompiler:
         # drop-in with the same signature, installed via
         # ``app.use_learned_compression(...)`` once faithfulness-gated.
         self.compressor: Any = extractive_compress
+
+    async def _scorer_for(
+        self, candidates: list[ContextCandidate], query: str
+    ) -> ContextScorer:
+        """The scorer for this compile. Lexical mode returns the shared,
+        vector-less scorer. Semantic mode batch-embeds candidate contents and
+        the query (content-addressed, so repeats are cheap) and installs the
+        vectors on a fresh scorer — keeping the shared instance race-free."""
+        if not (self.options.semantic_scoring and self.embedder is not None):
+            return self.scorer
+        seen: set[str] = set()
+        texts: list[str] = []
+        for candidate in candidates:
+            if candidate.content and candidate.content not in seen:
+                seen.add(candidate.content)
+                texts.append(candidate.content)
+        if query and query not in seen:
+            seen.add(query)
+            texts.append(query)
+        if not texts:
+            return self.scorer
+        try:
+            vectors_list = await self.embedder.embed(texts)
+        except Exception:  # noqa: BLE001 - fall back to lexical if embedding fails
+            return self.scorer
+        vectors = {text: vec for text, vec in zip(texts, vectors_list, strict=False)}
+        scorer = ContextScorer(
+            self.options.weights,
+            similarity_fn=self.scorer.similarity_fn,
+            max_token_cost=self.scorer.max_token_cost,
+            freshness_half_life_days=self.scorer.freshness_half_life_days,
+        )
+        scorer.set_embeddings(vectors)
+        return scorer
 
     def _signature(
         self,
@@ -230,14 +328,40 @@ class ContextCompiler:
                 candidate.token_cost = count_tokens(candidate.content)
         return [c for c in candidates if c.content]
 
+    @staticmethod
+    def _block_tokens(text: str) -> set[str]:
+        """Tokens a candidate is indexed under for similarity blocking. Two
+        passages that share none of these have shingle *and* containment
+        similarity 0, so they can be skipped without computing either — making
+        the blocking pass exact, not an approximation."""
+        raw = set(re.findall(r"[a-z0-9]+", text.lower()))
+        return raw | set(_terms(text))
+
     def _remove_duplicates(
-        self, candidates: list[ContextCandidate], excluded: list[dict[str, Any]]
+        self,
+        candidates: list[ContextCandidate],
+        excluded: list[dict[str, Any]],
+        scorer: ContextScorer,
     ) -> list[ContextCandidate]:
         kept: list[ContextCandidate] = []
+        semantic = scorer.semantic
+        # Lexical mode: inverted token index so each candidate is compared only
+        # against kept items that could possibly be near-duplicates (near-linear
+        # for diverse pools, exact at the 0.85 threshold). Semantic mode compares
+        # all kept items (cosine catches paraphrases with no shared tokens).
+        index: dict[str, list[int]] = defaultdict(list)
         for candidate in sorted(candidates, key=lambda c: c.scores.total, reverse=True):
+            if semantic:
+                neighbors: list[ContextCandidate] = kept
+            else:
+                positions: set[int] = set()
+                tokens = self._block_tokens(candidate.content)
+                for token in tokens:
+                    positions.update(index.get(token, ()))
+                neighbors = [kept[p] for p in positions]
             duplicate_of = None
-            for existing in kept:
-                if near_duplicate_score(candidate.content, existing.content) >= self.options.duplicate_threshold:
+            for existing in neighbors:
+                if scorer.near_duplicate(candidate.content, existing.content) >= self.options.duplicate_threshold:
                     duplicate_of = existing.id
                     break
             if duplicate_of is not None:
@@ -245,59 +369,110 @@ class ContextCompiler:
                     {"id": candidate.id, "reason": "duplicate", "duplicate_of": duplicate_of}
                 )
             else:
+                if not semantic:
+                    pos = len(kept)
+                    for token in self._block_tokens(candidate.content):
+                        index[token].append(pos)
                 kept.append(candidate)
         return kept
+
+    def _conflict_pairs(
+        self, candidates: list[ContextCandidate], scorer: ContextScorer
+    ) -> list[tuple[int, int]]:
+        """Index pairs of same-type evidence/memory candidates worth comparing
+        for conflict. Lexical mode blocks on shared tokens (exact); semantic
+        mode returns all same-type pairs."""
+        same_type = [
+            i for i, c in enumerate(candidates) if c.type in ("evidence", "memory")
+        ]
+        if scorer.semantic:
+            return [
+                (a, b)
+                for ia, a in enumerate(same_type)
+                for b in same_type[ia + 1 :]
+                if candidates[a].type == candidates[b].type
+            ]
+        index: dict[str, list[int]] = defaultdict(list)
+        for i in same_type:
+            for token in self._block_tokens(candidates[i].content):
+                index[token].append(i)
+        pairs: set[tuple[int, int]] = set()
+        for members in index.values():
+            for ia in range(len(members)):
+                for ib in range(ia + 1, len(members)):
+                    i, j = members[ia], members[ib]
+                    if candidates[i].type == candidates[j].type:
+                        pairs.add((i, j) if i < j else (j, i))
+        return sorted(pairs)
 
     def _resolve_conflicts(
         self,
         candidates: list[ContextCandidate],
         excluded: list[dict[str, Any]],
+        scorer: ContextScorer,
     ) -> tuple[list[ContextCandidate], list[dict[str, Any]]]:
-        """Higher authority wins; newer wins on similar authority;
-        otherwise keep both and report the conflict to the model."""
+        """Higher authority wins; newer wins on similar authority; otherwise
+        keep both and report a structured conflict delta to the model.
+
+        The trigger is a salient-unit value disagreement (or polarity flip), not
+        the old negation-XOR heuristic that missed every numeric/date conflict.
+        """
         conflicts: list[dict[str, Any]] = []
         dropped: set[str] = set()
-        for i in range(len(candidates)):
-            for j in range(i + 1, len(candidates)):
-                a, b = candidates[i], candidates[j]
-                if a.id in dropped or b.id in dropped:
-                    continue
-                if a.type != b.type or a.type not in ("evidence", "memory"):
-                    continue
-                similarity = shingle_similarity(a.content, b.content)
-                if not (0.30 <= similarity < self.options.duplicate_threshold):
-                    continue
-                if _looks_negated(a.content) == _looks_negated(b.content):
-                    continue
-                authority_gap = a.authority - b.authority
-                if abs(authority_gap) > self.options.conflict_authority_gap:
-                    loser = b if authority_gap > 0 else a
-                    winner = a if authority_gap > 0 else b
-                    dropped.add(loser.id)
-                    excluded.append(
-                        {"id": loser.id, "reason": "conflict_lower_authority", "superseded_by": winner.id}
-                    )
-                    continue
-                freshness_a = self.scorer.freshness(a)
-                freshness_b = self.scorer.freshness(b)
-                if abs(freshness_a - freshness_b) > self.options.conflict_freshness_gap:
-                    loser = b if freshness_a > freshness_b else a
-                    winner = a if freshness_a > freshness_b else b
-                    dropped.add(loser.id)
-                    excluded.append(
-                        {"id": loser.id, "reason": "conflict_stale", "superseded_by": winner.id}
-                    )
-                    continue
-                conflicts.append(
-                    {
-                        "a": a.id,
-                        "b": b.id,
-                        "note": "unresolved conflict; both included — report the discrepancy",
-                    }
+        for i, j in self._conflict_pairs(candidates, scorer):
+            a, b = candidates[i], candidates[j]
+            if a.id in dropped or b.id in dropped:
+                continue
+            similarity = scorer.diversity_similarity(a.content, b.content)
+            if not (0.30 <= similarity < self.options.duplicate_threshold):
+                continue
+            delta = _value_disagreement(a.content, b.content)
+            if delta is None:
+                continue
+            authority_gap = a.authority - b.authority
+            if abs(authority_gap) > self.options.conflict_authority_gap:
+                loser = b if authority_gap > 0 else a
+                winner = a if authority_gap > 0 else b
+                dropped.add(loser.id)
+                excluded.append(
+                    {"id": loser.id, "reason": "conflict_lower_authority", "superseded_by": winner.id}
                 )
+                continue
+            freshness_a = scorer.freshness(a)
+            freshness_b = scorer.freshness(b)
+            if abs(freshness_a - freshness_b) > self.options.conflict_freshness_gap:
+                loser = b if freshness_a > freshness_b else a
+                winner = a if freshness_a > freshness_b else b
+                dropped.add(loser.id)
+                excluded.append(
+                    {"id": loser.id, "reason": "conflict_stale", "superseded_by": winner.id}
+                )
+                continue
+            conflicts.append(
+                {
+                    "a": a.id,
+                    "b": b.id,
+                    "note": "unresolved conflict; both included — report the discrepancy",
+                    **delta,
+                }
+            )
         return [c for c in candidates if c.id not in dropped], conflicts
 
     # -- selection under budget ------------------------------------------------------
+
+    @staticmethod
+    def _update_max_sim(
+        remaining: list[ContextCandidate],
+        chosen: ContextCandidate,
+        max_sim: dict[str, float],
+        scorer: ContextScorer,
+    ) -> None:
+        """Fold the just-selected item's similarity into each remaining
+        candidate's running max — the only diversity update needed per pick."""
+        for candidate in remaining:
+            sim = scorer.diversity_similarity(candidate.content, chosen.content)
+            if sim > max_sim[candidate.id]:
+                max_sim[candidate.id] = sim
 
     def _select(
         self,
@@ -307,46 +482,73 @@ class ContextCompiler:
         max_items: int,
         query: str,
         excluded: list[dict[str, Any]],
+        scorer: ContextScorer,
     ) -> list[ContextCandidate]:
-        """Greedy utility-per-token selection with novelty rescoring."""
-        selected: list[ContextCandidate] = []
-        used = 0
-        pool = []
+        """Maximal-marginal-relevance selection: utility minus a diversity
+        penalty against the already-selected set.
+
+        Scored once against an empty selection, then each pick only folds the
+        newly-selected item into a running per-candidate max-similarity — O(n·k)
+        instead of re-scoring the whole pool every pick (O(n²)). In semantic mode
+        relevance and diversity are embedding cosine with an ``mmr_lambda``
+        trade-off; otherwise the lexical weighted utility (identical to before).
+        """
+        pool: list[ContextCandidate] = []
         for candidate in candidates:
             # Relevance gate: evidence that shares nothing with the task is
             # context pollution regardless of authority/novelty baselines.
             if candidate.type == "evidence":
-                relevance = self.scorer.relevance(candidate, query)
-                answerability = self.scorer.answerability(candidate, query)
+                relevance = scorer.relevance(candidate, query)
+                answerability = scorer.answerability(candidate, query)
                 upstream = float(candidate.metadata.get("upstream_relevance") or 0.0)
                 if max(relevance, answerability, upstream) < self.options.min_relevance:
                     excluded.append(
-                        {
-                            "id": candidate.id,
-                            "reason": "low_relevance",
-                            "score": round(relevance, 4),
-                        }
+                        {"id": candidate.id, "reason": "low_relevance", "score": round(relevance, 4)}
                     )
                     continue
             pool.append(candidate)
-        while pool and len(selected) < max_items:
-            for candidate in pool:
-                self.scorer.score(candidate, query=query, selected=selected)
-            pool.sort(key=lambda c: c.scores.total, reverse=True)
-            best = pool.pop(0)
-            if best.scores.total < self.options.min_score:
+
+        # Score once with an empty selection: novelty=1, duplication=0.
+        for candidate in pool:
+            scorer.score(candidate, query=query, selected=[])
+        w = scorer.weights
+        semantic = scorer.semantic
+        lam = self.options.mmr_lambda
+        diversity_weight = w.novelty + w.duplication
+        base = {c.id: c.scores.total for c in pool}
+        static = {c.id: base[c.id] - w.novelty for c in pool}  # utility minus diversity terms
+        max_sim = {c.id: 0.0 for c in pool}
+
+        def effective(candidate: ContextCandidate) -> float:
+            sim = max_sim[candidate.id]
+            if semantic:
+                return lam * static[candidate.id] - (1.0 - lam) * sim
+            # Equivalent to the original per-iteration total:
+            # static + w.novelty*(1-sim) - w.duplication*sim.
+            return base[candidate.id] - diversity_weight * sim
+
+        selected: list[ContextCandidate] = []
+        used = 0
+        remaining = list(pool)
+        while remaining and len(selected) < max_items:
+            best = max(remaining, key=effective)
+            best_total = effective(best)
+            best.scores.duplication = max_sim[best.id]
+            best.scores.novelty = 1.0 - max_sim[best.id]
+            best.scores.total = best_total
+            if best_total < self.options.min_score:
                 excluded.append(
-                    {"id": best.id, "reason": "low_relevance", "score": round(best.scores.total, 4)}
+                    {"id": best.id, "reason": "low_relevance", "score": round(best_total, 4)}
                 )
-                for remaining in pool:
+                for rem in remaining:
+                    if rem is best:
+                        continue
+                    rem.scores.total = effective(rem)
                     excluded.append(
-                        {
-                            "id": remaining.id,
-                            "reason": "low_relevance",
-                            "score": round(remaining.scores.total, 4),
-                        }
+                        {"id": rem.id, "reason": "low_relevance", "score": round(rem.scores.total, 4)}
                     )
                 break
+            remaining.remove(best)
             if used + best.token_cost > budget_tokens:
                 if self.options.compress_evidence and best.type == "evidence":
                     remaining_budget = budget_tokens - used
@@ -358,6 +560,7 @@ class ContextCompiler:
                             best.metadata["compressed"] = compressed.method
                             selected.append(best)
                             used += best.token_cost
+                            self._update_max_sim(remaining, best, max_sim, scorer)
                             continue
                 excluded.append(
                     {"id": best.id, "reason": "budget_exceeded", "token_cost": best.token_cost}
@@ -365,6 +568,7 @@ class ContextCompiler:
                 continue
             selected.append(best)
             used += best.token_cost
+            self._update_max_sim(remaining, best, max_sim, scorer)
         return selected
 
     def _order(self, selected: list[ContextCandidate], query: str) -> list[ContextCandidate]:
@@ -469,15 +673,18 @@ class ContextCompiler:
                 allowed.append(candidate)
             candidates = allowed
 
-        # 4. score
+        # 4. score (with a per-compile scorer — semantic embeddings are installed
+        # on a fresh scorer so the shared instance stays vector-less and concurrent
+        # compiles never race on mutable state).
+        scorer = await self._scorer_for(candidates, query)
         for candidate in candidates:
-            self.scorer.score(candidate, query=query)
+            scorer.score(candidate, query=query)
 
         # 5. dedupe
-        candidates = self._remove_duplicates(candidates, excluded)
+        candidates = self._remove_duplicates(candidates, excluded, scorer)
 
         # 6. conflicts
-        candidates, conflicts = self._resolve_conflicts(candidates, excluded)
+        candidates, conflicts = self._resolve_conflicts(candidates, excluded, scorer)
 
         # 8. budget allocation (uses fixed costs for known blocks)
         instruction_tokens = sum(count_tokens(i.text) for i in instructions or [])
@@ -487,6 +694,13 @@ class ContextCompiler:
         schema_tokens = (
             count_tokens(str(output_contract.schema_def)) if output_contract and output_contract.schema_def else 0
         )
+        reserve_tokens = 0
+        if self.options.reserve_response_tokens:
+            reserve = budget.max_output_tokens
+            if tool_specs:
+                reserve += budget.max_output_tokens  # headroom for one tool-loop round
+            # Never let the reservation starve the context blocks.
+            reserve_tokens = min(reserve, budget.max_input_tokens // 4)
         allocation = self.allocator.allocate(
             budget.max_input_tokens,
             task_type=objective.task_type,
@@ -496,6 +710,7 @@ class ContextCompiler:
                 "user_task": task_tokens,
                 "schema": schema_tokens,
             },
+            reserve_tokens=reserve_tokens,
         )
 
         evidence_pool = [c for c in candidates if c.type == "evidence"]
@@ -509,6 +724,7 @@ class ContextCompiler:
             max_items=self.options.max_evidence_items,
             query=query,
             excluded=excluded,
+            scorer=scorer,
         )
         selected_memory = self._select(
             memory_pool,
@@ -516,6 +732,7 @@ class ContextCompiler:
             max_items=self.options.max_memory_items,
             query=query,
             excluded=excluded,
+            scorer=scorer,
         )
         selected_tools = self._select(
             tool_pool,
@@ -523,6 +740,7 @@ class ContextCompiler:
             max_items=self.options.max_evidence_items,
             query=query,
             excluded=excluded,
+            scorer=scorer,
         )
         allocation.block("evidence").used_tokens = sum(c.token_cost for c in selected_evidence)
         allocation.block("memory").used_tokens = sum(c.token_cost for c in selected_memory)

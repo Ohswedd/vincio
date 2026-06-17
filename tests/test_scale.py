@@ -677,6 +677,9 @@ class TestBudgets:
     def test_hard_cap_denies(self, offline_config, tmp_cwd):
         app = ContextApp(name="b", provider=MockProvider(default_text="ok"), config=offline_config)
         app.cost_tracker.price_table.set("gpt-5.2", ModelPrice(input_per_mtok=1e9))
+        # This test exercises the per-tenant cost SLO, a distinct layer from the
+        # per-run hard cap (1.7); raise the run cap so the SLO is what denies.
+        app.budget = app.budget.model_copy(update={"max_cost_usd": 1e12})
         app.set_cost_budget(scope="tenant", id="acme", limit_usd=0.001, period="total")
         first = app.run("a", tenant_id="acme")
         second = app.run("b", tenant_id="acme")
@@ -692,6 +695,7 @@ class TestBudgets:
 
         app = ContextApp(name="b", provider=MockProvider(responder=responder), config=offline_config)
         app.cost_tracker.price_table.set("gpt-5.2", ModelPrice(input_per_mtok=1e9))
+        app.budget = app.budget.model_copy(update={"max_cost_usd": 1e12})
         app.set_cost_budget(
             scope="tenant", id="acme", limit_usd=0.001, period="total",
             on_breach="degrade", degrade_model="gpt-5.2-nano",
@@ -704,6 +708,7 @@ class TestBudgets:
     def test_queue_to_batch_denies_with_hint(self, offline_config, tmp_cwd):
         app = ContextApp(name="b", provider=MockProvider(default_text="ok"), config=offline_config)
         app.cost_tracker.price_table.set("gpt-5.2", ModelPrice(input_per_mtok=1e9))
+        app.budget = app.budget.model_copy(update={"max_cost_usd": 1e12})
         app.set_cost_budget(scope="global", limit_usd=1e-9, period="total", on_breach="queue_to_batch")
         app.run("a")
         result = app.run("b")

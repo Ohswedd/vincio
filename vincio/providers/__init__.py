@@ -40,6 +40,12 @@ from .openai_compat import (
     openai_compatible,
 )
 from .openai_responses import OpenAIResponsesProvider
+from .registry import (
+    ModelRegistry,
+    ModelUnknownWarning,
+    default_model_registry,
+    discover_entry_points,
+)
 from .transport import CoalescingProvider, build_pooled_client
 
 __all__ = [
@@ -67,6 +73,10 @@ __all__ = [
     "CoalescingProvider",
     "build_pooled_client",
     "ProviderRegistry",
+    "ModelRegistry",
+    "ModelUnknownWarning",
+    "default_model_registry",
+    "discover_entry_points",
     "OpenAIProvider",
     "OpenAIResponsesProvider",
     "OpenAICompatibleProvider",
@@ -100,6 +110,14 @@ _registry.register("mock", lambda **kw: MockProvider(**{k: v for k, v in kw.item
 _registry.register("openai_compat", OpenAICompatibleProvider)
 for _preset in PRESETS:
     _registry.register(_preset, _preset_factory(_preset))
+
+# Third-party providers shipped as separate pip packages auto-register via the
+# ``vincio.providers`` entry-point group (importlib.metadata). Built-ins take
+# precedence: a plugin only fills a name not already registered, so an installed
+# adapter can never silently shadow a core provider.
+for _name, _factory in discover_entry_points("vincio.providers").items():
+    if _name not in _registry.names:
+        _registry.register(_name, _factory)
 
 
 def default_registry() -> ProviderRegistry:

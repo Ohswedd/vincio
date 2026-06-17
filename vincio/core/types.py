@@ -7,7 +7,7 @@ live in their own packages and import from here.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -49,6 +49,7 @@ __all__ = [
     "ModelEvent",
     "ModelCapabilities",
     "ModelProfile",
+    "ModelLifecycle",
     "RunStatus",
     "RunConfig",
     "RunResult",
@@ -598,10 +599,26 @@ class ModelCapabilities(BaseModel):
     max_output_tokens: int = 8_192
     supports_system_message: bool = True
     supports_developer_message: bool = False
+    # Input/output modalities the model accepts/produces. ``vision``/``audio``
+    # cover the common input booleans; these lists carry the full picture
+    # (e.g. image/audio *output* for 1.9 generation) without a breaking change.
+    input_modalities: list[str] = Field(default_factory=lambda: ["text"])
+    output_modalities: list[str] = Field(default_factory=lambda: ["text"])
+
+
+# Lifecycle state of a model relative to its published GA / deprecation /
+# retirement dates. ``ga`` is serving normally; ``deprecated`` still serves but
+# is scheduled for removal; ``retired`` no longer serves.
+ModelLifecycle = Literal["ga", "deprecated", "retired"]
 
 
 class ModelProfile(BaseModel):
-    """A named model + provider + pricing + capabilities bundle."""
+    """A named model + provider + pricing + capabilities + lifecycle bundle.
+
+    The :class:`~vincio.providers.registry.ModelRegistry` instantiates one
+    profile per exact model id and is the single source capability guards, the
+    cost price table, and (1.8+) model rotation all read from.
+    """
 
     name: str
     provider: str
@@ -610,7 +627,43 @@ class ModelProfile(BaseModel):
     input_cost_per_mtok: float = 0.0
     output_cost_per_mtok: float = 0.0
     cached_input_cost_per_mtok: float = 0.0
+    # Batch-tier pricing (typically half cost); ``None`` falls back to the
+    # standard rate when the provider has no separate batch price.
+    batch_input_cost_per_mtok: float | None = None
+    batch_output_cost_per_mtok: float | None = None
     tier: Literal["fast", "default", "strong"] = "default"
+    # Alternate ids that resolve to this profile (e.g. dated snapshots,
+    # provider aliases) so ``lookup`` need not fall back to substring sniffing.
+    aliases: list[str] = Field(default_factory=list)
+    # Lifecycle dates as ISO strings (provider-published); ``None`` when the
+    # provider does not publish that milestone. Deadline-agnostic by design.
+    ga_date: str | None = None
+    deprecation_date: str | None = None
+    retirement_date: str | None = None
+    knowledge_cutoff: str | None = None
+    # Suggested successor model id once deprecated/retired (consumed by the 1.8
+    # lifecycle watcher); harmless metadata until then.
+    successor: str | None = None
+
+    def lifecycle(self, *, as_of: date | None = None) -> ModelLifecycle:
+        """Lifecycle state relative to *as_of* (today by default)."""
+        today = as_of or utcnow().date()
+
+        def _parse(value: str | None) -> date | None:
+            if not value:
+                return None
+            try:
+                return date.fromisoformat(value[:10])
+            except ValueError:
+                return None
+
+        retired = _parse(self.retirement_date)
+        if retired is not None and today >= retired:
+            return "retired"
+        deprecated = _parse(self.deprecation_date)
+        if deprecated is not None and today >= deprecated:
+            return "deprecated"
+        return "ga"
 
 
 # ---------------------------------------------------------------------------
@@ -640,6 +693,11 @@ class RunConfig(BaseModel):
     seed: int | None = None
     reasoning_effort: ReasoningEffort | None = None
     thinking_budget_tokens: int | None = None
+    # Hard-cap enforcement of the full Budget on the single-shot run path (1.7):
+    # max_cost_usd / max_input_tokens / max_output_tokens / max_steps become hard
+    # caps that raise ``BudgetExceededError``. Set False to restore the pre-1.7
+    # soft-cap behavior (only latency and tool-count enforced) for one minor.
+    enforce_budget_caps: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

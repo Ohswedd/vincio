@@ -62,11 +62,18 @@ class AccessController:
         rules: list[AccessRule] | None = None,
         tenant_isolation: bool = True,
         default_allow: bool = False,
+        require_explicit_tenant: bool = False,
     ) -> None:
         self.roles = {role.name: role for role in (roles or [])}
         self.rules = sorted(rules or [], key=lambda r: r.priority)
         self.tenant_isolation = tenant_isolation
         self.default_allow = default_allow
+        # When True, an untagged (``tenant_id is None``) resource is NOT treated
+        # as globally readable: tenant access requires an explicit, matching
+        # scope on both sides. Closes the cross-tenant fail-open (a correctness
+        # and exfiltration risk). Defaults False to preserve the pre-1.7 behavior
+        # for one minor; flip it on to fail closed.
+        self.require_explicit_tenant = require_explicit_tenant
 
     # -- RBAC scopes -----------------------------------------------------------
 
@@ -132,8 +139,29 @@ class AccessController:
     # -- tenant isolation -----------------------------------------------------------
 
     def check_tenant(self, principal: Principal, resource_tenant_id: str | None) -> None:
-        """Enforce tenant boundaries before retrieval (rule 4)."""
-        if not self.tenant_isolation or resource_tenant_id is None:
+        """Enforce tenant boundaries before retrieval (rule 4).
+
+        In strict mode (``require_explicit_tenant``) a resource with no tenant
+        tag is not globally readable: both sides must carry an explicit, matching
+        tenant. In legacy mode an untagged resource passes (the pre-1.7
+        fail-open, kept for one minor)."""
+        if not self.tenant_isolation:
+            return
+        if self.require_explicit_tenant:
+            if (
+                principal.tenant_id is None
+                or resource_tenant_id is None
+                or principal.tenant_id != resource_tenant_id
+            ):
+                raise TenantIsolationError(
+                    "tenant boundary violation (explicit scope required)",
+                    details={
+                        "principal_tenant": principal.tenant_id,
+                        "resource_tenant": resource_tenant_id,
+                    },
+                )
+            return
+        if resource_tenant_id is None:
             return
         if principal.tenant_id is None or principal.tenant_id != resource_tenant_id:
             raise TenantIsolationError(
@@ -145,13 +173,19 @@ class AccessController:
             )
 
     def filter_by_tenant(self, principal: Principal, items: list[Any]) -> list[Any]:
-        """Drop items belonging to other tenants (items expose .tenant_id)."""
+        """Drop items belonging to other tenants (items expose .tenant_id).
+
+        In strict mode an untagged item is dropped (it is not globally visible);
+        in legacy mode an untagged item is kept (the pre-1.7 fail-open)."""
         if not self.tenant_isolation:
             return list(items)
         kept = []
         for item in items:
             tenant = getattr(item, "tenant_id", None)
-            if tenant is None or tenant == principal.tenant_id:
+            if self.require_explicit_tenant:
+                if tenant is not None and tenant == principal.tenant_id:
+                    kept.append(item)
+            elif tenant is None or tenant == principal.tenant_id:
                 kept.append(item)
         return kept
 

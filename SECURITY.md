@@ -7,6 +7,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.7.x   | ✅        |
 | 1.6.x   | ✅        |
 | 1.5.x   | ✅        |
 | 1.4.x   | ✅        |
@@ -14,7 +15,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 | 1.2.x   | ✅        |
 | 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
-| < 1.0   | ❌ (upgrade to 1.6.x) |
+| < 1.0   | ❌ (upgrade to 1.7.x) |
 
 ## Threat model
 
@@ -73,6 +74,23 @@ marking emits a C2PA-style manifest bound by SHA-256; it can be cryptographicall
 **signed** (built-in symmetric `HmacSigner`, or your own asymmetric
 `ContentSigner`) and verified with `verify_manifest` (Vincio assumes no signing
 authority — the key and any PKI are yours).
+
+The 1.7 hardening tightens three controls without adding external services. The
+prompt-injection detector now runs a normalization + decode pre-pass (NFKC fold,
+zero-width strip, homoglyph/leetspeak fold, and recursive — depth- and
+size-bounded — base64/hex/rot13 decode) before its signals, so obfuscated
+attacks are scored against their decoded form; the PII / injection / secret
+detectors accept a pluggable `DetectorBackend` (an ML model merges with, never
+replaces, the deterministic rules). Cross-tenant isolation can fail closed:
+`AccessController(require_explicit_tenant=True)` stops treating an untagged
+(`tenant_id=None`) resource as globally readable — closing a cross-tenant
+fail-open — defaulting to the legacy behavior for one minor so the change is
+additive. And the compliance coverage matrix now reads a control as `covered`
+only when backed by *measured* red-team / eval evidence (a configured-but-
+unmeasured control is `partial`), so the auditor matrix reflects defense actually
+exercised, not a config flag. The enforced `Budget` makes runaway cost/token/step
+use a hard cap (`BudgetExceededError`) recorded on the same audit chain, and an
+unknown model warns instead of silently billing $0.
 
 ## Supply-chain integrity
 

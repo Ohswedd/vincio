@@ -9,6 +9,7 @@ from .audit import (
     apply_retention,
     verify_audit_file,
 )
+from .backends import DetectorBackend, DetectorSpan
 from .injection import InjectionDetector, InjectionVerdict, wrap_untrusted
 from .locales import LocalePack, available_locales, get_locale_pack
 from .pii import PIIDetector, PIIMatch, redact
@@ -50,4 +51,6 @@ __all__ = [
     "SecretFinding",
     "SecretScanner",
     "SecretString",
+    "DetectorBackend",
+    "DetectorSpan",
 ]

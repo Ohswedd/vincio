@@ -1,15 +1,20 @@
 """Cost tracking.
 
-Maintains a price table per model family and computes USD costs from token
-usage. Prices are configurable; the built-in table covers common models and
-is intentionally easy to override at runtime — provider pricing changes.
+Computes USD costs from token usage. Prices derive from the data-driven
+:class:`~vincio.providers.registry.ModelRegistry` (the single source of truth
+for capabilities, pricing, and lifecycle); the table seeds itself from the
+registry and is still freely overridable at runtime via :meth:`PriceTable.set`.
+
+Unknown models no longer silently bill ``$0``: the registry warns once and the
+runtime emits a ``model.unknown`` event, so a missing price is observable
+instead of hidden.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ..core.types import TokenUsage
+from ..core.types import ModelProfile, TokenUsage
 
 __all__ = ["ModelPrice", "PriceTable", "CostTracker", "default_price_table"]
 
@@ -18,67 +23,90 @@ class ModelPrice(BaseModel):
     input_per_mtok: float = 0.0
     output_per_mtok: float = 0.0
     cached_input_per_mtok: float = 0.0
+    # Batch-tier rates (typically ~half). ``None`` falls back to the standard
+    # rate. Used when a cost is recorded for a batch (half-cost) execution.
+    batch_input_per_mtok: float | None = None
+    batch_output_per_mtok: float | None = None
 
 
-# Prices in USD per million tokens. Override via PriceTable.set() or config.
-_DEFAULT_PRICES: dict[str, ModelPrice] = {
-    # OpenAI
-    "gpt-5.2": ModelPrice(input_per_mtok=1.25, output_per_mtok=10.0, cached_input_per_mtok=0.125),
-    "gpt-5.2-mini": ModelPrice(input_per_mtok=0.25, output_per_mtok=2.0, cached_input_per_mtok=0.025),
-    "gpt-5.2-nano": ModelPrice(input_per_mtok=0.05, output_per_mtok=0.4, cached_input_per_mtok=0.005),
-    "gpt-4o": ModelPrice(input_per_mtok=2.5, output_per_mtok=10.0, cached_input_per_mtok=1.25),
-    "gpt-4o-mini": ModelPrice(input_per_mtok=0.15, output_per_mtok=0.6, cached_input_per_mtok=0.075),
-    # Anthropic
-    "claude-fable-5": ModelPrice(input_per_mtok=5.0, output_per_mtok=25.0, cached_input_per_mtok=0.5),
-    "claude-opus-4-8": ModelPrice(input_per_mtok=5.0, output_per_mtok=25.0, cached_input_per_mtok=0.5),
-    "claude-sonnet-4-6": ModelPrice(input_per_mtok=3.0, output_per_mtok=15.0, cached_input_per_mtok=0.3),
-    "claude-haiku-4-5": ModelPrice(input_per_mtok=1.0, output_per_mtok=5.0, cached_input_per_mtok=0.1),
-    # Google
-    "gemini-3-pro": ModelPrice(input_per_mtok=2.0, output_per_mtok=12.0, cached_input_per_mtok=0.5),
-    "gemini-3-flash": ModelPrice(input_per_mtok=0.3, output_per_mtok=2.5, cached_input_per_mtok=0.075),
-    # Google — current GA models (free tier bills $0; paid-tier rates shown for cost tracking)
-    "gemini-2.5-pro": ModelPrice(input_per_mtok=1.25, output_per_mtok=10.0, cached_input_per_mtok=0.31),
-    "gemini-2.5-flash": ModelPrice(input_per_mtok=0.3, output_per_mtok=2.5, cached_input_per_mtok=0.075),
-    "gemini-2.5-flash-lite": ModelPrice(input_per_mtok=0.1, output_per_mtok=0.4, cached_input_per_mtok=0.025),
-    "gemini-2.0-flash": ModelPrice(input_per_mtok=0.1, output_per_mtok=0.4, cached_input_per_mtok=0.025),
-    "gemini-2.0-flash-lite": ModelPrice(input_per_mtok=0.075, output_per_mtok=0.3),
-    # Embeddings: gemini-embedding-001 is the current GA model and the provider
-    # default; without it here, embedding cost silently resolves to $0.
-    "gemini-embedding-001": ModelPrice(input_per_mtok=0.15),
-    "text-embedding-004": ModelPrice(input_per_mtok=0.0),
-    # Mistral
-    "mistral-large-latest": ModelPrice(input_per_mtok=2.0, output_per_mtok=6.0),
-    "mistral-small-latest": ModelPrice(input_per_mtok=0.2, output_per_mtok=0.6),
-    # Local/self-hosted defaults to free
-    "local": ModelPrice(),
-}
+def _price_from_profile(profile: ModelProfile) -> ModelPrice:
+    return ModelPrice(
+        input_per_mtok=profile.input_cost_per_mtok,
+        output_per_mtok=profile.output_cost_per_mtok,
+        cached_input_per_mtok=profile.cached_input_cost_per_mtok,
+        batch_input_per_mtok=profile.batch_input_cost_per_mtok,
+        batch_output_per_mtok=profile.batch_output_cost_per_mtok,
+    )
+
+
+def _default_prices() -> dict[str, ModelPrice]:
+    """Seed the price dict from the registry so ``.prices`` reflects the catalog."""
+    from ..providers.registry import default_model_registry
+
+    return {p.model: _price_from_profile(p) for p in default_model_registry().profiles()}
 
 
 class PriceTable(BaseModel):
-    prices: dict[str, ModelPrice] = Field(default_factory=lambda: dict(_DEFAULT_PRICES))
+    prices: dict[str, ModelPrice] = Field(default_factory=_default_prices)
 
     def set(self, model: str, price: ModelPrice) -> None:
         self.prices[model] = price
 
     def lookup(self, model: str) -> ModelPrice:
+        from ..providers.registry import default_model_registry
+
+        registry = default_model_registry()
+        # 1. Explicit override / seeded exact entry.
         if model in self.prices:
             return self.prices[model]
-        # Prefix match: "gpt-4o-2024-11-20" -> "gpt-4o"
+        # 2. Exact registry id (alias-aware) — authoritative for known models.
+        profile = registry.get(model)
+        if profile is not None:
+            return _price_from_profile(profile)
+        # 3. Longest-prefix over the price dict FIRST, so a runtime override of a
+        #    base id still covers its dated snapshots ("gpt-4o-2024-11-20" ->
+        #    a user-set "gpt-4o") rather than being shadowed by the built-in.
         best: tuple[int, ModelPrice] | None = None
         for name, price in self.prices.items():
             if model.startswith(name) and (best is None or len(name) > best[0]):
                 best = (len(name), price)
         if best:
             return best[1]
+        # 4. Registry prefix fallback (built-in dated snapshots).
+        profile = registry._prefix_match(model)
+        if profile is not None:
+            return _price_from_profile(profile)
+        # 5. Genuinely unknown: warn (once) rather than silently bill $0.
+        registry.note_unknown(model)
         return ModelPrice()
 
-    def cost(self, model: str, usage: TokenUsage) -> float:
+    def is_known(self, model: str) -> bool:
+        """Whether *model* has a real (non-fallback) price the cost can trust."""
+        if model in self.prices:
+            return True
+        from ..providers.registry import default_model_registry
+
+        if default_model_registry().resolve(model) is not None:
+            return True
+        return any(model.startswith(name) for name in self.prices)
+
+    def cost(self, model: str, usage: TokenUsage, *, batch: bool = False) -> float:
         price = self.lookup(model)
         uncached_input = max(0, usage.input_tokens - usage.cached_input_tokens)
+        input_rate = (
+            price.batch_input_per_mtok
+            if batch and price.batch_input_per_mtok is not None
+            else price.input_per_mtok
+        )
+        output_rate = (
+            price.batch_output_per_mtok
+            if batch and price.batch_output_per_mtok is not None
+            else price.output_per_mtok
+        )
         return (
-            uncached_input * price.input_per_mtok
+            uncached_input * input_rate
             + usage.cached_input_tokens * price.cached_input_per_mtok
-            + usage.output_tokens * price.output_per_mtok
+            + usage.output_tokens * output_rate
         ) / 1_000_000
 
 

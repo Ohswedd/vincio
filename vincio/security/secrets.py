@@ -13,6 +13,7 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .backends import DetectorBackend
 from .pii import PIIDetector, PIIMatch
 
 __all__ = ["SecretString", "SecretFinding", "SecretScanner"]
@@ -72,9 +73,14 @@ def _preview(value: str) -> str:
 class SecretScanner:
     """Finds credentials in strings and nested structures."""
 
-    def __init__(self, *, entropy_threshold: float = 4.4) -> None:
+    def __init__(
+        self, *, entropy_threshold: float = 4.4, backend: DetectorBackend | None = None
+    ) -> None:
         self.entropy_threshold = entropy_threshold
-        self._pii = PIIDetector(enabled_types={"api_key", "secret"})
+        # Optional ML backend, threaded into the internal PII detector so its
+        # spans merge with the regex + entropy findings. None ⇒ deterministic.
+        self.backend = backend
+        self._pii = PIIDetector(enabled_types={"api_key", "secret"}, backend=backend)
 
     def scan_text(self, text: str, *, path: str = "text") -> list[SecretFinding]:
         findings: list[SecretFinding] = []

@@ -276,6 +276,10 @@ class ImprovementLoop:
                 "baseline_fitness": optimization.baseline_fitness,
                 "fitness": best.full_fitness,
                 "params": best.params,
+                # Statistical backing (1.7): the promotion is defensible at a
+                # confidence level, not a point estimate.
+                "significance": optimization.significance,
+                "warnings": optimization.warnings,
             },
         )
         app.events.emit(

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 from .protocol import (
@@ -54,6 +56,29 @@ class A2AClient:
     async def get_task(self, task_id: str) -> A2ATask:
         result = await self.transport.request("tasks/get", {"id": task_id})
         return _task_from_wire(result or {})
+
+    async def poll_task(
+        self,
+        task_id: str,
+        *,
+        deadline_s: float = 30.0,
+        initial_delay_s: float = 0.05,
+        max_delay_s: float = 2.0,
+    ) -> A2ATask:
+        """Poll a ``submitted`` / ``working`` task to a terminal state with
+        exponential backoff and a wall-clock deadline. Returns the last-known
+        task if the deadline passes (still non-terminal), so the caller can
+        report "still working" rather than mislabel it failed."""
+        start = time.monotonic()
+        delay = initial_delay_s
+        while True:
+            task = await self.get_task(task_id)
+            if task.status.state not in ("submitted", "working"):
+                return task
+            if time.monotonic() - start >= deadline_s:
+                return task
+            await asyncio.sleep(delay)
+            delay = min(delay * 2.0, max_delay_s)
 
     async def cancel(self, task_id: str) -> A2ATask:
         result = await self.transport.request("tasks/cancel", {"id": task_id})
@@ -129,6 +154,10 @@ class RemoteA2AAgent:
             state.evidence.extend(initial_evidence)
         try:
             task = await self.client.send(obj.text)
+            # Poll a still-running task to a terminal state instead of
+            # mis-reporting the first non-completed response as a failure.
+            if task.status.state in ("submitted", "working"):
+                task = await self.client.poll_task(task.id)
         except A2AError as exc:
             state.terminated = True
             state.termination_reason = "unrecoverable_error"
@@ -144,6 +173,16 @@ class RemoteA2AAgent:
             state.termination_reason = "objective_complete"
         elif task.status.state == "input-required":
             state.termination_reason = "approval_required"
+        elif task.status.state in ("submitted", "working"):
+            # Still running past the poll deadline — not a terminal failure;
+            # surface it as recoverable so the caller can retry, not mislabel it.
+            state.termination_reason = "unrecoverable_error"
+            state.errors.append(
+                AgentError(
+                    message=f"A2A delegate still {task.status.state} after poll deadline",
+                    recoverable=True,
+                )
+            )
         else:
             state.termination_reason = "unrecoverable_error"
             state.errors.append(

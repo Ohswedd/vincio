@@ -565,7 +565,21 @@ def cmd_trace_replay(args: argparse.Namespace) -> int:
     from ..observability.traces import trace_replay_plan
 
     trace = _load_trace(args.trace_id, args.traces_dir)
-    print(json_dumps(trace_replay_plan(trace), indent=2))
+    target = getattr(args, "against", None)
+    if not target:
+        # No target: print the extracted replay plan (unchanged behavior).
+        print(json_dumps(trace_replay_plan(trace), indent=2))
+        return 0
+
+    # Execute the plan against a target app and diff outputs/trajectory/cost.
+    from ..evals.replay import ReplayRunner
+    from ..providers.base import run_sync
+
+    app = _load_app(target)
+    runner = ReplayRunner(app)
+    result = run_sync(runner.replay([trace], pin_tools=getattr(args, "pin_tools", False)))
+    print(json_dumps({"summary": result.summary(), "report_diff": result.report_diff,
+                      "cases": [c.model_dump() for c in result.cases]}, indent=2))
     return 0
 
 
@@ -1321,6 +1335,15 @@ def build_parser() -> argparse.ArgumentParser:
         p_trace_sub.add_argument("--traces-dir", default=".vincio/traces")
         if name == "diff":
             p_trace_sub.add_argument("--html", default=None, help="write a visual diff HTML here")
+        if name == "replay":
+            p_trace_sub.add_argument(
+                "--against", default=None,
+                help="path to an app file to replay this trace against (diffs output/trajectory/cost)",
+            )
+            p_trace_sub.add_argument(
+                "--pin-tools", action="store_true", dest="pin_tools",
+                help="pin recorded tool outputs for a deterministic replay",
+            )
         p_trace_sub.set_defaults(fn=fn)
     p_trace_export = trace_sub.add_parser("export", help="export a trace/session as static HTML")
     p_trace_export.add_argument("trace_id", help="trace id (or session id with --session)")
