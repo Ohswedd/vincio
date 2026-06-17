@@ -304,6 +304,11 @@ terminal lifecycle/config error (a removed/unknown model) is classified
 distinctly from a transient outage. Unknown models are never blocked; pass
 `guard_capabilities=False` to restore the pre-1.8 attempt-everything behavior.
 
+When a [residency policy](governance.md) is configured, every model a run can
+reach — the router's candidates, a cascade's rungs, a budget-degrade target, and
+a shadow/canary candidate — is residency-checked at the run boundary, so a
+rotation can never egress to a disallowed region.
+
 ### The swap gate
 
 `app.gate_swap(...)` replays golden traces and runs an eval + cost + latency +

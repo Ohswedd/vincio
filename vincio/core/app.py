@@ -418,9 +418,54 @@ class ContextApp:
         """
         if not self.residency.enforced:
             return
+        # The run boundary validates *every* model this run could egress to —
+        # the configured/per-run model, a budget-degrade target, every cascade
+        # rung, and the candidates of a router / shadow / canary wrapper — so a
+        # rotation that picks a different model per request can never slip a
+        # disallowed-region model past residency below the choke point.
+        for model, provider_name in self._reachable_models(run_config):
+            self._enforce_model_residency(model, provider=provider_name)
+
+    def _reachable_models(
+        self, run_config: RunConfig | None = None
+    ) -> list[tuple[str, str | None]]:
+        """Every ``(model, provider_name)`` a run could dispatch to, for residency.
+
+        Enumerates the resolved model, any budget-degrade target, the rungs of an
+        active cascade, and the candidate set of a ``Router`` / ``ShadowProvider``
+        / ``CanaryRouter`` provider wrapper — so residency (and any future
+        per-model run-boundary guard) sees the full reachable set, not just the
+        primary model."""
         name = (run_config.provider if run_config else None) or self._provider_name
-        model = (run_config.model if run_config else None) or self.model
-        self._enforce_model_residency(model, provider=name)
+        primary = (run_config.model if run_config else None) or self.model
+        seen: set[tuple[str, str | None]] = set()
+        reachable: list[tuple[str, str | None]] = []
+
+        def add(model: str | None, provider_name: str | None) -> None:
+            if model and (model, provider_name) not in seen:
+                seen.add((model, provider_name))
+                reachable.append((model, provider_name))
+
+        add(primary, name)
+        for budget in getattr(self.budget_manager, "budgets", []):
+            if budget.on_breach == "degrade" and budget.degrade_model:
+                add(budget.degrade_model, name)
+        cascade = getattr(self, "cascade", None)
+        if cascade is not None:
+            for rung in cascade.rungs:
+                add(rung.model, rung.provider or name)
+        instance = self._provider_instance
+        if instance is not None:
+            from ..optimize.routing import Router
+            from ..providers.shadow import CanaryRouter, ShadowProvider
+
+            if isinstance(instance, Router):
+                for provider, model in instance.entries:
+                    add(model, getattr(provider, "name", None) or name)
+            elif isinstance(instance, (ShadowProvider, CanaryRouter)):
+                add(instance.candidate_model or primary,
+                    getattr(instance.candidate, "name", None) or name)
+        return reachable
 
     def _enforce_model_residency(self, model: str, *, provider: str | None = None) -> None:
         """Refuse egress of a single ``model`` to a disallowed region (1.6/1.8).
