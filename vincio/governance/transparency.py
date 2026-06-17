@@ -50,6 +50,8 @@ __all__ = [
     "mark_synthetic_content",
     "verify_manifest",
     "embed_provenance",
+    "extract_embedded_manifest",
+    "verify_embedded_manifest",
     "write_sidecar_manifest",
     "ai_disclosure",
     "data_summary",
@@ -260,16 +262,19 @@ def _png_text_chunk(keyword: str, text: str) -> bytes:
     return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
 
 
+_PNG_MANIFEST_KEYWORD = b"c2pa.manifest"
+
+
 def _embed_png_manifest(data: bytes, manifest: ProvenanceManifest) -> bytes:
     """Insert the manifest JSON as an iTXt chunk before a PNG's IEND.
 
     Returns ``data`` unchanged when it is not a PNG (no false claim of
-    embedding); callers fall back to a sidecar for other formats. The *embedded*
-    copy carries no ``content_sha256`` (and no signature), because inserting the
-    chunk changes the file's bytes — embedding the pre-insert hash would make the
-    extracted credential fail its own binding against the file it travels in. The
-    authoritative SHA-256 binding lives on the returned in-memory manifest and
-    the sidecar (:func:`write_sidecar_manifest`), both bound to the final bytes.
+    embedding); callers fall back to a sidecar for other formats. The embedded
+    credential binds the *pre-insert* bytes by SHA-256 and is **self-verifying**:
+    inserting the chunk is reversible, so :func:`verify_embedded_manifest` removes
+    the chunk to reconstruct the original bytes and confirm the digest. The
+    signature is dropped from the embedded copy (its payload is bound to the
+    in-memory manifest the sidecar carries).
     """
     if not data.startswith(b"\x89PNG\r\n\x1a\n"):
         return data
@@ -277,9 +282,94 @@ def _embed_png_manifest(data: bytes, manifest: ProvenanceManifest) -> bytes:
     if iend < 4:
         return data
     insert_at = iend - 4  # before the IEND chunk's length field
-    embedded = manifest.model_copy(update={"content_sha256": None, "signature": None})
-    chunk = _png_text_chunk("c2pa.manifest", embedded.to_json(indent=0))
+    embedded = manifest.model_copy(update={"content_sha256": media_sha256(data), "signature": None})
+    chunk = _png_text_chunk(_PNG_MANIFEST_KEYWORD.decode(), embedded.to_json(indent=0))
     return data[:insert_at] + chunk + data[insert_at:]
+
+
+def _itxt_text(chunk_data: bytes) -> str | None:
+    """Decode the UTF-8 text payload of an iTXt chunk (any keyword)."""
+    sep = chunk_data.find(b"\x00")
+    if sep < 0:
+        return None
+    rest = chunk_data[sep + 1 :]
+    if len(rest) < 2:
+        return None
+    rest = rest[2:]  # skip compression flag + method
+    lang_end = rest.find(b"\x00")
+    if lang_end < 0:
+        return None
+    rest = rest[lang_end + 1 :]
+    trans_end = rest.find(b"\x00")
+    if trans_end < 0:
+        return None
+    return rest[trans_end + 1 :].decode("utf-8", "ignore")
+
+
+def _find_png_manifest_chunk(data: bytes) -> tuple[int, int, str] | None:
+    """Locate the ``c2pa.manifest`` iTXt chunk: ``(chunk_start, chunk_end, json)``."""
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return None
+    pos = 8
+    n = len(data)
+    while pos + 8 <= n:
+        length = int.from_bytes(data[pos : pos + 4], "big")
+        ctype = data[pos + 4 : pos + 8]
+        chunk_end = pos + 12 + length  # length(4) + type(4) + data(length) + crc(4)
+        if chunk_end > n:
+            break
+        if ctype == b"iTXt":
+            chunk_data = data[pos + 8 : pos + 8 + length]
+            if chunk_data.startswith(_PNG_MANIFEST_KEYWORD + b"\x00"):
+                text = _itxt_text(chunk_data)
+                if text is not None:
+                    return (pos, chunk_end, text)
+        pos = chunk_end
+    return None
+
+
+def extract_embedded_manifest(data: bytes) -> ProvenanceManifest | None:
+    """Extract a C2PA manifest embedded in PNG bytes by :func:`embed_provenance`,
+    or ``None`` when no embedded credential is present."""
+    found = _find_png_manifest_chunk(data)
+    if found is None:
+        return None
+    try:
+        payload = json.loads(found[2])
+    except (ValueError, TypeError):
+        return None
+    gen: dict[str, Any] = {}
+    for assertion in payload.get("assertions", []) or []:
+        if isinstance(assertion, dict) and assertion.get("label") == "vincio.ai_generation":
+            gen = assertion.get("data", {}) or {}
+            break
+    binding = payload.get("content_binding", {}) or {}
+    return ProvenanceManifest(
+        claim_generator=payload.get("claim_generator", ""),
+        is_synthetic=bool(gen.get("is_synthetic", True)),
+        model_id=gen.get("model_id"),
+        provider=gen.get("provider"),
+        media_type=gen.get("media_type"),
+        content_sha256=binding.get("hash"),
+    )
+
+
+def verify_embedded_manifest(data: bytes) -> bool:
+    """Verify a PNG's embedded C2PA credential against the file it travels in.
+
+    Removes the ``c2pa.manifest`` chunk to reconstruct the original bytes and
+    confirms the embedded digest matches — so an extracted credential is
+    independently verifiable, not merely present. Returns ``False`` when there is
+    no embedded manifest or the binding does not hold.
+    """
+    found = _find_png_manifest_chunk(data)
+    if found is None:
+        return False
+    manifest = extract_embedded_manifest(data)
+    if manifest is None or manifest.content_sha256 is None:
+        return False
+    reconstructed = data[: found[0]] + data[found[1] :]
+    return manifest.content_sha256 == media_sha256(reconstructed)
 
 
 def embed_provenance(

@@ -4,6 +4,41 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.1] - 2026-06-17
+
+Closes the two thin spots in the 1.9 generation surface so the milestone carries
+no deferred follow-ups. Additive and `@experimental`; no public symbol removed.
+
+### Changed
+
+- **Forms Document-AI cloud adapters are now real, dependency-injected
+  implementations** instead of `NotImplementedError` stubs. `TextractDocumentAI`,
+  `AzureDocumentAI`, and `GoogleDocumentAI` take the SDK client you build and run
+  the real `analyze_document` / `begin_analyze_document` / `process_document`
+  calls in a worker thread; the response→`FormField` parsing (key/value text,
+  confidence, page, and a bounding box) is a pure `parse(...)` function tested
+  offline against synthetic responses (no SDK is a hard dependency).
+- **Embedded PNG C2PA credentials are now self-verifying.** `embed_provenance`
+  binds the embedded credential to the pre-insert bytes; the new
+  `extract_embedded_manifest` / `verify_embedded_manifest` reconstruct the
+  original bytes by removing the `c2pa.manifest` chunk and confirm the digest, so
+  an extracted credential is independently verifiable against the file it travels
+  in (a tampered asset fails). The sidecar / returned manifest still bind the
+  final bytes.
+
+### Added
+
+- Offline tests for each cloud Document-AI parser, the self-verifying embedded
+  credential (incl. tamper rejection), and the optional-dependency error
+  messages (PPTX render / Parquet / `.msg` raise a clear install hint when the
+  extra is absent). A `families.generation.media.embedded_self_verifies`
+  VincioBench budget.
+
+### Notes
+
+- 1196 tests passing offline; ruff + mypy clean. VincioBench: 17 families,
+  173 CI budgets, 51 SLOs.
+
 ## [1.9.0] - 2026-06-17
 
 Documents & images flow OUT — cited, governed, eval-gated artifacts. Vincio could

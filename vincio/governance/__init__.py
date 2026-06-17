@@ -59,7 +59,9 @@ from .transparency import (
     ai_disclosure,
     data_summary,
     embed_provenance,
+    extract_embedded_manifest,
     mark_synthetic_content,
+    verify_embedded_manifest,
     verify_manifest,
     write_sidecar_manifest,
 )
@@ -98,6 +100,8 @@ __all__ = [
     "mark_synthetic_content",
     "verify_manifest",
     "embed_provenance",
+    "extract_embedded_manifest",
+    "verify_embedded_manifest",
     "write_sidecar_manifest",
     "ai_disclosure",
     "data_summary",

@@ -2132,7 +2132,7 @@ async def bench_generation() -> dict[str, Any]:
         TableSpec,
         generate_redline,
     )
-    from vincio.governance import verify_manifest
+    from vincio.governance import verify_embedded_manifest, verify_manifest
 
     sample = (
         "# Board Memo\n\n## Summary\n\nRevenue grew 30% [E1]. Costs fell [E2].\n\n"
@@ -2179,6 +2179,10 @@ async def bench_generation() -> dict[str, Any]:
     image_ok = verify_manifest(image.manifest, image.data)
     audio_ok = verify_manifest(audio.manifest, audio.data)
     tamper_rejected = not verify_manifest(image.manifest, image.data + b"x")
+    # The embedded PNG credential is independently verifiable against the file.
+    embedded_ok = verify_embedded_manifest(image.data) and not verify_embedded_manifest(
+        image.data[:-4] + b"XXXX"
+    )
     disclosure_present = bool(
         image.manifest.is_synthetic and "AlgorithmicMedia" in image.manifest.digital_source_type
     )
@@ -2229,6 +2233,7 @@ async def bench_generation() -> dict[str, Any]:
             "image_provenance_verifies": image_ok,
             "audio_provenance_verifies": audio_ok,
             "tamper_rejected": tamper_rejected,
+            "embedded_self_verifies": embedded_ok,
             "disclosure_present": disclosure_present,
         },
         "redline": {"detects_changes": redline_ok},
