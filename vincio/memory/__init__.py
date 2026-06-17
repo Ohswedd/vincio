@@ -1,5 +1,6 @@
 """Vincio memory engine."""
 
+from .agent_os import MemoryOS, memory_tools
 from .consolidation import ConsolidationReport, MemoryConsolidator
 from .engine import MemoryEngine, MemorySearchResult, ScopedMemory
 from .evals import (
@@ -53,4 +54,6 @@ __all__ = [
     "SQLiteMemoryStore",
     "SessionSummarizer",
     "extractive_summary",
+    "MemoryOS",
+    "memory_tools",
 ]

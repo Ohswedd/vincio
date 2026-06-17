@@ -357,4 +357,42 @@ retrieval tuning is gated, the frontier excludes dominated points, learned
 budgets promote, guided search respects its budget, the reflective optimizer
 beats the baseline within its rollout budget, distillation exports only grounded
 examples and gates the student on quality, and learned compression preserves the
-cited-fact set under a faithfulness gate — under 23 CI-gated budgets.
+cited-fact set under a faithfulness gate — under CI-gated budgets.
+
+## Closing the loop online (1.10, `@experimental`)
+
+The pieces above run the loop when you press go. `vincio.optimize.controller`
+makes it **continual, online, and safe**:
+
+```python
+ctl = app.continuous_improvement(
+    metrics=["groundedness"], golden=held_out, sustain=2,
+    quality_floor={"groundedness": 0.8},
+)
+ctl.set_baseline("groundedness", baseline_scores).attach()
+```
+
+The controller subscribes to `eval.online` and `drift.detected`, streams online
+scores into a per-metric CUSUM changepoint detector (`evals/drift.py` also adds
+KS / PSI / MMD distributional drift), and turns a *sustained* signal into exactly
+one **gated** action — a targeted re-eval to confirm, a fresh `ImprovementLoop`
+run, or a rollback to the last known-good prompt registry version. Every trigger
+is debounced (per-metric cooldown) and bounded (a global eval budget); every
+decision lands on the audit chain and an `improvement.decision` event; controller
+state persists so it is restart-safe.
+
+Three more 1.10 organs make the closed loop safer and more informed:
+
+- **Real reflector (GEPA proper)** — `app.reflective_optimize(..., reflector="llm")`
+  reads the actual failing cases, clusters them into failure modes, and proposes
+  the targeted edit, falling back to the deterministic heuristic offline.
+- **Experiment proposer** — `app.experiment_proposer(...)` ranks the weakest
+  subsystem from online eval + drift and schedules the highest-ROI experiment.
+- **Held-out growing golden suite** — `GoldenRegressionSuite` records each
+  promotion's fixed cases and gates every later promotion
+  (`ImprovementLoop(golden_suite=...)`), so an auto-promotion can never silently
+  undo a prior fix.
+
+The VincioBench `loop` family gates the drift detectors, the controller's
+rollback, the non-regression guard, and restart-safe online state; the
+`agentic_evals` family gates the reflector's failure-mode diagnosis.

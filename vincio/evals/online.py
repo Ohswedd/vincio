@@ -6,6 +6,11 @@ metadata store (kind ``eval_results``) — no traffic mirrored to any external
 service. It runs after the response is finalized (the app schedules it off the
 hot path), and sampling bounds the overhead. The synchronous :meth:`observe`
 core makes online scoring deterministic and unit-testable.
+
+The sampling counter persists to the shared store (kind ``online_state``), so
+deterministic 1-in-N sampling resumes after a restart and several workers can
+share one app's online series. Each worker keys its own state row by
+``worker_id``; :meth:`observed_total` aggregates the counts across workers.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ class OnlineEvaluator:
         sample_rate: float = 1.0,
         store: Any = None,
         app_name: str = "",
+        worker_id: str = "",
     ) -> None:
         if isinstance(metric, str):
             if metric not in METRICS:
@@ -42,7 +48,48 @@ class OnlineEvaluator:
         self.sample_rate = max(0.0, min(1.0, sample_rate))
         self.store = store
         self.app_name = app_name
+        self.worker_id = worker_id
         self._counter = 0
+        self._sampled = 0
+        self._state_id = f"{app_name}:{self.name}:{worker_id}"
+        self.load_state()
+
+    # -- restart-safe sampling state -----------------------------------------
+
+    def load_state(self) -> None:
+        """Restore the persisted sampling counter for this (app, metric, worker)."""
+        if self.store is None:
+            return
+        row = self.store.get("online_state", self._state_id)
+        if row is not None:
+            self._counter = int(row.get("counter", 0))
+            self._sampled = int(row.get("sampled", 0))
+
+    def save_state(self) -> None:
+        if self.store is None:
+            return
+        self.store.save(
+            "online_state",
+            {
+                "id": self._state_id,
+                "app_id": self.app_name,
+                "metric_name": self.name,
+                "worker_id": self.worker_id,
+                "counter": self._counter,
+                "sampled": self._sampled,
+                "sample_rate": self.sample_rate,
+                "updated_at": utcnow().isoformat(),
+            },
+        )
+
+    def observed_total(self) -> int:
+        """Total runs observed for this metric across all workers (aggregated)."""
+        if self.store is None:
+            return self._counter
+        rows = self.store.query(
+            "online_state", where={"app_id": self.app_name, "metric_name": self.name}
+        )
+        return sum(int(r.get("counter", 0)) for r in rows) or self._counter
 
     def _should_sample(self) -> bool:
         """Deterministic 1-in-N sampling (matches the tracer), so online eval is
@@ -60,8 +107,11 @@ class OnlineEvaluator:
     ) -> MetricResult | None:
         """Score one completed run if it is sampled, persisting the score as a
         time-series record. Returns the MetricResult, or None when not sampled."""
-        if not self._should_sample():
+        sampled = self._should_sample()
+        if not sampled:
+            self.save_state()
             return None
+        self._sampled += 1
         case = case or EvalCase(id=run_id or "online", input=run.metadata.get("input", ""))
         result = self.metric(case, run)
         if self.store is not None:
@@ -78,6 +128,7 @@ class OnlineEvaluator:
                     "details": dict(result.details),
                 },
             )
+            self.save_state()
         return result
 
     def series(self, *, limit: int = 1000) -> list[dict[str, Any]]:

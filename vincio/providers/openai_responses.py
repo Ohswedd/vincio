@@ -74,17 +74,26 @@ class OpenAIResponsesProvider(OpenAIProvider):
         return "\n\n".join(t for t in instructions if t), items
 
     def _render_tools(self, tools: list[ToolSpec]) -> list[dict[str, Any]]:
-        # Responses tools are flat (no nested "function" wrapper).
-        return [
-            {
-                "type": "function",
-                "name": tool.name,
-                "description": tool.description,
-                "parameters": tool.input_schema
-                or {"type": "object", "properties": {}, "additionalProperties": True},
-            }
-            for tool in tools
-        ]
+        # Responses tools are flat (no nested "function" wrapper). Hosted tools
+        # (web_search / file_search / code_interpreter / computer_use, 1.10) emit
+        # their provider-native built-in descriptor instead of a function tool.
+        from .hosted_tools import hosted_payload, is_hosted
+
+        rendered: list[dict[str, Any]] = []
+        for tool in tools:
+            if is_hosted(tool):
+                rendered.append(hosted_payload(tool))
+                continue
+            rendered.append(
+                {
+                    "type": "function",
+                    "name": tool.name,
+                    "description": tool.description,
+                    "parameters": tool.input_schema
+                    or {"type": "object", "properties": {}, "additionalProperties": True},
+                }
+            )
+        return rendered
 
     def _payload(self, request: ModelRequest, *, stream: bool = False) -> dict[str, Any]:
         instructions, items = self._render_input(request.messages)

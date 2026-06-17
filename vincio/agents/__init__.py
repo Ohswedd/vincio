@@ -21,6 +21,7 @@ from .graph import (
 )
 from .handoffs import HandoffRecord, HandoffRouter
 from .planner import Planner, PlanningMode
+from .research import ResearchAgent, ResearchBudget, ResearchReport
 from .state import AgentError, AgentState, AgentStep, AgentStepType, TerminationReason
 
 __all__ = [
@@ -30,6 +31,9 @@ __all__ = [
     "HandoffRouter",
     "Planner",
     "PlanningMode",
+    "ResearchAgent",
+    "ResearchBudget",
+    "ResearchReport",
     "AgentError",
     "AgentState",
     "AgentStep",

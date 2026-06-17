@@ -4,6 +4,101 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0] - 2026-06-17
+
+The loop closes itself. Vincio could already *measure* drift and run an offline
+optimizer, but the online loop only closed when a human pressed go. 1.10 makes
+self-improvement continual, online, and safe — and opens the agentic frontier
+(deep research, self-editing memory, computer-use) on the same cited, grounded,
+audited spine. Everything is additive behind `@experimental` entry points on the
+frozen 1.0 API; the canary-driven prompt/policy promotion that needs a new
+serving surface stays reserved for 2.0.
+
+### Added
+
+- **Online improvement controller** — `app.continuous_improvement(...)`
+  (`vincio.optimize.controller.ContinuousImprovementController`) subscribes to
+  `drift.detected` + `eval.online`, streams online scores into a CUSUM
+  changepoint detector, and turns a *sustained* signal into one of three gated
+  actions: a targeted re-eval, a fresh `ImprovementLoop` run, or a rollback to
+  the last known-good `prompts/registry.py` version. Per-trigger cooldown
+  debouncing and a global eval budget bound it; every trigger, debounce,
+  decision, and rollback lands on the hash-chained audit log and an event. State
+  (budget spent, sustain counts, cooldowns) persists to the shared store, so the
+  controller is restart-safe.
+- **Distributional drift + CUSUM** — `evals/drift.py` gains two-sample
+  Kolmogorov–Smirnov (`ks_statistic` / `ks_drift`), Population Stability Index
+  (`psi`), RBF Maximum Mean Discrepancy (`rbf_mmd2`), and a streaming
+  `CUSUMDetector`; `DriftMonitor.observe_score` feeds online scores into a
+  per-metric CUSUM that fires `drift.detected` on a sustained shift (the event
+  the controller acts on), with restart-safe persisted accumulators.
+- **Restart-safe, worker-aggregatable online state** — `OnlineEvaluator`
+  persists its 1-in-N sampling counter to the store (`online_state`) keyed by
+  `worker_id`; `observed_total()` aggregates across workers.
+- **Real provider-backed reflective optimizer (GEPA proper)** — `LLMReflector`
+  (`optimize/reflective.py`) wired to the app's own provider reads the *actual*
+  failing cases (input + output + expected + grounding), clusters them into
+  failure modes (`cluster_failures`), and proposes targeted edits validated
+  against the existing edit schema. `HeuristicReflector` stays the air-gapped
+  deterministic fallback; `app.reflective_optimize(..., reflector="llm")` and
+  `ImprovementLoop(reflector="llm")` opt in. Feeds the same Pareto frontier and
+  gated promotion.
+- **Autonomous experiment proposer** — `ExperimentProposer` /
+  `app.experiment_proposer(...)` ranks where the system is weakest from online
+  eval + drift and proposes/schedules the highest-ROI experiment (prompt /
+  retrieval / budget / routing / distillation) under a global eval budget, every
+  decision recorded.
+- **Guarded online bandits** — a contextual `LinUCB` joins `EpsilonGreedyBandit`
+  / `UCB1Bandit`, wired into the live route by `GuardedBanditRouter` (a
+  `ModelProvider`) behind a **safety floor** (never explores on safety-/high-risk
+  traffic), with persisted arm stats, cumulative regret, and auto-freeze /
+  rollback-to-safe-arm on regression. `app.use_bandit_router(...)`.
+- **Held-out, growing golden regression suite** — `GoldenRegressionSuite`
+  (`evals/datasets.py`) records the cases each promotion fixes with provenance
+  and gates every later promotion by replay, so sequential auto-promotions can
+  never silently undo a prior fix; wired into `ImprovementLoop(golden_suite=...)`.
+- **Deep-research agent** — `ResearchAgent` / `app.research(...)` loops
+  search → read → reflect → verify → synthesize over the query-understanding
+  planners and the grounded-fact extractor under explicit breadth/depth/source/
+  token budgets, dedups sources, verifies with judges, and emits a cited report
+  through the 1.9 `CitedReportBuilder` — every claim cited and grounded by
+  construction, scored for citation coverage / grounding / source diversity.
+- **Agent memory OS** — `MemoryOS` / `app.enable_memory_os(...)` exposes
+  self-editing memory as permissioned, audited tools (`memory_append` /
+  `memory_replace` / `memory_search` / `memory_archive`) over the existing
+  guarded write pipeline, with a context-pressure pager between in-context core
+  memory and the archival store.
+- **In-loop context compaction** — `agents/compaction.py` `ContextCompactor`
+  folds old tool/observation turns into a rolling extractive summary at a token
+  budget, replacing the fixed `[-8]`/`[:24]` slicing in `agents/executor.py`
+  (DAG and ReAct paths), keeping tool-call pairs intact.
+- **Level-parallel agent DAG + `plan_and_execute`** — the executor runs each
+  topological level's independent steps concurrently (bounded), and
+  `Planner.replan` drives a real plan → execute → observe → replan loop for the
+  `plan_and_execute` mode.
+- **Computer-use / agentic browsing** — `tools/computer_use.py` adds a
+  navigate / click / type / screenshot action vocabulary with a deterministic
+  `MockComputerUse`, a `PlaywrightComputerUse` backend, and a provider-native
+  adapter, exposed via `app.enable_computer_use(...)` as permissioned, audited,
+  approval-gated tools.
+- **Pluggable isolation backends** — `tools/sandbox.py` gains an
+  `IsolationBackend` interface with `Subprocess` (zero-dep default, not a
+  security boundary), `Container`, `gVisor`, `microVM`, and `WASM` backends;
+  `require_real_isolation` enforces that code-executing and computer-use
+  workloads run behind a real boundary.
+- **Provider-native hosted tools** — `providers/hosted_tools.py` surfaces OpenAI
+  Responses built-ins (`web_search` / `file_search` / `code_interpreter` /
+  `computer_use`) as namespaced, permissioned Vincio tools
+  (`app.use_hosted_tools(...)`); the Responses adapter emits each as its
+  built-in descriptor. `computer_use` is approval-gated.
+- New error `SandboxError`; new optional extra `vincio[computer-use]`
+  (Playwright); `examples/34_continual_loop_and_agentic_frontier.py`.
+
+### Notes
+
+- 1304 tests passing offline in ~5s; ruff + mypy clean. VincioBench: 17 families,
+  205 CI budgets, 60 SLOs. Thirty-four runnable examples.
+
 ## [1.9.1] - 2026-06-17
 
 Closes the two thin spots in the 1.9 generation surface so the milestone carries

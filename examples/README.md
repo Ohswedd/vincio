@@ -42,6 +42,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `31_honest_fast_spine.py` | enforced full Budget (hard caps + opt-out), the data-driven `ModelRegistry` (capabilities/pricing/lifecycle), semantic context scoring + value-level contradiction, `RunHandle` cooperative cancellation, and significance-gated promotion + the trace-replay executor |
 | `32_swap_regression.py` | provider/model rotation: capability-aware routing, the `SwapGate` (replay + eval + cost/latency/behavioral diff with significance), model-swap regression with flake quarantine, shadow + canary with auto-rollback, the lifecycle watcher's migration proposals, and Google/Vertex batch parity |
 | `33_documents_and_media_out.py` | documents & images flow OUT (1.9): the `DocumentBuilder` with a structural `DocumentContract`, the `CitedReportBuilder` (resolved `[E1]` footnotes + bibliography + per-claim entailment), redline generation, image generation and TTS with C2PA provenance + budget + audit, richer inputs (PPTX/transcript/forms), and the EU AI Act conformity pack (risk tier + Annex IV + FRIA) |
+| `34_continual_loop_and_agentic_frontier.py` | the loop closes itself (1.10): the online improvement controller (drift → gated re-eval / re-optimization / rollback), the real provider-backed GEPA reflector, the autonomous experiment proposer + held-out growing golden regression suite, the budgeted citation-gated deep-research agent, the self-editing memory OS, and computer-use + hosted tools behind a hardened `IsolationBackend` |
 
 Run any of them:
 

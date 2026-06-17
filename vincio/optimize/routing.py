@@ -265,7 +265,19 @@ class EpsilonGreedyBandit:
         self.values[arm] += (reward - self.values[arm]) / n
 
     def snapshot(self) -> dict[str, Any]:
-        return {"counts": dict(self.counts), "values": {k: round(v, 4) for k, v in self.values.items()}}
+        return {
+            "counts": dict(self.counts),
+            "values": {k: round(v, 6) for k, v in self.values.items()},
+            "total": sum(self.counts.values()),
+        }
+
+    def load(self, snapshot: dict[str, Any]) -> None:
+        for arm, count in (snapshot.get("counts") or {}).items():
+            if arm in self.counts:
+                self.counts[arm] = int(count)
+        for arm, value in (snapshot.get("values") or {}).items():
+            if arm in self.values:
+                self.values[arm] = float(value)
 
 
 class UCB1Bandit:
@@ -292,6 +304,125 @@ class UCB1Bandit:
         self.total += 1
         n = self.counts[arm]
         self.values[arm] += (reward - self.values[arm]) / n
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "counts": dict(self.counts),
+            "values": {k: round(v, 6) for k, v in self.values.items()},
+            "total": self.total,
+        }
+
+    def load(self, snapshot: dict[str, Any]) -> None:
+        for arm, count in (snapshot.get("counts") or {}).items():
+            if arm in self.counts:
+                self.counts[arm] = int(count)
+        for arm, value in (snapshot.get("values") or {}).items():
+            if arm in self.values:
+                self.values[arm] = float(value)
+        self.total = int(snapshot.get("total", sum(self.counts.values())))
+
+
+class LinUCB:
+    """Contextual bandit (disjoint LinUCB).
+
+    Each arm keeps a ridge-regression model over a small context vector (e.g.
+    ``[difficulty, log-length, evidence, risk]``). :meth:`select` picks the arm
+    with the highest upper-confidence estimate ``θ·x + α·√(xᵀA⁻¹x)`` — it
+    *explores* an arm whose payoff is uncertain in the current context and
+    *exploits* one it is confident about, so routing adapts to the request, not
+    just to a global average. Pure-Python ``dim×dim`` linear algebra keeps it
+    dependency-free; ``dim`` is small by construction.
+    """
+
+    def __init__(self, arms: list[str], *, dim: int, alpha: float = 1.0) -> None:
+        if not arms:
+            raise ValueError("bandit requires at least one arm")
+        if dim < 1:
+            raise ValueError("LinUCB requires dim >= 1")
+        self.arms = list(arms)
+        self.dim = dim
+        self.alpha = alpha
+        self.A: dict[str, list[list[float]]] = {arm: _identity(dim) for arm in arms}
+        self.b: dict[str, list[float]] = {arm: [0.0] * dim for arm in arms}
+        self.counts: dict[str, int] = {arm: 0 for arm in arms}
+
+    def _ucb(self, arm: str, x: list[float]) -> float:
+        a_inv = _inverse(self.A[arm])
+        theta = _matvec(a_inv, self.b[arm])
+        mean = _dot(theta, x)
+        var = _dot(x, _matvec(a_inv, x))
+        return mean + self.alpha * math.sqrt(max(0.0, var))
+
+    def select(self, context: list[float], *, explore: bool = True) -> str:
+        x = self._fit(context)
+        if not explore:
+            # Exploit only: drop the exploration bonus (α=0).
+            return max(self.arms, key=lambda arm: _dot(_matvec(_inverse(self.A[arm]), self.b[arm]), x))
+        return max(self.arms, key=lambda arm: self._ucb(arm, x))
+
+    def update(self, arm: str, context: list[float], reward: float) -> None:
+        if arm not in self.A:
+            raise ValueError(f"unknown arm {arm!r}")
+        x = self._fit(context)
+        for i in range(self.dim):
+            for j in range(self.dim):
+                self.A[arm][i][j] += x[i] * x[j]
+            self.b[arm][i] += reward * x[i]
+        self.counts[arm] += 1
+
+    def _fit(self, context: list[float]) -> list[float]:
+        x = list(context[: self.dim])
+        if len(x) < self.dim:
+            x += [0.0] * (self.dim - len(x))
+        return x
+
+    def snapshot(self) -> dict[str, Any]:
+        return {"dim": self.dim, "alpha": self.alpha, "counts": dict(self.counts),
+                "A": {a: m for a, m in self.A.items()}, "b": dict(self.b)}
+
+    def load(self, snapshot: dict[str, Any]) -> None:
+        for arm in self.arms:
+            if arm in (snapshot.get("A") or {}):
+                self.A[arm] = [list(row) for row in snapshot["A"][arm]]
+            if arm in (snapshot.get("b") or {}):
+                self.b[arm] = list(snapshot["b"][arm])
+            if arm in (snapshot.get("counts") or {}):
+                self.counts[arm] = int(snapshot["counts"][arm])
+
+
+# -- tiny dependency-free linear algebra for LinUCB (small dim) --------------
+
+
+def _identity(n: int) -> list[list[float]]:
+    return [[1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+
+
+def _dot(a: list[float], b: list[float]) -> float:
+    return sum(x * y for x, y in zip(a, b, strict=False))
+
+
+def _matvec(m: list[list[float]], v: list[float]) -> list[float]:
+    return [_dot(row, v) for row in m]
+
+
+def _inverse(m: list[list[float]]) -> list[list[float]]:
+    """Gauss–Jordan inverse of a small square matrix (with a ridge fallback)."""
+    n = len(m)
+    aug = [list(m[i]) + [1.0 if i == j else 0.0 for j in range(n)] for i in range(n)]
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(aug[r][col]))
+        if abs(aug[pivot][col]) < 1e-12:
+            aug[col][col] += 1e-6  # ridge: keep it invertible
+            pivot = col
+        aug[col], aug[pivot] = aug[pivot], aug[col]
+        pv = aug[col][col]
+        aug[col] = [x / pv for x in aug[col]]
+        for r in range(n):
+            if r == col:
+                continue
+            factor = aug[r][col]
+            aug[r] = [x - factor * y for x, y in zip(aug[r], aug[col], strict=False)]
+    return [row[n:] for row in aug]
 
 
 # ---------------------------------------------------------------------------
@@ -545,3 +676,252 @@ class Router(ModelProvider):
             if id(provider) not in seen:
                 seen.add(id(provider))
                 await provider.aclose()
+
+
+class BanditDecision(BaseModel):
+    """The record of one guarded-bandit route — stamped on the trace."""
+
+    model: str
+    provider: str = ""
+    arm: str = ""
+    explored: bool = False
+    risk: str = "low"
+    reward: float | None = None
+    cumulative_regret: float = 0.0
+    frozen: bool = False
+    rolled_back: bool = False
+    reason: str = ""
+
+
+class GuardedBanditRouter(ModelProvider):
+    """A live routing bandit with a safety floor, regret tracking, and auto-rollback.
+
+    Arms are ``(provider, model)`` entries; the configured bandit
+    (``epsilon_greedy`` / ``ucb1`` / contextual ``linucb``) learns which model
+    pays off and routes live traffic to it — but never blindly:
+
+    - **safety floor** — on safety- or high-risk-tagged traffic the router
+      *exploits* the best-known arm and never explores, so an experiment can
+      never run on a request that can't afford it;
+    - **persisted state** — arm statistics persist to the shared store, so the
+      learner is restart-safe and aggregatable across workers;
+    - **regret + auto-freeze/rollback** — per-pull regret accumulates; once it
+      exceeds ``regret_budget`` the router *freezes* (exploit only), and if the
+      learned best arm falls below the safe arm by a margin it *rolls back* and
+      pins the safe model — turning the dead primitives into a real, safe online
+      learner.
+
+    Implements :class:`~vincio.providers.base.ModelProvider`, so it nests cleanly
+    inside ``CircuitBreaker`` / ``KeyPool`` / ``FailoverChain``.
+    """
+
+    name = "guarded_bandit"
+
+    def __init__(
+        self,
+        entries: list[tuple[ModelProvider, str]],
+        *,
+        bandit: str = "epsilon_greedy",
+        safe_model: str | None = None,
+        reward_fn: Any | None = None,
+        context_fn: Any | None = None,
+        epsilon: float = 0.1,
+        alpha: float = 1.0,
+        context_dim: int = 4,
+        seed: int | None = None,
+        regret_budget: float = 2.0,
+        rollback_margin: float = 0.2,
+        store: Any | None = None,
+        app_name: str = "",
+        events: Any | None = None,
+    ) -> None:
+        if not entries:
+            raise ValueError("GuardedBanditRouter requires at least one (provider, model) entry")
+        self.entries = entries
+        self.arms = [m for _, m in entries]
+        self.safe_model = safe_model or self.arms[0]
+        self.reward_fn = reward_fn or (lambda resp: response_confidence(resp))
+        self.context_fn = context_fn
+        self.context_dim = context_dim
+        self.regret_budget = regret_budget
+        self.rollback_margin = rollback_margin
+        self.kind = bandit
+        if bandit == "ucb1":
+            self.bandit: Any = UCB1Bandit(self.arms)
+        elif bandit == "linucb":
+            self.bandit = LinUCB(self.arms, dim=context_dim, alpha=alpha)
+        else:
+            self.bandit = EpsilonGreedyBandit(self.arms, epsilon=epsilon, seed=seed)
+        self.cumulative_regret = 0.0
+        self.frozen = False
+        self.rolled_back = False
+        self._store = store
+        self.app_name = app_name
+        self._events = events
+        self._state_id = f"{app_name}:guarded_bandit"
+        self.last_decision: BanditDecision | None = None
+        self.load_state()
+
+    # -- selection -----------------------------------------------------------
+
+    @staticmethod
+    def _risk(request: ModelRequest) -> str:
+        meta = request.metadata or {}
+        if meta.get("safety_critical") or meta.get("risk") == "high":
+            return "high"
+        tags = meta.get("tags") or []
+        if any(t in ("safety", "high_risk") for t in tags):
+            return "high"
+        return str(meta.get("risk", "low"))
+
+    def _context(self, request: ModelRequest) -> list[float]:
+        if self.context_fn is not None:
+            return list(self.context_fn(request))
+        text = "\n".join(m.text for m in request.messages)
+        evidence = int((request.metadata or {}).get("evidence_count", 0))
+        difficulty = estimate_difficulty(text, evidence_count=evidence)
+        length = min(1.0, len(text) / 4000.0)
+        risk = 1.0 if self._risk(request) == "high" else 0.0
+        return [difficulty, length, min(1.0, evidence / 40.0), risk]
+
+    def select(self, request: ModelRequest) -> tuple[str, bool]:
+        """Choose an arm; returns ``(model, explored)``. Honours the safety floor."""
+        risk = self._risk(request)
+        # Safety floor / frozen / rolled-back: exploit only, never explore.
+        if self.rolled_back:
+            return self.safe_model, False
+        exploit_only = risk == "high" or self.frozen
+        if isinstance(self.bandit, LinUCB):
+            arm = self.bandit.select(self._context(request), explore=not exploit_only)
+            return arm, not exploit_only
+        if exploit_only:
+            return max(self.arms, key=lambda a: self.bandit.values[a]), False
+        before = dict(self.bandit.counts)
+        arm = self.bandit.select()
+        # An untried arm or a different-from-greedy pick counts as exploration.
+        greedy = max(self.arms, key=lambda a: self.bandit.values[a])
+        explored = arm != greedy or before.get(arm, 0) == 0
+        return arm, explored
+
+    def _value_estimates(self, request: ModelRequest) -> dict[str, float]:
+        if isinstance(self.bandit, LinUCB):
+            x = self.bandit._fit(self._context(request))
+            return {
+                a: _dot(_matvec(_inverse(self.bandit.A[a]), self.bandit.b[a]), x) for a in self.arms
+            }
+        return dict(self.bandit.values)
+
+    def record(self, arm: str, reward: float, *, request: ModelRequest) -> BanditDecision:
+        """Update the bandit with an observed reward; track regret + guards."""
+        values_before = self._value_estimates(request)
+        best_before = max(values_before.values()) if values_before else 0.0
+        if isinstance(self.bandit, LinUCB):
+            self.bandit.update(arm, self._context(request), reward)
+        else:
+            self.bandit.update(arm, reward)
+        # Instantaneous regret vs the best arm's pre-update estimate.
+        regret = max(0.0, best_before - reward)
+        self.cumulative_regret += regret
+        if self.cumulative_regret > self.regret_budget and not self.frozen:
+            self.frozen = True
+        values_after = self._value_estimates(request)
+        best_arm = max(values_after, key=values_after.__getitem__) if values_after else self.safe_model
+        safe_value = values_after.get(self.safe_model, 0.0)
+        if best_arm != self.safe_model and values_after.get(best_arm, 0.0) + self.rollback_margin < safe_value:
+            self.rolled_back = True
+        decision = BanditDecision(
+            model=arm, arm=arm, reward=round(reward, 6),
+            cumulative_regret=round(self.cumulative_regret, 6),
+            frozen=self.frozen, rolled_back=self.rolled_back,
+            risk=self._risk(request),
+        )
+        self.last_decision = decision
+        self.save_state()
+        if self._events is not None:
+            self._events.emit("bandit.updated", decision.model_dump())
+        return decision
+
+    # -- ModelProvider ------------------------------------------------------
+
+    def _provider_for(self, model: str) -> tuple[int, ModelProvider]:
+        for i, (provider, m) in enumerate(self.entries):
+            if m == model:
+                return i, provider
+        return 0, self.entries[0][0]
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        arm, explored = self.select(request)
+        _, provider = self._provider_for(arm)
+        attempt = request.model_copy(update={"model": arm})
+        response = await provider.generate(attempt)
+        decision = self.record(arm, float(self.reward_fn(response)), request=request)
+        decision.explored = explored
+        decision.provider = provider.name
+        decision.reason = (
+            f"{self.kind} {'explored' if explored else 'exploited'} {arm}"
+            + (" [safety-floor]" if self._risk(request) == "high" else "")
+        )
+        self.last_decision = decision
+        return response
+
+    async def stream(self, request: ModelRequest) -> AsyncIterator[ModelEvent]:
+        arm, explored = self.select(request)
+        _, provider = self._provider_for(arm)
+        attempt = request.model_copy(update={"model": arm})
+        async for event in provider.stream(attempt):
+            yield event
+        # Streaming reward is not observable mid-flight; credit a clean finish.
+        self.record(arm, 1.0, request=request)
+
+    def capabilities(self, model: str) -> Any:
+        return self.entries[0][0].capabilities(model)
+
+    async def list_models(self) -> Any:
+        from ..providers.base import _merge_model_lists
+
+        seen: set[int] = set()
+        lists = []
+        for provider, _ in self.entries:
+            if id(provider) not in seen:
+                seen.add(id(provider))
+                lists.append(await provider.list_models())
+        return _merge_model_lists(lists)
+
+    async def aclose(self) -> None:
+        seen: set[int] = set()
+        for provider, _ in self.entries:
+            if id(provider) not in seen:
+                seen.add(id(provider))
+                await provider.aclose()
+
+    # -- persisted state -----------------------------------------------------
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "id": self._state_id,
+            "app_id": self.app_name,
+            "kind": self.kind,
+            "bandit": self.bandit.snapshot(),
+            "cumulative_regret": self.cumulative_regret,
+            "frozen": self.frozen,
+            "rolled_back": self.rolled_back,
+        }
+
+    def save_state(self) -> None:
+        if self._store is None:
+            return
+        from ..core.utils import utcnow
+
+        self._store.save("bandit_state", {**self.snapshot(), "updated_at": utcnow().isoformat()})
+
+    def load_state(self) -> None:
+        if self._store is None:
+            return
+        row = self._store.get("bandit_state", self._state_id)
+        if row is None:
+            return
+        if row.get("bandit"):
+            self.bandit.load(row["bandit"])
+        self.cumulative_regret = float(row.get("cumulative_regret", 0.0))
+        self.frozen = bool(row.get("frozen", False))
+        self.rolled_back = bool(row.get("rolled_back", False))

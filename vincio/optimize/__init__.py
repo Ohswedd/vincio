@@ -10,6 +10,7 @@ from .cache_tuning import (
 )
 from .compression_tuning import CompressionTuner, CompressionTuningResult
 from .context_search import ContextOptimizer, ContextSearchSpace
+from .controller import ContinuousImprovementController, ControllerDecision
 from .distill import (
     BootstrapFinetune,
     DistillationResult,
@@ -24,7 +25,13 @@ from .judge_calibration import (
     JudgeStepProposal,
     JudgeStepReflector,
 )
-from .loop import DEFAULT_LOOP_METRICS, ImprovementLoop, LoopResult
+from .loop import (
+    DEFAULT_LOOP_METRICS,
+    ExperimentProposal,
+    ExperimentProposer,
+    ImprovementLoop,
+    LoopResult,
+)
 from .pareto import (
     AGENTIC_OBJECTIVES,
     DEFAULT_OBJECTIVES,
@@ -47,6 +54,7 @@ from .reflective import (
     ReflectiveResult,
     Reflector,
     apply_edits,
+    cluster_failures,
 )
 from .retrieval_feedback import (
     ChunkingRecommendation,
@@ -58,8 +66,11 @@ from .retrieval_feedback import (
     records_from_report,
 )
 from .routing import (
+    BanditDecision,
     CascadeRung,
     EpsilonGreedyBandit,
+    GuardedBanditRouter,
+    LinUCB,
     ModelCascade,
     Router,
     RouteStrategy,
@@ -107,6 +118,7 @@ __all__ = [
     "ReflectiveOptimizer",
     "ReflectiveResult",
     "apply_edits",
+    "cluster_failures",
     "JudgeStepProposal",
     "JudgeStepReflector",
     "JudgeCalibrationResult",
@@ -114,6 +126,10 @@ __all__ = [
     "DEFAULT_LOOP_METRICS",
     "ImprovementLoop",
     "LoopResult",
+    "ContinuousImprovementController",
+    "ControllerDecision",
+    "ExperimentProposal",
+    "ExperimentProposer",
     "DEFAULT_OBJECTIVES",
     "AGENTIC_OBJECTIVES",
     "ObjectiveSpec",
@@ -135,6 +151,9 @@ __all__ = [
     "RoutingOptimizer",
     "RoutingPolicy",
     "UCB1Bandit",
+    "LinUCB",
+    "GuardedBanditRouter",
+    "BanditDecision",
     "estimate_difficulty",
     "CascadeRung",
     "ModelCascade",

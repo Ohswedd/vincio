@@ -519,6 +519,102 @@
     },
     "families.generation.safety.malicious_prompt_flagged": {
       "eq": true
+    },
+    "families.loop.drift.cusum_detects_shift": {
+      "eq": true
+    },
+    "families.loop.drift.ks_detects_shift": {
+      "eq": true
+    },
+    "families.loop.drift.ks_clean_no_drift": {
+      "eq": true
+    },
+    "families.loop.drift.psi_detects_shift": {
+      "eq": true
+    },
+    "families.loop.continual.drift_triggers_rollback": {
+      "eq": true
+    },
+    "families.loop.continual.restart_safe": {
+      "eq": true
+    },
+    "families.loop.non_regression.guard_blocks_regression": {
+      "eq": true
+    },
+    "families.loop.online_state.counter_restart_safe": {
+      "eq": true
+    },
+    "families.loop.online_state.worker_aggregated": {
+      "eq": true
+    },
+    "families.agentic_evals.reflector.cluster_mode_correct": {
+      "eq": true
+    },
+    "families.agentic_evals.reflector.diagnoses_fix": {
+      "eq": true
+    },
+    "families.agentic_evals.deep_research.citation_coverage": {
+      "gte": 0.5
+    },
+    "families.agentic_evals.deep_research.grounding": {
+      "gte": 0.5
+    },
+    "families.agentic_evals.deep_research.sources_within_budget": {
+      "eq": true
+    },
+    "families.agentic_evals.deep_research.deduped": {
+      "eq": true
+    },
+    "families.agentic_evals.deep_research.has_sources": {
+      "eq": true
+    },
+    "families.agent.parallel.level_parallel": {
+      "eq": true
+    },
+    "families.agent.parallel.plan_and_execute_ran": {
+      "eq": true
+    },
+    "families.agent.compaction.summarizes_over_budget": {
+      "eq": true
+    },
+    "families.agent.compaction.intact_under_budget": {
+      "eq": true
+    },
+    "families.agent.compaction.keeps_anchor": {
+      "eq": true
+    },
+    "families.security.isolation.subprocess_not_a_boundary": {
+      "eq": true
+    },
+    "families.security.isolation.real_backends_flagged": {
+      "eq": true
+    },
+    "families.security.isolation.require_real_blocks_subprocess": {
+      "eq": true
+    },
+    "families.security.hosted_tools.namespaced_and_marked": {
+      "eq": true
+    },
+    "families.security.hosted_tools.computer_use_gated": {
+      "eq": true
+    },
+    "families.security.hosted_tools.registered_on_app": {
+      "eq": true
+    },
+    "families.security.computer_use.permissioned": {
+      "eq": true
+    },
+    "families.security.computer_use.audited": {
+      "eq": true
+    },
+    "families.memory.memory_os.append_search": {
+      "eq": true
+    },
+    "families.memory.memory_os.archive_pages_out": {
+      "eq": true
+    },
+    "families.memory.memory_os.pager_bounded": {
+      "eq": true
     }
   }
 }

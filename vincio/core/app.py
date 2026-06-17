@@ -1545,6 +1545,118 @@ class ContextApp:
             self.add_memory()
         return self.memory.recall(query, **kwargs)  # type: ignore[union-attr]
 
+    @experimental(since="1.10")
+    def enable_memory_os(
+        self,
+        *,
+        scope: str = "agent",
+        owner_id: str = "agent",
+        max_core_tokens: int = 2000,
+        permission: str = "memory:write",
+        register_tools: bool = True,
+    ):
+        """Expose self-editing memory (MemGPT/Letta-class) as permissioned tools.
+
+        Returns a :class:`~vincio.memory.agent_os.MemoryOS` over this app's
+        audited memory engine and (by default) registers ``memory_append`` /
+        ``memory_replace`` / ``memory_archive`` as write tools and
+        ``memory_search`` as a read tool — so an agent can edit its own memory
+        on the same RBAC + audit + budget path as any other tool, with a
+        context-pressure pager between core and archival memory::
+
+            os = app.enable_memory_os(owner_id="agent-1")
+            agent = app.agent(tools=["memory_append", "memory_search"])
+        """
+        from ..memory.agent_os import MemoryOS
+
+        if self.memory is None:
+            self.add_memory()
+        assert self.memory is not None  # add_memory() guarantees it
+        os = MemoryOS(self.memory, scope=scope, owner_id=owner_id, max_core_tokens=max_core_tokens)
+        if register_tools:
+            append, replace, search, archive = os.tools()
+            self.add_tool(append, name="memory_append", permissions=[permission], side_effects="write")
+            self.add_tool(replace, name="memory_replace", permissions=[permission], side_effects="write")
+            self.add_tool(archive, name="memory_archive", permissions=[permission], side_effects="write")
+            self.add_tool(search, name="memory_search", side_effects="read")
+        return os
+
+    @experimental(since="1.10")
+    def enable_computer_use(
+        self,
+        backend: str = "mock",
+        *,
+        isolation: str | None = None,
+        require_isolation: bool = False,
+        permission: str = "computer:use",
+        approval_required: bool = True,
+        **backend_kwargs: Any,
+    ):
+        """Register a computer-use action surface (navigate / click / type /
+        screenshot) as audited, permissioned tools.
+
+        ``backend`` is ``"mock"`` (deterministic, offline), ``"playwright"`` (real
+        browser), or ``"provider"`` (provider-native computer-use). With
+        ``require_isolation=True`` the workload must run behind a real
+        :class:`~vincio.tools.sandbox.IsolationBackend` (container / microVM /
+        gVisor / WASM) — subprocess-only hosts are refused::
+
+            app.enable_computer_use("mock")
+            agent = app.agent(tools=["computer_navigate", "computer_screenshot"])
+        """
+        from ..tools.computer_use import (
+            MockComputerUse,
+            PlaywrightComputerUse,
+            ProviderComputerUse,
+            computer_use_tools,
+        )
+
+        if require_isolation:
+            from ..tools.sandbox import get_isolation_backend, require_real_isolation
+
+            require_real_isolation(get_isolation_backend(isolation or "subprocess"))
+        if backend == "playwright":
+            impl: Any = PlaywrightComputerUse(**backend_kwargs)
+        elif backend == "provider":
+            impl = ProviderComputerUse(self._base_provider(), self.model, **backend_kwargs)
+        else:
+            impl = MockComputerUse()
+        for tool in computer_use_tools(impl):
+            self.add_tool(
+                tool, permissions=[permission], side_effects="external",
+                approval_required=approval_required,
+            )
+        self.audit.record(
+            "computer_use_enabled", decision="allow",
+            details={"backend": backend, "isolation": isolation, "require_isolation": require_isolation},
+        )
+        return impl
+
+    @experimental(since="1.10")
+    def use_hosted_tools(
+        self, names: list[str] | None = None, *, namespace: str = "openai"
+    ) -> ContextApp:
+        """Surface provider-native hosted tools (``web_search`` / ``file_search`` /
+        ``code_interpreter`` / ``computer_use``) as namespaced Vincio tools.
+
+        They register on the tool registry with explicit permissions and ride the
+        same RBAC + audit path as any local tool; the Responses adapter emits each
+        as its provider-native built-in descriptor::
+
+            app.use_hosted_tools(["web_search", "code_interpreter"])
+        """
+        from ..providers.hosted_tools import hosted_tool_specs
+
+        for spec in hosted_tool_specs(names, namespace=namespace):
+            self.tool_registry.register_spec(spec)
+            if spec.name not in self.enabled_tools:
+                self.enabled_tools.append(spec.name)
+        self.audit.record(
+            "hosted_tools_enabled", decision="allow",
+            details={"namespace": namespace, "tools": [s.name for s in hosted_tool_specs(names, namespace=namespace)]},
+        )
+        return self
+
     # -- tools ------------------------------------------------------------------------------------
 
     def add_tool(
@@ -2161,13 +2273,17 @@ class ContextApp:
         for tool in tools or []:
             self.add_tool(tool)
             tool_names.append(tool if isinstance(tool, str) else getattr(tool, "__name__", str(tool)))
-        planner_mode = {"dag": "static", "static": "static", "dynamic": "dynamic", "react": "react", "direct": "direct"}.get(planner, "static")
+        planner_mode = {
+            "dag": "static", "static": "static", "dynamic": "dynamic", "react": "react",
+            "direct": "direct", "plan_and_execute": "plan_and_execute",
+        }.get(planner, "static")
         provider = self.resolve_provider()
         agent_model = model or self.model
+        llm_planning = planner_mode in ("dynamic", "plan_and_execute")
         planner_obj = Planner(
             mode=planner_mode,  # type: ignore[arg-type]
-            provider=provider if planner_mode == "dynamic" else None,
-            model=agent_model if planner_mode == "dynamic" else None,
+            provider=provider if llm_planning else None,
+            model=agent_model if llm_planning else None,
             max_steps=max_steps,
         )
         retrieve_fn = None
@@ -2228,6 +2344,30 @@ class ContextApp:
             tools=tools, planner=planner, max_steps=max_steps, model=model
         )
         return _AgentHandle(self, executor, max_steps)
+
+    @experimental(since="1.10")
+    def research(self, question: str, *, objective: str = "", **kwargs: Any):
+        """Run the deep-research loop: search → read → reflect → verify →
+        synthesize, emitting a cited, budget-bounded, eval-scored report.
+
+        Composes the query-understanding planners, the retrieval engine, the
+        grounded-fact extractor, and the 1.9 cited-report builder into one
+        :class:`~vincio.agents.research.ResearchAgent`. Requires a source
+        (``app.add_source(...)``)::
+
+            report = app.research("What changed in the refund policy?")
+            report.answer, report.metrics["citation_coverage"], report.sources
+        """
+        from ..agents.research import ResearchAgent
+
+        return ResearchAgent(self, **kwargs).run(question, objective=objective)
+
+    @experimental(since="1.10")
+    async def aresearch(self, question: str, *, objective: str = "", **kwargs: Any):
+        """Async :meth:`research`."""
+        from ..agents.research import ResearchAgent
+
+        return await ResearchAgent(self, **kwargs).arun(question, objective=objective)
 
     def crew(
         self,
@@ -2470,6 +2610,7 @@ class ContextApp:
         gates: dict[str, str] | None = None,
         objectives: Any | None = None,
         concurrency: int = 4,
+        reflector: str = "heuristic",
         apply: bool = False,
     ):
         """Run the GEPA-style reflective optimizer against ``dataset``.
@@ -2483,16 +2624,26 @@ class ContextApp:
 
             result = app.reflective_optimize(dataset, gates={"groundedness": ">= 0.8"})
             result.promoted, result.reason, result.frontier.front
+
+        ``reflector="llm"`` uses the real provider-backed :class:`LLMReflector`
+        wired to this app's own provider — it reads the actual failing cases,
+        clusters them into failure modes, and proposes targeted edits, falling
+        back to the deterministic heuristic reflector offline. ``"heuristic"``
+        (the default) is the fully reproducible, air-gapped floor.
         """
         from ..optimize.loop import DEFAULT_LOOP_METRICS
-        from ..optimize.reflective import ReflectiveOptimizer
+        from ..optimize.reflective import LLMReflector, ReflectiveOptimizer
 
         metric_list = metrics or (self.evaluators or DEFAULT_LOOP_METRICS)
+        reflector_impl = None
+        if reflector == "llm":
+            reflector_impl = LLMReflector(self._base_provider(), self.model)
         optimizer = ReflectiveOptimizer(
             self._evaluate_variant_fn(metric_list, concurrency=concurrency),
             weights=weights,
             gates=gates,
             objectives=objectives,
+            reflector=reflector_impl,
         )
         result = run_sync(
             optimizer.optimize(
@@ -2510,6 +2661,67 @@ class ContextApp:
             self.prompt_compiler.options = winner.compiler_options
             self.events.emit("optimize.reflective", {"reason": result.reason})
         return result
+
+    @experimental(since="1.10")
+    def continuous_improvement(self, **kwargs: Any):
+        """Close the online loop: a controller that turns live drift into a
+        gated re-optimization, a targeted re-eval, or a registry rollback.
+
+        Returns a :class:`~vincio.optimize.controller.ContinuousImprovementController`
+        bound to this app's event bus, store, audit chain, and prompt registry.
+        Call :meth:`~vincio.optimize.controller.ContinuousImprovementController.attach`
+        to start acting on ``drift.detected`` / ``eval.online`` events::
+
+            ctl = app.continuous_improvement(golden=golden, sustain=2,
+                                             quality_floor={"groundedness": 0.8})
+            ctl.set_baseline("groundedness", baseline_scores).attach()
+
+        Every decision is debounced, eval-budget bounded, audited, and traced;
+        controller state persists to the shared store so it is restart-safe.
+        """
+        from ..optimize.controller import ContinuousImprovementController
+
+        return ContinuousImprovementController(self, **kwargs)
+
+    @experimental(since="1.10")
+    def experiment_proposer(self, **kwargs: Any):
+        """The autonomous experiment proposer (meta-controller) for this app.
+
+        Ranks where the system is weakest from its online eval series and drift,
+        and proposes/schedules the highest-ROI experiment (prompt / retrieval /
+        budget / routing / distillation) under a global eval budget::
+
+            proposer = app.experiment_proposer(eval_budget=24)
+            proposer.run_next(dataset)  # runs the top proposal, audited
+        """
+        from ..optimize.loop import ExperimentProposer
+
+        return ExperimentProposer(self, **kwargs)
+
+    @experimental(since="1.10")
+    def use_bandit_router(
+        self, models: list[str], *, bandit: str = "epsilon_greedy", **kwargs: Any
+    ) -> ContextApp:
+        """Route live traffic through a guarded online bandit over ``models``.
+
+        Wires an :class:`~vincio.optimize.routing.GuardedBanditRouter` over the
+        app's base provider: the bandit learns which model pays off, never
+        explores on safety-/high-risk-tagged traffic, persists arm stats to the
+        app's store, and auto-freezes / rolls back on regression. The router
+        becomes the app's provider, so it nests inside the existing
+        circuit-breaker / key-pool / failover stack.
+        """
+        from ..optimize.routing import GuardedBanditRouter
+
+        base = self._base_provider()
+        entries = [(base, m) for m in models]
+        self._provider_instance = GuardedBanditRouter(
+            entries, bandit=bandit, store=self.store, app_name=self.name,
+            events=self.events, **kwargs,
+        )
+        if models:
+            self.model = models[0]
+        return self
 
     @experimental(since="1.4")
     def enable_training_capture(self, enabled: bool = True) -> ContextApp:

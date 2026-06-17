@@ -4,7 +4,16 @@ Compiles prompts, memory, retrieval, tools, schemas, and policies into
 optimized, validated, observable, provider-neutral context packets.
 """
 
-from .agents import AgentRole, Blackboard, Crew, StateGraph, compose
+from .agents import (
+    AgentRole,
+    Blackboard,
+    Crew,
+    ResearchAgent,
+    ResearchBudget,
+    ResearchReport,
+    StateGraph,
+    compose,
+)
 from .context.llmlingua import LLMLinguaCompressor
 from .core.app import ContextApp, RunHandle
 from .core.config import VincioConfig, load_config
@@ -26,7 +35,7 @@ from .core.types import (
     TaskType,
     UserInput,
 )
-from .evals.datasets import Dataset
+from .evals.datasets import Dataset, GoldenRegressionSuite
 from .evals.swap import SwapGate, SwapVerdict, model_swap_regression
 from .generation import (
     CitationContract,
@@ -60,11 +69,12 @@ from .governance import (
 from .memory.engine import MemoryEngine, ScopedMemory
 from .notebook import enable_rich_reprs
 from .observability.finops import BudgetManager, CostBudget, CostLedger
+from .optimize.controller import ContinuousImprovementController, ControllerDecision
 from .optimize.distill import BootstrapFinetune, TrainingSet
 from .optimize.judge_calibration import JudgeCalibrator
-from .optimize.loop import ImprovementLoop, LoopResult
+from .optimize.loop import ExperimentProposer, ImprovementLoop, LoopResult
 from .optimize.reflective import ReflectiveOptimizer
-from .optimize.routing import ModelCascade, Router
+from .optimize.routing import GuardedBanditRouter, ModelCascade, Router
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
 from .packs import Pack, available_packs, load_pack
@@ -96,7 +106,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.9.1"
+__version__ = "1.10.0"
 
 __all__ = [
     "ContextApp",
@@ -104,6 +114,9 @@ __all__ = [
     "AgentRole",
     "Blackboard",
     "Crew",
+    "ResearchAgent",
+    "ResearchBudget",
+    "ResearchReport",
     "StateGraph",
     "compose",
     "VincioConfig",
@@ -129,6 +142,11 @@ __all__ = [
     "Dataset",
     "ImprovementLoop",
     "LoopResult",
+    "ContinuousImprovementController",
+    "ControllerDecision",
+    "ExperimentProposer",
+    "GoldenRegressionSuite",
+    "GuardedBanditRouter",
     "ReflectiveOptimizer",
     "TrainingSet",
     "BootstrapFinetune",

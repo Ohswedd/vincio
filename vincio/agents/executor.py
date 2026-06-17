@@ -6,6 +6,7 @@ budget, and termination conditions are checked before each step.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -86,6 +87,9 @@ class AgentExecutor:
         human_gate: HumanGate | None = None,
         system_prompt: str = "",
         max_validation_rounds: int = 2,
+        max_context_tokens: int = 6000,
+        max_parallel_steps: int = 8,
+        max_replans: int = 2,
     ) -> None:
         self.provider = provider
         self.model = model
@@ -105,6 +109,15 @@ class AgentExecutor:
         self.human_gate = human_gate
         self.system_prompt = system_prompt
         self.max_validation_rounds = max_validation_rounds
+        # In-loop compaction (1.10): old tool/observation turns are folded into a
+        # rolling summary once the working context exceeds this token budget,
+        # replacing fixed slicing. Level-parallelism and plan-and-execute bounds.
+        from .compaction import ContextCompactor
+
+        self.compactor = ContextCompactor(max_tokens=max_context_tokens)
+        self.max_context_tokens = max_context_tokens
+        self.max_parallel_steps = max(1, max_parallel_steps)
+        self.max_replans = max_replans
 
     # -- budget / termination -------------------------------------------------------
 
@@ -147,17 +160,29 @@ class AgentExecutor:
 
     def _context_messages(self, state: AgentState, instruction: str) -> list[Message]:
         parts: list[str] = [f"Objective: {state.objective.text}"]
+        # In-loop compaction: keep recent evidence/observations verbatim within a
+        # token budget and fold older ones into a rolling summary (1.10), instead
+        # of an arbitrary fixed slice. Split the budget across the two sections.
+        section_budget = max(512, self.max_context_tokens // 2)
         if state.evidence:
-            evidence_lines = "\n".join(
-                f"[{e.citation_ref}] {e.text}" for e in state.evidence[:24] if e.text
-            )
-            parts.append(f"Evidence:\n{evidence_lines}")
+            blocks = [f"[{e.citation_ref}] {e.text}" for e in state.evidence if e.text]
+            summary, kept = self.compactor.compact_blocks(blocks, budget=section_budget)
+            evidence_text = ""
+            if summary:
+                evidence_text += f"(earlier evidence summarized) {summary}\n"
+            evidence_text += "\n".join(kept)
+            parts.append(f"Evidence:\n{evidence_text}")
         if state.tool_results:
-            tool_lines = "\n".join(
+            blocks = [
                 f"{r.tool_name} ({r.status}): {json.dumps(r.output, default=str)[:800]}"
-                for r in state.tool_results[-8:]
-            )
-            parts.append(f"Tool results:\n{tool_lines}")
+                for r in state.tool_results
+            ]
+            summary, kept = self.compactor.compact_blocks(blocks, budget=section_budget)
+            tool_text = ""
+            if summary:
+                tool_text += f"(earlier tool results summarized) {summary}\n"
+            tool_text += "\n".join(kept)
+            parts.append(f"Tool results:\n{tool_text}")
         if state.working_memory:
             memory_lines = "\n".join(f"{k}: {str(v)[:400]}" for k, v in state.working_memory.items())
             parts.append(f"Working memory:\n{memory_lines}")
@@ -397,27 +422,76 @@ class AgentExecutor:
             tools=self.tool_specs,
         )
         state.steps = list(dag.steps.values())
-        while not dag.complete and not state.terminated:
-            if self._check_termination(state):
-                break
-            ready = dag.ready_steps()
-            if not ready:
-                break
-            for step in ready:
-                if state.terminated or self._check_termination(state):
-                    break
-                await self._run_step(state, step)
-                # Retry failed recoverable steps once.
-                if step.status == "failed" and step.attempts <= state.budget.max_retries and step.type in ("retrieve", "think"):
-                    state.usage.retries += 1
-                    step.status = "pending"
-                    await self._run_step(state, step)
+        await self._execute_dag(state, dag)
+        # plan-and-execute (1.10): if the run finished unsatisfactorily, replan
+        # corrective steps and execute them, bounded by ``max_replans`` + budget.
+        if self.planner.mode == "plan_and_execute":
+            await self._replan_loop(state, objective)
         if not state.terminated:
             state.terminated = True
             state.termination_reason = state.termination_reason or (
                 "unrecoverable_error" if state.errors and state.final_answer is None else "objective_complete"
             )
         return state
+
+    async def _run_step_with_retry(self, state: AgentState, step: AgentStep) -> None:
+        await self._run_step(state, step)
+        # Retry failed recoverable steps once.
+        if (
+            step.status == "failed"
+            and step.attempts <= state.budget.max_retries
+            and step.type in ("retrieve", "think")
+        ):
+            state.usage.retries += 1
+            step.status = "pending"
+            await self._run_step(state, step)
+
+    async def _execute_dag(self, state: AgentState, dag: Any) -> None:
+        """Run the DAG level by level, executing each level's independent steps
+        concurrently (1.10) — bounded by ``max_parallel_steps`` and the budget."""
+        while not dag.complete and not state.terminated:
+            if self._check_termination(state):
+                break
+            ready = dag.ready_steps()
+            if not ready:
+                break
+            # Steps in one topological level share no dependencies, so running
+            # them concurrently is safe; asyncio keeps state mutation serialized.
+            semaphore = asyncio.Semaphore(self.max_parallel_steps)
+            await asyncio.gather(
+                *[self._run_step_bounded(state, step, semaphore) for step in ready]
+            )
+
+    async def _run_step_bounded(
+        self, state: AgentState, step: AgentStep, semaphore: asyncio.Semaphore
+    ) -> None:
+        async with semaphore:
+            if state.terminated or self._check_termination(state):
+                return
+            await self._run_step_with_retry(state, step)
+
+    def _needs_replan(self, state: AgentState) -> bool:
+        if state.termination_reason == "approval_required":
+            return False
+        validation = state.working_memory.get("validation")
+        if isinstance(validation, dict) and validation.get("passed") is False:
+            return True
+        return state.final_answer is None
+
+    async def _replan_loop(self, state: AgentState, objective: Objective) -> None:
+        replans = 0
+        while replans < self.max_replans and self._needs_replan(state):
+            if state.usage.steps >= state.budget.max_steps or state.usage.exceeds(state.budget):
+                break
+            extra = await self.planner.replan(objective, state=state, tools=self.tool_specs)
+            if extra is None or not extra.steps:
+                break
+            # Reopen the run for the corrective sub-plan, then execute it.
+            state.terminated = False
+            state.steps.extend(extra.steps.values())
+            await self._execute_dag(state, extra)
+            replans += 1
+        state.working_memory["_replans"] = replans
 
     # -- ReAct loop -------------------------------------------------------------------
 
@@ -437,6 +511,9 @@ class AgentExecutor:
         while not state.terminated:
             if self._check_termination(state):
                 break
+            # In-loop compaction: fold older turns into a rolling summary once the
+            # transcript exceeds the token budget (1.10), so the loop never overflows.
+            messages = self.compactor.compact_messages(messages, budget=self.max_context_tokens)
             response = await self._model_call(state, messages, tools=self.tool_specs)
             state.usage.steps += 1
             step = AgentStep(type="think", name=f"react_{len(state.steps)}", instruction="react iteration")

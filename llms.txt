@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.9.1 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.10.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -446,6 +446,58 @@ result.output; result.citations; result.trace_id; result.cost_usd
   Edge: a generated image is C2PA-stamped and a cited report is per-claim *entailed*,
   not just `[E1]`-marked — documents/media out under text's exact guarantees, on one
   audit chain, in-process.
+- The loop closes itself + the agentic frontier (1.10, experimental): continual,
+  online, safe self-improvement plus deep research, self-editing memory, and
+  computer-use on the same cited/audited spine. Online controller —
+  `app.continuous_improvement(metrics=, golden=, sustain=, cooldown_s=,
+  eval_budget=, quality_floor=, reoptimize=)` → `ContinuousImprovementController`;
+  `.set_baseline(metric, values).attach()` subscribes to `drift.detected` +
+  `eval.online`, debounces, and turns sustained drift into one gated action
+  (re-eval / `ImprovementLoop` re-optimize / rollback to last known-good prompt),
+  audited + restart-safe (persisted `controller_state`). Drift —
+  `evals/drift.py` adds `ks_statistic`/`ks_drift`, `psi`, `rbf_mmd2`, a streaming
+  `CUSUMDetector`, and `DriftMonitor.observe_score`/`check_distribution`.
+  `OnlineEvaluator` persists its sampling counter (restart-safe,
+  `observed_total()` aggregates workers). Real reflector (GEPA proper) —
+  `LLMReflector(provider, model)` reads actual failing cases, `cluster_failures`
+  groups them into modes, proposes schema-validated edits;
+  `app.reflective_optimize(..., reflector="llm")` / `ImprovementLoop(reflector=)`,
+  heuristic fallback offline. Experiment proposer — `app.experiment_proposer(...)`
+  → `ExperimentProposer.rank/propose/run_next` ranks the weakest metric and
+  schedules a prompt/retrieval/budget/routing/distillation experiment. Guarded
+  bandits — `GuardedBanditRouter(entries, bandit="epsilon_greedy|ucb1|linucb")`
+  (a `ModelProvider`) with a safety floor (no exploration on high-risk/safety
+  traffic), per-arm regret, auto-freeze/rollback, persisted `bandit_state`;
+  `LinUCB` is contextual; `app.use_bandit_router(models)`. Non-regression guard —
+  `GoldenRegressionSuite(path)` records each promotion's fixed cases with
+  provenance and `gate(report)` blocks a regressing candidate;
+  `ImprovementLoop(golden_suite=)`. Deep research — `app.research(question, *,
+  budget=ResearchBudget(breadth=, depth=, max_sources=, top_k=))` → `ResearchAgent`
+  loops search→read→reflect→verify→synthesize over the query planners +
+  `extract_grounded_facts`, dedups sources, emits a cited report via
+  `CitedReportBuilder`; metrics: citation_coverage/grounding/source_diversity.
+  Memory OS — `app.enable_memory_os(scope=, owner_id=, max_core_tokens=)` →
+  `MemoryOS` registers `memory_append`/`memory_replace`/`memory_search`/
+  `memory_archive` as permissioned, audited tools over the guarded write pipeline,
+  with a context-pressure pager (core↔archival). Agent loop — level-parallel DAG
+  over `topological_levels`, a real `plan_and_execute` replanning loop
+  (`Planner.replan`), and in-loop compaction (`ContextCompactor`) replacing fixed
+  `[-8]`/`[:24]` slicing. Computer-use — `app.enable_computer_use(backend=
+  "mock|playwright|provider", require_isolation=)` registers navigate/click/type/
+  screenshot as approval-gated tools; pluggable `IsolationBackend` in
+  `tools/sandbox.py` (`Subprocess`/`Container`/`GVisor`/`MicroVM`/`WASM`,
+  `require_real_isolation`); hosted tools — `app.use_hosted_tools(["web_search",
+  "file_search","code_interpreter","computer_use"])` surfaces OpenAI Responses
+  built-ins as namespaced, permissioned tools. New `vincio.__all__`:
+  `ContinuousImprovementController`, `ControllerDecision`, `ExperimentProposer`,
+  `GoldenRegressionSuite`, `GuardedBanditRouter`, `ResearchAgent`,
+  `ResearchBudget`, `ResearchReport`. New extra `vincio[computer-use]` (Playwright);
+  new error `SandboxError`. Edge: continual self-improvement that is gated and
+  reversible, deep research where every claim is cited and budget-bounded,
+  self-editing memory that is provenance-tracked and audited, and computer-use that
+  is isolated and audited — all on one packet/ledger/audit/trace, in-process, under
+  a held-out non-regression guard the field's offline bandits and thin GUI adapters
+  lack.
 - CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
   config schema/validate/show, packs list/show, tui,
   eval run/report/dataset (`--group-by-session`)/drift/annotate/regress

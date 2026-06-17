@@ -26,9 +26,16 @@ from .search import FitnessWeights, OptimizationResult
 
 if TYPE_CHECKING:
     from ..core.app import ContextApp
+    from ..evals.datasets import GoldenRegressionSuite
     from ..observability.spans import Trace
 
-__all__ = ["LoopResult", "ImprovementLoop", "DEFAULT_LOOP_METRICS"]
+__all__ = [
+    "LoopResult",
+    "ImprovementLoop",
+    "DEFAULT_LOOP_METRICS",
+    "ExperimentProposal",
+    "ExperimentProposer",
+]
 
 DEFAULT_LOOP_METRICS = [
     "semantic_similarity",
@@ -79,6 +86,8 @@ class ImprovementLoop:
         concurrency: int = 4,
         optimizer: str = "evolution",
         strategy: str = "reflective",
+        reflector: str = "heuristic",
+        golden_suite: GoldenRegressionSuite | None = None,
     ) -> None:
         self.app = app
         self.registry = registry or PromptRegistry()
@@ -96,6 +105,12 @@ class ImprovementLoop:
         # promote through the identical gated path below.
         self.optimizer = optimizer
         self.strategy = strategy
+        # "heuristic" (deterministic floor) or "llm" (provider-backed GEPA
+        # reflector wired to the app's own provider, with a heuristic fallback).
+        self.reflector = reflector
+        # The held-out, growing non-regression guard (1.10): promotions are
+        # replayed against it, and grown by it on success.
+        self.golden_suite = golden_suite
 
     # -- stage 1: capture --------------------------------------------------------
 
@@ -182,13 +197,17 @@ class ImprovementLoop:
                 app.config.memory.write_back = original_write_back
 
         if self.optimizer == "reflective":
-            from .reflective import ReflectiveOptimizer
+            from .reflective import LLMReflector, ReflectiveOptimizer
 
+            reflector_impl = None
+            if self.reflector == "llm":
+                reflector_impl = LLMReflector(app._base_provider(), app.model)
             reflective = ReflectiveOptimizer(
                 evaluate_variant,
                 weights=self.weights,
                 gates=self.gates,
                 max_cost_per_case=self.max_cost_per_case,
+                reflector=reflector_impl,
             )
             optimization: OptimizationResult = await reflective.optimize(
                 app.prompt_spec,
@@ -245,6 +264,31 @@ class ImprovementLoop:
 
         # 5. promote: registry push + tag + eval link, apply, audit, event.
         winner = best.payload  # PromptVariant
+
+        # Non-regression guard (1.10): replay the winner against the held-out,
+        # growing golden suite. A sequential auto-promotion can never silently
+        # undo a prior fix — regressing any recorded case blocks the promotion.
+        if self.golden_suite is not None and len(self.golden_suite) > 0:
+            suite_report = await evaluate_variant(winner, self.golden_suite.as_dataset())
+            gate = self.golden_suite.gate(suite_report)
+            result.steps.append(
+                {"stage": "golden_gate", "passed": gate.passed,
+                 "regressed": gate.regressed, "missing": gate.missing}
+            )
+            if not gate.passed:
+                result.promoted = False
+                result.reason = (
+                    f"blocked by golden regression suite: {len(gate.regressed)} regressed, "
+                    f"{len(gate.missing)} unverified ({optimization.reason})"
+                )
+                app.audit.record(
+                    "loop_promotion_blocked",
+                    decision="deny",
+                    details={"experiment": self.experiment, "regressed": gate.regressed,
+                             "missing": gate.missing, "candidate": best.name},
+                )
+                return result
+
         if dry_run:
             result.promoted = False
             result.reason = f"dry run: would promote {best.name} ({optimization.reason})"
@@ -292,7 +336,177 @@ class ImprovementLoop:
         result.steps.append(
             {"stage": "promote", "ref": version.ref, "tag": promote_tag, "dry_run": False}
         )
+        # Grow the held-out suite with the cases this promotion newly passes, so
+        # every future promotion must keep clearing them.
+        if self.golden_suite is not None and best.full_report is not None:
+            metric = self.weights.accuracy_metric if self.weights else "semantic_similarity"
+            self.golden_suite.add_from_report(
+                best.full_report, dataset, fixed_by=version.ref, guard_metric=metric
+            )
         return result
 
     def run(self, **kwargs: Any) -> LoopResult:
         return run_sync(self.arun(**kwargs))
+
+
+# ---------------------------------------------------------------------------
+# Autonomous experiment proposer (1.10)
+# ---------------------------------------------------------------------------
+
+# Higher-is-better quality targets a healthy app should clear. Cost/latency are
+# ceilings (lower is better) and only ranked when supplied in ``targets``.
+_DEFAULT_TARGETS = {
+    "semantic_similarity": 0.8,
+    "groundedness": 0.85,
+    "faithfulness": 0.85,
+    "answer_relevance": 0.8,
+    "schema_validity": 0.98,
+    "safety": 0.99,
+}
+_LOWER_IS_BETTER = {"cost", "latency", "toxicity", "bias", "hallucination", "retry_rate"}
+
+# Which experiment kinds can move which weakness, cheapest-leverage first.
+_METRIC_EXPERIMENTS: dict[str, list[str]] = {
+    "groundedness": ["retrieval", "prompt"],
+    "faithfulness": ["retrieval", "prompt"],
+    "answer_relevance": ["prompt", "retrieval"],
+    "semantic_similarity": ["prompt"],
+    "schema_validity": ["prompt"],
+    "safety": ["prompt"],
+    "cost": ["routing", "distillation", "budget"],
+    "latency": ["routing", "budget"],
+}
+
+
+class ExperimentProposal(BaseModel):
+    """One ranked, budgeted self-improvement experiment the system could run."""
+
+    kind: Literal["prompt", "retrieval", "budget", "routing", "distillation"]
+    target_metric: str
+    weakness: float  # how far below target (the ROI proxy), higher = weaker
+    current: float
+    target: float
+    rationale: str = ""
+    eval_budget: int = 0
+    drift: bool = False  # whether a live drift signal reinforces this weakness
+
+
+class ExperimentProposer:
+    """Rank where the system is weakest and schedule the highest-ROI experiment.
+
+    Reads the app's online eval series and recorded drift, scores each metric's
+    *weakness* against a target, maps the weakest metrics to the experiment kinds
+    that can move them (prompt vs. retrieval vs. budget vs. routing vs.
+    distillation), and allocates a global eval budget across the ranked
+    candidates. :meth:`run_next` executes the top proposal — the prompt
+    experiment runs the gated :class:`ImprovementLoop` end to end; the others are
+    scheduled and recorded against the organ that owns them — with every decision
+    on the audit chain.
+    """
+
+    def __init__(
+        self,
+        app: ContextApp,
+        *,
+        targets: dict[str, float] | None = None,
+        eval_budget: int = 24,
+        golden_suite: Any | None = None,
+        gates: dict[str, str] | None = None,
+    ) -> None:
+        self.app = app
+        self.targets = {**_DEFAULT_TARGETS, **(targets or {})}
+        self.eval_budget = eval_budget
+        self.golden_suite = golden_suite
+        self.gates = gates
+
+    def signals(self, *, window: int = 100) -> dict[str, float]:
+        """Mean of each online metric series the app records."""
+        out: dict[str, float] = {}
+        for evaluator in self.app.online_evaluators:
+            series = evaluator.series(limit=window)
+            values = [float(r.get("metric_value", 0.0)) for r in series]
+            if values:
+                out[evaluator.name] = sum(values) / len(values)
+        return out
+
+    def drifted_metrics(self) -> set[str]:
+        """Metrics with a recorded drift baseline (a live weakness signal)."""
+        store = self.app.store
+        if store is None:
+            return set()
+        rows = store.query("drift_baselines", where={"app_id": self.app.name})
+        return {str(r.get("metric")) for r in rows if r.get("metric")}
+
+    def rank(
+        self, signals: dict[str, float], *, drift: set[str] | None = None
+    ) -> list[ExperimentProposal]:
+        drift = drift or set()
+        scored: list[ExperimentProposal] = []
+        for metric, value in signals.items():
+            target = self.targets.get(metric)
+            if target is None:
+                continue
+            if metric in _LOWER_IS_BETTER:
+                weakness = max(0.0, value - target)
+            else:
+                weakness = max(0.0, target - value)
+            if weakness <= 0.0:
+                continue
+            # A live drift signal on the metric boosts its priority.
+            boosted = weakness * (1.5 if metric in drift else 1.0)
+            kind = cast(
+                'Literal["prompt", "retrieval", "budget", "routing", "distillation"]',
+                _METRIC_EXPERIMENTS.get(metric, ["prompt"])[0],
+            )
+            scored.append(
+                ExperimentProposal(
+                    kind=kind, target_metric=metric, weakness=round(boosted, 4),
+                    current=round(value, 4), target=target, drift=metric in drift,
+                    rationale=f"{metric} {value:.3f} below target {target:.3f}"
+                    + (" (drift detected)" if metric in drift else ""),
+                )
+            )
+        scored.sort(key=lambda p: p.weakness, reverse=True)
+        # Allocate the global eval budget proportionally to weakness.
+        total = sum(p.weakness for p in scored) or 1.0
+        for proposal in scored:
+            proposal.eval_budget = max(2, int(round(self.eval_budget * proposal.weakness / total)))
+        return scored
+
+    def propose(self) -> list[ExperimentProposal]:
+        return self.rank(self.signals(), drift=self.drifted_metrics())
+
+    def run_next(self, dataset: Dataset | None = None, *, dry_run: bool = False) -> dict[str, Any]:
+        """Execute (or schedule) the highest-ROI proposal; record the decision."""
+        proposals = self.propose()
+        if not proposals:
+            self.app.audit.record(
+                "experiment_proposer", decision="skip",
+                details={"reason": "no weakness above target"},
+            )
+            return {"proposal": None, "executed": False, "reason": "no weakness above target"}
+        top = proposals[0]
+        record: dict[str, Any] = {"proposal": top.model_dump(), "executed": False}
+        if top.kind == "prompt" and not dry_run:
+            loop = ImprovementLoop(
+                self.app, optimizer="reflective", gates=self.gates,
+                golden_suite=self.golden_suite,
+            )
+            result = loop.run(dataset=dataset, max_variants=min(top.eval_budget, 8), subset_size=4)
+            record.update(executed=True, promoted=result.promoted, reason=result.reason,
+                          promoted_ref=result.promoted_ref)
+            decision = "allow" if result.promoted else "skip"
+        else:
+            # Non-prompt experiments are scheduled against the organ that owns them
+            # (retrieval feedback, budget learner, routing optimizer, distillation).
+            record.update(executed=False, scheduled=True,
+                          reason=f"scheduled {top.kind} experiment for {top.target_metric}")
+            decision = "schedule"
+        self.app.audit.record(
+            "experiment_proposer", decision=decision,
+            details={"kind": top.kind, "metric": top.target_metric,
+                     "weakness": top.weakness, "eval_budget": top.eval_budget,
+                     "executed": record["executed"]},
+        )
+        self.app.events.emit("experiment.proposed", top.model_dump())
+        return record

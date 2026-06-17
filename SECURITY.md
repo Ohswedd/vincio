@@ -121,6 +121,32 @@ matrix, and eval/red-team evidence, recorded as `conformity_doc` audit events �
 the risk-tier classification is **advisory**, with the final determination the
 operator's.
 
+The 1.10 continual-loop and agentic-frontier features stay in-process and keep
+self-modification *gated and reversible*. The online improvement controller acts
+only on a sustained, debounced drift signal, spends a bounded global eval budget,
+and takes one **gated, audited** action — a re-eval, a significance-gated
+re-optimization, or a registry rollback to the last known-good prompt — with a
+**held-out, growing golden regression suite** blocking any promotion that
+regresses a prior fix, so an autonomous promotion can never silently undo earlier
+work. Guarded online bandits carry a **safety floor**: they never explore on
+safety- or high-risk-tagged traffic, track per-arm regret, and auto-freeze /
+roll back to the safe arm on regression; arm state persists to your own store.
+The deep-research agent's claims are cited and per-claim grounded by construction
+through the existing cited-report path. The agent memory OS exposes self-editing
+memory only as **permissioned, audited tools** over the guarded write pipeline
+(every write is policy-checked; `memory_archive` is a recorded lifecycle
+transition), so a self-editing memory is still provenance-tracked. **Computer-use
+and code execution require real isolation:** the pluggable `IsolationBackend`
+keeps subprocess + `setrlimit` as the zero-dependency default but flags it as
+*not a security boundary* (`real=False`), and `require_real_isolation` refuses to
+run code-executing or computer-use workloads on it — those must run behind a
+container / microVM / gVisor / WASM backend. Computer-use actions register as
+approval-gated, `external`-side-effecting tools on the same RBAC + audit + budget
+path as any tool, and provider-native hosted tools (`web_search` / `file_search`
+/ `code_interpreter` / `computer_use`, executed server-side) are surfaced as
+namespaced, permissioned tools — `computer_use` is approval-gated — so a hosted
+capability is governed exactly like a local one.
+
 ## Supply-chain integrity
 
 Releases are built in CI and published with a **CycloneDX SBOM** and **SLSA

@@ -215,7 +215,7 @@
     {
       "id": "judge_kappa_tracking",
       "category": "quality",
-      "statement": "Cohen's κ between an agreeing judge and human labels is tracked at 0.75 or higher before the judge earns gating weight.",
+      "statement": "Cohen's \u03ba between an agreeing judge and human labels is tracked at 0.75 or higher before the judge earns gating weight.",
       "metric": "families.agentic_evals.cohen_kappa_tracked",
       "direction": "gte",
       "threshold": 0.75,
@@ -230,7 +230,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.scale.batch.reconciled_ok",
-      "rationale": "Latency-tolerant batch work must return a result for every request — losing one corrupts evals and bulk extraction."
+      "rationale": "Latency-tolerant batch work must return a result for every request \u2014 losing one corrupts evals and bulk extraction."
     },
     {
       "id": "failover_circuit_recovery",
@@ -470,7 +470,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.evals.swap_gate_blocks_regression",
-      "rationale": "A model is promoted into the live path only if it clears the gate — the swap is gated, not merely compared."
+      "rationale": "A model is promoted into the live path only if it clears the gate \u2014 the swap is gated, not merely compared."
     },
     {
       "id": "rotation_canary_auto_rollback",
@@ -500,7 +500,7 @@
       "direction": "gte",
       "threshold": 1.0,
       "enforced_by": "families.generation.citation.coverage",
-      "rationale": "Citations resolve to footnotes/bibliography and unresolved markers are surfaced — every claim is cited, not 'one citation anywhere'."
+      "rationale": "Citations resolve to footnotes/bibliography and unresolved markers are surfaced \u2014 every claim is cited, not 'one citation anywhere'."
     },
     {
       "id": "generation_media_provenance_bound",
@@ -511,6 +511,96 @@
       "threshold": true,
       "enforced_by": "families.generation.media.image_provenance_verifies",
       "rationale": "Generated media is as auditable as text: provenance is embedded and verifiable, so an altered asset is detectable."
+    },
+    {
+      "id": "continual_loop_rollback",
+      "category": "reliability",
+      "statement": "A sustained safety/quality drift signal triggers a gated rollback to the last known-good prompt version.",
+      "metric": "families.loop.continual.drift_triggers_rollback",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.continual.drift_triggers_rollback",
+      "rationale": "The online loop closes itself: drift becomes a reversible, audited action, not an event into the void."
+    },
+    {
+      "id": "held_out_non_regression",
+      "category": "reliability",
+      "statement": "A candidate that regresses a previously-fixed golden case is blocked from promotion.",
+      "metric": "families.loop.non_regression.guard_blocks_regression",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.non_regression.guard_blocks_regression",
+      "rationale": "Sequential auto-promotions can never silently undo a prior fix \u2014 the growing golden suite gates each one."
+    },
+    {
+      "id": "online_state_restart_safe",
+      "category": "reliability",
+      "statement": "Online sampling and learner state persist so continual learning resumes after a restart.",
+      "metric": "families.loop.online_state.counter_restart_safe",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.online_state.counter_restart_safe",
+      "rationale": "Continual learning must survive process restarts and aggregate across workers to be trustworthy."
+    },
+    {
+      "id": "deep_research_citation_coverage",
+      "category": "quality",
+      "statement": "Deep-research answers cite evidence for at least 50% of verifiable claims.",
+      "metric": "families.agentic_evals.deep_research.citation_coverage",
+      "direction": "gte",
+      "threshold": 0.5,
+      "enforced_by": "families.agentic_evals.deep_research.citation_coverage",
+      "rationale": "Research output is cited by construction; the cited-report builder resolves and measures coverage."
+    },
+    {
+      "id": "deep_research_grounding",
+      "category": "quality",
+      "statement": "Deep-research claims are grounded in retrieved evidence at or above a 0.5 support floor.",
+      "metric": "families.agentic_evals.deep_research.grounding",
+      "direction": "gte",
+      "threshold": 0.5,
+      "enforced_by": "families.agentic_evals.deep_research.grounding",
+      "rationale": "Every claim is checked against the evidence that grounds it, not asserted free-hand."
+    },
+    {
+      "id": "reflector_diagnoses_failure",
+      "category": "quality",
+      "statement": "The provider-backed reflector reads the actual failing cases and proposes the targeted edit the dominant failure mode calls for.",
+      "metric": "families.agentic_evals.reflector.diagnoses_fix",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agentic_evals.reflector.diagnoses_fix",
+      "rationale": "GEPA-proper informed proposals beat a canned-rule floor by reflecting on real evidence."
+    },
+    {
+      "id": "code_exec_requires_real_isolation",
+      "category": "security",
+      "statement": "Code-executing and computer-use workloads are refused on bare subprocess isolation; a real boundary (container/microVM/gVisor/WASM) is required.",
+      "metric": "families.security.isolation.require_real_blocks_subprocess",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.security.isolation.require_real_blocks_subprocess",
+      "rationale": "Process isolation is not a security boundary; adversarial workloads must run behind real isolation."
+    },
+    {
+      "id": "computer_use_permissioned",
+      "category": "security",
+      "statement": "Computer-use actions are registered as permissioned, approval-gated tools on the audited tool runtime.",
+      "metric": "families.security.computer_use.permissioned",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.security.computer_use.permissioned",
+      "rationale": "GUI/browser actions ride the same RBAC + audit + approval path as any tool, not a thin adapter."
+    },
+    {
+      "id": "hosted_tool_consequential_gated",
+      "category": "security",
+      "statement": "The provider-native computer-use hosted tool requires approval and a scoped permission.",
+      "metric": "families.security.hosted_tools.computer_use_gated",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.security.hosted_tools.computer_use_gated",
+      "rationale": "Server-executed consequential tools are governed on the same permission path as local ones."
     }
   ]
 }

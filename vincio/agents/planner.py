@@ -186,6 +186,86 @@ class Planner:
             )
         return dag
 
+    # -- replanning (plan-and-execute) ----------------------------------------------------
+
+    async def replan(
+        self,
+        objective: Objective,
+        *,
+        state: Any,
+        tools: list[ToolSpec] | None = None,
+    ) -> StepDAG | None:
+        """Propose corrective steps after an unsatisfactory execution.
+
+        Given the progress so far (draft answer, validation feedback, gathered
+        evidence), returns a small sub-DAG of additional steps — or ``None`` when
+        no further work is warranted. With a provider the proposal is model-driven
+        and validated against the plan schema; offline a deterministic corrective
+        plan (revise → finalize) keeps the loop reproducible.
+        """
+        tools = tools or []
+        validation = state.working_memory.get("validation") if state.working_memory else None
+        issues = validation.get("issues", []) if isinstance(validation, dict) else []
+        if self.provider is not None and self.model is not None:
+            dag = await self._llm_replan(objective, state, tools, issues)
+            if dag is not None:
+                return dag
+        return self._heuristic_replan(objective, issues)
+
+    def _heuristic_replan(self, objective: Objective, issues: list[str]) -> StepDAG | None:
+        dag = StepDAG()
+        focus = "; ".join(str(i) for i in issues[:3]) or "the unmet objective"
+        revise = dag.add(
+            AgentStep(
+                type="think",
+                name="revise",
+                instruction=f"Revise the draft to address: {focus}. Stay grounded in the evidence.",
+            )
+        )
+        dag.add(
+            AgentStep(type="finalize", name="refinalize", instruction="Produce the corrected final answer."),
+            depends_on=[revise.id],
+        )
+        return dag
+
+    async def _llm_replan(
+        self, objective: Objective, state: Any, tools: list[ToolSpec], issues: list[str]
+    ) -> StepDAG | None:
+        tool_lines = "\n".join(f"- {t.name}: {t.description}" for t in tools) or "(none)"
+        draft = state.working_memory.get("analyze", "") if state.working_memory else ""
+        request = ModelRequest(
+            model=self.model or "",
+            messages=[
+                Message(
+                    role="system",
+                    content=(
+                        "You are replanning an agent run that did not satisfy the objective. "
+                        "Propose only the additional steps needed to fix it (retrieve / think / "
+                        "tool / validate / finalize, exactly one finalize last). Return an empty "
+                        "list if the objective is already met. Use depends_on with step names."
+                    ),
+                ),
+                Message(
+                    role="user",
+                    content=(
+                        f"Objective: {objective.text}\nKnown issues: {issues}\n"
+                        f"Draft: {str(draft)[:800]}\nTools:\n{tool_lines}"
+                    ),
+                ),
+            ],
+            output_schema=_PLAN_SCHEMA,
+            output_schema_name="replan",
+            temperature=0.0,
+        )
+        try:
+            response = await self.provider.generate(request)  # type: ignore[union-attr]
+            payload = response.structured or json.loads(response.text)
+        except Exception:  # noqa: BLE001 - fall back to the deterministic corrective plan
+            return None
+        if not payload.get("steps"):
+            return None
+        return self._dag_from_payload(payload, tools)
+
     # -- entry ----------------------------------------------------------------------------
 
     async def plan(
