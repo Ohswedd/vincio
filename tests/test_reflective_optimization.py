@@ -276,6 +276,24 @@ class TestReflectiveOptimizer:
         assert not res.promoted
         assert "safety" in res.reason
 
+    def test_zero_weighted_axis_dropped_from_frontier(self):
+        # A weight of 0.0 declares an axis irrelevant; it must not reach the
+        # Pareto frontier, where wall-clock latency jitter would otherwise be able
+        # to flip the knee-point pick between otherwise-tied candidates.
+        from vincio.optimize.pareto import objectives_from_weights
+
+        names = {o.name for o in objectives_from_weights(FitnessWeights(latency=0.0))}
+        assert "latency_s" not in names
+        assert {"accuracy", "groundedness", "cost"} <= names
+
+        opt = ReflectiveOptimizer(self._evaluate, weights=FitnessWeights(latency=0.0))
+        assert "latency_s" not in {o.name for o in opt.objectives}
+        # The default weights still keep latency on the frontier.
+        assert "latency_s" in {o.name for o in ReflectiveOptimizer(self._evaluate).objectives}
+        # The accuracy axis tracks the configured accuracy_metric.
+        custom = objectives_from_weights(FitnessWeights(accuracy_metric="exact_match"))
+        assert any(o.name == "accuracy" and o.metric == "exact_match" for o in custom)
+
 
 class TestReflectiveLoopIntegration:
     def _app(self, tmp_path):

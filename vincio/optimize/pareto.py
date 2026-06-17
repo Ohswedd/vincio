@@ -24,6 +24,7 @@ __all__ = [
     "DEFAULT_OBJECTIVES",
     "AGENTIC_OBJECTIVES",
     "objective_vector",
+    "objectives_from_weights",
     "dominates",
     "ParetoPoint",
     "ParetoFrontier",
@@ -57,6 +58,38 @@ AGENTIC_OBJECTIVES: list[ObjectiveSpec] = [
     ObjectiveSpec(name="efficiency", metric="step_efficiency"),
     ObjectiveSpec(name="cost", metric="cost", direction="min"),
 ]
+
+
+def objectives_from_weights(weights: Any) -> list[ObjectiveSpec]:
+    """Derive the Pareto objectives a set of :class:`FitnessWeights` cares about.
+
+    Multi-objective selection (domination + knee) and scalar fitness must agree
+    on *which axes matter*: an axis the caller weighted to ``0.0`` is declared
+    irrelevant and must not influence the frontier. Keeping a zero-weighted axis
+    (notably wall-clock ``latency``) on the frontier lets measurement jitter flip
+    the knee point between otherwise-tied candidates — a nondeterministic pick.
+    Axes with a non-zero weight are kept; the accuracy axis tracks the weights'
+    configured ``accuracy_metric``.
+    """
+    weight_by_objective = {
+        "accuracy": getattr(weights, "accuracy", 1.0),
+        "groundedness": getattr(weights, "groundedness", 1.0),
+        "cost": getattr(weights, "cost", 1.0),
+        "latency_s": getattr(weights, "latency", 1.0),
+    }
+    accuracy_metric = getattr(weights, "accuracy_metric", "semantic_similarity")
+    kept: list[ObjectiveSpec] = []
+    for spec in DEFAULT_OBJECTIVES:
+        if weight_by_objective.get(spec.name, 1.0) == 0.0:
+            continue
+        if spec.name == "accuracy" and spec.metric != accuracy_metric:
+            spec = spec.model_copy(update={"metric": accuracy_metric})
+        kept.append(spec)
+    # Never hand back an empty frontier — fall back to accuracy if every axis was
+    # zeroed, so selection still has something to optimize.
+    if not kept:
+        kept = [ObjectiveSpec(name="accuracy", metric=accuracy_metric)]
+    return kept
 
 
 def objective_vector(
