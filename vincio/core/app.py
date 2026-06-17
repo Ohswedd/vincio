@@ -233,8 +233,17 @@ class ContextApp:
 
         self._media_usage = _BudgetUsage()
         self.store = create_metadata_store(self.config.storage.metadata)
+        _audit_signer = None
+        if self.config.security.audit_signing_key:
+            from ..security.audit import HMACSigner
+
+            _audit_signer = HMACSigner(
+                self.config.security.audit_signing_key,
+                key_id=self.config.security.audit_signing_key_id,
+            )
         self.audit = AuditLog(
-            self.config.security.audit_dir if self.config.security.audit_log else None
+            self.config.security.audit_dir if self.config.security.audit_log else None,
+            signer=_audit_signer,
         )
         self.access = AccessController(tenant_isolation=self.config.security.tenant_isolation)
         self.rail_engine = RailEngine()
@@ -243,7 +252,8 @@ class ContextApp:
         # fertility telemetry. All opt-in / empty by default.
         self._pii_detector = self._build_pii_detector()
         self.policy_engine = PolicyEngine(
-            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine
+            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine,
+            egress_dlp=self.config.security.egress_dlp,
         )
         self.residency = ResidencyPolicy(
             allowed_regions=list(self.config.governance.allowed_regions),
@@ -596,7 +606,8 @@ class ContextApp:
         if name == "require_citations":
             self.output_contract.require_citations = bool(value)
         self.policy_engine = PolicyEngine(
-            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine
+            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine,
+            egress_dlp=self.config.security.egress_dlp,
         )
         self.events.emit("policy.changed", {"policy": name})
         return self

@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..context.compiler import CompiledContext
 from ..context.ir import OutputContractRef
-from ..core.errors import BudgetExceededError, VincioError
+from ..core.errors import BudgetExceededError, EgressBlockedError, VincioError
 from ..core.types import (
     Budget,
     BudgetUsage,
@@ -922,6 +922,40 @@ class VincioRuntime:
             used=used.get(primary, 0), limit=limits.get(primary, 0),
         )
 
+    def _egress_guard(
+        self, request: ModelRequest, result: RunResult, run_id: str, span: Any
+    ) -> None:
+        """Always-on last-mile DLP scan of the assembled request, run at the
+        provider boundary regardless of call-site wiring. Records findings on
+        the audit chain and trace; raises :class:`EgressBlockedError` in block
+        mode when the request carries credentials or sensitive identifiers."""
+        app = self.app
+        engine = app.policy_engine
+        if engine.egress_dlp == "off":
+            return
+        check = engine.scan_egress(request)
+        if not check.violations:
+            return
+        findings = [
+            {"policy": v.policy, "severity": v.severity, **v.details} for v in check.violations
+        ]
+        span.set(egress_dlp_findings=len(check.violations), egress_dlp_blocked=not check.allowed)
+        app.audit.record(
+            "egress_dlp",
+            run_id=run_id,
+            decision="deny" if not check.allowed else "allow",
+            details={"mode": engine.egress_dlp, "findings": findings},
+        )
+        app.events.emit(
+            "security.egress_dlp",
+            {"run_id": run_id, "blocked": not check.allowed, "findings": findings},
+        )
+        if not check.allowed:
+            raise EgressBlockedError(
+                "egress DLP blocked the outbound request: "
+                + "; ".join(v.message for v in check.blocking)
+            )
+
     async def _call_model(
         self,
         prepared: _PreparedRun,
@@ -954,6 +988,7 @@ class VincioRuntime:
                 app.cost_tracker.usage.add(response.usage)
                 spent = 0.0
             else:
+                self._egress_guard(request, result, run_id, span)
                 response = await provider.generate(request)
                 if app.response_cache is not None and not response.tool_calls:
                     app.response_cache.set(
@@ -1143,6 +1178,7 @@ class VincioRuntime:
                     if response.text:
                         yield RunStreamEvent(type="text_delta", text=response.text)
                 else:
+                    self._egress_guard(request, result, run_id, span)
                     started = time.monotonic()
                     first_token_ms: int | None = None
                     accumulated: list[str] = []

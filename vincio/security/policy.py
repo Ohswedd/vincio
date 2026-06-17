@@ -16,12 +16,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-from ..core.types import PolicySet, TrustLevel
+from ..core.types import ModelRequest, PolicySet, TrustLevel
 from .injection import InjectionDetector
 from .pii import PIIDetector, redact
 from .rails import RailEngine
+from .secrets import SecretScanner
 
 __all__ = ["PolicyViolation", "PolicyCheckResult", "PolicyEngine"]
+
+# Egress DLP blocks on outbound credentials and sensitive identifiers, not on
+# ordinary PII (a user may legitimately send their own email). These are the
+# PII types that should never leave the process unredacted at high confidence.
+_EGRESS_BLOCK_PII_TYPES = frozenset({"api_key", "secret", "government_id", "credit_card", "iban"})
 
 
 class PolicyViolation(BaseModel):
@@ -49,11 +55,16 @@ class PolicyEngine:
         pii_detector: PIIDetector | None = None,
         injection_detector: InjectionDetector | None = None,
         rails: RailEngine | None = None,
+        secret_scanner: SecretScanner | None = None,
+        egress_dlp: Literal["off", "warn", "block"] = "warn",
     ) -> None:
         self.policies = policies or PolicySet()
         self.pii = pii_detector or PIIDetector()
         self.injection = injection_detector or InjectionDetector()
         self.rails = rails
+        self.secrets = secret_scanner or SecretScanner()
+        # 2.0: always-on egress DLP mode for the assembled provider request.
+        self.egress_dlp = egress_dlp
 
     def _check_rails(
         self, text: str, *, direction: str, violations: list[PolicyViolation]
@@ -165,6 +176,69 @@ class PolicyEngine:
         transformed = self._check_rails(text, direction="output", violations=violations)
         allowed = not any(v.severity == "block" for v in violations)
         return PolicyCheckResult(allowed=allowed, violations=violations, transformed_text=transformed)
+
+    # -- egress DLP (last-mile, provider boundary) ------------------------------------
+
+    def scan_egress(self, request: ModelRequest) -> PolicyCheckResult:
+        """Deterministic DLP scan of the fully-assembled provider request.
+
+        Scans system + messages + tool schemas — the exact bytes about to leave
+        the process — for credentials, secrets, and sensitive identifiers,
+        independent of how earlier (input/output) checks were wired. This is the
+        always-on last line of defense: even a call site that bypassed every
+        other check still passes through here before any provider dispatch.
+
+        Mode ``off`` returns immediately; ``warn`` records findings without
+        blocking; ``block`` blocks on a high-confidence credential/identifier
+        leak. Residency is enforced separately at the run boundary.
+        """
+        if self.egress_dlp == "off":
+            return PolicyCheckResult(allowed=True)
+
+        violations: list[PolicyViolation] = []
+        # Assemble the outbound text once: message content + tool descriptions.
+        parts: list[str] = [message.text for message in request.messages]
+        tool_payload: dict[str, Any] = {}
+        for spec in request.tools:
+            parts.append(spec.description or "")
+            tool_payload[spec.name] = {
+                "input_schema": spec.input_schema,
+                "output_schema": spec.output_schema,
+            }
+        assembled = "\n".join(p for p in parts if p)
+
+        # Secrets in free text and structured tool schemas.
+        secret_findings = self.secrets.scan_text(assembled)
+        secret_findings += self.secrets.scan(tool_payload, path="tools")
+        if secret_findings:
+            kinds = sorted({f.kind for f in secret_findings})
+            violations.append(
+                PolicyViolation(
+                    policy="egress_secret",
+                    severity="block" if self.egress_dlp == "block" else "warn",
+                    message=f"outbound request carries {len(secret_findings)} secret-like value(s)",
+                    details={"kinds": kinds, "paths": [f.path for f in secret_findings][:10]},
+                )
+            )
+
+        # High-confidence credentials / identifiers in the assembled text.
+        pii_matches = self.pii.detect(assembled)
+        leaking = [
+            m for m in pii_matches
+            if m.type in _EGRESS_BLOCK_PII_TYPES and m.confidence >= 0.9
+        ]
+        if leaking:
+            violations.append(
+                PolicyViolation(
+                    policy="egress_sensitive_identifier",
+                    severity="block" if self.egress_dlp == "block" else "warn",
+                    message="outbound request carries credentials or sensitive identifiers",
+                    details={"types": sorted({m.type for m in leaking})},
+                )
+            )
+
+        allowed = not any(v.severity == "block" for v in violations)
+        return PolicyCheckResult(allowed=allowed, violations=violations)
 
     # -- memory-side checks -----------------------------------------------------------
 

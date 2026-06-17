@@ -91,6 +91,17 @@ class SecurityConfig(BaseModel):
     audit_log: bool = True
     audit_dir: str = ".vincio/audit"
     retention_days: int | None = None
+    # 2.0: HMAC key for tamper-evident audit-chain signatures. When set (e.g.
+    # via VINCIO_SECURITY__AUDIT_SIGNING_KEY), every audit entry is signed so a
+    # privileged attacker cannot forge a clean chain by recomputing hashes.
+    # Empty leaves the chain unsigned (1.x behavior). For asymmetric signing,
+    # construct an Ed25519Signer and pass it to AuditLog directly.
+    audit_signing_key: str = ""
+    audit_signing_key_id: str = "hmac"
+    # 2.0: always-on egress DLP scan of the assembled provider request at the
+    # provider boundary. "off" disables; "warn" records findings without
+    # blocking; "block" raises on a high-confidence leak.
+    egress_dlp: Literal["off", "warn", "block"] = "warn"
 
 
 class GovernanceConfig(BaseModel):

@@ -68,6 +68,7 @@ __all__ = [
     "TenantIsolationError",
     "InjectionDetectedError",
     "PIIPolicyError",
+    "EgressBlockedError",
     "StorageError",
     "ServerError",
     "AuthenticationError",
@@ -483,6 +484,13 @@ class InjectionDetectedError(SecurityError):
 
 class PIIPolicyError(SecurityError):
     code = "PII_POLICY"
+
+
+class EgressBlockedError(SecurityError):
+    """The always-on egress DLP scan blocked an outbound provider request
+    because it carried credentials, secrets, or sensitive identifiers."""
+
+    code = "EGRESS_BLOCKED"
 
 
 # --- governance & compliance -------------------------------------------------
