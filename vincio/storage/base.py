@@ -17,7 +17,20 @@ from urllib.parse import urlparse
 
 from ..core.errors import StorageError
 
-__all__ = ["MetadataStore", "InMemoryMetadataStore", "BlobStore", "FileBlobStore", "create_metadata_store", "parse_storage_url", "asave", "aquery"]
+__all__ = [
+    "MetadataStore",
+    "AsyncMetadataStore",
+    "InMemoryMetadataStore",
+    "BlobStore",
+    "FileBlobStore",
+    "create_metadata_store",
+    "parse_storage_url",
+    "asave",
+    "aget",
+    "aquery",
+    "adelete",
+    "acount",
+]
 
 RECORD_KINDS = ("runs", "context_packets", "eval_results", "documents", "chunks", "tool_calls", "traces")
 
@@ -34,6 +47,32 @@ class MetadataStore(Protocol):
     def delete(self, kind: str, record_id: str) -> bool: ...
 
     def count(self, kind: str) -> int: ...
+
+
+class AsyncMetadataStore(Protocol):
+    """The canonical async store contract (2.0).
+
+    Async is the contract the run path binds to — the module-level
+    :func:`asave` / :func:`aget` / :func:`aquery` / :func:`adelete` /
+    :func:`acount` helpers dispatch to these coroutines when a store implements
+    them (e.g. the psycopg3-async Postgres pool), and otherwise run the
+    synchronous :class:`MetadataStore` methods in a worker thread. So a sync
+    store keeps working unchanged, while an async-native store never touches the
+    event loop with blocking I/O. Implementing the sync :class:`MetadataStore`
+    is the thin shim; implementing this is the fast path.
+    """
+
+    async def asave(self, kind: str, record: dict[str, Any]) -> None: ...
+
+    async def aget(self, kind: str, record_id: str) -> dict[str, Any] | None: ...
+
+    async def aquery(
+        self, kind: str, *, where: dict[str, Any] | None = None, limit: int = 100, offset: int = 0
+    ) -> list[dict[str, Any]]: ...
+
+    async def adelete(self, kind: str, record_id: str) -> bool: ...
+
+    async def acount(self, kind: str) -> int: ...
 
 
 class InMemoryMetadataStore:
@@ -174,6 +213,16 @@ async def asave(store: MetadataStore, kind: str, record: dict[str, Any]) -> None
     await asyncio.to_thread(store.save, kind, record)
 
 
+async def aget(store: MetadataStore, kind: str, record_id: str) -> dict[str, Any] | None:
+    """Fetch one record off the event loop (native ``aget`` or threaded ``get``)."""
+    native = getattr(store, "aget", None)
+    if native is not None:
+        return await native(kind, record_id)
+    import asyncio
+
+    return await asyncio.to_thread(store.get, kind, record_id)
+
+
 async def aquery(
     store: MetadataStore,
     kind: str,
@@ -191,3 +240,23 @@ async def aquery(
     return await asyncio.to_thread(
         lambda: store.query(kind, where=where, limit=limit, offset=offset)
     )
+
+
+async def adelete(store: MetadataStore, kind: str, record_id: str) -> bool:
+    """Delete one record off the event loop (native ``adelete`` or threaded ``delete``)."""
+    native = getattr(store, "adelete", None)
+    if native is not None:
+        return await native(kind, record_id)
+    import asyncio
+
+    return await asyncio.to_thread(store.delete, kind, record_id)
+
+
+async def acount(store: MetadataStore, kind: str) -> int:
+    """Count records off the event loop (native ``acount`` or threaded ``count``)."""
+    native = getattr(store, "acount", None)
+    if native is not None:
+        return await native(kind)
+    import asyncio
+
+    return await asyncio.to_thread(store.count, kind)

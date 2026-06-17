@@ -38,12 +38,88 @@ CREATE INDEX IF NOT EXISTS idx_vincio_records_kind ON vincio_records(kind);
 
 class PostgresMetadataStore:
     def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
         self._conn = _connect(dsn)
+        self._apool: Any | None = None  # lazily-opened psycopg3 AsyncConnectionPool
         with self._conn.cursor() as cursor:
             cursor.execute(_TABLES_SQL)
 
     def close(self) -> None:
         self._conn.close()
+
+    # -- async-first fast path (psycopg3 AsyncConnectionPool) ------------------
+
+    async def _pool(self) -> Any:
+        """Lazily open a psycopg3 async connection pool (created inside the
+        running loop). Keeps DB I/O off the event loop without per-call threads."""
+        if self._apool is None:
+            try:
+                from psycopg_pool import AsyncConnectionPool
+            except ImportError as exc:  # pragma: no cover - optional dep
+                raise StorageError(
+                    'Async Postgres support requires: pip install "vincio[postgres]" '
+                    "(psycopg[pool])"
+                ) from exc
+            self._apool = AsyncConnectionPool(self._dsn, open=False, kwargs={"autocommit": True})
+            await self._apool.open()
+        return self._apool
+
+    async def aclose(self) -> None:
+        if self._apool is not None:
+            await self._apool.close()
+            self._apool = None
+
+    async def asave(self, kind: str, record: dict[str, Any]) -> None:
+        record_id = record.get("id")
+        if not record_id:
+            raise StorageError(f"record for {kind!r} has no id")
+        pool = await self._pool()
+        async with pool.connection() as conn, conn.cursor() as cursor:
+            await cursor.execute(
+                "INSERT INTO vincio_records (kind, id, json) VALUES (%s, %s, %s) "
+                "ON CONFLICT (kind, id) DO UPDATE SET json = EXCLUDED.json",
+                (kind, str(record_id), json.dumps(record, default=str)),
+            )
+
+    async def aget(self, kind: str, record_id: str) -> dict[str, Any] | None:
+        pool = await self._pool()
+        async with pool.connection() as conn, conn.cursor() as cursor:
+            await cursor.execute(
+                "SELECT json FROM vincio_records WHERE kind = %s AND id = %s", (kind, record_id)
+            )
+            row = await cursor.fetchone()
+        return row[0] if row else None
+
+    async def aquery(
+        self, kind: str, *, where: dict[str, Any] | None = None, limit: int = 100, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT json FROM vincio_records WHERE kind = %s"
+        params: list[Any] = [kind]
+        for key, value in (where or {}).items():
+            sql += " AND json->>%s = %s"
+            params.extend([key, str(value)])
+        sql += " ORDER BY id DESC LIMIT %s OFFSET %s"
+        params.extend([limit, offset])
+        pool = await self._pool()
+        async with pool.connection() as conn, conn.cursor() as cursor:
+            await cursor.execute(sql, params)
+            rows = await cursor.fetchall()
+        return [row[0] for row in rows]
+
+    async def adelete(self, kind: str, record_id: str) -> bool:
+        pool = await self._pool()
+        async with pool.connection() as conn, conn.cursor() as cursor:
+            await cursor.execute(
+                "DELETE FROM vincio_records WHERE kind = %s AND id = %s", (kind, record_id)
+            )
+            return cursor.rowcount > 0
+
+    async def acount(self, kind: str) -> int:
+        pool = await self._pool()
+        async with pool.connection() as conn, conn.cursor() as cursor:
+            await cursor.execute("SELECT COUNT(*) FROM vincio_records WHERE kind = %s", (kind,))
+            row = await cursor.fetchone()
+        return row[0] if row else 0
 
     def save(self, kind: str, record: dict[str, Any]) -> None:
         record_id = record.get("id")
