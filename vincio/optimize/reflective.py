@@ -38,12 +38,12 @@ from ..prompts.compiler import CompilerOptions
 from ..prompts.optimizers import PromptVariant
 from ..prompts.templates import PromptSpec
 from .pareto import (
-    DEFAULT_OBJECTIVES,
     ObjectiveSpec,
     ParetoFrontier,
     ParetoPoint,
     dominates,
     objective_vector,
+    objectives_from_weights,
 )
 from .search import (
     Candidate,
@@ -531,7 +531,10 @@ class ReflectiveOptimizer:
         self.weights = weights or FitnessWeights()
         self.gates = gates
         self.max_cost_per_case = max_cost_per_case
-        self.objectives = objectives or DEFAULT_OBJECTIVES
+        # Frontier objectives default to the axes the weights actually care about,
+        # so a zero-weighted axis (e.g. latency) can't let measurement jitter flip
+        # the knee-point pick. An explicit ``objectives`` list overrides this.
+        self.objectives = objectives or objectives_from_weights(self.weights)
         self.reflector = reflector or HeuristicReflector(cost_ceiling=max_cost_per_case)
         self.constraints = constraints
         self.prefer = prefer

@@ -4,6 +4,36 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.1] - 2026-06-17
+
+Closes the one documented 1.7 known limitation: the intermittent
+`test_improvement_loop_reflective_promotes` flake. Additive under the frozen 1.0
+API; no public symbol removed or repurposed.
+
+### Fixed
+
+- **Reflective optimizer honors `FitnessWeights` when building its Pareto
+  frontier.** `ReflectiveOptimizer` accepted `weights` but always selected over
+  the full `DEFAULT_OBJECTIVES`, so an axis the caller weighted to `0.0` still
+  reached multi-objective selection. For wall-clock `latency`, that let timing
+  jitter flip the knee point between otherwise-tied candidates — the root of the
+  intermittent `test_improvement_loop_reflective_promotes` failure (it surfaced
+  hash-seed/ordering-sensitively at the frontier-selection step). A new
+  `objectives_from_weights()` helper derives the frontier axes from the weights
+  (dropping zero-weighted axes, and tracking the configured `accuracy_metric`),
+  and the reflective optimizer defaults to it when no explicit `objectives` are
+  given. Selection is now deterministic when latency is weighted out, so screening
+  fitness and frontier selection agree on which axes matter. An explicit
+  `objectives=` argument still overrides; default weights keep all four axes.
+
+### Notes
+
+- 1039 tests passing offline; ruff + mypy clean. The single known limitation
+  documented in the 1.7.0 release (the reflective-optimizer flake) is now closed
+  at its root cause rather than worked around.
+
+See the [roadmap](ROADMAP.md) (1.7 milestone).
+
 ## [1.7.0] - 2026-06-17
 
 Makes the spine honest and fast, and lays the model-registry foundation. The
