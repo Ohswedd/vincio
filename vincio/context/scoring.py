@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 
 from ..core.tokens import count_tokens
 from ..core.utils import utcnow
+from ..retrieval.embeddings import cosine
 
 __all__ = [
     "CandidateType",
@@ -157,6 +158,11 @@ class ContextCandidate(BaseModel):
 
 
 class ContextScorer:
+    # Weight on the reranker's cross-encoder verdict when blending it into the
+    # relevance term (the rest is the query similarity). The cross-encoder is
+    # the stronger signal, so it dominates while similarity still contributes.
+    _UPSTREAM_BLEND = 0.65
+
     def __init__(
         self,
         weights: ScoringWeights | None = None,
@@ -169,13 +175,70 @@ class ContextScorer:
         self.similarity_fn = similarity_fn or lexical_similarity
         self.max_token_cost = max_token_cost
         self.freshness_half_life_days = freshness_half_life_days
+        # Optional embedding vectors keyed by candidate/query text. When set
+        # (opt-in semantic scoring), relevance, novelty, duplication, and
+        # near-duplicate detection use cosine over these instead of lexical
+        # overlap. Defaults stay lexical when unset — fully additive.
+        self._vectors: dict[str, list[float]] | None = None
+
+    def set_embeddings(self, vectors: dict[str, list[float]] | None) -> None:
+        """Install (or clear) the embedding vector cache used for semantic scoring."""
+        self._vectors = vectors or None
+
+    @property
+    def semantic(self) -> bool:
+        return self._vectors is not None
+
+    def _semantic_sim(self, a: str, b: str) -> float | None:
+        """Cosine over cached embeddings, or ``None`` when either vector is absent."""
+        if self._vectors is None:
+            return None
+        va = self._vectors.get(a)
+        vb = self._vectors.get(b)
+        if va is None or vb is None:
+            return None
+        return max(0.0, min(1.0, cosine(va, vb)))
+
+    def query_similarity(self, content: str, query: str) -> float:
+        """Semantic cosine vs the query when embeddings are present; else lexical."""
+        sim = self._semantic_sim(content, query)
+        if sim is not None:
+            return sim
+        return self.similarity_fn(content, query)
+
+    def diversity_similarity(self, a: str, b: str) -> float:
+        """Similarity used by novelty/duplication/near-dup: semantic when
+        embeddings are present, otherwise word-shingle overlap."""
+        sim = self._semantic_sim(a, b)
+        if sim is not None:
+            return sim
+        return shingle_similarity(a, b)
+
+    def near_duplicate(self, a: str, b: str) -> float:
+        """Near-duplicate score: semantic cosine when embeddings are present
+        (catches paraphrases that differ in wording), otherwise the lexical
+        shingle/containment maximum."""
+        sim = self._semantic_sim(a, b)
+        if sim is not None:
+            return sim
+        return near_duplicate_score(a, b)
 
     # -- component scores -------------------------------------------------------
 
     def relevance(self, candidate: ContextCandidate, query: str) -> float:
         if not query or not candidate.content:
             return 0.0
-        return min(1.0, self.similarity_fn(candidate.content, query))
+        base = min(1.0, self.query_similarity(candidate.content, query))
+        # In semantic mode, blend the reranker's verdict (set on evidence as
+        # ``upstream_relevance``) into relevance instead of using it only as a
+        # min-relevance gate, so the cross-encoder drives selection and
+        # ordering. Default (lexical) behavior is unchanged.
+        if self.semantic:
+            upstream = candidate.metadata.get("upstream_relevance")
+            if upstream is not None:
+                up = max(0.0, min(1.0, float(upstream)))
+                return self._UPSTREAM_BLEND * up + (1.0 - self._UPSTREAM_BLEND) * base
+        return base
 
     def freshness(self, candidate: ContextCandidate) -> float:
         if candidate.created_at is None:
@@ -192,14 +255,14 @@ class ContextScorer:
         if not selected:
             return 1.0
         max_sim = max(
-            shingle_similarity(candidate.content, other.content) for other in selected
+            self.diversity_similarity(candidate.content, other.content) for other in selected
         )
         return 1.0 - max_sim
 
     def duplication(self, candidate: ContextCandidate, selected: list[ContextCandidate]) -> float:
         if not selected:
             return 0.0
-        return max(shingle_similarity(candidate.content, other.content) for other in selected)
+        return max(self.diversity_similarity(candidate.content, other.content) for other in selected)
 
     def answerability(self, candidate: ContextCandidate, query: str) -> float:
         """Does this item plausibly contain an answer? Question terms covered + facts present."""

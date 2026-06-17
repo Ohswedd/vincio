@@ -4,6 +4,118 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.7.0] - 2026-06-17
+
+Makes the spine honest and fast, and lays the model-registry foundation. The
+advertised `Budget` becomes a hard cap, the 1.5 embeddings are wired into the
+compiler so selection is semantic instead of bag-of-words, the streaming and
+non-streaming run paths are unified, persistence moves off the event loop,
+local-image input is fixed, and a data-driven `ModelRegistry` finally consumes
+the underused `ModelProfile`. Every change is additive behind a new entry point
+or opt-in flag on the frozen 1.0 API, all `@experimental`; promotions are now
+gated on statistical significance instead of a point estimate.
+
+### Added
+
+- **Enforced full Budget on the single-shot run path.** `max_cost_usd` /
+  `max_input_tokens` / `max_output_tokens` / `max_steps` are now hard caps on
+  `app.run()` / `arun()`: a `BudgetUsage` is threaded through the model+tool loop
+  and `exceeds()` is checked after each model call and tool round, raising the
+  (previously dead) `BudgetExceededError` at the same choke point as residency
+  and the cost SLO — recorded on the audit chain (`budget` decision) and the
+  `budget.exceeded` event. A pre-flight input-token estimate is checked before
+  the first call, and `BudgetAllocator` can reserve response + tool-loop tokens
+  so it accounts for the full window. `RunConfig(enforce_budget_caps=False)`
+  preserves the pre-1.7 soft-cap behavior for one minor.
+- **Data-driven `ModelRegistry`** (`vincio.providers.registry`, exported as
+  `ModelRegistry` / `default_model_registry`). A versioned, hot-reloadable,
+  config-overridable catalog keyed by exact model id, instantiating
+  `core.types.ModelProfile` (now carrying batch/cache pricing tiers, modalities,
+  and GA/deprecation/retirement lifecycle dates). `ModelProvider.capabilities()`
+  and `observability.costs.PriceTable` derive from it, with substring sniffing
+  demoted to a last-resort fallback; an unknown-model lookup warns
+  (`ModelUnknownWarning`) and emits `model.unknown` instead of silently billing
+  $0. `importlib.metadata` entry-point groups (`vincio.providers` /
+  `vincio.embedders` / `vincio.stores`) let third parties ship auto-registering
+  adapters, and provider-native exact token counters register behind the
+  `TokenCounter` Protocol (`register_token_counter`). Overlay a catalog with
+  `VINCIO_MODEL_REGISTRY=<path.json|yaml>`.
+- **Opt-in semantic context scoring** (`app.use_semantic_context_scoring()` /
+  `retrieval.semantic_context_scoring`). When a real embedder is configured,
+  context relevance, novelty, dedup, and conflict use cosine over the cached
+  embeddings, the reranker's `upstream_relevance` is blended into relevance (no
+  longer just a gate), and `_select` runs embedding-cosine maximal-marginal
+  relevance with an `mmr_lambda` trade-off. The default stays lexical.
+- **Value-level contradiction.** The compiler's negation-XOR conflict trigger is
+  replaced by a salient-unit value-disagreement check: same-topic evidence that
+  cites different numbers/dates (or flips polarity) is emitted as a structured
+  conflict delta in the packet.
+- **`RunHandle` + cooperative cancellation.** `app.submit(...)` returns a
+  `RunHandle` whose `cancel()` propagates a cancellation into the run's
+  bounded-concurrency groups; the cancelled run is still fully recorded on its
+  trace and audit chain (a `CANCELLED` epilogue both run paths share). The
+  streaming path gained the same `asyncio.timeout` latency deadline as the
+  non-streaming path.
+- **Async store contract.** `storage.base.asave` / `aquery` run a store's
+  `save`/`query` off the event loop (`to_thread` for sync stores, native
+  `asave`/`aquery` when present); the runtime now persists packets and runs
+  without blocking the pipeline.
+- **Significance-gated promotion.** `evals.experiments.ab_test` now returns a
+  confidence interval and Cohen's-d effect size alongside the p-value, and the
+  shared `evolution_loop` calls the t-test at the gate: a statistically
+  significant regression on the primary metric blocks promotion, and an
+  under-powered or non-significant gain is warned. The `loop_promotion` audit
+  record carries the verdict.
+- **Trace-replay executor.** `evals.replay.ReplayRunner(app).replay(traces,
+  pin_tools=...)` re-runs captured trace inputs through a target app and diffs
+  outputs, trajectory (`trace_diff`), and cost (`EvalReport.diff`), optionally
+  pinning recorded tool outputs for determinism. Surfaced as `vincio trace
+  replay --against <app>`.
+- **Pluggable detector backends.** `security.DetectorBackend` / `DetectorSpan`
+  let an ML model merge with the deterministic PII / injection / secret
+  detectors; passing none keeps detection byte-for-byte unchanged.
+- A new runnable example, `examples/31_honest_fast_spine.py`, and VincioBench
+  metrics + CI budgets/SLOs across the **cost**, **rag**, **reliability**,
+  **perf**, and **loop** families (budget-cap enforcement, unknown-model
+  warning, embedding-MMR + value-contradiction, stream/non-stream parity,
+  cancellation recording, inverted-index BM25, token memoization, registry
+  lookup, significance-gated promotion, and replay fidelity).
+
+### Changed
+
+- **OpenAI local-image input is fixed.** A local image path is base64-encoded
+  into a `data:` URL instead of an unreachable `file://` URL, via one shared
+  `vincio.core.media` helper (with a byte-size cap) reused by the OpenAI,
+  Anthropic, and Google chat providers and the multimodal embedders. Google
+  also accepts Google-hosted image URIs (GCS `gs://` or the Files API host) via
+  Gemini `fileData` (arbitrary public URLs, which Gemini cannot fetch, are not
+  sent — supply a local path to inline them).
+- **Truthful protocol capabilities.** A2A agent cards default
+  `capabilities.streaming=False` until `message/stream` is actually dispatched;
+  the MCP client's task-poll busy-loop is replaced with exponential backoff and a
+  wall-clock deadline; and the A2A client polls `submitted`/`working` tasks to a
+  terminal state instead of mis-reporting them as failed.
+- **Hardened injection defense.** The injection detector runs a normalization +
+  decode pre-pass (NFKC fold, zero-width strip, homoglyph/leetspeak fold,
+  recursive base64/hex/rot13 decode, depth- and size-bounded) before its regex
+  and heuristic signals, catching obfuscated attacks with no new false positives.
+- **Tenant isolation can fail closed.** `AccessController(require_explicit_tenant
+  =True)` stops treating an untagged (`tenant_id=None`) resource as globally
+  readable — closing a cross-tenant fail-open. Defaults to the legacy behavior
+  for one minor.
+- **Evidence-gated compliance.** `ComplianceMapper` reads a control as `covered`
+  only when backed by measured red-team / eval evidence; a configured-but-
+  unmeasured control is now `partial` (structural, by-construction guarantees
+  stay `covered`).
+- **Sub-quadratic hot paths.** BM25 search scans inverted posting lists instead
+  of every document per query term, `_select` selects incrementally (O(n·k))
+  with inverted-index blocking for dedup/conflict, `count_tokens` is memoized,
+  and the local vector index gains an optional numpy path — all behind
+  availability checks, pure-Python staying the zero-dependency default.
+- **1034 tests passing offline in ~4.5s; ruff + mypy clean**; thirty-one runnable
+  examples; the VincioBench `cost` / `rag` / `reliability` / `perf` / `loop`
+  families hold the 1.7 guarantees under CI-gated budgets.
+
 ## [1.6.1] - 2026-06-16
 
 Completes the 1.6 governance follow-ups (no gaps): a real type-check gate, a

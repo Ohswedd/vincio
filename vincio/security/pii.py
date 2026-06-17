@@ -21,6 +21,8 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel
 
+from .backends import DetectorBackend
+
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from .locales import LocalePack
 
@@ -143,8 +145,12 @@ class PIIDetector:
         *,
         enabled_types: set[str] | None = None,
         locales: Sequence[str | LocalePack] | None = None,
+        backend: DetectorBackend | None = None,
     ) -> None:
         self.enabled_types = enabled_types
+        # Optional ML backend (NER, etc.): its spans merge with the regex spans
+        # through the same overlap resolution. None ⇒ deterministic-only.
+        self.backend = backend
         self._locale_patterns: list[tuple[str, str, re.Pattern[str], float]] = []
         if locales:
             from .locales import resolve_locales
@@ -214,6 +220,19 @@ class PIIDetector:
                             confidence=confidence,
                         )
                     )
+        if self.backend is not None:
+            for span in self.backend.detect(text):
+                if not self._enabled(span.label):
+                    continue
+                matches.append(
+                    PIIMatch(
+                        type=span.label,
+                        value=(span.text or text[span.start : span.end]).strip(),
+                        start=span.start,
+                        end=span.end,
+                        confidence=max(0.0, min(1.0, span.score)),
+                    )
+                )
         # Drop overlapping lower-confidence matches.
         matches.sort(key=lambda m: (m.start, -m.confidence))
         kept: list[PIIMatch] = []

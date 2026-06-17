@@ -439,6 +439,17 @@ adopts the ecosystem's standards — the MCP, A2A, and Agent Skills protocols, a
 OWASP Agentic / NIST AI RMF / MITRE ATLAS governance frameworks — *in your process*; it never becomes
 a hosted service to do so.
 
+**1.7 makes the spine's promises literally true:** the advertised `Budget` is a hard cap, the compiler
+scores and selects context by embedding cosine (with MMR and value-level contradiction) when you opt
+in, the streaming and non-streaming run paths are unified behind one cooperative-cancellation
+epilogue, and a data-driven `ModelRegistry` (capabilities, pricing, lifecycle) replaces substring
+guesswork — every promotion now gated on statistical significance, with a trace-replay executor for
+reproducible behavioral regression. The arc from here to **3.0** continues additively: gating every
+model swap with trace-replay plus statistical significance, making **documents and images flow *out***
+as cited, governed, eval-gated artifacts (not just in), and closing the improvement loop into
+**continual, online, safely-rolled-back self-improvement** — with 2.0 and 3.0 the only breaking
+windows.
+
 See **[ROADMAP.md](ROADMAP.md)** for what ships today, what's planned, and what's intentionally out of
 scope.
 

@@ -6,7 +6,7 @@ optimized, validated, observable, provider-neutral context packets.
 
 from .agents import AgentRole, Blackboard, Crew, StateGraph, compose
 from .context.llmlingua import LLMLinguaCompressor
-from .core.app import ContextApp
+from .core.app import ContextApp, RunHandle
 from .core.config import VincioConfig, load_config
 from .core.errors import VincioError
 from .core.types import (
@@ -52,7 +52,14 @@ from .output.schemas import OutputContract, OutputSchema
 from .packs import Pack, available_packs, load_pack
 from .prompts.signatures import InputField, OutputField, Predict, Signature, signature
 from .prompts.templates import PromptSpec
-from .providers import BatchRunner, CircuitBreaker, HealthAwareFailover, KeyPool
+from .providers import (
+    BatchRunner,
+    CircuitBreaker,
+    HealthAwareFailover,
+    KeyPool,
+    ModelRegistry,
+    default_model_registry,
+)
 from .realtime import RealtimeSession
 from .retrieval import MatryoshkaEmbedder, ShardedIndex
 from .security.poisoning import PoisoningDetector
@@ -68,10 +75,11 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.6.1"
+__version__ = "1.7.0"
 
 __all__ = [
     "ContextApp",
+    "RunHandle",
     "AgentRole",
     "Blackboard",
     "Crew",
@@ -124,6 +132,8 @@ __all__ = [
     "CircuitBreaker",
     "HealthAwareFailover",
     "KeyPool",
+    "ModelRegistry",
+    "default_model_registry",
     "ModelCascade",
     "CostLedger",
     "CostBudget",

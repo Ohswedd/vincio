@@ -95,7 +95,37 @@ from .types import (
     UserInput,
 )
 
-__all__ = ["ContextApp"]
+__all__ = ["ContextApp", "RunHandle"]
+
+
+class RunHandle:
+    """Handle to an in-flight run started by :meth:`ContextApp.submit` (1.7).
+
+    Wraps the run's task and exposes cooperative cancellation that is identical
+    across the streaming and non-streaming paths: :meth:`cancel` propagates a
+    ``CancelledError`` into the run's bounded-concurrency groups, and the
+    cancelled run is still fully recorded on its trace and audit chain. Await the
+    handle (or :meth:`result`) for the :class:`RunResult`.
+    """
+
+    def __init__(self, task: asyncio.Future[RunResult]) -> None:
+        self._task = task
+
+    def cancel(self) -> bool:
+        """Request cooperative cancellation; returns False if already done."""
+        return self._task.cancel()
+
+    def cancelled(self) -> bool:
+        return self._task.cancelled()
+
+    def done(self) -> bool:
+        return self._task.done()
+
+    async def result(self) -> RunResult:
+        return await self._task
+
+    def __await__(self):  # type: ignore[no-untyped-def]
+        return self._task.__await__()
 
 logger = logging.getLogger("vincio.app")
 
@@ -281,6 +311,15 @@ class ContextApp:
 
         # retrieval
         self.embedder = self._build_embedder()
+        # Thread the app embedder into the context compiler for opt-in semantic
+        # scoring (1.7). The shared compiler keeps it vector-less; a per-compile
+        # scorer holds the embeddings, so this is safe and only activates when
+        # ``retrieval.semantic_context_scoring`` is enabled with a real embedder.
+        self.context_compiler.embedder = self.embedder
+        self.context_compiler.options.semantic_scoring = (
+            self.config.retrieval.semantic_context_scoring
+        )
+        self.context_compiler.options.mmr_lambda = self.config.retrieval.mmr_lambda
         self.sources: dict[str, _SourceConfig] = {}
         self.retrieval: RetrievalEngine | None = None
         self._bm25: BM25Index | None = None
@@ -1491,6 +1530,33 @@ class ContextApp:
 
     # -- execution -------------------------------------------------------------------------------------------
 
+    @staticmethod
+    def _coerce_input(
+        user_input: str | UserInput,
+        *,
+        files: list[str] | None,
+        tenant_id: str | None,
+        user_id: str | None,
+        session_id: str | None,
+        feature: str | None,
+    ) -> UserInput:
+        """Normalize the run entry points' input into a fresh UserInput."""
+        if isinstance(user_input, str):
+            normalized = UserInput(text=user_input)
+        else:
+            normalized = user_input.model_copy(deep=True)
+        if files:
+            normalized.files.extend(FileRef(path=f) for f in files)
+        if tenant_id is not None:
+            normalized.tenant_id = tenant_id
+        if user_id is not None:
+            normalized.user_id = user_id
+        if session_id is not None:
+            normalized.session_id = session_id
+        if feature is not None:
+            normalized.feature = feature
+        return normalized
+
     async def arun(
         self,
         user_input: str | UserInput,
@@ -1502,24 +1568,52 @@ class ContextApp:
         feature: str | None = None,
         config: RunConfig | None = None,
     ) -> RunResult:
-        if isinstance(user_input, str):
-            user_input = UserInput(text=user_input)
-        else:
-            user_input = user_input.model_copy(deep=True)
-        if files:
-            user_input.files.extend(FileRef(path=f) for f in files)
-        if tenant_id is not None:
-            user_input.tenant_id = tenant_id
-        if user_id is not None:
-            user_input.user_id = user_id
-        if session_id is not None:
-            user_input.session_id = session_id
-        if feature is not None:
-            user_input.feature = feature
+        user_input = self._coerce_input(
+            user_input, files=files, tenant_id=tenant_id, user_id=user_id,
+            session_id=session_id, feature=feature,
+        )
         result = await self._runtime.execute(user_input, config)
         if self.online_evaluators:
             self._spawn_online(result, user_input)
         return result
+
+    @experimental(since="1.7")
+    def submit(
+        self,
+        user_input: str | UserInput,
+        *,
+        files: list[str] | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        session_id: str | None = None,
+        feature: str | None = None,
+        config: RunConfig | None = None,
+    ) -> RunHandle:
+        """Start a run in the background and return a :class:`RunHandle`.
+
+        ``handle.cancel()`` propagates cooperative cancellation into the run's
+        bounded-concurrency groups (retrieval, tools, model); ``await handle``
+        (or ``await handle.result()``) yields the :class:`RunResult`. A cancelled
+        run is still fully recorded on its trace and audit chain — cancellation
+        is identical to the non-streaming path's. Must be called from within a
+        running event loop::
+
+            handle = app.submit("Summarize the filing")
+            handle.cancel()  # cooperative — the partial run is still recorded
+        """
+        normalized = self._coerce_input(
+            user_input, files=files, tenant_id=tenant_id, user_id=user_id,
+            session_id=session_id, feature=feature,
+        )
+
+        async def _run() -> RunResult:
+            result = await self._runtime.execute(normalized, config)
+            if self.online_evaluators:
+                self._spawn_online(result, normalized)
+            return result
+
+        task = asyncio.ensure_future(_run())
+        return RunHandle(task)
 
     def run(self, user_input: str | UserInput, **kwargs: Any) -> RunResult:
         return run_sync(self._run_and_flush(user_input, **kwargs))
@@ -1552,20 +1646,10 @@ class ContextApp:
                 elif event.type == "done":
                     result = event.result
         """
-        if isinstance(user_input, str):
-            user_input = UserInput(text=user_input)
-        else:
-            user_input = user_input.model_copy(deep=True)
-        if files:
-            user_input.files.extend(FileRef(path=f) for f in files)
-        if tenant_id is not None:
-            user_input.tenant_id = tenant_id
-        if user_id is not None:
-            user_input.user_id = user_id
-        if session_id is not None:
-            user_input.session_id = session_id
-        if feature is not None:
-            user_input.feature = feature
+        user_input = self._coerce_input(
+            user_input, files=files, tenant_id=tenant_id, user_id=user_id,
+            session_id=session_id, feature=feature,
+        )
         config = config or RunConfig()
         config = config.model_copy(update={"stream": True})
         async for event in self._runtime.execute_stream(user_input, config):
@@ -2091,6 +2175,28 @@ class ContextApp:
                 {"student": result.trained_student, "cost_savings": result.cost_savings},
             )
         return result
+
+    @experimental(since="1.7")
+    def use_semantic_context_scoring(
+        self, enabled: bool = True, *, mmr_lambda: float | None = None
+    ) -> ContextApp:
+        """Score and select context by embedding cosine instead of lexical overlap.
+
+        When enabled, the context compiler scores relevance, novelty, dedup, and
+        conflict by cosine over the app embedder's cached vectors, blends the
+        reranker's verdict into relevance, and selects evidence by maximal
+        marginal relevance (``mmr_lambda`` trades relevance against diversity).
+        Only meaningful with a real semantic embedder configured
+        (``retrieval.embedder``); the default hash embedder is not semantic, so
+        leave it off unless you've set one::
+
+            app = ContextApp(config={"retrieval": {"embedder": "voyage"}})
+            app.use_semantic_context_scoring()
+        """
+        self.context_compiler.options.semantic_scoring = enabled
+        if mmr_lambda is not None:
+            self.context_compiler.options.mmr_lambda = mmr_lambda
+        return self
 
     @experimental(since="1.4")
     def use_learned_compression(self, compressor: Any | None = None) -> ContextApp:

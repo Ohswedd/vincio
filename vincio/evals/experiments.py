@@ -319,6 +319,22 @@ def _t_two_sided_p(t_stat: float, df: float) -> float:
     return max(0.0, min(1.0, _betainc(df / 2.0, 0.5, x)))
 
 
+def _t_critical(df: float, alpha: float) -> float:
+    """Two-sided critical t value for ``alpha`` — the inverse of
+    :func:`_t_two_sided_p`, found by bisection (it is monotone in ``t``).
+    Used to build the confidence interval for the mean difference."""
+    if df <= 0:
+        return float("inf")
+    lo, hi = 0.0, 1000.0
+    for _ in range(100):
+        mid = (lo + hi) / 2.0
+        if _t_two_sided_p(mid, df) > alpha:
+            lo = mid
+        else:
+            hi = mid
+    return (lo + hi) / 2.0
+
+
 def _case_values(report: EvalReport, metric: str) -> dict[str, float]:
     return {
         case.case_id: case.metrics[metric]
@@ -364,28 +380,38 @@ def ab_test(
         var = variance(diffs, mu)
         n = len(diffs)
         df = float(n - 1)
+        std_error = math.sqrt(var / n) if var > 0 else 0.0
+        sd = math.sqrt(var)
+        effect_size = (mu / sd) if sd > 0 else 0.0  # Cohen's d_z (paired)
         if var == 0.0:
             p_value = 1.0 if mu == 0.0 else 0.0
             t_stat = 0.0 if mu == 0.0 else math.inf
         else:
-            t_stat = mu / math.sqrt(var / n)
+            t_stat = mu / std_error
             p_value = _t_two_sided_p(abs(t_stat), df)
         test = "paired_t"
     else:
         var_a, var_b = variance(a_list, mean_a), variance(b_list, mean_b)
         n_a, n_b = len(a_list), len(b_list)
         se_sq = var_a / n_a + var_b / n_b
+        std_error = math.sqrt(se_sq) if se_sq > 0 else 0.0
+        pooled_sd = math.sqrt((var_a + var_b) / 2.0)
+        effect_size = (delta / pooled_sd) if pooled_sd > 0 else 0.0  # Cohen's d
         if se_sq == 0.0:
             p_value = 1.0 if delta == 0.0 else 0.0
             t_stat = 0.0 if delta == 0.0 else math.inf
             df = float(n_a + n_b - 2)
         else:
-            t_stat = delta / math.sqrt(se_sq)
+            t_stat = delta / std_error
             df = se_sq**2 / (
                 (var_a / n_a) ** 2 / (n_a - 1) + (var_b / n_b) ** 2 / (n_b - 1)
             ) if n_a > 1 and n_b > 1 else float(n_a + n_b - 2)
             p_value = _t_two_sided_p(abs(t_stat), df)
         test = "welch_t"
+
+    # Confidence interval for the mean difference at (1 - alpha).
+    half_width = _t_critical(df, alpha) * std_error
+    ci_low, ci_high = delta - half_width, delta + half_width
 
     return {
         "metric": metric,
@@ -398,6 +424,11 @@ def ab_test(
         "p_value": round(p_value, 6),
         "alpha": alpha,
         "significant": p_value < alpha,
+        "effect_size": round(effect_size, 4) if math.isfinite(effect_size) else effect_size,
+        "std_error": round(std_error, 6),
+        "ci_low": round(ci_low, 4) if math.isfinite(ci_low) else ci_low,
+        "ci_high": round(ci_high, 4) if math.isfinite(ci_high) else ci_high,
+        "confidence": round(1.0 - alpha, 4),
         "n_a": len(a_list),
         "n_b": len(b_list),
     }

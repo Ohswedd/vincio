@@ -254,7 +254,9 @@ def trace_replay_plan(trace: Trace) -> dict[str, Any]:
             "span_id": s.id,
             "tool": s.attributes.get("tool"),
             "arguments": s.attributes.get("arguments"),
-            "output": s.attributes.get("output"),
+            # Prefer the full structured output (for faithful replay pinning);
+            # fall back to the truncated preview for older traces.
+            "output": s.attributes.get("output_full", s.attributes.get("output")),
         }
         for s in trace.spans
         if s.type == "tool_call"

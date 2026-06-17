@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from typing import Any, cast
 
 from ..core.errors import ProviderResponseError
+from ..core.media import encode_image_bytes
 from ..core.types import (
     FinishReason,
     ModelCapabilities,
@@ -106,18 +107,13 @@ class AnthropicProvider(HTTPProvider):
                                 }
                             )
                         elif part_model.image.path:
-                            import base64
-                            from pathlib import Path
-
-                            data = base64.standard_b64encode(
-                                Path(part_model.image.path).read_bytes()
-                            ).decode()
+                            media_type, data = encode_image_bytes(part_model.image)
                             content.append(
                                 {
                                     "type": "image",
                                     "source": {
                                         "type": "base64",
-                                        "media_type": part_model.image.media_type or "image/png",
+                                        "media_type": media_type,
                                         "data": data,
                                     },
                                 }
@@ -344,6 +340,12 @@ class AnthropicProvider(HTTPProvider):
         yield ModelEvent(type="done", response=response)
 
     def capabilities(self, model: str) -> ModelCapabilities:
+        from .registry import default_model_registry
+
+        profile = default_model_registry().resolve(model)
+        if profile is not None:
+            return profile.capabilities
+        # Fallback: substring sniffing for ids not in the registry.
         return ModelCapabilities(
             structured_output=True,  # via forced tool use
             tool_calling=True,

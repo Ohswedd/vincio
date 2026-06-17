@@ -12,6 +12,7 @@ from collections.abc import AsyncIterator
 from typing import Any, cast
 
 from ..core.errors import ProviderResponseError
+from ..core.media import image_to_data_url
 from ..core.types import (
     FinishReason,
     Message,
@@ -53,7 +54,9 @@ class OpenAIProvider(HTTPProvider):
                     if part.type == "text":
                         parts.append({"type": "text", "text": part.text or ""})
                     elif part.type == "image" and part.image is not None:
-                        url = part.image.url or f"file://{part.image.path}"
+                        # Base64-encode a local path into a data URL (never an
+                        # unreachable file:// URL); pass a remote URL through.
+                        url = image_to_data_url(part.image)
                         parts.append(
                             {
                                 "type": "image_url",
@@ -271,6 +274,12 @@ class OpenAIProvider(HTTPProvider):
         return [item["embedding"] for item in items]
 
     def capabilities(self, model: str) -> ModelCapabilities:
+        from .registry import default_model_registry
+
+        profile = default_model_registry().resolve(model)
+        if profile is not None:
+            return profile.capabilities
+        # Fallback: substring sniffing for ids not in the registry.
         is_mini = "mini" in model or "nano" in model
         return ModelCapabilities(
             structured_output=True,

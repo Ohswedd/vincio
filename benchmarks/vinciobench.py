@@ -26,11 +26,13 @@ import json
 import statistics
 import sys
 import time
+import warnings
 from pathlib import Path
 from typing import Any
 
 sys.path.insert(0, str(Path(__file__).parent))
 
+from vincio import ContextApp
 from vincio.context import ContextCompiler, ContextCompilerOptions
 from vincio.core.errors import ProviderUnavailableError
 from vincio.core.tokens import count_tokens
@@ -43,6 +45,7 @@ from vincio.core.types import (
     ModelRequest,
     ModelResponse,
     Objective,
+    RunConfig,
     TaskType,
     TokenUsage,
     ToolCall,
@@ -61,6 +64,7 @@ from vincio.providers import (
     HealthAwareFailover,
     InProcessBatchBackend,
     MockProvider,
+    ModelProvider,
     cache_hit_rate,
 )
 from vincio.retrieval import (
@@ -262,9 +266,42 @@ async def bench_rag() -> dict[str, Any]:
         RetrievalEngine([multimodal_index]), cases=MULTIMODAL_QA
     )
 
+    # 1.7 — embedding-MMR selection and value-level contradiction.
+    from vincio.context.compiler import ContextCompilerOptions as _Opts
+
+    mmr_compiler = ContextCompiler(_Opts(semantic_scoring=True), embedder=LocalHashEmbedder())
+    conflict_compiler = ContextCompiler(_Opts())
+    conflict = await conflict_compiler.compile(
+        objective=Objective("refund window", task_type=TaskType.DOCUMENT_QA),
+        user_input=UserInput(text="refund window"),
+        evidence=[
+            EvidenceItem(id="c0", source_id="s", relevance=0.0,
+                         text="Customers can request a refund within 30 days of the purchase date for any item."),
+            EvidenceItem(id="c1", source_id="s", relevance=0.0,
+                         text="Customers can request a refund within 14 days of the delivery date for any item."),
+        ],
+    )
+    value_conflict_detected = any(
+        c.get("kind") == "value_disagreement" for c in conflict.conflicts
+    )
+    mmr_packet = await mmr_compiler.compile(
+        objective=Objective("capital of France", task_type=TaskType.DOCUMENT_QA),
+        user_input=UserInput(text="capital of France"),
+        evidence=[
+            EvidenceItem(id="m0", source_id="s", relevance=0.0, text="Paris is the capital of France."),
+            EvidenceItem(id="m1", source_id="s", relevance=0.0, text="The capital of France is Paris."),
+            EvidenceItem(id="m2", source_id="s", relevance=0.0, text="Lyon is a city in France."),
+        ],
+    )
+    mmr_dedups_paraphrase = len(mmr_packet.ir.evidence) <= 2
+
     return {
         "recall_at_3": hybrid["recall_at_3"],
         "mrr": hybrid["mrr"],
+        "semantic_mmr": {
+            "value_contradiction_detected": value_conflict_detected,
+            "mmr_dedups_paraphrase": mmr_dedups_paraphrase,
+        },
         "modes": mode_results,
         "graphrag": {
             "communities": len(communities),
@@ -307,11 +344,36 @@ async def bench_cost() -> dict[str, Any]:
         )
         compiled_tokens.append(sum(e.token_cost for e in compiled.ir.evidence))
     reduction = 1 - (sum(compiled_tokens) / sum(naive_tokens))
+
+    # 1.7 — enforced budget cap + unknown-model honesty.
+    capped = ContextApp(name="bench_cost", provider=MockProvider(default_text="x"))
+    capped.cost_tracker.price_table.set("mock", ModelPrice(input_per_mtok=1e6))
+    capped.budget = capped.budget.model_copy(update={"max_cost_usd": 1e-9})
+    cap_result = await capped.arun("trigger the hard cost cap")
+    budget_cap_enforced = cap_result.status.value == "failed" and "budget" in (cap_result.error or "")
+    soft = await capped.arun("soft cap", config=RunConfig(enforce_budget_caps=False))
+    opt_out_soft = soft.status.value == "succeeded"
+
+    from vincio.providers.registry import ModelUnknownWarning, default_model_registry
+
+    default_model_registry()._seen_unknown.discard("unknown-bench-model-xyz")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        zero = PriceTable().lookup("unknown-bench-model-xyz")
+    unknown_model_warned = (
+        zero.input_per_mtok == 0.0
+        and any(issubclass(w.category, ModelUnknownWarning) for w in caught)
+    )
+
     return {
         "naive_evidence_tokens": sum(naive_tokens),
         "compiled_evidence_tokens": sum(compiled_tokens),
         "token_reduction": round(reduction, 4),
         "hypothesis_20_40pct_met": 0.20 <= reduction,
+        # 1.7
+        "budget_cap_enforced": budget_cap_enforced,
+        "budget_opt_out_soft": opt_out_soft,
+        "unknown_model_warned": unknown_model_warned,
     }
 
 
@@ -562,6 +624,32 @@ async def bench_reliability() -> dict[str, Any]:
         "cases": len(routed_cases),
         "routing_accuracy": round(routing_hits / len(routed_cases), 4),
         "classification_accuracy": round(classify_hits / 2, 4),
+    }
+
+    # 1.7 — unified pipeline parity + cancellation still recorded.
+    parity_app = ContextApp(name="bench_rel", provider=MockProvider(default_text="the answer is 42"))
+    run_text = (await parity_app.arun("q")).raw_text
+    stream_events = [e async for e in parity_app.astream("q")]
+    stream_done = next(e for e in stream_events if e.type == "done")
+    stream_parity = stream_done.result.raw_text == run_text
+
+    class _CancelAtModel(ModelProvider):
+        name = "cancel"
+
+        async def generate(self, request):
+            raise asyncio.CancelledError
+
+    cancel_app = ContextApp(name="bench_cancel", provider=_CancelAtModel())
+    try:
+        await cancel_app.arun("q")
+    except asyncio.CancelledError:
+        pass
+    cancel_recorded = any(
+        e.action == "run" and e.decision == "cancel" for e in cancel_app.audit.entries
+    )
+    results["unified_pipeline"] = {
+        "stream_nonstream_parity": stream_parity,
+        "cancellation_recorded": cancel_recorded,
     }
     return results
 
@@ -1195,6 +1283,26 @@ async def bench_loop() -> dict[str, Any]:
     lossy._lossy = True
     comp_gate_result, _ = await CompressionTuner(comp_eval, min_faithfulness=0.9).tune(lossy, dataset)
 
+    # 1.7 — model registry lookup correctness and the trace-replay executor.
+    from vincio.evals.replay import ReplayRunner, _CaptureExporter
+    from vincio.providers.registry import default_model_registry
+
+    reg = default_model_registry()
+    registry_lookup_correct = bool(
+        reg.capabilities("gpt-5.2").reasoning
+        and not reg.capabilities("gpt-4o").reasoning
+        and reg.resolve("gpt-4o-2024-11-20").model == "gpt-4o"
+        and reg.successor("gemini-2.0-flash") == "gemini-2.5-flash"
+    )
+    replay_app = ContextApp(name="bench_replay", provider=MockProvider(default_text="stable answer"))
+    cap = _CaptureExporter(replay_app.tracer.exporter)
+    replay_app.tracer.exporter = cap
+    rr_run = await replay_app.arun("what is the policy?")
+    original_trace = cap.captured[rr_run.trace_id]
+    replay_app.tracer.exporter = cap._inner
+    replay = await ReplayRunner(replay_app).replay([original_trace])
+    replay_output_match = replay.cases[0].output_match if replay.cases else False
+
     return {
         "promotion": {
             "promoted": result_a.promoted,
@@ -1203,6 +1311,15 @@ async def bench_loop() -> dict[str, Any]:
             "registry_tagged": registry_tagged,
             "eval_linked": eval_linked,
             "dataset_cases": result_a.dataset_size,
+            "significance_gated": result_a.optimization.significance is not None,
+        },
+        "registry": {
+            "lookup_correct": registry_lookup_correct,
+            "models_cataloged": len(reg),
+        },
+        "replay": {
+            "output_match": replay_output_match,
+            "cost_delta_usd": replay.total_cost_delta_usd,
         },
         "auto_memory": {
             "grounded_fact_written": len(grounded) >= 1,
@@ -1371,6 +1488,28 @@ async def bench_perf() -> dict[str, Any]:
         "ttft_ms": round(ttft_ms or 0.0, 3),
         "full_ms": round(full_ms or 0.0, 3),
         "ttft_before_done": bool(ttft_ms is not None and full_ms is not None and ttft_ms < full_ms),
+    }
+
+    # 1.7 — algorithmic-hot-path invariants (deterministic, not wall-clock):
+    # inverted-index BM25 and memoized token counting.
+    from vincio.core.tokens import _count_cached, count_tokens
+
+    bm25 = BM25Index()
+    await bm25.add([
+        Chunk(id="a", text="refund and return policy details", document_id="d"),
+        Chunk(id="b", text="shipping and delivery schedule", document_id="d"),
+    ])
+    bm25_hit = await bm25.search("refund", top_k=1)
+    bm25_inverted_index = bool("refund" in bm25._postings and bm25_hit and bm25_hit[0].chunk.id == "a")
+
+    _count_cached.cache_clear()
+    for _ in range(3):
+        count_tokens("a deterministic memoization probe for the perf family", "gpt-4o")
+    count_tokens_memoized = _count_cached.cache_info().hits >= 2
+
+    results["hot_paths"] = {
+        "bm25_inverted_index": bm25_inverted_index,
+        "count_tokens_memoized": count_tokens_memoized,
     }
     return results
 

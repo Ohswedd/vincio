@@ -50,6 +50,7 @@ from .search import (
     FitnessWeights,
     OptimizationResult,
     _promotion_safe,
+    apply_significance_gate,
     fitness,
 )
 
@@ -744,14 +745,30 @@ class ReflectiveOptimizer:
             gates=self.gates,
             max_cost_per_case=self.max_cost_per_case,
         )
-        result.promoted = safe
+        if not safe:
+            result.promoted = False
+            result.reason = reason
+            return result
+        # Significance gate (1.7): the reflective path gets the same statistical
+        # backing as the evolution path — block a significant primary-metric
+        # regression and record the verdict on the result/audit.
+        blocked, sig_reason = apply_significance_gate(
+            result,
+            baseline_report=baseline.full_report,
+            candidate_report=candidate.full_report,
+            accuracy_metric=self.weights.accuracy_metric,
+        )
+        if blocked:
+            result.best = None
+            result.promoted = False
+            result.reason = sig_reason or "primary metric significantly regressed"
+            return result
+        result.promoted = True
+        sig = result.significance
+        detail = f" (p={sig['p_value']}, effect={sig['effect_size']})" if sig is not None else ""
         result.reason = (
-            reason
-            if not safe
-            else (
-                f"reflective promotion: {pick.name} "
-                f"(fitness {baseline.full_fitness:.4f} → {candidate.full_fitness:.4f}, "
-                f"{len(frontier.front)} non-dominated points, {result.evaluations} rollouts)"
-            )
+            f"reflective promotion: {pick.name} "
+            f"(fitness {baseline.full_fitness:.4f} → {candidate.full_fitness:.4f}, "
+            f"{len(frontier.front)} non-dominated points, {result.evaluations} rollouts){detail}"
         )
         return result

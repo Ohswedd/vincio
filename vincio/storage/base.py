@@ -17,7 +17,7 @@ from urllib.parse import urlparse
 
 from ..core.errors import StorageError
 
-__all__ = ["MetadataStore", "InMemoryMetadataStore", "BlobStore", "FileBlobStore", "create_metadata_store", "parse_storage_url"]
+__all__ = ["MetadataStore", "InMemoryMetadataStore", "BlobStore", "FileBlobStore", "create_metadata_store", "parse_storage_url", "asave", "aquery"]
 
 RECORD_KINDS = ("runs", "context_packets", "eval_results", "documents", "chunks", "tool_calls", "traces")
 
@@ -125,6 +125,21 @@ def parse_storage_url(url: str) -> tuple[str, str]:
     return parsed.scheme, url
 
 
+_DISCOVERED_STORES: dict[str, Any] | None = None
+
+
+def _discovered_stores() -> dict[str, Any]:
+    """Third-party metadata stores advertised under the ``vincio.stores``
+    entry-point group (discovered once, then cached). A factory takes the
+    parsed *location* string and returns a :class:`MetadataStore`."""
+    global _DISCOVERED_STORES
+    if _DISCOVERED_STORES is None:
+        from ..providers.registry import discover_entry_points
+
+        _DISCOVERED_STORES = discover_entry_points("vincio.stores")
+    return _DISCOVERED_STORES
+
+
 def create_metadata_store(url: str) -> MetadataStore:
     scheme, location = parse_storage_url(url)
     if scheme == "memory":
@@ -137,4 +152,42 @@ def create_metadata_store(url: str) -> MetadataStore:
         from .postgres import PostgresMetadataStore
 
         return PostgresMetadataStore(location)
+    discovered = _discovered_stores()
+    if scheme in discovered:
+        return discovered[scheme](location)
     raise StorageError(f"unsupported metadata storage scheme: {scheme!r}")
+
+
+async def asave(store: MetadataStore, kind: str, record: dict[str, Any]) -> None:
+    """Persist a record off the event loop.
+
+    Prefers a store-native ``asave`` coroutine; otherwise runs the synchronous
+    :meth:`MetadataStore.save` in a worker thread so disk/network writes never
+    block the run pipeline. (1.7)
+    """
+    native = getattr(store, "asave", None)
+    if native is not None:
+        await native(kind, record)
+        return
+    import asyncio
+
+    await asyncio.to_thread(store.save, kind, record)
+
+
+async def aquery(
+    store: MetadataStore,
+    kind: str,
+    *,
+    where: dict[str, Any] | None = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> list[dict[str, Any]]:
+    """Query records off the event loop (native ``aquery`` or threaded ``query``)."""
+    native = getattr(store, "aquery", None)
+    if native is not None:
+        return await native(kind, where=where, limit=limit, offset=offset)
+    import asyncio
+
+    return await asyncio.to_thread(
+        lambda: store.query(kind, where=where, limit=limit, offset=offset)
+    )

@@ -29,7 +29,9 @@ async def test_agent_card_served():
     card = await client.agent_card()
     assert card.name == "helper"
     assert card.protocol_version == "0.3.0"
-    assert card.capabilities.get("streaming") is True
+    # Streaming is advertised False until message/stream is actually dispatched
+    # (1.7 honesty fix): the card must not claim a capability the server lacks.
+    assert card.capabilities.get("streaming") is False
 
 
 @pytest.mark.asyncio

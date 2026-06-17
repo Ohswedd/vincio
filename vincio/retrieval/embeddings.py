@@ -27,12 +27,10 @@ support, so custom embedders implementing only ``embed(texts)`` keep working.
 from __future__ import annotations
 
 import asyncio
-import base64
 import hashlib
 import math
 import threading
 from collections import OrderedDict
-from pathlib import Path
 from typing import Any, Literal, Protocol, cast
 
 import httpx
@@ -644,13 +642,13 @@ class MultimodalEmbedder(HTTPEmbedder):
     """
 
     def _encode_image(self, image: ImageRef) -> str:
-        if image.url:
-            return image.url
-        if image.path:
-            data = Path(image.path).read_bytes()
-            media_type = image.media_type or "image/png"
-            return f"data:{media_type};base64,{base64.b64encode(data).decode('ascii')}"
-        raise ConfigError("MultimodalInput image needs a path or url")
+        if not image.url and not image.path:
+            raise ConfigError("MultimodalInput image needs a path or url")
+        # Shared encoder: remote URL passthrough or a base64 data URL (with the
+        # size guardrail), identical to the chat providers.
+        from ..core.media import image_to_data_url
+
+        return image_to_data_url(image)
 
     def _multimodal_payload(
         self, items: list[MultimodalInput], input_type: InputType | None
@@ -771,6 +769,20 @@ _HTTP_EMBEDDERS: dict[str, type[HTTPEmbedder]] = {
 }
 
 
+_DISCOVERED_EMBEDDERS: dict[str, Any] | None = None
+
+
+def _discovered_embedders() -> dict[str, Any]:
+    """Third-party embedders advertised under the ``vincio.embedders`` entry-point
+    group (discovered once, then cached)."""
+    global _DISCOVERED_EMBEDDERS
+    if _DISCOVERED_EMBEDDERS is None:
+        from ..providers.registry import discover_entry_points
+
+        _DISCOVERED_EMBEDDERS = discover_entry_points("vincio.embedders")
+    return _DISCOVERED_EMBEDDERS
+
+
 def build_embedder(
     kind: str = "local",
     *,
@@ -798,6 +810,10 @@ def build_embedder(
         if dimensions is not None:
             kwargs.setdefault("dimensions", dimensions)
         base = _HTTP_EMBEDDERS[kind](**kwargs)
+    elif kind in _discovered_embedders():
+        if dimensions is not None:
+            kwargs.setdefault("dimensions", dimensions)
+        base = _discovered_embedders()[kind](**kwargs)
     else:
         try:
             from ..providers import build_provider

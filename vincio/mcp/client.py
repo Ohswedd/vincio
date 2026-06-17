@@ -14,6 +14,8 @@ with ``origin: mcp:<server>`` provenance; MCP prompts import as ``PromptSpec``.
 
 from __future__ import annotations
 
+import asyncio
+import time
 from typing import Any
 
 from ..core.types import EvidenceItem, Message, ModelRequest, TrustLevel
@@ -152,8 +154,21 @@ class MCPClient:
         )
         return (result or {}).get("messages", [])
 
-    async def _await_task(self, task_id: str, *, max_polls: int = 50) -> MCPTask:
-        for _ in range(max_polls):
+    async def _await_task(
+        self,
+        task_id: str,
+        *,
+        deadline_s: float = 30.0,
+        initial_delay_s: float = 0.05,
+        max_delay_s: float = 2.0,
+    ) -> MCPTask:
+        """Poll a long-running task to a terminal state with exponential backoff
+        and a wall-clock deadline — no busy-loop. The first poll runs immediately
+        (a fast task never sleeps); subsequent polls back off up to ``max_delay_s``
+        until the task finishes or the deadline passes."""
+        start = time.monotonic()
+        delay = initial_delay_s
+        while True:
             result = await self.transport.request("tasks/get", {"taskId": task_id})
             task = MCPTask(
                 task_id=task_id,
@@ -163,7 +178,13 @@ class MCPClient:
             )
             if task.status in ("completed", "failed"):
                 return task
-        return MCPTask(task_id=task_id, status="failed", error="task poll limit reached")
+            if time.monotonic() - start >= deadline_s:
+                return MCPTask(
+                    task_id=task_id, status="failed",
+                    error=f"task poll deadline ({deadline_s}s) exceeded while status={task.status!r}",
+                )
+            await asyncio.sleep(delay)
+            delay = min(delay * 2.0, max_delay_s)
 
     # -- server-initiated requests (sampling / elicitation) --------------------
 

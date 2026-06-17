@@ -313,8 +313,18 @@ class ComplianceMapper:
     ) -> dict[str, _CapabilityEvidence]:
         ev: dict[str, _CapabilityEvidence] = {k: _CapabilityEvidence() for k in _CAPABILITIES}
 
-        def cfg_flag(*evidence: str) -> _CapabilityEvidence:
+        def by_construction(*evidence: str) -> _CapabilityEvidence:
+            # A structural / deterministic guarantee that holds for every run by
+            # construction (audit chain, residency check, bounded executors) —
+            # legitimately "covered" because it is enforced, not merely claimed.
             return _CapabilityEvidence(status="covered", evidence=list(evidence))
+
+        def cfg_flag(*evidence: str) -> _CapabilityEvidence:
+            # A *measurable* control that config enables but no test has yet
+            # exercised. Honestly "partial" until red-team/eval evidence
+            # corroborates it (1.7): a config flag alone can no longer reach
+            # "covered" — the auditor matrix reflects defense actually exercised.
+            return _CapabilityEvidence(status="partial", evidence=list(evidence))
 
         def cfg_available(*evidence: str) -> _CapabilityEvidence:
             # A capability the library ships but does not auto-apply to a run —
@@ -322,7 +332,8 @@ class ComplianceMapper:
             # unconditional "covered".
             return _CapabilityEvidence(status="partial", evidence=list(evidence))
 
-        # --- configured controls (deterministic, always-on Vincio guarantees) ---
+        # --- configured controls: enabled-but-unmeasured ⇒ partial until the
+        # behavioural/measured evidence below elevates them ---
         if cfg is not None:
             if cfg.security.injection_detection:
                 ev["injection_defense"] = self._merge(
@@ -332,38 +343,39 @@ class ComplianceMapper:
             if cfg.security.pii_detection:
                 ev["pii_protection"] = self._merge(ev["pii_protection"], cfg_flag("PII detection enabled"))
                 ev["secret_protection"] = self._merge(ev["secret_protection"], cfg_flag("secret scanner enabled"))
+            # Audit and residency are enforced by construction when configured.
             if cfg.security.audit_log:
-                ev["audit"] = cfg_flag("hash-chained, offline-verifiable audit log enabled")
+                ev["audit"] = by_construction("hash-chained, offline-verifiable audit log enabled")
             if cfg.policies.require_citations or cfg.policies.answer_only_from_sources:
                 ev["grounding"] = self._merge(ev["grounding"], cfg_flag("citations/grounding required by policy"))
             if cfg.policies.block_untrusted_instructions:
                 ev["injection_defense"] = self._merge(
                     ev["injection_defense"], cfg_flag("block_untrusted_instructions policy on"))
-            # Residency: covered when an allowed-region set is configured.
+            # Residency: enforced at the choke point when an allowed-region set is configured.
             gov = getattr(cfg, "governance", None)
             if gov is not None and getattr(gov, "allowed_regions", None):
-                ev["residency"] = cfg_flag(
+                ev["residency"] = by_construction(
                     f"residency policy: allowed regions {sorted(gov.allowed_regions)}")
             if gov is not None and getattr(gov, "content_marking", False):
                 ev["transparency"] = self._merge(
-                    ev["transparency"], cfg_flag("synthetic-content marking enabled"))
+                    ev["transparency"], by_construction("synthetic-content marking enabled"))
 
         # --- always-on-by-construction guarantees (true for every run) ---
-        ev["tool_governance"] = self._merge(ev["tool_governance"], cfg_flag(
+        ev["tool_governance"] = self._merge(ev["tool_governance"], by_construction(
             "permissioned, sandboxed, idempotency-keyed tool runtime (approvals when a callback is set)"))
-        ev["excessive_agency_bounds"] = self._merge(ev["excessive_agency_bounds"], cfg_flag(
+        ev["excessive_agency_bounds"] = self._merge(ev["excessive_agency_bounds"], by_construction(
             "bounded executors: max_steps/tool_calls/cost, termination guarantees"))
-        ev["resource_bounds"] = self._merge(ev["resource_bounds"], cfg_flag(
+        ev["resource_bounds"] = self._merge(ev["resource_bounds"], by_construction(
             "hard Budget limits (tokens/cost/latency/steps) + cost SLOs"))
-        ev["memory_governance"] = self._merge(ev["memory_governance"], cfg_flag(
+        ev["memory_governance"] = self._merge(ev["memory_governance"], by_construction(
             "guarded memory writes: no-secrets, confidence/provenance, contradiction supersede"))
-        ev["supply_chain"] = self._merge(ev["supply_chain"], cfg_flag(
+        ev["supply_chain"] = self._merge(ev["supply_chain"], by_construction(
             "CycloneDX SBOM + SLSA provenance + AI-BOM with model-hash verification"))
-        ev["human_oversight"] = self._merge(ev["human_oversight"], cfg_flag(
+        ev["human_oversight"] = self._merge(ev["human_oversight"], by_construction(
             "human-in-the-loop interrupts on durable graphs/workflows (write approvals when a callback is set)"))
-        ev["output_handling"] = self._merge(ev["output_handling"], cfg_flag(
+        ev["output_handling"] = self._merge(ev["output_handling"], by_construction(
             "schema-validated structured output; repair never invents facts"))
-        ev["transparency"] = self._merge(ev["transparency"], cfg_flag(
+        ev["transparency"] = self._merge(ev["transparency"], by_construction(
             "model/system cards generated from live config"))
         # --- available-but-opt-in capabilities (partial until wired/evidenced) ---
         # RAG-poisoning detection ships as a utility but is not auto-applied to
@@ -371,7 +383,7 @@ class ComplianceMapper:
         # detector (then it is an active control).
         poison_active = getattr(target, "poisoning_detector", None) is not None
         ev["poisoning_defense"] = self._merge(ev["poisoning_defense"], (
-            cfg_flag("authority/provenance RAG-poisoning detector wired into the app")
+            by_construction("authority/provenance RAG-poisoning detector wired into the app")
             if poison_active else
             cfg_available("authority/provenance RAG-poisoning detector available "
                           "(vincio.security.PoisoningDetector); enable in your retrieval flow")))

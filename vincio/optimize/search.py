@@ -15,10 +15,92 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..core.errors import EvalError
 from ..evals.datasets import Dataset
+from ..evals.experiments import ab_test
 from ..evals.reports import EvalReport, evaluate_gates
 
-__all__ = ["FitnessWeights", "fitness", "Candidate", "OptimizationResult", "evolution_loop"]
+__all__ = [
+    "FitnessWeights",
+    "fitness",
+    "Candidate",
+    "OptimizationResult",
+    "evolution_loop",
+    "significance_report",
+    "apply_significance_gate",
+    "MIN_SIGNIFICANCE_CASES",
+]
+
+# Statistical power floor: below this many shared cases, a t-test cannot reliably
+# establish significance, so an improvement is *warned* as under-powered rather
+# than silently trusted (the audit's "compare point estimates" complaint).
+MIN_SIGNIFICANCE_CASES = 8
+
+
+def significance_report(
+    baseline_report: EvalReport | None,
+    candidate_report: EvalReport | None,
+    metric: str,
+    *,
+    alpha: float = 0.05,
+) -> dict[str, Any] | None:
+    """``ab_test`` on *metric*, or ``None`` when the metric is absent from either
+    report (so callers can gate on significance when available and fall back
+    gracefully when not)."""
+    if baseline_report is None or candidate_report is None:
+        return None
+    try:
+        return ab_test(baseline_report, candidate_report, metric, alpha=alpha)
+    except EvalError:
+        return None
+
+
+def apply_significance_gate(
+    result: Any,
+    *,
+    baseline_report: EvalReport | None,
+    candidate_report: EvalReport | None,
+    accuracy_metric: str,
+    alpha: float = 0.05,
+    require_significance: bool = True,
+) -> tuple[bool, str | None]:
+    """Call the t-test at a promotion gate and record its verdict on *result*.
+
+    Sets ``result.significance`` and appends to ``result.warnings``. Returns
+    ``(blocked, reason)``: ``blocked`` is True when the primary metric
+    *significantly regresses* (the caller must refuse to promote). A
+    non-significant or under-powered gain is warned (the warning's ``n`` is the
+    test's actual paired sample size, not the dataset size), never blocked — the
+    promotion may still rest on a fitness improvement (e.g. lower cost). Shared
+    by the evolution and reflective promotion paths so the gate can't drift.
+    """
+    sig = (
+        significance_report(baseline_report, candidate_report, accuracy_metric, alpha=alpha)
+        if require_significance
+        else None
+    )
+    result.significance = sig
+    if sig is None:
+        return False, None
+    if sig["delta"] < 0 and sig["significant"]:
+        return True, (
+            f"primary metric significantly regressed "
+            f"(Δ={sig['delta']}, p={sig['p_value']}, effect={sig['effect_size']})"
+        )
+    if sig["delta"] > 0 and not sig["significant"]:
+        n = min(int(sig.get("n_a", 0)), int(sig.get("n_b", 0)))
+        if n < MIN_SIGNIFICANCE_CASES:
+            result.warnings.append(
+                f"under-powered: {n} paired cases < {MIN_SIGNIFICANCE_CASES}; "
+                f"cannot establish significance of the quality gain (p={sig['p_value']})"
+            )
+        else:
+            result.warnings.append(
+                f"quality gain not statistically significant "
+                f"(Δ={sig['delta']}, p={sig['p_value']}, n={n}); "
+                f"promotion rests on the fitness improvement"
+            )
+    return False, None
 
 
 class FitnessWeights(BaseModel):
@@ -79,6 +161,11 @@ class OptimizationResult(BaseModel):
     reason: str = ""
     candidates: list[Candidate] = Field(default_factory=list)
     history: list[dict[str, Any]] = Field(default_factory=list)
+    # Statistical backing for the promotion decision (1.7): the ab_test verdict
+    # on the primary metric (p-value, confidence interval, effect size), so a
+    # promotion is defensible at a confidence level rather than a point estimate.
+    significance: dict[str, Any] | None = None
+    warnings: list[str] = Field(default_factory=list)
 
 
 # evaluate_fn(candidate, dataset) -> EvalReport
@@ -127,6 +214,8 @@ async def evolution_loop(
     max_cost_per_case: float | None = None,
     min_improvement: float = 1e-6,
     min_dataset_coverage: int = 4,
+    require_significance: bool = True,
+    alpha: float = 0.05,
 ) -> OptimizationResult:
     weights = weights or FitnessWeights()
     if len(dataset) < min_dataset_coverage:
@@ -179,8 +268,30 @@ async def evolution_loop(
     safe, reason = _promotion_safe(
         best.full_report, baseline.full_report, gates=gates, max_cost_per_case=max_cost_per_case
     )
-    result.promoted = safe
-    result.reason = reason if not safe else (
-        f"promoted {best.name}: fitness {baseline.full_fitness:.4f} → {best.full_fitness:.4f}"
+    if not safe:
+        result.promoted = False
+        result.reason = reason
+        return result
+
+    # Significance gate (1.7): call the t-test at the gate so the promotion is
+    # defensible at a confidence level, not a point estimate.
+    blocked, gate_reason = apply_significance_gate(
+        result,
+        baseline_report=baseline.full_report,
+        candidate_report=best.full_report,
+        accuracy_metric=weights.accuracy_metric,
+        alpha=alpha,
+        require_significance=require_significance,
+    )
+    if blocked:
+        result.promoted = False
+        result.reason = gate_reason or "primary metric significantly regressed"
+        return result
+
+    result.promoted = True
+    sig = result.significance
+    detail = f" (p={sig['p_value']}, effect={sig['effect_size']})" if sig is not None else ""
+    result.reason = (
+        f"promoted {best.name}: fitness {baseline.full_fitness:.4f} → {best.full_fitness:.4f}{detail}"
     )
     return result
