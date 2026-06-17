@@ -12,7 +12,8 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder
-from ..retrieval.indexes import SearchFilter, SearchHit
+from ..retrieval.filters import as_predicate
+from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["LanceDBVectorIndex"]
 
@@ -68,17 +69,18 @@ class LanceDBVectorIndex:
         return len(chunk_ids)
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         if self._table is None:
             return []
         [vector] = await self.embedder.embed([query])
+        predicate = as_predicate(where)
         fetch = top_k * 4 if where is not None else top_k
         rows = self._table.search(list(vector)).metric("cosine").limit(fetch).to_list()
         hits: list[SearchHit] = []
         for row in rows:
             chunk = Chunk.model_validate_json(row["json"])
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             score = 1.0 - float(row.get("_distance", 0.0))
             hits.append(SearchHit(chunk=chunk, score=score, source=self.name))

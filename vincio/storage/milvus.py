@@ -14,7 +14,8 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder, embed_texts
-from ..retrieval.indexes import SearchFilter, SearchHit
+from ..retrieval.filters import as_predicate
+from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["MilvusVectorIndex"]
 
@@ -79,9 +80,10 @@ class MilvusVectorIndex:
         return len(chunk_ids)
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
+        predicate = as_predicate(where)
         fetch = top_k * 4 if where is not None else top_k
         results = self.client.search(
             collection_name=self.collection,
@@ -93,7 +95,7 @@ class MilvusVectorIndex:
         for hit in results[0] if results else []:
             entity = hit.get("entity") or {}
             chunk = Chunk.model_validate_json(entity["json"])
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             # Milvus returns cosine similarity directly for the COSINE metric.
             hits.append(SearchHit(chunk=chunk, score=float(hit.get("distance", 0.0)), source=self.name))

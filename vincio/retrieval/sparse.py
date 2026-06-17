@@ -24,7 +24,8 @@ from collections.abc import Awaitable, Callable
 from typing import Protocol
 
 from ..core.types import Chunk
-from .indexes import SearchFilter, SearchHit
+from .filters import as_predicate
+from .indexes import SearchHit, Where
 
 __all__ = [
     "SparseVector",
@@ -143,10 +144,11 @@ class SparseIndex:
         return removed
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         if not self.chunks:
             return []
+        predicate = as_predicate(where)
         [query_vector] = await self.encoder.encode([query], is_query=True)
         scores: dict[str, float] = defaultdict(float)
         for term, query_weight in query_vector.items():
@@ -155,7 +157,7 @@ class SparseIndex:
         hits: list[SearchHit] = []
         for chunk_id, score in scores.items():
             chunk = self.chunks[chunk_id]
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             hits.append(SearchHit(chunk=chunk, score=score, source=self.name))
         hits.sort(key=lambda h: h.score, reverse=True)

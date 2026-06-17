@@ -9,7 +9,8 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder
-from ..retrieval.indexes import SearchFilter, SearchHit
+from ..retrieval.filters import FilterSpec, as_predicate
+from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["PostgresMetadataStore", "PgVectorIndex"]
 
@@ -115,6 +116,11 @@ class PgVectorIndex:
                 )
                 """
             )
+            # 2.0: GIN index on the chunk jsonb so FilterSpec predicates pushed
+            # down as `json ->> ...` / `json -> 'metadata' ->> ...` are indexed.
+            cursor.execute(
+                f"CREATE INDEX IF NOT EXISTS {self.table}_json_gin ON {self.table} USING GIN (json)"
+            )
 
     def __len__(self) -> int:
         with self._conn.cursor() as cursor:
@@ -151,22 +157,34 @@ class PgVectorIndex:
         return removed
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await self.embedder.embed([query])
-        # Over-fetch so post-filtering still fills top_k.
-        fetch = top_k * 4 if where is not None else top_k
+        # 2.0: push a FilterSpec into the SQL WHERE over the jsonb chunk column
+        # so selectivity is applied server-side (GIN-indexed) — fetch exactly
+        # top_k, no over-fetch under-fill, and other tenants' rows never leave
+        # Postgres. A legacy callable still post-filters over a 4x over-fetch.
+        where_sql = "TRUE"
+        where_params: list[str] = []
+        predicate = None
+        if isinstance(where, FilterSpec):
+            where_sql, where_params = where.to_sql_where(column="json")
+            fetch = top_k
+        else:
+            predicate = as_predicate(where)
+            fetch = top_k * 4 if where is not None else top_k
         with self._conn.cursor() as cursor:
             cursor.execute(
                 f"SELECT json, 1 - (embedding <=> %s::vector) AS score FROM {self.table} "
+                f"WHERE {where_sql} "
                 "ORDER BY embedding <=> %s::vector LIMIT %s",
-                (str(vector), str(vector), fetch),
+                (str(vector), *where_params, str(vector), fetch),
             )
             rows = cursor.fetchall()
         hits: list[SearchHit] = []
         for payload, score in rows:
             chunk = Chunk.model_validate(payload)
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             hits.append(SearchHit(chunk=chunk, score=float(score), source=self.name))
             if len(hits) >= top_k:

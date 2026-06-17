@@ -57,8 +57,13 @@ from ..providers.cache_strategy import PromptCacheStrategy
 from ..retrieval.chunking import chunk_document
 from ..retrieval.embeddings import CachedEmbedder, build_embedder
 from ..retrieval.engine import RetrievalEngine
+from ..retrieval.filters import FilterSpec
 from ..retrieval.graph_retrieval import EntityGraph
-from ..retrieval.indexes import BM25Index, SearchFilter, VectorIndex, build_filter
+from ..retrieval.indexes import (
+    BM25Index,
+    VectorIndex,
+    build_filter_spec,
+)
 from ..retrieval.late_interaction import LateInteractionIndex
 from ..retrieval.rerankers import build_reranker
 from ..retrieval.sparse import SparseIndex
@@ -546,10 +551,17 @@ class ContextApp:
             scopes=list(self.policies.custom.get("scopes", ["*"])),
         )
 
-    def tenant_filter(self, tenant_id: str | None) -> SearchFilter | None:
+    def tenant_filter(self, tenant_id: str | None) -> FilterSpec | None:
+        """Tenant-scope filter for retrieval.
+
+        2.0: returns a pushdown-capable :class:`FilterSpec` so the tenant
+        predicate is applied in the vector store (Qdrant/pgvector/...) and other
+        tenants' rows are never fetched to the client and dropped — closing the
+        fetch-to-filter exfiltration gap. In-memory indexes evaluate it directly.
+        """
         if tenant_id is None or not self.config.security.tenant_isolation:
             return None
-        return build_filter(tenant_id=tenant_id)
+        return build_filter_spec(tenant_id=tenant_id)
 
     # -- public configuration API ----------------------------------------------
 

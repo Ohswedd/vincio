@@ -16,7 +16,7 @@ from pydantic import BaseModel, Field
 from ..context.scoring import lexical_similarity
 from ..core.types import EvidenceItem
 from .engine import RetrievalEngine
-from .indexes import SearchFilter
+from .indexes import Where
 
 __all__ = ["FactRequirement", "FactSchema", "FactCoverage", "ReasoningRetriever"]
 
@@ -91,7 +91,7 @@ class ReasoningRetriever:
         query: str,
         schema: FactSchema,
         *,
-        where: SearchFilter | None = None,
+        where: Where | None = None,
         top_k: int = 12,
     ) -> tuple[list[EvidenceItem], list[FactCoverage], dict[str, Any]]:
         """Returns (evidence, per-fact coverage, report)."""

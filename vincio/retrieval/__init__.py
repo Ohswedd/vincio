@@ -24,10 +24,20 @@ from .embeddings import (
     mrl_truncate,
 )
 from .engine import QueryPlan, RetrievalEngine, RetrievalResult, reciprocal_rank_fusion
+from .filters import FilterSpec, and_, contains, eq, exists, in_, ne, not_, or_, range_
 from .graph_retrieval import EntityGraph, GraphPath
 from .graphrag import Community, GraphRAG, detect_communities
 from .hierarchy import AutoMergingIndex, contextualize_chunks
-from .indexes import BM25Index, Index, SearchFilter, SearchHit, VectorIndex, build_filter
+from .indexes import (
+    BM25Index,
+    Index,
+    SearchFilter,
+    SearchHit,
+    VectorIndex,
+    Where,
+    build_filter,
+    build_filter_spec,
+)
 from .late_interaction import LateInteractionIndex
 from .live import LiveIndex, UpsertStats
 from .query_understanding import QUERY_STRATEGIES, QueryExpansion, QueryUnderstanding
@@ -87,7 +97,19 @@ __all__ = [
     "SearchFilter",
     "SearchHit",
     "VectorIndex",
+    "Where",
     "build_filter",
+    "build_filter_spec",
+    "FilterSpec",
+    "and_",
+    "or_",
+    "not_",
+    "eq",
+    "ne",
+    "in_",
+    "range_",
+    "exists",
+    "contains",
     "LateInteractionIndex",
     "LiveIndex",
     "UpsertStats",

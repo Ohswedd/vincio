@@ -15,7 +15,8 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder, embed_texts
-from ..retrieval.indexes import SearchFilter, SearchHit
+from ..retrieval.filters import as_predicate
+from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["VespaVectorIndex"]
 
@@ -88,9 +89,10 @@ class VespaVectorIndex:
         return removed
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
+        predicate = as_predicate(where)
         fetch = top_k * 4 if where is not None else top_k
         response = self.app.query(
             body={
@@ -107,7 +109,7 @@ class VespaVectorIndex:
         for record in response.hits:
             fields = record.get("fields", {})
             chunk = Chunk.model_validate_json(fields["json"])
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             hits.append(SearchHit(chunk=chunk, score=float(record.get("relevance", 0.0)), source=self.name))
             if len(hits) >= top_k:

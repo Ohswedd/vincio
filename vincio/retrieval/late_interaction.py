@@ -26,7 +26,8 @@ from collections import defaultdict
 
 from ..core.types import Chunk
 from .embeddings import Embedder, LocalHashEmbedder
-from .indexes import SearchFilter, SearchHit
+from .filters import as_predicate
+from .indexes import SearchHit, Where
 
 __all__ = ["LateInteractionIndex"]
 
@@ -181,10 +182,11 @@ class LateInteractionIndex:
         return score / max(1, len(query_vectors))
 
     async def search(
-        self, query: str, *, top_k: int = 10, where: SearchFilter | None = None
+        self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         if not self.chunks:
             return []
+        predicate = as_predicate(where)
         tokens = _tokenize(query)[: self.max_query_tokens]
         if not tokens:
             return []
@@ -198,7 +200,7 @@ class LateInteractionIndex:
         hits: list[SearchHit] = []
         for chunk_id in candidate_ids:
             chunk = self.chunks[chunk_id]
-            if where is not None and not where(chunk):
+            if predicate is not None and not predicate(chunk):
                 continue
             score = self._maxsim(query_vectors, self._doc_vectors[chunk_id])
             hits.append(SearchHit(chunk=chunk, score=score, source=self.name))
