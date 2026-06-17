@@ -821,7 +821,7 @@ class ContextApp:
         dataset: Any = None,
         traces: list[Any] | None = None,
         metrics: list[str] | None = None,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         gates: dict[str, str] | None = None,
         alpha: float = 0.05,
         repeats: int = 1,
@@ -857,7 +857,7 @@ class ContextApp:
         candidate_model: str,
         baseline_model: str | None = None,
         metrics: list[str] | None = None,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         alpha: float = 0.05,
         repeats: int = 1,
         flake_quarantine: bool = True,
@@ -2816,7 +2816,7 @@ class ContextApp:
         teacher: str,
         student: str,
         trainer: Any | None = None,
-        quality_metric: str = "semantic_similarity",
+        quality_metric: str = "lexical_overlap",
         min_quality_ratio: float = 0.97,
         gates: dict[str, str] | None = None,
         concurrency: int = 4,
@@ -2935,7 +2935,7 @@ class ContextApp:
         from ..optimize.compression_tuning import CompressionTuner
 
         learned = compressor or LLMLinguaCompressor()
-        metric_list = metrics or ["semantic_similarity", "faithfulness", "input_tokens"]
+        metric_list = metrics or ["lexical_overlap", "faithfulness", "input_tokens"]
 
         async def evaluate(compressor_choice, ds):
             original = self.context_compiler.compressor

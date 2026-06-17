@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from ..context.compression import split_sentences
 from ..context.scoring import lexical_similarity
 from ..core.types import EvidenceItem, TokenUsage
+from ..retrieval.embeddings import LocalHashEmbedder, cosine
 from .datasets import EvalCase
 from .trajectory import (
     Trajectory,
@@ -37,7 +38,9 @@ __all__ = [
     "METRICS",
     "LOWER_IS_BETTER",
     "register_metric",
+    "set_semantic_embedder",
     "exact_match",
+    "lexical_overlap",
     "semantic_similarity",
     "classification_accuracy",
     "extraction_f1",
@@ -171,6 +174,12 @@ class MetricResult(BaseModel):
     name: str
     value: float
     passed: bool | None = None
+    # 2.0: a metric that has no reference to score against (no ground truth, no
+    # claims, no trajectory) returns ``skipped=True`` instead of a neutral
+    # ``1.0``. The runner excludes skipped results from ``CaseResult.metrics``,
+    # so they never inflate a mean or silently pass a gate. ``value`` is still
+    # carried for display but must not be aggregated.
+    skipped: bool = False
     details: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -227,9 +236,55 @@ def exact_match(case: EvalCase, run: RunOutput) -> MetricResult:
     return MetricResult(name="exact_match", value=value, passed=value == 1.0)
 
 
+@register_metric("lexical_overlap")
+def lexical_overlap(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Stemmed bag-of-words overlap between expected and produced text.
+
+    This is the metric that shipped through 1.x under the misleading name
+    ``semantic_similarity``: it is purely lexical (token Jaccard with stemming
+    and stop-word removal), not embedding-based. 2.0 gives it its true name and
+    reserves ``semantic_similarity`` for the embedding-backed metric below.
+    """
+    value = lexical_similarity(_expected_text(case), run.output_text)
+    return MetricResult(name="lexical_overlap", value=round(value, 4))
+
+
+# Offline-deterministic embedder backing ``semantic_similarity`` when no
+# semantic embedder is configured. Swap it with :func:`set_semantic_embedder`
+# (e.g. a provider embedder) to make the metric truly semantic. Any object with
+# a synchronous ``embed_one(text) -> list[float]`` works.
+_SEMANTIC_EMBEDDER: Any = LocalHashEmbedder(dim=256)
+
+
+def set_semantic_embedder(embedder: Any) -> None:
+    """Install the embedder used by the ``semantic_similarity`` metric.
+
+    ``embedder`` must expose a synchronous ``embed_one(text) -> list[float]``.
+    Defaults to the deterministic offline :class:`LocalHashEmbedder`.
+    """
+    global _SEMANTIC_EMBEDDER
+    _SEMANTIC_EMBEDDER = embedder
+
+
 @register_metric("semantic_similarity")
 def semantic_similarity(case: EvalCase, run: RunOutput) -> MetricResult:
-    value = lexical_similarity(_expected_text(case), run.output_text)
+    """Embedding cosine between expected and produced text.
+
+    Unlike the lexical ``lexical_overlap``, this scores vector-space closeness,
+    so paraphrases that share little surface wording still score highly when a
+    real semantic embedder is installed via :func:`set_semantic_embedder`. The
+    default offline embedder is deterministic, so runs stay reproducible.
+    Unscoreable when there is no expected reference.
+    """
+    expected = _expected_text(case)
+    got = run.output_text
+    if not expected:
+        return MetricResult(name="semantic_similarity", value=1.0, skipped=True)
+    if not got:
+        return MetricResult(name="semantic_similarity", value=0.0)
+    va = _SEMANTIC_EMBEDDER.embed_one(expected)
+    vb = _SEMANTIC_EMBEDDER.embed_one(got)
+    value = max(0.0, min(1.0, cosine(va, vb)))
     return MetricResult(name="semantic_similarity", value=round(value, 4))
 
 
@@ -276,6 +331,9 @@ def extraction_f1(case: EvalCase, run: RunOutput) -> MetricResult:
     if hasattr(output, "model_dump"):
         output = output.model_dump()
     got_set = to_set(output)
+    if case.expected is None:
+        # No reference to score against — unscoreable, not a free pass.
+        return MetricResult(name="extraction_f1", value=1.0, skipped=True)
     if not expected_set and not got_set:
         return MetricResult(name="extraction_f1", value=1.0, passed=True)
     true_positive = len(expected_set & got_set)
@@ -320,7 +378,7 @@ def groundedness(case: EvalCase, run: RunOutput) -> MetricResult:
     """supported_claims / total_verifiable_claims against run evidence."""
     claims = _verifiable_claims(run.output_text)
     if not claims:
-        return MetricResult(name="groundedness", value=1.0, details={"claims": 0})
+        return MetricResult(name="groundedness", value=1.0, skipped=True, details={"claims": 0})
     supported = sum(1 for claim in claims if _supported(claim, run.evidence))
     value = supported / len(claims)
     return MetricResult(
@@ -357,7 +415,7 @@ def citation_recall(case: EvalCase, run: RunOutput) -> MetricResult:
     case.rubric['required_evidence'] or all run evidence as fallback."""
     required = case.rubric.get("required_evidence") or [e.id for e in run.evidence]
     if not required:
-        return MetricResult(name="citation_recall", value=1.0)
+        return MetricResult(name="citation_recall", value=1.0, skipped=True)
     cited = set(run.citations)
     hit = sum(1 for ref in required if ref in cited)
     return MetricResult(
@@ -377,7 +435,7 @@ def citation_coverage(case: EvalCase, run: RunOutput) -> MetricResult:
 
     claims = _verifiable_claims(run.output_text)
     if not claims:
-        return MetricResult(name="citation_coverage", value=1.0, details={"claims": 0})
+        return MetricResult(name="citation_coverage", value=1.0, skipped=True, details={"claims": 0})
     valid_ids = {e.id for e in run.evidence} | {e.citation_ref for e in run.evidence} | {
         e.source_id for e in run.evidence
     }
@@ -410,7 +468,7 @@ def claim_entailment(case: EvalCase, run: RunOutput) -> MetricResult:
     claims = _verifiable_claims(run.output_text)
     cited_claims = [(c, extract_citations(c)) for c in claims if extract_citations(c)]
     if not cited_claims:
-        return MetricResult(name="claim_entailment", value=1.0, details={"cited_claims": 0})
+        return MetricResult(name="claim_entailment", value=1.0, skipped=True, details={"cited_claims": 0})
     supported = 0
     for claim, refs in cited_claims:
         evidence = [by_ref[r] for r in refs if r in by_ref]
@@ -440,7 +498,7 @@ def context_recall(case: EvalCase, run: RunOutput) -> MetricResult:
     facts come from rubric['facts'] or sentences of the expected answer."""
     facts = case.rubric.get("facts") or _verifiable_claims(_expected_text(case))
     if not facts:
-        return MetricResult(name="context_recall", value=1.0)
+        return MetricResult(name="context_recall", value=1.0, skipped=True)
     covered = sum(1 for fact in facts if _supported(str(fact), run.evidence, threshold=0.25))
     return MetricResult(
         name="context_recall", value=round(covered / len(facts), 4),
@@ -476,7 +534,7 @@ def faithfulness(case: EvalCase, run: RunOutput) -> MetricResult:
     retrieved/reference context. 1.0 = every claim supported."""
     claims = _claims(run.output_text)
     if not claims:
-        return MetricResult(name="faithfulness", value=1.0, details={"claims": 0})
+        return MetricResult(name="faithfulness", value=1.0, skipped=True, details={"claims": 0})
     evidence = _reference_evidence(case, run)
     supported: list[str] = []
     unsupported: list[str] = []
@@ -672,7 +730,7 @@ def knowledge_retention(case: EvalCase, run: RunOutput) -> MetricResult:
             if message.get("role") == "user":
                 facts.extend(_verifiable_claims(message["content"]))
     if not facts:
-        return MetricResult(name="knowledge_retention", value=1.0, details={"facts": 0})
+        return MetricResult(name="knowledge_retention", value=1.0, skipped=True, details={"facts": 0})
     questions = [s for s in split_sentences(run.output_text) if s.rstrip().endswith("?")]
     violations = [
         {"fact": fact[:120], "question": q[:120]}
@@ -715,7 +773,7 @@ def conversation_outcome(case: EvalCase, run: RunOutput) -> MetricResult:
     assistant_text = " ".join(m["content"] for m in messages if m.get("role") == "assistant")
     assistant_text = f"{assistant_text} {run.output_text}".strip()
     if not goal and not keywords:
-        return MetricResult(name="conversation_outcome", value=1.0, details={"goal": None})
+        return MetricResult(name="conversation_outcome", value=1.0, skipped=True, details={"goal": None})
     if keywords:
         hit = sum(1 for k in keywords if k.lower() in assistant_text.lower())
         value = hit / len(keywords)
@@ -824,7 +882,7 @@ def tool_call_accuracy(case: EvalCase, run: RunOutput) -> MetricResult:
     expected = _expected_tools(case)
     if not expected:
         if not actual:
-            return MetricResult(name="tool_call_accuracy", value=1.0, details={"tools": 0})
+            return MetricResult(name="tool_call_accuracy", value=1.0, skipped=True, details={"tools": 0})
         ok = sum(1 for s in actual if s.ok)
         return MetricResult(
             name="tool_call_accuracy", value=round(ok / len(actual), 4), passed=ok == len(actual),
@@ -854,7 +912,7 @@ def tool_call_f1(case: EvalCase, run: RunOutput) -> MetricResult:
     actual = traj.tool_calls() if traj else []
     expected = _expected_tools(case)
     if not expected:
-        return MetricResult(name="tool_call_f1", value=1.0, details={"reference": None})
+        return MetricResult(name="tool_call_f1", value=1.0, skipped=True, details={"reference": None})
     exp = Counter(_normalize_tool(e)[0] for e in expected)
     act = Counter(_normalize(s.tool_name or s.name) for s in actual)
     true_positive = sum((exp & act).values())
@@ -899,7 +957,7 @@ def plan_adherence(case: EvalCase, run: RunOutput) -> MetricResult:
     traj = run.trajectory
     plan = case.rubric.get("plan") or case.rubric.get("expected_steps")
     if not plan or not traj or not traj.steps:
-        return MetricResult(name="plan_adherence", value=1.0, details={"plan": bool(plan)})
+        return MetricResult(name="plan_adherence", value=1.0, skipped=True, details={"plan": bool(plan)})
     expected = [_normalize(str(p)) for p in plan]
     token_sets = [_step_tokens(s) for s in traj.steps]
     matched = _lcs_against_tokens(expected, token_sets)
@@ -927,7 +985,7 @@ def plan_quality(case: EvalCase, run: RunOutput) -> MetricResult:
     steps and redundant back-to-back repeats of the same step/tool/args."""
     traj = run.trajectory
     if not traj or not traj.steps:
-        return MetricResult(name="plan_quality", value=1.0, details={"steps": 0})
+        return MetricResult(name="plan_quality", value=1.0, skipped=True, details={"steps": 0})
     steps = traj.steps
     failed = sum(1 for s in steps if s.status in _FAILED_STATUSES)
     redundant = 0
@@ -951,7 +1009,7 @@ def step_efficiency(case: EvalCase, run: RunOutput) -> MetricResult:
     rewarding the shortest correct path."""
     traj = run.trajectory
     if not traj or not traj.steps:
-        return MetricResult(name="step_efficiency", value=1.0, details={"steps": 0})
+        return MetricResult(name="step_efficiency", value=1.0, skipped=True, details={"steps": 0})
     steps = traj.steps
     optimal = case.rubric.get("optimal_steps")
     if optimal:
@@ -981,7 +1039,7 @@ def topic_adherence(case: EvalCase, run: RunOutput) -> MetricResult:
     traj = run.trajectory
     objective = str(case.rubric.get("topic") or (traj.objective if traj else "") or case.input_text)
     if not traj or not traj.steps or not objective:
-        return MetricResult(name="topic_adherence", value=1.0, details={"steps": 0})
+        return MetricResult(name="topic_adherence", value=1.0, skipped=True, details={"steps": 0})
     on_topic = 0
     for step in traj.steps:
         text = step.text
@@ -1032,7 +1090,7 @@ def _relevant_ids(case: EvalCase) -> set[str]:
 def recall_at_k(case: EvalCase, run: RunOutput) -> MetricResult:
     relevant = _relevant_ids(case)
     if not relevant:
-        return MetricResult(name="recall_at_k", value=1.0)
+        return MetricResult(name="recall_at_k", value=1.0, skipped=True)
     retrieved = [e.id for e in run.evidence] + [e.citation_ref for e in run.evidence]
     hit = sum(1 for ref in relevant if ref in retrieved)
     return MetricResult(name="recall_at_k", value=round(hit / len(relevant), 4))
@@ -1041,8 +1099,10 @@ def recall_at_k(case: EvalCase, run: RunOutput) -> MetricResult:
 @register_metric("precision_at_k")
 def precision_at_k(case: EvalCase, run: RunOutput) -> MetricResult:
     relevant = _relevant_ids(case)
+    if not relevant:
+        return MetricResult(name="precision_at_k", value=1.0, skipped=True)
     if not run.evidence:
-        return MetricResult(name="precision_at_k", value=0.0 if relevant else 1.0)
+        return MetricResult(name="precision_at_k", value=0.0)
     hits = sum(1 for e in run.evidence if e.id in relevant or e.citation_ref in relevant)
     return MetricResult(name="precision_at_k", value=round(hits / len(run.evidence), 4))
 
@@ -1050,17 +1110,19 @@ def precision_at_k(case: EvalCase, run: RunOutput) -> MetricResult:
 @register_metric("mrr")
 def mrr(case: EvalCase, run: RunOutput) -> MetricResult:
     relevant = _relevant_ids(case)
+    if not relevant:
+        return MetricResult(name="mrr", value=1.0, skipped=True)
     for rank, item in enumerate(run.evidence, start=1):
         if item.id in relevant or item.citation_ref in relevant:
             return MetricResult(name="mrr", value=round(1.0 / rank, 4))
-    return MetricResult(name="mrr", value=0.0 if relevant else 1.0)
+    return MetricResult(name="mrr", value=0.0)
 
 
 @register_metric("ndcg")
 def ndcg(case: EvalCase, run: RunOutput) -> MetricResult:
     relevant = _relevant_ids(case)
     if not relevant:
-        return MetricResult(name="ndcg", value=1.0)
+        return MetricResult(name="ndcg", value=1.0, skipped=True)
     dcg = 0.0
     for rank, item in enumerate(run.evidence, start=1):
         if item.id in relevant or item.citation_ref in relevant:

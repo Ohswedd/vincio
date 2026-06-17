@@ -30,7 +30,7 @@ dataset = Dataset(
 if __name__ == "__main__":
     runner = EvalRunner(
         app,
-        metrics=["groundedness", "citation_accuracy", "semantic_similarity", "cost", "latency"],
+        metrics=["groundedness", "citation_accuracy", "lexical_overlap", "cost", "latency"],
         gates={"groundedness": ">= 0.9", "p95_latency": "<= 10000"},
         concurrency=4,
     )

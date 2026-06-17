@@ -50,7 +50,7 @@ class TestGoldenRegressionSuite:
     def test_gate_flags_missing_case(self, tmp_path):
         suite = GoldenRegressionSuite(tmp_path / "g.jsonl")
         suite.add(EvalCase(id="c1", input="q"), fixed_by="v2")
-        report = EvalReport(cases=[CaseResult(case_id="other", metrics={"semantic_similarity": 1.0})])
+        report = EvalReport(cases=[CaseResult(case_id="other", metrics={"lexical_overlap": 1.0})])
         result = suite.gate(report)
         assert not result.passed and "c1" in result.missing
 
@@ -66,8 +66,8 @@ class TestGoldenRegressionSuite:
         suite = GoldenRegressionSuite(tmp_path / "g.jsonl")
         dataset = Dataset(cases=[EvalCase(id="c1", input="q1"), EvalCase(id="c2", input="q2")])
         report = EvalReport(cases=[
-            CaseResult(case_id="c1", metrics={"semantic_similarity": 0.9}),
-            CaseResult(case_id="c2", metrics={"semantic_similarity": 0.3}),
+            CaseResult(case_id="c1", metrics={"lexical_overlap": 0.9}),
+            CaseResult(case_id="c2", metrics={"lexical_overlap": 0.3}),
         ])
         added = suite.add_from_report(report, dataset, fixed_by="v3", guard_threshold=0.5)
         assert added == ["c1"]  # only the passing case becomes a guard
@@ -163,13 +163,13 @@ class TestExperimentProposer:
 
     def test_passing_metrics_yield_no_proposal(self, tmp_path):
         proposer = ExperimentProposer(_app(tmp_path))
-        assert proposer.rank({"groundedness": 0.99, "semantic_similarity": 0.95}) == []
+        assert proposer.rank({"groundedness": 0.99, "lexical_overlap": 0.95}) == []
 
     def test_drift_boosts_priority(self, tmp_path):
         proposer = ExperimentProposer(_app(tmp_path))
         # Two equal weaknesses; the drifted one should sort first.
         proposals = proposer.rank(
-            {"semantic_similarity": 0.7, "answer_relevance": 0.7}, drift={"answer_relevance"}
+            {"lexical_overlap": 0.7, "answer_relevance": 0.7}, drift={"answer_relevance"}
         )
         assert proposals[0].target_metric == "answer_relevance"
         assert proposals[0].drift is True
@@ -192,7 +192,7 @@ class TestExperimentProposer:
         dataset = Dataset(cases=[EvalCase(id=f"c{i}", input="q", expected="a") for i in range(6)])
         proposer = ExperimentProposer(app, eval_budget=8)
         # Force a weak signal by ranking directly, then run the top proposal.
-        proposals = proposer.rank({"semantic_similarity": 0.4})
+        proposals = proposer.rank({"lexical_overlap": 0.4})
         assert proposals[0].kind == "prompt"
         # run_next reads online signals (none here) so we drive the prompt path
         # via the proposer's loop construction to confirm it wires end to end.
@@ -211,7 +211,7 @@ class TestGoldenSuiteInLoop:
         # A guard case that the candidate will fail (impossible threshold).
         suite = GoldenRegressionSuite(tmp_path / "g.jsonl")
         suite.add(EvalCase(id="guard", input="q", expected="a"),
-                  fixed_by="seed", guard_metric="semantic_similarity", guard_threshold=2.0)
+                  fixed_by="seed", guard_metric="lexical_overlap", guard_threshold=2.0)
         dataset = Dataset(cases=[EvalCase(id=f"c{i}", input="q", expected="a") for i in range(6)])
         loop = ImprovementLoop(app, optimizer="reflective", golden_suite=suite)
         result = loop.run(dataset=dataset, max_variants=4, subset_size=4)

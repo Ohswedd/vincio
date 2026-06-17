@@ -89,7 +89,7 @@ async def main() -> None:
 
     loop = ImprovementLoop(
         app,
-        metrics=["semantic_similarity", "groundedness", "citation_accuracy", "cost", "latency"],
+        metrics=["lexical_overlap", "groundedness", "citation_accuracy", "cost", "latency"],
         weights=FitnessWeights(accuracy_metric="citation_accuracy"),
         gates={"groundedness": ">= 0.5"},
         experiment="refund_qa",
@@ -147,7 +147,7 @@ async def main() -> None:
             learned={TaskType.DOCUMENT_QA.value: fractions}
         )
         try:
-            runner = EvalRunner(app, metrics=["semantic_similarity", "cost", "latency"])
+            runner = EvalRunner(app, metrics=["lexical_overlap", "cost", "latency"])
             return await runner.arun(ds)
         finally:
             app.context_compiler.allocator = BudgetAllocator()

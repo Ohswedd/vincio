@@ -39,7 +39,7 @@ PACK = Pack(
         "redact_pii_in_context": True,
     },
     rails=[{"name": "no_pii_leak", "kind": "safety", "direction": "output", "detectors": ["pii"]}],
-    evaluators=["groundedness", "schema_validity", "semantic_similarity"],
+    evaluators=["groundedness", "schema_validity", "lexical_overlap"],
     eval_cases=[
         EvalCase(
             id="fin_revenue",

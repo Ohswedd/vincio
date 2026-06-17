@@ -1235,7 +1235,7 @@ async def bench_evals() -> dict[str, Any]:
     good_verdict = await swap_app.agate_swap("gpt-5.2-mini", baseline_model="gpt-5.2", dataset=swap_ds)
     swap_gate_blocks_regression = (not bad_verdict.passed) and good_verdict.passed
     swap_gate_significant = bool(
-        bad_verdict.regression and "semantic_similarity" in bad_verdict.regression.regressions
+        bad_verdict.regression and "lexical_overlap" in bad_verdict.regression.regressions
     )
 
     cap = _CaptureExporter(swap_app.tracer.exporter)
@@ -1314,7 +1314,7 @@ async def bench_loop() -> dict[str, Any]:
                 CaseResult(
                     case_id=f"c{i}",
                     metrics={
-                        "semantic_similarity": quality,
+                        "lexical_overlap": quality,
                         "cost": 0.001,
                         "latency": 100.0,
                     },
@@ -1353,7 +1353,7 @@ async def bench_loop() -> dict[str, Any]:
             for index, (question, expected, _source) in enumerate(QA_CASES)
         ],
     )
-    metrics = ["semantic_similarity", "cost", "latency"]
+    metrics = ["lexical_overlap", "cost", "latency"]
 
     async def run_loop(gates=None):
         from vincio.optimize import FitnessWeights
@@ -1383,7 +1383,7 @@ async def bench_loop() -> dict[str, Any]:
         and (result_a.optimization.best.params if result_a.optimization.best else None)
         == (result_b.optimization.best.params if result_b.optimization.best else None)
     )
-    _gate_loop, gate_result = await run_loop(gates={"semantic_similarity": ">= 1.1"})
+    _gate_loop, gate_result = await run_loop(gates={"lexical_overlap": ">= 1.1"})
 
     # 2. Auto-memory: grounded claims become candidate memories; ungrounded
     # claims never do.
@@ -1437,7 +1437,7 @@ async def bench_loop() -> dict[str, Any]:
     from vincio.optimize import ObjectiveSpec
 
     specs = [
-        ObjectiveSpec(name="accuracy", metric="semantic_similarity"),
+        ObjectiveSpec(name="accuracy", metric="lexical_overlap"),
         ObjectiveSpec(name="cost", metric="cost", direction="min"),
     ]
     frontier = ParetoFrontier.build(points, specs=specs)
@@ -1487,7 +1487,7 @@ async def bench_loop() -> dict[str, Any]:
         strong = bool(variant.spec.citation_policy) or variant.spec.reasoning_mode == "evidence_first"
         q = 0.95 if strong else 0.5
         return metrics_report([{
-            "semantic_similarity": q, "groundedness": q,
+            "lexical_overlap": q, "groundedness": q,
             "schema_validity": 1.0, "safety": 1.0, "cost": 0.001, "latency": 100.0,
         }] * len(ds))
 
@@ -1518,7 +1518,7 @@ async def bench_loop() -> dict[str, Any]:
         quality, cost = (0.95, 0.01) if model == "teacher" else (
             (0.93, 0.002) if model == "student" else (0.5, 0.002)
         )
-        return metrics_report([{"semantic_similarity": quality, "cost": cost}] * len(ds))
+        return metrics_report([{"lexical_overlap": quality, "cost": cost}] * len(ds))
 
     promote_result = await BootstrapFinetune(distill_eval, min_quality_ratio=0.9).distill(
         training_set, dataset, teacher="teacher", student="student"
@@ -1545,7 +1545,7 @@ async def bench_loop() -> dict[str, Any]:
         learned = compressor is not None
         faithful = 0.5 if (learned and getattr(compressor, "_lossy", False)) else (0.95 if learned else 1.0)
         tokens = 60.0 if learned else 100.0
-        return metrics_report([{"semantic_similarity": 0.99 if learned else 1.0,
+        return metrics_report([{"lexical_overlap": 0.99 if learned else 1.0,
                                 "faithfulness": faithful, "input_tokens": tokens}] * len(ds))
 
     adopt_result, _ = await CompressionTuner(comp_eval).tune(LLMLinguaCompressor(), dataset)
@@ -1623,9 +1623,9 @@ async def bench_loop() -> dict[str, Any]:
     # recorded fix is blocked.
     suite = GoldenRegressionSuite(tempfile.mktemp(suffix=".jsonl"))
     suite.add(EvalCase(id="g1", input="q", expected="a"),
-              fixed_by="seed@v1", guard_metric="semantic_similarity", guard_threshold=0.8)
-    pass_report = _ER(cases=[_CR(case_id="g1", metrics={"semantic_similarity": 0.95})])
-    fail_report = _ER(cases=[_CR(case_id="g1", metrics={"semantic_similarity": 0.3})])
+              fixed_by="seed@v1", guard_metric="lexical_overlap", guard_threshold=0.8)
+    pass_report = _ER(cases=[_CR(case_id="g1", metrics={"lexical_overlap": 0.95})])
+    fail_report = _ER(cases=[_CR(case_id="g1", metrics={"lexical_overlap": 0.3})])
     guard_blocks = not suite.gate(fail_report).passed and suite.gate(pass_report).passed
 
     # Online state: the sampling counter is restart-safe and worker-aggregatable.
@@ -2003,7 +2003,7 @@ async def bench_agentic_evals() -> dict[str, Any]:
         # output-only vs trajectory pass (the "agents pass more output-only" gap).
         if traj_payload:
             traj_cases += 1
-            output_only_pass += METRICS["semantic_similarity"](case, run).value >= 0.5
+            output_only_pass += METRICS["lexical_overlap"](case, run).value >= 0.5
             traj_pass += (
                 METRICS["tool_call_accuracy"](case, run).value == 1.0
                 and METRICS["goal_accuracy"](case, run).value == 1.0
@@ -2061,7 +2061,7 @@ async def bench_agentic_evals() -> dict[str, Any]:
 
     objs = objectives_from_weights(FitnessWeights())
     fail_report = EvalReport(cases=[
-        CaseResult(case_id="c1", metrics={"groundedness": 0.2, "semantic_similarity": 0.3,
+        CaseResult(case_id="c1", metrics={"groundedness": 0.2, "lexical_overlap": 0.3,
                                           "schema_validity": 1.0}, output_text="uncited claim"),
     ])
     refl_ds = Dataset(cases=[EvalCase(id="c1", input="what is the refund window?", expected="30 days")])

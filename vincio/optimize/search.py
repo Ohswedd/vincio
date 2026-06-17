@@ -114,7 +114,7 @@ class FitnessWeights(BaseModel):
     cost: float = 0.5  # ε  (per dollar-per-case)
     latency: float = 0.2  # ζ  (per second p50)
     retry_rate: float = 0.3  # η
-    accuracy_metric: str = "semantic_similarity"  # which metric stands in for accuracy
+    accuracy_metric: str = "lexical_overlap"  # which metric stands in for accuracy
     safety_metric: str = "safety"
 
 

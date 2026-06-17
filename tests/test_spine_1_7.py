@@ -355,7 +355,7 @@ class TestSignificance:
         def report(quality, cost):
             return EvalReport(cases=[
                 CaseResult(case_id=f"c{i}", metrics={
-                    "semantic_similarity": quality, "schema_validity": 1.0,
+                    "lexical_overlap": quality, "schema_validity": 1.0,
                     "safety": 1.0, "cost": cost, "latency": 10.0,
                 }) for i in range(8)
             ])

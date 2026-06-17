@@ -307,7 +307,7 @@ class TestSwapGate:
         report = await model_swap_regression(
             app, geo_dataset, baseline_model="gpt-5.2", candidate_model="gpt-5.2-nano", repeats=2
         )
-        assert report.regressed and "semantic_similarity" in report.regressions
+        assert report.regressed and "lexical_overlap" in report.regressions
         assert report.cost["ratio"] < 1.0  # nano is cheaper
 
     async def test_gate_blocks_regression_passes_safe(self, app, geo_dataset):
@@ -343,7 +343,7 @@ class TestSwapGate:
         assert shapes["n"] == 2
 
     def test_gate_constructs(self, app):
-        assert SwapGate(app).quality_metric == "semantic_similarity"
+        assert SwapGate(app).quality_metric == "lexical_overlap"
 
 
 # --------------------------------------------------------------------------- #

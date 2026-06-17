@@ -50,7 +50,7 @@ def quality_report(quality: float, *, cost: float = 0.001, n: int = 4) -> EvalRe
     return report_for(
         [
             {
-                "semantic_similarity": quality,
+                "lexical_overlap": quality,
                 "groundedness": quality,
                 "cost": cost,
                 "latency": 100.0,
@@ -83,7 +83,7 @@ QA_DATASET = Dataset(
 
 class TestPareto:
     OBJECTIVES = [
-        ObjectiveSpec(name="accuracy", metric="semantic_similarity"),
+        ObjectiveSpec(name="accuracy", metric="lexical_overlap"),
         ObjectiveSpec(name="cost", metric="cost", direction="min"),
     ]
 
@@ -504,7 +504,7 @@ class TestImprovementLoop:
 
     def test_loop_promotes_and_records_everything(self, loop_app, tmp_cwd):
         loop = ImprovementLoop(
-            loop_app, metrics=["semantic_similarity", "cost", "latency"], experiment="exp_loop"
+            loop_app, metrics=["lexical_overlap", "cost", "latency"], experiment="exp_loop"
         )
         result = loop.run(dataset=QA_DATASET, max_variants=6, subset_size=4)
 
@@ -525,7 +525,7 @@ class TestImprovementLoop:
 
     def test_loop_dry_run_changes_nothing(self, loop_app, tmp_cwd):
         original_hash = loop_app.prompt_spec.spec_hash
-        loop = ImprovementLoop(loop_app, metrics=["semantic_similarity", "cost", "latency"])
+        loop = ImprovementLoop(loop_app, metrics=["lexical_overlap", "cost", "latency"])
         result = loop.run(dataset=QA_DATASET, max_variants=6, subset_size=4, dry_run=True)
         assert not result.promoted
         assert result.reason.startswith("dry run")
@@ -534,7 +534,7 @@ class TestImprovementLoop:
 
     def test_loop_refuses_small_dataset(self, loop_app, tmp_cwd):
         tiny = Dataset(name="tiny", cases=[EvalCase(id="c", input="q")])
-        loop = ImprovementLoop(loop_app, metrics=["semantic_similarity"])
+        loop = ImprovementLoop(loop_app, metrics=["lexical_overlap"])
         result = loop.run(dataset=tiny)
         assert not result.promoted
         assert "too small" in result.reason
