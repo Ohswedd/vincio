@@ -7,6 +7,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 2.1.x   | ✅        |
 | 2.0.x   | ✅        |
 | 1.10.x  | ✅        |
 | 1.9.x   | ✅        |
@@ -170,6 +171,24 @@ algorithm; periodic Merkle-root checkpoints (`AuditLog.checkpoint`) let a root b
 witnessed externally to pin history irreversibly. Unsigned logs keep the 1.x
 format and still verify. Generated media and image/table evidence ride the same
 content-addressed, provenance-stamped path as text.
+
+The 2.1 scale-out surface is additive and keeps the data-exposure boundary
+closed. **Prompt/completion content capture is off by default**: a
+`ContentCapturePolicy` gates content at the *export boundary* — the OTel exporter
+(`observability/otel.py`) and the tool runtime (`tools/runtime.py`) — so structural
+telemetry (model, tokens, cost, latency, scores) exports while raw prompt and
+completion text is dropped unless you explicitly opt in, and when you do it is
+PII-redacted and truncated first. The served observability plane is **opt-in,
+self-hosted, and emits on the same hash-chained audit chain** — never a hosted
+service that widens your exposure surface. Distributed execution stays inside the
+governance boundary too: the lease + checkpoint-version CAS
+(`agents/distributed.py`) guarantee exactly-once super-step execution across
+workers (a lost race raises `CheckpointConflictError`, never a double-write), and
+the Redis-backed shared rate-limit and idempotency state (`storage/redis.py`)
+enforce one coherent limit across a multi-worker fleet rather than one per worker.
+Executed fine-tune jobs run through the provider's own authenticated transport
+(so the egress DLP scan and audit apply), and a trained student is promoted only
+past the significance swap gate — the flywheel cannot silently ship a regression.
 
 ## Supply-chain integrity
 

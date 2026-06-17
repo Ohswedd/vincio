@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
@@ -38,12 +39,17 @@ from .search import _promotion_safe
 
 if TYPE_CHECKING:
     from ..observability.spans import Trace
+    from ..providers.finetune import FineTuneBackend
+    from ..providers.registry import ModelRegistry
+    from ..retrieval.embeddings import Embedder
 
 __all__ = [
     "TrainingExample",
     "TrainingSet",
     "export_training_set",
     "export_training_set_from_runs",
+    "semantic_dedupe",
+    "provider_trainer",
     "DistillationResult",
     "BootstrapFinetune",
 ]
@@ -198,6 +204,7 @@ def export_training_set(
     min_support: float = 0.5,
     dedupe: bool = True,
     max_examples: int | None = None,
+    max_example_chars: int | None = None,
     evidence_for: EvidenceResolver | None = None,
 ) -> TrainingSet:
     """Curate captured traces into a grounded fine-tuning :class:`TrainingSet`.
@@ -222,6 +229,7 @@ def export_training_set(
     seen: set[str] = set()
     considered = 0
     dropped_ungrounded = 0
+    dropped_truncated = 0
     for trace in {t.id: t for t in traces}.values():
         if only_ok and trace.status != "ok":
             continue
@@ -258,6 +266,9 @@ def export_training_set(
         if example is None:
             dropped_ungrounded += 1
             continue
+        if max_example_chars is not None and _example_chars(example) > max_example_chars:
+            dropped_truncated += 1
+            continue
         examples.append(example)
         if max_examples is not None and len(examples) >= max_examples:
             break
@@ -270,6 +281,7 @@ def export_training_set(
             "traces": len(traces),
             "considered": considered,
             "dropped_ungrounded": dropped_ungrounded,
+            "dropped_truncated": dropped_truncated,
             "require_grounding": require_grounding,
             "min_support": min_support,
         },
@@ -286,6 +298,7 @@ def export_training_set_from_runs(
     min_support: float = 0.5,
     dedupe: bool = True,
     max_examples: int | None = None,
+    max_example_chars: int | None = None,
 ) -> TrainingSet:
     """Curate :class:`~vincio.core.types.RunResult` objects into a grounded
     fine-tuning :class:`TrainingSet` — faithful by construction, no opt-in.
@@ -309,6 +322,7 @@ def export_training_set_from_runs(
     seen: set[str] = set()
     considered = 0
     dropped_ungrounded = 0
+    dropped_truncated = 0
     for run in runs:
         status = getattr(run, "status", None)
         if only_ok and str(getattr(status, "value", status)) != "succeeded":
@@ -343,6 +357,9 @@ def export_training_set_from_runs(
         if example is None:
             dropped_ungrounded += 1
             continue
+        if max_example_chars is not None and _example_chars(example) > max_example_chars:
+            dropped_truncated += 1
+            continue
         examples.append(example)
         if max_examples is not None and len(examples) >= max_examples:
             break
@@ -355,18 +372,166 @@ def export_training_set_from_runs(
             "runs": len(runs),
             "considered": considered,
             "dropped_ungrounded": dropped_ungrounded,
+            "dropped_truncated": dropped_truncated,
             "require_grounding": require_grounding,
             "min_support": min_support,
         },
     )
 
 
+def _example_chars(example: TrainingExample) -> int:
+    return sum(len(str(m.get("content", ""))) for m in example.messages)
+
+
+def _example_text(example: TrainingExample) -> str:
+    return "\n".join(str(m.get("content", "")) for m in example.messages)
+
+
+def _cosine(a: list[float], b: list[float]) -> float:
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    na = math.sqrt(sum(x * x for x in a))
+    nb = math.sqrt(sum(y * y for y in b))
+    return dot / (na * nb) if na and nb else 0.0
+
+
+async def semantic_dedupe(
+    training_set: TrainingSet,
+    *,
+    embedder: Embedder | None = None,
+    threshold: float = 0.92,
+) -> TrainingSet:
+    """Drop near-duplicate examples by embedding similarity (2.1).
+
+    Exact (input+output) duplicates are already collapsed at export time; this
+    catches *paraphrases* — runs that say the same thing differently — so the
+    fine-tuning corpus stays diverse and the student does not overfit a handful
+    of high-traffic prompts. Greedy: keep an example unless its embedding is at
+    least ``threshold`` cosine-similar to one already kept. Uses the offline
+    hash embedder by default (no network, deterministic); pass any
+    :class:`~vincio.retrieval.embeddings.Embedder` for semantic quality.
+    """
+    if len(training_set.examples) <= 1:
+        return training_set
+    if embedder is None:
+        from ..retrieval.embeddings import LocalHashEmbedder
+
+        embedder = LocalHashEmbedder()
+    from ..retrieval.embeddings import embed_texts
+
+    vectors = await embed_texts(embedder, [_example_text(e) for e in training_set.examples])
+    kept: list[TrainingExample] = []
+    kept_vectors: list[list[float]] = []
+    for example, vector in zip(training_set.examples, vectors, strict=True):
+        if any(_cosine(vector, other) >= threshold for other in kept_vectors):
+            continue
+        kept.append(example)
+        kept_vectors.append(vector)
+    metadata = dict(training_set.metadata)
+    metadata["semantic_dropped"] = len(training_set.examples) - len(kept)
+    metadata["dedupe_threshold"] = threshold
+    return TrainingSet(name=training_set.name, examples=kept, metadata=metadata)
+
+
 # trainer(training_set, base_model) -> the student model name to evaluate.
 # In production this submits a fine-tune job and returns the resulting model id;
-# offline it returns the base model unchanged (a faithful no-op).
+# offline it returns the base model unchanged (a faithful no-op). 2.1 ships
+# :func:`provider_trainer` as the executed implementation.
 StudentTrainer = Callable[[TrainingSet, str], Awaitable[str]]
 # evaluate_model(model, dataset) -> EvalReport on a held-out set.
 ModelEvaluateFn = Callable[[str, Dataset], Awaitable[EvalReport]]
+
+
+def _register_student(
+    registry: ModelRegistry,
+    model_id: str,
+    *,
+    base_model: str,
+    inherit_from: str | None,
+    pricing: dict[str, float] | None,
+    provider: str,
+) -> None:
+    """Register the trained student so the routing cascade can serve it.
+
+    The student inherits its capabilities and (by default) its per-Mtok pricing
+    from the base model it was fine-tuned from — the cheaper model — so its cost
+    advantage over the teacher is measurable at the swap gate. ``pricing``
+    overrides the inherited rates when the fine-tuned variant is priced
+    differently.
+    """
+    from ..core.types import ModelCapabilities, ModelProfile
+
+    base = registry.resolve(inherit_from or base_model)
+    rates = pricing or {}
+    profile = ModelProfile(
+        name=model_id,
+        provider=base.provider if base else provider,
+        model=model_id,
+        capabilities=base.capabilities if base else ModelCapabilities(),
+        tier="fast",  # a distilled student is the cheap rung of the cascade
+        input_cost_per_mtok=rates.get(
+            "input", base.input_cost_per_mtok if base else 0.0
+        ),
+        output_cost_per_mtok=rates.get(
+            "output", base.output_cost_per_mtok if base else 0.0
+        ),
+    )
+    registry.register(profile)
+
+
+def provider_trainer(
+    backend: FineTuneBackend,
+    *,
+    registry: ModelRegistry | None = None,
+    inherit_from: str | None = None,
+    pricing: dict[str, float] | None = None,
+    suffix: str | None = "vincio",
+    fmt: TrainingFormat = "openai",
+    poll_interval_s: float = 5.0,
+    max_polls: int = 240,
+) -> StudentTrainer:
+    """Build an *executed* :data:`StudentTrainer` over a fine-tune backend (2.1).
+
+    The returned async callable renders the grounded :class:`TrainingSet` to
+    provider JSONL, submits and polls a real fine-tune job through ``backend``
+    (:class:`~vincio.providers.finetune.FineTuneBackend`), registers the
+    resulting model in ``registry`` (capabilities/pricing inherited from the
+    base model, ``pricing`` overriding), and returns the trained model id — the
+    piece that turns the flywheel from "grounded JSONL plus a gate" into an
+    actual cheaper model. Plug it straight into :class:`BootstrapFinetune`::
+
+        trainer = provider_trainer(OpenAIFineTuneBackend(provider), registry=reg)
+        loop = BootstrapFinetune(evaluate_model=ev, trainer=trainer)
+
+    Offline, point the backend at a cassette and set ``poll_interval_s=0`` for a
+    deterministic, instantaneous job lifecycle.
+    """
+    from ..providers.finetune import run_finetune
+    from ..providers.registry import default_model_registry
+
+    reg = registry or default_model_registry()
+
+    async def trainer(training_set: TrainingSet, base_model: str) -> str:
+        jsonl = training_set.to_jsonl(format=fmt)
+        job = await run_finetune(
+            backend,
+            jsonl,
+            base_model,
+            suffix=suffix,
+            poll_interval_s=poll_interval_s,
+            max_polls=max_polls,
+        )
+        model_id = job.fine_tuned_model or base_model
+        _register_student(
+            reg,
+            model_id,
+            base_model=base_model,
+            inherit_from=inherit_from,
+            pricing=pricing,
+            provider=backend.name,
+        )
+        return model_id
+
+    return trainer
 
 
 class DistillationResult(BaseModel):
@@ -385,6 +550,9 @@ class DistillationResult(BaseModel):
     promoted: bool = False
     reason: str = ""
     cascade: ModelCascade | None = None
+    # 2.1: when a swap gate backs the promotion, its significance verdict.
+    swap_passed: bool | None = None
+    swap_reason: str = ""
 
 
 class BootstrapFinetune:
@@ -407,12 +575,19 @@ class BootstrapFinetune:
         min_quality_ratio: float = 0.97,
         gates: dict[str, str] | None = None,
         trainer: StudentTrainer | None = None,
+        swap_gate: Any = None,
+        dedupe_embedder: Embedder | None = None,
     ) -> None:
         self.evaluate_model = evaluate_model
         self.quality_metric = quality_metric
         self.min_quality_ratio = min_quality_ratio
         self.gates = gates
         self.trainer = trainer
+        # 2.1: an optional SwapGate adds a significance-backed final check, so the
+        # student promotes only if it provably does not regress — the same gate a
+        # model rotation clears.
+        self.swap_gate = swap_gate
+        self.dedupe_embedder = dedupe_embedder
 
     async def distill(
         self,
@@ -422,7 +597,12 @@ class BootstrapFinetune:
         teacher: str,
         student: str,
         min_dataset_coverage: int = 4,
+        semantic_dedupe_threshold: float | None = None,
     ) -> DistillationResult:
+        if semantic_dedupe_threshold is not None:
+            training_set = await semantic_dedupe(
+                training_set, embedder=self.dedupe_embedder, threshold=semantic_dedupe_threshold
+            )
         result = DistillationResult(
             teacher=teacher, student=student, training_examples=len(training_set)
         )
@@ -484,6 +664,19 @@ class BootstrapFinetune:
         if not safe:
             result.reason = reason
             return result
+
+        # 2.1: a significance-backed swap gate is the same final check a model
+        # rotation clears — promote the trained student only if it provably does
+        # not regress against the teacher on a replayed/scored diff.
+        if self.swap_gate is not None:
+            verdict = await self.swap_gate.evaluate(
+                candidate_model=trained_student, baseline_model=teacher, dataset=dataset
+            )
+            result.swap_passed = bool(getattr(verdict, "passed", False))
+            result.swap_reason = str(getattr(verdict, "reason", ""))
+            if not result.swap_passed:
+                result.reason = f"swap gate blocked promotion: {result.swap_reason}"
+                return result
 
         # Promote: student is the cheap rung, teacher the strong fallback.
         result.cascade = ModelCascade.from_models([trained_student, teacher])

@@ -1,11 +1,24 @@
 """Vincio agent engine: bounded executors, planners, handoffs, crews,
 durable stateful graphs, declarative composition, and runtime backends."""
 
-from .backends import LangGraphBackend, OpenAIAgentsBackend, RuntimeBackend
+from .backends import (
+    LangGraphBackend,
+    OpenAIAgentsBackend,
+    RayBackend,
+    RuntimeBackend,
+    TemporalBackend,
+    WorkerPoolBackend,
+)
 from .blackboard import Blackboard, BlackboardEntry
 from .compose import Composable, NodeEvent, branch, compose, parallel
 from .crew import AgentRole, Crew, CrewMemberReport, CrewResult, DelegationRecord
 from .dag import StepDAG
+from .distributed import (
+    DistributedCheckpointer,
+    GraphCoordinator,
+    InMemoryGraphCoordinator,
+    RedisGraphCoordinator,
+)
 from .executor import AgentExecutor
 from .graph import (
     END,
@@ -16,6 +29,7 @@ from .graph import (
     GraphEvent,
     GraphInterrupt,
     GraphResult,
+    Send,
     StateGraph,
     interrupt,
 )
@@ -68,4 +82,13 @@ __all__ = [
     "RuntimeBackend",
     "LangGraphBackend",
     "OpenAIAgentsBackend",
+    # 2.1: distributed durable execution
+    "Send",
+    "WorkerPoolBackend",
+    "RayBackend",
+    "TemporalBackend",
+    "DistributedCheckpointer",
+    "GraphCoordinator",
+    "InMemoryGraphCoordinator",
+    "RedisGraphCoordinator",
 ]

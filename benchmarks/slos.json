@@ -215,7 +215,7 @@
     {
       "id": "judge_kappa_tracking",
       "category": "quality",
-      "statement": "Cohen's \u03ba between an agreeing judge and human labels is tracked at 0.75 or higher before the judge earns gating weight.",
+      "statement": "Cohen's κ between an agreeing judge and human labels is tracked at 0.75 or higher before the judge earns gating weight.",
       "metric": "families.agentic_evals.cohen_kappa_tracked",
       "direction": "gte",
       "threshold": 0.75,
@@ -230,7 +230,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.scale.batch.reconciled_ok",
-      "rationale": "Latency-tolerant batch work must return a result for every request \u2014 losing one corrupts evals and bulk extraction."
+      "rationale": "Latency-tolerant batch work must return a result for every request — losing one corrupts evals and bulk extraction."
     },
     {
       "id": "failover_circuit_recovery",
@@ -470,7 +470,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.evals.swap_gate_blocks_regression",
-      "rationale": "A model is promoted into the live path only if it clears the gate \u2014 the swap is gated, not merely compared."
+      "rationale": "A model is promoted into the live path only if it clears the gate — the swap is gated, not merely compared."
     },
     {
       "id": "rotation_canary_auto_rollback",
@@ -500,7 +500,7 @@
       "direction": "gte",
       "threshold": 1.0,
       "enforced_by": "families.generation.citation.coverage",
-      "rationale": "Citations resolve to footnotes/bibliography and unresolved markers are surfaced \u2014 every claim is cited, not 'one citation anywhere'."
+      "rationale": "Citations resolve to footnotes/bibliography and unresolved markers are surfaced — every claim is cited, not 'one citation anywhere'."
     },
     {
       "id": "generation_media_provenance_bound",
@@ -530,7 +530,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.loop.non_regression.guard_blocks_regression",
-      "rationale": "Sequential auto-promotions can never silently undo a prior fix \u2014 the growing golden suite gates each one."
+      "rationale": "Sequential auto-promotions can never silently undo a prior fix — the growing golden suite gates each one."
     },
     {
       "id": "online_state_restart_safe",
@@ -651,6 +651,66 @@
       "threshold": true,
       "enforced_by": "families.breaking_2_0.eval_unscoreable_skipped",
       "rationale": "Unscoreable cases no longer inflate a mean to a neutral 1.0 or silently pass a gate."
+    },
+    {
+      "id": "distributed_no_double_execution",
+      "category": "reliability",
+      "statement": "Two distributed workers never double-execute a graph thread; the lease/CAS loser aborts.",
+      "metric": "families.scale.distributed.lease_prevents_double_execution",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.scale.distributed.lease_prevents_double_execution",
+      "rationale": "Horizontal scale is only safe if the lease + checkpoint-version CAS guarantee exactly-once super-step execution across workers."
+    },
+    {
+      "id": "worker_pool_fanout_correctness",
+      "category": "performance",
+      "statement": "A batch fanned out across the worker pool returns every result, in order, correctly.",
+      "metric": "families.scale.distributed.worker_pool_fanout_ok",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.scale.distributed.worker_pool_fanout_ok",
+      "rationale": "Distributed fan-out must be a transparent speedup, never a correctness regression."
+    },
+    {
+      "id": "multi_worker_rate_limit_coherence",
+      "category": "reliability",
+      "statement": "Shared rate-limit state stays coherent: the configured per-window limit is enforced exactly.",
+      "metric": "families.scale.shared_state.rate_limit_coherent",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.scale.shared_state.rate_limit_coherent",
+      "rationale": "Multi-worker serving must enforce one limit, not one-per-worker; the shared store is what makes that true."
+    },
+    {
+      "id": "quantized_two_stage_recall",
+      "category": "quality",
+      "statement": "Quantized Matryoshka two-stage retrieval reproduces the exact index's top-1 on the bench corpus.",
+      "metric": "families.rag.two_stage.recall_agreement",
+      "direction": "gte",
+      "threshold": 0.9,
+      "enforced_by": "families.rag.two_stage.recall_agreement",
+      "rationale": "The coarse->exact two-stage path trades memory for compute; it must not trade away recall."
+    },
+    {
+      "id": "executed_distillation_swap_gated",
+      "category": "quality",
+      "statement": "A trained student is promoted only when it clears the significance swap gate; a regressor is blocked.",
+      "metric": "families.loop.executed_distillation.swap_gate_blocks_regression",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.executed_distillation.swap_gate_blocks_regression",
+      "rationale": "The flywheel ships a cheaper model only if it provably does not regress — the same gate as a model rotation."
+    },
+    {
+      "id": "burn_rate_alerting",
+      "category": "reliability",
+      "statement": "The served alert engine raises an SRE burn-rate page when the error-budget burn crosses the fast-burn threshold.",
+      "metric": "families.cost.alerting.burn_rate_fires",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cost.alerting.burn_rate_fires",
+      "rationale": "A self-hosted observability plane is only useful if its alert rules actually fire on the conditions that matter."
     }
   ]
 }

@@ -81,7 +81,12 @@ class OTelExporter:
     """
 
     def __init__(
-        self, tracer_provider=None, service_name: str = "vincio", *, meter_provider=None
+        self,
+        tracer_provider=None,
+        service_name: str = "vincio",
+        *,
+        meter_provider=None,
+        content_policy: Any = None,
     ) -> None:
         try:
             from opentelemetry import trace as otel_trace
@@ -89,6 +94,12 @@ class OTelExporter:
             raise ConfigError(
                 'OpenTelemetry export requires: pip install "vincio[otel]"'
             ) from exc
+        from .redaction import ContentCapturePolicy
+
+        # 2.1: prompt/completion content is gated + redacted at the export
+        # boundary. Default policy captures nothing — structural telemetry
+        # (model/tokens/cost/scores) still exports; raw content does not.
+        self.content_policy = content_policy or ContentCapturePolicy()
         self._otel_trace = otel_trace
         if tracer_provider is None:
             tracer_provider = otel_trace.get_tracer_provider()
@@ -153,7 +164,10 @@ class OTelExporter:
             "vincio.trace_id": trace.id,
             "vincio.run_id": trace.run_id or "",
             "vincio.app": trace.app_name,
-            **{f"vincio.attr.{k}": str(v) for k, v in trace.attributes.items()},
+            **{
+                f"vincio.attr.{k}": str(v)
+                for k, v in self.content_policy.scrub_attributes(trace.attributes).items()
+            },
         }
         if trace.session_id:
             root_attributes["gen_ai.conversation.id"] = trace.session_id
@@ -184,7 +198,10 @@ class OTelExporter:
                 attributes={
                     "vincio.span_id": span.id,
                     **genai_attributes,
-                    **{f"vincio.attr.{k}": str(v) for k, v in span.attributes.items()},
+                    **{
+                        f"vincio.attr.{k}": str(v)
+                        for k, v in self.content_policy.scrub_attributes(span.attributes).items()
+                    },
                     **{f"vincio.score.{k}": v for k, v in span.scores.items()},
                 },
             )

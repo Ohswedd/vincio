@@ -21,7 +21,7 @@ import math
 import re
 from collections import Counter, defaultdict
 from collections.abc import Awaitable, Callable
-from typing import Protocol
+from typing import Any, Protocol
 
 from ..core.types import Chunk
 from .filters import as_predicate
@@ -32,6 +32,7 @@ __all__ = [
     "SparseEncoder",
     "LocalImpactEncoder",
     "CallableSparseEncoder",
+    "SpladeEncoder",
     "SparseIndex",
 ]
 
@@ -97,6 +98,90 @@ class CallableSparseEncoder:
 
     async def encode(self, texts: list[str], *, is_query: bool = False) -> list[SparseVector]:
         return await self.encode_fn(texts, is_query)
+
+
+class SpladeEncoder:
+    """Real SPLADE learned-sparse encoder via a local ``transformers`` model (2.1).
+
+    SPLADE expands a passage into term-impact weights over the model vocabulary —
+    far richer than the offline :class:`LocalImpactEncoder` approximation. Lazily
+    loads a Hugging Face masked-LM (the model the SPLADE checkpoint fine-tuned),
+    computes the log-saturated max-pooled term weights, and returns them as a
+    :data:`SparseVector`. Injectable via ``encode_fn`` for offline tests, with a
+    fallback to :class:`LocalImpactEncoder` when the dependency is missing and
+    ``fallback=True``. Install with ``pip install "vincio[splade]"``.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "naver/splade-v3",
+        *,
+        encode_fn: Callable[[list[str], bool], list[SparseVector]] | None = None,
+        fallback: bool = False,
+        top_k: int = 256,
+    ) -> None:
+        self.model_name = model_name
+        self.top_k = top_k
+        self._encode_fn = encode_fn
+        self._fallback = fallback
+        self._model: Any = None
+        self._tokenizer: Any = None
+        self._fallback_encoder: LocalImpactEncoder | None = None
+
+    def _ensure(self) -> None:
+        if (
+            self._encode_fn is not None
+            or self._model is not None
+            or self._fallback_encoder is not None
+        ):
+            return
+        try:
+            from transformers import (  # type: ignore[import-untyped]
+                AutoModelForMaskedLM,
+                AutoTokenizer,
+            )
+
+            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self._model = AutoModelForMaskedLM.from_pretrained(self.model_name)
+        except ImportError as exc:
+            if self._fallback:
+                self._fallback_encoder = LocalImpactEncoder()
+                return
+            from ..core.errors import ConfigError
+
+            raise ConfigError(
+                'the SPLADE encoder requires: pip install "vincio[splade]" '
+                "(or construct with fallback=True / inject encode_fn)"
+            ) from exc
+
+    def _encode_model(self, texts: list[str]) -> list[SparseVector]:  # pragma: no cover - needs torch
+        import torch
+
+        vectors: list[SparseVector] = []
+        tokenizer, model = self._tokenizer, self._model
+        for text in texts:
+            inputs = tokenizer(text, return_tensors="pt", truncation=True)
+            with torch.no_grad():
+                logits = model(**inputs).logits
+            # SPLADE term importance: log(1 + relu(logits)) max-pooled over tokens.
+            weights = torch.max(
+                torch.log1p(torch.relu(logits)) * inputs["attention_mask"].unsqueeze(-1), dim=1
+            ).values.squeeze()
+            top = torch.topk(weights, k=min(self.top_k, weights.shape[-1]))
+            vector: SparseVector = {}
+            for value, idx in zip(top.values.tolist(), top.indices.tolist(), strict=False):
+                if value > 0:
+                    vector[tokenizer.convert_ids_to_tokens(int(idx))] = float(value)
+            vectors.append(vector)
+        return vectors
+
+    async def encode(self, texts: list[str], *, is_query: bool = False) -> list[SparseVector]:
+        self._ensure()
+        if self._encode_fn is not None:
+            return list(self._encode_fn(texts, is_query))
+        if self._fallback_encoder is not None:
+            return await self._fallback_encoder.encode(texts, is_query=is_query)
+        return self._encode_model(texts)
 
 
 class SparseIndex:

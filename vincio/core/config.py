@@ -212,6 +212,13 @@ class ServerConfig(BaseModel):
     api_keys: list[str] = Field(default_factory=list)
     jwt_secret: str | None = None
     cors_origins: list[str] = Field(default_factory=list)
+    # 2.1: multi-worker shared state + per-caller rate limiting. When ``redis_url``
+    # is set the rate-limit state is shared across uvicorn workers; otherwise it
+    # is process-local. ``rate_limit_per_min`` of ``None`` disables request
+    # limiting (the default).
+    redis_url: str | None = None
+    rate_limit_per_min: int | None = None
+    workers: int = 1
 
 
 class VincioConfig(BaseModel):

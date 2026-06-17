@@ -26,6 +26,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..core.concurrency import gather_bounded
 from ..core.errors import WorkflowError, WorkflowStepError
 from ..observability.traces import Tracer
 from ..providers.base import run_sync
@@ -93,6 +94,8 @@ class _StepDef(BaseModel):
     when: Any = None  # ConditionFn
     compensation: Any = None  # CompensationFn
     approval: bool = False
+    map_over: Any = None  # str (prior step) | Callable[[WorkflowContext], list] for fan-out
+    map_limit: int = 8
 
 
 class Workflow:
@@ -141,6 +144,53 @@ class Workflow:
         )
         return self
 
+    def map_step(
+        self,
+        name: str,
+        fn: StepFn,
+        *,
+        over: str | Callable[[WorkflowContext], list[Any]],
+        depends_on: list[str] | None = None,
+        limit: int = 8,
+        retries: int = 0,
+        retry_delay_s: float = 0.5,
+        timeout_s: float | None = None,
+        when: ConditionFn | None = None,
+        compensation: CompensationFn | None = None,
+    ) -> Workflow:
+        """Register a map-reduce fan-out step (2.1).
+
+        ``over`` names a prior step whose output is a list (or a callable that
+        returns the items from the context); ``fn`` is applied to **each item**
+        concurrently with bounded parallelism (``limit``), and the step's output
+        is the ordered list of per-item results. Pair it with a downstream step
+        that reduces the list. Unlike a static parallel level, the fan-out width
+        is data-dependent — discovered at run time, not declared at build time.
+        """
+        dep = list(depends_on or [])
+        if isinstance(over, str) and over not in self._steps:
+            raise WorkflowError(f"map step {name!r} maps over unknown step {over!r}")
+        if isinstance(over, str) and over not in dep:
+            dep.append(over)
+        if name in self._steps:
+            raise WorkflowError(f"duplicate step {name!r}")
+        for d in dep:
+            if d not in self._steps:
+                raise WorkflowError(f"step {name!r} depends on unknown step {d!r}")
+        self._steps[name] = _StepDef(
+            name=name,
+            fn=fn,
+            depends_on=dep,
+            retries=retries,
+            retry_delay_s=retry_delay_s,
+            timeout_s=timeout_s,
+            when=when,
+            compensation=compensation,
+            map_over=over,
+            map_limit=limit,
+        )
+        return self
+
     # -- invocation helpers -----------------------------------------------------------
 
     @staticmethod
@@ -167,7 +217,27 @@ class Workflow:
                 )
         return [], kwargs
 
+    @staticmethod
+    async def _call(fn: Any, *args: Any) -> Any:
+        if inspect.iscoroutinefunction(fn):
+            return await fn(*args)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: fn(*args))
+
+    def _map_items(self, step: _StepDef, context: WorkflowContext) -> list[Any]:
+        over = step.map_over
+        items = over(context) if callable(over) else context.output_of(over)
+        return list(items or [])
+
     async def _invoke(self, step: _StepDef, context: WorkflowContext) -> Any:
+        if step.map_over is not None:
+            items = self._map_items(step, context)
+            coroutine: Awaitable[Any] = gather_bounded(
+                [self._call(step.fn, item) for item in items], limit=step.map_limit
+            )
+            if step.timeout_s is not None:
+                return await asyncio.wait_for(coroutine, timeout=step.timeout_s)
+            return await coroutine
         args, kwargs = self._build_args(step, context)
         if inspect.iscoroutinefunction(step.fn):
             coroutine = step.fn(*args, **kwargs)

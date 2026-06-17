@@ -1,5 +1,5 @@
 {
-  "_comment": "VincioBench budgets enforced in CI by check_budgets.py. Keys are dotted paths into the report; each entry sets gte/lte bounds. Latency bounds are deliberately loose (shared CI runners) \u2014 they catch order-of-magnitude regressions, while ratio and quality budgets are tight.",
+  "_comment": "VincioBench budgets enforced in CI by check_budgets.py. Keys are dotted paths into the report; each entry sets gte/lte bounds. Latency bounds are deliberately loose (shared CI runners) — they catch order-of-magnitude regressions, while ratio and quality budgets are tight.",
   "budgets": {
     "families.perf.context_compile.cold_p95_ms": {
       "lte": 250
@@ -653,6 +653,39 @@
       "eq": true
     },
     "families.breaking_2_0.eval_unscoreable_skipped": {
+      "eq": true
+    },
+    "families.scale.distributed.lease_prevents_double_execution": {
+      "eq": true
+    },
+    "families.scale.distributed.version_monotonic": {
+      "eq": true
+    },
+    "families.scale.distributed.worker_pool_fanout_ok": {
+      "eq": true
+    },
+    "families.scale.shared_state.rate_limit_coherent": {
+      "eq": true
+    },
+    "families.scale.shared_state.idempotency_replays": {
+      "eq": true
+    },
+    "families.rag.two_stage.recall_agreement": {
+      "gte": 0.9
+    },
+    "families.loop.executed_distillation.swap_gate_promotes": {
+      "eq": true
+    },
+    "families.loop.executed_distillation.swap_gate_blocks_regression": {
+      "eq": true
+    },
+    "families.loop.executed_distillation.semantic_dedupe_collapses": {
+      "eq": true
+    },
+    "families.cost.alerting.burn_rate_fires": {
+      "eq": true
+    },
+    "families.cost.alerting.ewma_anomaly_fires": {
       "eq": true
     }
   }

@@ -295,9 +295,12 @@ async def bench_rag() -> dict[str, Any]:
     )
     mmr_dedups_paraphrase = len(mmr_packet.ir.evidence) <= 2
 
+    two_stage_2_1 = await _rag_two_stage_2_1(chunks)
     return {
         "recall_at_3": hybrid["recall_at_3"],
         "mrr": hybrid["mrr"],
+        # 2.1 — quantized Matryoshka two-stage retrieval vs exact
+        "two_stage": two_stage_2_1,
         "semantic_mmr": {
             "value_contradiction_detected": value_conflict_detected,
             "mmr_dedups_paraphrase": mmr_dedups_paraphrase,
@@ -403,11 +406,14 @@ async def bench_cost() -> dict[str, Any]:
     batch_cost = g_res.succeeded[0].response.cost_usd if g_res.succeeded else 0.0
     google_batch_parity = len(g_res.succeeded) == 4 and batch_cost <= sync_cost * 0.5 + 1e-12
 
+    alerting_2_1 = _cost_alerting_2_1()
     return {
         "naive_evidence_tokens": sum(naive_tokens),
         "compiled_evidence_tokens": sum(compiled_tokens),
         "token_reduction": round(reduction, 4),
         "hypothesis_20_40pct_met": 0.20 <= reduction,
+        # 2.1 — served burn-rate + EWMA-anomaly alerting over the cost ledger
+        "alerting": alerting_2_1,
         # 1.7
         "budget_cap_enforced": budget_cap_enforced,
         "budget_opt_out_soft": opt_out_soft,
@@ -1642,7 +1648,10 @@ async def bench_loop() -> dict[str, Any]:
         ev2.observe(RunOutput(raw_text="x", metadata={"input": "q"}), run_id="r")
     online_worker_aggregated = ev1.observed_total() == 10
 
+    distillation_2_1 = await _loop_distillation_2_1()
     return {
+        # 2.1 — executed distillation gated by the significance swap gate
+        "executed_distillation": distillation_2_1,
         "promotion": {
             "promoted": result_a.promoted,
             "deterministic": deterministic,
@@ -2235,12 +2244,17 @@ async def bench_scale() -> dict[str, Any]:
     canary_state = canary.state()
     post_rollback_served = (await canary.generate(canary_req)).text == "ok"
 
+    distributed_2_1 = await _scale_distributed_2_1()
+    shared_state_2_1 = _scale_shared_state_2_1()
     return {
         "batch": {
             "reconciled_ok": reconciled_ok,
             "partial_failures_surfaced": partial_surfaced,
             "cost_discount": cost_discount,
         },
+        # 2.1 — distributed durable execution + multi-worker shared state
+        "distributed": distributed_2_1,
+        "shared_state": shared_state_2_1,
         "circuit": {
             "opens_on_systemic": opens_on_systemic,
             "half_open_recovers": half_open_recovers,
@@ -2670,6 +2684,169 @@ async def bench_breaking_2_0() -> dict[str, Any]:
         "signed_chain_detects_forgery": signed_detects_forgery and forged_chain_ok,
         "merkle_inclusion_verified": merkle_ok,
         "eval_unscoreable_skipped": eval_skipped,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 2.1 — scale out & train for real (distributed execution, executed
+# fine-tuning, served observability, quantized two-stage retrieval). Each helper
+# is self-contained and deterministic; the bench_* functions fold their result
+# into the matching family (scale / loop / rag / cost) per the roadmap mapping.
+# ---------------------------------------------------------------------------
+
+
+async def _scale_distributed_2_1() -> dict[str, Any]:
+    from vincio.agents import (
+        END,
+        DistributedCheckpointer,
+        InMemoryGraphCoordinator,
+        StateGraph,
+        WorkerPoolBackend,
+    )
+    from vincio.core.errors import CheckpointConflictError
+    from vincio.storage.base import InMemoryMetadataStore
+
+    store = InMemoryMetadataStore()
+    coordinator = InMemoryGraphCoordinator()
+    holder = DistributedCheckpointer(store, coordinator=coordinator, owner="A", lease_ttl_s=100)
+    holder.on_thread_start("t")
+    contender = DistributedCheckpointer(store, coordinator=coordinator, owner="B", lease_ttl_s=100)
+    double_exec_blocked = False
+    try:
+        contender.on_thread_start("t")
+    except CheckpointConflictError:
+        double_exec_blocked = True
+    holder.on_thread_end("t")
+
+    graph = StateGraph("inc")
+    graph.add_node("inc", lambda s: {"n": s.get("n", 0) + 1})
+    graph.add_edge("inc", END)
+    runner = DistributedCheckpointer(store, coordinator=coordinator, owner="C")
+    await graph.compile(checkpointer=runner).ainvoke({"n": 0}, thread_id="run1")
+    versions = [c.version for c in runner.history("run1")]
+    version_monotonic = bool(versions) and versions == sorted(versions) and versions[0] >= 1
+
+    backend = WorkerPoolBackend(workers=4)
+    results = await backend.run_batch(graph, [{"n": i} for i in range(12)])
+    fanout_ok = [r.state["n"] for r in results] == [i + 1 for i in range(12)]
+    return {
+        "lease_prevents_double_execution": double_exec_blocked,
+        "version_monotonic": version_monotonic,
+        "worker_pool_fanout_ok": fanout_ok,
+    }
+
+
+def _scale_shared_state_2_1() -> dict[str, Any]:
+    from vincio.storage.shared_state import InMemoryIdempotencyStore, InMemoryRateLimiter
+
+    limiter = InMemoryRateLimiter()
+    allowed = [limiter.check("k", limit=3, window_s=60).allowed for _ in range(4)]
+    idem = InMemoryIdempotencyStore()
+    idem.put("write-1", {"id": 1}, ttl_s=60)
+    return {
+        "rate_limit_coherent": allowed == [True, True, True, False],
+        "idempotency_replays": idem.get("write-1") == {"id": 1},
+    }
+
+
+async def _rag_two_stage_2_1(chunks: list[Any]) -> dict[str, Any]:
+    from vincio.retrieval import LocalHashEmbedder, TwoStageIndex, VectorIndex
+
+    embedder = LocalHashEmbedder(dim=128)
+    exact = VectorIndex(embedder=embedder)
+    two_stage = TwoStageIndex(embedder=embedder, quantization="scalar", coarse_dims=64, rerank_factor=6)
+    await exact.add(chunks)
+    await two_stage.add(chunks)
+    queries = [" ".join(c.text.split()[:3]) for c in chunks[:8]]
+    agree = 0
+    for query in queries:
+        top_exact = await exact.search(query, top_k=1)
+        top_two = await two_stage.search(query, top_k=1)
+        if top_exact and top_two and top_exact[0].chunk.id == top_two[0].chunk.id:
+            agree += 1
+    return {
+        "recall_agreement": round(agree / len(queries), 4) if queries else 1.0,
+        "quantization": "scalar",
+    }
+
+
+async def _loop_distillation_2_1() -> dict[str, Any]:
+    from types import SimpleNamespace
+
+    from vincio.evals.datasets import Dataset, EvalCase
+    from vincio.evals.reports import CaseResult, EvalReport
+    from vincio.optimize.distill import (
+        BootstrapFinetune,
+        TrainingExample,
+        TrainingSet,
+        semantic_dedupe,
+    )
+
+    def report(quality: float, cost: float) -> EvalReport:
+        metrics = {
+            "lexical_overlap": quality, "groundedness": quality, "schema_validity": 1.0,
+            "safety": 1.0, "cost": cost, "latency": 50.0,
+        }
+        return EvalReport(cases=[CaseResult(case_id=f"c{i}", metrics=dict(metrics)) for i in range(8)])
+
+    table = {"teacher": (0.95, 0.01), "student": (0.93, 0.002)}
+
+    async def evaluate(model: str, dataset: Any) -> EvalReport:
+        return report(*table[model])
+
+    examples = TrainingSet(
+        examples=[
+            TrainingExample(
+                messages=[{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}],
+                grounded=True,
+            )
+        ]
+    )
+    dataset = Dataset(name="d", cases=[EvalCase(id=f"c{i}", input="q", expected="a") for i in range(8)])
+
+    class _Gate:
+        def __init__(self, passed: bool) -> None:
+            self.passed = passed
+
+        async def evaluate(self, *, candidate_model: str, baseline_model: str, dataset: Any) -> Any:
+            return SimpleNamespace(passed=self.passed, reason="benchmarked")
+
+    promoted = (
+        await BootstrapFinetune(evaluate, min_quality_ratio=0.9, swap_gate=_Gate(True)).distill(
+            examples, dataset, teacher="teacher", student="student"
+        )
+    ).promoted
+    blocked = not (
+        await BootstrapFinetune(evaluate, min_quality_ratio=0.9, swap_gate=_Gate(False)).distill(
+            examples, dataset, teacher="teacher", student="student"
+        )
+    ).promoted
+    dup = TrainingExample(messages=[{"role": "user", "content": "q"}, {"role": "assistant", "content": "a"}])
+    deduped = await semantic_dedupe(TrainingSet(examples=[dup, dup.model_copy()]), threshold=0.97)
+    return {
+        "swap_gate_promotes": promoted,
+        "swap_gate_blocks_regression": blocked,
+        "semantic_dedupe_collapses": len(deduped.examples) == 1,
+    }
+
+
+def _cost_alerting_2_1() -> dict[str, Any]:
+    from vincio.observability.exporters import MemoryAlertSink
+    from vincio.observability.finops import AlertManager, AlertRule
+
+    manager = AlertManager(sinks=[MemoryAlertSink()])
+    manager.add_rule(
+        AlertRule(name="burn", metric="error_rate", kind="burn_rate", threshold=14.4, slo_target=0.99)
+    )
+    fired_low = manager.observe("error_rate", 0.05)  # 5x burn — below page
+    fired_high = manager.observe("error_rate", 0.2)  # 20x burn — fast-burn page
+    manager.add_rule(AlertRule(name="spike", metric="cost", kind="ewma", factor=3.0, min_samples=5))
+    for _ in range(6):
+        manager.observe("cost", 0.001)
+    anomaly = manager.observe("cost", 0.5)
+    return {
+        "burn_rate_fires": bool(fired_high) and not fired_low,
+        "ewma_anomaly_fires": bool(anomaly),
     }
 
 

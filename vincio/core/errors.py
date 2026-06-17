@@ -20,6 +20,7 @@ __all__ = [
     "ProviderResponseError",
     "CircuitOpenError",
     "BatchError",
+    "FineTuneError",
     "CapabilityMismatchError",
     "ModelRetiredError",
     "PromptError",
@@ -48,6 +49,7 @@ __all__ = [
     "AgentBudgetExhaustedError",
     "AgentMaxStepsError",
     "GraphError",
+    "CheckpointConflictError",
     "WorkflowError",
     "WorkflowStepError",
     "OutputError",
@@ -176,6 +178,18 @@ class BatchError(ProviderError):
     """A provider Batch API submission/poll/reconciliation failure."""
 
     code = "BATCH_ERROR"
+
+
+class FineTuneError(ProviderError):
+    """A provider fine-tuning job submission/poll failure (2.1).
+
+    Raised when a distillation fine-tune job cannot be submitted, polls to a
+    failed/cancelled terminal state, or exceeds its wait budget — so the
+    flywheel surfaces "the student was not trained" rather than silently
+    promoting the untrained base model.
+    """
+
+    code = "FINETUNE_ERROR"
 
 
 class CapabilityMismatchError(ProviderError):
@@ -360,6 +374,33 @@ class GraphError(AgentEngineError):
     """Stateful-graph definition or execution error."""
 
     code = "GRAPH_ERROR"
+
+
+class CheckpointConflictError(GraphError):
+    """A distributed super-step commit lost the optimistic-concurrency race (2.1).
+
+    Raised when a checkpoint write's expected version no longer matches the
+    thread head — another worker advanced the thread first. The losing worker
+    aborts instead of double-executing the step; the winning worker's
+    checkpoint stands. Non-fatal at the orchestration layer: re-acquire the
+    lease and resume from the new head.
+    """
+
+    code = "CHECKPOINT_CONFLICT"
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        thread_id: str | None = None,
+        expected_version: int | None = None,
+        actual_version: int | None = None,
+        **kw: Any,
+    ) -> None:
+        super().__init__(message, **kw)
+        self.thread_id = thread_id
+        self.expected_version = expected_version
+        self.actual_version = actual_version
 
 
 # --- workflows ---------------------------------------------------------------

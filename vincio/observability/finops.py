@@ -17,14 +17,23 @@ audit path as every other policy decision. A spend spike raises a
 
 from __future__ import annotations
 
+import logging
+import math
 from datetime import datetime, timedelta
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from ..core.types import TokenUsage
 from ..core.utils import new_id, utcnow
 from .costs import PriceTable, default_price_table
+from .exporters import Alert, AlertSink
+
+if TYPE_CHECKING:
+    from ..core.events import Event, EventBus
+    from .store import IndexedTraceStore
+
+logger = logging.getLogger("vincio.observability")
 
 __all__ = [
     "CostEvent",
@@ -34,6 +43,9 @@ __all__ = [
     "CostBudget",
     "BudgetDecision",
     "BudgetManager",
+    # 2.1: served alerting rule engine
+    "AlertRule",
+    "AlertManager",
 ]
 
 Dimension = Literal["tenant", "feature", "user", "model", "provider", "run"]
@@ -358,3 +370,188 @@ class BudgetManager:
                     )
             new_count = count + 1
             self._anomaly_state[key] = (new_count, mean + (event.cost_usd - mean) / new_count)
+
+
+# ---------------------------------------------------------------------------
+# Served alerting rule engine (2.1)
+# ---------------------------------------------------------------------------
+
+
+class _EwmaTracker:
+    """Online EWMA mean + variance for anomaly z-scores (Welford-style update)."""
+
+    def __init__(self, alpha: float = 0.3) -> None:
+        self.alpha = alpha
+        self.mean = 0.0
+        self.var = 0.0
+        self.count = 0
+
+    def zscore(self, value: float) -> float:
+        std = math.sqrt(self.var)
+        if std > 0:
+            return (value - self.mean) / std
+        # No observed variance yet: a perfectly flat series that suddenly jumps
+        # is maximally anomalous; an unchanged value is not.
+        return 0.0 if value == self.mean else math.copysign(float("inf"), value - self.mean)
+
+    def update(self, value: float) -> None:
+        self.count += 1
+        if self.count == 1:
+            self.mean = value
+            return
+        delta = value - self.mean
+        self.mean += self.alpha * delta
+        self.var = (1 - self.alpha) * (self.var + self.alpha * delta * delta)
+
+
+class AlertRule(BaseModel):
+    """One alerting rule over a metric stream.
+
+    * ``threshold`` — fire when ``value`` crosses ``threshold`` in ``direction``.
+    * ``ewma`` — fire when ``value`` deviates from its EWMA mean by at least
+      ``factor`` standard deviations (anomaly detection), after ``min_samples``.
+    * ``burn_rate`` — fire when the SRE error-budget burn rate
+      (``error_rate / (1 - slo_target)``) reaches ``threshold`` (e.g. ``14.4`` for
+      a fast-burn page).
+    """
+
+    name: str
+    metric: Literal["cost", "latency", "error_rate", "value"] = "value"
+    kind: Literal["threshold", "ewma", "burn_rate"] = "threshold"
+    threshold: float = 0.0
+    direction: Literal["above", "below"] = "above"
+    severity: Literal["info", "warning", "critical"] = "warning"
+    alpha: float = 0.3
+    factor: float = 3.0
+    min_samples: int = 5
+    slo_target: float = 0.99
+
+
+class AlertManager:
+    """Evaluates :class:`AlertRule`\\ s over a metric stream and dispatches alerts.
+
+    Feed it samples with :meth:`observe` (or :meth:`check_store` to read the
+    indexed store's percentiles/error-rate), and wire it to the event bus with
+    :meth:`subscribe` so existing ``cost.anomaly`` / ``cost.budget_exceeded``
+    events become alerts on the same sinks. Sinks
+    (:class:`~vincio.observability.exporters.AlertSink`: webhook / Slack /
+    PagerDuty / Prometheus) are best-effort — a delivery failure is logged, not
+    raised, so alerting never breaks a run.
+    """
+
+    def __init__(self, *, sinks: list[AlertSink] | None = None) -> None:
+        self.sinks: list[AlertSink] = list(sinks or [])
+        self.rules: list[AlertRule] = []
+        self._ewma: dict[str, _EwmaTracker] = {}
+
+    def add_rule(self, rule: AlertRule) -> AlertRule:
+        self.rules.append(rule)
+        return rule
+
+    def add_sink(self, sink: AlertSink) -> AlertSink:
+        self.sinks.append(sink)
+        return sink
+
+    def _dispatch(self, alert: Alert) -> Alert:
+        for sink in self.sinks:
+            try:
+                sink.send(alert)
+            except Exception:  # noqa: BLE001 - alert delivery must not break runs
+                logger.warning("alert sink %s failed", type(sink).__name__, exc_info=True)
+        return alert
+
+    def observe(
+        self, metric: str, value: float, *, key: str = "∅", trace_id: str | None = None
+    ) -> list[Alert]:
+        """Feed one metric sample; fire and dispatch any matching rules."""
+        fired: list[Alert] = []
+        for rule in self.rules:
+            if rule.metric != metric:
+                continue
+            alert = self._evaluate(rule, value, key=key, trace_id=trace_id)
+            if alert is not None:
+                fired.append(self._dispatch(alert))
+        return fired
+
+    def _evaluate(
+        self, rule: AlertRule, value: float, *, key: str, trace_id: str | None
+    ) -> Alert | None:
+        if rule.kind == "threshold":
+            crossed = value >= rule.threshold if rule.direction == "above" else value <= rule.threshold
+            if not crossed:
+                return None
+            return Alert(
+                rule=rule.name, severity=rule.severity, value=value, threshold=rule.threshold,
+                dimension=rule.metric, key=key, trace_id=trace_id,
+                message=f"{rule.metric} {value:g} crossed {rule.direction} {rule.threshold:g}",
+            )
+        if rule.kind == "ewma":
+            tracker = self._ewma.setdefault(f"{rule.name}:{key}", _EwmaTracker(rule.alpha))
+            anomaly = False
+            z = 0.0
+            if tracker.count >= rule.min_samples:
+                z = tracker.zscore(value)
+                anomaly = abs(z) >= rule.factor
+            tracker.update(value)
+            if not anomaly:
+                return None
+            z_disp = "∞" if math.isinf(z) else f"{z:.1f}"
+            return Alert(
+                rule=rule.name, severity=rule.severity, value=value, threshold=round(tracker.mean, 6),
+                dimension=rule.metric, key=key, trace_id=trace_id,
+                message=f"{rule.metric} {value:g} is {z_disp}σ from EWMA mean {tracker.mean:g}",
+            )
+        # burn_rate
+        burn = value / (1 - rule.slo_target) if rule.slo_target < 1 else value
+        if burn < rule.threshold:
+            return None
+        return Alert(
+            rule=rule.name, severity=rule.severity, value=round(burn, 4), threshold=rule.threshold,
+            dimension="burn_rate", key=key, trace_id=trace_id,
+            message=f"error-budget burn rate {burn:.1f}x ≥ {rule.threshold:g}x (SLO {rule.slo_target:g})",
+        )
+
+    def check_store(
+        self, store: IndexedTraceStore, *, since: datetime | None = None, tenant_id: str | None = None
+    ) -> list[Alert]:
+        """Read the indexed store's current p95 latency/cost + error rate and
+        evaluate the matching rules — the periodic poll the served plane runs."""
+        stats = store.stats()
+        latency = store.percentiles("latency", since=since, tenant_id=tenant_id)
+        cost = store.percentiles("cost", since=since, tenant_id=tenant_id)
+        key = tenant_id or "∅"
+        fired: list[Alert] = []
+        fired += self.observe("error_rate", float(stats["error_rate"]), key=key)
+        fired += self.observe("latency", latency.p95, key=key)
+        fired += self.observe("cost", cost.p95, key=key)
+        return fired
+
+    def subscribe(self, bus: EventBus) -> None:
+        """Turn existing cost events on the bus into alerts on the sinks."""
+        bus.subscribe("cost.anomaly", self._on_cost_anomaly)
+        bus.subscribe("cost.budget_exceeded", self._on_budget_exceeded)
+
+    def _on_cost_anomaly(self, event: Event) -> None:
+        payload = event.payload
+        self._dispatch(
+            Alert(
+                rule="cost.anomaly", severity="warning",
+                value=float(payload.get("cost_usd", 0.0)),
+                threshold=float(payload.get("mean_usd", 0.0)),
+                dimension="cost", key=str(payload.get("scope", "")), trace_id=event.trace_id,
+                message=(
+                    f"cost spike ${payload.get('cost_usd', 0):.4f} vs mean "
+                    f"${payload.get('mean_usd', 0):.4f} (x{payload.get('factor', '?')})"
+                ),
+            )
+        )
+
+    def _on_budget_exceeded(self, event: Event) -> None:
+        payload = event.payload
+        self._dispatch(
+            Alert(
+                rule="cost.budget_exceeded", severity="critical",
+                dimension="budget", key=str(payload.get("scope", "")), trace_id=event.trace_id,
+                message=str(payload.get("reason", "budget exceeded")),
+            )
+        )

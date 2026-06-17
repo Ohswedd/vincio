@@ -13,6 +13,14 @@ from .base import (
     create_metadata_store,
     parse_storage_url,
 )
+from .shared_state import (
+    IdempotencyStore,
+    InMemoryIdempotencyStore,
+    InMemoryRateLimiter,
+    RateLimitDecision,
+    RateLimiter,
+    TenantQuotaManager,
+)
 from .sqlite import SQLiteMetadataStore
 from .vectorstores import VECTOR_BACKENDS, build_vector_index
 
@@ -26,4 +34,11 @@ __all__ = [
     "SQLiteMetadataStore",
     "VECTOR_BACKENDS",
     "build_vector_index",
+    # 2.1: shared server state
+    "RateLimiter",
+    "RateLimitDecision",
+    "InMemoryRateLimiter",
+    "IdempotencyStore",
+    "InMemoryIdempotencyStore",
+    "TenantQuotaManager",
 ]

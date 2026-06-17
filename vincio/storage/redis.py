@@ -1,5 +1,11 @@
-"""Redis cache backend implementing the CacheBackend protocol.
-Requires ``pip install "vincio[redis]"``."""
+"""Redis cache backend + shared server state (rate limit / idempotency).
+
+The :class:`RedisCache` implements the ``CacheBackend`` protocol; the 2.1
+:class:`RedisRateLimiter` and :class:`RedisIdempotencyStore` implement the
+shared-state protocols (:mod:`vincio.storage.shared_state`) so a multi-worker
+``vincio serve`` deployment enforces one coherent rate limit and dedups writes
+across every worker. Requires ``pip install "vincio[redis]"`` (or inject a
+client for tests)."""
 
 from __future__ import annotations
 
@@ -7,8 +13,19 @@ import json
 from typing import Any
 
 from ..core.errors import StorageError
+from .shared_state import RateLimitDecision
 
-__all__ = ["RedisCache"]
+__all__ = ["RedisCache", "RedisRateLimiter", "RedisIdempotencyStore"]
+
+
+def _redis_client(url: str, client: Any | None) -> Any:
+    if client is not None:
+        return client
+    try:
+        import redis
+    except ImportError as exc:
+        raise StorageError('Redis support requires: pip install "vincio[redis]"') from exc
+    return redis.Redis.from_url(url, decode_responses=True)
 
 
 class RedisCache:
@@ -78,3 +95,55 @@ class RedisCache:
             "misses": self.misses,
             "hit_rate": round(self.hits / total, 4) if total else 0.0,
         }
+
+
+class RedisRateLimiter:
+    """Cross-worker fixed-window rate limiter (``INCRBY`` + ``EXPIRE``).
+
+    The counter for ``(key, window)`` lives in Redis, so every uvicorn worker
+    sees the same count — the coherence a multi-worker deployment needs. Window
+    boundaries are derived from wall-clock so all workers agree on the bucket.
+    """
+
+    def __init__(
+        self, url: str = "redis://localhost:6379/0", *, prefix: str = "vincio:rl:", client: Any | None = None
+    ) -> None:
+        self._redis = _redis_client(url, client)
+        self.prefix = prefix
+
+    def check(self, key: str, *, limit: int, window_s: float, cost: int = 1) -> RateLimitDecision:
+        import time
+
+        window = int(time.time() // window_s)
+        full = f"{self.prefix}{key}:{window}"
+        used = int(self._redis.incrby(full, cost))
+        if used == cost:
+            self._redis.expire(full, int(window_s) + 1)
+        if used > limit:
+            ttl = self._redis.ttl(full)
+            return RateLimitDecision(
+                allowed=False, limit=limit, remaining=0,
+                retry_after_s=float(ttl if ttl and ttl > 0 else window_s),
+            )
+        return RateLimitDecision(
+            allowed=True, limit=limit, remaining=max(0, limit - used), retry_after_s=0.0
+        )
+
+
+class RedisIdempotencyStore:
+    """Cross-worker idempotency record store (``SET`` with TTL)."""
+
+    def __init__(
+        self, url: str = "redis://localhost:6379/0", *, prefix: str = "vincio:idem:", client: Any | None = None
+    ) -> None:
+        self._redis = _redis_client(url, client)
+        self.prefix = prefix
+
+    def get(self, key: str) -> Any | None:
+        raw = self._redis.get(f"{self.prefix}{key}")
+        return json.loads(raw) if raw is not None else None
+
+    def put(self, key: str, value: Any, *, ttl_s: float | None = None) -> None:
+        self._redis.set(
+            f"{self.prefix}{key}", json.dumps(value, default=str), ex=int(ttl_s) if ttl_s else None
+        )

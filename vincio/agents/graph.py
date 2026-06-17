@@ -27,6 +27,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..core.concurrency import gather_bounded
 from ..core.errors import GraphError
 from ..core.utils import new_id, utcnow
 from ..observability.traces import Tracer
@@ -38,6 +39,7 @@ __all__ = [
     "END",
     "GraphInterrupt",
     "interrupt",
+    "Send",
     "Checkpoint",
     "Checkpointer",
     "GraphEvent",
@@ -76,16 +78,41 @@ def interrupt(state: dict[str, Any], payload: Any = None) -> Any:
     raise GraphInterrupt(payload)
 
 
+class Send(BaseModel):
+    """Dynamic fan-out instruction for map-reduce super-steps (2.1).
+
+    A node returns a list of :class:`Send` to spawn ``node`` once per item with
+    its own ``state`` overlay; the spawned instances run concurrently (bounded)
+    within the dispatching super-step and their updates reduce back into the
+    shared state in deterministic order. Pair an additive reducer on the
+    collected key (e.g. ``operator.add`` over a list) with a downstream reduce
+    node to complete the map-reduce. Mirrors LangGraph's ``Send`` so a graph
+    that fans out runs the same on the native engine and a distributed backend.
+    """
+
+    node: str
+    state: dict[str, Any] = Field(default_factory=dict)
+
+    def __init__(self, node: str, state: dict[str, Any] | None = None, **data: Any) -> None:
+        super().__init__(node=node, state=state or {}, **data)
+
+
 class Checkpoint(BaseModel):
     id: str = Field(default_factory=lambda: new_id("ckpt"))
     thread_id: str
     graph: str = ""
     step: int = 0
+    # Optimistic-concurrency token (2.1): the head checkpoint's version is the
+    # value a distributed worker must compare-and-swap against to commit the
+    # next super-step. ``0`` for the single-process path, which never CASes.
+    version: int = 0
     state: dict[str, Any] = Field(default_factory=dict)
     next_nodes: list[str] = Field(default_factory=list)
     status: Literal["running", "interrupted", "done", "max_steps"] = "running"
     interrupt_payload: Any = None
     parent_id: str | None = None
+    # Distributed lease holder that wrote this checkpoint (2.1), for audit/debug.
+    lease_owner: str | None = None
     created_at: str = Field(default_factory=lambda: utcnow().isoformat())
 
 
@@ -102,6 +129,19 @@ class Checkpointer:
     def save(self, checkpoint: Checkpoint) -> Checkpoint:
         self.store.save(_CHECKPOINT_KIND, checkpoint.model_dump(mode="json"))
         return checkpoint
+
+    def on_thread_start(self, thread_id: str) -> None:
+        """Hook called once when a thread begins/resumes execution.
+
+        A no-op for the single-process checkpointer; the distributed
+        checkpointer (2.1) overrides it to acquire the thread's lease.
+        """
+
+    def on_thread_end(self, thread_id: str) -> None:
+        """Hook called once when a thread reaches a terminal state or pauses.
+
+        A no-op here; the distributed checkpointer releases the lease.
+        """
 
     def get(self, checkpoint_id: str) -> Checkpoint | None:
         record = self.store.get(_CHECKPOINT_KIND, checkpoint_id)
@@ -205,6 +245,8 @@ class StateGraph:
         interrupt_after: list[str] | None = None,
         tracer: Tracer | None = None,
         max_steps: int = 64,
+        parallel: bool = False,
+        fanout_limit: int = 8,
     ) -> CompiledGraph:
         if not self.nodes:
             raise GraphError(f"graph {self.name!r} has no nodes")
@@ -216,6 +258,8 @@ class StateGraph:
             interrupt_after=interrupt_after or [],
             tracer=tracer or self.default_tracer or Tracer(),
             max_steps=max_steps,
+            parallel=parallel,
+            fanout_limit=fanout_limit,
         )
 
 
@@ -229,6 +273,8 @@ class CompiledGraph:
         interrupt_after: list[str],
         tracer: Tracer,
         max_steps: int,
+        parallel: bool = False,
+        fanout_limit: int = 8,
     ) -> None:
         self.graph = graph
         self.checkpointer = checkpointer
@@ -236,6 +282,8 @@ class CompiledGraph:
         self.interrupt_after = set(interrupt_after)
         self.tracer = tracer
         self.max_steps = max_steps
+        self.parallel = parallel
+        self.fanout_limit = fanout_limit
 
     # -- state handling --------------------------------------------------------
 
@@ -261,6 +309,50 @@ class CompiledGraph:
         if inspect.iscoroutinefunction(fn):
             return await fn(state)
         return await asyncio.get_running_loop().run_in_executor(None, lambda: fn(state))
+
+    async def _execute_node(
+        self, name: str, state: dict[str, Any], step: int
+    ) -> tuple[list[Any], list[str]]:
+        """Run node ``name`` against ``state``, returning ``(updates_list, spawned)``.
+
+        Opens the node's ``graph_node`` span (so the call works the same in the
+        sequential and parallel super-step paths). A node that returns a list of
+        :class:`Send` fans out: each target runs concurrently (bounded by
+        ``fanout_limit``) over a copy of the state with the send's overlay, each
+        in its own span, and their update dicts are returned in send order so the
+        caller merges them deterministically (reducers collect the map results).
+        A normal node returns a single-element list. :class:`GraphInterrupt`
+        propagates; interrupting from inside a fan-out target is unsupported.
+        """
+        with self.tracer.span(name, type="graph_node") as span:
+            span.set(graph=self.graph.name, step=step)
+            try:
+                result = await self._run_node(name, state)
+            except GraphInterrupt:
+                span.set(status="interrupted")
+                raise
+            is_sends = (
+                isinstance(result, list) and bool(result) and all(isinstance(s, Send) for s in result)
+            )
+            if is_sends:
+                span.set(fanned_out=len(result))
+        if not is_sends:
+            return [result], []
+        sends: list[Send] = result
+
+        async def _one(send: Send) -> Any:
+            with self.tracer.span(send.node, type="graph_node") as span:
+                span.set(graph=self.graph.name, step=step, spawned_by=name)
+                try:
+                    return await self._run_node(send.node, {**state, **send.state})
+                except GraphInterrupt as exc:
+                    raise GraphError(
+                        f"node {send.node!r} called interrupt() inside a Send fan-out; "
+                        "interrupts are only supported in top-level super-step nodes"
+                    ) from exc
+
+        outs = await gather_bounded([_one(s) for s in sends], limit=self.fanout_limit)
+        return list(outs), [s.node for s in sends]
 
     def _next_frontier(self, ran: list[str], state: dict[str, Any]) -> list[str]:
         targets: list[str] = []
@@ -320,6 +412,26 @@ class CompiledGraph:
         skip_interrupt_check: bool,
     ) -> AsyncIterator[GraphEvent]:
         parent_id = parent_checkpoint
+        self.checkpointer.on_thread_start(thread_id)
+        try:
+            async for event in self._run_loop(
+                state, frontier, step, thread_id, parent_id=parent_id,
+                skip_interrupt_check=skip_interrupt_check,
+            ):
+                yield event
+        finally:
+            self.checkpointer.on_thread_end(thread_id)
+
+    async def _run_loop(
+        self,
+        state: dict[str, Any],
+        frontier: list[str],
+        step: int,
+        thread_id: str,
+        *,
+        parent_id: str | None,
+        skip_interrupt_check: bool,
+    ) -> AsyncIterator[GraphEvent]:
         with self.tracer.span(self.graph.name, type="custom") as run_span:
             run_span.set(graph=self.graph.name, thread_id=thread_id)
             while frontier != [END]:
@@ -353,19 +465,50 @@ class CompiledGraph:
                 ran: list[str] = []
                 interrupted: GraphInterrupt | None = None
                 interrupted_node = ""
-                for name in frontier:  # deterministic order; updates merged in sequence
-                    yield GraphEvent(type="node_start", node=name, step=step, thread_id=thread_id)
-                    with self.tracer.span(name, type="graph_node") as span:
-                        span.set(graph=self.graph.name, step=step)
+                if self.parallel and len(frontier) > 1:
+                    # True BSP super-step: every frontier node reads the same
+                    # pre-step state and runs concurrently; writes are applied at
+                    # the barrier in deterministic frontier order. If any node
+                    # interrupts, the whole super-step re-runs on resume, so the
+                    # partial writes of this step are discarded.
+                    pre_state = dict(state)
+                    for name in frontier:
+                        yield GraphEvent(type="node_start", node=name, step=step, thread_id=thread_id)
+                    outcomes = await gather_bounded(
+                        [self._execute_node(name, dict(pre_state), step) for name in frontier],
+                        limit=self.fanout_limit,
+                        return_exceptions=True,
+                    )
+                    staged: list[tuple[str, list[Any]]] = []
+                    for name, outcome in zip(frontier, outcomes, strict=True):
+                        if isinstance(outcome, GraphInterrupt):
+                            interrupted, interrupted_node = outcome, name
+                            break
+                        if isinstance(outcome, BaseException):
+                            raise outcome
+                        staged.append((name, outcome[0]))
+                    if interrupted is None:
+                        for name, updates_list in staged:
+                            for updates in updates_list:
+                                state = self._merge(state, updates)
+                            ran.append(name)
+                            yield GraphEvent(
+                                type="node_end", node=name, step=step, thread_id=thread_id
+                            )
+                    else:
+                        state = pre_state  # re-run the whole super-step on resume
+                else:
+                    for name in frontier:  # deterministic order; updates merged in sequence
+                        yield GraphEvent(type="node_start", node=name, step=step, thread_id=thread_id)
                         try:
-                            updates = await self._run_node(name, state)
+                            updates_list, _spawned = await self._execute_node(name, state, step)
                         except GraphInterrupt as signal:
-                            span.set(status="interrupted")
                             interrupted, interrupted_node = signal, name
                             break
-                    state = self._merge(state, updates)
-                    ran.append(name)
-                    yield GraphEvent(type="node_end", node=name, step=step, thread_id=thread_id)
+                        for updates in updates_list:
+                            state = self._merge(state, updates)
+                        ran.append(name)
+                        yield GraphEvent(type="node_end", node=name, step=step, thread_id=thread_id)
                 state.pop(_RESUME_KEY, None)  # consumed (or unused) once the step ran
                 if interrupted is not None:
                     # Re-queue the interrupting node and the rest of the frontier,

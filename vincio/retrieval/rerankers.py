@@ -24,6 +24,7 @@ __all__ = [
     "AuthorityReranker",
     "LLMReranker",
     "CrossEncoderReranker",
+    "LocalCrossEncoderReranker",
     "HTTPReranker",
     "CohereReranker",
     "JinaReranker",
@@ -212,6 +213,75 @@ class CrossEncoderReranker:
         return rescored[:top_k]
 
 
+class LocalCrossEncoderReranker:
+    """Local cross-encoder reranker via ``sentence-transformers`` (2.1).
+
+    Batteries-included on-device reranking with real cross-encoder quality and
+    no server: lazily loads a ``CrossEncoder`` model and scores each
+    (query, passage) pair. Injectable via ``score_fn`` (offline tests); with
+    ``fallback=True`` it degrades to :class:`HeuristicReranker` when the
+    dependency is missing. Install with ``pip install "vincio[cross-encoder]"``.
+    """
+
+    def __init__(
+        self,
+        model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
+        *,
+        score_fn: CrossEncoderFn | None = None,
+        fallback: bool = False,
+    ) -> None:
+        self.model_name = model_name
+        self._score_fn = score_fn
+        self._fallback = fallback
+        self._model: Any = None
+        self._fallback_reranker: HeuristicReranker | None = None
+
+    def _ensure(self) -> None:
+        if (
+            self._score_fn is not None
+            or self._model is not None
+            or self._fallback_reranker is not None
+        ):
+            return
+        try:
+            from sentence_transformers import CrossEncoder  # type: ignore[import-untyped]
+
+            self._model = CrossEncoder(self.model_name)
+        except ImportError as exc:
+            if self._fallback:
+                self._fallback_reranker = HeuristicReranker()
+                return
+            from ..core.errors import ConfigError
+
+            raise ConfigError(
+                'the local cross-encoder reranker requires: pip install '
+                '"vincio[cross-encoder]" (or construct with fallback=True / inject score_fn)'
+            ) from exc
+
+    async def rerank(self, query: str, hits: list[SearchHit], *, top_k: int) -> list[SearchHit]:
+        if not hits:
+            return []
+        self._ensure()
+        if self._fallback_reranker is not None:
+            return await self._fallback_reranker.rerank(query, hits, top_k=top_k)
+        passages = [hit.chunk.text for hit in hits]
+        if self._score_fn is not None:
+            scores = await self._score_fn(query, passages)
+        else:  # pragma: no cover - needs the model installed
+            import asyncio
+
+            loop = asyncio.get_running_loop()
+            scores = await loop.run_in_executor(
+                None, lambda: [float(s) for s in self._model.predict([(query, p) for p in passages])]
+            )
+        rescored = [
+            SearchHit(chunk=hit.chunk, score=score, source=hit.source)
+            for hit, score in zip(hits, scores, strict=False)
+        ]
+        rescored.sort(key=lambda h: h.score, reverse=True)
+        return rescored[:top_k]
+
+
 class HTTPReranker:
     """Hosted cross-encoder reranker over a JSON rerank endpoint (httpx only).
 
@@ -337,6 +407,8 @@ def build_reranker(kind: str | None, **kwargs) -> Reranker | None:
         return AuthorityReranker(**kwargs)
     if kind == "llm":
         return LLMReranker(**kwargs)
+    if kind in ("local", "cross-encoder", "cross_encoder"):
+        return LocalCrossEncoderReranker(**kwargs)
     if kind in _HTTP_RERANKERS:
         return _HTTP_RERANKERS[kind](**kwargs)
     raise ValueError(f"unknown reranker {kind!r}")

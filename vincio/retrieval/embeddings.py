@@ -50,6 +50,8 @@ __all__ = [
     "CachedEmbedder",
     "BatchingEmbedder",
     "MatryoshkaEmbedder",
+    "FastEmbedEmbedder",
+    "ColBERTTokenEmbedder",
     "HTTPEmbedder",
     "JinaEmbedder",
     "VoyageEmbedder",
@@ -783,6 +785,112 @@ def _discovered_embedders() -> dict[str, Any]:
     return _DISCOVERED_EMBEDDERS
 
 
+class FastEmbedEmbedder:
+    """Local ONNX dense embedder via ``fastembed`` (2.1).
+
+    Batteries-included on-device embeddings with real semantic quality and true
+    offline inference — no server. Lazily loads the ONNX model the first time it
+    runs; with ``fallback=True`` it degrades to the deterministic
+    :class:`LocalHashEmbedder` so the dependency-free path still works. Pass
+    ``encode_fn`` to inject a model (offline tests). Install with
+    ``pip install "vincio[fastembed]"``.
+    """
+
+    supports_input_type = False
+    supports_dimensions = False
+
+    def __init__(
+        self,
+        model_name: str = "BAAI/bge-small-en-v1.5",
+        *,
+        dim: int = 384,
+        encode_fn: Any = None,
+        fallback: bool = False,
+    ) -> None:
+        self.model_name = model_name
+        self.dim = dim
+        self._encode_fn = encode_fn
+        self._fallback = fallback
+        self._model: Any = None
+        self._fallback_embedder: LocalHashEmbedder | None = None
+
+    def _ensure(self) -> None:
+        if (
+            self._encode_fn is not None
+            or self._model is not None
+            or self._fallback_embedder is not None
+        ):
+            return
+        try:
+            from fastembed import TextEmbedding
+
+            self._model = TextEmbedding(model_name=self.model_name)
+        except ImportError as exc:
+            if self._fallback:
+                self._fallback_embedder = LocalHashEmbedder(dim=self.dim)
+                return
+            raise ConfigError(
+                'the local ONNX embedder requires: pip install "vincio[fastembed]" '
+                "(or construct with fallback=True / inject encode_fn)"
+            ) from exc
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self._ensure()
+        if self._encode_fn is not None:
+            return [list(map(float, v)) for v in self._encode_fn(texts)]
+        if self._fallback_embedder is not None:
+            return await self._fallback_embedder.embed(texts)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, lambda: [list(map(float, v)) for v in self._model.embed(list(texts))]
+        )
+
+
+class ColBERTTokenEmbedder:
+    """Token-level dense embedder for late interaction / ColBERT (2.1).
+
+    :class:`~vincio.retrieval.late_interaction.LateInteractionIndex` embeds
+    individual tokens and scores by MaxSim; this provides ColBERT-quality token
+    vectors behind the same :class:`Embedder` interface. Injectable via
+    ``encode_fn``, with a deterministic fallback so the offline path holds.
+    """
+
+    supports_input_type = False
+    supports_dimensions = False
+
+    def __init__(
+        self,
+        model_name: str = "colbert-ir/colbertv2.0",
+        *,
+        dim: int = 128,
+        encode_fn: Any = None,
+        fallback: bool = True,
+    ) -> None:
+        self.model_name = model_name
+        self.dim = dim
+        self._encode_fn = encode_fn
+        self._fallback = fallback
+        self._fallback_embedder: LocalHashEmbedder | None = None
+
+    def _ensure(self) -> None:
+        if self._encode_fn is not None or self._fallback_embedder is not None:
+            return
+        if self._fallback:
+            self._fallback_embedder = LocalHashEmbedder(dim=self.dim)
+            return
+        raise ConfigError(
+            "the ColBERT token embedder requires a local model; inject encode_fn "
+            "or construct with fallback=True"
+        )
+
+    async def embed(self, texts: list[str]) -> list[list[float]]:
+        self._ensure()
+        if self._encode_fn is not None:
+            return [list(map(float, v)) for v in self._encode_fn(texts)]
+        assert self._fallback_embedder is not None
+        return await self._fallback_embedder.embed(texts)
+
+
 def build_embedder(
     kind: str = "local",
     *,
@@ -793,6 +901,7 @@ def build_embedder(
     """Construct an embedder by name.
 
     - ``local`` → :class:`LocalHashEmbedder` (deterministic, dependency-free)
+    - ``fastembed`` → :class:`FastEmbedEmbedder` (local ONNX, batteries-included)
     - ``jina`` / ``voyage`` / ``cohere`` → hosted HTTP embedders (httpx only)
     - ``voyage-context`` → :class:`VoyageContextualEmbedder` (contextual chunks)
     - ``voyage-multimodal`` / ``cohere-multimodal`` (``cohere-v4``) →
@@ -806,6 +915,10 @@ def build_embedder(
     """
     if kind == "local":
         base: Embedder = LocalHashEmbedder(**kwargs)
+    elif kind in ("fastembed", "onnx"):
+        base = FastEmbedEmbedder(**kwargs)
+    elif kind == "colbert":
+        base = ColBERTTokenEmbedder(**kwargs)
     elif kind in _HTTP_EMBEDDERS:
         if dimensions is not None:
             kwargs.setdefault("dimensions", dimensions)

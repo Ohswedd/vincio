@@ -107,6 +107,7 @@ class ToolRuntime:
         max_cache_entries: int = 4096,
         injection_detector: InjectionDetector | None = None,
         secret_scanner: SecretScanner | None = None,
+        content_policy: Any = None,
     ) -> None:
         self.registry = registry
         self.permissions = permission_checker or ToolPermissionChecker()
@@ -118,6 +119,11 @@ class ToolRuntime:
         self.injection = injection_detector or InjectionDetector()
         self.secrets = secret_scanner or SecretScanner()
         self._idempotency_seen: dict[str, ToolResult] = {}
+        # 2.1: optional content-capture gate. ``None`` keeps the full output on
+        # the span (the replay-faithful default); a
+        # ``ContentCapturePolicy(capture=False)`` redacts/truncates — or drops —
+        # tool output before it ever lands on a span the exporters read.
+        self.content_policy = content_policy
 
     # -- caching -----------------------------------------------------
 
@@ -282,10 +288,13 @@ class ToolRuntime:
             # capped) value so the trace-replay executor can pin a faithful tool
             # output instead of a 500-char preview.
             output_full = output if not isinstance(output, str) else output[:50_000]
-            span.set(
-                duration_ms=duration_ms, output=str(output)[:500],
-                output_full=output_full, **sanitize_notes,
-            )
+            content = {"output": str(output)[:500], "output_full": output_full}
+            if self.content_policy is not None:
+                content = {
+                    key: self.content_policy.apply(value) for key, value in content.items()
+                }
+                content = {key: value for key, value in content.items() if value is not None}
+            span.set(duration_ms=duration_ms, **content, **sanitize_notes)
 
             result = ToolResult(
                 call_id=call.id,

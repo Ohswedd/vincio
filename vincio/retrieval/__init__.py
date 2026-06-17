@@ -6,7 +6,9 @@ from .embeddings import (
     CachedEmbedder,
     CohereEmbedder,
     CohereMultimodalEmbedder,
+    ColBERTTokenEmbedder,
     Embedder,
+    FastEmbedEmbedder,
     HTTPEmbedder,
     InputType,
     JinaEmbedder,
@@ -40,6 +42,13 @@ from .indexes import (
 )
 from .late_interaction import LateInteractionIndex
 from .live import LiveIndex, UpsertStats
+from .quantization import (
+    TwoStageIndex,
+    binary_similarity,
+    quantize_binary,
+    quantize_scalar,
+    scalar_similarity,
+)
 from .query_understanding import QUERY_STRATEGIES, QueryExpansion, QueryUnderstanding
 from .reasoning_retrieval import FactCoverage, FactRequirement, FactSchema, ReasoningRetriever
 from .rerankers import (
@@ -50,13 +59,20 @@ from .rerankers import (
     HTTPReranker,
     JinaReranker,
     LLMReranker,
+    LocalCrossEncoderReranker,
     RecencyReranker,
     Reranker,
     VoyageReranker,
     build_reranker,
 )
 from .sharded import ShardedIndex
-from .sparse import CallableSparseEncoder, LocalImpactEncoder, SparseEncoder, SparseIndex
+from .sparse import (
+    CallableSparseEncoder,
+    LocalImpactEncoder,
+    SparseEncoder,
+    SparseIndex,
+    SpladeEncoder,
+)
 
 __all__ = [
     "CHUNKERS",
@@ -64,6 +80,8 @@ __all__ = [
     "CachedEmbedder",
     "BatchingEmbedder",
     "MatryoshkaEmbedder",
+    "FastEmbedEmbedder",
+    "ColBERTTokenEmbedder",
     "Embedder",
     "InputType",
     "LocalHashEmbedder",
@@ -123,6 +141,7 @@ __all__ = [
     "ReasoningRetriever",
     "AuthorityReranker",
     "CrossEncoderReranker",
+    "LocalCrossEncoderReranker",
     "HeuristicReranker",
     "LLMReranker",
     "RecencyReranker",
@@ -134,6 +153,13 @@ __all__ = [
     "build_reranker",
     "CallableSparseEncoder",
     "LocalImpactEncoder",
+    "SpladeEncoder",
     "SparseEncoder",
     "SparseIndex",
+    # 2.1: quantization + two-stage retrieval
+    "TwoStageIndex",
+    "quantize_scalar",
+    "quantize_binary",
+    "scalar_similarity",
+    "binary_similarity",
 ]

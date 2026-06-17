@@ -2,14 +2,24 @@
 
 from .costs import CostTracker, ModelPrice, PriceTable, default_price_table
 from .exporters import (
+    Alert,
+    AlertSink,
     ConsoleExporter,
     InMemoryExporter,
     JSONLExporter,
+    MemoryAlertSink,
     MultiExporter,
     NullExporter,
+    PagerDutyAlertSink,
+    PrometheusExporter,
+    SlackAlertSink,
+    TailSamplingExporter,
     TraceExporter,
+    WebhookAlertSink,
 )
 from .finops import (
+    AlertManager,
+    AlertRule,
     BudgetDecision,
     BudgetManager,
     CostBudget,
@@ -18,12 +28,16 @@ from .finops import (
     CostReport,
     CostRow,
 )
+from .redaction import ContentCapturePolicy
 from .sessions import Session, record_feedback, sessions_from_traces
 from .spans import Feedback, Span, SpanType, Trace, TraceEvent
+from .store import CostSlice, IndexedTraceStore, Percentiles, RollupBucket
 from .traces import Tracer, trace_diff, trace_replay_plan
 from .viewer import (
+    ViewerApp,
     render_session_text,
     render_trace_text,
+    serve_viewer,
     trace_diff_html,
     trace_to_html,
 )
@@ -61,6 +75,24 @@ __all__ = [
     "render_session_text",
     "trace_to_html",
     "trace_diff_html",
+    # 2.1: served observability & alerting plane
+    "IndexedTraceStore",
+    "Percentiles",
+    "RollupBucket",
+    "CostSlice",
+    "TailSamplingExporter",
+    "Alert",
+    "AlertSink",
+    "MemoryAlertSink",
+    "WebhookAlertSink",
+    "SlackAlertSink",
+    "PagerDutyAlertSink",
+    "PrometheusExporter",
+    "AlertRule",
+    "AlertManager",
+    "ContentCapturePolicy",
+    "ViewerApp",
+    "serve_viewer",
 ]
 
 
