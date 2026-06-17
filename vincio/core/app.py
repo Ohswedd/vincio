@@ -15,7 +15,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from pydantic import BaseModel
 
@@ -226,6 +226,12 @@ class ContextApp:
             sample_rate=self.config.observability.sample_rate,
         )
         self.cost_tracker = CostTracker()
+        # Cumulative usage for out-of-run media generation (image/TTS), so the
+        # budget cap is honored across repeated app.generate_image/synthesize_speech
+        # calls rather than per-call only.
+        from ..core.types import BudgetUsage as _BudgetUsage
+
+        self._media_usage = _BudgetUsage()
         self.store = create_metadata_store(self.config.storage.metadata)
         self.audit = AuditLog(
             self.config.security.audit_dir if self.config.security.audit_log else None
@@ -1042,6 +1048,213 @@ class ContextApp:
             model_id=model or self.model,
             provider=self._provider_name,
             signer=signer or self.content_signer,
+        )
+
+    # -- 1.9 — documents & media flow OUT ------------------------------------
+
+    @experimental(since="1.9")
+    def build_document(
+        self,
+        source: Any,
+        *,
+        format: str = "markdown",
+        contract: Any | None = None,
+        title: str = "",
+        evidence_ids: list[str] | None = None,
+    ):
+        """Render a validated result into a cited, contract-checked artifact.
+
+        Thin wrapper over :class:`~vincio.generation.builder.DocumentBuilder`
+        bound to this app's audit log. ``source`` is a validated
+        :class:`~vincio.core.types.RunResult`, mapping, or Markdown; ``contract``
+        is an optional :class:`~vincio.generation.contracts.DocumentContract`.
+        """
+        from ..generation.builder import DocumentBuilder
+
+        builder = DocumentBuilder(audit_log=self.audit)
+        return builder.build(
+            source, format=cast("Any", format), contract=contract, title=title,
+            evidence_ids=evidence_ids,
+        )
+
+    @experimental(since="1.9")
+    def cited_report(
+        self,
+        answer: Any,
+        evidence: list[Any] | None = None,
+        *,
+        format: str = "markdown",
+        title: str = "",
+        contract: Any | None = None,
+        entailment: Any | None = None,
+    ):
+        """Resolve ``[E1]`` citations into a rendered, footnoted, cited report.
+
+        Synchronous wrapper over
+        :class:`~vincio.generation.report.CitedReportBuilder`; use ``acited_report``
+        from async code. Evidence defaults to an empty list (markers then resolve
+        to nothing and are reported as unresolved)."""
+        return run_sync(
+            self.acited_report(
+                answer, evidence, format=format, title=title, contract=contract, entailment=entailment
+            )
+        )
+
+    @experimental(since="1.9")
+    async def acited_report(
+        self,
+        answer: Any,
+        evidence: list[Any] | None = None,
+        *,
+        format: str = "markdown",
+        title: str = "",
+        contract: Any | None = None,
+        entailment: Any | None = None,
+    ):
+        from ..generation.report import CitedReportBuilder
+
+        builder = CitedReportBuilder(entailment=entailment, audit_log=self.audit)
+        return await builder.build(
+            answer, list(evidence or []), format=cast("Any", format), title=title, contract=contract
+        )
+
+    @experimental(since="1.9")
+    async def agenerate_image(
+        self,
+        prompt: Any,
+        *,
+        provider: Any,
+        model: str | None = None,
+        n: int = 1,
+        size: str = "1024x1024",
+        budget: Any | None = None,
+    ):
+        """Generate image(s) through an
+        :class:`~vincio.generation.image.ImageProvider`, metered against the
+        budget, audited (``image_generate``), and C2PA-stamped per asset."""
+        from ..generation.image import ImageGenRequest
+        from ..generation.media import meter_media_cost
+
+        request = prompt if isinstance(prompt, ImageGenRequest) else ImageGenRequest(
+            prompt=str(prompt), n=n, size=size
+        )
+        kwargs = {"model": model} if model else {}
+        response = await provider.generate_image(request, **kwargs)
+        self._meter_and_audit_media("image_generate", response, request.prompt, budget, meter_media_cost)
+        return response
+
+    @experimental(since="1.9")
+    def generate_image(self, prompt: Any, *, provider: Any, model: str | None = None, **kwargs: Any):
+        """Synchronous :meth:`agenerate_image`."""
+        return run_sync(self.agenerate_image(prompt, provider=provider, model=model, **kwargs))
+
+    @experimental(since="1.9")
+    async def asynthesize_speech(
+        self,
+        text: str,
+        *,
+        provider: Any,
+        model: str | None = None,
+        voice: str = "alloy",
+        format: str = "mp3",
+        budget: Any | None = None,
+    ):
+        """Synthesize speech through a
+        :class:`~vincio.generation.speech.SpeechProvider`, metered, audited
+        (``speech_synthesize``), and audio-provenance-stamped."""
+        from ..generation.media import meter_media_cost
+        from ..generation.speech import SpeechRequest
+
+        request = SpeechRequest(text=text, voice=voice, format=format)  # type: ignore[arg-type]
+        kwargs = {"model": model} if model else {}
+        response = await provider.synthesize_speech(request, **kwargs)
+        self._meter_and_audit_media("speech_synthesize", response, text, budget, meter_media_cost)
+        return response
+
+    @experimental(since="1.9")
+    def synthesize_speech(self, text: str, *, provider: Any, model: str | None = None, **kwargs: Any):
+        """Synchronous :meth:`asynthesize_speech`."""
+        return run_sync(self.asynthesize_speech(text, provider=provider, model=model, **kwargs))
+
+    def _meter_and_audit_media(
+        self, action: str, response: Any, prompt: str, budget: Any, meter: Any
+    ) -> None:
+        # Accumulate against the app's cumulative media usage so the cost cap is
+        # honored across calls; also record on the cost tracker for cost_report.
+        meter(response.cost_usd, budget=budget or self.budget, usage=self._media_usage)
+        self.cost_tracker.record_infra(response.cost_usd)
+        assets = getattr(response, "images", None) or [getattr(response, "audio", None)]
+        manifests = [getattr(a, "manifest", None) for a in assets if a is not None]
+        self.audit.record(
+            action,
+            resource=response.model,
+            details={
+                "provider": response.provider,
+                "model": response.model,
+                "prompt": prompt[:200],
+                "cost_usd": response.cost_usd,
+                "assets": len([a for a in assets if a is not None]),
+                "content_sha256": [m.content_sha256 for m in manifests if m is not None],
+            },
+        )
+
+    @experimental(since="1.9")
+    def load_media(self, path: str, *, transcriber: Any, tenant_id: str | None = None):
+        """Ingest audio/video as a timestamped transcript Document
+        (:func:`vincio.documents.load_media`)."""
+        from ..documents.loaders import load_media
+
+        return load_media(path, transcriber=transcriber, tenant_id=tenant_id)
+
+    @experimental(since="1.9")
+    def risk_tier(
+        self,
+        *,
+        purpose: str = "",
+        domains: list[str] | None = None,
+        prohibited_practices: list[str] | None = None,
+    ):
+        """Classify this app into the EU AI Act risk tiers (advisory)."""
+        from ..governance.eu_ai_act import RiskTierClassifier
+
+        return RiskTierClassifier(
+            purpose=purpose, domains=domains, prohibited_practices=prohibited_practices
+        ).classify(self)
+
+    @experimental(since="1.9")
+    def annex_iv(
+        self,
+        *,
+        format: str = "markdown",
+        purpose: str = "",
+        domains: list[str] | None = None,
+        eval_report: Any | None = None,
+        redteam: Any | None = None,
+    ):
+        """Generate EU AI Act Annex IV technical documentation as a cited artifact."""
+        from ..governance.eu_ai_act import AnnexIVBuilder, RiskTierClassifier
+
+        classifier = RiskTierClassifier(purpose=purpose, domains=domains)
+        return AnnexIVBuilder(classifier=classifier).build(
+            self, format=cast("Any", format), eval_report=eval_report, redteam=redteam
+        )
+
+    @experimental(since="1.9")
+    def fria(
+        self,
+        *,
+        format: str = "markdown",
+        purpose: str = "",
+        domains: list[str] | None = None,
+        affected_groups: list[str] | None = None,
+        eval_report: Any | None = None,
+    ):
+        """Generate an EU AI Act Art. 27 fundamental-rights impact assessment."""
+        from ..governance.eu_ai_act import FRIAGenerator, RiskTierClassifier
+
+        classifier = RiskTierClassifier(purpose=purpose, domains=domains)
+        return FRIAGenerator(classifier=classifier).generate(
+            self, format=cast("Any", format), affected_groups=affected_groups, eval_report=eval_report
         )
 
     @experimental(since="1.6")

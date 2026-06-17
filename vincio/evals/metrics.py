@@ -45,6 +45,8 @@ __all__ = [
     "groundedness",
     "citation_accuracy",
     "citation_recall",
+    "citation_coverage",
+    "claim_entailment",
     "unsupported_claim_rate",
     "context_precision",
     "context_recall",
@@ -361,6 +363,62 @@ def citation_recall(case: EvalCase, run: RunOutput) -> MetricResult:
     return MetricResult(
         name="citation_recall", value=round(hit / len(required), 4),
         details={"required": len(required), "cited": hit},
+    )
+
+
+@register_metric("citation_coverage")
+def citation_coverage(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Sentence-level citation coverage: fraction of verifiable claims in the
+    output whose citation markers resolve to run evidence. Resolution-aware (a
+    marker that points at no evidence does not count), matching the cited-report
+    builder's coverage so the two never disagree; when no evidence is supplied it
+    falls back to marker presence."""
+    from ..output.parsers import extract_citations
+
+    claims = _verifiable_claims(run.output_text)
+    if not claims:
+        return MetricResult(name="citation_coverage", value=1.0, details={"claims": 0})
+    valid_ids = {e.id for e in run.evidence} | {e.citation_ref for e in run.evidence} | {
+        e.source_id for e in run.evidence
+    }
+
+    def is_cited(claim: str) -> bool:
+        markers = extract_citations(claim)
+        if not markers:
+            return False
+        return any(m in valid_ids for m in markers) if valid_ids else True
+
+    cited = sum(1 for claim in claims if is_cited(claim))
+    return MetricResult(
+        name="citation_coverage", value=round(cited / len(claims), 4),
+        details={"claims": len(claims), "cited": cited},
+    )
+
+
+@register_metric("claim_entailment")
+def claim_entailment(case: EvalCase, run: RunOutput) -> MetricResult:
+    """Of the cited claims, the fraction whose cited evidence actually supports
+    them (strict lexical + numeric entailment). Returns 1.0 when nothing is
+    cited (no claim to refute), so it pairs with ``citation_coverage``."""
+    from ..output.parsers import extract_citations
+
+    by_ref: dict[str, EvidenceItem] = {}
+    for item in run.evidence:
+        for key in (item.id, item.citation_ref, item.source_id):
+            if key:
+                by_ref.setdefault(key, item)
+    claims = _verifiable_claims(run.output_text)
+    cited_claims = [(c, extract_citations(c)) for c in claims if extract_citations(c)]
+    if not cited_claims:
+        return MetricResult(name="claim_entailment", value=1.0, details={"cited_claims": 0})
+    supported = 0
+    for claim, refs in cited_claims:
+        evidence = [by_ref[r] for r in refs if r in by_ref]
+        if evidence and _supported_strict(claim, evidence):
+            supported += 1
+    return MetricResult(
+        name="claim_entailment", value=round(supported / len(cited_claims), 4),
+        details={"cited_claims": len(cited_claims), "supported": supported},
     )
 
 

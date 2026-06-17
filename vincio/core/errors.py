@@ -54,6 +54,9 @@ __all__ = [
     "OutputSchemaError",
     "OutputRepairForbiddenError",
     "CitationValidationError",
+    "GenerationError",
+    "DocumentContractError",
+    "MediaGenerationError",
     "EvalError",
     "DatasetError",
     "GateFailedError",
@@ -391,6 +394,32 @@ class OutputRepairForbiddenError(OutputError):
 
 class CitationValidationError(OutputError):
     code = "CITATION_INVALID"
+
+
+# --- generation (documents & media out, 1.9) --------------------------------
+
+
+class GenerationError(VincioError):
+    """A document/media generation failure (rendering, contract, provider)."""
+
+    code = "GENERATION_ERROR"
+
+
+class DocumentContractError(GenerationError):
+    """A rendered document violates its :class:`DocumentContract` and the
+    formatting-only repair could not bring it into compliance."""
+
+    code = "DOCUMENT_CONTRACT"
+
+    def __init__(self, message: str, *, violations: list[Any] | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.violations = violations or []
+
+
+class MediaGenerationError(GenerationError):
+    """An image-generation/editing or speech-synthesis provider call failed."""
+
+    code = "MEDIA_GENERATION"
 
 
 # --- evals -------------------------------------------------------------------

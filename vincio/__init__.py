@@ -28,16 +28,33 @@ from .core.types import (
 )
 from .evals.datasets import Dataset
 from .evals.swap import SwapGate, SwapVerdict, model_swap_regression
+from .generation import (
+    CitationContract,
+    CitedReportBuilder,
+    DocumentArtifact,
+    DocumentBuilder,
+    DocumentContract,
+    ImageGenRequest,
+    ImageProvider,
+    MockImageProvider,
+    MockSpeechProvider,
+    SpeechProvider,
+    SpeechRequest,
+    generate_redline,
+)
 from .governance import (
     AIBOM,
+    AnnexIVBuilder,
     ComplianceFramework,
     ComplianceReport,
     ErasureResult,
     FertilityTracker,
+    FRIAGenerator,
     LineageRecord,
     ModelCard,
     ProvenanceManifest,
     ResidencyPolicy,
+    RiskTierClassifier,
     SystemCard,
 )
 from .memory.engine import MemoryEngine, ScopedMemory
@@ -79,7 +96,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.8.1"
+__version__ = "1.9.0"
 
 __all__ = [
     "ContextApp",
@@ -164,6 +181,22 @@ __all__ = [
     "ProvenanceManifest",
     "FertilityTracker",
     "PoisoningDetector",
+    # 1.9 — documents & images flow OUT
+    "DocumentBuilder",
+    "DocumentContract",
+    "DocumentArtifact",
+    "CitedReportBuilder",
+    "CitationContract",
+    "generate_redline",
+    "ImageProvider",
+    "ImageGenRequest",
+    "MockImageProvider",
+    "SpeechProvider",
+    "SpeechRequest",
+    "MockSpeechProvider",
+    "RiskTierClassifier",
+    "AnnexIVBuilder",
+    "FRIAGenerator",
     "API_VERSION",
     "StabilityLevel",
     "VincioDeprecationWarning",

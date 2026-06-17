@@ -56,6 +56,8 @@ class ComplianceFramework(StrEnum):
     OWASP_AGENTIC = "owasp_agentic"
     NIST_AI_RMF = "nist_ai_rmf"
     MITRE_ATLAS = "mitre_atlas"
+    ISO_42001 = "iso_42001"
+    EU_AI_ACT = "eu_ai_act"
 
 
 class Control(BaseModel):
@@ -173,6 +175,36 @@ CONTROL_CATALOG: list[Control] = [
             title="Societal Harm", capabilities=["toxicity", "bias_fairness"]),
     Control(framework=ComplianceFramework.MITRE_ATLAS, control_id="AML.T0029",
             title="Denial of ML Service", capabilities=["resource_bounds"]),
+    # ---- ISO/IEC 42001:2023 (AI management system — Annex A controls) ------------
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.2.2",
+            title="AI policy", capabilities=["audit", "transparency"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.5.2",
+            title="AI system impact assessment process",
+            capabilities=["transparency", "human_oversight"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.5.4",
+            title="Assessing impacts on individuals and groups",
+            capabilities=["bias_fairness", "human_oversight"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.6.2.4",
+            title="AI system verification and validation", capabilities=["grounding"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.6.2.6",
+            title="AI system operation and monitoring", capabilities=["audit"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.7.4",
+            title="Quality of data for AI systems",
+            capabilities=["poisoning_defense", "grounding"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.7.5",
+            title="Data provenance", capabilities=["audit", "transparency"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.8.2",
+            title="System documentation and information for users",
+            capabilities=["transparency"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.9.2",
+            title="Processes for responsible use of AI systems",
+            capabilities=["human_oversight", "excessive_agency_bounds"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.9.3",
+            title="Privacy and protection of personal data",
+            capabilities=["pii_protection", "residency"]),
+    Control(framework=ComplianceFramework.ISO_42001, control_id="A.10.2",
+            title="Allocating responsibilities across the AI supply chain",
+            capabilities=["supply_chain"]),
 ]
 
 

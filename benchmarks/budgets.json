@@ -362,7 +362,7 @@
       "eq": true
     },
     "families.governance.frameworks.count": {
-      "eq": 4
+      "eq": 5
     },
     "families.governance.frameworks.coverage_rate": {
       "gte": 0.7
@@ -476,6 +476,45 @@
       "eq": true
     },
     "families.scale.canary_rollback.serves_primary_after": {
+      "eq": true
+    },
+    "families.generation.document.contract_pass": {
+      "eq": true
+    },
+    "families.generation.document.invalid_rejected": {
+      "eq": true
+    },
+    "families.generation.document.formats_rendered": {
+      "gte": 2
+    },
+    "families.generation.citation.coverage": {
+      "gte": 1.0
+    },
+    "families.generation.citation.entailment_rate": {
+      "gte": 0.5
+    },
+    "families.generation.citation.unresolved_detected": {
+      "eq": true
+    },
+    "families.generation.media.image_provenance_verifies": {
+      "eq": true
+    },
+    "families.generation.media.audio_provenance_verifies": {
+      "eq": true
+    },
+    "families.generation.media.tamper_rejected": {
+      "eq": true
+    },
+    "families.generation.media.disclosure_present": {
+      "eq": true
+    },
+    "families.generation.redline.detects_changes": {
+      "eq": true
+    },
+    "families.generation.ingest.pptx_recall": {
+      "gte": 1.0
+    },
+    "families.generation.safety.malicious_prompt_flagged": {
       "eq": true
     }
   }

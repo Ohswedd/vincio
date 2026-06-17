@@ -1,14 +1,18 @@
 """Document loaders.
 
-``load_document(path)`` dispatches by type and returns a structured
-:class:`Document` with text, sections, tables, and metadata. Supported:
-text, Markdown, HTML, CSV/TSV, JSON/JSONL/YAML, code files, email (.eml),
-PDF (``pip install "vincio[pdf]"``), DOCX (``pip install "vincio[docx]"``),
-XLSX (via openpyxl when installed), and code repositories (directories).
+``load_document(path)`` dispatches through the :mod:`~vincio.documents.registry`
+parser registry and returns a structured :class:`Document` with text, sections,
+tables, and provenance. Built-in formats: text, Markdown, a real-parser HTML
+path (with table extraction), CSV/TSV, structured JSON/JSONL/YAML, code,
+email (.eml/mbox/.msg), PDF (``vincio[pdf]``; OCR auto-fallback for scanned
+pages), DOCX (``vincio[docx]``), XLSX (openpyxl), PPTX/EPUB/RTF/ODT
+(dependency-free), Parquet (``vincio[parquet]``), and code repositories.
+``load_media(path, transcriber=...)`` ingests audio as a timestamped transcript.
 """
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 from email import policy as email_policy
@@ -16,18 +20,33 @@ from email.parser import BytesParser
 from pathlib import Path
 from typing import Any
 
-from ..core.errors import LoaderError
-from ..core.types import Document
+from ..core.errors import DocumentError, LoaderError
+from ..core.types import Document, EvidenceItem
 from ..core.utils import new_id
+from . import formats as _formats  # noqa: F401 — registers PPTX/EPUB/RTF/ODT/Parquet/mbox/.msg
 from .parsers import (
     extract_code_symbols,
     extract_markdown_sections,
     extract_markdown_tables,
     parse_csv_table,
+    parse_html,
     strip_html,
+    structure_data,
 )
+from .registry import default_parser_registry, register_loader
 
-__all__ = ["load_document", "load_directory", "load_pdf", "load_docx", "load_xlsx", "SUPPORTED_EXTENSIONS"]
+__all__ = [
+    "load_document",
+    "load_directory",
+    "load_media",
+    "load_pdf",
+    "load_docx",
+    "load_xlsx",
+    "figure_evidence",
+    "register_loader",
+    "SUPPORTED_EXTENSIONS",
+    "supported_extensions",
+]
 
 _CODE_EXTENSIONS = {
     ".py": "python",
@@ -47,12 +66,6 @@ _CODE_EXTENSIONS = {
     ".sh": "shell",
 }
 
-SUPPORTED_EXTENSIONS = (
-    {".txt", ".md", ".rst", ".html", ".htm", ".csv", ".tsv", ".json", ".jsonl", ".yaml", ".yml",
-     ".pdf", ".docx", ".xlsx", ".eml"}
-    | set(_CODE_EXTENSIONS)
-)
-
 
 def _read_text(path: Path) -> str:
     try:
@@ -61,82 +74,188 @@ def _read_text(path: Path) -> str:
         return path.read_text(encoding="latin-1")
 
 
+def _resolve_maybe_async(value: Any) -> Any:
+    """Run an awaitable to completion from sync code; pass values through."""
+    if inspect.isawaitable(value):
+        from ..providers.base import run_sync
+
+        return run_sync(value)
+    return value
+
+
+# -- registered built-in loaders ----------------------------------------------
+
+
+@register_loader(".html", ".htm")
+def _load_html(path: Path, **_: Any) -> Document:
+    html = _read_text(path)
+    title, text, sections, tables = parse_html(html)
+    return Document(
+        text=text,
+        title=title or path.stem,
+        media_type="text/html",
+        sections=[s.model_dump(mode="json") for s in sections],
+        tables=[t.model_dump(mode="json") for t in tables],
+    )
+
+
+@register_loader(".csv", ".tsv")
+def _load_csv(path: Path, **_: Any) -> Document:
+    content = _read_text(path)
+    delimiter = "\t" if path.suffix.lower() == ".tsv" else None
+    table = parse_csv_table(content, title=path.stem, delimiter=delimiter)
+    return Document(
+        text=table.to_text(),
+        title=path.stem,
+        media_type="text/csv",
+        tables=[table.model_dump(mode="json")],
+    )
+
+
+@register_loader(".json", ".jsonl")
+def _load_json(path: Path, **_: Any) -> Document:
+    content = _read_text(path)
+    suffix = path.suffix.lower()
+    parsed: Any
+    try:
+        if suffix == ".jsonl":
+            parsed = [json.loads(line) for line in content.splitlines() if line.strip()]
+        else:
+            parsed = json.loads(content)
+    except json.JSONDecodeError:
+        return Document(
+            text=content, title=path.stem, media_type="application/json",
+            metadata={"parsed": False},
+        )
+    text, sections, tables = structure_data(parsed, title=path.stem)
+    return Document(
+        text=text or content,
+        title=path.stem,
+        media_type="application/json",
+        sections=[s.model_dump(mode="json") for s in sections],
+        tables=[t.model_dump(mode="json") for t in tables],
+        metadata={"parsed": True},
+    )
+
+
+@register_loader(".yaml", ".yml")
+def _load_yaml(path: Path, **_: Any) -> Document:
+    content = _read_text(path)
+    try:
+        import yaml
+
+        parsed = yaml.safe_load(content)
+    except Exception:  # noqa: BLE001 - any YAML error falls back to raw text
+        return Document(text=content, title=path.stem, media_type="application/yaml")
+    text, sections, tables = structure_data(parsed, title=path.stem)
+    return Document(
+        text=text or content,
+        title=path.stem,
+        media_type="application/yaml",
+        sections=[s.model_dump(mode="json") for s in sections],
+        tables=[t.model_dump(mode="json") for t in tables],
+    )
+
+
+@register_loader(*_CODE_EXTENSIONS)
+def _load_code(path: Path, **_: Any) -> Document:
+    source = _read_text(path)
+    language = _CODE_EXTENSIONS[path.suffix.lower()]
+    symbols = extract_code_symbols(source, language=language)
+    return Document(
+        text=source,
+        title=path.name,
+        media_type=f"text/x-{language}",
+        metadata={
+            "language": language,
+            "symbols": [s.model_dump(mode="json") for s in symbols],
+            "imports": [s.name for s in symbols if s.kind == "import"],
+        },
+    )
+
+
+@register_loader(".eml")
+def _load_email(path: Path, **_: Any) -> Document:
+    message = BytesParser(policy=email_policy.default).parse(path.open("rb"))
+    body = message.get_body(preferencelist=("plain", "html"))
+    text = ""
+    if body is not None:
+        content = body.get_content()
+        text = strip_html(content) if body.get_content_subtype() == "html" else content
+    headers = {
+        "from": str(message.get("From", "")),
+        "to": str(message.get("To", "")),
+        "date": str(message.get("Date", "")),
+        "subject": str(message.get("Subject", "")),
+    }
+    return Document(
+        text=f"Subject: {headers['subject']}\nFrom: {headers['from']}\nTo: {headers['to']}\n\n{text}",
+        title=headers["subject"] or path.stem,
+        media_type="message/rfc822",
+        metadata=headers,
+    )
+
+
+@register_loader(".txt", ".md", ".rst", ".markdown")
+def _load_text(path: Path, **_: Any) -> Document:
+    suffix = path.suffix.lower()
+    text = _read_text(path)
+    document = Document(
+        text=text,
+        title=path.stem,
+        media_type="text/markdown" if suffix in (".md", ".markdown", ".rst") else "text/plain",
+    )
+    if suffix in (".md", ".markdown", ".rst"):
+        document.sections = [s.model_dump(mode="json") for s in extract_markdown_sections(text)]
+        document.tables = [t.model_dump(mode="json") for t in extract_markdown_tables(text)]
+    return document
+
+
+# -- core dispatch ------------------------------------------------------------
+
+
+def supported_extensions() -> set[str]:
+    """The live set of loadable suffixes — reflects loaders registered at any
+    time via :func:`register_loader`, plus the built-in PDF/DOCX/XLSX paths.
+    Prefer this over the import-time :data:`SUPPORTED_EXTENSIONS` snapshot."""
+    return default_parser_registry().suffixes() | {".pdf", ".docx", ".xlsx"}
+
+
+# Import-time snapshot of the built-in suffixes (kept for backward compatibility);
+# use supported_extensions() to see loaders registered after import.
+SUPPORTED_EXTENSIONS = supported_extensions()
+
+
 def load_document(
-    path: str | Path, *, tenant_id: str | None = None, layout: bool = False
+    path: str | Path,
+    *,
+    tenant_id: str | None = None,
+    layout: bool = False,
+    ocr_engine: Any = None,
 ) -> Document:
     """Load a single file into a Document. Raises LoaderError on failure.
 
-    Set ``layout=True`` for PDFs to use the layout-aware extraction path
-    (reading order, tables, figures via ``vincio[pdf-layout]``); the
-    dependency-free text path is the default for every format.
+    Dispatches through the parser registry. ``layout=True`` selects the
+    layout-aware PDF path; ``ocr_engine`` routes low-text-yield PDF pages through
+    OCR (see :func:`load_pdf`). The dependency-free text path is the default for
+    every format.
     """
     path = Path(path)
     if not path.is_file():
         raise LoaderError(f"file not found: {path}")
     suffix = path.suffix.lower()
+    registry = default_parser_registry()
     try:
         if suffix == ".pdf":
-            document = load_pdf(path, layout=layout)
+            document = load_pdf(path, layout=layout, ocr_engine=ocr_engine)
         elif suffix == ".docx":
             document = load_docx(path)
         elif suffix == ".xlsx":
             document = load_xlsx(path)
-        elif suffix == ".eml":
-            document = _load_email(path)
-        elif suffix in (".html", ".htm"):
-            html = _read_text(path)
-            title_match = re.search(r"(?is)<title[^>]*>(.*?)</title>", html)
-            document = Document(
-                text=strip_html(html),
-                title=title_match.group(1).strip() if title_match else path.stem,
-                media_type="text/html",
-            )
-        elif suffix in (".csv", ".tsv"):
-            content = _read_text(path)
-            table = parse_csv_table(content, title=path.stem, delimiter="\t" if suffix == ".tsv" else None)
-            document = Document(
-                text=table.to_text(),
-                title=path.stem,
-                media_type="text/csv",
-                tables=[table.model_dump(mode="json")],
-            )
-        elif suffix in (".json", ".jsonl"):
-            content = _read_text(path)
-            document = Document(text=content, title=path.stem, media_type="application/json")
-            try:
-                if suffix == ".json":
-                    document.metadata["parsed"] = True
-                    json.loads(content)
-            except json.JSONDecodeError:
-                document.metadata["parsed"] = False
-        elif suffix in (".yaml", ".yml"):
-            document = Document(text=_read_text(path), title=path.stem, media_type="application/yaml")
-        elif suffix in _CODE_EXTENSIONS:
-            source = _read_text(path)
-            language = _CODE_EXTENSIONS[suffix]
-            symbols = extract_code_symbols(source, language=language)
-            document = Document(
-                text=source,
-                title=path.name,
-                media_type=f"text/x-{language}",
-                metadata={
-                    "language": language,
-                    "symbols": [s.model_dump(mode="json") for s in symbols],
-                    "imports": [s.name for s in symbols if s.kind == "import"],
-                },
-            )
-        else:  # plain/markdown/unknown text
-            text = _read_text(path)
-            document = Document(
-                text=text,
-                title=path.stem,
-                media_type="text/markdown" if suffix in (".md", ".rst") else "text/plain",
-            )
-            if suffix in (".md", ".rst"):
-                document.sections = [
-                    s.model_dump(mode="json") for s in extract_markdown_sections(text)
-                ]
-                document.tables = [t.model_dump(mode="json") for t in extract_markdown_tables(text)]
+        elif registry.supports(suffix):
+            document = registry.load(path, layout=layout, ocr_engine=ocr_engine)
+        else:  # unknown suffix → best-effort plain text
+            document = _load_text(path)
     except LoaderError:
         raise
     except Exception as exc:  # noqa: BLE001 - wrap any parser failure
@@ -149,11 +268,45 @@ def load_document(
     return document
 
 
-def load_pdf(path: str | Path, *, layout: bool = False) -> Document:
+def _default_rasterizer(path: str | Path, page_index: int) -> str:
+    """Rasterize one PDF page to a temp PNG via pypdfium2; return its path."""
+    try:
+        import pypdfium2  # type: ignore
+    except ImportError as exc:  # pragma: no cover - optional dep
+        raise LoaderError(
+            'PDF OCR fallback requires a rasterizer: pip install "vincio[ocr]" '
+            "(pypdfium2), or pass a custom rasterizer"
+        ) from exc
+    import tempfile
+
+    pdf = pypdfium2.PdfDocument(str(path))
+    try:
+        page = pdf[page_index]
+        bitmap = page.render(scale=2.0)
+        image = bitmap.to_pil()
+        handle = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        image.save(handle.name)
+        return handle.name
+    finally:
+        pdf.close()
+
+
+def load_pdf(
+    path: str | Path,
+    *,
+    layout: bool = False,
+    ocr_engine: Any = None,
+    ocr_min_chars: int = 16,
+    rasterizer: Any = None,
+) -> Document:
     """PDF text extraction via pypdf (``pip install "vincio[pdf]"``).
 
     With ``layout=True``, uses the layout-aware path (reading order, tables,
-    figures) via ``vincio[pdf-layout]`` instead of stream-order text."""
+    figures) via ``vincio[pdf-layout]``. With an ``ocr_engine`` (a
+    :class:`~vincio.documents.ocr.OCREngine`), pages whose extracted text is
+    below ``ocr_min_chars`` are rasterized (``rasterizer`` or pypdfium2) and
+    OCR'd, with ``extractor='ocr'`` recorded per page so provenance stays honest.
+    """
     if layout:
         from .layout import extract_pdf_layout
 
@@ -161,21 +314,36 @@ def load_pdf(path: str | Path, *, layout: bool = False) -> Document:
     try:
         from pypdf import PdfReader
     except ImportError as exc:
-        raise LoaderError(
-            'PDF support requires pypdf: pip install "vincio[pdf]"'
-        ) from exc
+        raise LoaderError('PDF support requires pypdf: pip install "vincio[pdf]"') from exc
     path = Path(path)
     reader = PdfReader(str(path))
+    rasterize = rasterizer or _default_rasterizer
     pages: list[str] = []
     sections: list[dict[str, Any]] = []
+    ocr_pages: list[int] = []
     for page_number, page in enumerate(reader.pages, start=1):
         page_text = page.extract_text() or ""
+        extractor = "text"
+        if ocr_engine is not None and len(page_text.strip()) < ocr_min_chars:
+            try:
+                image_path = rasterize(path, page_number - 1)
+                ocr_text = _resolve_maybe_async(ocr_engine.extract_text(image_path)) or ""
+                if len(ocr_text.strip()) > len(page_text.strip()):
+                    page_text = ocr_text
+                    extractor = "ocr"
+                    ocr_pages.append(page_number)
+            except (LoaderError, DocumentError):
+                raise
+            except Exception:  # noqa: BLE001 - OCR is best-effort per page
+                pass
         pages.append(page_text)
         sections.append(
             {"title": f"page {page_number}", "level": 1, "path": [f"p{page_number}"],
-             "text": page_text, "start_line": 0, "page": page_number}
+             "text": page_text, "start_line": 0, "page": page_number, "extractor": extractor}
         )
     metadata: dict[str, Any] = {"page_count": len(reader.pages)}
+    if ocr_pages:
+        metadata["ocr_pages"] = ocr_pages
     if reader.metadata:
         for key in ("title", "author", "subject"):
             value = getattr(reader.metadata, key, None)
@@ -195,9 +363,7 @@ def load_docx(path: str | Path) -> Document:
     try:
         import docx  # python-docx
     except ImportError as exc:
-        raise LoaderError(
-            'DOCX support requires python-docx: pip install "vincio[docx]"'
-        ) from exc
+        raise LoaderError('DOCX support requires python-docx: pip install "vincio[docx]"') from exc
     path = Path(path)
     document = docx.Document(str(path))
     paragraphs: list[str] = []
@@ -277,25 +443,108 @@ def load_xlsx(path: str | Path) -> Document:
     )
 
 
-def _load_email(path: Path) -> Document:
-    message = BytesParser(policy=email_policy.default).parse(path.open("rb"))
-    body = message.get_body(preferencelist=("plain", "html"))
-    text = ""
-    if body is not None:
-        content = body.get_content()
-        text = strip_html(content) if body.get_content_subtype() == "html" else content
-    headers = {
-        "from": str(message.get("From", "")),
-        "to": str(message.get("To", "")),
-        "date": str(message.get("Date", "")),
-        "subject": str(message.get("Subject", "")),
-    }
+# -- audio / media ------------------------------------------------------------
+
+
+def load_media(
+    path: str | Path,
+    *,
+    transcriber: Any,
+    tenant_id: str | None = None,
+) -> Document:
+    """Ingest audio/video as a timestamped transcript :class:`Document`.
+
+    ``transcriber`` is a :class:`~vincio.documents.audio.Transcriber` (e.g.
+    ``MockTranscriber`` offline, ``WhisperTranscriber`` online). Each transcript
+    segment becomes a section carrying its timestamp and (when diarized) speaker.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise LoaderError(f"file not found: {path}")
+    transcript = _resolve_maybe_async(transcriber.transcribe(path))
+    sections: list[dict[str, Any]] = []
+    for index, segment in enumerate(transcript.segments, start=1):
+        prefix = segment.timestamp + (f" {segment.speaker}:" if segment.speaker else "")
+        sections.append(
+            {"title": f"segment {index}", "level": 1, "path": [f"seg{index}"],
+             "text": f"{prefix} {segment.text}".strip(), "start_line": 0,
+             "start": segment.start, "end": segment.end, "speaker": segment.speaker,
+             "extractor": "transcript"}
+        )
     return Document(
-        text=f"Subject: {headers['subject']}\nFrom: {headers['from']}\nTo: {headers['to']}\n\n{text}",
-        title=headers["subject"] or path.stem,
-        media_type="message/rfc822",
-        metadata=headers,
+        source_uri=str(path),
+        text=transcript.text,
+        title=path.stem,
+        media_type="audio/transcript",
+        sections=sections,
+        tenant_id=tenant_id,
+        metadata={
+            "extractor": "transcript",
+            "language": transcript.language,
+            "duration_s": transcript.duration_s,
+            "segment_count": len(sections),
+            "filename": path.name,
+        },
     )
+
+
+# -- figures → evidence -------------------------------------------------------
+
+
+def figure_evidence(
+    document: Document,
+    *,
+    crops: dict[int, str],
+    analyzer: Any = None,
+    ocr_engine: Any = None,
+) -> list[EvidenceItem]:
+    """Turn cropped PDF figure regions into citable evidence with bounding boxes.
+
+    ``crops`` maps a figure index (into ``document.metadata['figures']``) to a
+    cropped image path. Each crop is described by an
+    :class:`~vincio.documents.multimodal.ImageAnalyzer` (``analyzer``) or
+    transcribed by an :class:`~vincio.documents.ocr.OCREngine` (``ocr_engine``),
+    yielding evidence stamped with the figure's bbox and page.
+    """
+    figures = document.metadata.get("figures") or []
+    source_id = document.id
+    items: list[EvidenceItem] = []
+    for fig_index, image_path in crops.items():
+        figure = figures[fig_index] if 0 <= fig_index < len(figures) else {}
+        bbox = figure.get("bbox")
+        page = figure.get("page")
+        if analyzer is not None:
+            observations = _resolve_maybe_async(analyzer.observe(image_path))
+            for obs_index, obs in enumerate(observations, start=1):
+                items.append(
+                    EvidenceItem(
+                        id=f"{source_id}:FIG{fig_index}:R{obs_index}",
+                        source_id=source_id,
+                        source_type="image",
+                        text=f"[figure {fig_index}] {obs.observation}",
+                        media_ref=image_path,
+                        page=page,
+                        authority=obs.confidence,
+                        provenance=0.9,
+                        metadata={"bbox": bbox, "region": obs.region, "figure_index": fig_index},
+                    )
+                )
+        elif ocr_engine is not None:
+            text = _resolve_maybe_async(ocr_engine.extract_text(image_path)) or ""
+            if text.strip():
+                items.append(
+                    EvidenceItem(
+                        id=f"{source_id}:FIG{fig_index}",
+                        source_id=source_id,
+                        source_type="image",
+                        text=f"[figure {fig_index}] {text.strip()}",
+                        media_ref=image_path,
+                        page=page,
+                        provenance=0.9,
+                        metadata={"bbox": bbox, "figure_index": fig_index, "extractor": "ocr"},
+                    )
+                )
+    return items
 
 
 _DEFAULT_IGNORES = {
@@ -321,7 +570,8 @@ def load_directory(
     if not root.is_dir():
         raise LoaderError(f"directory not found: {root}")
     ignore = _DEFAULT_IGNORES | (ignore_dirs or set())
-    allowed = extensions or SUPPORTED_EXTENSIONS
+    # Live registry, so loaders registered after import are honored here too.
+    allowed = extensions or supported_extensions()
     documents: list[Document] = []
     import_graph: dict[str, list[str]] = {}
     for file_path in sorted(root.rglob("*")):
