@@ -34,6 +34,7 @@ from vincio.retrieval import (
     VoyageMultimodalEmbedder,
     build_embedder,
     build_filter,
+    build_filter_spec,
     embed_texts,
     mrl_truncate,
 )
@@ -342,6 +343,106 @@ def test_multimodal_image_needs_path_or_url():
 # -- new vector stores (round-trip via injected fakes) --------------------------
 
 
+def _es_match(rec: dict, q: dict) -> bool:
+    """Apply a compiled Elasticsearch bool/term/terms/range/exists filter to a
+    stored document's flat fields — proves the pushed-down filter is server-side."""
+    if "bool" in q:
+        b = q["bool"]
+        if any(not _es_match(rec, c) for c in b.get("must", [])):
+            return False
+        if b.get("should") and not any(_es_match(rec, c) for c in b["should"]):
+            return False
+        if any(_es_match(rec, c) for c in b.get("must_not", [])):
+            return False
+        return True
+    if "term" in q:
+        (f, v), = q["term"].items()
+        return rec.get(f) == v
+    if "terms" in q:
+        (f, vs), = q["terms"].items()
+        return rec.get(f) in vs
+    if "exists" in q:
+        return rec.get(q["exists"]["field"]) is not None
+    if "range" in q:
+        (f, conds), = q["range"].items()
+        val = rec.get(f)
+        if val is None:
+            return False
+        return all(
+            (op == "gt" and val > b) or (op == "gte" and val >= b)
+            or (op == "lt" and val < b) or (op == "lte" and val <= b)
+            for op, b in conds.items()
+        )
+    return True
+
+
+def _pinecone_match(rec: dict, f: dict) -> bool:
+    """Apply a compiled Pinecone mongo-style metadata filter to stored metadata."""
+    if "$and" in f:
+        return all(_pinecone_match(rec, c) for c in f["$and"])
+    if "$or" in f:
+        return any(_pinecone_match(rec, c) for c in f["$or"])
+    for field, cond in f.items():
+        if field == "$nor":
+            if any(_pinecone_match(rec, c) for c in cond):
+                return False
+            continue
+        if field in ("$and", "$or"):
+            continue
+        actual = rec.get(field)
+        for op, val in cond.items():
+            if op == "$eq" and actual != val:
+                return False
+            if op == "$ne" and actual == val:
+                return False
+            if op == "$in" and actual not in val:
+                return False
+            if op == "$nin" and actual in val:
+                return False
+            if op == "$exists" and (actual is not None) != val:
+                return False
+            if op == "$gt" and not (actual is not None and actual > val):
+                return False
+            if op == "$gte" and not (actual is not None and actual >= val):
+                return False
+            if op == "$lt" and not (actual is not None and actual < val):
+                return False
+            if op == "$lte" and not (actual is not None and actual <= val):
+                return False
+    return True
+
+
+def _weaviate_match(rec: dict, w: dict) -> bool:
+    """Apply a compiled Weaviate `where` filter to stored properties."""
+    op = w.get("operator")
+    if op in ("And", "Or"):
+        results = [_weaviate_match(rec, o) for o in w["operands"]]
+        return all(results) if op == "And" else any(results)
+    if op == "Not":
+        return not _weaviate_match(rec, w["operands"][0])
+    path = w["path"][0]
+    actual = rec.get(path)
+    if op == "IsNull":
+        return (actual is None) == w.get("valueBoolean", True)
+    val = next((w[k] for k in w if k.startswith("value")), None)
+    if op == "Equal":
+        return actual == val
+    if op == "NotEqual":
+        return actual != val
+    if op == "ContainsAny":
+        wanted = val if isinstance(val, list) else [val]
+        return actual in wanted or (isinstance(actual, list) and any(x in actual for x in wanted))
+    if op == "GreaterThan":
+        return actual is not None and actual > val
+    if op == "GreaterThanEqual":
+        return actual is not None and actual >= val
+    if op == "LessThan":
+        return actual is not None and actual < val
+    if op == "LessThanEqual":
+        return actual is not None and actual <= val
+    return True
+
+
 class _FakeSearchEngine:
     """Minimal Elasticsearch/OpenSearch-shaped client for offline round trips."""
 
@@ -374,12 +475,14 @@ class _FakeSearchEngine:
     def search(self, index, knn=None, size=10, body=None):
         if knn is not None:
             query_vector, k = knn["query_vector"], knn["k"]
+            native = knn.get("filter")
         else:
             knn_q = body["query"]["knn"]["vector"]
             query_vector, k = knn_q["vector"], knn_q["k"]
-        ranked = sorted(
-            self.docs.values(), key=lambda d: _cos(d["vector"], query_vector), reverse=True
-        )
+            native = knn_q.get("filter")
+        self.last_filter = native  # recorded so tests can assert pushdown
+        candidates = [d for d in self.docs.values() if native is None or _es_match(d, native)]
+        ranked = sorted(candidates, key=lambda d: _cos(d["vector"], query_vector), reverse=True)
         hits = [
             {"_source": {"json": d["json"]}, "_score": _cos(d["vector"], query_vector)}
             for d in ranked[:k]
@@ -429,9 +532,14 @@ class _FakeWeaviate:
                 del store[uuid]
 
         class _Query:
-            def near_vector(self, near_vector, limit, return_metadata=None):
+            def near_vector(self, near_vector, limit, return_metadata=None, filters=None):
+                outer.last_filter = filters  # recorded so tests can assert pushdown
+                candidates = [
+                    r for r in store.values()
+                    if filters is None or _weaviate_match(r["properties"], filters)
+                ]
                 ranked = sorted(
-                    store.values(), key=lambda r: _cos(r["vector"], near_vector), reverse=True
+                    candidates, key=lambda r: _cos(r["vector"], near_vector), reverse=True
                 )
                 objs = [
                     _Obj(r["properties"], 1.0 - _cos(r["vector"], near_vector)) for r in ranked[:limit]
@@ -500,7 +608,8 @@ class _FakeMilvus:
     def get_collection_stats(self, collection_name):
         return {"row_count": len(self.rows)}
 
-    def search(self, collection_name, data, limit, output_fields):
+    def search(self, collection_name, data, limit, output_fields, filter=None):  # noqa: A002
+        self.last_filter = filter  # the compiled Milvus expr, recorded for assertions
         query = data[0]
         ranked = sorted(self.rows.values(), key=lambda r: _cos(r["vector"], query), reverse=True)
         return [
@@ -590,6 +699,89 @@ async def test_new_vector_stores_apply_where_filter():
         hits = await index.search("refund policy returns", top_k=3, where=where)
         assert hits, index.name
         assert all(h.chunk.tenant_id == "acme" for h in hits), index.name
+
+
+class _FakePinecone:
+    """Minimal Pinecone-shaped client that applies the metadata filter."""
+
+    def __init__(self) -> None:
+        self.vectors: dict[str, dict] = {}
+        self.last_filter = None
+        outer = self
+
+        class _Index:
+            def upsert(self, vectors, namespace=""):
+                for v in vectors:
+                    outer.vectors[v["id"]] = v
+
+            def delete(self, ids, namespace=""):
+                for i in ids:
+                    outer.vectors.pop(i, None)
+
+            def describe_index_stats(self):
+                return {"total_vector_count": len(outer.vectors)}
+
+            def query(self, vector, top_k, include_metadata=True, namespace="", filter=None):  # noqa: A002
+                outer.last_filter = filter
+                cands = [
+                    v for v in outer.vectors.values()
+                    if filter is None or _pinecone_match(v["metadata"], filter)
+                ]
+                ranked = sorted(cands, key=lambda v: _cos(v["values"], vector), reverse=True)
+                return {
+                    "matches": [
+                        {"metadata": v["metadata"], "score": _cos(v["values"], vector)}
+                        for v in ranked[:top_k]
+                    ]
+                }
+
+        self._index = _Index()
+
+    def list_indexes(self):
+        # Report the index as existing so the adapter skips the create path
+        # (which imports ServerlessSpec from the real SDK).
+        return [{"name": "vincio-chunks"}]
+
+    def create_index(self, **kwargs):  # pragma: no cover - create path not exercised
+        pass
+
+    def Index(self, name):  # noqa: N802 - mirrors the Pinecone SDK method name
+        return self._index
+
+
+@pytest.mark.asyncio
+async def test_native_pushdown_passes_compiled_filter_to_backend():
+    """A FilterSpec is compiled and pushed into each backend's native filter
+    (recorded by the fake), and tenant scope returns only the tenant's rows."""
+    cases = [
+        ("elasticsearch", lambda f: build_vector_index("elasticsearch", LocalHashEmbedder(), client=f), _FakeSearchEngine),
+        ("weaviate", lambda f: build_vector_index("weaviate", LocalHashEmbedder(), client=f), _FakeWeaviate),
+        ("milvus", lambda f: build_vector_index("milvus", LocalHashEmbedder(), client=f), _FakeMilvus),
+        ("pinecone", lambda f: build_vector_index("pinecone", LocalHashEmbedder(), client=f), _FakePinecone),
+    ]
+    scope = build_filter_spec(tenant_id="acme")  # FilterSpec, not a callable
+    for name, build, fake_cls in cases:
+        fake = fake_cls()
+        index = build(fake)
+        await index.add(_tenant_chunks())
+        hits = await index.search("refund policy returns", top_k=3, where=scope)
+        assert hits, name
+        assert all(h.chunk.tenant_id == "acme" for h in hits), name
+        # The compiled native filter actually reached the backend (pushdown),
+        # not just a client-side post-filter.
+        assert fake.last_filter is not None, name
+
+
+@pytest.mark.asyncio
+async def test_native_pushdown_stores_flat_filter_fields():
+    """add() persists flat filterable fields alongside the chunk blob so the
+    native filter has something to match server-side."""
+    fake = _FakeSearchEngine()
+    index = build_vector_index("elasticsearch", LocalHashEmbedder(), client=fake)
+    await index.add(_tenant_chunks())
+    stored = next(iter(fake.docs.values()))
+    assert stored["tenant_id"] in {"acme", "other"}
+    assert "document_id" in stored and "kind" in stored
 
 
 # -- layout-aware extraction ----------------------------------------------------

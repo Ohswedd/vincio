@@ -637,6 +637,9 @@
     "families.breaking_2_0.filter_pushdown_compiles": {
       "eq": true
     },
+    "families.breaking_2_0.native_pushdown_backends": {
+      "gte": 5
+    },
     "families.breaking_2_0.enterprise_sigv4_signed": {
       "eq": true
     },

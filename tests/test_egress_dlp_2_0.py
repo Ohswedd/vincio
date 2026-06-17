@@ -9,7 +9,12 @@ from vincio.core.errors import EgressBlockedError
 from vincio.core.types import Message, ModelRequest, ToolSpec
 from vincio.security.policy import PolicyEngine
 
-_SECRET = "sk-live-ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+# A synthetic OpenAI-style credential assembled at runtime, so no contiguous
+# secret-shaped token ever lives in source (committing one trips GitHub secret
+# scanning as a "public leak"). Reassembled it still matches Vincio's
+# `sk-[A-Za-z0-9_-]{16,}` api-key detector — which is exactly what the egress
+# DLP scan must catch.
+_SECRET = "sk-" + "live-" + "A" * 40
 
 
 def _request_with_secret() -> ModelRequest:

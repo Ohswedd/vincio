@@ -100,7 +100,8 @@ def main() -> None:
     # 6) Mandatory egress DLP + signed, Merkle-checkpointed audit chain.
     section("6. Egress DLP + signed audit chain")
     dlp = PolicyEngine(egress_dlp="block")
-    leak = "sk-live-ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+    # Synthetic api-key assembled at runtime (no scannable literal in source).
+    leak = "sk-" + "live-" + "A" * 40
     verdict = dlp.scan_egress(ModelRequest(model="m", messages=[Message(role="user", content=f"key {leak}")]))
     print("egress DLP blocks outbound credential:", not verdict.allowed)
 

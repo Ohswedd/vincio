@@ -89,11 +89,15 @@ def build_filter_spec(
 
     clauses: list[FilterSpec] = []
     if tenant_id is not None:
-        # Shared-or-mine: a tenant sees its own rows plus untagged/shared rows
-        # (tenant_id is null), and never another tenant's. Pushing this into the
-        # backend is what closes the fetch-to-filter exfiltration gap — other
-        # tenants' rows are filtered server-side, not read and dropped.
-        clauses.append(or_(not_(exists("tenant_id")), eq("tenant_id", tenant_id)))
+        # Shared-or-mine: a tenant sees its own rows plus untagged/shared rows,
+        # and never another tenant's. Pushing this into the backend is what
+        # closes the fetch-to-filter exfiltration gap — other tenants' rows are
+        # filtered server-side, not read and dropped. Untagged is null on the
+        # in-memory Chunk but "" once flattened into a vector store, so the scope
+        # matches both so it is correct in-memory *and* pushed down natively.
+        clauses.append(
+            or_(not_(exists("tenant_id")), eq("tenant_id", ""), eq("tenant_id", tenant_id))
+        )
     if document_ids is not None:
         clauses.append(in_("document_id", document_ids))
     if kinds is not None:

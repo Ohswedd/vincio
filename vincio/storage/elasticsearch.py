@@ -16,7 +16,7 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder, embed_texts
-from ..retrieval.filters import as_predicate
+from ..retrieval.filters import FilterSpec, as_predicate, flat_filter_fields
 from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["ElasticsearchVectorIndex", "OpenSearchVectorIndex"]
@@ -77,17 +77,17 @@ class _ElasticLikeIndex:
             }
         }
 
-    def _knn_search(self, vector: list[float], fetch: int) -> Any:
-        return self.client.search(
-            index=self.index,
-            knn={
-                "field": "vector",
-                "query_vector": vector,
-                "k": fetch,
-                "num_candidates": max(fetch, 50),
-            },
-            size=fetch,
-        )
+    def _knn_search(self, vector: list[float], fetch: int, native_filter: Any = None) -> Any:
+        knn: dict[str, Any] = {
+            "field": "vector",
+            "query_vector": vector,
+            "k": fetch,
+            "num_candidates": max(fetch, 50),
+        }
+        # 2.0: a kNN `filter` is applied server-side before the top_k cut.
+        if native_filter is not None:
+            knn["filter"] = native_filter
+        return self.client.search(index=self.index, knn=knn, size=fetch)
 
     # -- Index protocol --------------------------------------------------------
 
@@ -95,13 +95,9 @@ class _ElasticLikeIndex:
         return int(self.client.count(index=self.index)["count"])
 
     def _document(self, chunk: Chunk, vector: list[float]) -> dict[str, Any]:
-        return {
-            "vector": list(vector),
-            "json": chunk.model_dump_json(),
-            "document_id": chunk.document_id,
-            "tenant_id": chunk.tenant_id or "",
-            "kind": chunk.kind,
-        }
+        # 2.0: persist flat filterable fields so a compiled FilterSpec `bool`
+        # query matches server-side (dynamic-mapped keywords).
+        return {"vector": list(vector), "json": chunk.model_dump_json(), **flat_filter_fields(chunk)}
 
     async def add(self, chunks: list[Chunk]) -> None:
         if not chunks:
@@ -126,9 +122,12 @@ class _ElasticLikeIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
+        # 2.0: push a FilterSpec down as an Elasticsearch `bool` filter (its real
+        # wire format); the as_predicate net guarantees correctness regardless.
+        native = where.to_elasticsearch() if isinstance(where, FilterSpec) else None
         predicate = as_predicate(where)
-        fetch = top_k * 4 if where is not None else top_k
-        response = self._knn_search(list(vector), fetch)
+        fetch = top_k if (native is not None or where is None) else top_k * 4
+        response = self._knn_search(list(vector), fetch, native)
         hits: list[SearchHit] = []
         for hit in response["hits"]["hits"]:
             chunk = Chunk.model_validate_json(hit["_source"]["json"])
@@ -182,8 +181,11 @@ class OpenSearchVectorIndex(_ElasticLikeIndex):
             }
         }
 
-    def _knn_search(self, vector: list[float], fetch: int) -> Any:
+    def _knn_search(self, vector: list[float], fetch: int, native_filter: Any = None) -> Any:
+        knn_vector: dict[str, Any] = {"vector": vector, "k": fetch}
+        if native_filter is not None:
+            knn_vector["filter"] = native_filter  # OpenSearch kNN server-side filter
         return self.client.search(
             index=self.index,
-            body={"size": fetch, "query": {"knn": {"vector": {"vector": vector, "k": fetch}}}},
+            body={"size": fetch, "query": {"knn": {"vector": knn_vector}}},
         )
