@@ -4,6 +4,83 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-06-17
+
+Scale out & train for real — distributed execution, executed fine-tuning, and a
+served (still self-hosted) observability plane. Entirely additive behind
+`@experimental` on the frozen 2.0 surface; `API_VERSION` stays `2.0`, the
+single-process asyncio path stays the default, and nothing here is required to
+run Vincio.
+
+### Added
+
+- **Distributed durable-execution backend.** `vincio.agents.distributed` adds a
+  `GraphCoordinator` protocol (in-memory `InMemoryGraphCoordinator` +
+  `RedisGraphCoordinator`) and a `DistributedCheckpointer` that lease-guards
+  each graph thread (a TTL `running` lease) and CAS-commits every super-step
+  (checkpoint-version optimistic concurrency), so two workers can never
+  double-execute a step — the loser raises `CheckpointConflictError`. New
+  runtime backends in `agents/backends.py`: `WorkerPoolBackend` (the in-process
+  reference distributed executor, with `run_batch` fan-out) plus `RayBackend`
+  and `TemporalBackend` export adapters (lazy/injectable, offline-testable). The
+  durable graph gains true BSP parallel super-steps (`StateGraph.compile(parallel=True)`)
+  and a `Send` primitive for map-reduce fan-out; `Workflow.map_step` adds
+  data-dependent level-parallel spawning. Lease/CAS metadata rides the same
+  checkpoint records, so a thread moves between the single-process and
+  distributed backends without losing its ledger or trace.
+- **Executed distillation & provider fine-tune jobs.** `vincio.providers.finetune`
+  ships `OpenAIFineTuneBackend`, `GoogleFineTuneBackend`, and
+  `AnthropicFineTuneBackend` (submit/poll/cancel) plus `run_finetune` and a
+  `make_finetune_backend` factory. `optimize.provider_trainer` turns the
+  `StudentTrainer` from an injected no-op into an executed trainer that submits a
+  fine-tune job, registers the resulting model in the registry, and returns the
+  trained model id; `BootstrapFinetune` gains an optional `swap_gate` so the
+  student is promoted only past the significance gate. The export gains
+  `semantic_dedupe` and a `max_example_chars` truncation guard. Offline, the job
+  lifecycle runs against `httpx.MockTransport` cassettes and the promotion
+  decision is fully deterministic.
+- **Served observability & alerting plane.** `observability.IndexedTraceStore` is
+  an indexed SQLite trace/cost store with time-bucketed cost rollups, retention
+  (`purge`), and percentile/cost-by-dimension queries that replace O(n) JSONL
+  scans. `observability.ViewerApp` + `serve_viewer` serve a dashboard, live trace
+  tail, search, and JSON APIs over it using only the standard library. A new
+  `AlertSink` protocol with `WebhookAlertSink` / `SlackAlertSink` /
+  `PagerDutyAlertSink` / `PrometheusExporter`, plus an `AlertManager` rule engine
+  (`AlertRule`: threshold / EWMA-Welford anomaly / SRE burn-rate) that runs over
+  the cost ledger and event bus, and a `TailSamplingExporter` (error-prioritized,
+  deterministic). The zero-dependency static viewer stays; this plane is opt-in
+  and emits on the same audit chain.
+- **Redis-backed shared server state + `vincio serve`.** `storage.shared_state`
+  adds `RateLimiter` / `IdempotencyStore` protocols (in-memory defaults +
+  `TenantQuotaManager`); `storage/redis.py` adds `RedisRateLimiter` and
+  `RedisIdempotencyStore` so multi-worker deployments stay coherent. A first-class
+  `vincio serve` launcher (uvicorn) plus `/v1/health/ready` and `/v1/metrics`
+  (Prometheus), a lifespan with graceful shutdown, and an optional per-caller
+  rate-limit middleware.
+- **Content-capture controls.** `observability.ContentCapturePolicy` gates
+  prompt/completion content at the export boundary — **off by default** — and
+  redacts (PII) + truncates when opted in, before content reaches OTel events,
+  JSONL, or the viewer. Wired into the OTel exporter and the tool runtime.
+- **Quantization + two-stage retrieval.** `retrieval.quantization` adds
+  `quantize_scalar` / `quantize_binary` and a `TwoStageIndex` (coarse search on
+  quantized/Matryoshka-truncated vectors, exact rerank on full precision),
+  reusing `mrl_truncate`. The Qdrant adapter accepts a native `quantization=`
+  config.
+- **Batteries-included local neural models** (optional deps, with deterministic
+  offline fallbacks): `FastEmbedEmbedder` (ONNX/fastembed dense), `SpladeEncoder`
+  (real SPLADE sparse), `ColBERTTokenEmbedder` (late-interaction tokens),
+  `LocalCrossEncoderReranker`, and a native llama.cpp `GGUFProvider` with
+  on-device embedding. New extras: `vincio[fastembed]`, `vincio[splade]`,
+  `vincio[cross-encoder]`, `vincio[gguf]`, `vincio[local-neural]`.
+
+### Quality & release
+
+- **1485 tests passing offline in ~6s; ruff + mypy clean**; thirty-six runnable
+  examples; VincioBench gates the 2.1 guarantees under CI budgets (229 budgets,
+  71 SLOs): distributed durability + multi-worker shared-state coherence in
+  `scale`, the executed-distillation swap-gate in `loop`, quantized two-stage
+  recall in `rag`, and burn-rate/EWMA alerting in `cost`.
+
 ## [2.0.1] - 2026-06-17
 
 Closes the one deferred 2.0 follow-up and a secret-scanning hygiene issue. No

@@ -8,10 +8,13 @@ from .agents import (
     AgentRole,
     Blackboard,
     Crew,
+    DistributedCheckpointer,
     ResearchAgent,
     ResearchBudget,
     ResearchReport,
+    Send,
     StateGraph,
+    WorkerPoolBackend,
     compose,
 )
 from .context.llmlingua import LLMLinguaCompressor
@@ -68,9 +71,13 @@ from .governance import (
 )
 from .memory.engine import MemoryEngine, ScopedMemory
 from .notebook import enable_rich_reprs
-from .observability.finops import BudgetManager, CostBudget, CostLedger
+from .observability.exporters import AlertSink, PrometheusExporter
+from .observability.finops import AlertManager, AlertRule, BudgetManager, CostBudget, CostLedger
+from .observability.redaction import ContentCapturePolicy
+from .observability.store import IndexedTraceStore
+from .observability.viewer import serve_viewer
 from .optimize.controller import ContinuousImprovementController, ControllerDecision
-from .optimize.distill import BootstrapFinetune, TrainingSet
+from .optimize.distill import BootstrapFinetune, TrainingSet, provider_trainer
 from .optimize.judge_calibration import JudgeCalibrator
 from .optimize.loop import ExperimentProposer, ImprovementLoop, LoopResult
 from .optimize.reflective import ReflectiveOptimizer
@@ -84,15 +91,18 @@ from .providers import (
     BatchRunner,
     CanaryRouter,
     CircuitBreaker,
+    GGUFProvider,
     HealthAwareFailover,
     KeyPool,
     LifecycleWatcher,
     ModelRegistry,
+    OpenAIFineTuneBackend,
     ShadowProvider,
     default_model_registry,
+    make_finetune_backend,
 )
 from .realtime import RealtimeSession
-from .retrieval import MatryoshkaEmbedder, ShardedIndex
+from .retrieval import FastEmbedEmbedder, MatryoshkaEmbedder, ShardedIndex, TwoStageIndex
 from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
 from .stability import (
@@ -106,7 +116,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"
 
 __all__ = [
     "ContextApp",
@@ -215,6 +225,23 @@ __all__ = [
     "RiskTierClassifier",
     "AnnexIVBuilder",
     "FRIAGenerator",
+    # 2.1 — scale out & train for real
+    "WorkerPoolBackend",
+    "DistributedCheckpointer",
+    "Send",
+    "provider_trainer",
+    "OpenAIFineTuneBackend",
+    "make_finetune_backend",
+    "GGUFProvider",
+    "IndexedTraceStore",
+    "AlertManager",
+    "AlertRule",
+    "AlertSink",
+    "PrometheusExporter",
+    "ContentCapturePolicy",
+    "serve_viewer",
+    "TwoStageIndex",
+    "FastEmbedEmbedder",
     "API_VERSION",
     "StabilityLevel",
     "VincioDeprecationWarning",

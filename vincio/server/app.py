@@ -88,8 +88,10 @@ def create_app(
 ):
     """Build the FastAPI application serving the given ContextApps."""
     try:
-        from fastapi import Depends, FastAPI, Header, HTTPException
-        from fastapi.responses import StreamingResponse
+        from contextlib import asynccontextmanager
+
+        from fastapi import Depends, FastAPI, Header, HTTPException, Request
+        from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
     except ImportError as exc:
         raise ConfigError(
             'server mode requires: pip install "vincio[server]"'
@@ -104,10 +106,68 @@ def create_app(
     )
 
     from .. import __version__
+    from ..observability.exporters import PrometheusExporter
+
+    metrics = PrometheusExporter()
+
+    # 2.1: shared rate-limit state — Redis-backed when configured (coherent
+    # across uvicorn workers), process-local otherwise.
+    from ..storage.shared_state import RateLimiter
+
+    rate_limiter: RateLimiter | None = None
+    rate_limit = int(config.server.rate_limit_per_min or 0)
+    if rate_limit > 0:
+        if config.server.redis_url:
+            from ..storage.redis import RedisRateLimiter
+
+            rate_limiter = RedisRateLimiter(config.server.redis_url)
+        else:
+            from ..storage.shared_state import InMemoryRateLimiter
+
+            rate_limiter = InMemoryRateLimiter()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        # 2.1: graceful startup/shutdown. Readiness flips true after startup and
+        # false on shutdown so load balancers drain in flight before exit.
+        app.state.ready = True
+        try:
+            yield
+        finally:
+            app.state.ready = False
 
     api = FastAPI(
-        title="Vincio", version=__version__, description="Context engineering platform API"
+        title="Vincio",
+        version=__version__,
+        description="Context engineering platform API",
+        lifespan=lifespan,
     )
+
+    if rate_limiter is not None:
+
+        @api.middleware("http")
+        async def _rate_limit(request: Request, call_next):
+            caller = (
+                request.headers.get("x-api-key")
+                or request.headers.get("authorization")
+                or (request.client.host if request.client else "anonymous")
+            )
+            decision = rate_limiter.check(caller, limit=rate_limit, window_s=60.0)
+            metrics.set_gauge("rate_limit_remaining", decision.remaining)
+            if not decision.allowed:
+                metrics.inc("rate_limited_total")
+                return JSONResponse(
+                    status_code=429,
+                    content={"detail": "rate limit exceeded"},
+                    headers={"Retry-After": str(int(decision.retry_after_s))},
+                )
+            return await call_next(request)
+
+    @api.middleware("http")
+    async def _count_requests(request: Request, call_next):
+        response = await call_next(request)
+        metrics.inc("requests_total", {"status": str(response.status_code)})
+        return response
 
     if config.server.cors_origins:
         from fastapi.middleware.cors import CORSMiddleware
@@ -144,6 +204,20 @@ def create_app(
     @api.get("/v1/health")
     def health() -> dict[str, Any]:
         return {"status": "ok", "apps": sorted(registry)}
+
+    @api.get("/v1/health/ready")
+    def ready():
+        # Readiness (vs liveness): 503 until startup completes and at least one
+        # app is registered, so a load balancer waits before routing traffic.
+        if getattr(api.state, "ready", False) and registry:
+            return {"status": "ready", "apps": sorted(registry)}
+        return JSONResponse(status_code=503, content={"status": "not_ready"})
+
+    @api.get("/v1/metrics")
+    def prometheus_metrics():
+        # Scrape-friendly Prometheus exposition of request/rate-limit counters.
+        metrics.set_gauge("apps", len(registry))
+        return PlainTextResponse(metrics.render(), media_type="text/plain; version=0.0.4")
 
     @api.post("/v1/apps/{app_id}/run")
     async def run_app(app_id: str, request: RunRequest, context: AuthContext = Depends(auth)):

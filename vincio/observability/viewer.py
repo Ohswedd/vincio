@@ -10,11 +10,16 @@ from __future__ import annotations
 
 import html
 import json
-from typing import Any
+from datetime import timedelta
+from typing import TYPE_CHECKING, Any
 
+from ..core.utils import to_jsonable, utcnow
 from .sessions import Session
 from .spans import Span, Trace
 from .traces import trace_diff
+
+if TYPE_CHECKING:
+    from .store import IndexedTraceStore
 
 __all__ = [
     "render_trace_text",
@@ -22,6 +27,9 @@ __all__ = [
     "trace_to_html",
     "session_to_html",
     "trace_diff_html",
+    # 2.1: served observability plane
+    "ViewerApp",
+    "serve_viewer",
 ]
 
 _STATUS_GLYPH = {"ok": "✓", "error": "✗", "running": "…"}
@@ -257,3 +265,180 @@ def trace_diff_html(a: Trace, b: Trace, *, title: str | None = None) -> str:
         + f"<div class='col'><h2>Trace B</h2>{_trace_body(b)}</div>"
     )
     return _html_page(title or f"Vincio trace diff {a.id} vs {b.id}", body)
+
+
+# ---------------------------------------------------------------------------
+# Served observability plane (2.1)
+# ---------------------------------------------------------------------------
+
+_WINDOWS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timedelta(days=7)}
+
+
+def _since_from(window: str | None):
+    delta = _WINDOWS.get(window or "")
+    return (utcnow() - delta) if delta else None
+
+
+def _slice_rows(slices: list[Any]) -> str:
+    rows = "".join(
+        f"<tr><td>{html.escape(str(s.key))}</td><td>${s.cost_usd:.6f}</td>"
+        f"<td>{s.calls}</td><td>{s.errors}</td></tr>"
+        for s in slices
+    )
+    return rows or "<tr><td colspan='4' class='meta'>no data</td></tr>"
+
+
+def _dashboard_html(store: IndexedTraceStore, *, window: str | None) -> str:
+    since = _since_from(window)
+    stats = store.stats()
+    latency = store.percentiles("latency", since=since)
+    cost = store.percentiles("cost", since=since)
+    by_tenant = store.cost_by_dimension("tenant", since=since)
+    by_model = store.cost_by_dimension("model", since=since)
+    recent = store.tail(25)
+    win_links = " · ".join(
+        f"<a href='/?window={w}'>{w}</a>" for w in ("1h", "24h", "7d", "all")
+    ).replace("window=all", "")
+    head = (
+        f"<p class='meta'>traces={stats['traces']} · errors={stats['errors']} "
+        f"· error_rate={stats['error_rate']:.1%} · total_cost=${stats['total_cost_usd']:.6f} "
+        f"· window: {win_links}</p>"
+    )
+    perf = (
+        "<h2>Latency (ms)</h2>"
+        f"<table class='attrs'><tr><th>p50</th><th>p95</th><th>p99</th><th>max</th><th>n</th></tr>"
+        f"<tr><td>{latency.p50:g}</td><td>{latency.p95:g}</td><td>{latency.p99:g}</td>"
+        f"<td>{latency.max:g}</td><td>{latency.count}</td></tr></table>"
+        "<h2>Cost per run (usd)</h2>"
+        f"<table class='attrs'><tr><th>p50</th><th>p95</th><th>p99</th><th>max</th></tr>"
+        f"<tr><td>${cost.p50:.6f}</td><td>${cost.p95:.6f}</td><td>${cost.p99:.6f}</td>"
+        f"<td>${cost.max:.6f}</td></tr></table>"
+    )
+    dims = (
+        "<div class='col'><h2>Cost by tenant</h2>"
+        "<table class='attrs'><tr><th>tenant</th><th>cost</th><th>calls</th><th>errors</th></tr>"
+        f"{_slice_rows(by_tenant)}</table></div>"
+        "<div class='col'><h2>Cost by model</h2>"
+        "<table class='attrs'><tr><th>model</th><th>cost</th><th>calls</th><th>errors</th></tr>"
+        f"{_slice_rows(by_model)}</table></div>"
+    )
+    tail_rows = "".join(
+        f"<tr class='{'diffdel' if t.status == 'error' else ''}'>"
+        f"<td><a href='/trace?id={html.escape(t.id)}'>{html.escape(t.id)}</a></td>"
+        f"<td>{html.escape(t.status)}</td><td>{t.duration_ms}ms</td>"
+        f"<td>{html.escape(t.tenant_id or '∅')}</td></tr>"
+        for t in recent
+    ) or "<tr><td colspan='4' class='meta'>no traces</td></tr>"
+    tail = (
+        "<h2>Live tail</h2>"
+        "<table class='attrs'><tr><th>trace</th><th>status</th><th>duration</th><th>tenant</th></tr>"
+        f"{tail_rows}</table>"
+    )
+    return _html_page("Vincio observability", head + perf + dims + tail)
+
+
+class ViewerApp:
+    """Request handler for the served observability plane, decoupled from sockets.
+
+    Holds an :class:`~vincio.observability.store.IndexedTraceStore` and answers
+    ``(path, params)`` with ``(status, content_type, body)`` — so the HTTP
+    routes are exercised directly in tests without binding a port. Routes:
+    ``/`` (dashboard), ``/trace?id=`` (single-trace HTML), ``/healthz``,
+    ``/api/stats``, ``/api/traces``, ``/api/trace?id=``, ``/api/rollup``.
+    """
+
+    def __init__(self, store: IndexedTraceStore) -> None:
+        self.store = store
+
+    def handle(self, path: str, params: dict[str, str] | None = None) -> tuple[int, str, str]:
+        params = params or {}
+        window = params.get("window")
+        since = _since_from(window)
+        if path in ("/", "/dashboard"):
+            return 200, "text/html; charset=utf-8", _dashboard_html(self.store, window=window)
+        if path == "/healthz":
+            return 200, "text/plain; charset=utf-8", "ok"
+        if path == "/api/stats":
+            payload = {
+                "stats": self.store.stats(),
+                "latency": self.store.percentiles("latency", since=since).model_dump(),
+                "cost": self.store.percentiles("cost", since=since).model_dump(),
+                "cost_by_tenant": [s.model_dump() for s in self.store.cost_by_dimension("tenant", since=since)],
+                "cost_by_model": [s.model_dump() for s in self.store.cost_by_dimension("model", since=since)],
+            }
+            return 200, "application/json", json.dumps(to_jsonable(payload))
+        if path == "/api/traces":
+            limit = int(params.get("limit", "50"))
+            traces = self.store.query(
+                tenant_id=params.get("tenant"),
+                model=params.get("model"),
+                status=params.get("status"),
+                session_id=params.get("session"),
+                since=since,
+                limit=limit,
+            )
+            body = [
+                {
+                    "id": t.id, "status": t.status, "duration_ms": t.duration_ms,
+                    "tenant_id": t.tenant_id, "session_id": t.session_id,
+                }
+                for t in traces
+            ]
+            return 200, "application/json", json.dumps(to_jsonable(body))
+        if path in ("/trace", "/api/trace"):
+            trace_id = params.get("id", "")
+            trace = self.store.get(trace_id)
+            if trace is None:
+                return 404, "text/plain; charset=utf-8", f"no trace {trace_id!r}"
+            if path == "/api/trace":
+                return 200, "application/json", json.dumps(to_jsonable(trace.model_dump(mode="json")))
+            return 200, "text/html; charset=utf-8", trace_to_html(trace)
+        if path == "/api/rollup":
+            bucket = params.get("bucket", "1h")
+            series = self.store.rollup(
+                bucket, dimension=params.get("dimension", "global"),
+                key=params.get("key", "∅"), since=since,
+            )
+            return 200, "application/json", json.dumps(to_jsonable([b.model_dump() for b in series]))
+        return 404, "text/plain; charset=utf-8", "not found"
+
+
+def serve_viewer(
+    store: IndexedTraceStore,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8043,
+) -> Any:
+    """Start the served observability plane over ``store`` (opt-in, self-hosted).
+
+    Returns the running ``ThreadingHTTPServer`` (started on a daemon thread);
+    call ``.shutdown()`` to stop it. Zero new dependency — the standard-library
+    ``http.server`` — and it never leaves your infrastructure. The
+    zero-dependency static export (:func:`trace_to_html`) stays the default for
+    one-off shares; this plane is for a dashboard you keep watching.
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from urllib.parse import parse_qs, urlparse
+
+    app = ViewerApp(store)
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802 - http.server API
+            parsed = urlparse(self.path)
+            params = {k: v[0] for k, v in parse_qs(parsed.query).items()}
+            status, content_type, body = app.handle(parsed.path, params)
+            encoded = body.encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(encoded)))
+            self.end_headers()
+            self.wfile.write(encoded)
+
+        def log_message(self, *args: Any) -> None:  # silence default stderr logging
+            return
+
+    server = ThreadingHTTPServer((host, port), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    return server

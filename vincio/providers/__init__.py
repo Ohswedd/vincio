@@ -44,10 +44,20 @@ from .enterprise import (
     SigV4Auth,
     VertexProvider,
 )
+from .finetune import (
+    AnthropicFineTuneBackend,
+    FineTuneBackend,
+    FineTuneJob,
+    FineTuneStatus,
+    GoogleFineTuneBackend,
+    OpenAIFineTuneBackend,
+    make_finetune_backend,
+    run_finetune,
+)
 from .google import GoogleProvider
 from .keypool import KeyPool, RateLimiter
 from .lifecycle import LifecycleAlert, LifecycleWatcher, MigrationProposal
-from .local import LocalProvider
+from .local import GGUFProvider, LocalProvider
 from .mistral import MistralProvider
 from .mock import MockProvider, instance_from_schema
 from .openai import OpenAIProvider
@@ -91,6 +101,15 @@ __all__ = [
     "OpenAIBatchBackend",
     "AnthropicBatchBackend",
     "GoogleBatchBackend",
+    # 2.1: executed fine-tune jobs
+    "FineTuneBackend",
+    "FineTuneJob",
+    "FineTuneStatus",
+    "OpenAIFineTuneBackend",
+    "GoogleFineTuneBackend",
+    "AnthropicFineTuneBackend",
+    "make_finetune_backend",
+    "run_finetune",
     "CoalescingProvider",
     "build_pooled_client",
     "ProviderRegistry",
@@ -122,6 +141,7 @@ __all__ = [
     "GoogleProvider",
     "MistralProvider",
     "LocalProvider",
+    "GGUFProvider",
     "MockProvider",
     "instance_from_schema",
     "default_registry",

@@ -29,6 +29,7 @@ class QdrantVectorIndex:
         url: str = "http://localhost:6333",
         collection: str = "vincio_chunks",
         api_key: str | None = None,
+        quantization: str | None = None,
     ) -> None:
         try:
             from qdrant_client import QdrantClient
@@ -39,12 +40,42 @@ class QdrantVectorIndex:
             ) from exc
         self.embedder = embedder
         self.collection = collection
+        self.quantization = quantization
         self.client = QdrantClient(url=url, api_key=api_key)
         if not self.client.collection_exists(collection):
             self.client.create_collection(
                 collection_name=collection,
                 vectors_config=VectorParams(size=embedder.dim, distance=Distance.COSINE),
+                quantization_config=self._quantization_config(quantization),
             )
+
+    @staticmethod
+    def _quantization_config(quantization: str | None):
+        """Map ``"scalar"``/``"binary"`` to Qdrant's native quantization config.
+
+        Qdrant keeps full vectors on disk and the quantized copy in RAM, scoring
+        the coarse copy first and rescoring with full precision — server-side
+        two-stage retrieval, the same coarse→exact pattern as
+        :class:`~vincio.retrieval.quantization.TwoStageIndex`. ``None`` leaves
+        vectors unquantized.
+        """
+        if quantization is None:
+            return None
+        from qdrant_client.models import (
+            BinaryQuantization,
+            BinaryQuantizationConfig,
+            ScalarQuantization,
+            ScalarQuantizationConfig,
+            ScalarType,
+        )
+
+        if quantization == "binary":
+            return BinaryQuantization(binary=BinaryQuantizationConfig(always_ram=True))
+        if quantization == "scalar":
+            return ScalarQuantization(
+                scalar=ScalarQuantizationConfig(type=ScalarType.INT8, always_ram=True)
+            )
+        raise StorageError(f"unknown quantization {quantization!r}; use scalar|binary")
 
     def __len__(self) -> int:
         return self.client.count(self.collection).count

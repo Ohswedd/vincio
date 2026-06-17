@@ -1345,6 +1345,53 @@ def cmd_mcp_serve(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    """Launch the HTTP API server with uvicorn (2.1).
+
+    Closes the audit finding that server mode shipped but was unlaunchable:
+    builds the FastAPI app from one or more ``ContextApp`` files and serves it
+    with health/readiness/metrics endpoints and graceful shutdown. Multi-worker
+    deployments stay cache- and rate-limit-coherent when ``server.redis_url`` is
+    configured.
+    """
+    try:
+        import uvicorn
+    except ImportError:
+        return _fail('the server launcher requires: pip install "vincio[server]"')
+
+    from ..core.config import load_config
+    from ..server import create_app
+
+    config = load_config(args.config) if args.config else load_config()
+    registry: dict[str, Any] = {}
+    for spec in args.app or []:
+        app = _load_app(spec)
+        registry[app.name] = app
+    if not registry:
+        return _fail("no apps to serve; pass one or more --app <file.py> exposing a ContextApp as `app`")
+
+    host = args.host or config.server.host
+    port = args.port or config.server.port
+    api = create_app(config, apps=registry)
+    print(
+        f"serving {len(registry)} app(s) on http://{host}:{port}; "
+        "health=/v1/health readiness=/v1/health/ready metrics=/v1/metrics",
+        file=sys.stderr,
+    )
+    if config.server.redis_url:
+        print(
+            "shared state on Redis — run multiple workers behind a process "
+            "manager (gunicorn/uvicorn import string) for a coherent deployment.",
+            file=sys.stderr,
+        )
+    # uvicorn installs SIGINT/SIGTERM handlers and runs the lifespan, so shutdown
+    # drains in-flight requests and flips readiness false before exit. Forked
+    # workers require an import string, so this launcher serves one process; the
+    # Redis shared state is what keeps a multi-worker fleet coherent.
+    uvicorn.run(api, host=host, port=port, log_level="info")
+    return 0
+
+
 # -- parser ----------------------------------------------------------------------------
 
 
@@ -1679,6 +1726,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_mcp_serve.add_argument("app", help="python file exposing a ContextApp as `app`")
     p_mcp_serve.add_argument("--name", default=None, help="server name (defaults to the app name)")
     p_mcp_serve.set_defaults(fn=cmd_mcp_serve)
+
+    p_serve = sub.add_parser("serve", help="launch the HTTP API server (FastAPI + uvicorn)")
+    p_serve.add_argument(
+        "--app", action="append", default=[], metavar="FILE",
+        help="python file exposing a ContextApp as `app` (repeatable)",
+    )
+    p_serve.add_argument("--config", default=None, help="path to vincio.yaml")
+    p_serve.add_argument("--host", default=None, help="bind host (default from config)")
+    p_serve.add_argument("--port", type=int, default=None, help="bind port (default from config)")
+    p_serve.add_argument("--workers", type=int, default=None, help="advisory worker count")
+    p_serve.set_defaults(fn=cmd_serve)
 
     p_memory = sub.add_parser("memory", help="memory commands")
     memory_sub = p_memory.add_subparsers(dest="memory_command", required=True)

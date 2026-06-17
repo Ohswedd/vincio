@@ -195,6 +195,12 @@ vincio mcp serve APP [--name NAME]
     on stdin). Tools/resources/prompts are served through the permissioned,
     audited runtime.
 
+vincio serve [--app FILE ...] [--config vincio.yaml] [--host H] [--port P]
+    Launch the HTTP API (FastAPI + uvicorn) serving one or more ContextApps,
+    with /v1/health, /v1/health/ready, /v1/metrics (Prometheus), real-token SSE
+    streaming, and graceful shutdown. Configure server.redis_url for coherent
+    rate-limit/idempotency state across workers. (2.1)
+
 vincio providers list [--provider NAME] [--json]
     List the model registry catalog (tier, lifecycle, pricing, successor). (1.8)
 

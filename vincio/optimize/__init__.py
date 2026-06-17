@@ -18,6 +18,8 @@ from .distill import (
     TrainingSet,
     export_training_set,
     export_training_set_from_runs,
+    provider_trainer,
+    semantic_dedupe,
 )
 from .judge_calibration import (
     JudgeCalibrationResult,
@@ -107,6 +109,8 @@ __all__ = [
     "TrainingSet",
     "export_training_set",
     "export_training_set_from_runs",
+    "semantic_dedupe",
+    "provider_trainer",
     "DistillationResult",
     "BootstrapFinetune",
     "ProposedEdit",

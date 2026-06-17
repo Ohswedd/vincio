@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.0.1 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.1.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -78,6 +78,31 @@ result.output; result.citations; result.trace_id; result.cost_usd
   (`security.audit_signing_key`). Eval: `lexical_overlap` is the lexical metric;
   `semantic_similarity` is embedding-backed; unscoreable cases return
   `MetricResult(skipped=True)` and are excluded from gates.
+- 2.1 (additive, `@experimental` on the 2.0 surface; API_VERSION stays 2.0):
+  Distributed durable execution — `from vincio.agents import WorkerPoolBackend,
+  DistributedCheckpointer, InMemoryGraphCoordinator, Send`. `WorkerPoolBackend(workers=N)`
+  has `run(graph, input)` and `run_batch(graph, inputs)`; `DistributedCheckpointer(store,
+  coordinator=...)` lease-guards a thread + CAS-commits each super-step (a lost race
+  raises `CheckpointConflictError`). `StateGraph.compile(parallel=True)` runs BSP
+  super-steps; a node returning `[Send("node", {...}), ...]` fans out map-reduce;
+  `Workflow.map_step(name, fn, over=...)` for data-dependent fan-out. Executed
+  distillation — `from vincio.providers import OpenAIFineTuneBackend,
+  make_finetune_backend`; `from vincio.optimize import provider_trainer,
+  semantic_dedupe`; `BootstrapFinetune(evaluate, trainer=provider_trainer(backend),
+  swap_gate=SwapGate(...))` trains + registers a student and promotes only past the
+  gate. Served observability — `from vincio.observability import IndexedTraceStore,
+  ViewerApp, serve_viewer, AlertManager, AlertRule, TailSamplingExporter,
+  WebhookAlertSink, SlackAlertSink, PagerDutyAlertSink, PrometheusExporter,
+  ContentCapturePolicy`. `AlertRule(kind="threshold"|"ewma"|"burn_rate")`. Content
+  capture is OFF by default; opt in via `ContentCapturePolicy(capture=True)`. Shared
+  state — `from vincio.storage.shared_state import InMemoryRateLimiter,
+  TenantQuotaManager`; `RedisRateLimiter`/`RedisIdempotencyStore` in `storage.redis`.
+  `vincio serve --app app.py` launches the API (+`/v1/health/ready`, `/v1/metrics`).
+  Quantized two-stage retrieval — `from vincio.retrieval import TwoStageIndex,
+  quantize_scalar, quantize_binary`. Local models — `FastEmbedEmbedder`,
+  `SpladeEncoder`, `ColBERTTokenEmbedder`, `LocalCrossEncoderReranker`, and a
+  llama.cpp `GGUFProvider` (each with an offline fallback; extras
+  `vincio[fastembed,splade,cross-encoder,gguf]`).
 - Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
   mock (deterministic, offline; generates schema-valid structured output);
   plus OpenAI-compatible presets groq | together | fireworks | openrouter |
@@ -522,7 +547,8 @@ result.output; result.citations; result.trace_id; result.cost_usd
   inspect/remember/recall/forget/export/consolidate/decay,
   audit verify, governance card/report/aibom/lineage/erase, mcp tools/add/serve,
   providers list/lifecycle/discover/regress.
-- Server: `from vincio.server import create_app` (FastAPI; API key + JWT).
+- Server: `vincio serve --app app.py` (uvicorn launcher; health/readiness/metrics,
+  graceful shutdown) or `from vincio.server import create_app` (FastAPI; API key + JWT).
 - Protocols & interoperability (1.1, experimental): MCP client + server
   (`vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,
   `app.serve_mcp()`; stdio / Streamable HTTP / in-process; MCP tools register

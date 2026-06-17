@@ -35,7 +35,6 @@ from vincio.generation import (
     ImageGenRequest,
     MockImageProvider,
     MockSpeechProvider,
-    SpeechRequest,
     TableSpec,
     generate_redline,
 )
