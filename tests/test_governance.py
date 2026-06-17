@@ -99,13 +99,17 @@ class TestCards:
 
 
 class TestFrameworks:
-    def test_all_four_frameworks_mapped(self):
+    def test_all_frameworks_mapped(self):
         report = ComplianceMapper().map(target=VincioConfig())
+        # The control catalog spans the four security frameworks plus the
+        # ISO/IEC 42001 AI-management controls added in 1.9. (EU AI Act is a
+        # conformity-pack view, not control-mapped here.)
         assert set(report.frameworks) == {
             ComplianceFramework.OWASP_LLM_2025.value,
             ComplianceFramework.OWASP_AGENTIC.value,
             ComplianceFramework.NIST_AI_RMF.value,
             ComplianceFramework.MITRE_ATLAS.value,
+            ComplianceFramework.ISO_42001.value,
         }
 
     def test_config_provides_baseline_coverage(self, gov_app):

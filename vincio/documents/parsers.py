@@ -7,6 +7,7 @@ import ast as python_ast
 import csv
 import io
 import re
+from html.parser import HTMLParser
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -21,6 +22,8 @@ __all__ = [
     "table_quality_checks",
     "extract_code_symbols",
     "strip_html",
+    "parse_html",
+    "structure_data",
 ]
 
 
@@ -156,7 +159,7 @@ def parse_csv_table(content: str, *, title: str = "", delimiter: str | None = No
 
 
 _NUMERIC_RE = re.compile(r"^-?[\d,]+(?:\.\d+)?%?$")
-_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}|^\d{1,2}[/.]\d{1,2}[/.]\d{2,4}$")
+_DATE_RE = re.compile(r"^(?:\d{4}-\d{2}-\d{2}|\d{1,2}[/.]\d{1,2}[/.]\d{2,4})$")
 _CURRENCY_RE = re.compile(r"^[$€£¥]\s?-?[\d,]+(?:\.\d+)?$|^-?[\d,]+(?:\.\d+)?\s?(?:USD|EUR|GBP)$")
 
 
@@ -221,6 +224,179 @@ def strip_html(html: str) -> str:
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n\n", text)
     return text.strip()
+
+
+class _HTMLStructureParser(HTMLParser):
+    """Extract title, heading-delimited sections, and tables from HTML.
+
+    Dependency-free (stdlib :mod:`html.parser`): a real structural path so HTML
+    charts and tables become sections/:class:`TableData` instead of opaque text.
+    """
+
+    _SKIP = {"script", "style", "noscript"}
+    _HEADINGS = {f"h{i}" for i in range(1, 7)}
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.title = ""
+        self.sections: list[Section] = []
+        self.tables: list[TableData] = []
+        self._buffer: list[str] = []
+        self._cur_title = ""
+        self._cur_level = 0
+        self._stack: list[tuple[int, str]] = []
+        self._skip_depth = 0
+        self._in_title = False
+        # table state
+        self._in_table = 0
+        self._cur_table_rows: list[list[str]] = []
+        self._cur_row: list[str] | None = None
+        self._cell: list[str] | None = None
+
+    def _flush_section(self) -> None:
+        text = " ".join(" ".join(self._buffer).split()).strip()
+        if self._cur_title or text:
+            path = [t for _, t in self._stack]
+            if self._cur_title and (not path or path[-1] != self._cur_title):
+                path = path + [self._cur_title]
+            self.sections.append(
+                Section(title=self._cur_title, level=self._cur_level, path=path, text=text, start_line=0)
+            )
+        self._buffer = []
+
+    def handle_starttag(self, tag: str, attrs: Any) -> None:
+        if tag in self._SKIP:
+            self._skip_depth += 1
+            return
+        if self._skip_depth:
+            return
+        if tag == "title":
+            self._in_title = True
+        elif tag in self._HEADINGS:
+            self._flush_section()
+            self._cur_level = int(tag[1])
+            self._cur_title = ""
+            while self._stack and self._stack[-1][0] >= self._cur_level:
+                self._stack.pop()
+        elif tag == "table":
+            self._in_table += 1
+            self._cur_table_rows = []
+        elif tag == "tr" and self._in_table:
+            self._cur_row = []
+        elif tag in ("td", "th") and self._in_table:
+            self._cell = []
+        elif tag in ("br", "p", "div", "li"):
+            self._buffer.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in self._SKIP:
+            self._skip_depth = max(0, self._skip_depth - 1)
+            return
+        if self._skip_depth:
+            return
+        if tag == "title":
+            self._in_title = False
+        elif tag in self._HEADINGS:
+            self._cur_title = " ".join(self._cur_title.split()).strip()
+            if self._cur_title:
+                self._stack.append((self._cur_level, self._cur_title))
+        elif tag == "table" and self._in_table:
+            self._in_table -= 1
+            rows = [r for r in self._cur_table_rows if any(c.strip() for c in r)]
+            if rows:
+                table = TableData(id=f"T{len(self.tables) + 1}", columns=rows[0], rows=rows[1:])
+                table.inferred_schema = infer_table_schema(table)
+                table.quality = table_quality_checks(table)
+                self.tables.append(table)
+        elif tag == "tr" and self._in_table and self._cur_row is not None:
+            self._cur_table_rows.append(self._cur_row)
+            self._cur_row = None
+        elif tag in ("td", "th") and self._in_table and self._cell is not None:
+            if self._cur_row is not None:
+                self._cur_row.append(" ".join("".join(self._cell).split()).strip())
+            self._cell = None
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth:
+            return
+        if self._in_title:
+            self.title += data
+        elif self._cell is not None:
+            self._cell.append(data)
+        elif self._in_table:
+            return  # text between cells is layout noise
+        else:
+            if self._cur_level and not self._cur_title.strip():
+                # data right after a heading start belongs to the heading until
+                # its end tag; collect both heading text and body.
+                self._cur_title += data
+            self._buffer.append(data)
+
+    def close(self) -> None:  # type: ignore[override]
+        super().close()
+        self._flush_section()
+
+
+def parse_html(html: str) -> tuple[str, str, list[Section], list[TableData]]:
+    """Parse HTML into ``(title, text, sections, tables)`` — a real structural
+    path, dependency-free. ``text`` is the reading-order plain text."""
+    parser = _HTMLStructureParser()
+    parser.feed(html)
+    parser.close()
+    title = " ".join(parser.title.split()).strip()
+    text = strip_html(html)
+    return title, text, parser.sections, parser.tables
+
+
+def _flatten_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return "" if value is None else str(value)
+
+
+def structure_data(obj: Any, *, title: str = "") -> tuple[str, list[Section], list[TableData]]:
+    """Structure parsed JSON/JSONL/YAML into sections and tables.
+
+    A list of flat objects becomes a :class:`TableData`; a mapping becomes one
+    section per top-level key (scalars inline, nested values pretty-printed);
+    anything else falls back to a single text section. Returns
+    ``(text, sections, tables)``.
+    """
+    import json
+
+    sections: list[Section] = []
+    tables: list[TableData] = []
+
+    if isinstance(obj, list) and obj and all(isinstance(row, dict) for row in obj):
+        columns = list(dict.fromkeys(k for row in obj for k in row))
+        rows = [[_flatten_scalar(row.get(col)) for col in columns] for row in obj]
+        table = TableData(id="T1", title=title, columns=columns, rows=rows)
+        table.inferred_schema = infer_table_schema(table)
+        table.quality = table_quality_checks(table)
+        tables.append(table)
+        return table.to_text(), sections, tables
+
+    if isinstance(obj, dict):
+        text_parts: list[str] = []
+        for key, value in obj.items():
+            if isinstance(value, list) and value and all(isinstance(r, dict) for r in value):
+                cols = list(dict.fromkeys(k for r in value for k in r))
+                rows = [[_flatten_scalar(r.get(c)) for c in cols] for r in value]
+                table = TableData(id=f"T{len(tables) + 1}", title=str(key), columns=cols, rows=rows)
+                table.inferred_schema = infer_table_schema(table)
+                table.quality = table_quality_checks(table)
+                tables.append(table)
+                body = table.to_text()
+            elif isinstance(value, (dict, list)):
+                body = json.dumps(value, indent=2, ensure_ascii=False, default=str)
+            else:
+                body = _flatten_scalar(value)
+            sections.append(Section(title=str(key), level=1, path=[str(key)], text=body, start_line=0))
+            text_parts.append(f"{key}: {body}")
+        return "\n\n".join(text_parts), sections, tables
+
+    body = json.dumps(obj, indent=2, ensure_ascii=False, default=str)
+    return body, sections, tables
 
 
 # -- code ------------------------------------------------------------------

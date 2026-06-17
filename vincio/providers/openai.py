@@ -12,7 +12,7 @@ from collections.abc import AsyncIterator
 from typing import Any, cast
 
 from ..core.errors import ProviderResponseError
-from ..core.media import image_to_data_url
+from ..core.media import audio_format_label, encode_audio_bytes, image_to_data_url
 from ..core.types import (
     FinishReason,
     Message,
@@ -62,6 +62,19 @@ class OpenAIProvider(HTTPProvider):
                             {
                                 "type": "image_url",
                                 "image_url": {"url": url, "detail": part.image.detail},
+                            }
+                        )
+                    elif part.type == "audio" and part.audio is not None:
+                        # Chat audio input (gpt-4o-audio family): base64 the local
+                        # clip into an input_audio part with its short format label.
+                        _, encoded = encode_audio_bytes(part.audio)
+                        parts.append(
+                            {
+                                "type": "input_audio",
+                                "input_audio": {
+                                    "data": encoded,
+                                    "format": audio_format_label(part.audio.media_type),
+                                },
                             }
                         )
                 item["content"] = parts

@@ -7,6 +7,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.9.x   | ✅        |
 | 1.8.x   | ✅        |
 | 1.7.x   | ✅        |
 | 1.6.x   | ✅        |
@@ -16,7 +17,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 | 1.2.x   | ✅        |
 | 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
-| < 1.0   | ❌ (upgrade to 1.8.x) |
+| < 1.0   | ❌ (upgrade to 1.9.x) |
 
 ## Threat model
 
@@ -92,6 +93,33 @@ unmeasured control is `partial`), so the auditor matrix reflects defense actuall
 exercised, not a config flag. The enforced `Budget` makes runaway cost/token/step
 use a hard cap (`BudgetExceededError`) recorded on the same audit chain, and an
 unknown model warns instead of silently billing $0.
+
+The 1.9 documents-and-media-out features keep generated artifacts inside the same
+boundary as everything else — they add no external services. **Generated media is
+provenance-stamped and metered:** every image and audio asset produced through
+`ImageProvider` / `SpeechProvider` auto-attaches a media-aware C2PA manifest bound
+to the asset's bytes by SHA-256 (so a tampered asset fails `verify_manifest`),
+embeds the credential in the file metadata where the container supports it
+(PNG, dependency-free) or as a `*.c2pa.json` sidecar otherwise, marks edits with
+`compositeWithTrainedAlgorithmicMedia`, and is metered against the run `Budget`
+(`meter_media_cost` raises `BudgetExceededError` before an over-budget generation
+commits) and recorded as an `image_generate` / `speech_synthesize` audit event.
+The invisible-watermark hook is a point you supply (Vincio ships the hook, not a
+watermarking model), and signing remains your key/PKI. **Document generation is
+grounded by construction:** the `DocumentBuilder` consumes an already-validated
+result and a `DocumentContract`, repairing formatting only — it never invents
+content, and a structurally-deficient deliverable fails loudly
+(`DocumentContractError`) rather than being silently padded; the cited-report
+path verifies per-claim entailment, not just marker presence. **Richer inputs stay
+untrusted:** OCR'd pages, transcripts, figure crops, and extracted form fields
+enter as untrusted, injection-scanned evidence on the same provenance pipeline as
+any loaded file (with `extractor='ocr'`/`'transcript'` recorded for honesty), and
+optional input/forms backends (cloud Document-AI, transcription) are lazy and
+opt-in. The EU AI Act conformity pack (`app.risk_tier` / `annex_iv` / `fria`) and
+the ISO/IEC 42001 controls are views over the live config, cards, compliance
+matrix, and eval/red-team evidence, recorded as `conformity_doc` audit events —
+the risk-tier classification is **advisory**, with the final determination the
+operator's.
 
 ## Supply-chain integrity
 

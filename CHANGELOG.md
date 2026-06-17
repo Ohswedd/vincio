@@ -4,6 +4,101 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0] - 2026-06-17
+
+Documents & images flow OUT — cited, governed, eval-gated artifacts. Vincio could
+read a DOCX, a PDF, and a scanned packet and validate a JSON answer, but stopped
+one step short of the deliverable. 1.9 closes the documents-/images-out loop: a
+document-generation engine, cited-report assembly, image-generation/editing and
+TTS as first-class output modalities, OCR/transcript/figure inputs, new-format
+loaders, and an EU AI Act conformity pack — every produced asset cited,
+provenance-stamped, budget-metered, and audited on the same chain as text.
+Entirely additive behind a new `vincio.generation` subpackage, new `vincio[...]`
+extras, and `@experimental` markers on the frozen 1.0 API; no public symbol
+removed or repurposed.
+
+### Added
+
+- **`vincio.generation` document engine.** `DocumentBuilder` turns a *validated*
+  result (an `OutputContract` output, a `RunResult`, a structured mapping, or
+  Markdown) into rendered artifacts — Markdown/HTML dependency-free, DOCX
+  (`vincio[gen-docx]`), PDF (`vincio[gen-pdf]`), PPTX (`vincio[gen-pptx]`) — via a
+  format-neutral `DocumentModel` IR. Because the input already passed validation,
+  the document is grounded by construction. Structural `DocumentContract`
+  (required sections, `TableSpec` column specs, length bounds, citation-per-
+  section) validates the result with **formatting-only repair** (`repair_formatting`)
+  mirroring the JSON-repair path; every render records a `document_generate` audit
+  event with the source evidence ids. Adds template/form filling
+  (`fill_text_template` / `fill_docx_form` / `fill_pdf_form`, typed citation-aware
+  `Slot`s) and `generate_redline` (tracked-change DOCX, `**ins**`/`~~del~~` text).
+- **`CitedReportBuilder`.** Resolves inline `[E1]`-style markers to numbered
+  footnotes/endnotes and a generated bibliography with per-claim provenance,
+  computes sentence-level **citation coverage**, and optionally verifies
+  **per-claim entailment** (pluggable backend; strict lexical+numeric default).
+  A `CitationContract` enforces a coverage floor, rejects unresolved markers, and
+  gates on entailment — replacing the flat "one valid citation anywhere" check.
+  New `citation_coverage` and `claim_entailment` eval metrics.
+- **Image generation/editing provider abstraction.** `ImageProvider` with
+  `generate_image` / `edit_image` / `variation`, a neutral `ImageGenRequest` /
+  `ImageGenResponse`, backends for OpenAI `gpt-image-1`, Gemini/Imagen, and a
+  generic HTTP/Replicate adapter, plus a `MockImageProvider` that emits real PNGs
+  offline. Every asset auto-attaches a media-aware C2PA manifest bound to its
+  bytes, is metered against the budget, and is audited (`image_generate`).
+- **TTS / speech-synthesis output modality.** `SpeechProvider` with
+  `synthesize_speech`, a neutral `SpeechRequest` (voice/format/speed), backends
+  for OpenAI TTS, Gemini TTS, and ElevenLabs/Cartesia, plus a `MockSpeechProvider`
+  that emits real WAVs. Audio provenance + budget metering + audit
+  (`speech_synthesize`), unified with the realtime audio path.
+- **Audio as chat input.** `ContentPart.audio` is now rendered by the OpenAI
+  (`input_audio`) and Gemini (`inlineData`) chat providers via a shared
+  `core.media.encode_audio_bytes`, activating the already-typed `AudioRef` outside
+  the realtime WebSocket path.
+- **Media-aware synthetic-content marking.** `mark_synthetic_content` accepts
+  `str` *or* `bytes` (binds by SHA-256), marks edits with
+  `compositeWithTrainedAlgorithmicMedia`, and records the asset's media type.
+  New `embed_provenance` (PNG metadata, dependency-free, with an invisible-
+  watermark hook) and `write_sidecar_manifest` (a `*.c2pa.json` for any format).
+- **Richer document inputs.** OCR auto-fallback in `load_pdf` (low-text pages
+  rasterized + OCR'd, `extractor='ocr'` per page, `vincio[ocr]`); `load_media` for
+  audio transcript ingestion via a `Transcriber` protocol
+  (`MockTranscriber` / `WhisperTranscriber` / `ProviderAudioTranscriber`);
+  `figure_evidence` turning PDF figure crops into citable evidence with bounding
+  boxes; a real-parser HTML path (`parse_html`, table extraction) and structured
+  JSON/JSONL/YAML (`structure_data`).
+- **New format loaders + parser registry.** Dependency-free PPTX/EPUB/RTF/ODT,
+  plus Parquet (`vincio[parquet]`), mbox, and `.msg` (`vincio[msg]`), behind a
+  unified `ParserRegistry` (`register_loader`) that replaces the if/elif suffix
+  chain. Forms/KYC extraction via a `DocumentAI` protocol (Textract / Azure /
+  Google adapters) and an offline `HeuristicFormExtractor`, returning `FormField`s
+  with confidence (+ bbox) convertible to evidence (`form_fields_to_evidence`).
+- **EU AI Act conformity pack.** `RiskTierClassifier` (advisory risk-tier
+  placement), `AnnexIVBuilder` (cited Annex IV technical documentation), and
+  `FRIAGenerator` (Article 27 fundamental-rights impact assessment) — all
+  generated from the live config, cards, compliance matrix, and eval/red-team
+  evidence through the document engine, recorded as `conformity_doc` audit
+  events (`app.risk_tier` / `app.annex_iv` / `app.fria`). An ISO/IEC 42001
+  control catalog joins the `ComplianceMapper` family.
+- **App methods** (all `@experimental`, since 1.9): `build_document`,
+  `cited_report` / `acited_report`, `generate_image` / `agenerate_image`,
+  `synthesize_speech` / `asynthesize_speech`, `load_media`, `risk_tier`,
+  `annex_iv`, `fria`.
+- **VincioBench `generation` family** + three SLOs and CI budgets covering
+  document-contract validity, cited-report coverage + entailment, media-provenance
+  binding/disclosure, redline correctness, new-format ingestion recall, and
+  generated-media prompt safety. New `examples/33_documents_and_media_out.py`.
+
+### Changed
+
+- `ComplianceFramework` gains `ISO_42001` and `EU_AI_ACT`; `CONTROL_CATALOG` adds
+  ISO/IEC 42001 controls (so the compliance matrix now spans five mapped
+  frameworks). `ModelCapabilities.output_modalities` is the idiomatic generation-
+  capability flag.
+
+### Notes
+
+- 1189 tests passing offline in ~5s; ruff + mypy clean. VincioBench: 17 families,
+  172 CI budgets, 51 SLOs. No deferred follow-ups.
+
 ## [1.8.1] - 2026-06-17
 
 Closes the two deliberately-scoped follow-ups documented at 1.8.0, so the

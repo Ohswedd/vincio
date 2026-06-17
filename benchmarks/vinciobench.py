@@ -2112,6 +2112,131 @@ async def bench_governance() -> dict[str, Any]:
     }
 
 
+async def bench_generation() -> dict[str, Any]:
+    """GenerationBench (1.9): documents & images flow OUT — document-contract
+    validity, cited-report coverage + per-claim entailment, media C2PA
+    provenance binding, redline correctness, new-format ingestion recall, and
+    generated-media prompt safety — all offline against mocks."""
+    from vincio.core.types import EvidenceItem, TrustLevel
+    from vincio.evals.datasets import EvalCase
+    from vincio.evals.metrics import METRICS, RunOutput
+    from vincio.generation import (
+        CitationContract,
+        CitedReportBuilder,
+        DocumentBuilder,
+        DocumentContract,
+        ImageGenRequest,
+        MockImageProvider,
+        MockSpeechProvider,
+        SpeechRequest,
+        TableSpec,
+        generate_redline,
+    )
+    from vincio.governance import verify_manifest
+
+    sample = (
+        "# Board Memo\n\n## Summary\n\nRevenue grew 30% [E1]. Costs fell [E2].\n\n"
+        "## Outlook\n\nGuidance is unchanged for the year ahead [E1].\n\n"
+        "| Metric | Q1 | Q2 |\n| --- | --- | --- |\n| Revenue | 10 | 13 |\n"
+    )
+    builder = DocumentBuilder()
+
+    # -- document-contract validity: valid passes, deficient is rejected --
+    contract = DocumentContract(
+        required_sections=["Summary", "Outlook"],
+        table_specs=[TableSpec(required_columns=["Metric", "Q1"], min_rows=1)],
+        min_words=10,
+    )
+    contract_pass = builder.build(sample, format="markdown", contract=contract).format == "markdown"
+    try:
+        builder.build("# T\n\nshort", format="markdown",
+                      contract=DocumentContract(required_sections=["Nope"]))
+        invalid_rejected = False
+    except Exception:  # noqa: BLE001 - DocumentContractError expected
+        invalid_rejected = True
+    formats_rendered = sum(
+        1 for fmt in ("markdown", "html") if builder.build(sample, format=fmt).content
+    )
+
+    # -- cited-report coverage + entailment --
+    evidence = [
+        EvidenceItem(id="E1", source_id="D1", page=4, trust_level=TrustLevel.UNTRUSTED_DOCUMENT,
+                     text="Revenue grew 30% and guidance is unchanged."),
+        EvidenceItem(id="E2", source_id="D2", trust_level=TrustLevel.USER,
+                     text="Operating costs fell."),
+    ]
+    report = await CitedReportBuilder().build_report(
+        "Revenue grew 30% [E1]. Costs fell [E2].", evidence,
+        contract=CitationContract(require_entailment=True, min_coverage=1.0, min_entailment_rate=0.5),
+    )
+    unresolved_detected = bool(
+        (await CitedReportBuilder().build_report("Claim [E9].", evidence)).unresolved_markers
+    )
+
+    # -- media provenance binding (image + audio), tamper fails closed --
+    image = (await MockImageProvider().generate_image(ImageGenRequest(prompt="a chart"))).images[0]
+    audio = (await MockSpeechProvider().synthesize_speech(SpeechRequest(text="hello world"))).audio
+    image_ok = verify_manifest(image.manifest, image.data)
+    audio_ok = verify_manifest(audio.manifest, audio.data)
+    tamper_rejected = not verify_manifest(image.manifest, image.data + b"x")
+    disclosure_present = bool(
+        image.manifest.is_synthetic and "AlgorithmicMedia" in image.manifest.digital_source_type
+    )
+
+    # -- redline correctness --
+    redline = generate_redline("The cat sat.", "The dog sat down.", format="markdown").text
+    redline_ok = "~~" in redline and "**" in redline
+
+    # -- new-format ingestion recall (dependency-free zips) --
+    import io as _io
+    import zipfile as _zip
+
+    pptx_buf = _io.BytesIO()
+    with _zip.ZipFile(pptx_buf, "w") as z:
+        z.writestr("ppt/slides/slide1.xml", "<p><a:t>Alpha</a:t></p>")
+        z.writestr("ppt/slides/slide2.xml", "<p><a:t>Beta</a:t></p>")
+    import tempfile
+
+    from vincio.documents.formats import load_pptx
+
+    with tempfile.NamedTemporaryFile(suffix=".pptx", delete=False) as fh:
+        fh.write(pptx_buf.getvalue())
+        pptx_path = fh.name
+    pptx_doc = load_pptx(pptx_path)
+    pptx_recall = round(
+        sum(1 for word in ("Alpha", "Beta") if word in pptx_doc.text) / 2, 4
+    )
+
+    # -- generated-media prompt safety (toxicity screen on the prompt) --
+    tox = METRICS["toxicity"](
+        EvalCase(id="g", input="x"),
+        RunOutput(raw_text="generate an image of an idiot, you are pathetic and worthless"),
+    )
+    malicious_flagged = tox.value > 0.0
+
+    return {
+        "document": {
+            "contract_pass": contract_pass,
+            "invalid_rejected": invalid_rejected,
+            "formats_rendered": formats_rendered,
+        },
+        "citation": {
+            "coverage": report.coverage.coverage,
+            "entailment_rate": report.coverage.entailment_rate or 0.0,
+            "unresolved_detected": unresolved_detected,
+        },
+        "media": {
+            "image_provenance_verifies": image_ok,
+            "audio_provenance_verifies": audio_ok,
+            "tamper_rejected": tamper_rejected,
+            "disclosure_present": disclosure_present,
+        },
+        "redline": {"detects_changes": redline_ok},
+        "ingest": {"pptx_recall": pptx_recall},
+        "safety": {"malicious_prompt_flagged": malicious_flagged},
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -2128,6 +2253,7 @@ FAMILIES = {
     "protocols": bench_protocols,
     "scale": bench_scale,
     "governance": bench_governance,
+    "generation": bench_generation,
     "perf": bench_perf,
 }
 

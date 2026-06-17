@@ -1,5 +1,22 @@
-"""Vincio document engine: loaders, parsers, OCR, layout, multimodal."""
+"""Vincio document engine: loaders, parsers, OCR, layout, multimodal, forms, audio."""
 
+from .audio import (
+    MockTranscriber,
+    ProviderAudioTranscriber,
+    Transcriber,
+    Transcript,
+    TranscriptSegment,
+    WhisperTranscriber,
+)
+from .forms import (
+    AzureDocumentAI,
+    DocumentAI,
+    FormField,
+    GoogleDocumentAI,
+    HeuristicFormExtractor,
+    TextractDocumentAI,
+    form_fields_to_evidence,
+)
 from .layout import (
     LayoutBlock,
     LayoutFigure,
@@ -12,11 +29,15 @@ from .layout import (
 )
 from .loaders import (
     SUPPORTED_EXTENSIONS,
+    figure_evidence,
     load_directory,
     load_document,
     load_docx,
+    load_media,
     load_pdf,
     load_xlsx,
+    register_loader,
+    supported_extensions,
 )
 from .multimodal import ImageAnalyzer, ImageObservation, image_evidence_items
 from .ocr import OCREngine, TesseractOCR, VisionModelOCR
@@ -29,17 +50,26 @@ from .parsers import (
     extract_markdown_tables,
     infer_table_schema,
     parse_csv_table,
+    parse_html,
     strip_html,
+    structure_data,
     table_quality_checks,
 )
+from .registry import ParserRegistry, default_parser_registry
 
 __all__ = [
     "SUPPORTED_EXTENSIONS",
     "load_directory",
     "load_document",
     "load_docx",
+    "load_media",
     "load_pdf",
     "load_xlsx",
+    "figure_evidence",
+    "register_loader",
+    "supported_extensions",
+    "ParserRegistry",
+    "default_parser_registry",
     "ImageAnalyzer",
     "ImageObservation",
     "image_evidence_items",
@@ -54,6 +84,22 @@ __all__ = [
     "OCREngine",
     "TesseractOCR",
     "VisionModelOCR",
+    # audio
+    "Transcriber",
+    "Transcript",
+    "TranscriptSegment",
+    "MockTranscriber",
+    "WhisperTranscriber",
+    "ProviderAudioTranscriber",
+    # forms
+    "DocumentAI",
+    "FormField",
+    "HeuristicFormExtractor",
+    "TextractDocumentAI",
+    "AzureDocumentAI",
+    "GoogleDocumentAI",
+    "form_fields_to_evidence",
+    # parsers
     "CodeSymbol",
     "Section",
     "TableData",
@@ -62,6 +108,8 @@ __all__ = [
     "extract_markdown_tables",
     "infer_table_schema",
     "parse_csv_table",
+    "parse_html",
+    "structure_data",
     "strip_html",
     "table_quality_checks",
 ]

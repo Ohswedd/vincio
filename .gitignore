@@ -22,3 +22,12 @@ PRD.md
 
 # Live API test harnesses — hit real providers, cost quota, may hold keys
 tests/live/
+
+# Artifacts the runnable examples write to the working directory
+examples/artifacts/
+examples/*.pptx
+examples/*.docx
+examples/*.pdf
+examples/*.wav
+examples/*.png
+examples/*.c2pa.json

@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.7.0 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v1.9.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -403,6 +403,49 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `LifecycleWatcher`. Edge: routes by capability *and* cost inside your audit
   boundary, refuses mismatched substitutions, gates every swap on replayed golden
   traces with significance, and auto-rolls-back a canary — in-process, not a proxy.
+- Documents & images flow OUT (1.9, experimental, `vincio.generation`): documents
+  and media come out under the same guarantees as text in. DocumentBuilder —
+  `app.build_document(source, *, format="markdown|html|docx|pdf|pptx",
+  contract=DocumentContract(required_sections=, table_specs=[TableSpec(...)],
+  min_words=, citations_per_section=))` turns a *validated* result (RunResult /
+  mapping / Markdown) into a rendered, structurally-validated, provenance-audited
+  `DocumentArtifact` (`document_generate` event); Markdown/HTML are dependency-free,
+  DOCX/PDF/PPTX need `vincio[gen-docx|gen-pdf|gen-pptx]`. Repair is formatting-only.
+  Plus `fill_text_template`/`fill_docx_form`/`fill_pdf_form` (typed citation-aware
+  `Slot`s) and `generate_redline`. Cited reports — `app.cited_report(answer,
+  evidence, *, format=, contract=CitationContract(min_coverage=, require_entailment=,
+  min_entailment_rate=))` (async `acited_report`) resolves `[E1]` markers to numbered
+  footnotes + a bibliography, computes sentence-level coverage and per-claim
+  entailment (pluggable backend); unresolved markers surface. Image/TTS —
+  `app.generate_image(prompt, *, provider=ImageProvider, model=)` (async
+  `agenerate_image`) and `app.synthesize_speech(text, *, provider=SpeechProvider,
+  voice=, format=)` (async); providers `MockImageProvider`/`OpenAIImageProvider`/
+  `GoogleImageProvider`/`HTTPImageProvider` and `MockSpeechProvider`/
+  `OpenAISpeechProvider`/`GoogleSpeechProvider`/`ElevenLabsSpeechProvider`; every
+  asset C2PA-stamped (bound by SHA-256), budget-metered (`meter_media_cost`), audited
+  (`image_generate`/`speech_synthesize`). Media-aware `mark_synthetic_content(bytes,
+  media_type=, edited=)` + `embed_provenance` (PNG) + `write_sidecar_manifest`.
+  Audio chat input — `ContentPart.audio` now renders to OpenAI `input_audio` /
+  Gemini `inlineData` via `core.media.encode_audio_bytes`. Richer inputs —
+  `load_pdf(path, ocr_engine=)` OCR fallback (`vincio[ocr]`, `extractor='ocr'`),
+  `load_media(path, transcriber=MockTranscriber()|WhisperTranscriber())` →
+  timestamped transcript Document, `figure_evidence(doc, crops=, analyzer=|ocr_engine=)`,
+  `parse_html`/`structure_data`; new loaders PPTX/EPUB/RTF/ODT (dep-free), Parquet
+  (`vincio[parquet]`), mbox, `.msg` (`vincio[msg]`) via a `ParserRegistry`
+  (`register_loader`). Forms/KYC — `HeuristicFormExtractor().extract(text)` →
+  `FormField`s (+bbox/confidence), `form_fields_to_evidence`; `DocumentAI` adapters
+  (Textract/Azure/Google). EU AI Act conformity pack — `app.risk_tier(purpose=,
+  domains=)` → `RiskAssessment` (advisory tier), `app.annex_iv(...)` (Annex IV tech
+  docs) and `app.fria(..., affected_groups=)` (Art. 27 FRIA) rendered through the
+  document engine, grounded by the live config/cards/compliance matrix, recorded as
+  `conformity_doc`; ISO/IEC 42001 controls join `ComplianceMapper`. New
+  `vincio.__all__`: `DocumentBuilder`, `DocumentContract`, `DocumentArtifact`,
+  `CitedReportBuilder`, `CitationContract`, `generate_redline`, `ImageProvider`,
+  `ImageGenRequest`, `MockImageProvider`, `SpeechProvider`, `SpeechRequest`,
+  `MockSpeechProvider`, `RiskTierClassifier`, `AnnexIVBuilder`, `FRIAGenerator`.
+  Edge: a generated image is C2PA-stamped and a cited report is per-claim *entailed*,
+  not just `[E1]`-marked — documents/media out under text's exact guarantees, on one
+  audit chain, in-process.
 - CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
   config schema/validate/show, packs list/show, tui,
   eval run/report/dataset (`--group-by-session`)/drift/annotate/regress

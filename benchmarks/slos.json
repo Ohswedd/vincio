@@ -481,6 +481,36 @@
       "threshold": true,
       "enforced_by": "families.scale.canary_rollback.rolled_back_under_load",
       "rationale": "Live qualification must be observe-and-revert: a regressing candidate is pulled automatically, not after an incident."
+    },
+    {
+      "id": "generation_document_contract_enforced",
+      "category": "quality",
+      "statement": "A generated document that fails its structural contract is rejected, never silently padded.",
+      "metric": "families.generation.document.invalid_rejected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.generation.document.invalid_rejected",
+      "rationale": "Document generation consumes a validated result and repairs formatting only; a structurally-deficient deliverable fails loudly."
+    },
+    {
+      "id": "generation_citation_coverage",
+      "category": "quality",
+      "statement": "A cited report covers every verifiable claim with a resolvable citation.",
+      "metric": "families.generation.citation.coverage",
+      "direction": "gte",
+      "threshold": 1.0,
+      "enforced_by": "families.generation.citation.coverage",
+      "rationale": "Citations resolve to footnotes/bibliography and unresolved markers are surfaced — every claim is cited, not 'one citation anywhere'."
+    },
+    {
+      "id": "generation_media_provenance_bound",
+      "category": "security",
+      "statement": "Every generated image and audio asset carries a C2PA manifest bound to its bytes; tampering fails verification.",
+      "metric": "families.generation.media.image_provenance_verifies",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.generation.media.image_provenance_verifies",
+      "rationale": "Generated media is as auditable as text: provenance is embedded and verifiable, so an altered asset is detectable."
     }
   ]
 }

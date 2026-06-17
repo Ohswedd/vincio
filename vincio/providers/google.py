@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from ..core.errors import ProviderResponseError
-from ..core.media import encode_image_bytes
+from ..core.media import encode_audio_bytes, encode_image_bytes
 from ..core.types import (
     ModelCapabilities,
     ModelEvent,
@@ -95,6 +95,24 @@ class GoogleProvider(HTTPProvider):
                                     "fileData": {
                                         "mimeType": part.image.media_type or "image/png",
                                         "fileUri": part.image.url,
+                                    }
+                                }
+                            )
+                    elif part.type == "audio" and part.audio is not None:
+                        # Gemini accepts audio as inlineData (same envelope as an
+                        # image), so a local clip becomes a multimodal input part.
+                        if part.audio.path:
+                            media_type, data = encode_audio_bytes(part.audio)
+                            parts.append({"inlineData": {"mimeType": media_type, "data": data}})
+                        elif part.audio.url and (
+                            part.audio.url.startswith("gs://")
+                            or "generativelanguage.googleapis.com" in part.audio.url
+                        ):
+                            parts.append(
+                                {
+                                    "fileData": {
+                                        "mimeType": part.audio.media_type or "audio/wav",
+                                        "fileUri": part.audio.url,
                                     }
                                 }
                             )

@@ -33,6 +33,13 @@ from .cards import (
     generate_model_card,
     generate_system_card,
 )
+from .eu_ai_act import (
+    AnnexIVBuilder,
+    FRIAGenerator,
+    RiskAssessment,
+    RiskTier,
+    RiskTierClassifier,
+)
 from .fertility import FertilityTracker, LanguageFertility
 from .frameworks import (
     CONTROL_CATALOG,
@@ -51,8 +58,10 @@ from .transparency import (
     ProvenanceManifest,
     ai_disclosure,
     data_summary,
+    embed_provenance,
     mark_synthetic_content,
     verify_manifest,
+    write_sidecar_manifest,
 )
 
 __all__ = [
@@ -70,6 +79,12 @@ __all__ = [
     "ComplianceMapper",
     "map_compliance",
     "CONTROL_CATALOG",
+    # EU AI Act conformity pack (1.9)
+    "RiskTier",
+    "RiskAssessment",
+    "RiskTierClassifier",
+    "AnnexIVBuilder",
+    "FRIAGenerator",
     # aibom
     "AIComponent",
     "AIBOM",
@@ -82,6 +97,8 @@ __all__ = [
     "HmacSigner",
     "mark_synthetic_content",
     "verify_manifest",
+    "embed_provenance",
+    "write_sidecar_manifest",
     "ai_disclosure",
     "data_summary",
     # lineage

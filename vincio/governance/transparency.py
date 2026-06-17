@@ -6,8 +6,13 @@ effect 2 Aug 2026. Vincio supplies the *artifacts and hooks*, configurable and
 date-agnostic — it does not hard-code a deadline or become a compliance service.
 
 * :func:`mark_synthetic_content` emits a C2PA-style **provenance manifest** that
-  binds to the output by SHA-256 (the IPTC ``trainedAlgorithmicMedia`` digital
-  source type), suitable for attaching as content credentials / metadata.
+  binds to the output by SHA-256 — text *or* raw media bytes (1.9), with the
+  IPTC ``trainedAlgorithmicMedia`` / ``compositeWithTrainedAlgorithmicMedia``
+  digital source type — suitable for attaching as content credentials.
+* :func:`embed_provenance` writes the manifest into a generated asset's file
+  metadata (PNG text chunk, dependency-free) and runs an optional invisible-
+  watermark hook; :func:`write_sidecar_manifest` attaches it as a ``*.c2pa.json``
+  sidecar for formats that can't carry embedded credentials.
 * :func:`ai_disclosure` returns a plain-language **interaction disclosure**.
 * :func:`data_summary` summarizes the **grounding data** a run used (or any
   evidence/sources) for the training/grounding-data-summary duty.
@@ -21,12 +26,17 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import struct
+import zlib
 from collections import Counter
+from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
 
+from ..core.media import media_sha256
 from ..core.utils import utcnow
 from ..security.secrets import SecretString
 
@@ -39,12 +49,18 @@ __all__ = [
     "HmacSigner",
     "mark_synthetic_content",
     "verify_manifest",
+    "embed_provenance",
+    "write_sidecar_manifest",
     "ai_disclosure",
     "data_summary",
 ]
 
-# IPTC digital-source-type term for AI-generated content (C2PA standard value).
+# IPTC digital-source-type terms (C2PA standard values).
 _TRAINED_ALGORITHMIC_MEDIA = "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia"
+# Edited/composited content with an AI-generated component (edit_image, redline).
+_COMPOSITE_TRAINED_MEDIA = (
+    "http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia"
+)
 
 _DISCLOSURES = {
     "en": "You are interacting with an AI system. Responses are AI-generated and may be inaccurate; verify important information.",
@@ -62,6 +78,9 @@ class ProvenanceManifest(BaseModel):
     digital_source_type: str = _TRAINED_ALGORITHMIC_MEDIA
     model_id: str | None = None
     provider: str | None = None
+    # IANA media type of the bound asset (``text/plain`` for a text answer,
+    # ``image/png`` / ``audio/mpeg`` for generated media); part of the binding.
+    media_type: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     content_sha256: str | None = None
     assertions: list[dict[str, Any]] = Field(default_factory=list)
@@ -79,6 +98,7 @@ class ProvenanceManifest(BaseModel):
                 "digital_source_type": self.digital_source_type,
                 "model_id": self.model_id,
                 "provider": self.provider,
+                "media_type": self.media_type,
                 "created_at": self.created_at.isoformat(),
                 "content_sha256": self.content_sha256,
             },
@@ -109,6 +129,7 @@ class ProvenanceManifest(BaseModel):
                         "is_synthetic": self.is_synthetic,
                         "model_id": self.model_id,
                         "provider": self.provider,
+                        "media_type": self.media_type,
                         "created_at": self.created_at.isoformat(),
                     },
                 },
@@ -157,28 +178,40 @@ class HmacSigner:
 
 
 def mark_synthetic_content(
-    content: str,
+    content: str | bytes,
     *,
     model_id: str | None = None,
     provider: str | None = None,
+    media_type: str | None = None,
+    edited: bool = False,
+    digital_source_type: str | None = None,
     extra_assertions: list[dict[str, Any]] | None = None,
     signer: ContentSigner | None = None,
 ) -> ProvenanceManifest:
     """Build a provenance manifest marking ``content`` as AI-generated.
 
-    The manifest is bound to the exact output by SHA-256, so a downstream
-    consumer can confirm the credential matches the content it received. Pass a
-    ``signer`` (e.g. :class:`HmacSigner`, or your own :class:`ContentSigner`) to
-    attach a cryptographic signature over the binding payload — verify it later
-    with :func:`verify_manifest`.
+    ``content`` may be a text answer *or* raw media bytes (a generated image or
+    audio clip, 1.9): the manifest is bound by SHA-256 over whichever was given,
+    so a downstream consumer can confirm the credential matches the bytes it
+    received. ``media_type`` records the asset's IANA type (defaults to
+    ``text/plain`` for ``str``); ``edited=True`` marks an edit/composite with the
+    ``compositeWithTrainedAlgorithmicMedia`` source type, and ``digital_source_type``
+    overrides it outright. Pass a ``signer`` to attach a cryptographic signature
+    over the binding payload — verify it later with :func:`verify_manifest`.
     """
     import vincio
 
+    resolved_type = media_type or ("text/plain" if isinstance(content, str) else None)
+    source_type = digital_source_type or (
+        _COMPOSITE_TRAINED_MEDIA if edited else _TRAINED_ALGORITHMIC_MEDIA
+    )
     manifest = ProvenanceManifest(
         claim_generator=f"vincio/{vincio.__version__}",
+        digital_source_type=source_type,
         model_id=model_id,
         provider=provider,
-        content_sha256=hashlib.sha256(content.encode("utf-8")).hexdigest(),
+        media_type=resolved_type,
+        content_sha256=media_sha256(content),
         assertions=list(extra_assertions or []),
     )
     if signer is not None:
@@ -192,24 +225,110 @@ def mark_synthetic_content(
 
 def verify_manifest(
     manifest: ProvenanceManifest,
-    content: str,
+    content: str | bytes,
     *,
     signer: ContentSigner | None = None,
 ) -> bool:
-    """Verify a manifest against the content it claims to describe.
+    """Verify a manifest against the content (text or media bytes) it describes.
 
     Always checks the SHA-256 content binding. If the manifest carries a
     signature, a ``signer`` with the matching key must be supplied to verify it
     (returns ``False`` when a signature is present but no verifier is given, so
     an unverifiable credential is never reported as valid).
     """
-    if manifest.content_sha256 != hashlib.sha256(content.encode("utf-8")).hexdigest():
+    if manifest.content_sha256 != media_sha256(content):
         return False
     if manifest.signature is not None:
         if signer is None:
             return False
         return signer.verify(manifest.signing_payload(), manifest.signature.get("value", ""))
     return True
+
+
+def _png_text_chunk(keyword: str, text: str) -> bytes:
+    """A PNG ``iTXt`` chunk carrying UTF-8 ``text`` under ``keyword``."""
+    data = (
+        keyword.encode("latin-1")
+        + b"\x00"  # null separator
+        + b"\x00\x00"  # compression flag + method (uncompressed)
+        + b"\x00"  # language tag (empty) + null
+        + b"\x00"  # translated keyword (empty) + null
+        + text.encode("utf-8")
+    )
+    chunk_type = b"iTXt"
+    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
+
+
+def _embed_png_manifest(data: bytes, manifest: ProvenanceManifest) -> bytes:
+    """Insert the manifest JSON as an iTXt chunk before a PNG's IEND.
+
+    Returns ``data`` unchanged when it is not a PNG (no false claim of
+    embedding); callers fall back to a sidecar for other formats. The *embedded*
+    copy carries no ``content_sha256`` (and no signature), because inserting the
+    chunk changes the file's bytes — embedding the pre-insert hash would make the
+    extracted credential fail its own binding against the file it travels in. The
+    authoritative SHA-256 binding lives on the returned in-memory manifest and
+    the sidecar (:func:`write_sidecar_manifest`), both bound to the final bytes.
+    """
+    if not data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return data
+    iend = data.rfind(b"IEND")
+    if iend < 4:
+        return data
+    insert_at = iend - 4  # before the IEND chunk's length field
+    embedded = manifest.model_copy(update={"content_sha256": None, "signature": None})
+    chunk = _png_text_chunk("c2pa.manifest", embedded.to_json(indent=0))
+    return data[:insert_at] + chunk + data[insert_at:]
+
+
+def embed_provenance(
+    data: bytes,
+    manifest: ProvenanceManifest,
+    *,
+    watermark_hook: Callable[[bytes], bytes] | None = None,
+) -> bytes:
+    """Embed provenance into generated media bytes, returning the new bytes.
+
+    Applies the optional ``watermark_hook`` first (an invisible-watermark
+    function you supply — Vincio ships the hook point, not a watermarking model),
+    then writes the C2PA manifest into the file's metadata where the container
+    supports it dependency-free (PNG text chunk today). For formats that cannot
+    carry embedded credentials the bytes are returned watermarked-or-unchanged
+    and the manifest should travel as a :func:`write_sidecar_manifest` sidecar.
+    Always re-bind the manifest (:func:`mark_synthetic_content`) to the returned
+    bytes if a watermark altered them. A ``watermark_hook`` must return non-empty
+    bytes and must not corrupt the container; a hook that strips a PNG signature
+    raises rather than silently shipping an unembedded-but-reported-stamped asset.
+    """
+    if watermark_hook is not None:
+        was_png = data.startswith(b"\x89PNG\r\n\x1a\n")
+        result = watermark_hook(data)
+        if not result:
+            from ..core.errors import MediaGenerationError
+
+            raise MediaGenerationError("watermark_hook returned empty bytes")
+        if was_png and not result.startswith(b"\x89PNG\r\n\x1a\n"):
+            from ..core.errors import MediaGenerationError
+
+            raise MediaGenerationError(
+                "watermark_hook corrupted the PNG signature; manifest could not be embedded"
+            )
+        data = result
+    return _embed_png_manifest(data, manifest)
+
+
+def write_sidecar_manifest(asset_path: str | Path, manifest: ProvenanceManifest) -> Path:
+    """Write ``manifest`` next to ``asset_path`` as a ``<name>.c2pa.json`` sidecar.
+
+    The dependency-free way to attach content credentials to any asset format —
+    the manifest is bound to the asset by SHA-256, so the pair is verifiable
+    even when the bytes themselves can't carry embedded metadata.
+    """
+    asset = Path(asset_path)
+    sidecar = asset.with_name(asset.name + ".c2pa.json")
+    sidecar.write_text(manifest.to_json(), encoding="utf-8")
+    return sidecar
 
 
 def ai_disclosure(*, language: str = "en", system_name: str | None = None) -> str:
