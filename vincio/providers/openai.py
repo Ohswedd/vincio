@@ -18,6 +18,7 @@ from ..core.types import (
     Message,
     ModelCapabilities,
     ModelEvent,
+    ModelProfile,
     ModelRequest,
     ModelResponse,
     TokenUsage,
@@ -272,6 +273,22 @@ class OpenAIProvider(HTTPProvider):
         )
         items = sorted(data.get("data") or [], key=lambda item: item.get("index", 0))
         return [item["embedding"] for item in items]
+
+    @staticmethod
+    def _parse_models_list(data: dict[str, Any]) -> list[ModelProfile]:
+        """Map an OpenAI ``/v1/models`` payload onto sparse profiles for
+        reconciliation (pure, so it is testable from a cassette)."""
+        out: list[ModelProfile] = []
+        for item in data.get("data") or []:
+            model_id = item.get("id")
+            if not model_id:
+                continue
+            out.append(ModelProfile(name=model_id, provider="openai", model=model_id))
+        return out
+
+    async def list_models(self) -> list[ModelProfile]:
+        data = await self._get_json("/models")
+        return self._parse_models_list(data)
 
     def capabilities(self, model: str) -> ModelCapabilities:
         from .registry import default_model_registry

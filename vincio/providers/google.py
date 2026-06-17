@@ -12,6 +12,7 @@ from ..core.media import encode_image_bytes
 from ..core.types import (
     ModelCapabilities,
     ModelEvent,
+    ModelProfile,
     ModelRequest,
     ModelResponse,
     TokenUsage,
@@ -286,6 +287,28 @@ class GoogleProvider(HTTPProvider):
             },
         )
         return [item["values"] for item in data.get("embeddings") or []]
+
+    @staticmethod
+    def _parse_models_list(data: dict[str, Any]) -> list[ModelProfile]:
+        """Map a Gemini ``ListModels`` payload onto sparse profiles (``models/x``
+        names are stripped to bare ids; only generation-capable models kept)."""
+        out: list[ModelProfile] = []
+        for item in data.get("models") or []:
+            name = item.get("name") or ""
+            model_id = name.split("/", 1)[1] if name.startswith("models/") else name
+            if not model_id:
+                continue
+            methods = item.get("supportedGenerationMethods") or []
+            if methods and not any(
+                m in methods for m in ("generateContent", "streamGenerateContent")
+            ):
+                continue  # skip embedding/other-only models
+            out.append(ModelProfile(name=model_id, provider="google", model=model_id))
+        return out
+
+    async def list_models(self) -> list[ModelProfile]:
+        data = await self._get_json("/models")
+        return self._parse_models_list(data)
 
     def capabilities(self, model: str) -> ModelCapabilities:
         from .registry import default_model_registry

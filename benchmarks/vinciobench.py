@@ -365,6 +365,44 @@ async def bench_cost() -> dict[str, Any]:
         and any(issubclass(w.category, ModelUnknownWarning) for w in caught)
     )
 
+    # 1.8 — registry-backed router cost/latency trade + Google/Vertex batch parity.
+    from vincio.core.types import ContentPart, ImageRef
+    from vincio.optimize.routing import Router
+
+    plain_req = ModelRequest(model="x", messages=[Message(role="user", content="route this please")])
+    router = Router.from_models(
+        MockProvider(default_text="x"), ["gpt-5.2", "gpt-5.2-mini", "gpt-5.2-nano"],
+        strategy="cheapest",
+    )
+    routing_cheapest_capable = router.pick(plain_req).model == "gpt-5.2-nano"
+    routing_budget_downgrade = router.pick(plain_req, budget_usd=0.0).downgraded
+    vision_req = ModelRequest(
+        model="x",
+        messages=[Message(role="user", content=[
+            ContentPart(type="image", image=ImageRef(url="data:image/png;base64,AAAA"))
+        ])],
+    )
+    vrouter = Router.from_models(
+        MockProvider(default_text="x"), ["mistral-small-latest", "gpt-5.2"], strategy="cheapest"
+    )
+    routing_capability_filter = vrouter.pick(vision_req).model == "gpt-5.2"
+
+    runner = BatchRunner(InProcessBatchBackend(MockProvider(default_text="batched")), discount=0.5)
+    g_reqs = [
+        BatchRequest(
+            custom_id=f"g{i}",
+            request=ModelRequest(model="gemini-2.5-flash", messages=[Message(role="user", content="hi")]),
+        )
+        for i in range(4)
+    ]
+    g_res = await runner.run(g_reqs)
+    sync_cost = (
+        PriceTable().cost("gemini-2.5-flash", g_res.succeeded[0].response.usage)
+        if g_res.succeeded else 0.0
+    )
+    batch_cost = g_res.succeeded[0].response.cost_usd if g_res.succeeded else 0.0
+    google_batch_parity = len(g_res.succeeded) == 4 and batch_cost <= sync_cost * 0.5 + 1e-12
+
     return {
         "naive_evidence_tokens": sum(naive_tokens),
         "compiled_evidence_tokens": sum(compiled_tokens),
@@ -374,6 +412,11 @@ async def bench_cost() -> dict[str, Any]:
         "budget_cap_enforced": budget_cap_enforced,
         "budget_opt_out_soft": opt_out_soft,
         "unknown_model_warned": unknown_model_warned,
+        # 1.8 — rotation cost trade + batch parity
+        "routing_cheapest_capable": routing_cheapest_capable,
+        "routing_budget_downgrade": routing_budget_downgrade,
+        "routing_capability_filter": routing_capability_filter,
+        "google_batch_parity": google_batch_parity,
     }
 
 
@@ -650,6 +693,62 @@ async def bench_reliability() -> dict[str, Any]:
     results["unified_pipeline"] = {
         "stream_nonstream_parity": stream_parity,
         "cancellation_recorded": cancel_recorded,
+    }
+
+    # 1.8 — capability guard correctness + lifecycle-error classification.
+    from vincio.core.errors import ModelRetiredError
+    from vincio.core.errors import ProviderUnavailableError as _PU
+    from vincio.core.types import ContentPart, ImageRef, ModelProfile
+    from vincio.providers.base import FailoverChain, is_lifecycle_error
+    from vincio.providers.capabilities import capability_check, requirements_for
+    from vincio.providers.registry import ModelRegistry, default_model_registry
+
+    reg = default_model_registry()
+    vision_req = ModelRequest(
+        model="x",
+        messages=[Message(role="user", content=[
+            ContentPart(type="image", image=ImageRef(url="data:image/png;base64,AAAA"))
+        ])],
+    )
+    needs = requirements_for(vision_req)
+    guard_blocks_incapable = not capability_check(needs, reg.capabilities("mistral-small-latest")).ok
+    guard_allows_capable = capability_check(needs, reg.capabilities("gpt-5.2")).ok
+    guard_permits_unknown = capability_check(needs, reg.capabilities("totally-unknown-xyz")).ok
+    chain = FailoverChain([
+        (MockProvider(default_text="mistral"), "mistral-small-latest"),
+        (MockProvider(default_text="vision-ok"), "claude-sonnet-4-6"),
+    ])
+    failover_skips_incapable = (await chain.generate(vision_req)).text == "vision-ok"
+
+    lifecycle_classified = (
+        is_lifecycle_error(_PU("model_not_found: gpt-3", provider="x"))
+        and not is_lifecycle_error(_PU("temporary overload", provider="x"))
+    )
+    retired_reg = ModelRegistry([
+        ModelProfile(name="old", provider="x", model="old-model", retirement_date="2020-01-01")
+    ])
+    retired_chain = FailoverChain(
+        [(MockProvider(default_text="x"), "old-model")], registry=retired_reg
+    )
+    try:
+        await retired_chain.generate(
+            ModelRequest(model="x", messages=[Message(role="user", content="hi")])
+        )
+        retired_rotate_now = False
+    except ModelRetiredError:
+        retired_rotate_now = True
+    except Exception:  # noqa: BLE001
+        retired_rotate_now = False
+
+    results["capability_guard"] = {
+        "blocks_incapable": guard_blocks_incapable,
+        "allows_capable": guard_allows_capable,
+        "permits_unknown": guard_permits_unknown,
+        "failover_skips_incapable": failover_skips_incapable,
+    }
+    results["lifecycle_errors"] = {
+        "classified": lifecycle_classified,
+        "retired_failover_rotate_now": retired_rotate_now,
     }
     return results
 
@@ -987,6 +1086,40 @@ async def bench_evals() -> dict[str, Any]:
     calibrated = (await judge.score(case, RunOutput(output="x"))).value
     error_after = abs(calibrated - human)
 
+    # 7. (1.8) swap-gate significance + replay-diff fidelity.
+    from vincio.evals.datasets import Dataset, EvalCase
+    from vincio.evals.replay import ReplayRunner, _CaptureExporter
+
+    def _swap_responder(request):
+        return "The capital of France is Paris." if request.model != "gpt-5.2-nano" else "wrong"
+
+    swap_app = ContextApp(
+        name="bench_swap", provider=MockProvider(responder=_swap_responder), model="gpt-5.2"
+    )
+    swap_ds = Dataset(name="swap", cases=[
+        EvalCase(id=f"s{i}", input="What is the capital of France?",
+                 expected="The capital of France is Paris.")
+        for i in range(6)
+    ])
+    bad_verdict = await swap_app.agate_swap("gpt-5.2-nano", baseline_model="gpt-5.2", dataset=swap_ds)
+    good_verdict = await swap_app.agate_swap("gpt-5.2-mini", baseline_model="gpt-5.2", dataset=swap_ds)
+    swap_gate_blocks_regression = (not bad_verdict.passed) and good_verdict.passed
+    swap_gate_significant = bool(
+        bad_verdict.regression and "semantic_similarity" in bad_verdict.regression.regressions
+    )
+
+    cap = _CaptureExporter(swap_app.tracer.exporter)
+    swap_app.tracer.exporter = cap
+    golden = await swap_app.arun("What is the capital of France?")
+    golden_trace = cap.captured[golden.trace_id]
+    swap_app.tracer.exporter = cap._inner
+    swap_app.model = "gpt-5.2"
+    same = await ReplayRunner(swap_app).replay([golden_trace])
+    replay_fidelity_same = same.output_match_rate == 1.0
+    swap_app.model = "gpt-5.2-nano"
+    swapped = await ReplayRunner(swap_app).replay([golden_trace])
+    replay_detects_swap = swapped.mean_output_similarity < 1.0
+
     return {
         "metric_agreement": round(metric_agreement, 4),
         "guarded_attack_success_rate": round(guarded.attack_success_rate, 4),
@@ -1002,6 +1135,13 @@ async def bench_evals() -> dict[str, Any]:
         "html_self_contained": html_self_contained,
         "trace_dataset_cases": len(dataset),
         "geval_calibration_error_reduced": error_after < error_before,
+        # 1.8 — swap gate + replay diff
+        "swap_gate_blocks_regression": swap_gate_blocks_regression,
+        "swap_gate_significant": swap_gate_significant,
+        "replay_diff": {
+            "fidelity_same_model": replay_fidelity_same,
+            "detects_swap": replay_detects_swap,
+        },
     }
 
 
@@ -1789,6 +1929,23 @@ async def bench_scale() -> dict[str, Any]:
     always_strong_cost = strong_price * len(QA_CASES)
     cascade_savings = round(1 - (cascade_cost / always_strong_cost), 4)
 
+    # -- canary: auto-rollback under concurrent load --------------------------
+    from vincio.providers.shadow import CanaryRouter
+
+    healthy = MockProvider(
+        responder=lambda r: ModelResponse(model=r.model, text="ok", finish_reason="stop",
+                                          usage=TokenUsage(input_tokens=5, output_tokens=2))
+    )
+    degraded = MockProvider(
+        responder=lambda r: ModelResponse(model=r.model, text="", finish_reason="content_filter",
+                                          usage=TokenUsage(input_tokens=5, output_tokens=0))
+    )
+    canary = CanaryRouter(healthy, degraded, percent=50.0, min_samples=4, regression_threshold=0.2)
+    canary_req = ModelRequest(model="m", messages=[Message(role="user", content="x")])
+    await asyncio.gather(*(canary.generate(canary_req) for _ in range(60)))
+    canary_state = canary.state()
+    post_rollback_served = (await canary.generate(canary_req)).text == "ok"
+
     return {
         "batch": {
             "reconciled_ok": reconciled_ok,
@@ -1803,6 +1960,12 @@ async def bench_scale() -> dict[str, Any]:
         "cache": {"hit_rate": cache_rate, "telemetry_present": True},
         "attribution": {"accuracy": attribution_accuracy, "tenants": len(rollup)},
         "cascade": {"cost_savings": cascade_savings, "escalates_on_hard": True},
+        # 1.8 — canary auto-rollback under load
+        "canary_rollback": {
+            "rolled_back_under_load": canary_state.rolled_back,
+            "serves_primary_after": post_rollback_served,
+            "calls": canary_state.calls,
+        },
     }
 
 

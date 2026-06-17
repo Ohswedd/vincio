@@ -429,6 +429,54 @@
     },
     "families.loop.replay.output_match": {
       "eq": true
+    },
+    "families.cost.routing_cheapest_capable": {
+      "eq": true
+    },
+    "families.cost.routing_budget_downgrade": {
+      "eq": true
+    },
+    "families.cost.routing_capability_filter": {
+      "eq": true
+    },
+    "families.cost.google_batch_parity": {
+      "eq": true
+    },
+    "families.reliability.capability_guard.blocks_incapable": {
+      "eq": true
+    },
+    "families.reliability.capability_guard.allows_capable": {
+      "eq": true
+    },
+    "families.reliability.capability_guard.permits_unknown": {
+      "eq": true
+    },
+    "families.reliability.capability_guard.failover_skips_incapable": {
+      "eq": true
+    },
+    "families.reliability.lifecycle_errors.classified": {
+      "eq": true
+    },
+    "families.reliability.lifecycle_errors.retired_failover_rotate_now": {
+      "eq": true
+    },
+    "families.evals.swap_gate_blocks_regression": {
+      "eq": true
+    },
+    "families.evals.swap_gate_significant": {
+      "eq": true
+    },
+    "families.evals.replay_diff.fidelity_same_model": {
+      "eq": true
+    },
+    "families.evals.replay_diff.detects_swap": {
+      "eq": true
+    },
+    "families.scale.canary_rollback.rolled_back_under_load": {
+      "eq": true
+    },
+    "families.scale.canary_rollback.serves_primary_after": {
+      "eq": true
     }
   }
 }

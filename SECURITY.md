@@ -7,6 +7,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 1.8.x   | ✅        |
 | 1.7.x   | ✅        |
 | 1.6.x   | ✅        |
 | 1.5.x   | ✅        |
@@ -15,7 +16,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 | 1.2.x   | ✅        |
 | 1.1.x   | ✅        |
 | 1.0.x   | ✅        |
-| < 1.0   | ❌ (upgrade to 1.7.x) |
+| < 1.0   | ❌ (upgrade to 1.8.x) |
 
 ## Threat model
 

@@ -26,6 +26,13 @@ from .replay import ReplayCase, ReplayResult, ReplayRunner
 from .reports import CaseResult, EvalReport, GateSpec, evaluate_gates
 from .runners import EvalRunner, EvalTarget
 from .simulator import Persona, SimulatedConversation, Simulator
+from .swap import (
+    SwapGate,
+    SwapRegressionReport,
+    SwapVerdict,
+    behavioral_shapes,
+    model_swap_regression,
+)
 from .synthetic import SyntheticGenerator
 from .trajectory import (
     TRAJECTORY_METRICS,
@@ -70,6 +77,12 @@ __all__ = [
     "ReplayRunner",
     "ReplayResult",
     "ReplayCase",
+    # 1.8 — model-swap regression & the swap gate
+    "SwapGate",
+    "SwapVerdict",
+    "SwapRegressionReport",
+    "model_swap_regression",
+    "behavioral_shapes",
     "SyntheticGenerator",
     # 1.2 — agentic evaluation & continuous quality
     "Trajectory",

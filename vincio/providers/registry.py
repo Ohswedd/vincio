@@ -31,6 +31,7 @@ from pathlib import Path
 from typing import Any
 
 from ..core.types import ModelCapabilities, ModelLifecycle, ModelProfile
+from ..core.utils import utcnow
 
 __all__ = [
     "REGISTRY_VERSION",
@@ -99,12 +100,14 @@ def _builtin_catalog() -> list[ModelProfile]:
                      cached_input_cost_per_mtok=0.005,
                      batch_input_cost_per_mtok=0.025, batch_output_cost_per_mtok=0.2),
         ModelProfile(name="gpt-4o", provider="openai", model="gpt-4o", tier="default",
+                     successor="gpt-5.2",
                      capabilities=_caps(**_OPENAI_CHAT, vision=True, reasoning=False,
                                         max_context_tokens=128_000, max_output_tokens=32_768),
                      input_cost_per_mtok=2.5, output_cost_per_mtok=10.0,
                      cached_input_cost_per_mtok=1.25,
                      batch_input_cost_per_mtok=1.25, batch_output_cost_per_mtok=5.0),
         ModelProfile(name="gpt-4o-mini", provider="openai", model="gpt-4o-mini", tier="fast",
+                     successor="gpt-5.2-mini",
                      capabilities=_caps(**_OPENAI_CHAT, vision=True, reasoning=False,
                                         max_context_tokens=128_000, max_output_tokens=16_384),
                      input_cost_per_mtok=0.15, output_cost_per_mtok=0.6,
@@ -139,36 +142,47 @@ def _builtin_catalog() -> list[ModelProfile]:
         ModelProfile(name="gemini-3-pro", provider="google", model="gemini-3-pro", tier="strong",
                      capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
                      input_cost_per_mtok=2.0, output_cost_per_mtok=12.0,
-                     cached_input_cost_per_mtok=0.5),
+                     cached_input_cost_per_mtok=0.5,
+                     batch_input_cost_per_mtok=1.0, batch_output_cost_per_mtok=6.0),
         ModelProfile(name="gemini-3-flash", provider="google", model="gemini-3-flash",
                      tier="default",
                      capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
                      input_cost_per_mtok=0.3, output_cost_per_mtok=2.5,
-                     cached_input_cost_per_mtok=0.075),
+                     cached_input_cost_per_mtok=0.075,
+                     batch_input_cost_per_mtok=0.15, batch_output_cost_per_mtok=1.25),
         ModelProfile(name="gemini-2.5-pro", provider="google", model="gemini-2.5-pro", tier="strong",
                      capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
                      input_cost_per_mtok=1.25, output_cost_per_mtok=10.0,
-                     cached_input_cost_per_mtok=0.31),
+                     cached_input_cost_per_mtok=0.31,
+                     batch_input_cost_per_mtok=0.625, batch_output_cost_per_mtok=5.0),
         ModelProfile(name="gemini-2.5-flash", provider="google", model="gemini-2.5-flash",
                      tier="default",
                      capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
                      input_cost_per_mtok=0.3, output_cost_per_mtok=2.5,
-                     cached_input_cost_per_mtok=0.075),
+                     cached_input_cost_per_mtok=0.075,
+                     batch_input_cost_per_mtok=0.15, batch_output_cost_per_mtok=1.25),
         ModelProfile(name="gemini-2.5-flash-lite", provider="google",
                      model="gemini-2.5-flash-lite", tier="fast",
                      capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
                      input_cost_per_mtok=0.1, output_cost_per_mtok=0.4,
-                     cached_input_cost_per_mtok=0.025),
+                     cached_input_cost_per_mtok=0.025,
+                     batch_input_cost_per_mtok=0.05, batch_output_cost_per_mtok=0.2),
+        # Gemini 2.0 family is on the way out — successors published, dates filled
+        # best-effort here and reconciled by live discovery (providers.discovery).
         ModelProfile(name="gemini-2.0-flash", provider="google", model="gemini-2.0-flash",
                      tier="fast", successor="gemini-2.5-flash",
+                     deprecation_date="2026-02-05", retirement_date="2026-08-05",
                      capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=False),
                      input_cost_per_mtok=0.1, output_cost_per_mtok=0.4,
-                     cached_input_cost_per_mtok=0.025),
+                     cached_input_cost_per_mtok=0.025,
+                     batch_input_cost_per_mtok=0.05, batch_output_cost_per_mtok=0.2),
         ModelProfile(name="gemini-2.0-flash-lite", provider="google",
                      model="gemini-2.0-flash-lite", tier="fast",
                      successor="gemini-2.5-flash-lite",
+                     deprecation_date="2026-02-25", retirement_date="2026-08-25",
                      capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=False),
-                     input_cost_per_mtok=0.075, output_cost_per_mtok=0.3),
+                     input_cost_per_mtok=0.075, output_cost_per_mtok=0.3,
+                     batch_input_cost_per_mtok=0.0375, batch_output_cost_per_mtok=0.15),
         # ---- Embedding models (cost-tracking entries; capabilities minimal) ----
         ModelProfile(name="gemini-embedding-001", provider="google",
                      model="gemini-embedding-001", tier="default",
@@ -253,6 +267,78 @@ class ModelRegistry:
         self.override(list(entries))
         return len(self._profiles) - before + (0 if len(self._profiles) > before else len(entries))
 
+    def reconcile(
+        self,
+        profiles: list[ModelProfile],
+        *,
+        provider: str | None = None,
+        mark_missing_deprecated: bool = False,
+        as_of: Any = None,
+    ) -> dict[str, list[str]]:
+        """Merge live-discovered *profiles* into the catalog (1.8).
+
+        Discovered profiles from a model-list endpoint are typically *sparse*
+        (id only, bare-default capabilities), so reconciliation must never let
+        that thin data shadow a richer entry:
+
+        * a discovered id that already **resolves** (exact, alias, or longest-
+          prefix — e.g. a dated snapshot ``gpt-4o-2024-11-20`` of ``gpt-4o``) is
+          folded into the matched profile: lifecycle fields are filled when
+          missing and the discovered id is added as an **alias**, so the rich
+          shipped capabilities/pricing stand and the capability guard is not
+          tricked into refusing a capable model;
+        * a genuinely **new** id (no resolution) is registered as-is.
+
+        ``mark_missing_deprecated`` flags a catalog model of ``provider`` as
+        deprecated only when *no* discovered id resolves to it (so a model listed
+        under its dated snapshot is correctly treated as present). Returns
+        ``{"added", "updated", "deprecated_missing"}``.
+        """
+        from datetime import date
+
+        today = as_of or utcnow().date()
+        today_iso = today.isoformat() if isinstance(today, date) else str(today)
+        added: list[str] = []
+        updated: list[str] = []
+        resolved_present: set[str] = set()  # catalog ids a discovered id maps to
+        lifecycle_fields = ("deprecation_date", "retirement_date", "ga_date",
+                            "successor", "knowledge_cutoff")
+        for profile in profiles:
+            exact = self.get(profile.model)
+            resolved = exact or self._prefix_match(profile.model)
+            if resolved is None:
+                # Genuinely new model — register the sparse profile as-is.
+                self.register(profile)
+                added.append(profile.model)
+                resolved_present.add(profile.model)
+                continue
+            resolved_present.add(resolved.model)
+            changes: dict[str, Any] = {}
+            for field in lifecycle_fields:
+                discovered_value = getattr(profile, field)
+                if discovered_value and not getattr(resolved, field):
+                    changes[field] = discovered_value
+            # Fold a not-yet-known discovered id (a snapshot/alias) into the rich
+            # profile as an alias rather than registering a capability-less shadow.
+            if exact is None and profile.model != resolved.model and profile.model not in resolved.aliases:
+                changes["aliases"] = [*resolved.aliases, profile.model]
+            if changes:
+                self.register(resolved.model_copy(update=changes))
+                updated.append(profile.model)
+
+        deprecated_missing: list[str] = []
+        if mark_missing_deprecated and provider is not None:
+            for existing in list(self._profiles.values()):
+                if (
+                    existing.provider == provider
+                    and existing.model not in resolved_present
+                    and existing.lifecycle(as_of=today) == "ga"
+                    and "embedding" not in existing.capabilities.output_modalities
+                ):
+                    self.register(existing.model_copy(update={"deprecation_date": today_iso}))
+                    deprecated_missing.append(existing.model)
+        return {"added": added, "updated": updated, "deprecated_missing": deprecated_missing}
+
     def reload(self) -> None:
         """Reset to the built-in catalog, then re-apply the ``VINCIO_MODEL_REGISTRY`` overlay."""
         self._profiles.clear()
@@ -295,6 +381,23 @@ class ModelRegistry:
     def capabilities(self, model_id: str) -> ModelCapabilities | None:
         profile = self.resolve(model_id)
         return profile.capabilities if profile is not None else None
+
+    def guard_capabilities(self, model_id: str) -> ModelCapabilities | None:
+        """Capabilities for the 1.8 capability guard.
+
+        Like :meth:`capabilities`, but returns ``None`` for a profile that carries
+        only the bare-default capability matrix (a sparsely-discovered model whose
+        real capabilities are unknown). The guard treats ``None`` as unjudgeable
+        and permits the model, rather than refusing it for capabilities we never
+        actually learned — so live discovery can never make the guard *block* a
+        model it would previously have allowed.
+        """
+        profile = self.resolve(model_id)
+        if profile is None:
+            return None
+        if profile.capabilities == ModelCapabilities():
+            return None
+        return profile.capabilities
 
     def lifecycle(self, model_id: str, *, as_of: Any = None) -> ModelLifecycle | None:
         profile = self.resolve(model_id)

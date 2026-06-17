@@ -417,6 +417,174 @@ def cmd_eval_run(args: argparse.Namespace) -> int:
     return 1 if failed_gates else 0
 
 
+def cmd_eval_regress(args: argparse.Namespace) -> int:
+    from ..providers.base import run_sync
+
+    app = _load_app(args.app)
+    report = run_sync(
+        app.aswap_regression(
+            args.dataset,
+            candidate_model=args.candidate_model,
+            baseline_model=args.baseline_model,
+            metrics=args.metric or None,
+            quality_metric=args.quality_metric,
+            alpha=args.alpha,
+            repeats=args.repeats,
+            flake_quarantine=not args.no_flake_quarantine,
+        )
+    )
+    print(
+        f"model-swap regression: {report.baseline_model} → {report.candidate_model} "
+        f"({report.n_cases} cases)"
+    )
+    for metric, test in sorted(report.metric_tests.items()):
+        flag = "REGRESSION" if metric in report.regressions else (
+            "significant" if test["significant"] else "ns"
+        )
+        print(
+            f"  {metric:24s} {test['mean_a']:.4f} → {test['mean_b']:.4f}  "
+            f"Δ {test['delta']:+.4f}  p={test['p_value']:.4f}  [{flag}]"
+        )
+    if report.cost:
+        print(
+            f"  cost ${report.cost['baseline']:.6f} → ${report.cost['candidate']:.6f} "
+            f"(×{report.cost['ratio']})  latency {report.latency['baseline']:.0f}ms → "
+            f"{report.latency['candidate']:.0f}ms"
+        )
+    if report.worst_slices:
+        print("  worst-regressed slices:")
+        for s in report.worst_slices:
+            print(f"    - {s['slice']}: {s['baseline']:.4f} → {s['candidate']:.4f} ({s['delta']:+.4f})")
+    if report.flaky_excluded:
+        print(f"  ({report.flaky_excluded} flaky case(s) quarantined from gates)")
+    if args.output:
+        Path(args.output).write_text(json_dumps(report.model_dump()), encoding="utf-8")
+        print(f"saved to {args.output}")
+    if report.regressed:
+        print(f"\nREGRESSION: {', '.join(report.regressions)} significantly worse")
+        return 1
+    print("\nno significant quality regression — safe to swap")
+    return 0
+
+
+def cmd_providers_list(args: argparse.Namespace) -> int:
+    from ..providers.registry import default_model_registry
+
+    registry = default_model_registry()
+    profiles = sorted(registry.profiles(), key=lambda p: (p.provider, p.model))
+    rows = [
+        {
+            "model": p.model, "provider": p.provider, "tier": p.tier,
+            "lifecycle": p.lifecycle(), "input_per_mtok": p.input_cost_per_mtok,
+            "output_per_mtok": p.output_cost_per_mtok, "successor": p.successor,
+        }
+        for p in profiles
+        if not args.provider or p.provider == args.provider
+    ]
+    if args.json:
+        print(json_dumps(rows))
+        return 0
+    print(f"{'model':28s} {'provider':10s} {'tier':8s} {'lifecycle':10s} {'in/out $/Mtok':>16s}")
+    for r in rows:
+        print(
+            f"{r['model']:28s} {r['provider']:10s} {r['tier']:8s} {r['lifecycle']:10s} "
+            f"{r['input_per_mtok']:>7}/{r['output_per_mtok']:<8}"
+        )
+    print(f"\n{len(rows)} model(s)")
+    return 0
+
+
+def cmd_providers_lifecycle(args: argparse.Namespace) -> int:
+    from datetime import date
+
+    from ..providers.lifecycle import LifecycleWatcher
+
+    as_of = date.fromisoformat(args.as_of) if args.as_of else None
+    if args.app:
+        app = _load_app(args.app)
+        result = app.watch_lifecycle(
+            args.model or None, as_of=as_of, warn_within_days=args.warn_within_days
+        )
+        alerts, proposals = result["alerts"], result["proposals"]
+    else:
+        if not args.model:
+            return _fail("provide --model (repeatable) or --app")
+        watcher = LifecycleWatcher(warn_within_days=args.warn_within_days)
+        alerts = watcher.scan(args.model, as_of=as_of)
+        proposals = watcher.propose_all(args.model, as_of=as_of)
+    if args.json:
+        print(json_dumps({
+            "alerts": [a.model_dump() for a in alerts],
+            "proposals": [p.model_dump() for p in proposals],
+        }))
+    else:
+        for alert in alerts:
+            print(f"[{alert.severity.upper():8s}] {alert.message}")
+        for proposal in proposals:
+            print(
+                f"  → migrate {proposal.from_model} to {proposal.to_model} ({proposal.kind}; "
+                f"{proposal.savings_pct:+.0%} blended cost, "
+                f"{'capability superset' if proposal.capability_superset else 'check capabilities'})"
+            )
+        if not alerts:
+            print("no models nearing sunset")
+    return 1 if any(a.severity in ("warn", "critical") for a in alerts) else 0
+
+
+def cmd_providers_discover(args: argparse.Namespace) -> int:
+    from ..providers import build_provider
+    from ..providers.base import run_sync
+    from ..providers.discovery import discover_models
+
+    provider = build_provider(args.provider, with_retries=False)
+    summary = run_sync(
+        discover_models(provider, mark_missing_deprecated=args.mark_missing_deprecated)
+    )
+    if args.json:
+        print(json_dumps(summary))
+    else:
+        print(
+            f"discovered against {args.provider}: {len(summary['added'])} added, "
+            f"{len(summary['updated'])} updated, "
+            f"{len(summary['deprecated_missing'])} flagged deprecated"
+        )
+        for key in ("added", "updated", "deprecated_missing"):
+            if summary[key]:
+                print(f"  {key}: {', '.join(summary[key])}")
+    return 0
+
+
+def cmd_providers_regress(args: argparse.Namespace) -> int:
+    from ..providers.base import run_sync
+
+    app = _load_app(args.app)
+    gates: dict[str, str] = {}
+    for gate in args.gate or []:
+        if "=" not in gate:
+            return _fail(f"invalid gate {gate!r}; use metric='>= 0.9'")
+        key, _, expression = gate.partition("=")
+        gates[key.strip()] = expression.strip()
+    traces = [_load_trace(t, args.traces_dir) for t in (args.trace or [])]
+    verdict = run_sync(
+        app.agate_swap(
+            args.candidate_model,
+            baseline_model=args.baseline_model,
+            dataset=args.dataset,
+            traces=traces or None,
+            gates=gates or None,
+            quality_metric=args.quality_metric,
+            alpha=args.alpha,
+            repeats=args.repeats,
+        )
+    )
+    print(f"swap gate: {verdict.baseline_model} → {verdict.candidate_model}")
+    print(f"  verdict: {'PASS' if verdict.passed else 'FAIL'} — {verdict.reason}")
+    if verdict.replay is not None:
+        print(f"  replay: {json_dumps(verdict.replay)}")
+    print(json_dumps(verdict.summary()))
+    return 0 if verdict.passed else 1
+
+
 def cmd_eval_report(args: argparse.Namespace) -> int:
     from ..evals.reports import EvalReport
 
@@ -1286,6 +1454,24 @@ def build_parser() -> argparse.ArgumentParser:
     p_eval_annotate.add_argument("--threshold", type=float, default=0.6, help="κ needed for CI gating weight")
     p_eval_annotate.add_argument("--bins", type=int, default=2, help="number of score bins for κ")
     p_eval_annotate.set_defaults(fn=cmd_eval_annotate)
+    p_eval_regress = eval_sub.add_parser(
+        "regress", help="swap only the model and test for a statistically grounded regression"
+    )
+    p_eval_regress.add_argument("dataset")
+    p_eval_regress.add_argument("--app", required=True)
+    p_eval_regress.add_argument("--baseline-model", default=None, dest="baseline_model",
+                                help="defaults to the app's configured model")
+    p_eval_regress.add_argument("--candidate-model", required=True, dest="candidate_model")
+    p_eval_regress.add_argument("--metric", action="append", help="metric name (repeatable)")
+    p_eval_regress.add_argument("--quality-metric", default="semantic_similarity",
+                                dest="quality_metric")
+    p_eval_regress.add_argument("--alpha", type=float, default=0.05)
+    p_eval_regress.add_argument("--repeats", type=int, default=1,
+                                help="runs per case for mean/stdev + flake quarantine")
+    p_eval_regress.add_argument("--no-flake-quarantine", action="store_true",
+                                dest="no_flake_quarantine")
+    p_eval_regress.add_argument("--output", default=None, help="save the regression report JSON")
+    p_eval_regress.set_defaults(fn=cmd_eval_regress)
 
     p_prompt = sub.add_parser("prompt", help="prompt tooling")
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", required=True)
@@ -1545,6 +1731,50 @@ def build_parser() -> argparse.ArgumentParser:
     p_mem_decay = memory_sub.add_parser("decay", help="run a decay/TTL pass")
     p_mem_decay.add_argument("--db", default=".vincio/memory.db")
     p_mem_decay.set_defaults(fn=cmd_memory_decay)
+
+    p_providers = sub.add_parser("providers", help="provider/model rotation, lifecycle & swap gate")
+    providers_sub = p_providers.add_subparsers(dest="providers_command", required=True)
+
+    p_prov_list = providers_sub.add_parser("list", help="list the model registry catalog")
+    p_prov_list.add_argument("--provider", default=None, help="filter by provider")
+    p_prov_list.add_argument("--json", action="store_true")
+    p_prov_list.set_defaults(fn=cmd_providers_list)
+
+    p_prov_lifecycle = providers_sub.add_parser(
+        "lifecycle", help="scan pinned models for sunset and propose migrations"
+    )
+    p_prov_lifecycle.add_argument("--app", default=None, help="app file (uses its pinned models)")
+    p_prov_lifecycle.add_argument("--model", action="append", help="model id (repeatable)")
+    p_prov_lifecycle.add_argument("--as-of", default=None, dest="as_of", help="YYYY-MM-DD")
+    p_prov_lifecycle.add_argument("--warn-within-days", type=int, default=90,
+                                  dest="warn_within_days")
+    p_prov_lifecycle.add_argument("--json", action="store_true")
+    p_prov_lifecycle.set_defaults(fn=cmd_providers_lifecycle)
+
+    p_prov_discover = providers_sub.add_parser(
+        "discover", help="reconcile a provider's live model list into the registry"
+    )
+    p_prov_discover.add_argument("provider", help="provider name (openai/anthropic/google/...)")
+    p_prov_discover.add_argument("--mark-missing-deprecated", action="store_true",
+                                 dest="mark_missing_deprecated")
+    p_prov_discover.add_argument("--json", action="store_true")
+    p_prov_discover.set_defaults(fn=cmd_providers_discover)
+
+    p_prov_regress = providers_sub.add_parser(
+        "regress", help="gate a model swap (replay + eval + cost/latency/behavioral diff)"
+    )
+    p_prov_regress.add_argument("--app", required=True)
+    p_prov_regress.add_argument("--candidate-model", required=True, dest="candidate_model")
+    p_prov_regress.add_argument("--baseline-model", default=None, dest="baseline_model")
+    p_prov_regress.add_argument("--dataset", default=None, help="golden dataset JSONL")
+    p_prov_regress.add_argument("--trace", action="append", help="golden trace id (repeatable)")
+    p_prov_regress.add_argument("--traces-dir", default=".vincio/traces")
+    p_prov_regress.add_argument("--gate", action="append", help="gate, e.g. groundedness='>= 0.9'")
+    p_prov_regress.add_argument("--quality-metric", default="semantic_similarity",
+                                dest="quality_metric")
+    p_prov_regress.add_argument("--alpha", type=float, default=0.05)
+    p_prov_regress.add_argument("--repeats", type=int, default=1)
+    p_prov_regress.set_defaults(fn=cmd_providers_regress)
 
     return parser
 

@@ -20,6 +20,8 @@ __all__ = [
     "ProviderResponseError",
     "CircuitOpenError",
     "BatchError",
+    "CapabilityMismatchError",
+    "ModelRetiredError",
     "PromptError",
     "PromptLintError",
     "PromptBudgetError",
@@ -44,6 +46,7 @@ __all__ = [
     "AgentStepError",
     "AgentBudgetExhaustedError",
     "AgentMaxStepsError",
+    "GraphError",
     "WorkflowError",
     "WorkflowStepError",
     "OutputError",
@@ -168,6 +171,37 @@ class BatchError(ProviderError):
     """A provider Batch API submission/poll/reconciliation failure."""
 
     code = "BATCH_ERROR"
+
+
+class CapabilityMismatchError(ProviderError):
+    """A model cannot serve the request (missing vision/tools/context/etc.).
+
+    Raised by the capability guard (1.8) when a substitution would route a
+    request to a model that structurally cannot fulfil it. Non-retryable: the
+    fix is to escalate to a capable model, not to retry the same one.
+    """
+
+    code = "CAPABILITY_MISMATCH"
+
+    def __init__(self, message: str, *, missing: list[str] | None = None, **kw: Any) -> None:
+        kw.setdefault("retryable", False)
+        super().__init__(message, **kw)
+        self.missing = list(missing or [])
+
+
+class ModelRetiredError(ProviderError):
+    """A pinned model is past its registry retirement date (1.8).
+
+    Terminal and lifecycle-classified, distinct from a transient availability
+    error: a retired-model failure surfaces "rotate now" rather than being
+    buried in "all providers failed".
+    """
+
+    code = "MODEL_RETIRED"
+
+    def __init__(self, message: str, **kw: Any) -> None:
+        kw.setdefault("retryable", False)
+        super().__init__(message, **kw)
 
 
 # --- prompt engine ----------------------------------------------------------

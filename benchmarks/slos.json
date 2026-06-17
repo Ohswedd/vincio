@@ -421,6 +421,66 @@
       "threshold": true,
       "enforced_by": "families.perf.hot_paths.bm25_inverted_index",
       "rationale": "Rescanning every document per term is quadratic at corpus scale; posting lists keep it sub-linear."
+    },
+    {
+      "id": "rotation_capability_guard",
+      "category": "reliability",
+      "statement": "Failover skips a model that cannot serve the request instead of returning a wrong answer.",
+      "metric": "families.reliability.capability_guard.failover_skips_incapable",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reliability.capability_guard.failover_skips_incapable",
+      "rationale": "A capability-mismatched substitution (e.g. a vision request to a text-only model) silently drops content; the guard refuses it."
+    },
+    {
+      "id": "rotation_lifecycle_classified",
+      "category": "reliability",
+      "statement": "A retired/removed-model failure is classified as a terminal lifecycle error, not a transient outage.",
+      "metric": "families.reliability.lifecycle_errors.classified",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reliability.lifecycle_errors.classified",
+      "rationale": "A retired-model 404 must surface 'rotate now' rather than being buried in 'all providers failed'."
+    },
+    {
+      "id": "rotation_router_cheapest_capable",
+      "category": "cost",
+      "statement": "The registry-backed router selects the cheapest capable model per request.",
+      "metric": "families.cost.routing_cheapest_capable",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cost.routing_cheapest_capable",
+      "rationale": "Routing by cost over capable candidates is the FinOps win; an incapable cheaper model is never chosen."
+    },
+    {
+      "id": "rotation_google_batch_parity",
+      "category": "cost",
+      "statement": "Google/Vertex batch execution bills at the half-cost batch tier, at parity with OpenAI/Anthropic.",
+      "metric": "families.cost.google_batch_parity",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cost.google_batch_parity",
+      "rationale": "Batch parity across providers keeps the eval/regression workloads the swap gate leans on at half cost everywhere."
+    },
+    {
+      "id": "rotation_swap_gate_blocks_regression",
+      "category": "quality",
+      "statement": "A model swap that significantly regresses quality is blocked by the swap gate; a safe one passes.",
+      "metric": "families.evals.swap_gate_blocks_regression",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.evals.swap_gate_blocks_regression",
+      "rationale": "A model is promoted into the live path only if it clears the gate — the swap is gated, not merely compared."
+    },
+    {
+      "id": "rotation_canary_auto_rollback",
+      "category": "reliability",
+      "statement": "A canary that regresses under load auto-rolls-back to the last known-good model.",
+      "metric": "families.scale.canary_rollback.rolled_back_under_load",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.scale.canary_rollback.rolled_back_under_load",
+      "rationale": "Live qualification must be observe-and-revert: a regressing candidate is pulled automatically, not after an incident."
     }
   ]
 }

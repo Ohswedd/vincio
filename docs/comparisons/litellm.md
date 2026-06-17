@@ -46,15 +46,27 @@ proxy/service that sits in front of your app.
   min_prefix_tokens=1024)` applies caching only where `ModelCapabilities`
   support it, and it's default-on via the `vincio.yaml` cache section
   (`provider_cache`, `provider_cache_ttl`, `provider_cache_min_prefix_tokens`).
+- **Capability-aware routing and a gated swap (1.8).** Where LiteLLM Router
+  load-balances by health and cost, Vincio's `app.use_router([...])` routes by
+  **capability *and* cost** — it refuses a model that can't serve the request
+  (vision/tools/schema/reasoning/context), so failover never silently returns a
+  wrong answer. And a model swap is *gated*, not just compared:
+  `app.gate_swap(candidate, dataset=, traces=)` replays golden traces and runs an
+  eval + cost + latency + behavioral diff with statistical significance
+  (PASS/FAIL), `app.swap_regression(...)` / `vincio eval regress` quantifies "is
+  the cheaper model safe?", and `app.shadow(...)` / `app.canary(...)` qualify a
+  candidate on live traffic with automatic rollback.
 
 | Capability | Gateway (LiteLLM / Bifrost / Portkey) | Vincio |
 | --- | --- | --- |
 | Deployment | Separate proxy/service, extra hop | In-process library, no hop |
 | Failover / circuit breaking | In the proxy | `HealthAwareFailover`, `CircuitBreaker` |
+| Routing | By health/cost in the proxy | By **capability + cost** (`use_router`), refuses mismatches |
 | Key/region load balancing | In the proxy | `KeyPool` (RPM+TPM buckets) |
 | Spend tracking | Gateway dashboard | `CostLedger` / `cost_report` |
 | Budgets | Report + block | Enforced: `cap`/`degrade`/`queue_to_batch` + audit |
-| Batch pricing | Varies | `app.batch(discount=0.5)`, `vincio batch` |
+| Batch pricing | Varies | `app.batch(discount=0.5)` (OpenAI/Anthropic/Google), `vincio batch` |
+| Model swap | Manual config edit | **Gated**: `SwapGate` (replay + significance), shadow/canary auto-rollback |
 | Caching | Proxy-level | Provider-aware `PromptCacheStrategy` |
 | Governance / audit | Gateway logs | Same policy engine + hash-chained audit, one trace |
 

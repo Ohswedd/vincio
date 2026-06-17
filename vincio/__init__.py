@@ -27,6 +27,7 @@ from .core.types import (
     UserInput,
 )
 from .evals.datasets import Dataset
+from .evals.swap import SwapGate, SwapVerdict, model_swap_regression
 from .governance import (
     AIBOM,
     ComplianceFramework,
@@ -46,7 +47,7 @@ from .optimize.distill import BootstrapFinetune, TrainingSet
 from .optimize.judge_calibration import JudgeCalibrator
 from .optimize.loop import ImprovementLoop, LoopResult
 from .optimize.reflective import ReflectiveOptimizer
-from .optimize.routing import ModelCascade
+from .optimize.routing import ModelCascade, Router
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
 from .packs import Pack, available_packs, load_pack
@@ -54,10 +55,13 @@ from .prompts.signatures import InputField, OutputField, Predict, Signature, sig
 from .prompts.templates import PromptSpec
 from .providers import (
     BatchRunner,
+    CanaryRouter,
     CircuitBreaker,
     HealthAwareFailover,
     KeyPool,
+    LifecycleWatcher,
     ModelRegistry,
+    ShadowProvider,
     default_model_registry,
 )
 from .realtime import RealtimeSession
@@ -75,7 +79,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "1.7.1"
+__version__ = "1.8.0"
 
 __all__ = [
     "ContextApp",
@@ -135,6 +139,14 @@ __all__ = [
     "ModelRegistry",
     "default_model_registry",
     "ModelCascade",
+    # 1.8 — provider/model rotation & swap regression
+    "Router",
+    "SwapGate",
+    "SwapVerdict",
+    "model_swap_regression",
+    "ShadowProvider",
+    "CanaryRouter",
+    "LifecycleWatcher",
     "CostLedger",
     "CostBudget",
     "BudgetManager",

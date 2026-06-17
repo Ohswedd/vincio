@@ -366,14 +366,53 @@ result.output; result.citations; result.trace_id; result.cost_usd
   PII/injection/secret detectors, `AccessController(require_explicit_tenant=True)`
   fails closed on untagged tenants, and `ComplianceMapper` marks a control
   `covered` only with measured red-team/eval evidence (config flags ⇒ `partial`).
+- Provider/model rotation & swap regression (1.8, experimental): capability guard
+  — `from vincio.providers import requirements_for, capability_check` intersect a
+  request's needs (vision/tools/structured-output/reasoning/context) with a
+  model's `ModelCapabilities`; unknown models are never blocked. `FailoverChain` /
+  `HealthAwareFailover` guard by default (`guard_capabilities=False` opts out):
+  skip a capability-mismatched substitution, classify a terminal lifecycle error
+  (`is_lifecycle_error`), raise `ModelRetiredError` ("rotate now") when all
+  candidates are retired; `CapabilityMismatchError` when none can serve. Router —
+  `app.use_router(models, *, strategy="cheapest|fastest|least_busy",
+  budget_usd=)` or `Router.from_models(provider, models)` picks the cheapest/
+  fastest/least-busy *capable* model, downgrades to a per-request budget, emits a
+  `model.routed` `RoutingDecision`. Swap gate — `app.gate_swap(candidate_model, *,
+  baseline_model=, dataset=, traces=, gates=, repeats=, flake_quarantine=)` →
+  `SwapVerdict` (`.passed`, `.reason`, `.regression`, `.replay`): replays golden
+  traces (`ReplayRunner`) + `evaluate_gates` + `DriftMonitor` + `ab_test` +
+  behavioral shape diff (tool-call/refusal rate, output length). Model-swap
+  regression — `app.swap_regression(dataset, *, candidate_model=, baseline_model=,
+  repeats=)` / `model_swap_regression(...)` → `SwapRegressionReport`
+  (`.regressions`, `.cost`, `.worst_slices`, `.metric_tests`). `EvalRunner(...,
+  repeats=N, repeat_aggregate="mean", flake_quarantine=True, flake_threshold=0.15)`
+  records per-case mean/stdev and excludes flaky cases from gates. Shadow & canary
+  — `app.shadow(candidate_model, *, candidate_provider=, block=)` →
+  `ShadowProvider` (returns primary, dual-dispatches candidate, `.observations`/
+  `.diff()`); `app.canary(candidate_model, *, percent=, score_fn=, min_samples=,
+  regression_threshold=, prompt_name=)` → `CanaryRouter` (ramps %, online scoring,
+  auto-rollback to primary + prompt-registry head, emits `canary.rollback`); both
+  are `ModelProvider`s. Lifecycle — `app.watch_lifecycle(models=, as_of=)` /
+  `LifecycleWatcher(...).scan()/propose_migration()` emit sunset alerts +
+  `MigrationProposal` (successor or cheaper Pareto-dominating; `apply_to_cascade`/
+  `apply_to_policy`/`apply_to_config`). Discovery — `ModelProvider.list_models()`
+  (OpenAI/Anthropic/Google) + `ModelRegistry.reconcile(profiles)` /
+  `discover_models(provider)` (offline-safe). Google/Vertex `GoogleBatchBackend`
+  completes half-cost batch parity. New `vincio.__all__`: `Router`, `SwapGate`,
+  `SwapVerdict`, `model_swap_regression`, `ShadowProvider`, `CanaryRouter`,
+  `LifecycleWatcher`. Edge: routes by capability *and* cost inside your audit
+  boundary, refuses mismatched substitutions, gates every swap on replayed golden
+  traces with significance, and auto-rolls-back a canary — in-process, not a proxy.
 - CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
   config schema/validate/show, packs list/show, tui,
-  eval run/report/dataset (`--group-by-session`)/drift/annotate,
+  eval run/report/dataset (`--group-by-session`)/drift/annotate/regress
+  (`--baseline-model X --candidate-model Y`),
   prompt lint/compile/push/versions/diff/rollback, trace
   show/view/replay/diff/export/sessions/feedback, optimize run, optimize
   reflective, loop run (`--reflective`), distill, index build, memory
   inspect/remember/recall/forget/export/consolidate/decay,
-  audit verify, governance card/report/aibom/lineage/erase, mcp tools/add/serve.
+  audit verify, governance card/report/aibom/lineage/erase, mcp tools/add/serve,
+  providers list/lifecycle/discover/regress.
 - Server: `from vincio.server import create_app` (FastAPI; API key + JWT).
 - Protocols & interoperability (1.1, experimental): MCP client + server
   (`vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,

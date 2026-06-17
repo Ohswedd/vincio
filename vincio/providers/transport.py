@@ -86,5 +86,8 @@ class CoalescingProvider(ModelProvider):
     def capabilities(self, model: str) -> ModelCapabilities:
         return self.inner.capabilities(model)
 
+    async def list_models(self):  # type: ignore[override]
+        return await self.inner.list_models()
+
     async def aclose(self) -> None:
         await self.inner.aclose()

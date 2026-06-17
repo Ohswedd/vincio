@@ -278,10 +278,111 @@ hits = await index.search(query, top_k=10)   # fan-out + merge
 Pass a custom `router=lambda chunk: ...` to shard by tenant, region, or any key
 you choose.
 
+## Provider/model rotation & swap regression (1.8)
+
+A model swap is the most common and the riskiest change in production. Vincio
+makes it a gated, statistically-backed discipline rather than a hope. All of the
+APIs below are `@experimental` on the frozen 1.0 API.
+
+### Capability-aware routing
+
+Before any substitution, Vincio intersects what the *request* needs (vision,
+tool calling, structured output, reasoning, a wide enough context window) with
+what a candidate model *can do*, read from the `ModelRegistry`. A registry-backed
+router picks the cheapest / fastest / least-busy **capable** model per request,
+and can downgrade to honor a per-request budget:
+
+```python
+app.use_router(["gpt-5.2-nano", "gpt-5.2-mini", "gpt-5.2"], strategy="cheapest")
+result = app.run("classify this ticket")   # routed to the cheapest capable model
+```
+
+`FailoverChain` and `HealthAwareFailover` guard capabilities by default: a model
+that cannot serve the request is **skipped** (not silently returning a wrong
+answer), a retired model raises `ModelRetiredError` ("rotate now"), and a
+terminal lifecycle/config error (a removed/unknown model) is classified
+distinctly from a transient outage. Unknown models are never blocked; pass
+`guard_capabilities=False` to restore the pre-1.8 attempt-everything behavior.
+
+### The swap gate
+
+`app.gate_swap(...)` replays golden traces and runs an eval + cost + latency +
+behavioral diff with statistical significance, returning a PASS/FAIL verdict. A
+model is promoted into the live path only if it clears the gate:
+
+```python
+verdict = app.gate_swap("gpt-5.2-mini", baseline_model="gpt-5.2",
+                        dataset=golden, traces=captured_traces)
+if verdict.passed:
+    app.model = "gpt-5.2-mini"
+```
+
+`vincio providers regress --app app.py --candidate-model gpt-5.2-mini --dataset golden.jsonl`
+runs the same gate from the CLI (exit code 1 on FAIL).
+
+### Model-swap regression (is the cheaper model safe?)
+
+`app.swap_regression(...)` holds prompt, data, and config fixed, swaps **only**
+the model, and reports per-metric significance, per-case deltas, the cost/latency
+trade, and the worst-regressed slices. `repeats=N` runs each case N times for a
+per-case mean/stdev, and flake quarantine excludes noisy cases from the gate so
+non-mock provider variance never flips it on a single run:
+
+```python
+report = app.swap_regression(golden, candidate_model="gpt-5.2-nano",
+                             baseline_model="gpt-5.2", repeats=3)
+report.regressed          # True if a quality metric regressed significantly
+report.cost["ratio"]      # candidate / baseline cost
+report.worst_slices       # the slices that regressed most
+```
+
+CLI: `vincio eval regress golden.jsonl --app app.py --baseline-model gpt-5.2
+--candidate-model gpt-5.2-nano --repeats 3`.
+
+### Shadow & canary with auto-rollback
+
+Qualify a candidate on live traffic without touching the user. A `ShadowProvider`
+returns the primary's response while asynchronously dual-dispatching the
+candidate for offline diff; a `CanaryRouter` ramps a percentage of traffic onto
+the candidate, scores both arms online, and **auto-rolls-back** to the last
+known-good model (and prompt-registry head) on regression:
+
+```python
+shadow = app.shadow("gpt-5.2-mini")          # users still get the primary
+canary = app.canary("gpt-5.2-mini", percent=5.0, regression_threshold=0.05)
+```
+
+Both implement `ModelProvider`, so they nest inside `CircuitBreaker` / `KeyPool`.
+
+### Lifecycle watcher
+
+`app.watch_lifecycle()` reads the registry's deprecation/retirement dates and
+emits early sunset warnings, then proposes a migration — to a model's declared
+successor or a cheaper, at-least-as-capable Pareto-dominating model — that can
+rewrite a `ModelCascade`, `RoutingPolicy`, or `config.model` in place:
+
+```python
+result = app.watch_lifecycle()
+for proposal in result["proposals"]:
+    print(proposal.from_model, "→", proposal.to_model, proposal.kind)
+```
+
+CLI: `vincio providers lifecycle --app app.py` and `vincio providers list`.
+
+### Live discovery & Google/Vertex batch parity
+
+`vincio providers discover <provider>` reconciles a provider's live model list
+into the registry (offline-safe — the shipped catalog stands when no endpoint is
+available). A `GoogleBatchBackend` completes half-cost batch parity with
+OpenAI/Anthropic.
+
 ## Edge over gateways
 
 LLM gateways (LiteLLM, Bifrost, Portkey) give you failover, circuit breaking,
-cascades, cost attribution, budgets, and batch — behind a separate proxy hop.
-Vincio gives you the same, **in-process**: no extra network hop, governed by your
-own policy engine, and on **one trace** with the rest of the run. Offline-first,
-no vendor SDKs (core depends on `httpx` only).
+cascades, cost attribution, budgets, and batch — behind a separate proxy hop, and
+they route by health, not by **capability**. Vincio gives you the same in-process
+(no extra network hop, governed by your own policy engine, on **one trace**), and
+adds what a proxy structurally cannot: it refuses a capability-mismatched
+substitution, **gates** every swap on replayed golden traces with statistical
+significance, and qualifies a candidate on live shadow/canary traffic with
+automatic rollback. Offline-first, no vendor SDKs (core depends on `httpx` only).

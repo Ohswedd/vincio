@@ -17,6 +17,7 @@ from ..core.types import (
     FinishReason,
     ModelCapabilities,
     ModelEvent,
+    ModelProfile,
     ModelRequest,
     ModelResponse,
     TokenUsage,
@@ -338,6 +339,24 @@ class AnthropicProvider(HTTPProvider):
             provider=self.name,
         )
         yield ModelEvent(type="done", response=response)
+
+    @staticmethod
+    def _parse_models_list(data: dict[str, Any]) -> list[ModelProfile]:
+        """Map an Anthropic ``/v1/models`` payload onto sparse profiles."""
+        out: list[ModelProfile] = []
+        for item in data.get("data") or []:
+            model_id = item.get("id")
+            if not model_id:
+                continue
+            out.append(
+                ModelProfile(name=item.get("display_name") or model_id,
+                             provider="anthropic", model=model_id)
+            )
+        return out
+
+    async def list_models(self) -> list[ModelProfile]:
+        data = await self._get_json("/models")
+        return self._parse_models_list(data)
 
     def capabilities(self, model: str) -> ModelCapabilities:
         from .registry import default_model_registry

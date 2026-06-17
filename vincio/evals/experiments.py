@@ -203,6 +203,10 @@ class Experiment:
         prompt: Any = None,
         apply: Any = None,
         params: dict[str, Any] | None = None,
+        repeats: int = 1,
+        repeat_aggregate: str = "mean",
+        flake_quarantine: bool = False,
+        flake_threshold: float = 0.15,
     ) -> EvalReport:
         from .runners import EvalRunner
 
@@ -217,7 +221,14 @@ class Experiment:
                 app.prompt_spec = prompt
             if apply is not None:
                 apply(app)
-            runner = EvalRunner(app, metrics=self.metrics)
+            runner = EvalRunner(
+                app,
+                metrics=self.metrics,
+                repeats=repeats,
+                repeat_aggregate=repeat_aggregate,
+                flake_quarantine=flake_quarantine,
+                flake_threshold=flake_threshold,
+            )
             report = await runner.arun(dataset, name=f"{self.name}:{variant}")
         finally:
             app.model = saved_model

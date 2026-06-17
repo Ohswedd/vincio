@@ -64,6 +64,13 @@ vincio eval annotate LABELS.jsonl [--threshold X] [--bins N]
     Report human↔judge Cohen's κ from {judge, human} score pairs; exits
     non-zero until κ clears the threshold (the judge's CI-gating bar).
 
+vincio eval regress DATASET.jsonl --app APP.py --candidate-model Y
+        [--baseline-model X] [--metric NAME]... [--quality-metric M]
+        [--alpha 0.05] [--repeats N] [--no-flake-quarantine] [--output report.json]
+    Swap only the model and report a statistically grounded regression:
+    per-metric significance, the cost/latency trade, and worst-regressed slices.
+    Exits non-zero on a significant quality regression. (1.8)
+
 vincio prompt lint PATH
     Lint prompt spec YAML files (PROMPT001–PROMPT009); exits non-zero on errors.
 
@@ -187,4 +194,23 @@ vincio mcp serve APP [--name NAME]
     Expose the ContextApp in APP as an MCP server over stdio (reads JSON-RPC
     on stdin). Tools/resources/prompts are served through the permissioned,
     audited runtime.
+
+vincio providers list [--provider NAME] [--json]
+    List the model registry catalog (tier, lifecycle, pricing, successor). (1.8)
+
+vincio providers lifecycle [--app APP.py] [--model ID]... [--as-of YYYY-MM-DD]
+        [--warn-within-days N] [--json]
+    Scan pinned models (the app's, or --model ids) for sunset and propose
+    migrations off deprecated/retired ones; exits non-zero on a warn/critical
+    alert. (1.8)
+
+vincio providers discover PROVIDER [--mark-missing-deprecated] [--json]
+    Reconcile a provider's live model list into the registry (offline-safe —
+    the shipped catalog stands when no endpoint is reachable). (1.8)
+
+vincio providers regress --app APP.py --candidate-model Y [--baseline-model X]
+        [--dataset DATASET.jsonl] [--trace TRACE_ID]... [--traces-dir DIR]
+        [--gate "metric=>= 0.9"]... [--quality-metric M] [--alpha 0.05] [--repeats N]
+    Gate a model swap: replay golden traces + an eval/cost/latency/behavioral
+    diff with significance; exits non-zero on a FAIL verdict. (1.8)
 ```
