@@ -32,6 +32,7 @@ __all__ = [
     "FieldOp",
     "FilterSpec",
     "as_predicate",
+    "flat_filter_fields",
     "eq",
     "ne",
     "in_",
@@ -208,6 +209,34 @@ def as_predicate(where: Any) -> Any:
     return where  # already a callable predicate
 
 
+def flat_filter_fields(chunk: Chunk) -> dict[str, Any]:
+    """Scalar, natively-filterable fields for a chunk.
+
+    Vector stores that persist the chunk as an opaque JSON blob also persist
+    these flat fields alongside it, so a compiled :class:`FilterSpec` matches
+    *server-side* (Pinecone metadata, Weaviate properties, Milvus dynamic field,
+    Elasticsearch keywords) — pushing tenant/document/kind/metadata scope into
+    the backend instead of fetching rows and dropping them client-side.
+
+    Metadata is flattened first so a top-level chunk field always wins a name
+    clash; ``None`` values are dropped (some stores reject null metadata). An
+    untagged tenant is stored as ``""`` (see :func:`build_filter_spec`'s
+    shared-or-mine scope, which matches both null and empty)."""
+    fields: dict[str, Any] = {}
+    for key, value in (chunk.metadata or {}).items():
+        if isinstance(value, (str, int, float, bool)):
+            fields[key] = value
+    fields["document_id"] = chunk.document_id
+    fields["tenant_id"] = chunk.tenant_id or ""
+    fields["kind"] = chunk.kind
+    if chunk.page is not None:
+        fields["page"] = chunk.page
+    fields["index"] = chunk.index
+    if chunk.source_uri is not None:
+        fields["source_uri"] = chunk.source_uri
+    return fields
+
+
 # ---------------------------------------------------------------------------
 # Field resolution + leaf evaluation
 # ---------------------------------------------------------------------------
@@ -344,6 +373,9 @@ def _to_weaviate(spec: FilterSpec) -> dict[str, Any]:
         field = spec.field or ""
         path = field[len("metadata.") :] if field.startswith("metadata.") else field
         op, value = spec.op, spec.value
+        if op == "exists":
+            # Weaviate "is present" is IsNull=False.
+            return {"path": [path], "operator": "IsNull", "valueBoolean": False}
         operator = {
             "eq": "Equal",
             "ne": "NotEqual",

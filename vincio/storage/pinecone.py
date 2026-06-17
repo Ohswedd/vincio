@@ -12,7 +12,7 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder
-from ..retrieval.filters import as_predicate
+from ..retrieval.filters import FilterSpec, as_predicate, flat_filter_fields
 from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["PineconeVectorIndex"]
@@ -32,15 +32,23 @@ class PineconeVectorIndex:
         region: str = "us-east-1",
         client: Any | None = None,
     ) -> None:
-        try:
-            from pinecone import Pinecone, ServerlessSpec
-        except ImportError as exc:
-            raise StorageError('Pinecone support requires: pip install "vincio[pinecone]"') from exc
         self.embedder = embedder
         self.namespace = namespace
-        self._pc = client or Pinecone(api_key=api_key)
+        # Lazy-import the SDK only when building a real client (like every other
+        # adapter), so an injected client works without the package installed.
+        if client is None:
+            try:
+                from pinecone import Pinecone
+            except ImportError as exc:
+                raise StorageError(
+                    'Pinecone support requires: pip install "vincio[pinecone]"'
+                ) from exc
+            client = Pinecone(api_key=api_key)
+        self._pc = client
         existing = {idx["name"] for idx in self._pc.list_indexes()}
         if index_name not in existing:
+            from pinecone import ServerlessSpec
+
             self._pc.create_index(
                 name=index_name,
                 dimension=embedder.dim,
@@ -54,12 +62,9 @@ class PineconeVectorIndex:
         return int(stats.get("total_vector_count", 0))
 
     def _metadata(self, chunk: Chunk) -> dict[str, Any]:
-        return {
-            "_chunk": chunk.model_dump_json(),
-            "document_id": chunk.document_id,
-            "tenant_id": chunk.tenant_id or "",
-            "kind": chunk.kind,
-        }
+        # 2.0: flat filterable fields become Pinecone metadata so a compiled
+        # FilterSpec matches server-side.
+        return {"_chunk": chunk.model_dump_json(), **flat_filter_fields(chunk)}
 
     async def add(self, chunks: list[Chunk]) -> None:
         if not chunks:
@@ -83,11 +88,20 @@ class PineconeVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await self.embedder.embed([query])
+        # 2.0: push a FilterSpec down as a Pinecone metadata filter (its real
+        # wire format); the as_predicate net guarantees correctness regardless.
+        native = where.to_pinecone() if isinstance(where, FilterSpec) else None
         predicate = as_predicate(where)
-        fetch = top_k * 4 if where is not None else top_k
-        response = self.index.query(
-            vector=list(vector), top_k=fetch, include_metadata=True, namespace=self.namespace
-        )
+        fetch = top_k if (native is not None or where is None) else top_k * 4
+        query_kwargs: dict[str, Any] = {
+            "vector": list(vector),
+            "top_k": fetch,
+            "include_metadata": True,
+            "namespace": self.namespace,
+        }
+        if native is not None:
+            query_kwargs["filter"] = native
+        response = self.index.query(**query_kwargs)
         hits: list[SearchHit] = []
         for match in response.get("matches") or []:
             metadata = match.get("metadata") or {}

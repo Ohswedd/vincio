@@ -14,7 +14,7 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder, embed_texts
-from ..retrieval.filters import as_predicate
+from ..retrieval.filters import FilterSpec, as_predicate, flat_filter_fields
 from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["MilvusVectorIndex"]
@@ -57,13 +57,13 @@ class MilvusVectorIndex:
         return int(stats.get("row_count", 0))
 
     def _row(self, chunk: Chunk, vector: list[float]) -> dict[str, Any]:
+        # 2.0: flat filterable fields land in Milvus's dynamic field so a
+        # compiled FilterSpec `expr` matches server-side.
         return {
             "id": chunk.id,
             "vector": list(vector),
             "json": chunk.model_dump_json(),
-            "document_id": chunk.document_id,
-            "tenant_id": chunk.tenant_id or "",
-            "kind": chunk.kind,
+            **flat_filter_fields(chunk),
         }
 
     async def add(self, chunks: list[Chunk]) -> None:
@@ -83,14 +83,20 @@ class MilvusVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
+        # 2.0: push a FilterSpec down as a Milvus boolean `expr` (its real wire
+        # format); the as_predicate net guarantees correctness regardless.
+        native = where.to_milvus() if isinstance(where, FilterSpec) else None
         predicate = as_predicate(where)
-        fetch = top_k * 4 if where is not None else top_k
-        results = self.client.search(
-            collection_name=self.collection,
-            data=[list(vector)],
-            limit=fetch,
-            output_fields=["json"],
-        )
+        fetch = top_k if (native is not None or where is None) else top_k * 4
+        search_kwargs: dict[str, Any] = {
+            "collection_name": self.collection,
+            "data": [list(vector)],
+            "limit": fetch,
+            "output_fields": ["json"],
+        }
+        if native:
+            search_kwargs["filter"] = native
+        results = self.client.search(**search_kwargs)
         hits: list[SearchHit] = []
         for hit in results[0] if results else []:
             entity = hit.get("entity") or {}

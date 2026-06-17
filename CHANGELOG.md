@@ -4,6 +4,35 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.1] - 2026-06-17
+
+Closes the one deferred 2.0 follow-up and a secret-scanning hygiene issue. No
+public-API changes (`API_VERSION` stays `2.0`).
+
+### Changed
+
+- **Native filter pushdown now reaches every named backend.** Pinecone,
+  Weaviate, Milvus, and Elasticsearch/OpenSearch persist flat filterable fields
+  alongside the chunk blob (`flat_filter_fields`) and pass the compiled
+  `FilterSpec` into the backend's native query (Pinecone metadata filter,
+  Weaviate `where`, Milvus `expr`, ES/OpenSearch kNN `filter`), so tenant /
+  document / kind / metadata scope is applied server-side — not only client-side.
+  Each is verified offline against its fake (which now applies the pushed-down
+  filter). The shared-or-mine tenant scope matches both null (in-memory) and the
+  empty-string-stored untagged case so it is correct in-memory and natively.
+  `PineconeVectorIndex` now lazy-imports its SDK only when building a real client
+  (consistent with the other adapters), so an injected client works without the
+  package.
+- **Secret-scanning hygiene** — the synthetic OpenAI-key fixture used to exercise
+  the egress DLP scanner (tests, example, benchmark) is now assembled at runtime,
+  so no contiguous secret-shaped literal lives in source. It still trips the
+  `sk-...` detector at scan time, which is the point of the test.
+
+### Notes
+
+- 1389 tests passing offline; ruff + mypy clean. VincioBench: 18 families, 218
+  CI budgets, 65 SLOs. The 2.0 milestone now carries no deferred items.
+
 ## [2.0.0] - 2026-06-17
 
 The one breaking window. Five milestones of additive growth exposed structural

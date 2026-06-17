@@ -14,7 +14,7 @@ from typing import Any
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder, embed_texts
-from ..retrieval.filters import as_predicate
+from ..retrieval.filters import FilterSpec, as_predicate, flat_filter_fields
 from ..retrieval.indexes import SearchHit, Where
 
 __all__ = ["WeaviateVectorIndex"]
@@ -59,12 +59,9 @@ class WeaviateVectorIndex:
         return int(self.collection.aggregate.over_all(total_count=True).total_count)
 
     def _properties(self, chunk: Chunk) -> dict[str, Any]:
-        return {
-            "json": chunk.model_dump_json(),
-            "document_id": chunk.document_id,
-            "tenant_id": chunk.tenant_id or "",
-            "kind": chunk.kind,
-        }
+        # 2.0: persist flat filterable fields alongside the blob so a compiled
+        # FilterSpec matches server-side (Weaviate properties).
+        return {"json": chunk.model_dump_json(), **flat_filter_fields(chunk)}
 
     async def add(self, chunks: list[Chunk]) -> None:
         if not chunks:
@@ -91,9 +88,15 @@ class WeaviateVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
+        # 2.0: push a FilterSpec into Weaviate's `where` filter server-side; the
+        # as_predicate net guarantees correctness regardless. Fetch top_k when a
+        # FilterSpec is pushed down (no over-fetch); a callable still post-filters.
+        native = where.to_weaviate() if isinstance(where, FilterSpec) else None
         predicate = as_predicate(where)
-        fetch = top_k * 4 if where is not None else top_k
+        fetch = top_k if (native is not None or where is None) else top_k * 4
         kwargs: dict[str, Any] = {"near_vector": list(vector), "limit": fetch}
+        if native is not None:
+            kwargs["filters"] = native
         try:  # request the distance metadata when the real SDK is present
             from weaviate.classes.query import MetadataQuery
 

@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.0.0 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.0.1 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
