@@ -2531,6 +2531,133 @@ async def bench_generation() -> dict[str, Any]:
     }
 
 
+async def bench_breaking_2_0() -> dict[str, Any]:
+    """Breaking2.0Bench: the 2.0 structural guarantees, all offline & deterministic —
+    facade decomposition, async-first stores, typed events, multimodal packet,
+    FilterSpec pushdown + tenant scope, enterprise auth, egress DLP, signed audit."""
+    import json as _json
+
+    from vincio import ContextApp
+    from vincio.context.compiler import ContextCompiler
+    from vincio.context.evidence_store import InMemoryEvidenceStore
+    from vincio.context.ir import ContextIR
+    from vincio.context.packet import ContextPacket
+    from vincio.core.events import EventBus, RunCompleted
+    from vincio.core.types import EvidenceItem, ImageRef, Message, ModelRequest, Objective
+    from vincio.evals.datasets import EvalCase
+    from vincio.evals.metrics import METRICS, RunOutput
+    from vincio.providers.enterprise import SigV4Auth
+    from vincio.retrieval.indexes import BM25Index, build_filter_spec
+    from vincio.security.audit import (
+        AuditLog,
+        HMACSigner,
+        merkle_proof,
+        merkle_root,
+        verify_merkle_proof,
+    )
+    from vincio.security.policy import PolicyEngine
+    from vincio.storage.base import InMemoryMetadataStore, aget, asave
+
+    app = ContextApp(name="bench_2_0", provider=MockProvider(), model="gpt-5.2-mini")
+
+    # -- facade decomposition --
+    facade_delegates = app.runs.run == app.run and app.governance.model_card == app.model_card
+
+    # -- async-first store --
+    store = InMemoryMetadataStore()
+    await asave(store, "runs", {"id": "r1", "status": "ok"})
+    async_roundtrip = (await aget(store, "runs", "r1")) == {"id": "r1", "status": "ok"}
+
+    # -- typed event catalog --
+    bus = EventBus()
+    seen: list[Any] = []
+    bus.subscribe("run.completed", seen.append)
+    event = bus.publish(RunCompleted(run_id="r1", status="succeeded"))
+    event_catalog_ok = bool(seen) and event.payload["run_id"] == "r1" and event.schema_version
+
+    # -- multimodal packet: image+table candidates + cross-process materialize --
+    evidence = [
+        EvidenceItem(source_id="d1", text="The annual fee is $99.", relevance=0.9),
+        EvidenceItem(source_id="d2", modality="image", source_type="image", relevance=0.8,
+                     image=ImageRef(path="/p.png", metadata={"caption": "pricing image"})),
+        EvidenceItem(source_id="d3", modality="table", relevance=0.7,
+                     table={"columns": ["plan", "fee"], "rows": [["pro", 99]], "markdown": "pro 99"}),
+    ]
+    candidates = ContextCompiler()._collect(evidence=evidence, memory=[], tool_results=[])
+    multimodal_selected = len({c.modality for c in candidates} & {"text", "image", "table"})
+    evstore = InMemoryEvidenceStore()
+    ir = ContextIR(objective=Objective("q"),
+                   evidence=[EvidenceItem(id="e1", source_id="d", text="Bordeaux is in France.")])
+    slim = ContextPacket.from_ir(ir, slim=True, evidence_store=evstore)
+    shipped = ContextPacket.model_validate_json(slim.model_dump_json())
+    shipped.materialize(store=evstore)
+    cross_process_materialize = not shipped.slim and shipped.evidence_items[0].get("text") == "Bordeaux is in France."
+
+    # -- FilterSpec native pushdown + tenant scope (shared-or-mine) --
+    bm = BM25Index()
+    from vincio.core.types import Chunk
+    await bm.add([
+        Chunk(document_id="d1", text="alpha report", tenant_id="t1"),
+        Chunk(document_id="d2", text="alpha report", tenant_id="t2"),
+        Chunk(document_id="d3", text="alpha report"),  # untagged/shared
+    ])
+    scope = build_filter_spec(tenant_id="t1")
+    hits = await bm.search("alpha report", top_k=10, where=scope)
+    seen_tenants = {h.chunk.tenant_id for h in hits}
+    tenant_scope_correct = "t2" not in seen_tenants and "t1" in seen_tenants and None in seen_tenants
+    sql, params = build_filter_spec(tenant_id="t1", kinds=["text"]).to_sql_where(column="json")
+    filter_compiles = "(json ->> %s)" in sql and "t1" in params
+
+    # -- enterprise auth (SigV4) --
+    sig = SigV4Auth("AKIA", "secret", region="us-east-1", clock=lambda: __import__("datetime").datetime(2026, 6, 17, tzinfo=__import__("datetime").UTC))
+    sig_headers = sig.headers(method="POST", url="https://bedrock-runtime.us-east-1.amazonaws.com/model/m/converse", body=b"{}", base_headers={})
+    sigv4_signed = sig_headers["Authorization"].startswith("AWS4-HMAC-SHA256 Credential=AKIA/")
+
+    # -- egress DLP blocks a credential --
+    secret = "sk-live-ABCDEF0123456789ABCDEF0123456789ABCDEF01"
+    egress = PolicyEngine(egress_dlp="block").scan_egress(
+        ModelRequest(model="m", messages=[Message(role="user", content=f"key {secret}")])
+    )
+    egress_blocks_secret = not egress.allowed
+
+    # -- signed audit chain detects a re-hashed forgery + merkle inclusion --
+    signer = HMACSigner("k")
+    log = AuditLog(directory=None, signer=signer)
+    log.record("run", run_id="r1", details={"x": "orig"})
+    log.record("output", run_id="r1")
+    from vincio.security.audit import AuditEntry
+    entries = [AuditEntry.model_validate(_json.loads(e.model_dump_json())) for e in log.entries]
+    entries[0].details = {"x": "TAMPERED"}
+    entries[0].entry_hash = entries[0].compute_hash()  # attacker recomputes public hash
+    forged_chain_ok = all(
+        e.prev_hash == (entries[i - 1].entry_hash if i else "") and e.entry_hash == e.compute_hash()
+        for i, e in enumerate([entries[0]])
+    )
+    signed_detects_forgery = not signer.verify(entries[0].entry_hash, entries[0].signature)
+    hashes = [e.entry_hash for e in log.entries]
+    root = merkle_root(hashes)
+    merkle_ok = verify_merkle_proof(hashes[0], merkle_proof(hashes, 0), root)
+
+    # -- eval semantics: unscoreable metric is skipped --
+    skip_result = METRICS["faithfulness"](EvalCase(id="c", input="q", expected="x"), RunOutput(output="ok"))
+    eval_skipped = skip_result.skipped
+
+    return {
+        "facade_delegates": facade_delegates,
+        "async_store_roundtrip": async_roundtrip,
+        "event_catalog_validates": bool(event_catalog_ok),
+        "multimodal_modalities_selected": multimodal_selected,
+        "cross_process_materialize": cross_process_materialize,
+        "tenant_scope_correct": tenant_scope_correct,
+        "filter_pushdown_compiles": filter_compiles,
+        "enterprise_sigv4_signed": sigv4_signed,
+        "egress_dlp_blocks_secret": egress_blocks_secret,
+        "signed_chain_detects_forgery": signed_detects_forgery and forged_chain_ok,
+        "merkle_inclusion_verified": merkle_ok,
+        "eval_unscoreable_skipped": eval_skipped,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -2549,6 +2676,7 @@ FAMILIES = {
     "governance": bench_governance,
     "generation": bench_generation,
     "perf": bench_perf,
+    "breaking_2_0": bench_breaking_2_0,
 }
 
 

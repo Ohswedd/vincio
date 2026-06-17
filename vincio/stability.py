@@ -47,7 +47,10 @@ __all__ = [
 
 # The public-API contract version. Bumped only on a MAJOR release; it is the
 # promise SemVer is applied against, independent of the package patch level.
-API_VERSION = "1.0"
+# 2.0 is the deliberate breaking window — the structural refactor, async-first
+# stores, multimodal-native packet, and enterprise endpoints — after which the
+# surface is frozen again under the same mechanical deprecation runway.
+API_VERSION = "2.0"
 
 _STABILITY_ATTR = "__vincio_stability__"
 

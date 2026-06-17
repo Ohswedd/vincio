@@ -615,6 +615,42 @@
     },
     "families.memory.memory_os.pager_bounded": {
       "eq": true
+    },
+    "families.breaking_2_0.facade_delegates": {
+      "eq": true
+    },
+    "families.breaking_2_0.async_store_roundtrip": {
+      "eq": true
+    },
+    "families.breaking_2_0.event_catalog_validates": {
+      "eq": true
+    },
+    "families.breaking_2_0.multimodal_modalities_selected": {
+      "gte": 3
+    },
+    "families.breaking_2_0.cross_process_materialize": {
+      "eq": true
+    },
+    "families.breaking_2_0.tenant_scope_correct": {
+      "eq": true
+    },
+    "families.breaking_2_0.filter_pushdown_compiles": {
+      "eq": true
+    },
+    "families.breaking_2_0.enterprise_sigv4_signed": {
+      "eq": true
+    },
+    "families.breaking_2_0.egress_dlp_blocks_secret": {
+      "eq": true
+    },
+    "families.breaking_2_0.signed_chain_detects_forgery": {
+      "eq": true
+    },
+    "families.breaking_2_0.merkle_inclusion_verified": {
+      "eq": true
+    },
+    "families.breaking_2_0.eval_unscoreable_skipped": {
+      "eq": true
     }
   }
 }
