@@ -11,6 +11,7 @@ from .base import (
     ModelProvider,
     ProviderRegistry,
     RetryingProvider,
+    is_lifecycle_error,
 )
 from .batch import (
     AnthropicBatchBackend,
@@ -21,13 +22,22 @@ from .batch import (
     BatchRunner,
     BatchRunResult,
     BatchStatus,
+    GoogleBatchBackend,
     InProcessBatchBackend,
     OpenAIBatchBackend,
 )
 from .cache_strategy import PromptCacheStrategy, cache_hit_rate
+from .capabilities import (
+    CapabilityVerdict,
+    RequestNeeds,
+    capability_check,
+    requirements_for,
+)
 from .circuit import CircuitBreaker, CircuitState, HealthAwareFailover
+from .discovery import discover_models
 from .google import GoogleProvider
 from .keypool import KeyPool, RateLimiter
+from .lifecycle import LifecycleAlert, LifecycleWatcher, MigrationProposal
 from .local import LocalProvider
 from .mistral import MistralProvider
 from .mock import MockProvider, instance_from_schema
@@ -46,6 +56,7 @@ from .registry import (
     default_model_registry,
     discover_entry_points,
 )
+from .shadow import CanaryRouter, CanaryState, ShadowObservation, ShadowProvider
 from .transport import CoalescingProvider, build_pooled_client
 
 __all__ = [
@@ -70,6 +81,7 @@ __all__ = [
     "InProcessBatchBackend",
     "OpenAIBatchBackend",
     "AnthropicBatchBackend",
+    "GoogleBatchBackend",
     "CoalescingProvider",
     "build_pooled_client",
     "ProviderRegistry",
@@ -77,6 +89,20 @@ __all__ = [
     "ModelUnknownWarning",
     "default_model_registry",
     "discover_entry_points",
+    "discover_models",
+    # capability guard + rotation (1.8)
+    "RequestNeeds",
+    "CapabilityVerdict",
+    "requirements_for",
+    "capability_check",
+    "is_lifecycle_error",
+    "ShadowProvider",
+    "ShadowObservation",
+    "CanaryRouter",
+    "CanaryState",
+    "LifecycleWatcher",
+    "LifecycleAlert",
+    "MigrationProposal",
     "OpenAIProvider",
     "OpenAIResponsesProvider",
     "OpenAICompatibleProvider",

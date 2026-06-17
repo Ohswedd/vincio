@@ -420,6 +420,19 @@ class ContextApp:
             return
         name = (run_config.provider if run_config else None) or self._provider_name
         model = (run_config.model if run_config else None) or self.model
+        self._enforce_model_residency(model, provider=name)
+
+    def _enforce_model_residency(self, model: str, *, provider: str | None = None) -> None:
+        """Refuse egress of a single ``model`` to a disallowed region (1.6/1.8).
+
+        The shared per-model residency check behind :meth:`check_residency` and
+        the 1.8 rotation wrappers (``use_router`` / ``shadow`` / ``canary`` /
+        ``use_cascade``), so a candidate model whose region is not allowed is
+        refused at wiring time rather than silently egressed below the run choke
+        point. A no-op when no residency policy is set."""
+        if not self.residency.enforced:
+            return
+        name = provider or self._provider_name
         # The region is inferred from the configured endpoint when set, so a
         # region-pinned base_url drives the egress decision.
         base_url = self.config.provider.base_urls.get(name)
@@ -622,8 +635,218 @@ class ContextApp:
             )
         else:
             raise ConfigError("use_cascade requires models=[...] or rungs=[...]")
+        # Residency (1.8): every rung the cascade may escalate into must be an
+        # allowed region — closes the gap where an escalation egressed below the
+        # run's residency choke point.
+        for rung in self.cascade.rungs:
+            self._enforce_model_residency(rung.model, provider=rung.provider)
         self._cascade_confidence = confidence
         return self
+
+    # -- provider/model rotation & swap regression (1.8) ------------------------
+
+    def _base_provider(self) -> ModelProvider:
+        """The raw model provider (the current instance, or one built from config)
+        — the inner provider that rotation wrappers compose over."""
+        if self._provider_instance is not None:
+            return self._provider_instance
+        return build_provider(self._provider_name, self.config.provider)
+
+    def _pinned_models(self) -> list[str]:
+        """Every model id this app currently pins (default model + cascade rungs)."""
+        models: set[str] = set()
+        if self.model:
+            models.add(self.model)
+        cascade = getattr(self, "cascade", None)
+        if cascade is not None:
+            models.update(rung.model for rung in cascade.rungs)
+        return sorted(m for m in models if m)
+
+    @experimental(since="1.8")
+    def use_router(
+        self,
+        models: list[str],
+        *,
+        strategy: str = "cheapest",
+        budget_usd: float | None = None,
+        guard_capabilities: bool = True,
+        provider: ModelProvider | None = None,
+    ) -> ContextApp:
+        """Route each run to the cheapest / fastest / least-busy *capable* model.
+
+        A registry-backed :class:`~vincio.optimize.routing.Router` becomes the
+        app's provider: before every call it filters ``models`` to those that can
+        serve the request (capability guard) and picks by ``strategy``, optionally
+        **downgrading** to honor a per-request ``budget_usd``. Each pick is emitted
+        as a ``model.routed`` event on the app's bus::
+
+            app.use_router(["gpt-5.2-nano", "gpt-5.2-mini", "gpt-5.2"], strategy="cheapest")
+        """
+        from ..optimize.routing import Router
+
+        if not models:
+            raise ConfigError("use_router requires at least one model")
+        for candidate in models:  # residency: every routable model must be allowed
+            self._enforce_model_residency(candidate)
+        base = provider or self._base_provider()
+        self._provider_instance = Router(
+            [(base, m) for m in models],
+            strategy=strategy,  # type: ignore[arg-type]
+            budget_usd=budget_usd,
+            guard_capabilities=guard_capabilities,
+            events=self.events,
+        )
+        self.model = models[0]
+        return self
+
+    @experimental(since="1.8")
+    def shadow(
+        self,
+        candidate_model: str,
+        *,
+        candidate_provider: ModelProvider | None = None,
+        block: bool = False,
+    ) -> Any:
+        """Serve the primary model but dual-dispatch ``candidate_model`` for an
+        offline diff. Returns the :class:`~vincio.providers.shadow.ShadowProvider`
+        (read ``.observations`` / ``.diff()``); it also becomes the app's provider
+        so every run is shadowed until removed."""
+        from ..providers.shadow import ShadowProvider
+
+        # Residency: the shadow dual-dispatches the request to the candidate, so
+        # the candidate model's region must be allowed before any egress.
+        self._enforce_model_residency(
+            candidate_model, provider=getattr(candidate_provider, "name", None)
+        )
+        primary = self._base_provider()
+        candidate = candidate_provider or primary
+        shadow = ShadowProvider(
+            primary, candidate, candidate_model=candidate_model, block=block,
+            price_table=self.cost_tracker.price_table, events=self.events,
+        )
+        self._provider_instance = shadow
+        return shadow
+
+    @experimental(since="1.8")
+    def canary(
+        self,
+        candidate_model: str,
+        *,
+        percent: float = 5.0,
+        candidate_provider: ModelProvider | None = None,
+        score_fn: Callable[[Any], float] | None = None,
+        min_samples: int = 20,
+        regression_threshold: float = 0.05,
+        prompt_name: str | None = None,
+    ) -> Any:
+        """Ramp ``percent``% of live traffic onto ``candidate_model`` with online
+        scoring and auto-rollback to the primary (and prompt-registry head) on
+        regression. Returns the :class:`~vincio.providers.shadow.CanaryRouter`,
+        which also becomes the app's provider."""
+        from ..providers.shadow import CanaryRouter
+
+        # Residency: the canary routes live traffic to the candidate model.
+        self._enforce_model_residency(
+            candidate_model, provider=getattr(candidate_provider, "name", None)
+        )
+        primary = self._base_provider()
+        candidate = candidate_provider or primary
+        canary = CanaryRouter(
+            primary, candidate, percent=percent, candidate_model=candidate_model,
+            score_fn=score_fn, min_samples=min_samples,
+            regression_threshold=regression_threshold,
+            prompt_registry=getattr(self, "prompt_registry", None), prompt_name=prompt_name,
+            events=self.events,
+        )
+        self._provider_instance = canary
+        return canary
+
+    @experimental(since="1.8")
+    async def agate_swap(
+        self,
+        candidate_model: str,
+        *,
+        baseline_model: str | None = None,
+        dataset: Any = None,
+        traces: list[Any] | None = None,
+        metrics: list[str] | None = None,
+        quality_metric: str = "semantic_similarity",
+        gates: dict[str, str] | None = None,
+        alpha: float = 0.05,
+        repeats: int = 1,
+        flake_quarantine: bool = True,
+        pin_tools: bool = True,
+    ) -> Any:
+        """Gate a model swap on replayed golden traces + an eval/cost/latency/
+        behavioral diff with statistical backing. Returns a
+        :class:`~vincio.evals.swap.SwapVerdict`."""
+        from ..evals.swap import SwapGate
+
+        gate = SwapGate(
+            self, metrics=metrics, quality_metric=quality_metric, gates=gates, alpha=alpha,
+            repeats=repeats, flake_quarantine=flake_quarantine,
+        )
+        return await gate.evaluate(
+            candidate_model=candidate_model, baseline_model=baseline_model,
+            dataset=dataset, traces=traces, pin_tools=pin_tools,
+        )
+
+    @experimental(since="1.8")
+    def gate_swap(self, candidate_model: str, **kwargs: Any) -> Any:
+        """Synchronous :meth:`agate_swap`."""
+        from ..providers.base import run_sync
+
+        return run_sync(self.agate_swap(candidate_model, **kwargs))
+
+    @experimental(since="1.8")
+    async def aswap_regression(
+        self,
+        dataset: Any,
+        *,
+        candidate_model: str,
+        baseline_model: str | None = None,
+        metrics: list[str] | None = None,
+        quality_metric: str = "semantic_similarity",
+        alpha: float = 0.05,
+        repeats: int = 1,
+        flake_quarantine: bool = True,
+    ) -> Any:
+        """Swap only the model on a fixed dataset and return a statistically
+        grounded :class:`~vincio.evals.swap.SwapRegressionReport`."""
+        from ..evals.swap import model_swap_regression
+
+        return await model_swap_regression(
+            self, dataset, baseline_model=baseline_model, candidate_model=candidate_model,
+            metrics=metrics, quality_metric=quality_metric, alpha=alpha, repeats=repeats,
+            flake_quarantine=flake_quarantine,
+        )
+
+    @experimental(since="1.8")
+    def swap_regression(self, dataset: Any, *, candidate_model: str, **kwargs: Any) -> Any:
+        """Synchronous :meth:`aswap_regression`."""
+        from ..providers.base import run_sync
+
+        return run_sync(self.aswap_regression(dataset, candidate_model=candidate_model, **kwargs))
+
+    @experimental(since="1.8")
+    def watch_lifecycle(
+        self,
+        models: list[str] | None = None,
+        *,
+        as_of: Any = None,
+        warn_within_days: int = 90,
+        propose: bool = True,
+    ) -> dict[str, Any]:
+        """Scan pinned models for sunset and (optionally) propose migrations off
+        deprecated/retired/nearing-retirement ones. Returns ``{"alerts",
+        "proposals"}``; defaults to the app's pinned models."""
+        from ..providers.lifecycle import LifecycleWatcher
+
+        watcher = LifecycleWatcher(warn_within_days=warn_within_days, events=self.events)
+        targets = list(models) if models else self._pinned_models()
+        alerts = watcher.scan(targets, as_of=as_of)
+        proposals = watcher.propose_all(targets, as_of=as_of) if propose else []
+        return {"alerts": alerts, "proposals": proposals}
 
     @experimental(since="1.3")
     def set_cost_budget(

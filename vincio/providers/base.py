@@ -20,7 +20,9 @@ from typing import Any
 import httpx
 
 from ..core.errors import (
+    CapabilityMismatchError,
     ConfigError,
+    ModelRetiredError,
     ProviderAuthError,
     ProviderError,
     ProviderRateLimitError,
@@ -31,9 +33,11 @@ from ..core.errors import (
 from ..core.types import (
     ModelCapabilities,
     ModelEvent,
+    ModelProfile,
     ModelRequest,
     ModelResponse,
 )
+from .capabilities import RequestNeeds, capability_check, requirements_for
 
 __all__ = [
     "ModelProvider",
@@ -44,7 +48,117 @@ __all__ = [
     "parse_sse_lines",
     "run_sync",
     "reasoning_budget_from_effort",
+    "is_lifecycle_error",
+    "guard_entry",
+    "screen_entries",
+    "failover_failure",
 ]
+
+
+# Substring markers a provider uses for a terminal model-lifecycle/config error
+# (a retired/removed/unknown model), as opposed to a transient availability one.
+_LIFECYCLE_ERROR_MARKERS = (
+    "model_not_found",
+    "model not found",
+    "does not exist",
+    "decommission",
+    "is retired",
+    "no longer available",
+    "no longer supported",
+    "has been deprecated",
+    "invalid model",
+    "unknown model",
+)
+
+
+def is_lifecycle_error(exc: Exception) -> bool:
+    """Whether *exc* is a terminal model-lifecycle/config error (retired / removed
+    / unknown model) rather than a transient availability error — so a failover
+    chain can surface "rotate now" instead of burying it in "all providers failed"."""
+    if isinstance(exc, ModelRetiredError):
+        return True
+    if not isinstance(exc, ProviderError):
+        return False
+    message = (exc.message or "").lower()
+    return any(marker in message for marker in _LIFECYCLE_ERROR_MARKERS)
+
+
+def guard_entry(
+    model: str, needs: RequestNeeds, registry: Any
+) -> tuple[str | None, bool]:
+    """Pre-flight one failover/route candidate against the registry.
+
+    Returns ``(skip_reason, is_lifecycle)``: ``(None, False)`` when the entry may
+    be attempted, a reason string when it must be skipped, with ``is_lifecycle``
+    True for a retired model (terminal) and False for a capability mismatch.
+    """
+    if registry.lifecycle(model) == "retired":
+        return (f"{model!r} is retired", True)
+    verdict = capability_check(needs, registry.guard_capabilities(model), model=model)
+    if not verdict.ok:
+        return (verdict.reason, False)
+    return (None, False)
+
+
+def failover_failure(
+    name: str,
+    attempted: int,
+    attempt_errors: list[str],
+    lifecycle: list[str],
+    incapable: list[str],
+) -> ProviderError:
+    """Build the terminal error for an exhausted failover chain, classifying a
+    retired-only failure ("rotate now") and a capability-only one distinctly from
+    a plain availability failure."""
+    if attempted == 0 and lifecycle and not incapable and not attempt_errors:
+        return ModelRetiredError(
+            "rotate now — every failover candidate is retired: " + " | ".join(lifecycle),
+            provider=name,
+        )
+    if attempted == 0 and incapable and not attempt_errors:
+        return CapabilityMismatchError(
+            "no capable failover candidate: " + " | ".join(incapable + lifecycle),
+            provider=name,
+        )
+    detail = list(attempt_errors)
+    if lifecycle:
+        detail.append("rotate now (retired): " + "; ".join(lifecycle))
+    if incapable:
+        detail.append("skipped (incapable): " + "; ".join(incapable))
+    return ProviderUnavailableError(
+        "all providers failed: " + " | ".join(detail), provider=name, retryable=False
+    )
+
+
+def screen_entries(
+    entries: list[tuple[ModelProvider, str | None]],
+    request: ModelRequest,
+    *,
+    guard: bool,
+    registry: Any,
+) -> tuple[list[tuple[ModelProvider, str | None, str]], list[str], list[str]]:
+    """Pre-screen failover/router entries against the capability+lifecycle guard.
+
+    Returns ``(attemptable, lifecycle, incapable)`` where ``attemptable`` is the
+    list of ``(provider, model_override, model)`` to try in order, and the other
+    two are human-readable skip reasons (retired vs capability-mismatched). When
+    ``guard`` is False, every entry is attemptable. Shared by ``FailoverChain``
+    and ``HealthAwareFailover`` so the guard logic lives in one place.
+    """
+    if not guard:
+        return ([(p, mo, mo or request.model) for p, mo in entries], [], [])
+    needs = requirements_for(request)
+    attemptable: list[tuple[ModelProvider, str | None, str]] = []
+    lifecycle: list[str] = []
+    incapable: list[str] = []
+    for provider, model_override in entries:
+        model = model_override or request.model
+        reason, is_lc = guard_entry(model, needs, registry)
+        if reason is not None:
+            (lifecycle if is_lc else incapable).append(f"{provider.name}/{model}: {reason}")
+            continue
+        attemptable.append((provider, model_override, model))
+    return attemptable, lifecycle, incapable
 
 
 # Effort → thinking-token budget for providers that take an explicit budget
@@ -119,6 +233,18 @@ class ModelProvider(ABC):
         raise ProviderError(
             f"provider {self.name!r} does not support embeddings", provider=self.name
         )
+
+    async def list_models(self) -> list[ModelProfile]:
+        """Discover the models the provider currently serves (1.8).
+
+        Providers that expose a model-list endpoint (OpenAI ``/v1/models``,
+        Anthropic ``/v1/models``, Gemini ``ListModels``, Ollama ``/api/tags``,
+        OpenAI-compatible ``/v1/models``) override this and map the response onto
+        :class:`~vincio.core.types.ModelProfile`\\ s for reconciliation into the
+        :class:`~vincio.providers.registry.ModelRegistry`. The default returns an
+        empty list — offline-safe, so the shipped catalog remains authoritative.
+        """
+        return []
 
     async def aclose(self) -> None:
         """Release underlying resources (HTTP clients)."""
@@ -365,8 +491,20 @@ class RetryingProvider(ModelProvider):
     async def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
         return await self.inner.embed(texts, model)
 
+    async def list_models(self) -> list[ModelProfile]:
+        return await self.inner.list_models()
+
     async def aclose(self) -> None:
         await self.inner.aclose()
+
+
+def _merge_model_lists(profile_lists: list[list[ModelProfile]]) -> list[ModelProfile]:
+    """Union discovered profiles across chain entries, first-seen wins per id."""
+    seen: dict[str, ModelProfile] = {}
+    for profiles in profile_lists:
+        for profile in profiles:
+            seen.setdefault(profile.model, profile)
+    return list(seen.values())
 
 
 class FailoverChain(ModelProvider):
@@ -374,35 +512,78 @@ class FailoverChain(ModelProvider):
 
     Each entry is ``(provider, model_override | None)``. On non-retryable
     auth errors or exhausted retries, the next entry is attempted.
+
+    With ``guard_capabilities`` (default on, 1.8) every entry is pre-flighted
+    against the :class:`~vincio.providers.registry.ModelRegistry` before it is
+    attempted: a *retired* model is skipped as a terminal lifecycle error and a
+    *capability-mismatched* one (cannot serve the request's vision/tools/schema/
+    reasoning/context) is skipped rather than silently returning a wrong answer.
+    When every entry is exhausted, a retired-only failure raises
+    :class:`~vincio.core.errors.ModelRetiredError` ("rotate now"); a
+    capability-only failure raises :class:`CapabilityMismatchError`; otherwise the
+    usual :class:`ProviderUnavailableError`. Set ``guard_capabilities=False`` to
+    restore the pre-1.8 attempt-everything behavior. Unknown models are never
+    blocked.
     """
 
     name = "failover"
 
-    def __init__(self, entries: list[tuple[ModelProvider, str | None]]) -> None:
+    def __init__(
+        self,
+        entries: list[tuple[ModelProvider, str | None]],
+        *,
+        guard_capabilities: bool = True,
+        registry: Any | None = None,
+    ) -> None:
         if not entries:
             raise ConfigError("FailoverChain requires at least one provider")
         self.entries = entries
+        self.guard_capabilities = guard_capabilities
+        self._registry = registry
+
+    def _reg(self) -> Any:
+        if self._registry is None:
+            from .registry import default_model_registry
+
+            self._registry = default_model_registry()
+        return self._registry
+
+    def _failure(
+        self, attempted: int, attempt_errors: list[str], lifecycle: list[str], incapable: list[str]
+    ) -> ProviderError:
+        return failover_failure(self.name, attempted, attempt_errors, lifecycle, incapable)
+
+    def _screen(
+        self, request: ModelRequest
+    ) -> tuple[list[tuple[ModelProvider, str | None, str]], list[str], list[str]]:
+        registry = self._reg() if self.guard_capabilities else None
+        return screen_entries(
+            self.entries, request, guard=self.guard_capabilities, registry=registry
+        )
 
     async def generate(self, request: ModelRequest) -> ModelResponse:
-        errors: list[str] = []
-        for provider, model_override in self.entries:
-            attempt_request = request
-            if model_override:
-                attempt_request = request.model_copy(update={"model": model_override})
+        attemptable, lifecycle, incapable = self._screen(request)
+        attempt_errors: list[str] = []
+        for provider, model_override, model in attemptable:
+            attempt_request = request if not model_override else request.model_copy(
+                update={"model": model_override}
+            )
             try:
                 return await provider.generate(attempt_request)
             except ProviderError as exc:
-                errors.append(f"{provider.name}: {exc.message}")
-        raise ProviderUnavailableError(
-            "all providers failed: " + " | ".join(errors), provider=self.name, retryable=False
-        )
+                if is_lifecycle_error(exc):
+                    lifecycle.append(f"{provider.name}/{model}: {exc.message}")
+                else:
+                    attempt_errors.append(f"{provider.name}: {exc.message}")
+        raise self._failure(len(attemptable), attempt_errors, lifecycle, incapable)
 
     async def stream(self, request: ModelRequest) -> AsyncIterator[ModelEvent]:
-        errors: list[str] = []
-        for provider, model_override in self.entries:
-            attempt_request = request
-            if model_override:
-                attempt_request = request.model_copy(update={"model": model_override})
+        attemptable, lifecycle, incapable = self._screen(request)
+        attempt_errors: list[str] = []
+        for provider, model_override, model in attemptable:
+            attempt_request = request if not model_override else request.model_copy(
+                update={"model": model_override}
+            )
             yielded = False
             try:
                 async for event in provider.stream(attempt_request):
@@ -412,13 +593,17 @@ class FailoverChain(ModelProvider):
             except ProviderError as exc:
                 if yielded:
                     raise
-                errors.append(f"{provider.name}: {exc.message}")
-        raise ProviderUnavailableError(
-            "all providers failed: " + " | ".join(errors), provider=self.name, retryable=False
-        )
+                if is_lifecycle_error(exc):
+                    lifecycle.append(f"{provider.name}/{model}: {exc.message}")
+                else:
+                    attempt_errors.append(f"{provider.name}: {exc.message}")
+        raise self._failure(len(attemptable), attempt_errors, lifecycle, incapable)
 
     def capabilities(self, model: str) -> ModelCapabilities:
         return self.entries[0][0].capabilities(model)
+
+    async def list_models(self) -> list[ModelProfile]:
+        return _merge_model_lists([await p.list_models() for p, _ in self.entries])
 
     async def aclose(self) -> None:
         for provider, _ in self.entries:

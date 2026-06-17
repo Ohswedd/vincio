@@ -44,6 +44,7 @@ from .base import ModelProvider
 
 if TYPE_CHECKING:  # pragma: no cover
     from .anthropic import AnthropicProvider
+    from .google import GoogleProvider
     from .openai import OpenAIProvider
 
 __all__ = [
@@ -56,6 +57,7 @@ __all__ = [
     "InProcessBatchBackend",
     "OpenAIBatchBackend",
     "AnthropicBatchBackend",
+    "GoogleBatchBackend",
     "BatchRunner",
 ]
 
@@ -415,6 +417,120 @@ class AnthropicBatchBackend:
 
     async def cancel(self, job: BatchJob) -> BatchJob:
         data = await self.provider._post_json(f"/messages/batches/{job.id}/cancel", {})
+        return self._job_from(data, total=job.total)
+
+    async def aclose(self) -> None:
+        await self.provider.aclose()
+
+
+class GoogleBatchBackend:
+    """Drives the Gemini Batch API over a :class:`GoogleProvider` (1.8).
+
+    Completes batch parity with OpenAI/Anthropic for the half-cost offline path
+    the eval/regression workloads lean on. Requests are submitted **inline** to
+    ``models/{model}:batchGenerateContent`` keyed by ``custom_id``, the resulting
+    batch operation is polled to a terminal state, and the inlined responses are
+    reconciled by key — reusing :class:`GoogleProvider`'s own payload builder and
+    response parser so a batched call is byte-for-byte the sync one. Vertex AI's
+    batch surface shares this shape (regional endpoint + service-account auth).
+    """
+
+    name = "google"
+
+    _STATE_MAP = {
+        "BATCH_STATE_PENDING": BatchStatus.PENDING,
+        "BATCH_STATE_QUEUED": BatchStatus.PENDING,
+        "JOB_STATE_PENDING": BatchStatus.PENDING,
+        "JOB_STATE_QUEUED": BatchStatus.PENDING,
+        "BATCH_STATE_RUNNING": BatchStatus.RUNNING,
+        "JOB_STATE_RUNNING": BatchStatus.RUNNING,
+        "BATCH_STATE_SUCCEEDED": BatchStatus.COMPLETED,
+        "JOB_STATE_SUCCEEDED": BatchStatus.COMPLETED,
+        "BATCH_STATE_FAILED": BatchStatus.FAILED,
+        "JOB_STATE_FAILED": BatchStatus.FAILED,
+        "BATCH_STATE_CANCELLED": BatchStatus.CANCELLED,
+        "JOB_STATE_CANCELLED": BatchStatus.CANCELLED,
+        "BATCH_STATE_EXPIRED": BatchStatus.EXPIRED,
+        "JOB_STATE_EXPIRED": BatchStatus.EXPIRED,
+    }
+
+    def __init__(self, provider: GoogleProvider, *, model: str | None = None) -> None:
+        self.provider = provider
+        self.model = model
+        self.endpoint = "/models"
+
+    def _job_from(self, data: dict[str, Any], *, total: int = 0) -> BatchJob:
+        meta = data.get("metadata") or {}
+        state = meta.get("state") or data.get("state") or ""
+        status = self._STATE_MAP.get(state, BatchStatus.RUNNING)
+        if data.get("done") and status not in _TERMINAL:
+            status = BatchStatus.COMPLETED
+        counts = meta.get("requestCounts") or data.get("requestCounts") or {}
+        return BatchJob(
+            id=data.get("name", ""),
+            backend=self.name,
+            status=status,
+            total=total or int(counts.get("total", 0) or 0),
+            completed=int(counts.get("succeeded", counts.get("completed", 0)) or 0),
+            failed=int(counts.get("failed", 0) or 0),
+            endpoint=self.endpoint,
+            raw=data,
+        )
+
+    async def submit(self, requests: list[BatchRequest]) -> BatchJob:
+        model = self.model or (requests[0].request.model if requests else "")
+        if not model:
+            raise BatchError("GoogleBatchBackend requires a model", provider=self.name)
+        inlined = [
+            {"request": self.provider._payload(item.request), "metadata": {"key": item.custom_id}}
+            for item in requests
+        ]
+        payload = {
+            "batch": {
+                "displayName": "vincio-batch",
+                "inputConfig": {"requests": {"requests": inlined}},
+            }
+        }
+        data = await self.provider._post_json(
+            f"/models/{model}:batchGenerateContent", payload
+        )
+        return self._job_from(data, total=len(requests))
+
+    async def poll(self, job: BatchJob) -> BatchJob:
+        path = job.id if job.id.startswith("/") else f"/{job.id}"
+        data = await self.provider._get_json(path)
+        return self._job_from(data, total=job.total)
+
+    @staticmethod
+    def _inlined_responses(data: dict[str, Any]) -> list[dict[str, Any]]:
+        response = data.get("response") or {}
+        block = response.get("inlinedResponses") or response.get("inlined_responses") or {}
+        return block.get("inlinedResponses") or block.get("inlined_responses") or []
+
+    async def results(
+        self, job: BatchJob, requests: dict[str, ModelRequest]
+    ) -> list[BatchResult]:
+        results: list[BatchResult] = []
+        for entry in self._inlined_responses(job.raw):
+            cid = (entry.get("metadata") or {}).get("key", "")
+            request = requests.get(cid) or ModelRequest(model="", messages=[])
+            err = entry.get("error")
+            body = entry.get("response")
+            if err or body is None:
+                results.append(
+                    BatchResult(custom_id=cid, error=json.dumps(err) if err else "no response")
+                )
+                continue
+            try:
+                response = self.provider._parse_response(body, request, latency_ms=0)
+                results.append(BatchResult(custom_id=cid, response=response))
+            except ProviderError as exc:
+                results.append(BatchResult(custom_id=cid, error=exc.message))
+        return results
+
+    async def cancel(self, job: BatchJob) -> BatchJob:
+        path = job.id if job.id.startswith("/") else f"/{job.id}"
+        data = await self.provider._post_json(f"{path}:cancel", {})
         return self._job_from(data, total=job.total)
 
     async def aclose(self) -> None:

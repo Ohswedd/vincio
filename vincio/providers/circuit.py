@@ -28,8 +28,14 @@ from enum import StrEnum
 from typing import Any
 
 from ..core.errors import CircuitOpenError, ProviderError
-from ..core.types import ModelCapabilities, ModelEvent, ModelRequest, ModelResponse
-from .base import ModelProvider
+from ..core.types import ModelCapabilities, ModelEvent, ModelProfile, ModelRequest, ModelResponse
+from .base import (
+    ModelProvider,
+    _merge_model_lists,
+    failover_failure,
+    is_lifecycle_error,
+    screen_entries,
+)
 
 __all__ = ["CircuitState", "CircuitBreaker", "HealthAwareFailover"]
 
@@ -214,6 +220,9 @@ class CircuitBreaker(ModelProvider):
     async def embed(self, texts: list[str], model: str | None = None) -> list[list[float]]:
         return await self.inner.embed(texts, model)
 
+    async def list_models(self) -> list[ModelProfile]:
+        return await self.inner.list_models()
+
     async def aclose(self) -> None:
         await self.inner.aclose()
 
@@ -232,10 +241,25 @@ class HealthAwareFailover(ModelProvider):
 
     name = "health_aware_failover"
 
-    def __init__(self, entries: list[tuple[ModelProvider, str | None]]) -> None:
+    def __init__(
+        self,
+        entries: list[tuple[ModelProvider, str | None]],
+        *,
+        guard_capabilities: bool = True,
+        registry: Any | None = None,
+    ) -> None:
         if not entries:
             raise ValueError("HealthAwareFailover requires at least one provider")
         self.entries = entries
+        self.guard_capabilities = guard_capabilities
+        self._registry = registry
+
+    def _reg(self) -> Any:
+        if self._registry is None:
+            from .registry import default_model_registry
+
+            self._registry = default_model_registry()
+        return self._registry
 
     @staticmethod
     def _rank(provider: ModelProvider) -> int:
@@ -249,23 +273,33 @@ class HealthAwareFailover(ModelProvider):
         # ``(original_index, (provider, model_override))`` pairs.
         return sorted(enumerate(self.entries), key=lambda iv: (self._rank(iv[1][0]), iv[0]))
 
+    def _screen(
+        self, request: ModelRequest
+    ) -> tuple[list[tuple[ModelProvider, str | None, str]], list[str], list[str]]:
+        registry = self._reg() if self.guard_capabilities else None
+        ordered = [entry for _, entry in self._ordered()]
+        return screen_entries(
+            ordered, request, guard=self.guard_capabilities, registry=registry
+        )
+
     async def generate(self, request: ModelRequest) -> ModelResponse:
-        errors: list[str] = []
-        for _, (provider, model_override) in self._ordered():
+        attemptable, lifecycle, incapable = self._screen(request)
+        attempt_errors: list[str] = []
+        for provider, model_override, model in attemptable:
             attempt = request if not model_override else request.model_copy(update={"model": model_override})
             try:
                 return await provider.generate(attempt)
             except ProviderError as exc:
-                errors.append(f"{provider.name}: {exc.message}")
-        from ..core.errors import ProviderUnavailableError
-
-        raise ProviderUnavailableError(
-            "all providers failed: " + " | ".join(errors), provider=self.name, retryable=False
-        )
+                if is_lifecycle_error(exc):
+                    lifecycle.append(f"{provider.name}/{model}: {exc.message}")
+                else:
+                    attempt_errors.append(f"{provider.name}: {exc.message}")
+        raise failover_failure(self.name, len(attemptable), attempt_errors, lifecycle, incapable)
 
     async def stream(self, request: ModelRequest) -> AsyncIterator[ModelEvent]:
-        errors: list[str] = []
-        for _, (provider, model_override) in self._ordered():
+        attemptable, lifecycle, incapable = self._screen(request)
+        attempt_errors: list[str] = []
+        for provider, model_override, model in attemptable:
             attempt = request if not model_override else request.model_copy(update={"model": model_override})
             yielded = False
             try:
@@ -276,15 +310,17 @@ class HealthAwareFailover(ModelProvider):
             except ProviderError as exc:
                 if yielded:
                     raise
-                errors.append(f"{provider.name}: {exc.message}")
-        from ..core.errors import ProviderUnavailableError
-
-        raise ProviderUnavailableError(
-            "all providers failed: " + " | ".join(errors), provider=self.name, retryable=False
-        )
+                if is_lifecycle_error(exc):
+                    lifecycle.append(f"{provider.name}/{model}: {exc.message}")
+                else:
+                    attempt_errors.append(f"{provider.name}: {exc.message}")
+        raise failover_failure(self.name, len(attemptable), attempt_errors, lifecycle, incapable)
 
     def capabilities(self, model: str) -> ModelCapabilities:
         return self.entries[0][0].capabilities(model)
+
+    async def list_models(self) -> list[ModelProfile]:
+        return _merge_model_lists([await p.list_models() for p, _ in self.entries])
 
     async def aclose(self) -> None:
         for provider, _ in self.entries:

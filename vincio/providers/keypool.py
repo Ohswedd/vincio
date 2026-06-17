@@ -214,6 +214,10 @@ class KeyPool(ModelProvider):
     def capabilities(self, model: str) -> ModelCapabilities:
         return self.keys[0].provider.capabilities(model)
 
+    async def list_models(self):  # type: ignore[override]
+        # All keys front the same provider/region set; the first is representative.
+        return await self.keys[0].provider.list_models()
+
     def snapshot(self) -> list[dict[str, object]]:
         out: list[dict[str, object]] = []
         for key in self.keys:

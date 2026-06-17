@@ -4,6 +4,86 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0] - 2026-06-17
+
+Turns the 1.7 model registry into a **rotation-and-regression discipline** — the
+migration safety net for the single most common and riskiest production change, a
+model swap. Capability guards refuse to substitute a model that cannot serve the
+request; a `SwapGate` replays golden traces and runs an eval + cost + latency +
+behavioral diff with statistical backing on every candidate; a shadow provider
+and a capped canary qualify a model on live traffic with automatic rollback; and
+a lifecycle watcher proposes migrations off deprecated models. Every piece is
+pure composition of 1.7 organs (the registry, `ReplayRunner`, `ab_test`,
+`DriftMonitor`, `evaluate_gates`, the cost model). All additive behind
+`@experimental` entry points on the frozen 1.0 API; nothing changes for callers
+who do not opt in.
+
+### Added
+
+- **Capability-aware routing preflight + cost/latency `Router`.** A new
+  `vincio.providers.capabilities` module (`requirements_for`, `capability_check`)
+  intersects a request's needs (vision, tool calling, structured output,
+  reasoning, context length) with a candidate's `ModelCapabilities`. A registry-
+  backed `Router` (`vincio.optimize.routing.Router`, also re-exported from
+  `vincio`) picks the cheapest / fastest / least-busy *capable* model per request,
+  load-balances across equivalents, and **downgrades** to honor a per-request
+  budget, emitting a `model.routed` decision. Wire it with `app.use_router(...)`.
+- **Capability + lifecycle guard on failover & cascades.** `FailoverChain` and
+  `HealthAwareFailover` now (by default, opt out with `guard_capabilities=False`)
+  skip a capability-mismatched substitution instead of returning a silently wrong
+  answer, classify a **terminal lifecycle/config error** (retired/removed/unknown
+  model) distinctly from a transient outage (`is_lifecycle_error`), and surface
+  `ModelRetiredError` ("rotate now") when every candidate is retired. The runtime
+  cascade starts on, and escalates only into, a capable rung. New errors
+  `CapabilityMismatchError` / `ModelRetiredError`. Unknown models are never blocked.
+- **`SwapGate` + model-swap regression.** A new `vincio.evals.swap` module:
+  `SwapGate` (`app.gate_swap(...)` / `vincio providers regress`) replays golden
+  traces and runs `evaluate_gates` + `DriftMonitor` + `ab_test` with behavioral
+  shape diffs (tool-call rate, refusal rate, output-length distribution) into a
+  PASS/FAIL verdict with p-value and effect size; `model_swap_regression`
+  (`app.swap_regression(...)` / `vincio eval regress --baseline-model X
+  --candidate-model Y`) holds prompt/data/config fixed, swaps only the model, and
+  reports per-metric significance, per-case deltas, the cost/latency trade, and
+  the worst-regressed slices.
+- **Flake control on `EvalRunner`.** `repeats=N` runs each case N times with
+  per-case mean/stdev and configurable `repeat_aggregate`; `flake_quarantine`
+  tags noisy cases and excludes them from gate aggregation so non-mock provider
+  variance never flips a gate on a single run.
+- **Shadow provider + progressive canary with auto-rollback.** `ShadowProvider`
+  returns the primary's response while asynchronously dual-dispatching the
+  candidate and recording both for offline diff; `CanaryRouter` ramps a configurable
+  percentage of traffic to a candidate, scores both arms online, and
+  auto-rolls-back to the last known-good model (and prompt-registry head) on
+  regression. Both implement `ModelProvider`, so they nest inside `CircuitBreaker`
+  / `KeyPool`. Wire with `app.shadow(...)` / `app.canary(...)`.
+- **Lifecycle watcher + migration proposals.** `LifecycleWatcher`
+  (`app.watch_lifecycle(...)` / `vincio providers lifecycle`) emits early sunset
+  warnings and proposes a migration — to a model's declared successor or a cheaper
+  Pareto-dominating, at-least-as-capable model — that can rewrite a
+  `ModelCascade` / `RoutingPolicy` / `config.model` in place.
+- **Live model discovery + Google/Vertex batch parity.** `ModelProvider.list_models`
+  (implemented for OpenAI/Anthropic/Google) + `ModelRegistry.reconcile` and
+  `discover_models` (`vincio providers discover`) reconcile a provider's live model
+  list into the registry offline-safe. A `GoogleBatchBackend` joins
+  `providers.batch`, and Google models gain batch-tier pricing, completing
+  half-cost batch parity with OpenAI/Anthropic.
+- **CLI.** `vincio eval regress` and a new `vincio providers` group
+  (`list` / `lifecycle` / `discover` / `regress`).
+
+### Notes
+
+- 1090 tests passing offline in ~4.5s; ruff + mypy clean. Thirty-two runnable
+  examples (`examples/32_swap_regression.py` swaps a model end to end through the
+  gate and a canary). VincioBench extended in the `reliability`, `cost`, `evals`,
+  and `scale` families (159 budgets, 48 SLOs), all green.
+- Backward compatible. The one intentional, non-breaking behavior change: failover
+  chains guard capabilities by default — they skip a *known-incapable* model and
+  try the next capable one rather than attempting a substitution that would drop
+  content. Unknown models are never blocked, and `guard_capabilities=False`
+  restores the pre-1.8 attempt-everything behavior.
+
+See the [roadmap](ROADMAP.md) (1.8 milestone).
+
 ## [1.7.1] - 2026-06-17
 
 Closes the one documented 1.7 known limitation: the intermittent

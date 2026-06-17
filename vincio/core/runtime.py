@@ -796,6 +796,30 @@ class VincioRuntime:
             return None
         return self.app.resolve_provider(RunConfig(provider=provider_name))
 
+    def _cascade_capability_guard(self, prepared: _PreparedRun, expects_schema: bool) -> Any:
+        """Build an ``is_capable(model) -> bool`` guard for cascade escalation, so a
+        run never starts on, or escalates into, a model that cannot serve this
+        request (1.8). Reads the request's needs once and checks each rung against
+        the model registry; unknown models are treated as capable (not blocked)."""
+        from ..providers.capabilities import capability_check, requirements_for
+        from ..providers.registry import default_model_registry
+
+        request = ModelRequest(
+            model=prepared.model,
+            messages=prepared.messages,
+            tools=prepared.tool_specs,
+            **prepared.request_kwargs,
+        )
+        needs = requirements_for(request, input_tokens=prepared.compiled_prompt.token_count)
+        if expects_schema and not needs.structured_output:
+            needs = needs.model_copy(update={"structured_output": True})
+        registry = default_model_registry()
+
+        def is_capable(model: str) -> bool:
+            return capability_check(needs, registry.guard_capabilities(model), model=model).ok
+
+        return is_capable
+
     def _attribute_cost(
         self,
         *,
@@ -983,6 +1007,14 @@ class VincioRuntime:
         rung = cascade.first() if cascade is not None else None
         model = prepared.model  # already the cascade's first rung when active
         provider = self._cascade_provider(rung.provider) if rung is not None else None
+        # Capability guard (1.8): never escalate a cascade into — or start it on —
+        # a model that cannot serve this request (vision/tools/schema/reasoning/
+        # context). Unknown models are never blocked.
+        is_capable = self._cascade_capability_guard(prepared, expects_schema) if cascade else None
+        if cascade is not None and is_capable is not None and not is_capable(model):
+            start = cascade.first_capable(is_capable)
+            model = start.model
+            provider = self._cascade_provider(start.provider)
         response: ModelResponse | None = None
         tool_rounds = 0
         escalations = 0
@@ -1021,7 +1053,11 @@ class VincioRuntime:
             # Terminal answer: consider a cascade escalation.
             if cascade is not None and escalations < cascade.escalation_cap:
                 confidence = self._confidence(response, expects_schema=expects_schema)
-                nxt = cascade.next_rung(model, confidence)
+                nxt = (
+                    cascade.next_rung_capable(model, confidence, is_capable)
+                    if is_capable is not None
+                    else cascade.next_rung(model, confidence)
+                )
                 if nxt is not None:
                     escalations += 1
                     model = nxt.model

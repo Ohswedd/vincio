@@ -12,11 +12,13 @@ from __future__ import annotations
 import math
 import random
 import re
+import time
+from collections.abc import AsyncIterator
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from ..core.types import ModelResponse, TaskType
+from ..core.types import ModelEvent, ModelRequest, ModelResponse, TaskType, TokenUsage
 from ..evals.reports import EvalReport
 from .search import FitnessWeights
 
@@ -29,6 +31,9 @@ __all__ = [
     "CascadeRung",
     "ModelCascade",
     "response_confidence",
+    "RouteStrategy",
+    "RoutingDecision",
+    "Router",
 ]
 
 _REASONING_RE = re.compile(
@@ -157,6 +162,26 @@ class ModelCascade(BaseModel):
             return None
         return self.rungs[i + 1]
 
+    def next_rung_capable(
+        self, model: str, confidence: float, is_capable: Any
+    ) -> CascadeRung | None:
+        """Like :meth:`next_rung` but skips rungs whose model cannot serve the
+        request (capability guard, 1.8): once escalation is warranted, walk up
+        past any incapable rung to the first capable stronger model."""
+        nxt = self.next_rung(model, confidence)
+        while nxt is not None and not is_capable(nxt.model):
+            i = self._index(nxt.model)
+            nxt = self.rungs[i + 1] if 0 <= i < len(self.rungs) - 1 else None
+        return nxt
+
+    def first_capable(self, is_capable: Any) -> CascadeRung:
+        """The cheapest rung that can serve the request, or the first rung when
+        none is known-capable (unknown models are never blocked)."""
+        for rung in self.rungs:
+            if is_capable(rung.model):
+                return rung
+        return self.rungs[0]
+
 
 class RoutingOptimizer:
     """Learn the low/high thresholds from per-tier eval reports.
@@ -267,3 +292,256 @@ class UCB1Bandit:
         self.total += 1
         n = self.counts[arm]
         self.values[arm] += (reward - self.values[arm]) / n
+
+
+# ---------------------------------------------------------------------------
+# Registry-backed router provider (1.8)
+# ---------------------------------------------------------------------------
+
+from typing import Literal  # noqa: E402 - kept beside the router it annotates
+
+from ..providers.base import ModelProvider  # noqa: E402 - avoids a load-order cycle
+from ..providers.capabilities import capability_check, requirements_for  # noqa: E402
+
+RouteStrategy = Literal["cheapest", "fastest", "least_busy"]
+
+_TIER_SPEED = {"fast": 0, "default": 1, "strong": 2}
+
+
+class RoutingDecision(BaseModel):
+    """The record of one router pick — stamped on the trace as a routing decision."""
+
+    model: str
+    provider: str = ""
+    strategy: str = "cheapest"
+    reason: str = ""
+    est_cost_usd: float = 0.0
+    candidates: list[str] = Field(default_factory=list)
+    skipped: dict[str, str] = Field(default_factory=dict)  # model -> why (incapable / over_budget)
+    budget_usd: float | None = None
+    downgraded: bool = False
+    entry_index: int = -1  # the chosen entry's index (set by Router.pick)
+
+
+class Router(ModelProvider):
+    """A registry-backed router: pick the cheapest / fastest / least-busy *capable*
+    model per request, inside your own process and audit boundary.
+
+    Entries are ``(provider, model)`` pairs exactly like
+    :class:`~vincio.providers.base.FailoverChain`, so a router nests cleanly
+    inside ``CircuitBreaker`` / ``KeyPool`` / ``FailoverChain``. Before a pick,
+    every candidate is run through the capability guard against the
+    :class:`~vincio.providers.registry.ModelRegistry`: a model that cannot serve
+    the request (missing vision, tools, structured output, reasoning, or a wide
+    enough context) is skipped, not silently chosen. With ``budget_usd`` set the
+    router **downgrades** to the cheapest capable model that fits the per-request
+    cap. Each pick is returned as a :class:`RoutingDecision` and emitted as a
+    ``model.routed`` event when an event bus is supplied.
+    """
+
+    name = "router"
+
+    def __init__(
+        self,
+        entries: list[tuple[ModelProvider, str]],
+        *,
+        strategy: RouteStrategy = "cheapest",
+        registry: Any | None = None,
+        price_table: Any | None = None,
+        budget_usd: float | None = None,
+        guard_capabilities: bool = True,
+        events: Any | None = None,
+    ) -> None:
+        if not entries:
+            raise ValueError("Router requires at least one (provider, model) entry")
+        self.entries = entries
+        self.strategy = strategy
+        self._registry = registry
+        self._price_table = price_table
+        self.budget_usd = budget_usd
+        self.guard_capabilities = guard_capabilities
+        self._events = events
+        self.last_decision: RoutingDecision | None = None
+        self._inflight = [0 for _ in entries]
+        self._latency_ms = [0.0 for _ in entries]  # EWMA of observed latency
+
+    @classmethod
+    def from_models(
+        cls, provider: ModelProvider, models: list[str], **kwargs: Any
+    ) -> Router:
+        """Build a router over one provider that serves several models."""
+        if not models:
+            raise ValueError("Router.from_models requires at least one model")
+        return cls([(provider, m) for m in models], **kwargs)
+
+    def _reg(self) -> Any:
+        if self._registry is None:
+            from ..providers.registry import default_model_registry
+
+            self._registry = default_model_registry()
+        return self._registry
+
+    def _prices(self) -> Any:
+        if self._price_table is None:
+            from ..observability.costs import default_price_table
+
+            self._price_table = default_price_table()
+        return self._price_table
+
+    def _estimate_cost(self, model: str, request: ModelRequest, input_tokens: int) -> float:
+        out = request.max_output_tokens or 512
+        usage = TokenUsage(input_tokens=input_tokens, output_tokens=out)
+        return self._prices().cost(model, usage)
+
+    @staticmethod
+    def _input_tokens(request: ModelRequest) -> int:
+        from ..core.tokens import count_tokens
+
+        text = "\n".join(m.text for m in request.messages)
+        return count_tokens(text)
+
+    def _rank_key(self, index: int, model: str, est_cost: float) -> tuple[float, ...]:
+        if self.strategy == "fastest":
+            profile = self._reg().resolve(model)
+            tier = _TIER_SPEED.get(profile.tier, 1) if profile is not None else 1
+            return (self._latency_ms[index] or float(tier), est_cost, index)
+        if self.strategy == "least_busy":
+            return (self._inflight[index], est_cost, index)
+        return (est_cost, index)  # cheapest
+
+    def pick(self, request: ModelRequest, *, budget_usd: float | None = None) -> RoutingDecision:
+        """Choose a capable model for *request* without dispatching it."""
+        budget = budget_usd if budget_usd is not None else self.budget_usd
+        if budget is None:
+            meta_budget = request.metadata.get("max_cost_usd")
+            budget = float(meta_budget) if meta_budget is not None else None
+        input_tokens = self._input_tokens(request)
+        needs = requirements_for(request, input_tokens=input_tokens)
+        registry = self._reg()
+
+        skipped: dict[str, str] = {}
+        capable: list[tuple[int, str, float]] = []  # (index, model, est_cost)
+        for index, (_, model) in enumerate(self.entries):
+            if self.guard_capabilities:
+                verdict = capability_check(needs, registry.guard_capabilities(model), model=model)
+                if not verdict.ok:
+                    skipped[model] = verdict.reason
+                    continue
+            capable.append((index, model, self._estimate_cost(model, request, input_tokens)))
+
+        if not capable:
+            from ..core.errors import CapabilityMismatchError
+
+            raise CapabilityMismatchError(
+                f"no capable model for request needs {needs.summary()}; "
+                f"skipped {skipped}",
+                missing=needs.summary(),
+                provider=self.name,
+            )
+
+        ranked = sorted(capable, key=lambda c: self._rank_key(c[0], c[1], c[2]))
+        downgraded = False
+        chosen = ranked[0]
+        if budget is not None:
+            within = [c for c in ranked if c[2] <= budget]
+            if within:
+                if within[0] != chosen:
+                    downgraded = True
+                chosen = within[0]
+            else:  # nothing fits — fall back to the cheapest capable, flagged
+                cheapest = min(capable, key=lambda c: c[2])
+                downgraded = True
+                chosen = cheapest
+                for _idx, model, cost in capable:
+                    if cost > budget and model not in skipped:
+                        skipped.setdefault(model, f"over_budget (${cost:.6f} > ${budget:.6f})")
+
+        index, model, est_cost = chosen
+        decision = RoutingDecision(
+            model=model,
+            provider=self.entries[index][0].name,
+            strategy=self.strategy,
+            reason=(
+                f"{self.strategy} of {len(capable)} capable model(s)"
+                + (" (budget downgrade)" if downgraded else "")
+            ),
+            est_cost_usd=round(est_cost, 8),
+            candidates=[m for _, m in self.entries],
+            skipped=skipped,
+            budget_usd=budget,
+            downgraded=downgraded,
+            entry_index=index,
+        )
+        return decision
+
+    def _dispatch(self, decision: RoutingDecision) -> tuple[int, ModelProvider]:
+        # Fast path: pick() recorded the chosen entry index on the decision.
+        if 0 <= decision.entry_index < len(self.entries):
+            return decision.entry_index, self.entries[decision.entry_index][0]
+        for index, (provider, model) in enumerate(self.entries):
+            if model == decision.model and provider.name == decision.provider:
+                return index, provider
+        # Fall back to first matching model id (provider name unchanged is rare).
+        for index, (provider, model) in enumerate(self.entries):
+            if model == decision.model:
+                return index, provider
+        return 0, self.entries[0][0]
+
+    def _emit(self, decision: RoutingDecision) -> None:
+        self.last_decision = decision
+        if self._events is not None:
+            self._events.emit("model.routed", decision.model_dump())
+
+    async def generate(self, request: ModelRequest) -> ModelResponse:
+        decision = self.pick(request)
+        self._emit(decision)
+        index, provider = self._dispatch(decision)
+        attempt = request.model_copy(update={"model": decision.model})
+        self._inflight[index] += 1
+        started = time.monotonic()
+        try:
+            response = await provider.generate(attempt)
+        finally:
+            self._inflight[index] -= 1
+            self._observe_latency(index, started)
+        return response
+
+    async def stream(self, request: ModelRequest) -> AsyncIterator[ModelEvent]:
+        decision = self.pick(request)
+        self._emit(decision)
+        index, provider = self._dispatch(decision)
+        attempt = request.model_copy(update={"model": decision.model})
+        self._inflight[index] += 1
+        started = time.monotonic()
+        try:
+            async for event in provider.stream(attempt):
+                yield event
+        finally:
+            self._inflight[index] -= 1
+            self._observe_latency(index, started)
+
+    def _observe_latency(self, index: int, started: float) -> None:
+        elapsed = (time.monotonic() - started) * 1000
+        prior = self._latency_ms[index]
+        self._latency_ms[index] = elapsed if prior == 0.0 else 0.7 * prior + 0.3 * elapsed
+
+    def capabilities(self, model: str) -> Any:
+        return self.entries[0][0].capabilities(model)
+
+    async def list_models(self) -> Any:
+        from ..providers.base import _merge_model_lists
+
+        seen: set[int] = set()
+        lists = []
+        for provider, _ in self.entries:
+            if id(provider) not in seen:
+                seen.add(id(provider))
+                lists.append(await provider.list_models())
+        return _merge_model_lists(lists)
+
+    async def aclose(self) -> None:
+        seen: set[int] = set()
+        for provider, _ in self.entries:
+            if id(provider) not in seen:
+                seen.add(id(provider))
+                await provider.aclose()
