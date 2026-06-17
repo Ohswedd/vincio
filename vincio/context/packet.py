@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 
 from ..core.types import Budget, Objective, PolicySet, UserInput
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
+from .evidence_store import EvidenceStore
 from .ir import ContextIR
 
 __all__ = ["ContextPacket"]
@@ -79,6 +80,7 @@ class ContextPacket(BaseModel):
         trace_parent_id: str | None = None,
         token_count: int = 0,
         slim: bool = False,
+        evidence_store: EvidenceStore | None = None,
     ) -> ContextPacket:
         evidence_items: list[dict[str, Any]] = []
         for e in ir.evidence:
@@ -89,10 +91,23 @@ class ContextPacket(BaseModel):
                 "source_type": e.source_type,
                 "page": e.page,
                 "relevance": e.relevance,
+                # 2.0: multimodal evidence is first-class in the packet, so a
+                # downstream renderer/citer knows whether to ship text, an image,
+                # or a table — and can cite each uniformly.
+                "modality": e.modality,
             }
+            if e.modality == "image" and e.image is not None:
+                entry["image"] = e.image.model_dump(mode="json")
+            if e.modality == "table" and e.table is not None:
+                entry["table"] = e.table
+            scorable = e.scorable_text
             if slim:
-                entry["text_hash"] = _text_hash(e.text or "")
+                entry["text_hash"] = _text_hash(scorable)
                 entry["token_cost"] = e.token_cost
+                # Persist the text under its hash so a packet shipped to another
+                # process can materialize() it without the in-memory IR.
+                if evidence_store is not None and scorable:
+                    evidence_store.put(scorable)
             else:
                 entry["text"] = e.text
             evidence_items.append(entry)
@@ -153,15 +168,38 @@ class ContextPacket(BaseModel):
                 return item.text
         return None
 
-    def materialize(self) -> ContextPacket:
-        """Fill evidence text in place from the held IR (slim → full)."""
-        if not self.slim or self._ir is None:
+    def materialize(self, store: EvidenceStore | None = None) -> ContextPacket:
+        """Fill evidence text in place (slim → full).
+
+        Resolves from the held IR when present (same process), otherwise from a
+        content-addressed :class:`EvidenceStore` keyed by each entry's
+        ``text_hash`` — so a packet deserialized in another worker still
+        materializes without the original IR.
+        """
+        if not self.slim:
             return self
-        by_id = {item.id: item.text for item in self._ir.evidence}
+        by_id = (
+            {item.id: item.scorable_text for item in self._ir.evidence}
+            if self._ir is not None
+            else {}
+        )
+        resolved_all = True
         for entry in self.evidence_items:
-            if "text" not in entry and entry.get("id") in by_id:
+            if "text" in entry:
+                continue
+            if entry.get("id") in by_id:
                 entry["text"] = by_id[entry["id"]]
-        self.slim = False
+            elif store is not None and entry.get("text_hash"):
+                text = store.get(entry["text_hash"])
+                if text is not None:
+                    entry["text"] = text
+                else:
+                    resolved_all = False
+            else:
+                resolved_all = False
+        # Only flip to full when every entry's text was recovered.
+        if resolved_all:
+            self.slim = False
         return self
 
     # -- streaming assembly ----------------------------------------------------

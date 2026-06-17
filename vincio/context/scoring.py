@@ -141,11 +141,21 @@ class ScoringWeights(BaseModel):
 
 
 class ContextCandidate(BaseModel):
-    """A scored candidate for inclusion in the context packet."""
+    """A scored candidate for inclusion in the context packet.
+
+    2.0: a candidate may be text, an image, or a table. ``content`` always holds
+    the scorable text surrogate (the text itself, or an image caption/OCR, or a
+    table's Markdown), so relevance, novelty, dedup, and ordering work uniformly
+    across modalities, while ``image`` / ``table`` carry the non-text payload and
+    ``modality`` drives a modality-aware token cost.
+    """
 
     id: str
     type: CandidateType
     content: str
+    modality: Literal["text", "image", "table"] = "text"
+    image: Any = None  # ImageRef for image candidates
+    table: dict[str, Any] | None = None  # structured table for table candidates
     metadata: dict[str, Any] = Field(default_factory=dict)
     token_cost: int = 0
     scores: ContextScores = Field(default_factory=ContextScores)
@@ -276,9 +286,27 @@ class ContextScorer:
         has_specifics = 1.0 if re.search(r"\d|%|\$|€", candidate.content) else 0.6
         return coverage * has_specifics
 
+    # Representative token cost of a media candidate when none was supplied, so
+    # an image/table competes for the budget on its true (non-zero) footprint
+    # rather than the length of its short caption.
+    _IMAGE_TOKEN_COST = {"low": 85, "high": 765, "auto": 512}
+
+    def modality_token_cost(self, candidate: ContextCandidate) -> int:
+        """Token footprint of a candidate, modality-aware."""
+        if candidate.token_cost:
+            return candidate.token_cost
+        if candidate.modality == "image":
+            detail = getattr(candidate.image, "detail", "auto") if candidate.image else "auto"
+            return self._IMAGE_TOKEN_COST.get(detail, self._IMAGE_TOKEN_COST["auto"])
+        if candidate.modality == "table" and candidate.table:
+            rows = candidate.table.get("rows") or []
+            cols = candidate.table.get("columns") or []
+            cells = sum(len(r) for r in rows) if rows else 0
+            return max(count_tokens(candidate.content), 3 * (cells + len(cols)))
+        return count_tokens(candidate.content)
+
     def normalized_token_cost(self, candidate: ContextCandidate) -> float:
-        tokens = candidate.token_cost or count_tokens(candidate.content)
-        return min(1.0, tokens / self.max_token_cost)
+        return min(1.0, self.modality_token_cost(candidate) / self.max_token_cost)
 
     # -- total ---------------------------------------------------------------------
 

@@ -30,6 +30,7 @@ __all__ = [
     "Constraint",
     "Example",
     "EvidenceItem",
+    "EvidenceModality",
     "MemoryScope",
     "MemoryType",
     "MemoryItem",
@@ -271,15 +272,34 @@ class Example(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+# 2.0: the modality of an evidence unit. The compiler selects, dedupes, orders,
+# budgets, and cites image and table evidence as first-class candidates
+# alongside text — not as observations bolted on after the fact.
+EvidenceModality = Literal["text", "image", "table"]
+
+# Representative token cost of an image part by requested detail (calibrated to
+# the common vision pricing tiers), and per-cell cost for a structured table.
+_IMAGE_TOKEN_COST = {"low": 85, "high": 765, "auto": 512}
+_TABLE_TOKEN_PER_CELL = 3
+
+
 class EvidenceItem(BaseModel):
-    """A provenance-aware unit of evidence."""
+    """A provenance-aware unit of evidence (text, image, or table)."""
 
     id: str = Field(default_factory=lambda: new_id("ev"))
     source_id: str
     source_type: Literal["document", "memory", "tool", "database", "image", "audio", "web"] = (
         "document"
     )
+    # 2.0: typed modality + structured carriers. ``text`` remains the scorable
+    # surrogate for every modality (the text for text evidence; a caption / OCR /
+    # alt text for an image; a Markdown rendering for a table), so relevance,
+    # dedup, ordering, and citation work uniformly. ``image`` / ``table`` carry
+    # the actual non-text payload the renderer ships to a vision model.
+    modality: EvidenceModality = "text"
     text: str | None = None
+    image: ImageRef | None = None
+    table: dict[str, Any] | None = None  # {"columns": [...], "rows": [[...]], "markdown": "..."}
     media_ref: str | None = None
     page: int | None = None
     span: tuple[int, int] | None = None
@@ -298,6 +318,30 @@ class EvidenceItem(BaseModel):
         if self.page is not None:
             return f"{self.source_id}:p{self.page}"
         return self.id
+
+    @property
+    def scorable_text(self) -> str:
+        """The text used for relevance/dedup/ordering across every modality."""
+        if self.text:
+            return self.text
+        if self.modality == "table" and self.table:
+            return str(self.table.get("markdown") or self.table.get("caption") or "")
+        if self.modality == "image" and self.image is not None:
+            return str(self.image.metadata.get("caption") or self.image.metadata.get("alt") or "")
+        return ""
+
+    def estimated_token_cost(self) -> int:
+        """Modality-aware token cost: a calibrated image budget by detail, a
+        per-cell table estimate, or the text token count (computed lazily by the
+        caller when 0)."""
+        if self.modality == "image" and self.image is not None:
+            return _IMAGE_TOKEN_COST.get(self.image.detail, _IMAGE_TOKEN_COST["auto"])
+        if self.modality == "table" and self.table:
+            rows = self.table.get("rows") or []
+            cols = self.table.get("columns") or []
+            cells = sum(len(r) for r in rows) if rows else 0
+            return max(self.token_cost, _TABLE_TOKEN_PER_CELL * (cells + len(cols)))
+        return self.token_cost
 
 
 class MemoryScope(StrEnum):
