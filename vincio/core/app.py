@@ -82,6 +82,14 @@ from ..workflows.engine import Workflow
 from .config import VincioConfig, load_config
 from .errors import AgentEngineError, ConfigError, ResidencyViolationError, ToolNotFoundError
 from .events import EventBus
+from .facades import (
+    GovernanceFacade,
+    OptimizationFacade,
+    RetrievalFacade,
+    RunFacade,
+    ServingFacade,
+    TrainingFacade,
+)
 from .runtime import VincioRuntime
 from .types import (
     Budget,
@@ -3036,6 +3044,46 @@ class ContextApp:
         pack.apply(self, set_schema=set_schema, merge_rules=merge_rules)
         self.events.emit("pack.applied", {"pack": pack.name})
         return self
+
+    # -- capability facades (2.0) ------------------------------------------------------------------------------------
+
+    def _facade(self, key: str, factory: Any) -> Any:
+        """Build a capability facade once, on first access, and cache it — so
+        cold start and footprint scale with the facades an app actually uses."""
+        cache = self.__dict__.setdefault("_facade_cache", {})
+        if key not in cache:
+            cache[key] = factory(self)
+        return cache[key]
+
+    @property
+    def runs(self) -> RunFacade:
+        """Execution facade: run / arun / stream / astream / submit / batch / evaluate."""
+        return self._facade("runs", RunFacade)
+
+    @property
+    def knowledge(self) -> RetrievalFacade:
+        """Knowledge facade: sources, ingestion, and scoped memory."""
+        return self._facade("knowledge", RetrievalFacade)
+
+    @property
+    def governance(self) -> GovernanceFacade:
+        """Governance & compliance facade: residency, erasure, cards, lineage, EU AI Act."""
+        return self._facade("governance", GovernanceFacade)
+
+    @property
+    def optimization(self) -> OptimizationFacade:
+        """Cost, evaluation, rotation, and self-improvement facade."""
+        return self._facade("optimization", OptimizationFacade)
+
+    @property
+    def serving(self) -> ServingFacade:
+        """Serving facade: MCP server, A2A server, realtime sessions."""
+        return self._facade("serving", ServingFacade)
+
+    @property
+    def training(self) -> TrainingFacade:
+        """Training facade: capture, dataset export, and gated distillation."""
+        return self._facade("training", TrainingFacade)
 
     # -- maintenance -------------------------------------------------------------------------------------------------
 
