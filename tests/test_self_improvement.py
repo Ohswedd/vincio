@@ -1,4 +1,4 @@
-"""1.10 — autonomous self-improvement: the experiment proposer, the guarded
+"""Autonomous self-improvement: the experiment proposer, the guarded
 online bandits, and the held-out growing golden regression suite."""
 
 import warnings

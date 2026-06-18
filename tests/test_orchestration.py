@@ -1,4 +1,4 @@
-"""0.6 milestone tests: multi-agent crews over a shared blackboard, durable
+"""Multi-agent crews over a shared blackboard, durable
 stateful graphs (checkpoint/resume/time-travel), human-in-the-loop interrupts
 on graphs and workflows, declarative composition with streaming node events,
 and runtime backend adapters."""

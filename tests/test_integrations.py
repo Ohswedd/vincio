@@ -1,4 +1,4 @@
-"""0.9 integration breadth: OpenAI-compatible providers, hosted rerankers /
+"""Integration breadth: OpenAI-compatible providers, hosted rerankers /
 embedders, and the vector-store factory. All offline via httpx MockTransport."""
 
 from __future__ import annotations

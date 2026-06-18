@@ -270,7 +270,7 @@ scope gate **team-shared memory** — `engine.for_team("eng").remember(..., acl=
 surfaces only to listed readers. The VincioBench `governance` family gates
 erasure-proof verification, tamper detection, and consent enforcement; the
 `memory` family gates as-of recall and per-memory ACLs. See
-[`38_self_improvement_and_provable_erasure.py`](../../examples/38_self_improvement_and_provable_erasure.py).
+[`38_self_improvement_and_erasure.py`](../../examples/38_self_improvement_and_erasure.py).
 
 ## How it interconnects
 

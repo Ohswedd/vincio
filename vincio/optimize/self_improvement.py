@@ -278,7 +278,7 @@ def select_for_labeling(
 ) -> list[str]:
     """Active-learning acquisition: pick the most *uncertain* cases to label.
 
-    Uncertainty is distance from the decision midpoint: a case scoring near
+    Uncertainty is distance from the decision midpoint (0.5): a case scoring near
     0.5 is the one a human label resolves most. Returns up to ``budget`` case ids,
     most-uncertain first — the queue a human (or the annotation tool) works next.
     """

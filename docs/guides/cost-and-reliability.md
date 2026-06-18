@@ -300,7 +300,7 @@ that cannot serve the request is **skipped** (not silently returning a wrong
 answer), a retired model raises `ModelRetiredError` ("rotate now"), and a
 terminal lifecycle/config error (a removed/unknown model) is classified
 distinctly from a transient outage. Unknown models are never blocked; pass
-`guard_capabilities=False` to restore the pre-1.8 attempt-everything behavior.
+`guard_capabilities=False` to restore the previous attempt-everything behavior.
 
 When a [residency policy](governance.md) is configured, every model a run can
 reach — the router's candidates, a cascade's rungs, a budget-degrade target, and

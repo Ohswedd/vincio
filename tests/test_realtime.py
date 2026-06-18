@@ -1,4 +1,4 @@
-"""1.5 voice/realtime module: session lifecycle, VAD, interruption, in-session
+"""Voice/realtime module: session lifecycle, VAD, interruption, in-session
 tool dispatch through the permissioned runtime, wire-event translation, and
 missing-dependency handling. All deterministic and offline."""
 

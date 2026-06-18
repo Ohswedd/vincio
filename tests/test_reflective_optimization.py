@@ -1,4 +1,4 @@
-"""1.4 — Reflective optimization & the data flywheel.
+"""Reflective optimization & the data flywheel.
 
 Covers the reflective optimizer (GEPA + MIPRO strategies), the distillation /
 fine-tune flywheel (grounded export + gated teacher→student loop), learned

@@ -1,4 +1,4 @@
-"""2.0 enterprise endpoints behind a pluggable AuthStrategy: AWS Bedrock
+"""Enterprise endpoints behind a pluggable AuthStrategy: AWS Bedrock
 (SigV4), Google Vertex (service-account bearer + regional), Azure OpenAI
 (deployment routing + api-version), all over the same HTTPProvider plumbing."""
 

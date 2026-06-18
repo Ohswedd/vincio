@@ -1,4 +1,4 @@
-"""2.0 multimodal-native Context Packet: image and table evidence are
+"""Multimodal-native Context Packet: image and table evidence are
 first-class candidates the compiler scores, budgets, orders, and cites
 alongside text; slim packets materialize cross-process from a content-addressed
 store; the evidence ledger carries entailment links."""

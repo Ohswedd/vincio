@@ -1,4 +1,4 @@
-"""0.9 CLI: init templates, config tooling, packs, and tui commands."""
+"""CLI: init templates, config tooling, packs, and tui commands."""
 
 from __future__ import annotations
 

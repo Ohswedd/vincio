@@ -1,4 +1,4 @@
-"""2.0 signed audit chain + Merkle checkpoints: tamper-evidence against a
+"""Signed audit chain + Merkle checkpoints: tamper-evidence against a
 privileged attacker who can recompute the public hash chain."""
 
 from __future__ import annotations

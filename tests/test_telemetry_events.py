@@ -1,4 +1,4 @@
-"""2.0 async-first storage, typed event catalog, and unified OTel telemetry."""
+"""Async-first storage, typed event catalog, and unified OTel telemetry."""
 
 from __future__ import annotations
 

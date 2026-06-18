@@ -1,4 +1,4 @@
-"""0.9 ergonomics: notebook rich reprs and the interactive TUI."""
+"""Ergonomics: notebook rich reprs and the interactive TUI."""
 
 from __future__ import annotations
 

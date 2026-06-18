@@ -41,11 +41,11 @@ def section(title: str) -> None:
 
 def main() -> None:
     provider, model = example_provider()
-    app = ContextApp(name="breaking_window", provider=provider, model=model)
+    app = ContextApp(name="multimodal_packet", provider=provider, model=model)
 
     # 1) Capability facades — the decomposed, lazily-constructed surface.
     section("1. Capability facades")
-    result = app.runs.run("Summarize the breaking window in one line.")
+    result = app.runs.run("Summarize the multimodal packet in one line.")
     print("run via app.runs.run ->", (result.output or result.raw_text)[:60])
     print("facade delegates to the same impl:", app.runs.run == app.run)
     print("governance facade exposes:", "model_card" in dir(app.governance))

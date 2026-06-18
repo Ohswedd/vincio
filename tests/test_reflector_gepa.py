@@ -1,4 +1,4 @@
-"""1.10 — the real provider-backed reflective optimizer (GEPA proper):
+"""The real provider-backed reflective optimizer (GEPA proper):
 failure clustering, the LLMReflector provider path, and its offline fallback."""
 
 import json

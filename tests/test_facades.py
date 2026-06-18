@@ -1,4 +1,4 @@
-"""2.0 capability facades: ContextApp's surface decomposed into narrow,
+"""Capability facades: ContextApp's surface decomposed into narrow,
 lazily-constructed, independently-testable views."""
 
 from __future__ import annotations

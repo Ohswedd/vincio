@@ -1,4 +1,4 @@
-"""1.10 — the continual loop: drift detectors, online state persistence, and the
+"""The continual loop: drift detectors, online state persistence, and the
 online improvement controller (gated re-eval / re-optimization / rollback)."""
 
 import warnings

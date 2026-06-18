@@ -1,4 +1,4 @@
-"""0.9 domain packs: loading, application, and an end-to-end run."""
+"""Domain packs: loading, application, and an end-to-end run."""
 
 from __future__ import annotations
 

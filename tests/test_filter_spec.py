@@ -1,4 +1,4 @@
-"""2.0 structured FilterSpec: a serializable, pushdown-capable retrieval filter
+"""Structured FilterSpec: a serializable, pushdown-capable retrieval filter
 that replaces the opaque post-filter callable and closes the over-fetch
 under-fill and cross-tenant fetch-to-filter gaps."""
 

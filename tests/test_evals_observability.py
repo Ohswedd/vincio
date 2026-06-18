@@ -1,4 +1,4 @@
-"""0.5 milestone tests: metric expansion, G-Eval, sessions/feedback/scores,
+"""Metric expansion, G-Eval, sessions/feedback/scores,
 trace viewer, prompt registry, experiments, synthetic data, red-teaming,
 and the testing helpers."""
 
