@@ -5,657 +5,640 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v3.0.1 (SemVer)
-Main entry point: `from vincio import ContextApp`
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · SemVer.
+Main entry point: `from vincio import ContextApp`.
 
 ## Quickstart
 
 ```python
 from vincio import ContextApp
+
 app = ContextApp(name="docs_qa")
 app.add_source("docs", path="./docs", retrieval="hybrid")
 app.set_policy("answer_only_from_sources", True)
 result = app.run("How do I configure SSO?")
 result.output; result.citations; result.trace_id; result.cost_usd
+
+# Typed output: pass a Pydantic class; result.output is a validated instance.
+from pydantic import BaseModel
+class Triage(BaseModel):
+    label: str; confidence: float
+app = ContextApp(name="triage", output_schema=Triage)
+app.run("export button 500s").output.label
+
+# Offline by default: with no provider/key, a deterministic mock emits
+# schema-valid output, so the whole pipeline runs in CI without network.
 ```
 
-## Docs
+## Mental model
 
-- [Getting started](docs/getting-started.md)
-- [Context packets & compiler](docs/concepts/context-packets.md)
-- [Prompt compiler](docs/concepts/prompt-compiler.md)
-- [Memory](docs/concepts/memory.md)
-- [Retrieval](docs/concepts/retrieval.md)
-- [Agents & workflows](docs/concepts/agents.md)
-- [Evaluation](docs/concepts/evals.md)
-- [Observability](docs/concepts/observability.md)
-- [Build a RAG app](docs/guides/build-rag-app.md)
-- [Connect data sources](docs/guides/connectors.md)
-- [Structured output](docs/guides/structured-output.md)
-- [Reliability & guardrails](docs/guides/reliability-guardrails.md)
-- [Cost, reliability & scale](docs/guides/cost-and-reliability.md)
-- [Add tools](docs/guides/add-tools.md)
-- [Orchestrate multi-agent systems](docs/guides/orchestrate-agents.md)
-- [Run evals](docs/guides/run-evals.md)
-- [Agentic evaluation & continuous quality](docs/guides/agentic-eval.md)
-- [Test LLM apps with pytest](docs/guides/test-llm-apps.md)
-- [Optimize](docs/guides/optimize-context.md)
-- [Close the loop](docs/guides/close-the-loop.md)
-- [Performance & streaming](docs/guides/performance.md)
-- [Integrations: providers, vector stores, frameworks](docs/guides/integrations.md)
-- [MCP (Model Context Protocol) client + server](docs/guides/mcp.md)
-- [A2A (agent-to-agent)](docs/guides/a2a.md)
-- [Agent Skills (SKILL.md)](docs/guides/agent-skills.md)
-- [Reasoning control & the Responses API](docs/guides/reasoning.md)
-- [Enterprise governance & compliance](docs/guides/governance.md)
-- [Coming from LangChain](docs/guides/migrate-from-langchain.md)
-- [Coming from LlamaIndex](docs/guides/migrate-from-llamaindex.md)
-- [Coming from Ragas](docs/guides/migrate-from-ragas.md)
-- [Coming from Mem0](docs/guides/migrate-from-mem0.md)
-- [vs LiteLLM / gateways](docs/comparisons/litellm.md)
-- [API reference](docs/reference/api.md)
-- [CLI reference](docs/reference/cli.md)
-- [Config reference](docs/reference/config.md)
-- [API stability & deprecation policy](docs/reference/stability.md)
-- [Performance & quality SLOs](docs/reference/slo.md)
-- [Threat model](docs/security/threat-model.md)
-
-## Key facts for code generation
-
-- All public data contracts are Pydantic v2 models.
-- Async-first: every engine has `arun`/async methods plus sync wrappers.
-- Capability facades, multimodal packet & structured filters: `ContextApp`'s surface is grouped into lazy capability
-  facades (`app.runs` / `.knowledge` / `.governance` / `.optimization` /
-  `.serving` / `.training`); the flat `app.<method>` API still works.
-  `EvidenceItem`/`ContextCandidate` carry a `modality` (text/image/table) and
-  image/table payloads — the compiler scores, budgets, orders, and cites them
-  together. Filter retrieval with a structured `FilterSpec`
-  (`from vincio.retrieval import eq, in_, range_, and_, or_, not_, FilterSpec`)
-  passed as `where=`; it pushes down to native backend filters. Enterprise
-  providers `bedrock` / `vertex` / `azure` via `build_provider(...)` behind a
-  pluggable `AuthStrategy`. Egress DLP is always-on (`security.egress_dlp`:
-  off/warn/block); audit chains can be HMAC/Ed25519-signed
-  (`security.audit_signing_key`). Eval: `lexical_overlap` is the lexical metric;
-  `semantic_similarity` is embedding-backed; unscoreable cases return
-  `MetricResult(skipped=True)` and are excluded from gates.
-- Distributed execution, fine-tuning & served observability:
-  Distributed durable execution — `from vincio.agents import WorkerPoolBackend,
-  DistributedCheckpointer, InMemoryGraphCoordinator, Send`. `WorkerPoolBackend(workers=N)`
-  has `run(graph, input)` and `run_batch(graph, inputs)`; `DistributedCheckpointer(store,
-  coordinator=...)` lease-guards a thread + CAS-commits each super-step (a lost race
-  raises `CheckpointConflictError`). `StateGraph.compile(parallel=True)` runs BSP
-  super-steps; a node returning `[Send("node", {...}), ...]` fans out map-reduce;
-  `Workflow.map_step(name, fn, over=...)` for data-dependent fan-out. Executed
-  distillation — `from vincio.providers import OpenAIFineTuneBackend,
-  make_finetune_backend`; `from vincio.optimize import provider_trainer,
-  semantic_dedupe`; `BootstrapFinetune(evaluate, trainer=provider_trainer(backend),
-  swap_gate=SwapGate(...))` trains + registers a student and promotes only past the
-  gate. Served observability — `from vincio.observability import IndexedTraceStore,
-  ViewerApp, serve_viewer, AlertManager, AlertRule, TailSamplingExporter,
-  WebhookAlertSink, SlackAlertSink, PagerDutyAlertSink, PrometheusExporter,
-  ContentCapturePolicy`. `AlertRule(kind="threshold"|"ewma"|"burn_rate")`. Content
-  capture is OFF by default; opt in via `ContentCapturePolicy(capture=True)`. Shared
-  state — `from vincio.storage.shared_state import InMemoryRateLimiter,
-  TenantQuotaManager`; `RedisRateLimiter`/`RedisIdempotencyStore` in `storage.redis`.
-  `vincio serve --app app.py` launches the API (+`/v1/health/ready`, `/v1/metrics`).
-  Quantized two-stage retrieval — `from vincio.retrieval import TwoStageIndex,
-  quantize_scalar, quantize_binary`. Local models — `FastEmbedEmbedder`,
-  `SpladeEncoder`, `ColBERTTokenEmbedder`, `LocalCrossEncoderReranker`, and a
-  llama.cpp `GGUFProvider` (each with an offline fallback; extras
-  `vincio[fastembed,splade,cross-encoder,gguf]`).
-- Benchmarks, the agent fabric & generative UI:
-  Stateful-environment eval — `from vincio.evals import Environment, ToolEnvironment,
-  EnvironmentSimulator, EnvAction, StateCheck, make_retail_environment, scripted_policy,
-  task_success`. An `Environment` is `reset()/step(action)/observe()/verify()`; `verify()`
-  runs declarative `StateCheck`s over the world end state (the task-success ORACLE);
-  `EnvironmentSimulator().run(env, policy)` projects onto a `Trajectory`. Benchmark
-  adapters — `from vincio.evals import SWEBenchAdapter, TauBenchAdapter, GAIAAdapter,
-  WebArenaAdapter, BFCLAdapter, BenchmarkTask, load_benchmark`; each pins its task set by
-  `task_set_hash()`, scores a verifiable end state, degrades to `adapter.replay()` offline
-  (fixtures in `benchmarks/fixtures/`), and `report.to_eval_report()` feeds the optimizer.
-  Live-run path (identical scorer, fresh agent output): `from vincio.evals import
-  make_agent_solver, make_env_solver, tasks_from_jsonl, gaia_tasks_from_export`;
-  `adapter.run(make_agent_solver(app, mode="text"|"calls"))` drives a real ContextApp/
-  AgentExecutor; `make_env_solver(policy)` runs a policy through the τ-bench world.
-  Retrieval eval — `from vincio.evals import RetrievalEvaluator, RetrievalGoldenSet,
-  RetrievalQuery, RetrievalConfig, retrieval_regression`; `from vincio.storage import
-  IndexRegressionStore` (artifacts keyed on `(embedder, chunker, corpus hash)`).
-  `retrieval_regression(search_fn, golden, config, store=...)` gates recall/nDCG deltas with
-  the swap significance test (`ab_test`). Agent fabric — `from vincio.registry import
-  AgentDirectory, ACPClient, ACPAgentManifest, MCPRegistryClient, MCPServerRecord`;
-  `from vincio.security import AllowListGate`. `app.agent_directory(allow=[...], deny=[...])`
-  is governed + audited; `directory.find(capability=|tag=|query=)`; `directory.resolve(name)`
-  passes the allow-list and records an `agent_resolve` access decision. `ACPClient` (AGNTCY/ACP,
-  REST) and `MCPRegistryClient` discover into the same directory. Generative UI — `from
-  vincio.server.agui import AGUIEvent, run_stream_to_agui, agent_stream_to_agui`; SSE endpoint
-  `POST /v1/apps/{id}/agui`; `AgentExecutor.astream(...)` / `Crew.astream(...)` yield flat
-  `AgentEvent`/`CrewEvent` (run/step lifecycle, genuine provider token deltas via
-  `provider.stream()`, tool_call/tool_result, done);
-  `from vincio.mcp import MCPUIResource` served via `app.serve_mcp(ui_resources=[...])`.
-- Self-improvement contract, provable erasure & the async-canonical core:
-  Unified self-improvement contract — `from vincio.optimize import SelfImprovementPolicy,
-  SelfImprovementController, MetaSpec, CanarySpec, SelfImprovementEvent, DeployResult,
-  successive_halving, learn_fitness_weights, select_for_labeling, deploy_candidate`. One
-  `SelfImprovementPolicy` composes scheduling/proposal/online/canary/active-learning/meta;
-  `app.self_improvement(policy, dataset=...)` returns a controller whose
-  `astream()`/`step()`/`run()` emit `observe → proposal → meta → label → reeval → canary →
-  promote/rollback` events. Meta-optimization = `successive_halving` over the strategy/budget grid
-  + `learn_fitness_weights`. Canary-gated serving — `app.deploy(candidate, dataset=...)` (offline
-  gated comparison) or `app.deploy(candidate, live_inputs=[...], score_fn=...)` (live-traffic canary
-  via `LiveCanary`: ramps `CanarySpec.percent` onto the candidate, scores each arm online, promotes
-  on no regression or auto-rolls-back) promotes live only on a no-regression `CanaryVerdict`.
-  `app.self_improvement` is the unified app-level surface; `ContinuousImprovementController` and
-  `ExperimentProposer` remain public for wiring one organ directly. The run path persists through
-  the async store contract on every path
-  (interactive / streaming / batch — `VincioRuntime._persist_run` is a coroutine awaiting `asave`).
-  Provable erasure — `from vincio.governance import ErasureProof, build_erasure_proof,
-  verify_erasure_proof`; `app.erase_source(source)` returns `ErasureResult` with `.proof` (signed
-  with `app.content_signer`, content-bound by SHA-256 over the removed-id set across chunks /
-  documents / memories / generated artifacts, anchored to the audit Merkle root). Consent —
-  `from vincio.governance import ConsentLedger, ConsentRecord, ConsentDecision, Purpose,
-  LawfulBasis`; `app.use_consent_ledger()`; `AccessController.check_purpose(principal, purpose=)`.
-  Bi-temporal memory — `MemoryItem` gains `valid_from`/`valid_to`/`valid_at()`/`acl`/`readable_by()`/
-  `purpose`/`consent_id`; `MemoryScope.TEAM`; `MemoryEngine.correct(...)`, `for_team(...)`,
-  `asearch(..., as_of=, reader=)` (as-of recall + ACL + consent filtering). Async-canonical core —
-  `InMemoryMetadataStore` is async-native (`asave`/`aget`/`aquery`/`adelete`/`acount`); the typed
-  event catalog gains `SelfImprovementPhaseEvent`/`DeployCompleted`/`SourceErased`.
-- Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
-  mock (deterministic, offline; generates schema-valid structured output);
-  plus OpenAI-compatible presets groq | together | fireworks | openrouter |
-  deepseek | perplexity | xai | nvidia via `openai_compatible(name)` /
-  `build_provider(name)` (`<NAME>_API_KEY` env) or any endpoint with
-  `openai_compatible(base_url=..., api_key=...)`.
-- `ContextApp.run()` executes: normalize → classify → policy → memory →
-  retrieve → compile context (score/dedupe/conflict/compress/budget) →
-  compile prompt (cache-aware) → model (+bounded tool loop) → validate
+- **Pydantic v2 everywhere.** Every public data contract (`RunResult`, `Budget`,
+  `EvidenceItem`, `MemoryItem`, `EvalReport`, …) is a Pydantic v2 model.
+- **Async-first with sync wrappers.** Every engine has `arun`/async methods; the
+  sync `run()` is a thin wrapper and needs no running loop. Stream with
+  `async for event in app.astream(...)`.
+- **One run pipeline.** `app.run()` executes: normalize → classify → policy →
+  memory recall → retrieve → compile context (score/dedupe/conflict/compress/
+  budget) → compile prompt (cache-aware) → model (+bounded tool loop) → validate
   (schema/citations/policy, principled repair) → evaluate → trace → memory write.
-- Streaming: `async for event in app.astream("...")` — `stage`, `text_delta`,
-  `partial_output` (incremental partial-JSON), `tool_*`, then `done` with the
-  full `RunResult`; the server SSE endpoint emits the same events.
-- Performance: bounded concurrent fan-out (`vincio.core.concurrency`),
-  content-addressed compile/chunk/embedding caches (on by default),
-  request coalescing + pooled provider transport, slim (zero-copy) packets,
-  hard `max_latency_ms` deadline + cancellation propagation; VincioBench
-  budgets gate CI (`benchmarks/check_budgets.py`).
-- Retrieval: index modes bm25 | dense | sparse (SPLADE-style) |
-  late_interaction (ColBERT-style MaxSim, PLAID-style compression) |
-  hybrid | hybrid_full | graph | hybrid_graph, all fused by weighted RRF;
-  query strategies hyde | multi_query | decompose | step_back
-  (engine `query_strategies=` or config `retrieval.query_strategies`);
-  chunking adds sentence_window | hierarchical/parent_document (use
-  `AutoMergingIndex`) | contextual (+`contextualize_chunks` for LLM
-  prefixes); `GraphRAG` (communities + summaries, global/local routing);
-  `LiveIndex` (upsert/TTL/freshness) + `VectorIndex.migrate`.
-- Connectors: `from vincio.connectors import connect` — web, github, sql,
-  s3, gcs, notion, confluence, slack, custom via `register_connector`;
-  `app.add_source("kb", connector=connect("web", urls=[...]))`.
-- Memory: `app.remember(content, user_id=...)` / `app.recall(query,
-  user_id=...)`; scopes session | user | agent | tenant | organization |
-  global; scoped handles `app.memory.for_user("u1").remember(...)`; hybrid
-  lexical+vector+graph recall (`memory.hybrid_recall`, on by default);
-  consolidation `await app.memory.consolidate(session_id, user_id=...)`
-  (episodic→semantic, provenance in `consolidated_from`); hygiene: per-scope
-  `memory.ttl_days`, importance-weighted `decay_pass()`, audited
-  `edit`/`forget`/`export_owner_data`/`erase_owner_data`; run write-back via
-  `memory.write_back: [input, evidence, tools]`; eval harness
-  `vincio.memory.evaluate_memory` (recall precision, contradiction rate,
-  staleness, personalization lift) gated in VincioBench.
-- Agents & orchestration: `app.agent(tools=..., planner="dag|dynamic|
-  react|direct", max_steps=...)` → bounded `AgentState` with `metrics()`;
-  crews `app.crew(members=[{"name", "description", "goal", "keywords",
-  "budget_fraction", ...}], process="sequential|parallel|hierarchical",
-  max_rounds=...)` → `CrewResult` (output, reports, delegations, blackboard
-  snapshot) — members share a versioned `Blackboard`, run under scaled
-  budget shares, and always terminate; durable graphs `app.graph(name)` →
-  `StateGraph.add_node(name, fn)` (fn: dict state → dict updates) /
-  `add_edge` / `add_conditional_edge(source, router, targets=)` /
-  `compile(interrupt_before=, interrupt_after=, max_steps=)`; checkpoints
-  persist per step in the app metadata store; `invoke`/`ainvoke` returns
-  `GraphResult(status="done|interrupted|max_steps", state, thread_id)`;
-  `resume(thread_id, value=...)` (a node-level `interrupt(state, payload)`
-  re-runs and receives the value), `update_state(thread_id, values)` for
-  edit-and-resume, `history(thread_id)` + `fork(checkpoint_id)` for
-  time-travel replay; composition `compose(a) | b | c` (functions, agents,
-  crews, workflows, graphs; results normalized), `parallel(name=step, ...)`,
-  `branch(router, routes)`, streaming via `pipeline.astream(value)` →
-  NodeEvents; workflow approval gates with no `approval_fn` pause
-  (`status == "paused"`, `pending_approvals`) and
-  `workflow.resume(result, approvals={"step": True})` continues without
-  re-running done steps; backends `LangGraphBackend().compile(graph)` and
-  `OpenAIAgentsBackend().export_crew(crew)` export to those runtimes
-  (lazy imports, no lock-in).
-- Output schemas: pass a Pydantic class as `output_schema=`; `result.output`
-  is a validated instance.
-- Structured output & reliability: provider-native constrained
-  decoding negotiated per run (`vincio.output.to_strict_json_schema`
-  strict-sanitizes the schema for the decoder; validation runs on the
-  original; the mode lands on the trace as `decoding=native|prompt`);
-  grammar-style `choice_schema(options)` / `regex_schema(pattern)`;
-  streaming validation — `partial_output` events carry `valid_prefix` /
-  `validation_errors` (abort early when False); typed signatures —
-  `class Sig(Signature)` with `InputField`/`OutputField` (docstring =
-  instruction) or `signature("question, context -> answer, confidence:
-  float")`, executed via `Predict(sig, provider=, model=)` or
-  `app.predictor(sig)(**inputs)` (typed result), optimizer target via
-  `sig.to_prompt_spec()`; rails — `app.add_rail(name=, kind="topic|format|
-  safety|custom", direction="input|output|both", action="block|warn|
-  redact", blocked_topics=/allowed_topics=/max_chars=/require_pattern=/
-  forbid_pattern=/detectors=["pii","secrets","injection"]/predicate=)` +
-  `app.register_rail_predicate(name, fn)` — deterministic, enforced
-  before/after every generation, violations audited as `rail:<name>`;
-  self-correction — `app.enable_self_correction(max_cycles=2,
-  max_cost_usd=0.05)` (bounded validate→critique→repair, structure-only,
-  facts never invented) or `vincio.output.SelfCorrector`; multi-schema
-  routing — `app.add_output_schema(schema, keywords=, task_types=, when=)`
-  picks the contract per run; `SchemaRouter.classify/validate_any` for
-  content-side validation.
-- Evals: `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,
-  gates like `{"groundedness": ">= 0.95"}`; CLI `vincio eval run`.
-- Evals & testing: metrics add faithfulness | answer_relevance |
-  hallucination (strict number checks) | toxicity | bias |
-  summarization_quality | knowledge_retention | conversation_relevance
-  (conversation via `case.context["messages"]`); `GEvalJudge(provider,
-  model=..., criteria=..., samples=N)` + `judge.calibrate(pairs)`;
-  `SyntheticGenerator(seed=...).generate(docs, n=...)` (offline templates,
-  LLM hook, provenance in `metadata.source_ids` + `rubric.facts`);
-  `RedTeamSuite().run(app)` (canary-judged jailbreak/injection/leak/bias/
-  toxicity probes, `attack_success_rate`, `detector_coverage`);
-  `ExperimentTracker(path).log/compare/ablation` + `ab_test(a, b, metric)`
-  (paired/Welch t-test, pure-Python p-values); `vincio.testing` —
-  `assert_eval` / `assert_grounded` / `assert_metric` / `assert_safe` +
-  pytest plugin with `vincio_snapshot` fixture
-  (`--vincio-update-snapshots`).
-- Agentic evaluation & continuous quality: trajectory & tool-use metrics
-  `tool_call_accuracy | tool_call_f1 | goal_accuracy | plan_adherence |
-  plan_quality | step_efficiency | topic_adherence` score the agent
-  `trajectory` carried on a RunOutput — build it with
-  `RunOutput.from_agent_state(state)` / `from_crew_result(result)` /
-  `from_trace(trace)` (no re-instrumentation); expected/optimal refs live in
-  `rubric['expected_tools' | 'plan' | 'optimal_steps' | 'topic']`;
-  `report.metric_families()` shows output-only vs trajectory side by side. Plus
-  conversational `conversation_outcome` / `intent_resolution`. Multi-turn:
-  `Simulator(seed=...).simulate(agent, Persona(goal=...))` (LLM-backed,
-  deterministic template fallback) → `SimulatedConversation.to_eval_case()`;
-  `dataset_from_traces(traces, group_by_session=True)` makes multi-turn goldens.
-  Online/continuous: `app.add_online_evaluator(metric, sample_rate=...)` scores
-  a sample of live runs off the hot path, writing a score time series to the
-  store (`OnlineEvaluator.series()`); `await app.aflush_online()` drains in
-  tests. Drift: `DriftMonitor(bus=, store=, score_threshold=, embedding_threshold=)`
-  `.set_score_baseline/check_scores` + `.set_embedding_baseline/check_embeddings`
-  raise a `drift.detected` event and persist `drift_baselines`; CLI
-  `vincio eval drift baseline.json current.json`. Annotation: `AnnotationQueue`
-  + `cohens_kappa(pairs, bins=)`; `GEvalJudge.calibrate(pairs)` now also returns
-  `cohens_kappa` and `judge.gating_weight(threshold=)` / `queue.judge_trusted()`
-  gate a judge on agreement; CLI `vincio eval annotate labels.jsonl`. A/B:
-  `app.experiment(name, variants={...}, dataset=, metrics=[...])` → `Experiment`
-  with `.compare()`, `.cost()`, `.significance(metric)`. Interconnection: every
-  metric is reusable as a runtime guardrail — `app.add_metric_rail(metric,
-  threshold=)` / `metric_guardrail(metric, threshold=)` — and as optimizer
-  fitness via `AGENTIC_OBJECTIVES` (trajectory metrics are ordinary metrics).
-- Observability: traces carry `session_id`/`thread_id` (pass
-  `session_id=` to `app.run`), `trace.add_score`/`span.add_score` (runtime
-  evaluators attach scores automatically), `trace.add_feedback(score=...,
-  comment=...)` / `record_feedback(..., exporter=...)`;
-  `sessions_from_traces(traces)` → `Session` aggregates;
-  `dataset_from_traces(traces, min_feedback_score=...)` → eval dataset;
-  viewer: `render_trace_text`, `trace_to_html` / `session_to_html`
-  (self-contained static HTML), `trace_diff_html`; OTel exporter emits
-  GenAI semantic conventions (`chat {model}`, `gen_ai.*`,
-  `gen_ai.conversation.id`).
-- Prompt registry: `PromptRegistry(dir).push(spec, tags=[...])` —
-  content-hash versions, moving tags, `diff(name, a, b, rendered=True)`,
-  `rollback(name)`, `link_eval(name, version, report)`.
-- The closed loop: `loop = app.improvement_loop(metrics=[...],
-  gates={"groundedness": ">= 0.8"})`; `result = loop.run(
-  min_feedback_score=0.5)` — capture traces → `dataset_from_traces` →
-  baseline eval → gated prompt optimization → promote (registry push +
-  tag "production" + `link_eval` + applied to the app + `loop_promotion`
-  audit entry + `loop.promoted` event); `dry_run=True` decides without
-  acting; candidate evals are memory-write-free; CLI `vincio loop run
-  --app app.py [--dataset ds.jsonl | --min-feedback X] [--gate ...]
-  [--tag T] [--dry-run]`. Auto-memory from runs: `memory.write_back:
-  [facts]` + `memory.fact_min_support` / `memory.max_facts_per_run` —
-  evidence-supported output claims (`vincio.memory.extract_grounded_facts`)
-  become candidate memories (`origin: run_fact`) through the guarded
-  policy. Retrieval feedback: `RetrievalFeedback(app.retrieval,
-  records_from_dataset(ds)).tune()` — gated, deterministic tuning of
-  per-index RRF weights + heuristic-reranker blend;
-  `recommend_chunking(reports_by_config, baseline=...)`. Pareto:
-  `pareto_loop(candidates, evaluate_fn, dataset, baseline=,
-  objectives=[ObjectiveSpec(...)], constraints={"cost": 0.01},
-  prefer="accuracy")` → `ParetoResult` with `frontier.front` /
-  `frontier.knee()`; promotion passes the same safety rules. Learned
-  budgets: `BudgetLearner(evaluate_allocation).learn(dataset,
-  task_type=...)` → `LearnedAllocations` (JSON save/load) installed via
-  `app.use_learned_budgets(...)`. Guided search:
-  `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")`
-  or `guided_search(space, evaluate, strategy=, budget=, seed=)` —
-  deterministic, budget-bounded, gate-respecting.
-- Reflective optimization & the data flywheel:
-  reflective optimizer `app.reflective_optimize(dataset, strategy="reflective|
-  mipro", budget=, minibatch_size=, gates=, apply=)` → `ReflectiveResult`
-  (drop-in `OptimizationResult` with `.frontier` / `.reflections`); reads eval
-  failures, proposes targeted edits (`HeuristicReflector` deterministic /
-  `LLMReflector` with fallback), evolves a `ParetoFrontier` under a hard rollout
-  budget, deterministic under seed; also `ImprovementLoop(optimizer="reflective")`
-  / `vincio optimize reflective` / `vincio loop run --reflective`. Distillation
-  flywheel: faithful flag-free export from RunResults — `results=[app.run(q) for q
-  in prompts]; ts = app.export_training_set(runs=results, require_grounding=True,
-  path=, format="openai|anthropic")` (RunResults carry full output + cited evidence,
-  runtime stamps `metadata['input']`; `export_training_set_from_runs(runs,...)`
-  standalone) → `TrainingSet` (grounded, deduped, provenance). Trace path
-  (feedback-filtered) needs `app.enable_training_capture()` (covers streaming):
-  `app.export_training_set(min_feedback_score=)` / `export_training_set(traces,...)`;
-  `vincio distill --traces-dir --output --format`. Gate a cheaper
-  student `app.distill(ts, held_out, teacher=, student=, min_quality_ratio=)` →
-  `DistillationResult` (promotes a `ModelCascade` only on quality-hold + cost cut;
-  `BootstrapFinetune` with an injected `trainer`). Learned compression:
-  `from vincio.context import LLMLinguaCompressor` (drop-in
-  `ContextCompiler.compressor`, protects numbers/entities/citations/query terms);
-  faithfulness-gated adoption via `app.gate_compression(dataset)` →
-  `CompressionTuningResult`, or `app.use_learned_compression()` (ungated);
-  `compression_faithfulness` / `faithfulness_preserved`. Optimizer-judge
-  calibration: `app.calibrate_judge(geval, samples)` (samples are
-  `(case, output, human_score)`) reflectively tunes the judge's steps to maximize
-  Cohen's κ, adopting only on a strict gain → `JudgeCalibrationResult`.
-- Integrations & DX: framework interop `from vincio.interop import
-  add_langchain_tool, from_langchain_loader, from_langchain_retriever,
-  from_langchain_embeddings, from_llamaindex_reader, from_llamaindex_retriever,
-  from_llamaindex_embedding, add_llamaindex_tool` (duck-typed, no heavy import)
-  + `to_langchain_*` / `to_llamaindex_*` (extras `vincio[langchain]` /
-  `vincio[llamaindex]`); embedders `build_embedder("local|jina|voyage|cohere|
+- **Deterministic where it matters.** Security, permissions, validation, and
+  budgets are enforced in code, never gated on model output.
+- **One trace, one audit chain.** Every run yields a span tree, a cost, and a
+  hash-chained audit entry; metrics, optimization, governance all ride them.
+- **Extend via registries.** Providers, metrics, chunkers, rerankers, judges,
+  validators, tools, connectors, packs all accept your own implementation;
+  third-party packages auto-register via `vincio.providers`/`embedders`/`stores`
+  entry points.
+- **Two surfaces, same impl.** The flat `app.<method>` API and lazy capability
+  facades (`app.runs` / `.knowledge` / `.governance` / `.optimization` /
+  `.serving` / `.training`) both work.
+
+## Core: ContextApp & the run pipeline
+
+- **Run / stream / submit.** `app.run(input, *, session_id=, tenant_id=, user_id=,
+  feature=, config=RunConfig(...))` → `RunResult` (`.output`, `.citations`,
+  `.trace_id`, `.cost_usd`, `.raw_text`). `app.astream("...")` yields `stage`,
+  `text_delta`, `partial_output` (incremental partial-JSON with `valid_prefix` /
+  `validation_errors`), `tool_*`, then `done` with the full `RunResult` (the
+  server SSE endpoint emits the same events). `app.submit(...)` → `RunHandle`
+  whose `cancel()` propagates cooperative cancellation and still records the run.
+- **Budgets are hard caps.** Caps live on a `Budget` (`from vincio import
+  Budget`) passed via `RunConfig(budget=Budget(max_cost_usd=, max_input_tokens=,
+  max_output_tokens=, max_steps=, max_tool_calls=, max_latency_ms=,
+  max_retries=))`; breaches raise `BudgetExceededError` (pre-flight input-token
+  check; on the same audit chain as policy/residency).
+  `RunConfig(enforce_budget_caps=False)` restores the legacy soft cap. Sub-quadratic
+  hot paths (inverted-index BM25, incremental MMR `_select`, memoized
+  `count_tokens`, optional numpy vector path); `InMemoryMetadataStore` is
+  async-native (`asave`/`aget`/`aquery`/`adelete`/`acount`) and every run path
+  (interactive/streaming/batch) persists through the async store contract.
+- **Reasoning control.** `RunConfig(reasoning_effort="low|medium|high")` /
+  `thinking_budget_tokens` map across OpenAI/Anthropic/Gemini; thinking tokens
+  are billed. Optional `OpenAIResponsesProvider` via
+  `build_provider("openai_responses")`.
+- **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
+  content-addressed compile/chunk/embedding caches (on by default), request
+  coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
+  deadline + cancellation propagation. VincioBench budgets gate CI
+  (`benchmarks/check_budgets.py`).
+
+## Prompts & context
+
+- **Prompts.** `PromptSpec`, typed AST, cache-aware compiler (stable-prefix
+  layout), lint, variant generation, content-hash versioned `PromptRegistry`.
+- **Typed signatures (DSPy-style).** `class Sig(Signature)` with `InputField` /
+  `OutputField` (docstring = instruction) or `signature("question, context ->
+  answer, confidence: float")`; run via `Predict(sig, provider=, model=)` or
+  `app.predictor(sig)(**inputs)`; optimize via `sig.to_prompt_spec()`.
+- **Context compiler.** Scores every candidate (relevance, novelty, authority,
+  freshness, provenance, token cost, leakage risk), dedupes, resolves conflicts,
+  compresses, packs to a token budget, and reports excluded context. Opt-in
+  semantic scoring (`app.use_semantic_context_scoring()`): embedding-cosine
+  relevance + MMR (`mmr_lambda`) + reranker `upstream_relevance` blend +
+  value-level (numbers/dates) contradiction as structured conflicts; default is
+  lexical.
+- **Multimodal-native packet.** `EvidenceItem` / `ContextCandidate` carry a
+  `modality` (text/image/table) and image/table payloads; the compiler scores,
+  budgets, orders, and cites them together. Slim packets `materialize()`
+  cross-process from a content-addressed `InMemoryEvidenceStore`.
+- **Learned compression.** `from vincio.context import LLMLinguaCompressor`
+  (drop-in `ContextCompiler.compressor`, protects numbers/entities/citations/
+  query terms); faithfulness-gated via `app.gate_compression(dataset)` →
+  `CompressionTuningResult` (metrics `compression_faithfulness` /
+  `faithfulness_preserved`), or `app.use_learned_compression()` (ungated).
+
+## Retrieval (RAG)
+
+- **Index modes** (config `retrieval.mode` / `app.add_source(retrieval=)`):
+  `bm25 | dense | sparse` (SPLADE-style) `| late_interaction` (ColBERT MaxSim,
+  PLAID compression) `| hybrid | hybrid_full | graph | hybrid_graph`, fused by
+  weighted RRF.
+- **Query understanding.** `hyde | multi_query | decompose | step_back` via
+  `query_strategies=` or `retrieval.query_strategies`.
+- **Chunking.** `sentence_window | hierarchical/parent_document` (use
+  `AutoMergingIndex`) `| contextual` (+`contextualize_chunks` for LLM prefixes);
+  `GraphRAG` (communities + summaries, global/local routing).
+- **Live / sharded / quantized.** `LiveIndex.upsert(chunks, *, ttl_seconds=)` /
+  `upsert_stream(...)` → `UpsertStats` (content-hash change detection — only
+  changed chunks re-embed) + `VectorIndex.migrate`; `ShardedIndex(shards, *,
+  router=, max_concurrency=8)` (parallel fan-out, chunks co-locate by
+  `document_id`); `TwoStageIndex` + `quantize_scalar` / `quantize_binary` (coarse
+  compressed search + full-precision rerank).
+- **Structured filters.** `from vincio.retrieval import eq, ne, in_, range_,
+  exists, contains, and_, or_, not_, FilterSpec, build_filter_spec`; pass as
+  `where=`. Compiles to native backend filters (`to_qdrant`/`to_pinecone`/
+  `to_weaviate`/`to_milvus`/`to_elasticsearch`/`to_sql_where`), pushed down
+  server-side. `app.tenant_filter` / `build_filter_spec(tenant_id=)` enforce
+  shared-or-mine tenant scope in the engine (no fetch-to-filter).
+- **Embedders / rerankers / stores.** `build_embedder("local|jina|voyage|cohere|
   voyage-context|voyage-multimodal|cohere-multimodal|<provider>", dimensions=N)`
-  (Matryoshka/MRL truncation, contextual & unified text+image multimodal
-  embedders, query/document `input_type` hints via `embed_texts`); rerankers
-  `build_reranker("heuristic|recency|authority|llm|cohere|jina|voyage")` (hosted
-  ones are httpx-only); vector stores `from vincio.storage import
-  build_vector_index` over memory | qdrant | pgvector | chroma | pinecone |
-  lancedb | weaviate | milvus | elasticsearch | opensearch | vespa (extras
-  `vincio[chroma|pinecone|lancedb|weaviate|milvus|elasticsearch|opensearch|
-  vespa]`); layout-aware PDF extraction `load_document(path, layout=True)` /
-  `extract_pdf_layout` (extra `vincio[pdf-layout]`); voice/realtime (optional) `from vincio.realtime import RealtimeSession, connect_realtime`
-  (backends inprocess|openai|gemini; VAD, interruption, in-session tools via the
-  permissioned runtime; `app.realtime_session(...)`; extra `vincio[realtime]`);
-  domain packs `app.use_pack("support|engineering|finance|legal")`,
-  `from vincio import load_pack, available_packs` (+ `register_pack`); notebook
-  reprs `from vincio import enable_rich_reprs` (RunResult/Trace/EvalReport/
-  MemoryItem/SearchHit); interactive inspector `vincio.tui.TUI` / `vincio tui`;
-  typed config schema `vincio.core.config.config_json_schema()`.
-- Stability & guarantees: SemVer on the frozen public surface
-  (`vincio.__all__` / `vincio.stability.public_api()`); `from vincio import
-  deprecated, experimental, stability_of` — `@deprecated(since=, removed_in=,
-  alternative=)` / `@experimental(since=)` emit `VincioDeprecationWarning` /
-  `VincioExperimentalWarning` (escalate to errors via `warnings.simplefilter`);
-  nothing public is removed in a minor/patch, only deprecated then removed at
-  the next major. Published SLOs (`benchmarks/slos.json`,
-  `docs/reference/slo.md`) each enforced by a VincioBench budget held at least
-  as strict (`tests/test_slos.py`). Security hardening: offline audit-chain
-  verification (`from vincio.security import verify_audit_file`;
-  `AuditLog.verify_file()`; `vincio audit verify <path>`); tool sandbox
-  `setrlimit` CPU/memory/fd limits (`run_subprocess_sandboxed` /
-  `SandboxedPython(max_cpu_seconds=, max_memory_bytes=, max_open_files=)`);
-  releases ship a CycloneDX SBOM + SLSA provenance attestations. Threat model
-  in `docs/security/threat-model.md`.
-- Governance & compliance: generated
-  from the running system, no hosted dependency. Model/system cards
-  `app.model_card()` / `app.system_card()` (`CardFormat` vincio|open_model_card|
-  ai_card) / `vincio governance card`. Compliance mapping `app.compliance_report()`
-  / `ComplianceMapper().map(redteam=, eval_report=, target=app)` over OWASP LLM
-  Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE ATLAS, evidence from
-  `RedTeamSuite` + `EvalReport` + config (`ComplianceReport.coverage_rate` /
-  `to_markdown()`); `vincio governance report --red-team --markdown`. AI-BOM
-  `app.aibom()` (CycloneDX 1.6, `AIComponent.verify` / `sha256_file`); `vincio
-  governance aibom`. EU AI Act: `from vincio.governance import
-  mark_synthetic_content, ai_disclosure, data_summary` (C2PA-style manifest,
-  bound by SHA-256); `governance.content_marking: true` marks every run.
-  Lineage + erasure: `app.trace_lineage(source)`, `app.erase_source(source)`
-  (purges every index/memory/cache, audited, idempotent); `vincio governance
-  lineage|erase`. Residency: `app.set_residency(["eu"], provider_regions={...})`
-  / `governance.allowed_regions` refuse egress as a blocking PolicyViolation
-  (`ResidencyViolationError`); region is inferred from a region-pinned endpoint
-  (`provider.base_urls`) via `infer_region_from_url` (AWS/GCP/Vertex/sovereign)
-  with jurisdiction-aware matching (eu admits eu-west-1/europe-west4). Content
-  signing: `mark_synthetic_content(..., signer=HmacSigner(secret))` +
-  `verify_manifest(manifest, content, signer=)` (built-in symmetric HMAC, or your
-  own `ContentSigner`); `app.content_signer` signs every marked run. Multilingual
-  PII: `PIIDetector(locales=["fr",
-  "de","es","in","sg","br","uk"])` / `governance.locales`; per-language eval
-  slicing `EvalReport.slice_by_tag("lang:")` / `tag_gap`; token tax
-  `app.fertility.token_tax(lang)`. RAG-poisoning: `from vincio.security import
-  PoisoningDetector` (authority/provenance signals + classifier hook; FP/FN via
-  `PoisoningReport.telemetry`).
-- The honest, fast spine: the advertised `Budget` is a hard
-  cap on `app.run()`/`arun()` — `max_cost_usd`/`max_input_tokens`/
-  `max_output_tokens`/`max_steps` raise `BudgetExceededError` (on the same audit
-  chain as residency/policy), with a pre-flight input-token check and
-  `RunConfig(enforce_budget_caps=False)` restoring the legacy soft cap for one
-  minor. Data-driven `ModelRegistry` (`from vincio import default_model_registry`
-  / `ModelRegistry`): a versioned, config-overridable (`VINCIO_MODEL_REGISTRY`
-  JSON/YAML overlay) catalog keyed by exact model id binding `ModelProfile`
-  (capabilities + standard/batch pricing + context window + modalities + GA/
-  deprecation/retirement dates); `capabilities()` and `PriceTable` derive from it
-  (substring sniffing demoted to fallback) and an unknown model warns +
-  emits `model.unknown` instead of billing $0. Provider-native token counters
-  register behind the `TokenCounter` Protocol (`register_token_counter`);
-  third-party adapters auto-register via the `vincio.providers`/`embedders`/
-  `stores` entry-point groups. Opt-in semantic context scoring
-  (`app.use_semantic_context_scoring()` / `retrieval.semantic_context_scoring`):
-  embedding-cosine relevance, MMR selection (`mmr_lambda`), reranker
-  `upstream_relevance` blended into relevance, and salient-unit value-level
-  contradiction (numbers/dates) emitted as structured packet conflicts; default
-  stays lexical. Unified run pipeline: streaming and non-streaming share one
-  latency-deadline + cancellation epilogue; `app.submit(...)` returns a
-  `RunHandle` whose `cancel()` propagates cooperative cancellation and still
-  records the cancelled run; async store contract (`storage.base.asave`/`aquery`)
-  keeps persistence off the event loop. Significance-gated promotion: `ab_test`
-  now returns p-value + confidence interval + effect size, and `evolution_loop`
-  blocks significant regressions / warns under-powered runs (loop audit records
-  the verdict). Trace-replay executor `ReplayRunner(app).replay(traces,
-  pin_tools=)` re-runs captured trace inputs and diffs output/trajectory/cost
-  (reusing `trace_diff` + `EvalReport.diff`); `vincio trace replay --against
-  <app>`. Sub-quadratic hot paths: inverted-index BM25, incremental MMR
-  `_select`, memoized `count_tokens`, optional numpy vector path. Hardened
-  detectors: injection normalization + recursive base64/hex/rot13 decode pre-pass
-  (catches obfuscated attacks), a pluggable `DetectorBackend` Protocol on the
-  PII/injection/secret detectors, `AccessController(require_explicit_tenant=True)`
-  fails closed on untagged tenants, and `ComplianceMapper` marks a control
-  `covered` only with measured red-team/eval evidence (config flags ⇒ `partial`).
-- Provider/model rotation & swap regression: capability guard
-  — `from vincio.providers import requirements_for, capability_check` intersect a
-  request's needs (vision/tools/structured-output/reasoning/context) with a
-  model's `ModelCapabilities`; unknown models are never blocked. `FailoverChain` /
-  `HealthAwareFailover` guard by default (`guard_capabilities=False` opts out):
-  skip a capability-mismatched substitution, classify a terminal lifecycle error
-  (`is_lifecycle_error`), raise `ModelRetiredError` ("rotate now") when all
-  candidates are retired; `CapabilityMismatchError` when none can serve. Router —
-  `app.use_router(models, *, strategy="cheapest|fastest|least_busy",
-  budget_usd=)` or `Router.from_models(provider, models)` picks the cheapest/
+  (Matryoshka/MRL truncation, contextual + text+image multimodal, query/document
+  `input_type` hints); `build_reranker("heuristic|recency|authority|llm|cohere|
+  jina|voyage")`; `from vincio.storage import build_vector_index` over `memory |
+  qdrant | pgvector | chroma | pinecone | lancedb | weaviate | milvus |
+  elasticsearch | opensearch | vespa` (extras `vincio[chroma|pinecone|lancedb|
+  weaviate|milvus|elasticsearch|opensearch|vespa]`); embedders expose
+  `embed_texts(texts, input_type="query"|"document")`. Local neural models with offline
+  fallbacks: `FastEmbedEmbedder`, `SpladeEncoder`, `ColBERTTokenEmbedder`,
+  `LocalCrossEncoderReranker`, llama.cpp `GGUFProvider` (each accepts an injected
+  `model=`/`tokenizer=`; extras `vincio[fastembed,splade,cross-encoder,gguf]`).
+- **Connectors.** `from vincio.connectors import connect` — `web, github, sql,
+  s3, gcs, notion, confluence, slack`, custom via `register_connector`;
+  `app.add_source("kb", connector=connect("web", urls=[...]))`.
+
+## Memory
+
+- **Recall / remember.** `app.remember(content, user_id=...)` /
+  `app.recall(query, user_id=...)`; scopes `session | user | agent | tenant |
+  organization | global | team`; scoped handles `app.memory.for_user("u1")` /
+  `for_team("eng")`. Hybrid lexical+vector+graph recall (`memory.hybrid_recall`,
+  on by default).
+- **Lifecycle.** `await app.memory.consolidate(session_id, user_id=...)`
+  (episodic→semantic, provenance in `consolidated_from`); hygiene via per-scope
+  `memory.ttl_days`, importance-weighted `decay_pass()`, audited
+  `edit`/`forget`/`export_owner_data`/`erase_owner_data`. Auto-memory from runs:
+  `memory.write_back: [input, evidence, tools, facts]` +
+  `memory.fact_min_support` / `memory.max_facts_per_run` — evidence-supported
+  claims (`extract_grounded_facts`) become candidates (`origin: run_fact`).
+- **Bi-temporal + ACL + consent.** `MemoryItem` carries `valid_from`/`valid_to`/
+  `valid_at()`/`acl`/`readable_by()`/`purpose`/`consent_id`, plus
+  `MemoryScope.TEAM`; `MemoryEngine.correct(...)` (history-preserving),
+  `asearch(..., as_of=, reader=, team_id=)` (as-of recall + ACL + consent
+  filtering).
+- **Eval.** `vincio.memory.evaluate_memory` (recall precision, contradiction
+  rate, staleness, personalization lift), gated in VincioBench.
+
+## Tools, agents & orchestration
+
+- **Tools.** Permissioned registry (RBAC scopes + ABAC rules), schema from type
+  hints, resource-limited sandbox, reliability scoring, idempotent approval-gated
+  writes. Computer-use & provider-native hosted tools register on the same path.
+- **Agents.** `app.agent(tools=, planner="dag|dynamic|react|direct",
+  max_steps=)` → bounded `AgentState` with `metrics()`; level-parallel DAG over
+  `topological_levels`, a real `plan_and_execute` replanning loop
+  (`Planner.replan`), in-loop compaction (`ContextCompactor`).
+- **Crews.** `app.crew(members=[{"name","description","goal","keywords",
+  "budget_fraction"}], process="sequential|parallel|hierarchical", max_rounds=)`
+  → `CrewResult` (output, reports, delegations, blackboard snapshot) — members
+  share a versioned `Blackboard`, run under scaled budget shares, always
+  terminate.
+- **Durable graphs.** `app.graph(name)` → `StateGraph.add_node(name, fn)` (dict
+  state → dict updates) / `add_edge` / `add_conditional_edge(source, router,
+  targets=)` / `compile(interrupt_before=, interrupt_after=, max_steps=)`;
+  checkpoints persist per step; `invoke`/`ainvoke` → `GraphResult(status=
+  "done|interrupted|max_steps", state, thread_id)`; `resume(thread_id, value=)`
+  (node-level `interrupt(state, payload)`), `update_state` (edit-and-resume),
+  `history` + `fork(checkpoint_id)` (time-travel).
+- **Compose / workflows.** `compose(a) | b | c` (functions/agents/crews/
+  workflows/graphs), `parallel(name=step, ...)`, `branch(router, routes)`,
+  streaming via `pipeline.astream(value)`; deterministic `Workflow` DAGs with
+  retries/compensation, `Workflow.map_step(name, fn, over=...)` (data-dependent
+  fan-out), and approval gates that pause (`status=="paused"`,
+  `pending_approvals`) and `workflow.resume(result, approvals={"step": True})`
+  without re-running done steps.
+- **Distributed execution.** `from vincio.agents import WorkerPoolBackend,
+  DistributedCheckpointer, InMemoryGraphCoordinator, Send`.
+  `WorkerPoolBackend(workers=N).run(graph, input)` / `run_batch(...)`;
+  `DistributedCheckpointer(store, coordinator=)` lease-guards a thread +
+  CAS-commits each super-step (lost race → `CheckpointConflictError`);
+  `StateGraph.compile(parallel=True)` runs BSP super-steps; a node returning
+  `[Send("node", {...})]` fans out map-reduce. `LangGraphBackend().compile(graph)`
+  / `OpenAIAgentsBackend().export_crew(crew)` export (lazy, no lock-in).
+- **Deep research.** `app.research(question, *, budget=ResearchBudget(breadth=,
+  depth=, max_sources=, top_k=))` → `ResearchAgent` / `ResearchReport` loops
+  search→read→reflect→verify→synthesize, dedups sources, emits a cited report;
+  metrics `citation_coverage`/`grounding`/`source_diversity`.
+- **Memory OS.** `app.enable_memory_os(scope=, owner_id=, max_core_tokens=)` →
+  registers `memory_append`/`replace`/`search`/`archive` as permissioned, audited
+  tools over the guarded write pipeline, with a context-pressure pager.
+- **Computer-use.** `app.enable_computer_use(backend="mock|playwright|provider",
+  require_isolation=)` registers navigate/click/type/screenshot as approval-gated
+  tools; pluggable `IsolationBackend` (`Subprocess`/`Container`/`GVisor`/`MicroVM`/
+  `WASM`, `require_real_isolation` refuses the subprocess default for adversarial
+  code). `app.use_hosted_tools(["web_search","file_search","code_interpreter",
+  "computer_use"])` surfaces OpenAI Responses built-ins as namespaced tools.
+  Extra `vincio[computer-use]`.
+
+## Structured output & reliability
+
+- **Output schema.** Pass a Pydantic class as `output_schema=`; `result.output`
+  is a validated instance.
+- **Constrained decoding.** Negotiated per run (`to_strict_json_schema`
+  strict-sanitizes for the decoder; validation runs on the original; mode lands
+  on the trace as `decoding=native|prompt`); `choice_schema(options)` /
+  `regex_schema(pattern)`.
+- **Streaming validation.** `partial_output` events carry `valid_prefix` /
+  `validation_errors` — abort early when `valid_prefix is False`.
+- **Rails.** `app.add_rail(name=, kind="topic|format|safety|custom",
+  direction="input|output|both", action="block|warn|redact", blocked_topics=/
+  allowed_topics=/max_chars=/require_pattern=/forbid_pattern=/detectors=
+  ["pii","secrets","injection"]/predicate=)` + `app.register_rail_predicate`;
+  deterministic, enforced before/after every generation, violations audited as
+  `rail:<name>`.
+- **Self-correction.** `app.enable_self_correction(max_cycles=2,
+  max_cost_usd=0.05)` (bounded validate→critique→repair, structure-only — facts
+  never invented) or `vincio.output.SelfCorrector`.
+- **Multi-schema routing.** `app.add_output_schema(schema, keywords=,
+  task_types=, when=)` picks the contract per run; `SchemaRouter.classify/
+  validate_any` for content-side validation.
+
+## Evaluation & continuous quality
+
+- **Datasets & gates.** `Dataset.load("golden.jsonl")`, `app.evaluate(...)`,
+  gates like `{"groundedness": ">= 0.95"}`; CLI `vincio eval run`.
+- **Metrics.** Task/grounding/quality/safety/conversational: `faithfulness |
+  answer_relevance | hallucination` (strict number checks) `| toxicity | bias |
+  summarization_quality | knowledge_retention | conversation_relevance |
+  conversation_outcome | intent_resolution | lexical_overlap` (lexical) `|
+  semantic_similarity` (embedding-backed). Conversation metrics read turns from
+  `case.context['messages']`. Unscoreable cases return `MetricResult(skipped=True)`
+  and are excluded from gates.
+- **Trajectory & tool-use.** `tool_call_accuracy | tool_call_f1 | goal_accuracy |
+  plan_adherence | plan_quality | step_efficiency | topic_adherence` score the
+  `trajectory` on a `RunOutput` — build it with `RunOutput.from_agent_state` /
+  `from_crew_result` / `from_trace` (no re-instrumentation); refs in
+  `rubric['expected_tools'|'plan'|'optimal_steps'|'topic']`;
+  `report.metric_families()` shows output-only vs trajectory.
+- **Judges & data.** `GEvalJudge(provider, model=, criteria=, samples=N)` (LLM-
+  backed, deterministic template fallback) + `judge.calibrate(pairs)` (returns
+  `cohens_kappa`, `gating_weight(threshold=)`; `queue.judge_trusted()` gates a
+  judge on agreement); `SyntheticGenerator(seed=).generate(docs, n=)` (offline
+  templates + LLM hook, provenance in `metadata.source_ids` + `rubric.facts`);
+  `RedTeamSuite().run(app)` (jailbreak/injection/leak/bias/toxicity,
+  `attack_success_rate`, `detector_coverage`).
+- **Experiments & testing.** `app.experiment(name, variants=, dataset=,
+  metrics=)` → `.compare()`/`.cost()`/`.significance(metric)`; `ab_test(a, b,
+  metric)` (paired/Welch t-test, p-value + CI + effect size, pure-Python);
+  `EvalRunner(..., repeats=N, repeat_aggregate="mean", flake_quarantine=True,
+  flake_threshold=0.15)`; `ExperimentTracker(path).log/compare/ablation`.
+  `vincio.testing` —
+  `assert_eval`/`assert_grounded`/`assert_metric`/`assert_safe` + a pytest plugin
+  with the `vincio_snapshot` fixture (`--vincio-update-snapshots`).
+- **Multi-turn & online.** `Simulator(seed=).simulate(agent, Persona(goal=))` →
+  `SimulatedConversation.to_eval_case()`; `dataset_from_traces(traces,
+  group_by_session=True)`. `app.add_online_evaluator(metric, sample_rate=)` scores
+  live runs off the hot path (`OnlineEvaluator.series()`, `app.aflush_online()`
+  in tests). Drift: `DriftMonitor(...).set_score_baseline/check_scores/
+  set_embedding_baseline/check_embeddings/observe_score/check_distribution` +
+  `ks_statistic`/`psi`/`rbf_mmd2`/`CUSUMDetector` raise `drift.detected`; CLI
+  `vincio eval drift baseline.json current.json`. Annotation: `AnnotationQueue` +
+  `cohens_kappa`; CLI `vincio eval annotate labels.jsonl`.
+- **Environment & benchmark harness.** `from vincio.evals import Environment,
+  ToolEnvironment, EnvAction, StateCheck, make_retail_environment, scripted_policy,
+  task_success`. `Environment` is `reset()/step(action)/observe()/verify()`;
+  `verify()` runs `StateCheck`s over the world end state (the task-success
+  oracle); `EnvironmentSimulator().run(env, policy)` → `Trajectory`. Adapters
+  `SWEBenchAdapter | TauBenchAdapter | GAIAAdapter | WebArenaAdapter |
+  BFCLAdapter` (+ `BenchmarkTask`, `load_benchmark`) pin a `task_set_hash()`,
+  score a verifiable end state, replay offline (`adapter.replay()`, fixtures in
+  `benchmarks/fixtures/`) or solve live (`adapter.run(make_agent_solver(app,
+  mode="text"|"calls"))` / `make_env_solver(policy)`; `tasks_from_jsonl`,
+  `gaia_tasks_from_export`); `report.to_eval_report()` feeds the optimizer.
+  Retrieval eval: `RetrievalEvaluator` / `retrieval_regression(search_fn,
+  RetrievalGoldenSet([RetrievalQuery(...)]), RetrievalConfig, store=
+  IndexRegressionStore())` gates recall/nDCG deltas with the swap significance
+  test.
+- **Metric = guardrail = fitness.** Every metric is reusable as a runtime
+  guardrail (`app.add_metric_rail(metric, threshold=)` / `metric_guardrail(metric,
+  threshold=)`) and as optimizer fitness (`AGENTIC_OBJECTIVES`); per-language eval
+  slicing `EvalReport.slice_by_tag("lang:")` / `tag_gap`.
+
+## Optimization & self-improvement
+
+- **The closed loop.** `loop = app.improvement_loop(metrics=, gates=
+  {"groundedness": ">= 0.8"})`; `loop.run(min_feedback_score=0.5)` — capture
+  traces → `dataset_from_traces` → baseline eval → gated optimization → promote
+  (registry push + tag "production" + `link_eval` + applied + `loop_promotion`
+  audit + `loop.promoted` event); `dry_run=True` decides without acting. CLI
+  `vincio loop run`.
+- **Reflective optimizer & flywheel.** `app.reflective_optimize(dataset,
+  strategy="reflective|mipro", budget=, minibatch_size=, gates=, apply=)` →
+  `ReflectiveResult` (reads failures, proposes targeted edits via
+  `HeuristicReflector`/`LLMReflector` + `cluster_failures`, evolves a
+  `ParetoFrontier` under a rollout budget, deterministic under seed). Distillation:
+  `app.export_training_set(runs=, require_grounding=True, format="openai|anthropic")`
+  (or standalone `export_training_set_from_runs(runs, ...)` / `export_training_set(
+  traces, ...)`) → grounded/deduped (`semantic_dedupe`) `TrainingSet` (trace path
+  needs `app.enable_training_capture()`); gate a student `app.distill(ts, held_out,
+  teacher=, student=, min_quality_ratio=)` → `DistillationResult` (promotes a
+  `ModelCascade` only on quality-hold + cost cut; `BootstrapFinetune(trainer=
+  provider_trainer(make_finetune_backend(...) | OpenAIFineTuneBackend(...)),
+  swap_gate=)` runs a real fine-tune job). `vincio distill`.
+- **Pareto / learned budgets / retrieval feedback / search.** `pareto_loop(
+  candidates, evaluate_fn, dataset, objectives=[ObjectiveSpec(...)],
+  constraints={"cost":0.01}, prefer="accuracy")` → `ParetoResult`
+  (`frontier.front`/`knee()`); `BudgetLearner(...).learn(dataset)` →
+  `LearnedAllocations` installed via `app.use_learned_budgets(...)`;
+  `RetrievalFeedback(app.retrieval, records_from_dataset(ds)).tune()` (gated RRF/
+  reranker tuning) + `recommend_chunking(reports_by_config, baseline=)`;
+  `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")` /
+  `guided_search(space, evaluate, strategy=, budget=, seed=)` — deterministic,
+  gate-respecting.
+- **Optimizer-judge calibration.** `app.calibrate_judge(geval, samples)` (samples
+  `(case, output, human_score)`) reflectively tunes the judge's *steps* to
+  maximize Cohen's κ, adopting only on a strict gain → `JudgeCalibrationResult`
+  (vs. `judge.calibrate(pairs)` in Evaluation, which calibrates the *threshold* /
+  gating weight).
+- **Significance-gated promotion.** `ab_test` returns p-value + CI + effect size;
+  `evolution_loop` blocks significant regressions / warns under-powered runs.
+  Trace-replay: `ReplayRunner(app).replay(traces, pin_tools=)` diffs output/
+  trajectory/cost; `vincio trace replay --against <app>`.
+- **Unified self-improvement contract.** `from vincio.optimize import
+  SelfImprovementPolicy, SelfImprovementController, MetaSpec, CanarySpec,
+  DeployResult, SelfImprovementEvent, successive_halving, learn_fitness_weights,
+  select_for_labeling, deploy_candidate`. One `SelfImprovementPolicy` composes
+  scheduling/proposal/online/canary/active-learning/meta; `app.self_improvement(
+  policy, dataset=)` returns a controller whose `astream()`/`step()`/`run()` emit
+  `observe → proposal → meta → label → reeval → canary → promote/rollback` (typed
+  events `SelfImprovementPhaseEvent` / `DeployCompleted`). Meta =
+  `successive_halving` over the strategy/budget grid + `learn_fitness_weights`.
+- **Canary-gated deploy (prompt/policy).** `app.deploy(candidate, dataset=...)`
+  (offline gated comparison) or `app.deploy(candidate, live_inputs=[...],
+  score_fn=...)` (live-traffic canary via `LiveCanary`: ramps `CanarySpec.percent`,
+  scores each arm, auto-rolls-back) — promotes live only on a no-regression
+  `CanaryVerdict`. This is the **prompt/policy** canary; for live **model**
+  rotation see `app.canary` / `CanaryRouter` under Providers & models.
+- **Building blocks (also usable directly).** `ContinuousImprovementController(
+  app, metrics=, golden=, sustain=, cooldown_s=, eval_budget=, quality_floor=,
+  reoptimize=)` → `ControllerDecision` (`.set_baseline(...).attach()` turns
+  sustained debounced drift into one gated, audited, restart-safe action);
+  `ExperimentProposer(app, ...)`
+  (`.rank/propose/run_next`); `GuardedBanditRouter(entries,
+  bandit="epsilon_greedy|ucb1|linucb")` (safety floor — no exploration on
+  high-risk traffic, per-arm regret, auto-freeze/rollback; `app.use_bandit_router`);
+  `GoldenRegressionSuite(path)` (`gate(report)` blocks a regressing candidate;
+  `ImprovementLoop(golden_suite=)`).
+
+## Observability
+
+- **Traces.** Carry `session_id`/`thread_id`; `trace.add_score`/`span.add_score`
+  (runtime evaluators attach automatically), `trace.add_feedback(score=,
+  comment=)`. `sessions_from_traces` → `Session`; `dataset_from_traces(traces,
+  min_feedback_score=)` → eval dataset; `record_feedback(..., exporter=)`. Viewer:
+  `render_trace_text`, `trace_to_html`/`session_to_html` (self-contained),
+  `trace_diff_html`. OTel exporter emits GenAI semantic conventions
+  (`chat {model}`, `gen_ai.*`, `gen_ai.conversation.id`, agentic `invoke_agent`).
+- **Prompt registry.** `PromptRegistry(dir).push(spec, tags=)` — content-hash
+  versions, moving tags, `diff(name, a, b, rendered=True)`, `rollback(name)`,
+  `link_eval(name, version, report)`.
+- **Served plane (opt-in, self-hosted).** `from vincio.observability import
+  IndexedTraceStore, ViewerApp, serve_viewer, AlertManager,
+  AlertRule(kind="threshold"|"ewma"|"burn_rate"), TailSamplingExporter,
+  WebhookAlertSink/SlackAlertSink/PagerDutyAlertSink, PrometheusExporter,
+  ContentCapturePolicy`. Prompt/completion content capture is **off by default**
+  at the export boundary (OTel exporter + tool runtime); opt in via
+  `ContentCapturePolicy(capture=True)` (PII-redacted + truncated). Cross-worker
+  shared state: `from vincio.storage.shared_state import InMemoryRateLimiter,
+  TenantQuotaManager`; `RedisRateLimiter` / `RedisIdempotencyStore` in
+  `vincio.storage.redis` (set `server.redis_url` so a multi-worker fleet enforces
+  one coherent limit).
+
+## Providers & models
+
+- **Providers.** `openai, anthropic, google, mistral, local` (OpenAI-compatible),
+  `mock` (deterministic, offline, schema-valid output); presets `groq | together
+  | fireworks | openrouter | deepseek | perplexity | xai | nvidia` via
+  `openai_compatible(name)` / `build_provider(name)` (`<NAME>_API_KEY`), or any
+  endpoint with `openai_compatible(base_url=, api_key=)`. Enterprise endpoints
+  `bedrock | vertex | azure` via `build_provider(...)` behind a pluggable
+  `AuthStrategy`. All async-first, pooled transport, retries, request coalescing.
+- **ModelRegistry.** `from vincio import default_model_registry, ModelRegistry` —
+  a versioned, config-overridable (`VINCIO_MODEL_REGISTRY` JSON/YAML) catalog
+  keyed by exact model id binding `ModelProfile` (capabilities + standard/batch
+  pricing + context window + modalities + GA/deprecation/retirement). The cost
+  table (`PriceTable`) and capability guards derive from it; an unknown model
+  warns + emits `model.unknown` instead of billing $0. Token counters register
+  behind the `TokenCounter` Protocol (`register_token_counter`).
+- **Capability-aware failover.** `requirements_for` / `capability_check`
+  intersect a request's needs (vision/tools/structured-output/reasoning/context)
+  with `ModelCapabilities`. `FailoverChain` / `HealthAwareFailover` guard by
+  default (`guard_capabilities=False` opts out): skip a mismatched substitution,
+  classify a terminal lifecycle error (`is_lifecycle_error`), raise
+  `ModelRetiredError` / `CapabilityMismatchError`.
+- **Router.** `app.use_router(models, *, strategy="cheapest|fastest|least_busy",
+  budget_usd=)` / `Router.from_models(provider, models)` picks the cheapest/
   fastest/least-busy *capable* model, downgrades to a per-request budget, emits a
-  `model.routed` `RoutingDecision`. Swap gate — `app.gate_swap(candidate_model, *,
-  baseline_model=, dataset=, traces=, gates=, repeats=, flake_quarantine=)` →
-  `SwapVerdict` (`.passed`, `.reason`, `.regression`, `.replay`): replays golden
-  traces (`ReplayRunner`) + `evaluate_gates` + `DriftMonitor` + `ab_test` +
-  behavioral shape diff (tool-call/refusal rate, output length). Model-swap
-  regression — `app.swap_regression(dataset, *, candidate_model=, baseline_model=,
-  repeats=)` / `model_swap_regression(...)` → `SwapRegressionReport`
-  (`.regressions`, `.cost`, `.worst_slices`, `.metric_tests`). `EvalRunner(...,
-  repeats=N, repeat_aggregate="mean", flake_quarantine=True, flake_threshold=0.15)`
-  records per-case mean/stdev and excludes flaky cases from gates. Shadow & canary
-  — `app.shadow(candidate_model, *, candidate_provider=, block=)` →
-  `ShadowProvider` (returns primary, dual-dispatches candidate, `.observations`/
-  `.diff()`); `app.canary(candidate_model, *, percent=, score_fn=, min_samples=,
-  regression_threshold=, prompt_name=)` → `CanaryRouter` (ramps %, online scoring,
-  auto-rollback to primary + prompt-registry head, emits `canary.rollback`); both
-  are `ModelProvider`s. Lifecycle — `app.watch_lifecycle(models=, as_of=)` /
-  `LifecycleWatcher(...).scan()/propose_migration()` emit sunset alerts +
-  `MigrationProposal` (successor or cheaper Pareto-dominating; `apply_to_cascade`/
-  `apply_to_policy`/`apply_to_config`). Discovery — `ModelProvider.list_models()`
-  (OpenAI/Anthropic/Google) + `ModelRegistry.reconcile(profiles)` /
-  `discover_models(provider)` (offline-safe). Google/Vertex `GoogleBatchBackend`
-  completes half-cost batch parity. New `vincio.__all__`: `Router`, `SwapGate`,
-  `SwapVerdict`, `model_swap_regression`, `ShadowProvider`, `CanaryRouter`,
-  `LifecycleWatcher`. Edge: routes by capability *and* cost inside your audit
-  boundary, refuses mismatched substitutions, gates every swap on replayed golden
-  traces with significance, and auto-rolls-back a canary — in-process, not a proxy.
-- Documents & images flow OUT: documents
-  and media come out under the same guarantees as text in. DocumentBuilder —
-  `app.build_document(source, *, format="markdown|html|docx|pdf|pptx",
-  contract=DocumentContract(required_sections=, table_specs=[TableSpec(...)],
-  min_words=, citations_per_section=))` turns a *validated* result (RunResult /
-  mapping / Markdown) into a rendered, structurally-validated, provenance-audited
-  `DocumentArtifact` (`document_generate` event); Markdown/HTML are dependency-free,
-  DOCX/PDF/PPTX need `vincio[gen-docx|gen-pdf|gen-pptx]`. Repair is formatting-only.
-  Plus `fill_text_template`/`fill_docx_form`/`fill_pdf_form` (typed citation-aware
-  `Slot`s) and `generate_redline`. Cited reports — `app.cited_report(answer,
-  evidence, *, format=, contract=CitationContract(min_coverage=, require_entailment=,
-  min_entailment_rate=))` (async `acited_report`) resolves `[E1]` markers to numbered
-  footnotes + a bibliography, computes sentence-level coverage and per-claim
-  entailment (pluggable backend); unresolved markers surface. Image/TTS —
-  `app.generate_image(prompt, *, provider=ImageProvider, model=)` (async
-  `agenerate_image`) and `app.synthesize_speech(text, *, provider=SpeechProvider,
-  voice=, format=)` (async); providers `MockImageProvider`/`OpenAIImageProvider`/
-  `GoogleImageProvider`/`HTTPImageProvider` and `MockSpeechProvider`/
-  `OpenAISpeechProvider`/`GoogleSpeechProvider`/`ElevenLabsSpeechProvider`; every
-  asset C2PA-stamped (bound by SHA-256), budget-metered (`meter_media_cost`), audited
-  (`image_generate`/`speech_synthesize`). Media-aware `mark_synthetic_content(bytes,
-  media_type=, edited=)` + `embed_provenance` (PNG) + `write_sidecar_manifest`.
-  Audio chat input — `ContentPart.audio` now renders to OpenAI `input_audio` /
-  Gemini `inlineData` via `core.media.encode_audio_bytes`. Richer inputs —
-  `load_pdf(path, ocr_engine=)` OCR fallback (`vincio[ocr]`, `extractor='ocr'`),
-  `load_media(path, transcriber=MockTranscriber()|WhisperTranscriber())` →
-  timestamped transcript Document, `figure_evidence(doc, crops=, analyzer=|ocr_engine=)`,
-  `parse_html`/`structure_data`; new loaders PPTX/EPUB/RTF/ODT (dep-free), Parquet
-  (`vincio[parquet]`), mbox, `.msg` (`vincio[msg]`) via a `ParserRegistry`
-  (`register_loader`). Forms/KYC — `HeuristicFormExtractor().extract(text)` →
-  `FormField`s (+bbox/confidence), `form_fields_to_evidence`; `DocumentAI` adapters
-  (Textract/Azure/Google). EU AI Act conformity pack — `app.risk_tier(purpose=,
-  domains=)` → `RiskAssessment` (advisory tier), `app.annex_iv(...)` (Annex IV tech
-  docs) and `app.fria(..., affected_groups=)` (Art. 27 FRIA) rendered through the
-  document engine, grounded by the live config/cards/compliance matrix, recorded as
-  `conformity_doc`; ISO/IEC 42001 controls join `ComplianceMapper`. New
-  `vincio.__all__`: `DocumentBuilder`, `DocumentContract`, `DocumentArtifact`,
-  `CitedReportBuilder`, `CitationContract`, `generate_redline`, `ImageProvider`,
-  `ImageGenRequest`, `MockImageProvider`, `SpeechProvider`, `SpeechRequest`,
-  `MockSpeechProvider`, `RiskTierClassifier`, `AnnexIVBuilder`, `FRIAGenerator`.
-  Edge: a generated image is C2PA-stamped and a cited report is per-claim *entailed*,
-  not just `[E1]`-marked — documents/media out under text's exact guarantees, on one
-  audit chain, in-process.
-- The loop closes itself + the agentic frontier: continual,
-  online, safe self-improvement plus deep research, self-editing memory, and
-  computer-use on the same cited/audited spine. Online controller —
-  `ContinuousImprovementController(app, metrics=, golden=, sustain=, cooldown_s=,
-  eval_budget=, quality_floor=, reoptimize=)`;
-  `.set_baseline(metric, values).attach()` subscribes to `drift.detected` +
-  `eval.online`, debounces, and turns sustained drift into one gated action
-  (re-eval / `ImprovementLoop` re-optimize / rollback to last known-good prompt),
-  audited + restart-safe (persisted `controller_state`). Drift —
-  `evals/drift.py` adds `ks_statistic`/`ks_drift`, `psi`, `rbf_mmd2`, a streaming
-  `CUSUMDetector`, and `DriftMonitor.observe_score`/`check_distribution`.
-  `OnlineEvaluator` persists its sampling counter (restart-safe,
-  `observed_total()` aggregates workers). Real reflector (GEPA proper) —
-  `LLMReflector(provider, model)` reads actual failing cases, `cluster_failures`
-  groups them into modes, proposes schema-validated edits;
-  `app.reflective_optimize(..., reflector="llm")` / `ImprovementLoop(reflector=)`,
-  heuristic fallback offline. Experiment proposer — `ExperimentProposer(app, ...)`
-  with `.rank/propose/run_next` ranks the weakest metric and
-  schedules a prompt/retrieval/budget/routing/distillation experiment. Guarded
-  bandits — `GuardedBanditRouter(entries, bandit="epsilon_greedy|ucb1|linucb")`
-  (a `ModelProvider`) with a safety floor (no exploration on high-risk/safety
-  traffic), per-arm regret, auto-freeze/rollback, persisted `bandit_state`;
-  `LinUCB` is contextual; `app.use_bandit_router(models)`. Non-regression guard —
-  `GoldenRegressionSuite(path)` records each promotion's fixed cases with
-  provenance and `gate(report)` blocks a regressing candidate;
-  `ImprovementLoop(golden_suite=)`. Deep research — `app.research(question, *,
-  budget=ResearchBudget(breadth=, depth=, max_sources=, top_k=))` → `ResearchAgent`
-  loops search→read→reflect→verify→synthesize over the query planners +
-  `extract_grounded_facts`, dedups sources, emits a cited report via
-  `CitedReportBuilder`; metrics: citation_coverage/grounding/source_diversity.
-  Memory OS — `app.enable_memory_os(scope=, owner_id=, max_core_tokens=)` →
-  `MemoryOS` registers `memory_append`/`memory_replace`/`memory_search`/
-  `memory_archive` as permissioned, audited tools over the guarded write pipeline,
-  with a context-pressure pager (core↔archival). Agent loop — level-parallel DAG
-  over `topological_levels`, a real `plan_and_execute` replanning loop
-  (`Planner.replan`), and in-loop compaction (`ContextCompactor`) replacing fixed
-  `[-8]`/`[:24]` slicing. Computer-use — `app.enable_computer_use(backend=
-  "mock|playwright|provider", require_isolation=)` registers navigate/click/type/
-  screenshot as approval-gated tools; pluggable `IsolationBackend` in
-  `tools/sandbox.py` (`Subprocess`/`Container`/`GVisor`/`MicroVM`/`WASM`,
-  `require_real_isolation`); hosted tools — `app.use_hosted_tools(["web_search",
-  "file_search","code_interpreter","computer_use"])` surfaces OpenAI Responses
-  built-ins as namespaced, permissioned tools. New `vincio.__all__`:
-  `ContinuousImprovementController`, `ControllerDecision`, `ExperimentProposer`,
-  `GoldenRegressionSuite`, `GuardedBanditRouter`, `ResearchAgent`,
-  `ResearchBudget`, `ResearchReport`. New extra `vincio[computer-use]` (Playwright);
-  new error `SandboxError`. Edge: continual self-improvement that is gated and
-  reversible, deep research where every claim is cited and budget-bounded,
-  self-editing memory that is provenance-tracked and audited, and computer-use that
-  is isolated and audited — all on one packet/ledger/audit/trace, in-process, under
-  a held-out non-regression guard the field's offline bandits and thin GUI adapters
-  lack.
-- CLI: init (`--template minimal|rag|agent|eval`, `--provider`), run,
-  config schema/validate/show, packs list/show, tui,
-  eval run/report/dataset (`--group-by-session`)/drift/annotate/regress
-  (`--baseline-model X --candidate-model Y`),
-  prompt lint/compile/push/versions/diff/rollback, trace
-  show/view/replay/diff/export/sessions/feedback, optimize run, optimize
-  reflective, loop run (`--reflective`), distill, index build, memory
-  inspect/remember/recall/forget/export/consolidate/decay,
-  audit verify, governance card/report/aibom/lineage/erase, mcp tools/add/serve,
-  providers list/lifecycle/discover/regress.
-- Server: `vincio serve --app app.py` (uvicorn launcher; health/readiness/metrics,
-  graceful shutdown) or `from vincio.server import create_app` (FastAPI; API key + JWT).
-- Protocols & interoperability: MCP client + server
-  (`vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,
-  `app.serve_mcp()`; stdio / Streamable HTTP / in-process; MCP tools register
-  through the permissioned/sandboxed/audited runtime, resources become evidence
-  with `origin: mcp:<server>`, sampling routes to the provider, elicitation to a
-  human gate; OAuth 2.1 seams). A2A (`vincio.a2a`: `app.serve_a2a(crew|graph)`,
-  Agent Card + JSON-RPC task lifecycle, `RemoteA2AAgent` as a bounded crew
-  delegate). Agent Skills (`vincio.skills`: `app.add_skill(path)`, `SKILL.md`
-  with progressive disclosure, bundled scripts as sandboxed tools). Unified
-  reasoning control: `RunConfig(reasoning_effort="low|medium|high")` /
-  `thinking_budget_tokens` across OpenAI/Anthropic/Gemini, thinking tokens
-  billed; optional `OpenAIResponsesProvider` (`build_provider("openai_responses")`).
-- Cost, reliability & scale: batch — `app.batch(inputs, *,
-  discount=0.5)` / `app.abatch(...)` → `list[RunResult]`, or
-  `BatchRunner(backend_or_provider, *, discount=0.5).run(requests)` →
-  `BatchRunResult` (`.cost_usd`, `.succeeded`, `.failed`, `.by_id()`,
-  reconcile via `BatchRequest(custom_id, request)` → `BatchResult.custom_id`);
-  ~50% cost (`discount=0.5`); backends `InProcessBatchBackend` (offline/default)
-  | `OpenAIBatchBackend(completion_window="24h")` | `AnthropicBatchBackend`;
-  CLI `vincio batch app.py --input X [--input-file lines.txt] [--discount 0.5]
-  [--output results.json]`. Resilience (compose inner→outer): retry →
-  fallback → circuit-break — `CircuitBreaker(RetryingProvider(provider), *,
-  failure_threshold=0.5, cooldown_s=30.0)` (a `ModelProvider`; `.state`/`.healthy`,
-  `CircuitState` CLOSED/OPEN/HALF_OPEN, emits `circuit.opened|closed|half_open`),
-  `HealthAwareFailover([(provider, label), ...])` (open breakers raise
-  non-retryable `CircuitOpenError`, skipped in microseconds), `KeyPool(providers,
-  *, rpm=, tpm=, breaker=True)` (round-robin health-aware across keys/regions,
-  dual RPM+TPM `RateLimiter`, full-jitter backoff honoring `retry_after`).
-  Cascade — `app.use_cascade(models, *, min_confidence=0.5, max_escalations=None,
-  confidence=)` (cheap→strong, escalate on low confidence) or
+  `model.routed` `RoutingDecision`.
+- **Swap regression.** `app.gate_swap(candidate_model, *, baseline_model=,
+  dataset=, traces=, gates=, repeats=, flake_quarantine=)` → `SwapVerdict`
+  (replay + `evaluate_gates` + `DriftMonitor` + `ab_test` + behavioral shape
+  diff); `app.swap_regression(dataset, *, candidate_model=, baseline_model=,
+  repeats=)` / standalone `model_swap_regression(...)` → `SwapRegressionReport`
+  (`.regressions`, `.worst_slices`, `.metric_tests`). `EvalRunner(..., repeats=N,
+  flake_quarantine=True)` excludes flaky cases from gates.
+- **Shadow & canary (model-level).** `app.shadow(candidate_model, *,
+  candidate_provider=, block=)` → `ShadowProvider` (returns primary,
+  dual-dispatches candidate, `.observations`/`.diff()`); `app.canary(
+  candidate_model, *, percent=, score_fn=, min_samples=, regression_threshold=,
+  prompt_name=)` → `CanaryRouter` (ramps %, online scoring, auto-rollback to
+  primary + prompt-registry head, emits `canary.rollback`). The **prompt/policy**
+  analog is `app.deploy` under Optimization & self-improvement.
+- **Lifecycle & discovery.** `app.watch_lifecycle(models=, as_of=)` /
+  `LifecycleWatcher(...)` emit sunset alerts + `MigrationProposal`
+  (`apply_to_cascade`/`apply_to_policy`/`apply_to_config`);
+  `ModelProvider.list_models()` + `ModelRegistry.reconcile(profiles)` /
+  `discover_models(provider)` (offline-safe).
+
+## Cost & reliability (FinOps)
+
+- **Batch (~50% cost).** `app.batch(inputs, *, discount=0.5)` / `app.abatch(...)`
+  → `list[RunResult]`, or `BatchRunner(backend, *, discount=0.5).run(requests)` →
+  `BatchRunResult` (`.by_id()`, `.succeeded`, `.failed`; reconcile by
+  `BatchRequest(custom_id, request)` → `BatchResult.custom_id`); backends
+  `InProcessBatchBackend` (offline) `| OpenAIBatchBackend(completion_window="24h")
+  | AnthropicBatchBackend | GoogleBatchBackend`. CLI `vincio batch`.
+- **Resilience (inner→outer).** `CircuitBreaker(RetryingProvider(provider), *,
+  failure_threshold=0.5, cooldown_s=30.0)` (`CircuitState` CLOSED/OPEN/HALF_OPEN,
+  `circuit.*` events); `HealthAwareFailover([(provider, label), ...])` (open
+  breakers raise non-retryable `CircuitOpenError`); `KeyPool(providers, *, rpm=,
+  tpm=, breaker=True)` (round-robin, dual RPM+TPM limiter, full-jitter backoff
+  honoring `retry_after`).
+- **Cascade.** `app.use_cascade(models, *, min_confidence=0.5,
+  max_escalations=None, confidence=)` (cheap→strong, escalate on low confidence) /
   `ModelCascade.from_models([...])` / `ModelCascade([CascadeRung(model, provider=,
   min_confidence=)])`; `response_confidence(resp)` = 1.0 clean stop / 0.0
-  length|content_filter|error / 0.2 schema-expected-but-unparsed. Budgets —
-  `app.set_cost_budget(limit_usd=, scope="tenant|feature|user|global", id=,
-  period="run|hour|day|month|total", on_breach="cap|degrade|queue_to_batch",
-  degrade_model=, anomaly_factor=)`; `app.cost_report(by="tenant|feature|user|
-  model|provider|run", since=)` → `CostReport` (`.total_usd`, `.rows`,
-  `.print_summary()`); `app.cost_ledger`/`app.budget_manager` always present;
-  `arun`/`astream` gained `feature=` (cost-attribution dim alongside
-  `tenant_id`/`user_id`/`session_id`); events `cost.anomaly` /
-  `cost.budget_exceeded`, hash-chained audit `cost_budget` (deny|degrade); CLI
-  `vincio cost report --by ... [--db .vincio/vincio.db] [--json]`. Prompt caching —
-  `app.enable_prompt_caching(ttl="5m|1h", min_prefix_tokens=1024)` (on by default
-  via `provider_cache`/`provider_cache_ttl`/`provider_cache_min_prefix_tokens`
-  config; `Message.cache_ttl`; model spans gain `cache_hit_rate` /
-  `cached_input_tokens`). Live & sharded retrieval — `LiveIndex.upsert(chunks, *,
-  ttl_seconds=)` / `upsert_stream(...)` → `UpsertStats(added, updated, unchanged,
-  .reembedded)` (content-hash change detection — only changed chunks re-embed);
-  `ShardedIndex(shards, *, router=, max_concurrency=8)` (Index protocol, chunks
-  co-locate by `document_id` hash, parallel fan-out merges `top_k`). New
-  `vincio.__all__` exports: `BatchRunner`, `CircuitBreaker`, `HealthAwareFailover`,
-  `KeyPool`, `ModelCascade`, `CostLedger`, `CostBudget`, `BudgetManager`,
-  `ShardedIndex`. Edge over gateways (LiteLLM/Bifrost/Portkey): same failover,
-  circuit breaking, cascades, cost attribution, enforced budgets, batch — but
-  in-process (no proxy hop), governed by the policy engine, on one trace.
+  length|filter|error / 0.2 schema-expected-but-unparsed.
+- **Budgets & attribution.** `app.set_cost_budget(limit_usd=, scope="tenant|
+  feature|user|global", id=, period="run|hour|day|month|total",
+  on_breach="cap|degrade|queue_to_batch", degrade_model=, anomaly_factor=)`;
+  `app.cost_report(by="tenant|feature|user|model|provider|run", since=)` →
+  `CostReport` (`.total_usd`, `.rows`, `.print_summary()`); `app.cost_ledger` /
+  `app.budget_manager` (`CostLedger` / `BudgetManager` / `CostBudget`) always
+  present; `arun`/`astream` accept `feature=` (cost dimension); events
+  `cost.anomaly`/`cost.budget_exceeded`, audit `cost_budget`. CLI `vincio cost
+  report`.
+- **Prompt caching.** `app.enable_prompt_caching(ttl="5m|1h",
+  min_prefix_tokens=1024)` (on by default via `provider_cache` /
+  `provider_cache_ttl` / `provider_cache_min_prefix_tokens` config;
+  `Message.cache_ttl`; model spans gain `cache_hit_rate`/`cached_input_tokens`).
+
+## Security & governance
+
+- **Detectors.** Deterministic PII / secret / prompt-injection detection with a
+  normalization + recursive base64/hex/rot13 decode pre-pass (catches obfuscated
+  attacks); non-English PII via `PIIDetector(locales=["fr","de","es","in","sg",
+  "br","uk"])`; authority/provenance RAG-poisoning via
+  `from vincio.security import PoisoningDetector` (FP/FN via
+  `PoisoningReport.telemetry` + classifier hook). All accept a pluggable
+  `DetectorBackend` (an ML model merges with, never replaces, the rules).
+- **Access & egress.** RBAC/ABAC via `AccessController`
+  (`require_explicit_tenant=True` fails closed on untagged tenants); mandatory
+  egress DLP `PolicyEngine.scan_egress` (`security.egress_dlp`: off/warn/block) on
+  the fully-assembled request — `block` raises `EgressBlockedError`.
+- **Audit chain.** Append-only, hash-chained, offline-verifiable
+  (`verify_audit_file` / `AuditLog.verify_file()` / `vincio audit verify`); sign
+  with `security.audit_signing_key` (HMAC) or an `Ed25519Signer` over `entry_hash`;
+  Merkle-root checkpoints (`AuditLog.checkpoint`) for external witnessing.
+- **Residency.** `app.set_residency(["eu"], provider_regions={...})` /
+  `governance.allowed_regions` refuse egress as a blocking `ResidencyViolationError`;
+  region inferred from a pinned endpoint via `infer_region_from_url`
+  (AWS/GCP/Vertex/sovereign) with jurisdiction-aware matching.
+- **Lineage, provable erasure & consent.** `app.trace_lineage(source)`;
+  `app.erase_source(source)` → `ErasureResult` with `.proof` (`ErasureProof` from
+  `build_erasure_proof`, signed by `app.content_signer`, content-bound by SHA-256
+  over the removed-id set across chunks/documents/memories/artifacts, anchored to
+  the audit Merkle root; `verify_erasure_proof`; emits a `SourceErased` event).
+  `from vincio.governance import ConsentLedger, ConsentRecord, ConsentDecision,
+  Purpose, LawfulBasis`; `app.use_consent_ledger()`,
+  `AccessController.check_purpose(...)`; recall drops items whose purpose lost
+  consent.
+- **Compliance evidence (generated, no hosted dependency).** `app.model_card()` /
+  `system_card()` (`CardFormat` vincio|open_model_card|ai_card);
+  `app.compliance_report()` / `ComplianceMapper().map(redteam=, eval_report=,
+  target=app)` over OWASP LLM Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE
+  ATLAS / ISO IEC 42001 → `ComplianceReport` (`.coverage_rate`, `.to_markdown()`;
+  a control is `covered` only with measured evidence, else `partial`);
+  `app.aibom()` (CycloneDX 1.6, `AIComponent.verify` / `sha256_file`); content
+  marking `from vincio.governance import mark_synthetic_content, ai_disclosure,
+  data_summary` + `verify_manifest(..., signer=HmacSigner(secret))`
+  (`governance.content_marking` marks every run); non-English PII via
+  `governance.locales`; per-language token tax `app.fertility.token_tax(lang)`.
+  CLI `vincio governance card|report --red-team --markdown|aibom|lineage|erase`.
+- **Supply chain.** Releases ship a CycloneDX SBOM + SLSA provenance attestations
+  (`gh attestation verify <artifact> --repo Ohswedd/vincio`).
+
+## Documents & media out (generation)
+
+- **Documents.** `app.build_document(source, *, format="markdown|html|docx|pdf|
+  pptx", contract=DocumentContract(required_sections=, table_specs=[TableSpec(
+  ...)], min_words=, citations_per_section=))` (the `DocumentBuilder`) turns a
+  *validated* result into a structurally-validated, provenance-audited
+  `DocumentArtifact` (`document_generate` event; repair is formatting-only,
+  deficient output raises `DocumentContractError`). Markdown/HTML are
+  dependency-free; DOCX/PDF/PPTX need `vincio[gen-docx|gen-pdf|gen-pptx]`. Plus
+  `fill_text_template`/`fill_docx_form`/`fill_pdf_form` (typed citation-aware
+  `Slot`s) and `generate_redline`.
+- **Cited reports.** `app.cited_report(answer, evidence, *, format=,
+  contract=CitationContract(min_coverage=, require_entailment=,
+  min_entailment_rate=))` / async `acited_report` (the `CitedReportBuilder`)
+  resolves `[E1]` markers to footnotes + bibliography, computes sentence-level
+  coverage and per-claim entailment.
+- **Image / TTS.** `app.generate_image(prompt, *, provider=ImageProvider,
+  model=)` / `agenerate_image` (`ImageGenRequest`) and `app.synthesize_speech(
+  text, *, provider=SpeechProvider, voice=, format=)` / `asynthesize_speech`
+  (`SpeechRequest`); providers `Mock`/`OpenAI`/`Google`/`HTTP`Image and
+  `Mock`/`OpenAI`/`Google`/`ElevenLabs`Speech; every asset C2PA-stamped (SHA-256
+  via `mark_synthetic_content` + `embed_provenance` (PNG) / `write_sidecar_manifest`),
+  budget-metered (`meter_media_cost`), audited (`image_generate`/
+  `speech_synthesize`).
+- **Richer inputs.** `load_pdf(path, ocr_engine=)` OCR fallback (`vincio[ocr]`),
+  layout-aware `load_document(path, layout=True)` / `extract_pdf_layout`
+  (`vincio[pdf-layout]`), `load_media(path, transcriber=MockTranscriber()|
+  WhisperTranscriber())` → timestamped transcript, `figure_evidence`,
+  `parse_html`/`structure_data`; audio chat input via `ContentPart.audio` +
+  `core.media.encode_audio_bytes`; loaders PPTX/EPUB/RTF/ODT (dep-free), Parquet
+  (`vincio[parquet]`), mbox/`.msg` (`vincio[msg]`) via a `ParserRegistry`
+  (`register_loader`). Forms/KYC: `HeuristicFormExtractor().extract(text)` →
+  `FormField`s + `form_fields_to_evidence`; `DocumentAI` adapters
+  (Textract/Azure/Google).
+- **EU AI Act pack.** `app.risk_tier(purpose=, domains=)` → `RiskAssessment`
+  (advisory; `RiskTierClassifier`), `app.annex_iv(...)` (`AnnexIVBuilder`),
+  `app.fria(..., affected_groups=)` (`FRIAGenerator`) rendered through the
+  document engine, grounded by the live config/cards/matrix, recorded as
+  `conformity_doc`.
+
+## Protocols & interoperability
+
+- **MCP.** `vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,
+  `app.serve_mcp()` (stdio / Streamable HTTP / in-process); consumed tools run
+  through the permissioned/sandboxed/audited runtime, resources become evidence
+  (`origin: mcp:<server>`), sampling routes to the provider, elicitation to a
+  human gate; OAuth 2.1 seams. `MCPUIResource` served via
+  `app.serve_mcp(ui_resources=[...])`.
+- **A2A.** `vincio.a2a`: `app.serve_a2a(crew|graph)` (Agent Card + JSON-RPC task
+  lifecycle), `RemoteA2AAgent` as a bounded crew delegate.
+- **Agent Skills.** `vincio.skills`: `app.add_skill(path)` (`SKILL.md` progressive
+  disclosure, bundled scripts as sandboxed tools).
+- **Agent fabric.** `from vincio.registry import AgentDirectory, ACPClient,
+  ACPAgentManifest, MCPRegistryClient, MCPServerRecord`;
+  `app.agent_directory(allow=[...], deny=[...])` (governed + audited);
+  `directory.find(capability=|tag=|query=)`, `directory.resolve(name)` passes an
+  `AllowListGate` (fail-closed) and records an `agent_resolve` decision. AGNTCY/ACP
+  + MCP-registry discover into the same directory.
+- **Generative UI.** `from vincio.server.agui import AGUIEvent,
+  run_stream_to_agui, agent_stream_to_agui`; SSE `POST /v1/apps/{id}/agui`;
+  `AgentExecutor.astream` /
+  `Crew.astream` yield `AgentEvent`/`CrewEvent` (lifecycle, genuine provider token
+  deltas, tool events) — inherits the run's provenance/budget/audit.
+- **Framework interop & DX.** `from vincio.interop import add_langchain_tool,
+  from_langchain_loader/retriever/embeddings, from_llamaindex_reader/retriever/
+  embedding, add_llamaindex_tool` (duck-typed) + `to_langchain_*`/`to_llamaindex_*`
+  (extras `vincio[langchain|llamaindex]`); domain packs
+  `app.use_pack("support|engineering|finance|legal")` (`load_pack`,
+  `available_packs`, `register_pack`); `enable_rich_reprs` (notebook), `vincio
+  tui`, `config_json_schema()`; voice/realtime `from vincio.realtime import
+  RealtimeSession, connect_realtime` / `app.realtime_session(...)` (backends
+  inprocess|openai|gemini; extra `vincio[realtime]`).
+
+## Stability
+
+- SemVer on the frozen public surface (`vincio.__all__` /
+  `vincio.stability.public_api()`); `from vincio import deprecated, experimental,
+  stability_of` (`@deprecated(since=, removed_in=, alternative=)` /
+  `@experimental(since=)` emit warnings, escalatable to errors). Nothing public is
+  removed in a minor/patch — only deprecated then removed at the next major.
+- Published SLOs (`benchmarks/slos.json`, `docs/reference/slo.md`) each enforced
+  by an at-least-as-strict VincioBench budget (`tests/test_slos.py`). Tool sandbox
+  `setrlimit` CPU/memory/fd limits (`run_subprocess_sandboxed` /
+  `SandboxedPython(max_cpu_seconds=, max_memory_bytes=, max_open_files=)`;
+  `SandboxError`). Threat model in
+  `docs/security/threat-model.md`.
+
+## CLI & server
+
+- `vincio init (--template minimal|rag|agent|eval, --provider) · run · config
+  schema/validate/show · packs list/show · tui · eval run/report/dataset
+  (--group-by-session)/drift/annotate/regress (--baseline-model X
+  --candidate-model Y) · prompt lint/compile/push/versions/diff/rollback · trace
+  show/view/replay/diff/export/sessions/feedback · optimize run/reflective · loop
+  run (--app/--dataset/--min-feedback/--gate/--tag/--dry-run/--reflective) ·
+  distill (--traces-dir/--output/--format) · index build · memory
+  inspect/remember/recall/forget/export/consolidate/decay · audit verify ·
+  governance card/report (--red-team --markdown)/aibom/lineage/erase · mcp
+  tools/add/serve · providers list/lifecycle/discover/regress · batch
+  (--input/--input-file/--discount/--output) · cost report (--by/--db/--json)`.
+- Server: `vincio serve --app app.py` (uvicorn; `/v1/health/ready`, `/v1/metrics`,
+  graceful shutdown) or `from vincio.server import create_app` (FastAPI; API key +
+  JWT; real-token SSE). For scale, set `server.redis_url` so rate-limit/idempotency
+  state stays coherent across workers.
+
+## Gotchas for generated code
+
+- **Don't hand-parse model output** — pass `output_schema=` (or a `Signature`) and
+  read `result.output`; repair fixes structure only, never invents facts.
+- **Security/permissions/budgets are code, not prompts** — use rails, the access
+  controller, and `RunConfig` budgets; never ask the model to self-police.
+- **Offline by default** — omit a provider/key (or use `provider="mock"`) and the
+  full pipeline runs deterministically in CI.
+- **Async methods are `arun`/`astream`/`a*`** — the sync wrappers need no running
+  loop; don't `asyncio.run` inside an existing loop.
+- **`continuous_improvement` / `experiment_proposer` are removed** — use
+  `app.self_improvement(policy)`, or construct `ContinuousImprovementController(
+  app, ...)` / `ExperimentProposer(app, ...)` directly.
+- **Metrics are one object** — the same metric is an eval, a runtime guardrail
+  (`add_metric_rail`), and optimizer fitness.
+- **`lexical_overlap` is lexical; `semantic_similarity` is embedding-backed** —
+  unscoreable cases are skipped (`MetricResult(skipped=True)`), not scored 0 or 1.
+- **Budgets raise** `BudgetExceededError`; unknown models warn (no silent $0).
+- **Everything lands on one trace + audit chain** — read `result.trace_id` and
+  `vincio audit verify` rather than adding side-channel logging.
