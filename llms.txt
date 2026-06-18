@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.2.0 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.2.1 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -113,6 +113,10 @@ result.output; result.citations; result.trace_id; result.cost_usd
   WebArenaAdapter, BFCLAdapter, BenchmarkTask, load_benchmark`; each pins its task set by
   `task_set_hash()`, scores a verifiable end state, degrades to `adapter.replay()` offline
   (fixtures in `benchmarks/fixtures/`), and `report.to_eval_report()` feeds the optimizer.
+  Live-run path (identical scorer, fresh agent output): `from vincio.evals import
+  make_agent_solver, make_env_solver, tasks_from_jsonl, gaia_tasks_from_export`;
+  `adapter.run(make_agent_solver(app, mode="text"|"calls"))` drives a real ContextApp/
+  AgentExecutor; `make_env_solver(policy)` runs a policy through the τ-bench world.
   Retrieval eval — `from vincio.evals import RetrievalEvaluator, RetrievalGoldenSet,
   RetrievalQuery, RetrievalConfig, retrieval_regression`; `from vincio.storage import
   IndexRegressionStore` (artifacts keyed on `(embedder, chunker, corpus hash)`).
@@ -125,7 +129,8 @@ result.output; result.citations; result.trace_id; result.cost_usd
   REST) and `MCPRegistryClient` discover into the same directory. Generative UI — `from
   vincio.server.agui import AGUIEvent, run_stream_to_agui, agent_stream_to_agui`; SSE endpoint
   `POST /v1/apps/{id}/agui`; `AgentExecutor.astream(...)` / `Crew.astream(...)` yield flat
-  `AgentEvent`/`CrewEvent` (run/step lifecycle, text deltas, tool_call/tool_result, done);
+  `AgentEvent`/`CrewEvent` (run/step lifecycle, genuine provider token deltas via
+  `provider.stream()`, tool_call/tool_result, done);
   `from vincio.mcp import MCPUIResource` served via `app.serve_mcp(ui_resources=[...])`.
 - Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
   mock (deterministic, offline; generates schema-valid structured output);

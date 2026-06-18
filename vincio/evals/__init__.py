@@ -13,7 +13,13 @@ from .benchmarks import (
     TauBenchAdapter,
     WebArenaAdapter,
     available_benchmarks,
+    bfcl_tasks_from_export,
+    gaia_tasks_from_export,
     load_benchmark,
+    make_agent_solver,
+    make_env_solver,
+    swebench_tasks_from_export,
+    tasks_from_jsonl,
 )
 from .datasets import (
     Dataset,
@@ -194,6 +200,12 @@ __all__ = [
     "BFCLAdapter",
     "available_benchmarks",
     "load_benchmark",
+    "make_agent_solver",
+    "make_env_solver",
+    "tasks_from_jsonl",
+    "gaia_tasks_from_export",
+    "swebench_tasks_from_export",
+    "bfcl_tasks_from_export",
     # 2.2 — retrieval evaluation harness + index-version regression
     "RetrievalQuery",
     "RetrievalGoldenSet",

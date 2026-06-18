@@ -154,16 +154,6 @@ class AgentExecutor:
         if self._event_sink is not None:
             self._event_sink(event)
 
-    def _emit_text(self, text: str, *, step: str = "") -> None:
-        """Emit the produced text as word-grouped deltas (real text, chunked)."""
-        if self._event_sink is None or not text:
-            return
-        words = text.split(" ")
-        for i in range(0, len(words), 4):
-            chunk = " ".join(words[i : i + 4])
-            suffix = " " if i + 4 < len(words) else ""
-            self._emit(AgentEvent(type="text_delta", text=chunk + suffix, step=step))
-
     # -- budget / termination -------------------------------------------------------
 
     def _check_termination(self, state: AgentState) -> bool:
@@ -179,9 +169,32 @@ class AgentExecutor:
             return True
         return False
 
-    async def _model_call(self, state: AgentState, messages: list[Message], **kwargs: Any):
+    async def _stream_model(self, request: ModelRequest) -> Any:
+        """Drive ``provider.stream`` and emit **genuine provider token deltas** as
+        they arrive (2.2). The final :class:`ModelResponse` is taken from the
+        stream's terminal ``done`` event (a thin generate fallback if a provider
+        omits it), so the call returns the identical result the non-streaming
+        path would — only the text now arrives live, token by token."""
+        response: Any = None
+        async for event in self.provider.stream(request):
+            if event.type == "text_delta" and event.text:
+                self._emit(AgentEvent(type="text_delta", text=event.text, step="answer"))
+            elif event.type == "done" and event.response is not None:
+                response = event.response
+        if response is None:  # pragma: no cover - provider without a done.response
+            response = await self.provider.generate(request)
+        return response
+
+    async def _model_call(
+        self, state: AgentState, messages: list[Message], *, stream_text: bool = False, **kwargs: Any
+    ):
         request = ModelRequest(model=self.model, messages=messages, **kwargs)
-        response = await self.provider.generate(request)
+        # When streaming a run, route answer-producing free-text calls through the
+        # provider's real token stream; structured (schema) calls stay on generate.
+        if stream_text and self._event_sink is not None and "output_schema" not in kwargs:
+            response = await self._stream_model(request)
+        else:
+            response = await self.provider.generate(request)
         cost = self.costs.record_model_call(self.model, response.usage)
         spent = cost if cost else response.cost_usd
         state.usage.input_tokens += response.usage.input_tokens
@@ -310,7 +323,9 @@ class AgentExecutor:
         if step.name == "plan_tools" and self.tools is not None and self.tool_specs:
             await self._plan_and_call_tools(state, step)
             return
-        response = await self._model_call(state, self._context_messages(state, step.instruction))
+        response = await self._model_call(
+            state, self._context_messages(state, step.instruction), stream_text=True
+        )
         step.result = response.text
         state.working_memory[step.name or step.id] = response.text
 
@@ -454,9 +469,10 @@ class AgentExecutor:
         if contract is not None and contract.schema_def is not None:
             kwargs["output_schema"] = contract.schema_def
             kwargs["output_schema_name"] = contract.schema_name
-        response = await self._model_call(state, self._context_messages(state, instruction), **kwargs)
+        response = await self._model_call(
+            state, self._context_messages(state, instruction), stream_text=True, **kwargs
+        )
         state.raw_answer_text = response.text
-        self._emit_text(response.text or "", step="finalize")
         if self.output_validator is not None:
             report = await self.output_validator.validate(
                 response.text,
@@ -656,7 +672,7 @@ class AgentExecutor:
             # In-loop compaction: fold older turns into a rolling summary once the
             # transcript exceeds the token budget (1.10), so the loop never overflows.
             messages = self.compactor.compact_messages(messages, budget=self.max_context_tokens)
-            response = await self._model_call(state, messages, tools=self.tool_specs)
+            response = await self._model_call(state, messages, tools=self.tool_specs, stream_text=True)
             state.usage.steps += 1
             step = AgentStep(type="think", name=f"react_{len(state.steps)}", instruction="react iteration")
             step.status = "done"
@@ -704,9 +720,8 @@ class AgentExecutor:
                         )
                     )
                 continue
-            # No tool calls: this is the final answer.
+            # No tool calls: this is the final answer (already streamed live above).
             state.raw_answer_text = response.text
-            self._emit_text(response.text or "", step="answer")
             if self.output_validator is not None:
                 report = await self.output_validator.validate(
                     response.text,

@@ -67,8 +67,17 @@ the adapters **replay a recorded agent output against each benchmark's own
 verifiable scorer** (SWE-bench's fail-to-pass/pass-to-pass transition, τ-bench's
 database end state via the environment oracle, GAIA's normalized exact match,
 WebArena's functional check, BFCL's AST match) rather than cloning repos or
-driving a browser. Point an adapter at a live task set to score a real run; the
-scoring code is identical.
+driving a browser.
+
+Pointing an adapter at a **live task set** is a one-liner with the *identical*
+scoring code: `adapter.run(solver)` solves each task fresh and scores it, where
+`make_agent_solver(app_or_executor)` drives a real `ContextApp`/`AgentExecutor`
+(`mode="text"` for an answer, `mode="calls"` for BFCL function calls captured
+from the agent's event stream) and `make_env_solver(policy)` runs a policy through
+the τ-bench world; `gaia_tasks_from_export` / `swebench_tasks_from_export` /
+`bfcl_tasks_from_export` / `tasks_from_jsonl` load the official released formats.
+The `agentic_evals` family exercises this live path (`adapters.live_run_scored`),
+so the scorer is gated on both recorded and freshly-solved output.
 
 ## Reproducing the numbers
 

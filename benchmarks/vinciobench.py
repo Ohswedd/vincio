@@ -215,7 +215,11 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
     from vincio.evals import (
         EnvAction,
         EnvironmentSimulator,
+        GAIAAdapter,
+        TauBenchAdapter,
         load_benchmark,
+        make_agent_solver,
+        make_env_solver,
         make_retail_environment,
         scripted_policy,
     )
@@ -251,6 +255,25 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
         hashes_pinned = hashes_pinned and bool(report_a.task_set_hash)
         rates[name] = report_a.success_rate
 
+    # Live-run path: the identical scorer grades FRESH output, not a recording.
+    gaia_live = await GAIAAdapter([{"id": "g", "prompt": "capital of France", "gold": "Paris"}]).run(
+        make_agent_solver(lambda _prompt: "Paris")
+    )
+    tau_live = await TauBenchAdapter(
+        [{"id": "t", "inputs": {"env": "retail", "env_task": "cancel_refund"}, "gold": {"oracle": "environment"}}]
+    ).run(
+        make_env_solver(
+            scripted_policy([
+                EnvAction(tool="cancel_order", arguments={"order_id": "O1002"}),
+                EnvAction(tool="refund_order", arguments={"order_id": "O1002"}),
+            ])
+        )
+    )
+    live_run_scored = (
+        not gaia_live.replayed and gaia_live.success_rate == 1.0
+        and not tau_live.replayed and tau_live.success_rate == 1.0
+    )
+
     return {
         "environment": {
             "oracle_success": correct.success,
@@ -261,6 +284,7 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
             "count": len(names),
             "all_deterministic": all_deterministic,
             "hashes_pinned": hashes_pinned,
+            "live_run_scored": live_run_scored,
             "swebench_verified_success_rate": rates["swebench_verified"],
             "tau_bench_success_rate": rates["tau_bench"],
             "gaia_exact_match_rate": rates["gaia"],
@@ -442,6 +466,13 @@ async def _agent_streaming_2_2() -> dict[str, Any]:
     await client.initialize()
     ui_served = "ui://dash" in {r.uri for r in await client.list_resources()}
 
+    # Genuine provider-driven token streaming: the deltas are the provider's real
+    # stream reassembled, not a post-hoc split of the finished text.
+    answer = "The refund window is thirty days from delivery for most items."
+    static = AgentExecutor(MockProvider(default_text=answer), model="mock-1", planner=Planner(mode="react"))
+    static_deltas = [e.text async for e in static.astream("summarize") if e.type == "text_delta"]
+    genuine_token_streaming = len(static_deltas) > 1 and "".join(static_deltas) == answer
+
     return {
         "executor_stream_ok": executor_stream_ok,
         "crew_stream_forwards_member": crew_stream_ok,
@@ -449,6 +480,8 @@ async def _agent_streaming_2_2() -> dict[str, Any]:
         "agui_tool_events": agui_tool_events,
         "mcp_ui_resource_served": ui_served,
         "token_deltas": sum(1 for t in crew_types if t == "text_delta"),
+        "genuine_token_streaming": genuine_token_streaming,
+        "provider_deltas": len(static_deltas),
     }
 
 

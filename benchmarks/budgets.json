@@ -765,6 +765,15 @@
     },
     "families.agent.streaming.token_deltas": {
       "gte": 1
+    },
+    "families.agentic_evals.environment_eval.adapters.live_run_scored": {
+      "eq": true
+    },
+    "families.agent.streaming.genuine_token_streaming": {
+      "eq": true
+    },
+    "families.agent.streaming.provider_deltas": {
+      "gte": 2
     }
   }
 }

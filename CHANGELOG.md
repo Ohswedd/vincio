@@ -4,6 +4,41 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-06-18
+
+Closes the two honest scoping notes the 2.2.0 milestone shipped with. Both
+additive and backward-compatible — `API_VERSION` stays `2.0`, and the default
+`run` / `arun` / `replay` paths are unchanged.
+
+### Changed
+
+- **Token streaming is now genuine provider-driven streaming.**
+  `AgentExecutor.astream` (and, through it, `Crew.astream`) route the
+  answer-producing model calls through `provider.stream()`, emitting the
+  provider's **real token deltas** as they arrive and reconstructing the final
+  `ModelResponse` from the stream's `done` event — replacing the 2.2.0 post-hoc
+  word-grouping of the finished text. Structured-output (schema) calls stay on
+  `generate` (their JSON is not emitted as user-facing text). For the
+  deterministic `MockProvider` this surfaces as real 16-char chunk deltas
+  offline; for hosted providers it is true token-by-token streaming. VincioBench
+  gates `families.agent.streaming.genuine_token_streaming` / `provider_deltas`.
+
+### Added
+
+- **A live-run path for the benchmark adapters — the identical scorer on fresh
+  agent output, not just recorded replay.** `adapter.run(solver)` solves each
+  task live and scores it with the same `score()` as `replay()`. `make_agent_solver`
+  turns a `ContextApp` / `AgentExecutor` (or any callable) into a solver
+  (`mode="text"` for an answer; `mode="calls"` captures the agent's function calls
+  from its event stream for BFCL), and `make_env_solver(policy)` runs a policy
+  through the τ-bench world. Official task sets load with `tasks_from_jsonl` and
+  the per-benchmark `gaia_tasks_from_export` / `swebench_tasks_from_export` /
+  `bfcl_tasks_from_export` (which parse the released field names, including
+  SWE-bench's JSON-encoded `FAIL_TO_PASS` / `PASS_TO_PASS`). VincioBench gates
+  `families.agentic_evals.environment_eval.adapters.live_run_scored`, exercised
+  end to end offline against a real `AgentExecutor` (the agent genuinely calls
+  tools; the BFCL AST scorer grades the calls it made). **258 budgets, 77 SLOs.**
+
 ## [2.2.0] - 2026-06-18
 
 Prove it on the world's benchmarks: environment eval, agentic leaderboards, the

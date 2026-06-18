@@ -234,10 +234,20 @@ benchmark's own *verifiable* scorer, pinned by a task-set hash, replayable offli
 ```python
 from vincio.evals import load_benchmark
 
+# Offline: replay a recorded output against the real scorer.
 report = await load_benchmark("tau_bench", fixture_path="benchmarks/fixtures/tau_bench.json").replay()
+
+# Live: solve fresh with a real agent — the *identical* scorer grades the output.
+from vincio.evals import GAIAAdapter, gaia_tasks_from_export, make_agent_solver
+tasks = gaia_tasks_from_export(official_gaia_records)         # load the released format
+report = await GAIAAdapter(tasks).run(make_agent_solver(app, mode="text"))
 report.success_rate
 report.to_eval_report()       # project onto an EvalReport for gates / the optimizer
 ```
+
+`make_agent_solver(app_or_executor, mode="text"|"calls")` drives a real agent
+(`"calls"` captures the agent's function calls from its event stream for BFCL);
+`make_env_solver(policy)` runs a policy through a τ-bench world.
 
 And a retrieval-eval harness records a versioned artifact keyed on
 `(embedder, chunker, corpus hash)` and **gates a recall/nDCG regression on the same
