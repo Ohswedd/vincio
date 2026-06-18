@@ -1,13 +1,12 @@
 # Guide: agentic evaluation & continuous quality
 
-Vincio already traces your crews, graphs, and tool loops. 1.2 makes it **score**
+Vincio already traces your crews, graphs, and tool loops — and **scores**
 them — over the trajectory, across a multi-turn conversation, and on live traffic —
 reusing the *same* metric objects offline, as runtime guardrails, and as optimizer
 fitness. Everything runs in your process, offline and deterministic by default.
 
-The new entry points (`app.add_online_evaluator`, `app.experiment`,
-`app.add_metric_rail`) are `@experimental(since="1.2")`; the rest is stable
-additive API. Import from `vincio.evals`.
+Import the entry points (`app.add_online_evaluator`, `app.experiment`,
+`app.add_metric_rail`, and the metrics) from `vincio.evals`.
 
 ## 1. Trajectory & tool-use metrics
 
@@ -208,7 +207,7 @@ Direction is inferred from `LOWER_IS_BETTER`: lower-is-better metrics fire when
 the value exceeds the threshold, higher-is-better when it falls below. Pass
 `evidence`/`expected`/`input` through the rail `params` for metrics that need them.
 
-## 8. Stateful environments, leaderboards, and retrieval regression (2.2)
+## 8. Stateful environments, leaderboards, and retrieval regression
 
 Turn-by-turn trajectory scoring judges *how plausible* each step looks. The agentic
 leaderboards judge something stronger: did the agent **change the world correctly**?

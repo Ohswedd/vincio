@@ -214,7 +214,7 @@ class CrossEncoderReranker:
 
 
 class LocalCrossEncoderReranker:
-    """Local cross-encoder reranker via ``sentence-transformers`` (2.1).
+    """Local cross-encoder reranker via ``sentence-transformers``.
 
     Batteries-included on-device reranking with real cross-encoder quality and
     no server: lazily loads a ``CrossEncoder`` model and scores each

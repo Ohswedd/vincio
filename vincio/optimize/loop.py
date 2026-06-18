@@ -1,4 +1,4 @@
-"""The closed improvement loop (0.8): trace → dataset → eval → optimize → promote.
+"""The closed improvement loop: trace → dataset → eval → optimize → promote.
 
 One continuous, reproducible cycle, entirely in the library: capture the
 traces production runs already write, curate them into an eval dataset
@@ -99,7 +99,7 @@ class ImprovementLoop:
         self.experiment = experiment
         self.prompt_name = prompt_name or app.prompt_spec.name
         self.concurrency = concurrency
-        # "evolution" (0.8 blind variant search) or "reflective" (1.4 GEPA-style
+        # "evolution" (blind variant search) or "reflective" (GEPA-style
         # failure-driven search). The reflective path proposes targeted edits
         # from the eval report's failures and evolves a Pareto frontier; both
         # promote through the identical gated path below.
@@ -108,7 +108,7 @@ class ImprovementLoop:
         # "heuristic" (deterministic floor) or "llm" (provider-backed GEPA
         # reflector wired to the app's own provider, with a heuristic fallback).
         self.reflector = reflector
-        # The held-out, growing non-regression guard (1.10): promotions are
+        # The held-out, growing non-regression guard: promotions are
         # replayed against it, and grown by it on success.
         self.golden_suite = golden_suite
 
@@ -265,7 +265,7 @@ class ImprovementLoop:
         # 5. promote: registry push + tag + eval link, apply, audit, event.
         winner = best.payload  # PromptVariant
 
-        # Non-regression guard (1.10): replay the winner against the held-out,
+        # Non-regression guard: replay the winner against the held-out,
         # growing golden suite. A sequential auto-promotion can never silently
         # undo a prior fix — regressing any recorded case blocks the promotion.
         if self.golden_suite is not None and len(self.golden_suite) > 0:
@@ -320,7 +320,7 @@ class ImprovementLoop:
                 "baseline_fitness": optimization.baseline_fitness,
                 "fitness": best.full_fitness,
                 "params": best.params,
-                # Statistical backing (1.7): the promotion is defensible at a
+                # Statistical backing: the promotion is defensible at a
                 # confidence level, not a point estimate.
                 "significance": optimization.significance,
                 "warnings": optimization.warnings,
@@ -350,7 +350,7 @@ class ImprovementLoop:
 
 
 # ---------------------------------------------------------------------------
-# Autonomous experiment proposer (1.10)
+# Autonomous experiment proposer
 # ---------------------------------------------------------------------------
 
 # Higher-is-better quality targets a healthy app should clear. Cost/latency are

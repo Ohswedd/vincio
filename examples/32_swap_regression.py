@@ -1,4 +1,4 @@
-"""Provider/model rotation & swap regression — the migration safety net (1.8).
+"""Provider/model rotation & swap regression — the migration safety net.
 
 A model swap is the most common and the riskiest change in production. Vincio
 makes it a gated, statistically-backed discipline rather than a hope:

@@ -146,7 +146,7 @@ a prior step receives its output), and trace spans for every step.
 | Agent | uncertain task requiring exploration |
 | Hybrid | workflow steps that call `app.agent(...)` |
 
-## The agentic frontier (1.10, `@experimental`)
+## The agentic frontier
 
 The agent loop gains four capabilities, all on the same bounded, permissioned,
 audited runtime:

@@ -1,4 +1,4 @@
-"""The honest, fast spine (1.7).
+"""The honest, fast spine.
 
 Vincio's promises made literally true, and the model-knowledge layer turned into
 data:

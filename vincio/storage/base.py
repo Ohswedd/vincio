@@ -50,7 +50,7 @@ class MetadataStore(Protocol):
 
 
 class AsyncMetadataStore(Protocol):
-    """The canonical async store contract (2.0).
+    """The canonical async store contract.
 
     Async is the contract the run path binds to — the module-level
     :func:`asave` / :func:`aget` / :func:`aquery` / :func:`adelete` /
@@ -111,7 +111,7 @@ class InMemoryMetadataStore:
     def count(self, kind: str) -> int:
         return len(self._table(kind))
 
-    # Async-native methods (3.0): the in-memory store is the canonical async
+    # Async-native methods: the in-memory store is the canonical async
     # contract's reference implementation — its operations are non-blocking, so
     # the module-level asave/aquery helpers take the native fast path (no
     # worker-thread hop) rather than the sync shim.
@@ -224,7 +224,7 @@ async def asave(store: MetadataStore, kind: str, record: dict[str, Any]) -> None
 
     Prefers a store-native ``asave`` coroutine; otherwise runs the synchronous
     :meth:`MetadataStore.save` in a worker thread so disk/network writes never
-    block the run pipeline. (1.7)
+    block the run pipeline.
     """
     native = getattr(store, "asave", None)
     if native is not None:

@@ -1,5 +1,5 @@
 """Quantization + two-stage retrieval and batteries-included local neural models
-(2.1). The two-stage index and quantization functions are exercised exactly; the
+. The two-stage index and quantization functions are exercised exactly; the
 optional-dependency local models are exercised through injection and the offline
 fallback path (the heavy deps are not installed in CI)."""
 

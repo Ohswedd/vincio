@@ -1,4 +1,4 @@
-"""Faithfulness-gated adoption of learned compression (1.4).
+"""Faithfulness-gated adoption of learned compression.
 
 A learned compressor only earns its place on the compiler if it pays its way:
 it must shrink the prompt **and** keep answer quality and the cited-fact set

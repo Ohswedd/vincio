@@ -1,4 +1,4 @@
-"""Agent Skills — portable SKILL.md procedural knowledge with budgeting (1.1).
+"""Agent Skills — portable SKILL.md procedural knowledge with budgeting.
 
 Load Anthropic-style ``SKILL.md`` skills. Vincio injects them through the
 context compiler with *progressive disclosure*: a one-line summary is always

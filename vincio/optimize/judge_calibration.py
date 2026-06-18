@@ -1,11 +1,11 @@
-"""Optimizer-judge calibration (1.4): closing the loop on the loop.
+"""Optimizer-judge calibration: closing the loop on the loop.
 
-The optimizer trusts an LLM judge to score candidates. 1.2 made that judge earn
-its gating weight by clearing a Cohen's-κ bar against human labels. 1.4 goes one
-step further: it **tunes the judge's own evaluation procedure** — reflectively
-proposing alternative evaluation steps — and adopts the procedure that best
-agrees with people, gated on a real κ gain. The judge that gates the optimizer
-is itself optimized, against κ-validated human labels.
+The optimizer trusts an LLM judge to score candidates. That judge earns its
+gating weight by clearing a Cohen's-κ bar against human labels, and this module
+goes one step further: it **tunes the judge's own evaluation procedure** —
+reflectively proposing alternative evaluation steps — and adopts the procedure
+that best agrees with people, gated on a real κ gain. The judge that gates the
+optimizer is itself optimized, against κ-validated human labels.
 
 Deterministic and gated: candidate step-sets are proposed in a fixed order,
 each is scored against the same labelled samples, and a new procedure is adopted

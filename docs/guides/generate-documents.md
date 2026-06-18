@@ -1,10 +1,7 @@
 # Generate documents & media (`vincio.generation`)
 
-> **Experimental (1.9).** Additive behind a new `vincio.generation` subpackage and
-> opt-in extras on the frozen 1.0 API. Symbols are marked `@experimental`.
-
-Vincio reads a DOCX, a PDF, and a scanned packet, and validates a JSON answer.
-1.9 closes the loop so the **deliverable** comes out under the same guarantees
+Vincio reads a DOCX, a PDF, and a scanned packet, and validates a JSON answer
+and closes the loop so the **deliverable** comes out under the same guarantees
 Vincio applies to text *in*: cited, structurally-validated, provenance-stamped,
 budget-metered, eval-gated artifacts — all on one trace and one audit chain,
 in-process and never a service.

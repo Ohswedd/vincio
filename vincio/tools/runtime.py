@@ -119,7 +119,7 @@ class ToolRuntime:
         self.injection = injection_detector or InjectionDetector()
         self.secrets = secret_scanner or SecretScanner()
         self._idempotency_seen: dict[str, ToolResult] = {}
-        # 2.1: optional content-capture gate. ``None`` keeps the full output on
+        # optional content-capture gate. ``None`` keeps the full output on
         # the span (the replay-faithful default); a
         # ``ContentCapturePolicy(capture=False)`` redacts/truncates — or drops —
         # tool output before it ever lands on a span the exporters read.

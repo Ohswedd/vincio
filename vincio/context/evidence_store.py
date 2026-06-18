@@ -1,4 +1,4 @@
-"""Content-addressed evidence store backing slim Context Packets (2.0).
+"""Content-addressed evidence store backing slim Context Packets.
 
 A *slim* packet holds evidence by content hash instead of duplicating the text,
 and materializes it lazily from the in-process Context IR. That works within one

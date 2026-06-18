@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any
 
 from ..core.errors import DocumentContractError, GenerationError
 from ..documents.parsers import TableData
-from ..stability import experimental
 from .contracts import DocumentContract, validate_document
 from .model import DocBlock, DocumentModel
 from .render import DocumentArtifact, RenderFormat, render
@@ -202,7 +201,6 @@ def mapping_to_model(data: dict[str, Any], *, title: str = "") -> DocumentModel:
     return model
 
 
-@experimental(since="1.9")
 class DocumentBuilder:
     """Render validated results into cited, contract-checked, audited documents."""
 
@@ -324,7 +322,6 @@ def _redline_ops(original: str, revised: str) -> list[tuple[str, str]]:
     return ops
 
 
-@experimental(since="1.9")
 def generate_redline(
     original: str,
     revised: str,

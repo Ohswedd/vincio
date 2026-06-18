@@ -129,7 +129,7 @@ class MemoryEngine:
         self.retention_weight = max(0.0, min(1.0, retention_weight))
         self.ttl_days = dict(ttl_days or {})
         self.audit = audit
-        # (3.0) Optional consent ledger: when set, recall drops any memory whose
+        # Optional consent ledger: when set, recall drops any memory whose
         # ``purpose`` no longer has active consent for its subject (``owner_id``).
         self.consent_ledger = consent_ledger
         self.working: dict[str, Any] = {}  # L0 working memory (one run)
@@ -152,7 +152,7 @@ class MemoryEngine:
         return ScopedMemory(self, scope=MemoryScope.SESSION, owner_id=session_id)
 
     def for_team(self, team_id: str) -> ScopedMemory:
-        """Team-shared memory (3.0): one owner is the team; per-memory ACLs gate
+        """Team-shared memory: one owner is the team; per-memory ACLs gate
         which members may recall an item."""
         return ScopedMemory(self, scope=MemoryScope.TEAM, owner_id=team_id)
 
@@ -186,7 +186,7 @@ class MemoryEngine:
         given (session > agent > team > user > tenant) and classifies the memory
         type when not stated. Still policy-checked end to end. Bi-temporal
         validity (``valid_from`` / ``valid_to``), a per-memory ``acl``, and a
-        GDPR ``purpose`` / ``consent_id`` (3.0) ride through unchanged."""
+        GDPR ``purpose`` / ``consent_id`` ride through unchanged."""
         inferred: list[tuple[MemoryScope, str | None]] = [
             (MemoryScope.SESSION, session_id),
             (MemoryScope.AGENT, agent_id),
@@ -344,7 +344,7 @@ class MemoryEngine:
             resolution = self.write_policy.resolve_conflict(candidate, existing)
             if resolution == "supersede":
                 existing.status = "archived"
-                # (3.0) Bi-temporal correction: close the old fact's valid
+                # Bi-temporal correction: close the old fact's valid
                 # interval at the moment the new one takes effect, so as-of
                 # recall before that moment still returns the prior value.
                 if existing.valid_to is None:
@@ -412,7 +412,7 @@ class MemoryEngine:
         back as *candidate* memories with provenance. Candidates carry a
         status penalty in retrieval until confirmed, and every recall
         utility-scores them against the task before they enter a packet.
-        ``facts`` are evidence-supported output claims (0.8 auto-memory):
+        ``facts`` are evidence-supported output claims (auto-memory):
         their confidence scales with measured support and they go through
         the same guarded admission as every other write."""
         scope = MemoryScope.SESSION if session_id else MemoryScope.USER
@@ -496,7 +496,7 @@ class MemoryEngine:
         """Hybrid recall: lexical + vector relevance fused with graph
         adjacency, in one scored, scope- and privacy-filtered query.
 
-        (3.0) ``as_of`` makes recall **bi-temporal** — it returns the memories
+        ``as_of`` makes recall **bi-temporal** — it returns the memories
         that were *valid* at that moment, including ones later superseded
         (their ``valid_to`` was closed by the correction); ``reader`` enforces
         per-memory ACLs so team-shared memory only surfaces to permitted
@@ -759,7 +759,7 @@ class MemoryEngine:
         valid_from: datetime | None = None,
         confidence: float | None = None,
     ) -> MemoryItem:
-        """Bi-temporal correction (3.0): close the existing memory's valid
+        """Bi-temporal correction: close the existing memory's valid
         interval and open a new one carrying the corrected content.
 
         Unlike :meth:`edit` (which mutates the record in place, losing history),

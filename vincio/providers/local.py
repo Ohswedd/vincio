@@ -72,7 +72,7 @@ def _message_text(content: Any) -> str:
 
 
 class GGUFProvider(ModelProvider):
-    """Native in-process GGUF / llama.cpp provider with on-device embedding (2.1).
+    """Native in-process GGUF / llama.cpp provider with on-device embedding.
 
     True offline inference for air-gapped and edge deployments — a quantized
     GGUF model runs in-process via ``llama-cpp-python``, no server and no

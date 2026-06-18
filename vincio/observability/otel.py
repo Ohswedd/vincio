@@ -20,7 +20,7 @@ logger = logging.getLogger("vincio.observability.otel")
 
 
 # Span types that represent invoking an agent (crew member, graph node, a
-# composed step, or a single agent run). 2.0 maps them to the finalized OTel
+# composed step, or a single agent run). These map to the OTel
 # GenAI **agentic** convention: an ``invoke_agent`` operation with
 # ``gen_ai.agent.*`` attributes, so agent activity is first-class telemetry.
 _AGENT_SPAN_TYPES = frozenset({"agent", "crew", "crew_agent", "graph_node", "compose_node"})
@@ -28,7 +28,7 @@ _AGENT_SPAN_TYPES = frozenset({"agent", "crew", "crew_agent", "graph_node", "com
 
 def _genai_span(span: Span) -> tuple[str, dict[str, Any]]:
     """Span name + gen_ai.* attributes per the OTel GenAI semantic conventions
-    (including the 2.0 agentic conventions for agent/tool spans)."""
+    (including the agentic conventions for agent/tool spans)."""
     if span.type == "model_call":
         model = str(span.attributes.get("model") or "unknown")
         attributes: dict[str, Any] = {
@@ -96,7 +96,7 @@ class OTelExporter:
             ) from exc
         from .redaction import ContentCapturePolicy
 
-        # 2.1: prompt/completion content is gated + redacted at the export
+        # prompt/completion content is gated + redacted at the export
         # boundary. Default policy captures nothing — structural telemetry
         # (model/tokens/cost/scores) still exports; raw content does not.
         self.content_policy = content_policy or ContentCapturePolicy()
@@ -104,7 +104,7 @@ class OTelExporter:
         if tracer_provider is None:
             tracer_provider = otel_trace.get_tracer_provider()
         self._tracer = tracer_provider.get_tracer(service_name)
-        # 2.0 unified telemetry: the same trace is fanned out to spans *and* to
+        # unified telemetry: the same trace is fanned out to spans *and* to
         # OTel metric histograms (token usage, operation duration, cost), so the
         # standard GenAI metrics are emitted once from one source. Metrics are
         # best-effort: if the metrics API is unavailable, spans still export.

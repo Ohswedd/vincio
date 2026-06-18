@@ -1,4 +1,4 @@
-"""Image generation / editing provider abstraction (1.9).
+"""Image generation / editing provider abstraction.
 
 A neutral surface — ``generate_image`` / ``edit_image`` / ``variation`` — over
 OpenAI ``gpt-image-1``, Gemini/Imagen, and a generic HTTP/Replicate adapter,
@@ -23,7 +23,6 @@ from ..core.errors import MediaGenerationError
 from ..core.media import encode_image_bytes
 from ..core.types import ImageRef
 from ..governance.transparency import ProvenanceManifest
-from ..stability import experimental
 from .media import attach_media_provenance, image_cost
 
 __all__ = [
@@ -152,7 +151,6 @@ def _solid_png(width: int, height: int, rgb: tuple[int, int, int]) -> bytes:
     )
 
 
-@experimental(since="1.9")
 class MockImageProvider(ImageProvider):
     """Deterministic offline image provider.
 
@@ -219,7 +217,6 @@ class MockImageProvider(ImageProvider):
 # -- OpenAI gpt-image-1 -------------------------------------------------------
 
 
-@experimental(since="1.9")
 class OpenAIImageProvider(ImageProvider):
     """OpenAI Images API (``gpt-image-1``) over httpx."""
 
@@ -308,7 +305,6 @@ class OpenAIImageProvider(ImageProvider):
 # -- Google Imagen ------------------------------------------------------------
 
 
-@experimental(since="1.9")
 class GoogleImageProvider(ImageProvider):
     """Google Imagen (``:predict``) over httpx."""
 
@@ -362,7 +358,6 @@ class GoogleImageProvider(ImageProvider):
 # -- Generic HTTP / Replicate -------------------------------------------------
 
 
-@experimental(since="1.9")
 class HTTPImageProvider(ImageProvider):
     """Generic JSON image endpoint (Replicate-style), returning base64 images.
 

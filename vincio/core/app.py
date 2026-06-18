@@ -73,7 +73,6 @@ from ..security.pii import PIIDetector
 from ..security.policy import PolicyEngine
 from ..security.rails import Rail, RailEngine
 from ..skills.library import SkillLibrary
-from ..stability import deprecated, experimental
 from ..storage.base import create_metadata_store
 from ..tools.permissions import ToolPermissionChecker
 from ..tools.registry import ToolRegistry
@@ -112,7 +111,7 @@ __all__ = ["ContextApp", "RunHandle"]
 
 
 class RunHandle:
-    """Handle to an in-flight run started by :meth:`ContextApp.submit` (1.7).
+    """Handle to an in-flight run started by :meth:`ContextApp.submit`.
 
     Wraps the run's task and exposes cooperative cancellation that is identical
     across the streaming and non-streaming paths: :meth:`cancel` propagates a
@@ -260,7 +259,7 @@ class ContextApp:
         )
         self.access = AccessController(tenant_isolation=self.config.security.tenant_isolation)
         self.rail_engine = RailEngine()
-        # Governance (1.6): a locale-aware PII detector (non-English packs),
+        # Governance: a locale-aware PII detector (non-English packs),
         # data-residency policy, lineage index, content-marking, and tokenizer
         # fertility telemetry. All opt-in / empty by default.
         self._pii_detector = self._build_pii_detector()
@@ -278,9 +277,9 @@ class ContextApp:
         self.content_marking = self.config.governance.content_marking
         # Optional signer for synthetic-content manifests (e.g. HmacSigner);
         # set it to cryptographically sign every marked output *and* every
-        # erasure proof (3.0).
+        # erasure proof.
         self.content_signer: Any = None
-        # (3.0) Consent ledger: opt-in, empty by default. When configured via
+        # Consent ledger: opt-in, empty by default. When configured via
         # ``app.use_consent_ledger(...)`` it binds data to a GDPR purpose/lawful
         # basis and is consulted by access decisions and memory recall.
         self.consent_ledger: Any = None
@@ -305,7 +304,7 @@ class ContextApp:
             )
             self.response_cache = ResponseCache(backend, ttl_s=self.config.cache.ttl_s)
             self.cache_invalidation.register(backend)
-        # Content-addressed compilation caches (0.2): unchanged inputs are
+        # Content-addressed compilation caches: unchanged inputs are
         # never recompiled / re-chunked.
         self.prompt_compile_cache: PromptCompileCache | None = None
         if self.config.cache.prompt_compile_cache:
@@ -330,7 +329,7 @@ class ContextApp:
         )
         self.prompt_compiler = PromptCompiler(CompilerOptions(), cache=self.prompt_compile_cache)
 
-        # Provider-aware prompt caching (1.3): attach a TTL to the compiler's
+        # Provider-aware prompt caching: attach a TTL to the compiler's
         # stable prefix for caching-capable providers and record cache-hit-rate
         # telemetry on the model span. On by default; tune via config or
         # ``enable_prompt_caching``.
@@ -346,7 +345,7 @@ class ContextApp:
         # retrieval
         self.embedder = self._build_embedder()
         # Thread the app embedder into the context compiler for opt-in semantic
-        # scoring (1.7). The shared compiler keeps it vector-less; a per-compile
+        # scoring. The shared compiler keeps it vector-less; a per-compile
         # scorer holds the embeddings, so this is safe and only activates when
         # ``retrieval.semantic_context_scoring`` is enabled with a real embedder.
         self.context_compiler.embedder = self.embedder
@@ -378,7 +377,7 @@ class ContextApp:
         )
         self.enabled_tools: list[str] = []
 
-        # protocols & interoperability (1.1): MCP servers, Agent Skills.
+        # protocols & interoperability: MCP servers, Agent Skills.
         self.skill_library: SkillLibrary | None = None
         self.mcp_clients: dict[str, Any] = {}
 
@@ -392,7 +391,7 @@ class ContextApp:
         self.schema_router: SchemaRouter | None = None
         self.self_correction: dict[str, Any] | None = None
 
-        # cost & reliability (1.3): runtime model cascade, cost attribution
+        # cost & reliability: runtime model cascade, cost attribution
         # ledger, and per-tenant/feature budget enforcement. All opt-in.
         from ..observability.finops import BudgetManager, CostLedger
         from ..optimize.routing import ModelCascade
@@ -424,7 +423,7 @@ class ContextApp:
         return OutputContract.from_schema(schema, require_citations=self.policies.require_citations if hasattr(self, "policies") else False)
 
     def _build_pii_detector(self) -> PIIDetector:
-        """PII detector with the configured non-English locale packs (1.6)."""
+        """PII detector with the configured non-English locale packs."""
         locales = list(self.config.governance.locales)
         return PIIDetector(locales=locales or None)
 
@@ -442,7 +441,7 @@ class ContextApp:
         return CachedEmbedder(base)
 
     def check_residency(self, run_config: RunConfig | None = None) -> None:
-        """Enforce data-residency routing (1.6): refuse disallowed egress.
+        """Enforce data-residency routing: refuse disallowed egress.
 
         When a residency policy is configured (``governance.allowed_regions``),
         a run whose resolved provider/model region is not allowed is denied with
@@ -502,10 +501,10 @@ class ContextApp:
         return reachable
 
     def _enforce_model_residency(self, model: str, *, provider: str | None = None) -> None:
-        """Refuse egress of a single ``model`` to a disallowed region (1.6/1.8).
+        """Refuse egress of a single ``model`` to a disallowed region.
 
         The shared per-model residency check behind :meth:`check_residency` and
-        the 1.8 rotation wrappers (``use_router`` / ``shadow`` / ``canary`` /
+        the rotation wrappers (``use_router`` / ``shadow`` / ``canary`` /
         ``use_cascade``), so a candidate model whose region is not allowed is
         refused at wiring time rather than silently egressed below the run choke
         point. A no-op when no residency policy is set."""
@@ -567,7 +566,7 @@ class ContextApp:
     def tenant_filter(self, tenant_id: str | None) -> FilterSpec | None:
         """Tenant-scope filter for retrieval.
 
-        2.0: returns a pushdown-capable :class:`FilterSpec` so the tenant
+        Returns a pushdown-capable :class:`FilterSpec` so the tenant
         predicate is applied in the vector store (Qdrant/pgvector/...) and other
         tenants' rows are never fetched to the client and dropped — closing the
         fetch-to-filter exfiltration gap. In-memory indexes evaluate it directly.
@@ -657,9 +656,8 @@ class ContextApp:
         self.rail_engine.register(name, predicate)
         return self
 
-    # -- cost & reliability (1.3) -----------------------------------------------
+    # -- cost & reliability -----------------------------------------------
 
-    @experimental(since="1.3")
     def enable_prompt_caching(
         self, *, ttl: str = "5m", min_prefix_tokens: int = 1024
     ) -> ContextApp:
@@ -679,7 +677,6 @@ class ContextApp:
         )
         return self
 
-    @experimental(since="1.3")
     def use_cascade(
         self,
         models: list[str] | None = None,
@@ -722,7 +719,7 @@ class ContextApp:
             )
         else:
             raise ConfigError("use_cascade requires models=[...] or rungs=[...]")
-        # Residency (1.8): every rung the cascade may escalate into must be an
+        # Residency: every rung the cascade may escalate into must be an
         # allowed region — closes the gap where an escalation egressed below the
         # run's residency choke point.
         for rung in self.cascade.rungs:
@@ -730,7 +727,7 @@ class ContextApp:
         self._cascade_confidence = confidence
         return self
 
-    # -- provider/model rotation & swap regression (1.8) ------------------------
+    # -- provider/model rotation & swap regression ------------------------
 
     def _base_provider(self) -> ModelProvider:
         """The raw model provider (the current instance, or one built from config)
@@ -749,7 +746,6 @@ class ContextApp:
             models.update(rung.model for rung in cascade.rungs)
         return sorted(m for m in models if m)
 
-    @experimental(since="1.8")
     def use_router(
         self,
         models: list[str],
@@ -786,7 +782,6 @@ class ContextApp:
         self.model = models[0]
         return self
 
-    @experimental(since="1.8")
     def shadow(
         self,
         candidate_model: str,
@@ -814,7 +809,6 @@ class ContextApp:
         self._provider_instance = shadow
         return shadow
 
-    @experimental(since="1.8")
     def canary(
         self,
         candidate_model: str,
@@ -848,7 +842,6 @@ class ContextApp:
         self._provider_instance = canary
         return canary
 
-    @experimental(since="1.8")
     async def agate_swap(
         self,
         candidate_model: str,
@@ -878,14 +871,12 @@ class ContextApp:
             dataset=dataset, traces=traces, pin_tools=pin_tools,
         )
 
-    @experimental(since="1.8")
     def gate_swap(self, candidate_model: str, **kwargs: Any) -> Any:
         """Synchronous :meth:`agate_swap`."""
         from ..providers.base import run_sync
 
         return run_sync(self.agate_swap(candidate_model, **kwargs))
 
-    @experimental(since="1.8")
     async def aswap_regression(
         self,
         dataset: Any,
@@ -908,14 +899,12 @@ class ContextApp:
             flake_quarantine=flake_quarantine,
         )
 
-    @experimental(since="1.8")
     def swap_regression(self, dataset: Any, *, candidate_model: str, **kwargs: Any) -> Any:
         """Synchronous :meth:`aswap_regression`."""
         from ..providers.base import run_sync
 
         return run_sync(self.aswap_regression(dataset, candidate_model=candidate_model, **kwargs))
 
-    @experimental(since="1.8")
     def watch_lifecycle(
         self,
         models: list[str] | None = None,
@@ -935,7 +924,6 @@ class ContextApp:
         proposals = watcher.propose_all(targets, as_of=as_of) if propose else []
         return {"alerts": alerts, "proposals": proposals}
 
-    @experimental(since="1.3")
     def set_cost_budget(
         self,
         *,
@@ -974,13 +962,11 @@ class ContextApp:
         )
         return self
 
-    @experimental(since="1.3")
     def cost_report(self, *, by: str = "tenant", since: Any | None = None):
         """Roll up attributed model cost by ``tenant``/``feature``/``user``/
         ``model``/``provider``/``run`` (returns a :class:`CostReport`)."""
         return self.cost_ledger.report(by, since=since)  # type: ignore[arg-type]
 
-    @experimental(since="1.3")
     def batch(
         self,
         inputs: list[str | UserInput],
@@ -1003,7 +989,6 @@ class ContextApp:
             self.abatch(inputs, backend=backend, config=config, discount=discount, timeout_s=timeout_s)
         )
 
-    @experimental(since="1.3")
     async def abatch(
         self,
         inputs: list[str | UserInput],
@@ -1018,14 +1003,13 @@ class ContextApp:
             inputs, run_config=config, backend=backend, discount=discount, timeout_s=timeout_s
         )
 
-    # -- governance & compliance (1.6) -----------------------------------------------------
+    # -- governance & compliance -----------------------------------------------------
 
     def _card_format(self, override: Any | None = None):
         from ..governance.cards import CardFormat
 
         return CardFormat(override or self.config.governance.card_format)
 
-    @experimental(since="1.6")
     def model_card(self, *, eval_report: Any | None = None, format: Any | None = None):
         """Generate a :class:`~vincio.governance.ModelCard` from the live config.
 
@@ -1037,7 +1021,6 @@ class ContextApp:
 
         return generate_model_card(self, eval_report=eval_report, format=self._card_format(format))
 
-    @experimental(since="1.6")
     def system_card(self, *, eval_report: Any | None = None, format: Any | None = None):
         """Generate a :class:`~vincio.governance.SystemCard` (model + retrieval +
         memory + safety filters + human-oversight points) from the live config."""
@@ -1047,7 +1030,6 @@ class ContextApp:
             self, eval_report=eval_report, format=self._card_format(format), name=self.name
         )
 
-    @experimental(since="1.6")
     def compliance_report(self, *, redteam: Any | None = None, eval_report: Any | None = None):
         """Map this app's controls to OWASP/NIST/MITRE frameworks as a coverage
         matrix, backed by red-team and eval evidence
@@ -1056,7 +1038,6 @@ class ContextApp:
 
         return ComplianceMapper().map(redteam=redteam, eval_report=eval_report, target=self)
 
-    @experimental(since="1.6")
     def aibom(self, *, datasets: list[Any] | None = None, prompts: list[Any] | None = None):
         """Generate an AI bill of materials (:class:`~vincio.governance.AIBOM`)
         for the live model/embedder/reranker, with SHA-256 model-hash slots."""
@@ -1064,13 +1045,11 @@ class ContextApp:
 
         return generate_aibom(self, datasets=datasets, prompts=prompts)
 
-    @experimental(since="1.6")
     def trace_lineage(self, source: str):
         """Return the source → chunk → evidence → output lineage for a source
         name or document id (:class:`~vincio.governance.LineageRecord`)."""
         return self.lineage.trace(source)
 
-    @experimental(since="1.6")
     def mark_output(self, content: str, *, model: str | None = None, signer: Any | None = None):
         """Build a C2PA-style synthetic-content provenance manifest for output
         (:class:`~vincio.governance.ProvenanceManifest`).
@@ -1086,9 +1065,8 @@ class ContextApp:
             signer=signer or self.content_signer,
         )
 
-    # -- 1.9 — documents & media flow OUT ------------------------------------
+    # -- documents & media flow OUT ------------------------------------
 
-    @experimental(since="1.9")
     def build_document(
         self,
         source: Any,
@@ -1113,7 +1091,6 @@ class ContextApp:
             evidence_ids=evidence_ids,
         )
 
-    @experimental(since="1.9")
     def cited_report(
         self,
         answer: Any,
@@ -1136,7 +1113,6 @@ class ContextApp:
             )
         )
 
-    @experimental(since="1.9")
     async def acited_report(
         self,
         answer: Any,
@@ -1154,7 +1130,6 @@ class ContextApp:
             answer, list(evidence or []), format=cast("Any", format), title=title, contract=contract
         )
 
-    @experimental(since="1.9")
     async def agenerate_image(
         self,
         prompt: Any,
@@ -1179,12 +1154,10 @@ class ContextApp:
         self._meter_and_audit_media("image_generate", response, request.prompt, budget, meter_media_cost)
         return response
 
-    @experimental(since="1.9")
     def generate_image(self, prompt: Any, *, provider: Any, model: str | None = None, **kwargs: Any):
         """Synchronous :meth:`agenerate_image`."""
         return run_sync(self.agenerate_image(prompt, provider=provider, model=model, **kwargs))
 
-    @experimental(since="1.9")
     async def asynthesize_speech(
         self,
         text: str,
@@ -1207,7 +1180,6 @@ class ContextApp:
         self._meter_and_audit_media("speech_synthesize", response, text, budget, meter_media_cost)
         return response
 
-    @experimental(since="1.9")
     def synthesize_speech(self, text: str, *, provider: Any, model: str | None = None, **kwargs: Any):
         """Synchronous :meth:`asynthesize_speech`."""
         return run_sync(self.asynthesize_speech(text, provider=provider, model=model, **kwargs))
@@ -1234,7 +1206,6 @@ class ContextApp:
             },
         )
 
-    @experimental(since="1.9")
     def load_media(self, path: str, *, transcriber: Any, tenant_id: str | None = None):
         """Ingest audio/video as a timestamped transcript Document
         (:func:`vincio.documents.load_media`)."""
@@ -1242,7 +1213,6 @@ class ContextApp:
 
         return load_media(path, transcriber=transcriber, tenant_id=tenant_id)
 
-    @experimental(since="1.9")
     def risk_tier(
         self,
         *,
@@ -1257,7 +1227,6 @@ class ContextApp:
             purpose=purpose, domains=domains, prohibited_practices=prohibited_practices
         ).classify(self)
 
-    @experimental(since="1.9")
     def annex_iv(
         self,
         *,
@@ -1275,7 +1244,6 @@ class ContextApp:
             self, format=cast("Any", format), eval_report=eval_report, redteam=redteam
         )
 
-    @experimental(since="1.9")
     def fria(
         self,
         *,
@@ -1293,7 +1261,6 @@ class ContextApp:
             self, format=cast("Any", format), affected_groups=affected_groups, eval_report=eval_report
         )
 
-    @experimental(since="1.6")
     def set_residency(
         self,
         allowed_regions: list[str],
@@ -1309,9 +1276,8 @@ class ContextApp:
         )
         return self
 
-    @experimental(since="3.0")
     def use_consent_ledger(self, ledger: Any | None = None, *, default_allow: bool = False) -> Any:
-        """Attach a :class:`~vincio.governance.consent.ConsentLedger` (3.0).
+        """Attach a :class:`~vincio.governance.consent.ConsentLedger`.
 
         Binds data to a GDPR purpose and lawful basis. Once attached, access
         decisions (:meth:`AccessController.check_purpose`) and memory recall
@@ -1330,7 +1296,6 @@ class ContextApp:
             self.memory.consent_ledger = ledger
         return ledger
 
-    @experimental(since="1.6")
     def erase_source(self, source: str, *, prove: bool = True) -> ErasureResult:
         """Right-to-erasure-by-source: purge a source from indexes, memory,
         caches, and generated artifacts, logged on the hash-chained audit chain.
@@ -1339,7 +1304,7 @@ class ContextApp:
         document id. Returns an :class:`~vincio.governance.ErasureResult`.
         Idempotent: a second call finds nothing left to erase.
 
-        When ``prove`` (3.0), the sweep emits a signed, content-bound
+        When ``prove``, the sweep emits a signed, content-bound
         :class:`~vincio.governance.ErasureProof` on the result — a manifest of
         exactly which chunk / document / memory / artifact ids were removed,
         bound by SHA-256, signed with :attr:`content_signer` when set, and
@@ -1445,7 +1410,7 @@ class ContextApp:
         )
         result.audit_entry_id = entry.id
 
-        # (3.0) Build the signed, content-bound erasure proof over the precise
+        # Build the signed, content-bound erasure proof over the precise
         # removed-id set, anchored to the audit chain's current Merkle root.
         if prove:
             proof = build_erasure_proof(
@@ -1573,7 +1538,7 @@ class ContextApp:
             run_sync(self._index_chunks(all_chunks))
             if self.entity_graph is not None:
                 self.entity_graph.add_chunks(all_chunks)
-        # Lineage (1.6): record source → documents → chunks so erasure-by-source
+        # Lineage: record source → documents → chunks so erasure-by-source
         # and provenance tracing have a precomputed chain.
         self.lineage.record_ingest(name, documents=docs, chunks=all_chunks)
         source.document_count = len(docs)
@@ -1680,7 +1645,6 @@ class ContextApp:
             self.add_memory()
         return self.memory.recall(query, **kwargs)  # type: ignore[union-attr]
 
-    @experimental(since="1.10")
     def enable_memory_os(
         self,
         *,
@@ -1716,7 +1680,6 @@ class ContextApp:
             self.add_tool(search, name="memory_search", side_effects="read")
         return os
 
-    @experimental(since="1.10")
     def enable_computer_use(
         self,
         backend: str = "mock",
@@ -1767,7 +1730,6 @@ class ContextApp:
         )
         return impl
 
-    @experimental(since="1.10")
     def use_hosted_tools(
         self, names: list[str] | None = None, *, namespace: str = "openai"
     ) -> ContextApp:
@@ -1841,9 +1803,8 @@ class ContextApp:
             self.enabled_tools.append(name)
         return self
 
-    # -- skills (1.1) ---------------------------------------------------------------------------------
+    # -- skills ---------------------------------------------------------------------------------
 
-    @experimental(since="1.1")
     def add_skill(
         self, skill: str | Any, *, register_scripts: bool = False
     ) -> ContextApp:
@@ -1864,9 +1825,8 @@ class ContextApp:
                     self.enabled_tools.append(name)
         return self
 
-    # -- MCP (1.1) ------------------------------------------------------------------------------------
+    # -- MCP ------------------------------------------------------------------------------------
 
-    @experimental(since="1.1")
     def add_mcp_server(
         self,
         name: str,
@@ -1934,7 +1894,6 @@ class ContextApp:
         self.mcp_clients[name] = client
         return self
 
-    @experimental(since="1.1")
     def serve_mcp(
         self,
         *,
@@ -1948,7 +1907,7 @@ class ContextApp:
 
         Registered tools become MCP tools (run through the permissioned,
         sandboxed, audited runtime); evidence/sources become resources; the
-        prompt spec becomes a prompt. Pass ``ui_resources`` (2.2) — a list of
+        prompt spec becomes a prompt. Pass ``ui_resources`` — a list of
         :class:`~vincio.mcp.MCPUIResource` — to also serve MCP-UI / AG-UI
         resources for generative-UI hosts. Run it over stdio with
         ``vincio.mcp.serve_stdio(server)`` or the ``vincio mcp serve`` CLI.
@@ -1964,9 +1923,8 @@ class ContextApp:
             token_validator=token_validator,
         )
 
-    # -- realtime / voice (1.5, optional module) ------------------------------------------------------
+    # -- realtime / voice (optional module) ------------------------------------------------------
 
-    @experimental(since="1.5")
     def realtime_session(
         self,
         *,
@@ -2002,9 +1960,8 @@ class ContextApp:
             config = RealtimeConfig(model=backend_kwargs.pop("model", "gpt-realtime"))
         return connect_realtime(backend, config=config, tool_dispatcher=_dispatch, **backend_kwargs)
 
-    # -- A2A (1.1) ------------------------------------------------------------------------------------
+    # -- A2A ------------------------------------------------------------------------------------
 
-    @experimental(since="1.1")
     def serve_a2a(
         self,
         target: Any | None = None,
@@ -2052,7 +2009,6 @@ class ContextApp:
             "serve_a2a target must be a Crew, a compiled StateGraph, or None (the app)"
         )
 
-    @experimental(since="2.2")
     def agent_directory(
         self,
         *,
@@ -2107,7 +2063,6 @@ class ContextApp:
             self.optimizers.append(name)
         return self
 
-    @experimental(since="1.2")
     def add_online_evaluator(
         self, metric: str | Callable, *, sample_rate: float = 1.0, name: str | None = None
     ) -> ContextApp:
@@ -2125,7 +2080,6 @@ class ContextApp:
         )
         return self
 
-    @experimental(since="1.2")
     def add_metric_rail(
         self,
         metric: str | Callable,
@@ -2153,7 +2107,6 @@ class ContextApp:
         )
         return self
 
-    @experimental(since="1.2")
     def experiment(
         self,
         name: str,
@@ -2186,7 +2139,7 @@ class ContextApp:
                 )
         return handle
 
-    # -- structured output (0.7) -------------------------------------------------
+    # -- structured output -------------------------------------------------
 
     def add_output_schema(
         self,
@@ -2333,7 +2286,6 @@ class ContextApp:
             self._spawn_online(result, user_input)
         return result
 
-    @experimental(since="1.7")
     def submit(
         self,
         user_input: str | UserInput,
@@ -2508,13 +2460,12 @@ class ContextApp:
         )
         return _AgentHandle(self, executor, max_steps)
 
-    @experimental(since="1.10")
     def research(self, question: str, *, objective: str = "", **kwargs: Any):
         """Run the deep-research loop: search → read → reflect → verify →
         synthesize, emitting a cited, budget-bounded, eval-scored report.
 
         Composes the query-understanding planners, the retrieval engine, the
-        grounded-fact extractor, and the 1.9 cited-report builder into one
+        grounded-fact extractor, and the cited-report builder into one
         :class:`~vincio.agents.research.ResearchAgent`. Requires a source
         (``app.add_source(...)``)::
 
@@ -2525,7 +2476,6 @@ class ContextApp:
 
         return ResearchAgent(self, **kwargs).run(question, objective=objective)
 
-    @experimental(since="1.10")
     async def aresearch(self, question: str, *, objective: str = "", **kwargs: Any):
         """Async :meth:`research`."""
         from ..agents.research import ResearchAgent
@@ -2664,7 +2614,7 @@ class ContextApp:
             metadata={"input": result.metadata.get("input", "")},
         )
 
-    # -- online / continuous evaluation (1.2) --------------------------------
+    # -- online / continuous evaluation --------------------------------
 
     def _spawn_online(self, result: RunResult, user_input: UserInput) -> None:
         """Schedule online scoring off the hot path; run inline if no loop."""
@@ -2717,7 +2667,7 @@ class ContextApp:
         )
         return runner.run(dataset)
 
-    # -- closed loop (0.8) ---------------------------------------------------------
+    # -- closed loop ---------------------------------------------------------
 
     def improvement_loop(self, **kwargs: Any):
         """The trace → dataset → eval → optimize → promote loop on this app.
@@ -2732,7 +2682,7 @@ class ContextApp:
 
         return ImprovementLoop(self, **kwargs)
 
-    # -- reflective optimization & the data flywheel (1.4) -------------------------
+    # -- reflective optimization & the data flywheel -------------------------
 
     def _evaluate_variant_fn(self, metrics: list[str], *, concurrency: int = 4):
         """Build a memory-write-free variant evaluator for the optimizers.
@@ -2762,7 +2712,6 @@ class ContextApp:
 
         return evaluate_variant
 
-    @experimental(since="1.4")
     def reflective_optimize(
         self,
         dataset: Dataset,
@@ -2828,9 +2777,8 @@ class ContextApp:
             self.events.emit("optimize.reflective", {"reason": result.reason})
         return result
 
-    @experimental(since="3.0")
     def self_improvement(self, policy: Any | None = None, **kwargs: Any):
-        """The unified, declarative self-improvement contract (3.0).
+        """The unified, declarative self-improvement contract.
 
         One :class:`~vincio.optimize.self_improvement.SelfImprovementPolicy`
         composes scheduling, autonomous proposal, online updates, meta-optimization
@@ -2839,15 +2787,14 @@ class ContextApp:
         :class:`~vincio.optimize.self_improvement.SelfImprovementController` whose
         :meth:`~vincio.optimize.self_improvement.SelfImprovementController.astream`
         emits the cycle as ``observe → proposal → meta → label → canary →
-        promote/rollback`` events — superseding the separately-wired
-        :meth:`continuous_improvement` and :meth:`experiment_proposer`::
+        promote/rollback`` events::
 
             from vincio.optimize import SelfImprovementPolicy
             ctl = app.self_improvement(SelfImprovementPolicy(), dataset=golden)
             async for ev in ctl.astream():
                 print(ev.phase, ev.reason)
 
-        Every promotion still passes the same significance + safety + golden
+        Every promotion passes the same significance + safety + golden
         non-regression gates the loop always used; every decision lands on the
         shared audit chain and event bus."""
         from ..optimize.self_improvement import SelfImprovementController, SelfImprovementPolicy
@@ -2856,7 +2803,6 @@ class ContextApp:
             policy = SelfImprovementPolicy()
         return SelfImprovementController(self, policy, **kwargs)
 
-    @experimental(since="3.0")
     def deploy(self, candidate: Any, *, dataset: Any = None, **kwargs: Any):
         """Canary-gate a prompt/policy candidate and deploy it only if it clears.
 
@@ -2865,52 +2811,14 @@ class ContextApp:
         ``live_inputs=`` onto the candidate (scored by ``score_fn=``) with
         auto-rollback. On a pass it is pushed to the prompt registry, tagged,
         applied live, and audited (``deploy``); on a fail it is refused and rolled
-        back to the last known-good version (3.0). Returns a
+        back to the last known-good version. Returns a
         :class:`~vincio.optimize.self_improvement.DeployResult`. This is the
-        canary-driven promotion surface 1.10 reserved for a serving window."""
+        canary-driven promotion surface for prompt and policy candidates."""
         from ..optimize.self_improvement import deploy_candidate
         from ..providers.base import run_sync
 
         return run_sync(deploy_candidate(self, candidate, dataset=dataset, **kwargs))
 
-    @deprecated(since="3.0", removed_in="4.0", alternative="app.self_improvement")
-    def continuous_improvement(self, **kwargs: Any):
-        """Close the online loop: a controller that turns live drift into a
-        gated re-optimization, a targeted re-eval, or a registry rollback.
-
-        .. deprecated:: 3.0
-           Subsumed by the unified :meth:`self_improvement` contract (its
-           ``online`` arm). Still fully functional through 3.x; removed in 4.0.
-
-        Returns a :class:`~vincio.optimize.controller.ContinuousImprovementController`
-        bound to this app's event bus, store, audit chain, and prompt registry.
-        Call :meth:`~vincio.optimize.controller.ContinuousImprovementController.attach`
-        to start acting on ``drift.detected`` / ``eval.online`` events.
-
-        Every decision is debounced, eval-budget bounded, audited, and traced;
-        controller state persists to the shared store so it is restart-safe.
-        """
-        from ..optimize.controller import ContinuousImprovementController
-
-        return ContinuousImprovementController(self, **kwargs)
-
-    @deprecated(since="3.0", removed_in="4.0", alternative="app.self_improvement")
-    def experiment_proposer(self, **kwargs: Any):
-        """The autonomous experiment proposer (meta-controller) for this app.
-
-        .. deprecated:: 3.0
-           Subsumed by the unified :meth:`self_improvement` contract (its
-           ``propose`` arm). Still fully functional through 3.x; removed in 4.0.
-
-        Ranks where the system is weakest from its online eval series and drift,
-        and proposes/schedules the highest-ROI experiment (prompt / retrieval /
-        budget / routing / distillation) under a global eval budget.
-        """
-        from ..optimize.loop import ExperimentProposer
-
-        return ExperimentProposer(self, **kwargs)
-
-    @experimental(since="1.10")
     def use_bandit_router(
         self, models: list[str], *, bandit: str = "epsilon_greedy", **kwargs: Any
     ) -> ContextApp:
@@ -2935,7 +2843,6 @@ class ContextApp:
             self.model = models[0]
         return self
 
-    @experimental(since="1.4")
     def enable_training_capture(self, enabled: bool = True) -> ContextApp:
         """Record the full output and cited evidence on every trace, so
         :meth:`export_training_set` can curate faithful, grounded fine-tuning
@@ -2946,7 +2853,6 @@ class ContextApp:
         self.config.observability.training_capture = enabled
         return self
 
-    @experimental(since="1.4")
     def export_training_set(
         self,
         *,
@@ -3019,7 +2925,6 @@ class ContextApp:
             )
         return training_set
 
-    @experimental(since="1.4")
     def distill(
         self,
         training_set: Any,
@@ -3081,7 +2986,6 @@ class ContextApp:
             )
         return result
 
-    @experimental(since="1.7")
     def use_semantic_context_scoring(
         self, enabled: bool = True, *, mmr_lambda: float | None = None
     ) -> ContextApp:
@@ -3103,7 +3007,6 @@ class ContextApp:
             self.context_compiler.options.mmr_lambda = mmr_lambda
         return self
 
-    @experimental(since="1.4")
     def use_learned_compression(self, compressor: Any | None = None) -> ContextApp:
         """Install a learned token-importance compressor on the compiler.
 
@@ -3119,7 +3022,6 @@ class ContextApp:
         self.context_compiler.compressor = compressor or LLMLinguaCompressor()
         return self
 
-    @experimental(since="1.4")
     def gate_compression(
         self,
         dataset: Dataset,
@@ -3170,7 +3072,6 @@ class ContextApp:
             self.events.emit("compression.adopted", {"token_savings": result.token_savings})
         return result
 
-    @experimental(since="1.4")
     def calibrate_judge(self, judge: Any, samples: list[Any], *, budget: int = 4):
         """Reflectively tune an LLM judge's evaluation steps for κ agreement.
 
@@ -3187,7 +3088,7 @@ class ContextApp:
         return JudgeCalibrator(judge).calibrate(samples, budget=budget)
 
     def use_learned_budgets(self, source: Any) -> ContextApp:
-        """Install eval-tuned per-task budget allocations (0.8).
+        """Install eval-tuned per-task budget allocations.
 
         ``source`` is a :class:`~vincio.optimize.LearnedAllocations`, a path
         to one saved as JSON, or a plain ``{task_type: {block: fraction}}``
@@ -3206,7 +3107,7 @@ class ContextApp:
         return self
 
     def use_pack(self, pack: Any, *, set_schema: bool = True, merge_rules: bool = False) -> ContextApp:
-        """Apply a domain pack (0.9): prompt config + schema + policies +
+        """Apply a domain pack: prompt config + schema + policies +
         evaluators + rails.
 
         ``pack`` is a pack name (``"support"``, ``"engineering"``, ``"finance"``,
@@ -3226,7 +3127,7 @@ class ContextApp:
         self.events.emit("pack.applied", {"pack": pack.name})
         return self
 
-    # -- capability facades (2.0) ------------------------------------------------------------------------------------
+    # -- capability facades ------------------------------------------------------------------------------------
 
     def _facade(self, key: str, factory: Any) -> Any:
         """Build a capability facade once, on first access, and cache it — so

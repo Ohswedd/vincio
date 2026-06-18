@@ -1,4 +1,4 @@
-"""In-loop context compaction for the agent executor (1.10).
+"""In-loop context compaction for the agent executor.
 
 Long agent runs accumulate tool observations and reasoning turns until the
 context overflows. The :class:`ContextCompactor` replaces the executor's old

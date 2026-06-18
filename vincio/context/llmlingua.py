@@ -1,4 +1,4 @@
-"""Learned prompt compression (1.4): an LLMLingua-style compiler pass.
+"""Learned prompt compression: an LLMLingua-style compiler pass.
 
 Extractive compression keeps whole sentences. Learned compression goes finer:
 it scores the *importance* of every token and drops the low-information ones —

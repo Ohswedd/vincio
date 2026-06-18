@@ -1,4 +1,4 @@
-"""Memory & personalization (0.4): scoped remember/recall over user, agent,
+"""Memory & personalization: scoped remember/recall over user, agent,
 and session memory, hybrid vector+graph recall, episodic→semantic
 consolidation with provenance, forgetting & GDPR-style hygiene through the
 audit log, and the memory eval harness — fully offline.

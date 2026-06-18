@@ -1,4 +1,4 @@
-"""End-to-end streaming and the 0.2 performance features.
+"""End-to-end streaming and the performance features.
 
 Streams a grounded QA run (real token deltas through the full pipeline),
 shows incremental partial-JSON output for a structured task, then

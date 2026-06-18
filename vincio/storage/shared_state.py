@@ -1,4 +1,4 @@
-"""Shared server state: rate limits, idempotency, and tenant quotas (2.1).
+"""Shared server state: rate limits, idempotency, and tenant quotas.
 
 A single-process uvicorn worker can keep rate-limit counters and idempotency
 records in memory, but the moment you scale to multiple workers (the whole

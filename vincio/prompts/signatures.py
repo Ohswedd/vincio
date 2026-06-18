@@ -1,4 +1,4 @@
-"""Typed signatures (0.7).
+"""Typed signatures.
 
 DSPy-style input → output signatures over the prompt AST. A signature
 declares *what* a model call computes — typed inputs, typed outputs, and an

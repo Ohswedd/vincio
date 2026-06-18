@@ -79,7 +79,7 @@ class ObservabilityConfig(BaseModel):
     redact_pii_in_traces: bool = False
     sample_rate: float = 1.0
     # Opt-in: record the full (untruncated) output and cited evidence on each
-    # trace so the distillation flywheel (1.4) can curate faithful, grounded
+    # trace so the distillation flywheel can curate faithful, grounded
     # fine-tuning data. Off by default — the span output stays truncated.
     training_capture: bool = False
 
@@ -91,21 +91,21 @@ class SecurityConfig(BaseModel):
     audit_log: bool = True
     audit_dir: str = ".vincio/audit"
     retention_days: int | None = None
-    # 2.0: HMAC key for tamper-evident audit-chain signatures. When set (e.g.
+    # HMAC key for tamper-evident audit-chain signatures. When set (e.g.
     # via VINCIO_SECURITY__AUDIT_SIGNING_KEY), every audit entry is signed so a
     # privileged attacker cannot forge a clean chain by recomputing hashes.
     # Empty leaves the chain unsigned (1.x behavior). For asymmetric signing,
     # construct an Ed25519Signer and pass it to AuditLog directly.
     audit_signing_key: str = ""
     audit_signing_key_id: str = "hmac"
-    # 2.0: always-on egress DLP scan of the assembled provider request at the
+    # always-on egress DLP scan of the assembled provider request at the
     # provider boundary. "off" disables; "warn" records findings without
     # blocking; "block" raises on a high-confidence leak.
     egress_dlp: Literal["off", "warn", "block"] = "warn"
 
 
 class GovernanceConfig(BaseModel):
-    """Enterprise governance & compliance settings (1.6).
+    """Enterprise governance & compliance settings.
 
     All fields are off/empty by default, so governance is opt-in and
     backward-compatible. Enable residency by listing ``allowed_regions``; enable
@@ -140,7 +140,7 @@ class RetrievalConfig(BaseModel):
     # Query-understanding strategies applied per retrieve():
     # hyde | multi_query | decompose | step_back
     query_strategies: list[str] = Field(default_factory=list)
-    # Opt-in embedding-driven context scoring (1.7): when True *and* a semantic
+    # Opt-in embedding-driven context scoring: when True *and* a semantic
     # ``embedder`` is configured, the context compiler scores relevance, novelty,
     # dedup, and conflict by embedding cosine and selects via MMR. Off by default
     # (the local hash embedder is not semantic), so selection stays lexical.
@@ -161,7 +161,7 @@ class MemoryConfig(BaseModel):
     ttl_days: dict[str, float] = Field(default_factory=lambda: {"session": 30.0})
     # What step 16 writes back: input | evidence | tools | facts
     write_back: list[str] = Field(default_factory=lambda: ["input"])
-    # Auto-memory from runs (0.8, write_back includes "facts"): output claims
+    # Auto-memory from runs (write_back includes "facts"): output claims
     # need this much evidence support to become candidate memories, capped
     # per run. Admission still goes through the guarded write policy.
     fact_min_support: float = 0.5
@@ -177,13 +177,13 @@ class CacheConfig(BaseModel):
     semantic_threshold: float = 0.97
     ttl_s: int = 3600
     max_entries: int = 10_000
-    # Content-addressed compilation caches (0.2): unchanged inputs are never
+    # Content-addressed compilation caches: unchanged inputs are never
     # recomputed. All keys cover every input that affects the output, so
     # these are safe to leave on.
     prompt_compile_cache: bool = True
     chunk_cache: bool = True
     context_compile_cache: bool = True
-    # Provider-aware prompt caching (1.3): attach a TTL to the compiler's stable
+    # Provider-aware prompt caching: attach a TTL to the compiler's stable
     # prefix for providers with explicit breakpoints (Anthropic) and record
     # cache-hit-rate telemetry. Auto-cache providers (OpenAI/Gemini) rely on the
     # stable→volatile ordering the compiler already produces.
@@ -193,7 +193,7 @@ class CacheConfig(BaseModel):
 
 
 class PerformanceConfig(BaseModel):
-    """Concurrency, streaming, and transport tuning (0.2)."""
+    """Concurrency, streaming, and transport tuning."""
 
     max_concurrency: int = 8  # bound for retrieval/tool/embedding fan-out
     tool_parallelism: int = 4  # concurrent tool calls within one model round
@@ -212,7 +212,7 @@ class ServerConfig(BaseModel):
     api_keys: list[str] = Field(default_factory=list)
     jwt_secret: str | None = None
     cors_origins: list[str] = Field(default_factory=list)
-    # 2.1: multi-worker shared state + per-caller rate limiting. When ``redis_url``
+    # multi-worker shared state + per-caller rate limiting. When ``redis_url``
     # is set the rate-limit state is shared across uvicorn workers; otherwise it
     # is process-local. ``rate_limit_per_min`` of ``None`` disables request
     # limiting (the default).

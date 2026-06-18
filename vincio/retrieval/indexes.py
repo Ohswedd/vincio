@@ -40,7 +40,7 @@ class SearchHit(BaseModel):
 # A legacy opaque predicate. Retained for back-compat; it can only post-filter.
 SearchFilter = Callable[[Chunk], bool]
 
-# 2.0: ``where`` accepts either a structured, pushdown-capable :class:`FilterSpec`
+# ``where`` accepts either a structured, pushdown-capable :class:`FilterSpec`
 # or the legacy callable predicate. Backends push a FilterSpec into their native
 # query; a callable still post-filters client-side.
 Where = FilterSpec | SearchFilter

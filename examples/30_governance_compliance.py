@@ -1,4 +1,4 @@
-"""Enterprise governance & compliance (1.6).
+"""Enterprise governance & compliance.
 
 Turn the audit and security spine into the evidence regulated buyers require —
 all generated in the library, on your infrastructure, as files you own:

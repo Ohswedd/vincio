@@ -272,7 +272,7 @@ class Example(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-# 2.0: the modality of an evidence unit. The compiler selects, dedupes, orders,
+# the modality of an evidence unit. The compiler selects, dedupes, orders,
 # budgets, and cites image and table evidence as first-class candidates
 # alongside text — not as observations bolted on after the fact.
 EvidenceModality = Literal["text", "image", "table"]
@@ -291,7 +291,7 @@ class EvidenceItem(BaseModel):
     source_type: Literal["document", "memory", "tool", "database", "image", "audio", "web"] = (
         "document"
     )
-    # 2.0: typed modality + structured carriers. ``text`` remains the scorable
+    # typed modality + structured carriers. ``text`` remains the scorable
     # surrogate for every modality (the text for text evidence; a caption / OCR /
     # alt text for an image; a Markdown rendering for a table), so relevance,
     # dedup, ordering, and citation work uniformly. ``image`` / ``table`` carry
@@ -348,7 +348,7 @@ class MemoryScope(StrEnum):
     SESSION = "session"
     USER = "user"
     AGENT = "agent"
-    TEAM = "team"  # (3.0) shared across a team, gated by per-memory ACL
+    TEAM = "team"  # shared across a team, gated by per-memory ACL
     TENANT = "tenant"
     ORGANIZATION = "organization"
     GLOBAL = "global"
@@ -385,18 +385,18 @@ class MemoryItem(BaseModel):
     supersedes: str | None = None
     usage_count: int = 0
     confirmations: int = 0
-    # (3.0) Bi-temporal validity. ``created_at`` / ``updated_at`` are *transaction*
+    # Bi-temporal validity. ``created_at`` / ``updated_at`` are *transaction*
     # time (when the system learned the fact); ``valid_from`` / ``valid_to`` are
     # *valid* time (when the fact is true in the world). As-of recall answers
     # "what did we believe was true at time T" without mutating history — a
     # corrected fact closes the old item's ``valid_to`` and opens a new one.
     valid_from: datetime | None = None
     valid_to: datetime | None = None
-    # (3.0) Per-memory access-control list for team-shared memory: reader ids
+    # Per-memory access-control list for team-shared memory: reader ids
     # (user / agent / team ids) allowed to recall this item. Empty means the
-    # scope's own ownership rule governs (the pre-3.0 behaviour, unchanged).
+    # scope's own ownership rule governs (the previous behaviour, unchanged).
     acl: list[str] = Field(default_factory=list)
-    # (3.0) GDPR purpose / consent binding: the purpose this memory was collected
+    # GDPR purpose / consent binding: the purpose this memory was collected
     # for and the consent record that authorises retaining it. Recall and erasure
     # consult these so a withdrawn consent or a purpose mismatch is enforceable.
     purpose: str | None = None
@@ -689,7 +689,7 @@ class ModelCapabilities(BaseModel):
     supports_developer_message: bool = False
     # Input/output modalities the model accepts/produces. ``vision``/``audio``
     # cover the common input booleans; these lists carry the full picture
-    # (e.g. image/audio *output* for 1.9 generation) without a breaking change.
+    # (e.g. image/audio *output* for generation) without a breaking change.
     input_modalities: list[str] = Field(default_factory=lambda: ["text"])
     output_modalities: list[str] = Field(default_factory=lambda: ["text"])
 
@@ -705,7 +705,7 @@ class ModelProfile(BaseModel):
 
     The :class:`~vincio.providers.registry.ModelRegistry` instantiates one
     profile per exact model id and is the single source capability guards, the
-    cost price table, and (1.8+) model rotation all read from.
+    cost price table, and model rotation all read from.
     """
 
     name: str
@@ -729,7 +729,7 @@ class ModelProfile(BaseModel):
     deprecation_date: str | None = None
     retirement_date: str | None = None
     knowledge_cutoff: str | None = None
-    # Suggested successor model id once deprecated/retired (consumed by the 1.8
+    # Suggested successor model id once deprecated/retired (consumed by the
     # lifecycle watcher); harmless metadata until then.
     successor: str | None = None
 
@@ -781,9 +781,9 @@ class RunConfig(BaseModel):
     seed: int | None = None
     reasoning_effort: ReasoningEffort | None = None
     thinking_budget_tokens: int | None = None
-    # Hard-cap enforcement of the full Budget on the single-shot run path (1.7):
+    # Hard-cap enforcement of the full Budget on the single-shot run path:
     # max_cost_usd / max_input_tokens / max_output_tokens / max_steps become hard
-    # caps that raise ``BudgetExceededError``. Set False to restore the pre-1.7
+    # caps that raise ``BudgetExceededError``. Set False to restore the previous
     # soft-cap behavior (only latency and tool-count enforced) for one minor.
     enforce_budget_caps: bool = True
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -1,4 +1,4 @@
-"""Data-driven model registry (1.7).
+"""Data-driven model registry.
 
 A versioned, hot-reloadable, config-overridable catalog keyed by *exact* model
 id. Each entry is a :class:`~vincio.core.types.ModelProfile` binding
@@ -12,7 +12,7 @@ The registry is the single source of truth the rest of the spine reads from:
 * :class:`vincio.observability.costs.PriceTable` derives its prices from it, so
   an unknown model warns and emits ``model.unknown`` instead of silently
   costing ``$0``.
-* (1.8) capability guards, the cost/latency router, and the lifecycle watcher
+* capability guards, the cost/latency router, and the lifecycle watcher
   all consult it.
 
 It is plain data and ships in-process — no network, no hosted dependency. Third
@@ -59,7 +59,7 @@ def _caps(**kwargs: Any) -> ModelCapabilities:
 # tracker shipped (observability/costs.py) and the capabilities each provider
 # previously guessed by substring, now stated explicitly per exact id.
 # Lifecycle dates are populated from provider-published data; left ``None`` when
-# a provider publishes no date (honest by default — 1.8 fills them from the
+# a provider publishes no date (honest by default — the registry fills them from the
 # live model-list endpoints).
 # ---------------------------------------------------------------------------
 
@@ -275,7 +275,7 @@ class ModelRegistry:
         mark_missing_deprecated: bool = False,
         as_of: Any = None,
     ) -> dict[str, list[str]]:
-        """Merge live-discovered *profiles* into the catalog (1.8).
+        """Merge live-discovered *profiles* into the catalog.
 
         Discovered profiles from a model-list endpoint are typically *sparse*
         (id only, bare-default capabilities), so reconciliation must never let
@@ -383,7 +383,7 @@ class ModelRegistry:
         return profile.capabilities if profile is not None else None
 
     def guard_capabilities(self, model_id: str) -> ModelCapabilities | None:
-        """Capabilities for the 1.8 capability guard.
+        """Capabilities for the capability guard.
 
         Like :meth:`capabilities`, but returns ``None`` for a profile that carries
         only the bare-default capability matrix (a sparsely-discovered model whose

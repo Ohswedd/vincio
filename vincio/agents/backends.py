@@ -211,7 +211,7 @@ def _as_state_graph(exported: Any) -> StateGraph:
 class WorkerPoolBackend:
     """In-process reference distributed executor — lock-free, durable, fan-out.
 
-    The worker-pool backend is the substantive 2.1 distributed engine: it runs
+    The worker-pool backend is the substantive distributed engine: it runs
     the **same** :class:`~vincio.agents.graph.StateGraph` across a pool of async
     workers that share one :class:`~vincio.agents.distributed.GraphCoordinator`
     and checkpoint store, so each graph thread is lease-guarded and every

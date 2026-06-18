@@ -143,7 +143,7 @@ class ScoringWeights(BaseModel):
 class ContextCandidate(BaseModel):
     """A scored candidate for inclusion in the context packet.
 
-    2.0: a candidate may be text, an image, or a table. ``content`` always holds
+    A candidate may be text, an image, or a table. ``content`` always holds
     the scorable text surrogate (the text itself, or an image caption/OCR, or a
     table's Markdown), so relevance, novelty, dedup, and ordering work uniformly
     across modalities, while ``image`` / ``table`` carry the non-text payload and

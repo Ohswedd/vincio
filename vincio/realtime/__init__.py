@@ -1,4 +1,4 @@
-"""Voice / realtime sessions (experimental, optional module — since 1.5).
+"""Voice / realtime sessions (optional module).
 
 A separate, opt-in module for stateful bidirectional voice/realtime sessions
 (OpenAI Realtime, Gemini Live): a WebSocket session with voice-activity

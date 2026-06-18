@@ -37,7 +37,7 @@ __all__ = [
     "SandboxedPython",
     "SandboxResult",
     "run_subprocess_sandboxed",
-    # 1.10 — pluggable isolation backends
+    # pluggable isolation backends
     "IsolationBackend",
     "SubprocessIsolation",
     "ContainerIsolation",
@@ -46,7 +46,7 @@ __all__ = [
     "WASMIsolation",
     "get_isolation_backend",
     "require_real_isolation",
-    # 1.10 — computer-use / agentic browsing
+    # computer-use / agentic browsing
     "ComputerAction",
     "ComputerObservation",
     "ComputerUseBackend",

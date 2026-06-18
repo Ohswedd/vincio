@@ -1,13 +1,11 @@
-"""The unified self-improvement contract (3.0).
+"""The unified self-improvement contract.
 
-By 2.x, the closed loop had every organ — gated re-optimization
+The closed loop is built from many organs — gated re-optimization
 (:class:`~vincio.optimize.loop.ImprovementLoop`), autonomous experiment proposal
 (:class:`~vincio.optimize.loop.ExperimentProposer`), online drift→action
 (:class:`~vincio.optimize.controller.ContinuousImprovementController`), guarded
-online bandits, and shadow/canary providers — but as *separately wired* tools,
-each carrying its own surface and its own attach/detach lifecycle.
-
-3.0 collapses them under one declarative, governed contract. A
+online bandits, and shadow/canary providers. This contract unifies them under
+one declarative, governed surface. A
 :class:`SelfImprovementPolicy` is the spec: *what to watch, when to propose, how
 to meta-optimize, whether to canary, and how much to spend*. A
 :class:`SelfImprovementController` is the single engine that drives it — one
@@ -78,7 +76,7 @@ class CanarySpec(BaseModel):
       ``percent`` of live runs ramp onto the candidate, each arm is scored online,
       and once ``min_samples`` candidate observations land the same no-regression
       verdict promotes the candidate or freezes + rolls it back (the prompt-layer
-      analog of the 1.8 ``CanaryRouter``).
+      analog of the ``CanaryRouter``).
     """
 
     metric: str = "lexical_overlap"
@@ -145,7 +143,7 @@ class CanaryVerdict(BaseModel):
 
 
 class DeployResult(BaseModel):
-    """Outcome of a canary-gated prompt/policy deployment (3.0)."""
+    """Outcome of a canary-gated prompt/policy deployment."""
 
     deployed: bool = False
     ref: str | None = None
@@ -280,7 +278,7 @@ def select_for_labeling(
 ) -> list[str]:
     """Active-learning acquisition: pick the most *uncertain* cases to label.
 
-    Uncertainty is distance from the decision midpoint (0.5): a case scoring near
+    Uncertainty is distance from the decision midpoint: a case scoring near
     0.5 is the one a human label resolves most. Returns up to ``budget`` case ids,
     most-uncertain first — the queue a human (or the annotation tool) works next.
     """
@@ -443,7 +441,7 @@ def _finalize_deploy(
 class LiveCanary:
     """Qualify a candidate prompt/policy on **live traffic** and auto-roll-back.
 
-    The prompt-layer analog of the 1.8 :class:`~vincio.providers.shadow.CanaryRouter`:
+    The prompt-layer analog of the :class:`~vincio.providers.shadow.CanaryRouter`:
     it ramps ``canary.percent`` of live runs onto the candidate spec (a
     deterministic accumulator, like the provider canary), scores each arm online
     with ``score_fn``, and — once ``min_samples`` candidate observations land —
@@ -599,8 +597,8 @@ async def deploy_candidate(
     On a pass the candidate is pushed to the prompt registry, tagged, applied
     live, and audited (``deploy``); on a fail it is refused and — when
     ``rollback_on_fail`` — the live prompt is rolled back to the last known-good
-    registry version. This is the canary-driven promotion surface 1.10 reserved
-    for a serving window, in both its offline and live forms.
+    registry version. This is the canary-driven promotion surface for prompt and
+    policy candidates, in both its offline and live forms.
     """
     from ..prompts.registry import PromptRegistry
 

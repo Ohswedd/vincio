@@ -107,7 +107,7 @@ async def test_runner_excludes_skipped_from_aggregation_and_gates():
     assert "recall_at_k" not in by_id["unscoreable"].metrics
     assert "recall_at_k" in by_id["unscoreable"].details.get("_skipped_metrics", [])
 
-    # Aggregation sees only the one scored value (0.0), so a >=0.5 gate fails
+    # Aggregation sees only the one scored value, so a >=0.5 gate fails
     # instead of being inflated to a mean of 0.5 by the skipped 1.0.
     values = report.metric_values("recall_at_k")
     assert values == [0.0]

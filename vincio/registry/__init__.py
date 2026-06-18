@@ -1,4 +1,4 @@
-"""Vincio agent registry & discovery — the governed agent fabric (2.2).
+"""Vincio agent registry & discovery — the governed agent fabric.
 
 Point-to-point A2A/MCP delegation becomes a *discoverable, governed* fabric: an
 :class:`AgentDirectory` indexes agents by capability over the existing A2A

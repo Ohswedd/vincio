@@ -1,4 +1,4 @@
-"""Framework interop + provider/vector-store breadth (0.9).
+"""Framework interop + provider/vector-store breadth.
 
 Drop existing LangChain and LlamaIndex assets straight into Vincio, and reach
 any OpenAI-compatible gateway or vector store through one interface. The

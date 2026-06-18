@@ -1,7 +1,7 @@
-"""Lock-free distributed coordination for durable graphs (agents/distributed, 2.1).
+"""Lock-free distributed coordination for durable graphs (agents/distributed).
 
-The 0.6 :class:`~vincio.agents.graph.StateGraph` already checkpoints every
-super-step on the shared store, which makes a run *resumable*. 2.1 makes it
+The :class:`~vincio.agents.graph.StateGraph` checkpoints every super-step on the
+shared store, which makes a run *resumable*. This module makes it
 *safe to resume from more than one worker at once* — the missing piece for
 horizontal scale — without a control plane and without forking the engine.
 

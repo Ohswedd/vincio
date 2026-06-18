@@ -1,4 +1,4 @@
-"""Evaluation & observability (0.5): quality metrics, synthetic data,
+"""Evaluation & observability: quality metrics, synthetic data,
 red-teaming, experiments with significance, prompt registry, sessions,
 feedback, and the local trace viewer — all offline, no platform."""
 

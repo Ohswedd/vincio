@@ -1,4 +1,4 @@
-"""Programmable rails (0.7).
+"""Programmable rails.
 
 NeMo-Guardrails-style input/output rails expressed in the deterministic
 policy engine. A rail is plain data — direction, kind, action, parameters —

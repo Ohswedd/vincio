@@ -50,7 +50,7 @@ DEFAULT_OBJECTIVES: list[ObjectiveSpec] = [
 ]
 
 # Frontier for agent optimization: trade goal success and tool correctness off
-# against step count and cost. The 1.2 trajectory metrics are ordinary metrics,
+# against step count and cost. The trajectory metrics are ordinary metrics,
 # so they drop straight into the optimizer as fitness/Pareto terms.
 AGENTIC_OBJECTIVES: list[ObjectiveSpec] = [
     ObjectiveSpec(name="goal", metric="goal_accuracy"),

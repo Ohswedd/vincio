@@ -1,4 +1,4 @@
-"""Provider-aware prompt-cache strategy (1.3).
+"""Provider-aware prompt-cache strategy.
 
 The compiler already lays content out stable-prefix-first and marks the stable
 system block with ``cache_hint`` (its cache-aware layout). This module turns

@@ -1,4 +1,4 @@
-"""Cost, reliability & scale (1.3): batch, circuit breaking, key pooling,
+"""Cost, reliability & scale: batch, circuit breaking, key pooling,
 cascades, cost attribution, budgets, prompt-cache strategy, incremental and
 sharded indexing. All offline via the mock provider and httpx.MockTransport."""
 
@@ -678,7 +678,7 @@ class TestBudgets:
         app = ContextApp(name="b", provider=MockProvider(default_text="ok"), config=offline_config)
         app.cost_tracker.price_table.set("gpt-5.2", ModelPrice(input_per_mtok=1e9))
         # This test exercises the per-tenant cost SLO, a distinct layer from the
-        # per-run hard cap (1.7); raise the run cap so the SLO is what denies.
+        # per-run hard cap; raise the run cap so the SLO is what denies.
         app.budget = app.budget.model_copy(update={"max_cost_usd": 1e12})
         app.set_cost_budget(scope="tenant", id="acme", limit_usd=0.001, period="total")
         first = app.run("a", tenant_id="acme")

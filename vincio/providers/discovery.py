@@ -1,4 +1,4 @@
-"""Live model discovery reconciled into the registry (1.8).
+"""Live model discovery reconciled into the registry.
 
 Optional runtime discovery from a provider's model-list endpoint
 (:meth:`~vincio.providers.base.ModelProvider.list_models`), reconciled into the
@@ -12,12 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..stability import experimental
-
 __all__ = ["discover_models"]
 
 
-@experimental(since="1.8")
 async def discover_models(
     provider: Any,
     *,

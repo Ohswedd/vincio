@@ -8,8 +8,7 @@ fabric* that spans both interop camps (A2A and **AGNTCY/ACP**) and the official
 **MCP Registry**, with every resolution recorded as an access decision on the
 hash-chained audit log.
 
-This is additive and experimental (`@experimental(since="2.2")`); it changes
-nothing about how a single agent runs.
+This is additive; it changes nothing about how a single agent runs.
 
 ## The directory
 

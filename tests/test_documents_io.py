@@ -1,4 +1,4 @@
-"""Tests for the 1.9 richer document inputs: new formats, OCR, transcripts, forms."""
+"""Tests for the richer document inputs: new formats, OCR, transcripts, forms."""
 
 from __future__ import annotations
 
@@ -20,8 +20,6 @@ from vincio.documents import (
 )
 from vincio.documents.parsers import parse_html, structure_data
 from vincio.documents.registry import default_parser_registry
-
-pytestmark = pytest.mark.filterwarnings("ignore::vincio.VincioExperimentalWarning")
 
 
 def _png(path: Path) -> Path:

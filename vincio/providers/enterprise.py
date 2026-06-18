@@ -1,6 +1,6 @@
 """Enterprise deployment endpoints: AWS Bedrock, Google Vertex, Azure OpenAI.
 
-These are the surfaces the governance buyer actually runs on. 2.0 routes them
+These are the surfaces the governance buyer actually runs on. They route
 through the *same* :class:`~vincio.providers.base.HTTPProvider`, model registry,
 capability guards, swap gate, residency, and audit chain as every other
 provider — not a separate proxy. The enabler is the pluggable

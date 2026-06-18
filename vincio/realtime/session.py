@@ -15,7 +15,6 @@ from typing import Any, Protocol
 from pydantic import BaseModel, Field
 
 from ..core.errors import VincioError
-from ..stability import experimental
 
 __all__ = [
     "VADConfig",
@@ -86,7 +85,6 @@ class RealtimeBackend(Protocol):  # pragma: no cover - structural
     async def close(self) -> None: ...
 
 
-@experimental(since="1.5")
 class RealtimeSession:
     """A bidirectional realtime session.
 

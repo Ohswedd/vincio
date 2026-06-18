@@ -1,8 +1,5 @@
 # Agent Skills
 
-> **Experimental (1.1).** The Skills surface (`vincio.skills`, `app.add_skill`)
-> is new and may change within the 1.x line.
-
 [Agent Skills](https://www.anthropic.com/news/skills) package procedural
 knowledge as a `SKILL.md` file (YAML frontmatter + Markdown body, optional
 bundled scripts), donated to the Agentic AI Foundation. Vincio loads them as

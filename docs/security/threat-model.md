@@ -107,7 +107,7 @@ reduce blast radius but do not contain a kernel exploit. Vincio also does not:
   not a proof);
 - provide a hosted control plane, managed secrets store, or compliance program.
 
-The opt-in voice/realtime module (`vincio.realtime`, since 1.5) opens a
+The opt-in voice/realtime module (`vincio.realtime`, ) opens a
 stateful WebSocket session to the configured provider; **its in-session tool
 calls are dispatched through the same permissioned, sandboxed, audited tool
 runtime** as every other Vincio tool, so the tool trust boundary above applies

@@ -1,4 +1,4 @@
-"""Batch execution against provider Batch APIs (1.3).
+"""Batch execution against provider Batch APIs.
 
 Provider Batch APIs trade latency for a flat ~50% price cut, which is the right
 trade for latency-tolerant work: offline evals, bulk extraction, synthetic-data
@@ -425,7 +425,7 @@ class AnthropicBatchBackend:
 
 class GoogleBatchBackend:
     """Drives the Gemini (Google Developer API) Batch Mode over a
-    :class:`GoogleProvider` (1.8).
+    :class:`GoogleProvider`.
 
     Completes half-cost batch parity with OpenAI/Anthropic for the eval/regression
     workloads the swap gate's replay leans on. Requests are submitted **inline**
@@ -439,7 +439,7 @@ class GoogleBatchBackend:
 
     The state map also accepts Vertex AI's ``JOB_STATE_*`` values, but Vertex's
     batch surface proper (service-account auth + GCS-staged I/O, a distinct
-    request/response shape) lands with the 2.0 enterprise-endpoint providers; this
+    request/response shape) lands with the enterprise-endpoint providers; this
     backend targets the Developer API.
     """
 

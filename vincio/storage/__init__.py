@@ -35,14 +35,14 @@ __all__ = [
     "SQLiteMetadataStore",
     "VECTOR_BACKENDS",
     "build_vector_index",
-    # 2.1: shared server state
+    # shared server state
     "RateLimiter",
     "RateLimitDecision",
     "InMemoryRateLimiter",
     "IdempotencyStore",
     "InMemoryIdempotencyStore",
     "TenantQuotaManager",
-    # 2.2: index/retrieval regression artifacts
+    # index/retrieval regression artifacts
     "IndexRegressionArtifact",
     "IndexRegressionStore",
     "config_key",

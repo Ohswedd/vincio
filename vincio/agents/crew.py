@@ -41,7 +41,7 @@ __all__ = ["AgentRole", "DelegationRecord", "CrewMemberReport", "CrewResult", "C
 
 
 class CrewEvent(BaseModel):
-    """A streamed event from :meth:`Crew.astream` (2.2).
+    """A streamed event from :meth:`Crew.astream`.
 
     Surfaces crew orchestration live — delegations and per-member start/end —
     and **forwards each member's tool and text events** (tagged by ``member``),
@@ -180,7 +180,7 @@ class Crew:
         self.name = name
         self.process = process
         self.costs = cost_tracker or CostTracker()
-        # Cost attribution (1.3): the manager's and every member's model calls
+        # Cost attribution: the manager's and every member's model calls
         # are attributed when an app wires its ledger in; set per run.
         self.cost_ledger = cost_ledger
         self.attribution: dict[str, Any] = {}
@@ -191,7 +191,7 @@ class Crew:
         self.max_rounds = max_rounds
         self.concurrency = concurrency
         self._members: dict[str, _Member] = {}
-        # Streaming sink (2.2): set by ``astream`` so delegations/members and the
+        # Streaming sink: set by ``astream`` so delegations/members and the
         # members' tool/text events stream live. ``None`` on the ``arun`` path.
         self._event_sink: Callable[[CrewEvent], None] | None = None
 
@@ -421,7 +421,7 @@ class Crew:
         """Run the crew on ``objective``; ``tasks`` optionally assigns per-member work.
 
         ``tenant_id`` / ``user_id`` / ``feature`` attribute the manager's and every
-        member's model calls on the app cost ledger (1.3)."""
+        member's model calls on the app cost ledger."""
         if not self._members:
             raise AgentEngineError(f"crew {self.name!r} has no members")
         from ..core.utils import new_id
@@ -550,7 +550,7 @@ class Crew:
         user_id: str | None = None,
         feature: str | None = None,
     ) -> AsyncIterator[CrewEvent]:
-        """Stream the crew run as :class:`CrewEvent`\\ s (2.2).
+        """Stream the crew run as :class:`CrewEvent`\\ s.
 
         Yields ``run_start``, then live ``delegation`` / ``member_start`` /
         ``member_end`` plus each member's forwarded ``tool_call`` /

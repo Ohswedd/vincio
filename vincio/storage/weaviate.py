@@ -59,7 +59,7 @@ class WeaviateVectorIndex:
         return int(self.collection.aggregate.over_all(total_count=True).total_count)
 
     def _properties(self, chunk: Chunk) -> dict[str, Any]:
-        # 2.0: persist flat filterable fields alongside the blob so a compiled
+        # persist flat filterable fields alongside the blob so a compiled
         # FilterSpec matches server-side (Weaviate properties).
         return {"json": chunk.model_dump_json(), **flat_filter_fields(chunk)}
 
@@ -88,7 +88,7 @@ class WeaviateVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
-        # 2.0: push a FilterSpec into Weaviate's `where` filter server-side; the
+        # push a FilterSpec into Weaviate's `where` filter server-side; the
         # as_predicate net guarantees correctness regardless. Fetch top_k when a
         # FilterSpec is pushed down (no over-fetch); a callable still post-filters.
         native = where.to_weaviate() if isinstance(where, FilterSpec) else None

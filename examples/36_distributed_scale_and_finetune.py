@@ -1,7 +1,7 @@
-"""Scale out & train for real (2.1).
+"""Scale out & train for real.
 
-The additive 2.1 surface on the frozen 2.0 API — horizontal scale and a real,
-still-self-hosted operational plane, all offline on the deterministic mock:
+Horizontal scale and a real, still-self-hosted operational plane, all offline
+on the deterministic mock:
 
   1. Distributed durable execution: a graph thread is lease-guarded and every
      super-step is CAS-committed, so two workers can't double-execute; a worker
@@ -73,7 +73,7 @@ async def distributed_execution() -> None:
     print(f"   worker-pool fan-out: {[r.state['n'] for r in results]}")
 
     # Send map-reduce: a dispatcher fans out to workers, a reducer collects.
-    # The channel default (2.1.1) makes the reducer fold the first write into an
+    # The channel default makes the reducer fold the first write into an
     # empty list, so a non-defensive ``operator.add`` needs no upstream seed node.
     mr = StateGraph("mapreduce", reducers={"out": operator.add}, defaults={"out": list})
     mr.add_node("dispatch", lambda s: [Send("double", {"x": v}) for v in s["items"]])
@@ -199,7 +199,7 @@ async def main() -> None:
     served_observability()
     await quantized_retrieval()
     await local_models()
-    print("\nAll 2.1 capabilities ran offline. The single-process path stays the default.")
+    print("\nAll capabilities ran offline. The single-process path stays the default.")
 
 
 if __name__ == "__main__":

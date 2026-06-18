@@ -178,7 +178,7 @@ class SandboxedPython:
             get_isolation_backend(isolation) if isinstance(isolation, str) else isolation
         ) or SubprocessIsolation()
         # Code execution is a prime adversarial workload: when ``require_isolation``
-        # is set, refuse to run on the zero-dep subprocess backend (1.10).
+        # is set, refuse to run on the zero-dep subprocess backend.
         if require_isolation:
             require_real_isolation(self.isolation)
 
@@ -198,7 +198,7 @@ class SandboxedPython:
 
 
 # ---------------------------------------------------------------------------
-# Pluggable isolation backends (1.10)
+# Pluggable isolation backends
 # ---------------------------------------------------------------------------
 
 

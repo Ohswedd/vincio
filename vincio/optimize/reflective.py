@@ -1,4 +1,4 @@
-"""Reflective optimization (1.4): GEPA-style prompt evolution.
+"""Reflective optimization: GEPA-style prompt evolution.
 
 Where the evolution loop mutates configs blindly, the reflective optimizer
 *reads the eval report's failures*, reflects in natural language on **why** a
@@ -139,7 +139,7 @@ def _invoke_reflect(
 ) -> Reflection:
     """Call ``reflect`` with the dataset when the reflector accepts it.
 
-    The ``dataset`` keyword is additive (1.10): a custom :class:`Reflector`
+    The ``dataset`` keyword is additive: a custom :class:`Reflector`
     written against the older 4-argument signature still works — we retry
     without it on the resulting ``TypeError``.
     """
@@ -971,7 +971,7 @@ class ReflectiveOptimizer:
             result.promoted = False
             result.reason = reason
             return result
-        # Significance gate (1.7): the reflective path gets the same statistical
+        # Significance gate: the reflective path gets the same statistical
         # backing as the evolution path — block a significant primary-metric
         # regression and record the verdict on the result/audit.
         blocked, sig_reason = apply_significance_gate(

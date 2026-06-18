@@ -2,9 +2,9 @@
 
 One helper turns an :class:`~vincio.core.types.ImageRef` into the base64 / data
 URL forms the chat providers and multimodal embedders need, so a local image
-path is never emitted as an unreachable ``file://`` URL (the OpenAI bug 1.7
-fixes) and the size guardrail is enforced once, in one place. The audio
-companion (1.9) does the same for :class:`~vincio.core.types.AudioRef`, so
+path is never emitted as an unreachable ``file://`` URL and the size guardrail
+is enforced once, in one place. The audio
+companion does the same for :class:`~vincio.core.types.AudioRef`, so
 ``ContentPart.audio`` is finally usable as chat input, and
 :func:`media_sha256` gives the C2PA provenance marker one digest that binds
 text *or* raw media bytes.

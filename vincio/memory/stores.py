@@ -94,8 +94,8 @@ CREATE INDEX IF NOT EXISTS idx_memory_scope_owner ON memory_items(scope, owner_i
 CREATE INDEX IF NOT EXISTS idx_memory_status ON memory_items(status);
 """
 
-# (3.0) Columns added after the original schema; ``ALTER TABLE ADD COLUMN`` is
-# applied for each one missing from an existing DB so a pre-3.0 memory file
+# Columns added after the original schema; ``ALTER TABLE ADD COLUMN`` is
+# applied for each one missing from an existing DB so a previous memory file
 # upgrades in place without a destructive rebuild.
 _MIGRATIONS_3_0 = ("valid_from", "valid_to", "acl", "purpose", "consent_id")
 
@@ -111,7 +111,7 @@ class SQLiteMemoryStore:
         self._conn.commit()
 
     def _migrate(self) -> None:
-        """Add any 3.0 columns missing from a pre-3.0 ``memory_items`` table."""
+        """Add any columns missing from a previous ``memory_items`` table."""
         existing = {row[1] for row in self._conn.execute("PRAGMA table_info(memory_items)")}
         for column in _MIGRATIONS_3_0:
             if column not in existing:

@@ -41,7 +41,7 @@ HumanGate = Callable[[str, dict[str, Any]], Awaitable[bool]]
 
 
 class AgentEvent(BaseModel):
-    """A streamed event from :meth:`AgentExecutor.astream` (2.2).
+    """A streamed event from :meth:`AgentExecutor.astream`.
 
     Mirrors the flat, ``type``-discriminated event surface ``graph`` and
     ``compose`` already expose: step lifecycle, real text deltas, tool activity,
@@ -127,7 +127,7 @@ class AgentExecutor:
         self.principal = principal or Principal()
         self.tracer = tracer or Tracer()
         self.costs = cost_tracker or CostTracker()
-        # Cost attribution (1.3): when an app wires its ledger here, every agent
+        # Cost attribution: when an app wires its ledger here, every agent
         # model call is attributed by tenant/user/feature/run, exactly like a
         # ContextApp run. ``attribution`` is set per run by the caller.
         self.cost_ledger = cost_ledger
@@ -135,7 +135,7 @@ class AgentExecutor:
         self.human_gate = human_gate
         self.system_prompt = system_prompt
         self.max_validation_rounds = max_validation_rounds
-        # In-loop compaction (1.10): old tool/observation turns are folded into a
+        # In-loop compaction: old tool/observation turns are folded into a
         # rolling summary once the working context exceeds this token budget,
         # replacing fixed slicing. Level-parallelism and plan-and-execute bounds.
         from .compaction import ContextCompactor
@@ -144,11 +144,11 @@ class AgentExecutor:
         self.max_context_tokens = max_context_tokens
         self.max_parallel_steps = max(1, max_parallel_steps)
         self.max_replans = max_replans
-        # Streaming sink (2.2): set by ``astream`` so the step/tool/text handlers
+        # Streaming sink: set by ``astream`` so the step/tool/text handlers
         # emit events live. ``None`` on the default ``run`` path — zero overhead.
         self._event_sink: Callable[[AgentEvent], None] | None = None
 
-    # -- streaming emission (2.2) ----------------------------------------------------
+    # -- streaming emission ----------------------------------------------------
 
     def _emit(self, event: AgentEvent) -> None:
         if self._event_sink is not None:
@@ -171,7 +171,7 @@ class AgentExecutor:
 
     async def _stream_model(self, request: ModelRequest) -> Any:
         """Drive ``provider.stream`` and emit **genuine provider token deltas** as
-        they arrive (2.2). The final :class:`ModelResponse` is taken from the
+        they arrive. The final :class:`ModelResponse` is taken from the
         stream's terminal ``done`` event (a thin generate fallback if a provider
         omits it), so the call returns the identical result the non-streaming
         path would — only the text now arrives live, token by token."""
@@ -219,7 +219,7 @@ class AgentExecutor:
     def _context_messages(self, state: AgentState, instruction: str) -> list[Message]:
         parts: list[str] = [f"Objective: {state.objective.text}"]
         # In-loop compaction: keep recent evidence/observations verbatim within a
-        # token budget and fold older ones into a rolling summary (1.10), instead
+        # token budget and fold older ones into a rolling summary, instead
         # of an arbitrary fixed slice. Split the budget across the two sections.
         section_budget = max(512, self.max_context_tokens // 2)
         if state.evidence:
@@ -506,7 +506,7 @@ class AgentExecutor:
     ) -> AgentState:
         objective = Objective(text=objective) if isinstance(objective, str) else objective
         state = AgentState(objective=objective, budget=budget or Budget())
-        # Cost-attribution dimensions for this run's model calls (1.3); default
+        # Cost-attribution dimensions for this run's model calls; default
         # the run id to the agent state's id so events are always grouped.
         self.attribution = {"run_id": state.id, **(attribution or {})}
         if initial_evidence:
@@ -522,7 +522,7 @@ class AgentExecutor:
         )
         state.steps = list(dag.steps.values())
         await self._execute_dag(state, dag)
-        # plan-and-execute (1.10): if the run finished unsatisfactorily, replan
+        # plan-and-execute: if the run finished unsatisfactorily, replan
         # corrective steps and execute them, bounded by ``max_replans`` + budget.
         if self.planner.mode == "plan_and_execute":
             await self._replan_loop(state, objective)
@@ -541,7 +541,7 @@ class AgentExecutor:
         initial_evidence: list[EvidenceItem] | None = None,
         attribution: dict[str, Any] | None = None,
     ) -> AsyncIterator[AgentEvent]:
-        """Stream the run as :class:`AgentEvent`\\ s (2.2).
+        """Stream the run as :class:`AgentEvent`\\ s.
 
         Yields ``run_start``, then live ``step_start`` / ``step_end``,
         ``tool_call`` / ``tool_result``, and real ``text_delta`` events, ending
@@ -606,7 +606,7 @@ class AgentExecutor:
 
     async def _execute_dag(self, state: AgentState, dag: Any) -> None:
         """Run the DAG level by level, executing each level's independent steps
-        concurrently (1.10) — bounded by ``max_parallel_steps`` and the budget."""
+        concurrently — bounded by ``max_parallel_steps`` and the budget."""
         while not dag.complete and not state.terminated:
             if self._check_termination(state):
                 break
@@ -670,7 +670,7 @@ class AgentExecutor:
             if self._check_termination(state):
                 break
             # In-loop compaction: fold older turns into a rolling summary once the
-            # transcript exceeds the token budget (1.10), so the loop never overflows.
+            # transcript exceeds the token budget, so the loop never overflows.
             messages = self.compactor.compact_messages(messages, budget=self.max_context_tokens)
             response = await self._model_call(state, messages, tools=self.tool_specs, stream_text=True)
             state.usage.steps += 1

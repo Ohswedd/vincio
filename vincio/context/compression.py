@@ -186,7 +186,7 @@ def link_entailments(
     ledger: list[dict[str, Any]], *, support_threshold: float = 0.5
 ) -> list[dict[str, Any]]:
     """Populate ``supports`` / ``contradicts`` links between ledger claims via
-    entailment (2.0), turning a flat claim list into a claim/contradiction graph.
+    entailment, turning a flat claim list into a claim/contradiction graph.
 
     Two claims that are topically similar (lexical overlap ≥ ``support_threshold``)
     *corroborate* each other when they come from different sources and agree on

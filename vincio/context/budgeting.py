@@ -144,7 +144,7 @@ class BudgetAllocator:
         learned: dict[str, dict[str, float]] | None = None,
     ) -> None:
         self.base_allocation = allocation or dict(DEFAULT_ALLOCATION)
-        # Learned per-task tables (0.8): tuned from eval outcomes by
+        # Learned per-task tables: tuned from eval outcomes by
         # vincio.optimize.BudgetLearner, keyed by TaskType value. A learned
         # table overrides the fixed TASK_ALLOCATIONS entry for its task.
         self.learned: dict[str, dict[str, float]] = {
@@ -177,7 +177,7 @@ class BudgetAllocator:
         and the remainder is distributed over the flexible blocks
         proportionally to their configured fractions.
 
-        ``reserve_tokens`` (1.7) is headroom held back from the flexible blocks
+        ``reserve_tokens`` is headroom held back from the flexible blocks
         for the model's response and tool-loop turns, so the allocator accounts
         for the *full* window (input + output + tool loop) instead of input
         only. Defaults to 0 (no reservation), so it is fully additive.

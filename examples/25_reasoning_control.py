@@ -1,4 +1,4 @@
-"""Unified reasoning control across providers, with honest cost accounting (1.1).
+"""Unified reasoning control across providers, with honest cost accounting.
 
 One portable knob — ``reasoning_effort`` — maps to OpenAI reasoning effort,
 Anthropic extended thinking, and Gemini thinking budgets; providers that don't

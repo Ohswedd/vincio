@@ -6,7 +6,7 @@
 4. resolve policy      10. compile Context IR     16. write memory updates
 5. memory candidates   11. render model request   17. return result
 
-The flow is async-first (0.2): memory recall, retrieval, and file ingestion
+The flow is async-first: memory recall, retrieval, and file ingestion
 run concurrently; tool calls within a model round fan out under a bounded
 worker pool; cancellation propagates through every stage; and
 ``execute_stream`` runs the same pipeline with token streaming, incremental
@@ -138,7 +138,7 @@ class VincioRuntime:
         return result
 
     def _apply_governance(self, result: RunResult, user_input: UserInput) -> None:
-        """Post-run governance (1.6): lineage links, fertility telemetry, and
+        """Post-run governance: lineage links, fertility telemetry, and
         synthetic-content marking. Best-effort — never breaks a run."""
         app = self.app
         try:
@@ -199,7 +199,7 @@ class VincioRuntime:
             result.trace_id = trace.id
             try:
                 # Same latency-deadline + cancellation wrapper as the
-                # non-streaming path, so the two paths can't drift (1.7).
+                # non-streaming path, so the two paths can't drift.
                 async with asyncio.timeout(budget.max_latency_ms / 1000):
                     prepared = await self._prepare(
                         user_input, run_config, budget, policies, result, run_id
@@ -267,7 +267,7 @@ class VincioRuntime:
         discount: float = 0.5,
         timeout_s: float | None = None,
     ) -> list[RunResult]:
-        """Run a set of inputs through a provider Batch API (1.3).
+        """Run a set of inputs through a provider Batch API.
 
         Prepares every input (steps 1-11) under its own trace, submits the
         model requests as one batch (at the discounted rate), then validates and
@@ -422,7 +422,7 @@ class VincioRuntime:
             if check.transformed_text is not None:
                 routed.input.text = check.transformed_text
 
-        # 4c. cost-budget SLO enforcement (1.3): per-tenant/feature budgets are
+        # 4c. cost-budget SLO enforcement: per-tenant/feature budgets are
         # enforced on the same audit path as every other policy decision. A hard
         # cap (or queue-to-batch) denies the interactive run; degrade-to-cheaper
         # swaps in a cheaper model for this run.
@@ -589,7 +589,7 @@ class VincioRuntime:
                 cached=compiled_context.from_cache,
             )
             # Persist off the event loop so the packet write doesn't block the
-            # pipeline mid-run (1.7 async store contract).
+            # pipeline mid-run (async store contract).
             await asave(
                 app.store,
                 "context_packets",
@@ -648,7 +648,7 @@ class VincioRuntime:
                 schema=contract.schema_name if contract.schema_def else None,
             )
 
-        # Pre-flight input-token cap (1.7): estimate the full first-call input
+        # Pre-flight input-token cap: estimate the full first-call input
         # against ``max_input_tokens`` before spending a single token, at the
         # same choke point as policy and the cost SLO. Batch runs are exempt
         # (``enforce_budget=False``), as is the soft-cap opt-out.
@@ -678,7 +678,7 @@ class VincioRuntime:
             )
 
         messages = list(compiled_prompt.messages)
-        # Provider-aware prompt caching (1.3): attach a TTL to the stable prefix
+        # Provider-aware prompt caching: attach a TTL to the stable prefix
         # for caching-capable providers; auto-cache providers rely on ordering.
         cache_info: dict[str, Any] = {}
         if app.prompt_cache is not None:
@@ -799,7 +799,7 @@ class VincioRuntime:
     def _cascade_capability_guard(self, prepared: _PreparedRun, expects_schema: bool) -> Any:
         """Build an ``is_capable(model) -> bool`` guard for cascade escalation, so a
         run never starts on, or escalates into, a model that cannot serve this
-        request (1.8). Reads the request's needs once and checks each rung against
+        request. Reads the request's needs once and checks each rung against
         the model registry; unknown models are treated as capable (not blocked)."""
         from ..providers.capabilities import capability_check, requirements_for
         from ..providers.registry import default_model_registry
@@ -878,7 +878,7 @@ class VincioRuntime:
         enforce: bool,
         stage: str,
     ) -> None:
-        """Hard-cap the full Budget on the run path (1.7).
+        """Hard-cap the full Budget on the run path.
 
         After each model call and tool round, raise :class:`BudgetExceededError`
         when ``max_cost_usd`` / ``max_input_tokens`` / ``max_output_tokens`` /
@@ -1042,7 +1042,7 @@ class VincioRuntime:
         rung = cascade.first() if cascade is not None else None
         model = prepared.model  # already the cascade's first rung when active
         provider = self._cascade_provider(rung.provider) if rung is not None else None
-        # Capability guard (1.8): never escalate a cascade into — or start it on —
+        # Capability guard: never escalate a cascade into — or start it on —
         # a model that cannot serve this request (vision/tools/schema/reasoning/
         # context). Unknown models are never blocked.
         is_capable = self._cascade_capability_guard(prepared, expects_schema) if cascade else None
@@ -1337,7 +1337,7 @@ class VincioRuntime:
                 )
                 result.cost_usd += correction.cost_usd
                 # Attribute the correction's model spend too, so the cost ledger
-                # stays consistent with result.cost_usd (1.3).
+                # stays consistent with result.cost_usd.
                 if correction.cost_usd:
                     app.cost_ledger.record_model_call(
                         model=prepared.model,
@@ -1403,7 +1403,7 @@ class VincioRuntime:
         result.evidence = compiled_context.ir.evidence
         # Stamp the full input on the result so the distillation flywheel can
         # build faithful training data straight from a RunResult — no truncation,
-        # no opt-in trace capture required (1.4). Cheap (a string reference);
+        # no opt-in trace capture required. Cheap (a string reference);
         # covers run / stream / batch since all paths call _finalize.
         result.metadata.setdefault("input", user_input.text or "")
 
@@ -1470,7 +1470,7 @@ class VincioRuntime:
                         session_id=routed.input.session_id,
                         source_trace_id=result.trace_id,
                     )
-                # Auto-memory from runs (0.8): verifiable output claims that
+                # Auto-memory from runs: verifiable output claims that
                 # the cited evidence supports become candidate memories.
                 if "facts" in write_back and result.raw_text:
                     from ..memory.facts import extract_grounded_facts

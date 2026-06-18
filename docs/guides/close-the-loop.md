@@ -359,14 +359,16 @@ beats the baseline within its rollout budget, distillation exports only grounded
 examples and gates the student on quality, and learned compression preserves the
 cited-fact set under a faithfulness gate — under CI-gated budgets.
 
-## Closing the loop online (1.10, `@experimental`)
+## Closing the loop online
 
 The pieces above run the loop when you press go. `vincio.optimize.controller`
 makes it **continual, online, and safe**:
 
 ```python
-ctl = app.continuous_improvement(
-    metrics=["groundedness"], golden=held_out, sustain=2,
+from vincio import ContinuousImprovementController
+
+ctl = ContinuousImprovementController(
+    app, metrics=["groundedness"], golden=held_out, sustain=2,
     quality_floor={"groundedness": 0.8},
 )
 ctl.set_baseline("groundedness", baseline_scores).attach()
@@ -381,12 +383,12 @@ is debounced (per-metric cooldown) and bounded (a global eval budget); every
 decision lands on the audit chain and an `improvement.decision` event; controller
 state persists so it is restart-safe.
 
-Three more 1.10 organs make the closed loop safer and more informed:
+Three more organs make the closed loop safer and more informed:
 
 - **Real reflector (GEPA proper)** — `app.reflective_optimize(..., reflector="llm")`
   reads the actual failing cases, clusters them into failure modes, and proposes
   the targeted edit, falling back to the deterministic heuristic offline.
-- **Experiment proposer** — `app.experiment_proposer(...)` ranks the weakest
+- **Experiment proposer** — `ExperimentProposer(app, ...)` ranks the weakest
   subsystem from online eval + drift and schedules the highest-ROI experiment.
 - **Held-out growing golden suite** — `GoldenRegressionSuite` records each
   promotion's fixed cases and gates every later promotion
@@ -397,12 +399,12 @@ The VincioBench `loop` family gates the drift detectors, the controller's
 rollback, the non-regression guard, and restart-safe online state; the
 `agentic_evals` family gates the reflector's failure-mode diagnosis.
 
-## The unified self-improvement contract (3.0, `@experimental`)
+## The unified self-improvement contract
 
-By 2.x every organ above shipped, but as separately-wired tools. 3.0 collapses
-them under one declarative, governed contract. A `SelfImprovementPolicy` is the
-spec — *what to watch, when to propose, how to meta-optimize, whether to canary,
-how much to spend* — and `app.self_improvement(policy, dataset=...)` returns a
+The organs above compose under one declarative, governed contract. A
+`SelfImprovementPolicy` is the spec — *what to watch, when to propose, how to
+meta-optimize, whether to canary, how much to spend* — and
+`app.self_improvement(policy, dataset=...)` returns a
 `SelfImprovementController` that drives the existing loop, proposer, controller,
 and canary as **one streaming engine**:
 
@@ -433,14 +435,14 @@ Two parts are first-class here rather than ad-hoc knobs:
 
 Every promotion still passes the **same** significance + safety + golden
 non-regression gates the loop always used. The canary-driven prompt/policy
-**promotion** reserved out of 1.10 lands as a serving surface:
+**promotion** is the serving surface:
 
 ```python
 result = app.deploy(candidate_spec, dataset=golden)  # offline canary-gated
 # Promotes live (registry push + tag + apply + audit) only on a no-regression
 # verdict; a failing gate refuses and rolls back to the last known-good version.
 
-# Or qualify on *live traffic* — the prompt-layer analog of the 1.8 CanaryRouter:
+# Or qualify on *live traffic* — the prompt-layer analog of the CanaryRouter:
 result = app.deploy(
     candidate_spec,
     live_inputs=sampled_live_runs,        # a sampled stream of real inputs
@@ -453,8 +455,9 @@ result = app.deploy(
 # a true live stream one run at a time; each observation still serves a real answer.
 ```
 
-`app.continuous_improvement` and `app.experiment_proposer` are deprecated
-(`since=3.0`, `removed_in=4.0`) in favour of the unified contract and stay
-functional through 3.x. The `loop` family's `self_improvement` checks gate the
-streaming cycle, meta-optimization, and the canary-gated deploy. See
-[`38_self_improvement_and_provable_erasure.py`](../../examples/38_self_improvement_and_provable_erasure.py).
+`app.self_improvement(policy)` is the recommended surface; the underlying
+`ContinuousImprovementController` and `ExperimentProposer` remain available
+directly when you want to wire one organ on its own. The `loop` family's
+`self_improvement` checks gate the streaming cycle, meta-optimization, and the
+canary-gated deploy. See
+[`38_self_improvement_and_erasure.py`](../../examples/38_self_improvement_and_erasure.py).

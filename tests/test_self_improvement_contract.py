@@ -1,4 +1,4 @@
-"""3.0 unified self-improvement contract: SelfImprovementPolicy + streaming
+"""Unified self-improvement contract: SelfImprovementPolicy + streaming
 controller, meta-optimization (successive-halving + learned weights),
 active-learning label acquisition, and canary-gated deployment."""
 

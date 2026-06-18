@@ -1,4 +1,4 @@
-"""Tests for 1.6 enterprise governance & compliance.
+"""Tests for enterprise governance & compliance.
 
 Covers model/system cards, OWASP/NIST/MITRE framework mapping, AI-BOM +
 model-hash verification, EU AI Act transparency artifacts, data lineage and
@@ -8,8 +8,6 @@ slicing — all offline.
 """
 
 from __future__ import annotations
-
-import warnings
 
 import pytest
 
@@ -102,7 +100,7 @@ class TestFrameworks:
     def test_all_frameworks_mapped(self):
         report = ComplianceMapper().map(target=VincioConfig())
         # The control catalog spans the four security frameworks plus the
-        # ISO/IEC 42001 AI-management controls added in 1.9. (EU AI Act is a
+        # ISO/IEC 42001 AI-management controls. (EU AI Act is a
         # conformity-pack view, not control-mapped here.)
         assert set(report.frameworks) == {
             ComplianceFramework.OWASP_LLM_2025.value,
@@ -574,12 +572,10 @@ def test_public_symbols_exported():
         assert hasattr(vincio, name)
 
 
-def test_governance_symbols_experimental():
-    # The operational mapper carries the experimental marker; app methods too.
+def test_governance_symbols_stable():
+    # Governance is part of the supported, stable public surface.
     from vincio.stability import StabilityLevel, stability_of
 
-    assert stability_of(ComplianceMapper)["level"] is StabilityLevel.EXPERIMENTAL
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore")
-        app = ContextApp("x", provider="mock")
-        _ = app.model_card()  # should not raise
+    assert stability_of(ComplianceMapper)["level"] is StabilityLevel.STABLE
+    app = ContextApp("x", provider="mock")
+    _ = app.model_card()  # should not raise

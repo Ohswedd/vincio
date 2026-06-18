@@ -1,4 +1,4 @@
-"""Text-to-speech / speech-synthesis output modality (1.9).
+"""Text-to-speech / speech-synthesis output modality.
 
 A neutral ``synthesize_speech`` surface — voice / format / speed — over OpenAI
 TTS, Gemini TTS, and ElevenLabs/Cartesia, with a deterministic
@@ -19,7 +19,6 @@ from pydantic import BaseModel, Field
 from ..core.errors import MediaGenerationError
 from ..core.types import AudioRef
 from ..governance.transparency import ProvenanceManifest
-from ..stability import experimental
 from .media import attach_media_provenance, speech_cost
 
 __all__ = [
@@ -136,7 +135,6 @@ def _silent_wav(seconds: float = 0.2, sample_rate: int = 16000) -> bytes:
     )
 
 
-@experimental(since="1.9")
 class MockSpeechProvider(SpeechProvider):
     """Deterministic offline TTS: a real WAV whose length scales with the text."""
 
@@ -160,7 +158,6 @@ class MockSpeechProvider(SpeechProvider):
 # -- OpenAI TTS ---------------------------------------------------------------
 
 
-@experimental(since="1.9")
 class OpenAISpeechProvider(SpeechProvider):
     """OpenAI audio/speech endpoint over httpx."""
 
@@ -211,7 +208,6 @@ class OpenAISpeechProvider(SpeechProvider):
 # -- Google TTS ---------------------------------------------------------------
 
 
-@experimental(since="1.9")
 class GoogleSpeechProvider(SpeechProvider):
     """Gemini TTS (``generateContent`` with an audio response modality)."""
 
@@ -273,7 +269,6 @@ class GoogleSpeechProvider(SpeechProvider):
 # -- ElevenLabs / Cartesia ----------------------------------------------------
 
 
-@experimental(since="1.9")
 class ElevenLabsSpeechProvider(SpeechProvider):
     """ElevenLabs text-to-speech over httpx (also fits Cartesia-style endpoints
     via ``base_url`` / ``path`` overrides)."""

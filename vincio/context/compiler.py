@@ -64,7 +64,7 @@ class ContextCompilerOptions(BaseModel):
     ordering: Literal["relevance", "authority", "recency", "boundary_sandwich"] = "relevance"
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
     slim_packets: bool = False  # packets reference evidence text by hash
-    # Opt-in embedding-driven selection (1.7). When enabled *and* a semantic
+    # Opt-in embedding-driven selection. When enabled *and* a semantic
     # embedder is threaded in, relevance/novelty/dedup/conflict use cosine over
     # cached embeddings and ``_select`` runs MMR with ``mmr_lambda``. Off by
     # default — the default hash embedder is not semantic, so selection stays
@@ -72,7 +72,7 @@ class ContextCompilerOptions(BaseModel):
     semantic_scoring: bool = False
     mmr_lambda: float = 0.7  # MMR relevance/diversity trade-off (1.0 = pure relevance)
     # Reserve response (and one tool-loop round) tokens out of the input budget
-    # so the allocator accounts for the full window, not input only (1.7). Capped
+    # so the allocator accounts for the full window, not input only. Capped
     # so it never starves context. On by default; small corpora are unaffected
     # because the flexible blocks still fit everything.
     reserve_response_tokens: bool = True
@@ -156,7 +156,7 @@ class ContextCompiler:
         self.allocator = BudgetAllocator()
         self.cache = cache  # ContextCompileCache | None
         self.cache_hits = 0
-        # The inline evidence compressor (1.4). Defaults to extractive
+        # The inline evidence compressor. Defaults to extractive
         # compression; a learned compressor (e.g. ``LLMLinguaCompressor``) is a
         # drop-in with the same signature, installed via
         # ``app.use_learned_compression(...)`` once faithfulness-gated.
@@ -256,7 +256,7 @@ class ContextCompiler:
     ) -> list[ContextCandidate]:
         candidates: list[ContextCandidate] = []
         for item in evidence:
-            # 2.0: text, image, and table evidence are all candidates. The
+            # text, image, and table evidence are all candidates. The
             # scorable surrogate (text / caption / table Markdown) drives
             # relevance/dedup/ordering; image/table carry the non-text payload.
             text = item.scorable_text.strip()

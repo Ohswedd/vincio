@@ -79,7 +79,7 @@ class AgentCard(BaseModel):
     protocol_version: str = A2A_PROTOCOL_VERSION
     # Advertise streaming as False by default: the card must not claim a
     # capability the server does not dispatch. Set True only where
-    # ``message/stream`` is actually wired (1.7 honesty fix).
+    # ``message/stream`` is actually wired.
     capabilities: dict[str, Any] = Field(default_factory=lambda: {"streaming": False})
     default_input_modes: list[str] = Field(default_factory=lambda: ["text/plain"])
     default_output_modes: list[str] = Field(default_factory=lambda: ["text/plain"])

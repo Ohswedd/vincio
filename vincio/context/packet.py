@@ -1,7 +1,7 @@
 """Context Packet: the universal unit passed to models, tools,
 agents, evaluators, and traces.
 
-0.2 adds the zero-copy paths: *slim* packets reference evidence text by
+Zero-copy by construction: *slim* packets reference evidence text by
 content hash instead of duplicating it (lazy materialization from the held
 Context IR), and :meth:`ContextPacket.iter_json` streams the serialized
 packet chunk by chunk so persisting or shipping a large packet never builds
@@ -91,7 +91,7 @@ class ContextPacket(BaseModel):
                 "source_type": e.source_type,
                 "page": e.page,
                 "relevance": e.relevance,
-                # 2.0: multimodal evidence is first-class in the packet, so a
+                # multimodal evidence is first-class in the packet, so a
                 # downstream renderer/citer knows whether to ship text, an image,
                 # or a table — and can cite each uniformly.
                 "modality": e.modality,

@@ -192,7 +192,7 @@ class PgVectorIndex:
                 )
                 """
             )
-            # 2.0: GIN index on the chunk jsonb so FilterSpec predicates pushed
+            # GIN index on the chunk jsonb so FilterSpec predicates pushed
             # down as `json ->> ...` / `json -> 'metadata' ->> ...` are indexed.
             cursor.execute(
                 f"CREATE INDEX IF NOT EXISTS {self.table}_json_gin ON {self.table} USING GIN (json)"
@@ -236,7 +236,7 @@ class PgVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await self.embedder.embed([query])
-        # 2.0: push a FilterSpec into the SQL WHERE over the jsonb chunk column
+        # push a FilterSpec into the SQL WHERE over the jsonb chunk column
         # so selectivity is applied server-side (GIN-indexed) — fetch exactly
         # top_k, no over-fetch under-fill, and other tenants' rows never leave
         # Postgres. A legacy callable still post-filters over a 4x over-fetch.

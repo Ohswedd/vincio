@@ -236,7 +236,7 @@ class ModelProvider(ABC):
         )
 
     async def list_models(self) -> list[ModelProfile]:
-        """Discover the models the provider currently serves (1.8).
+        """Discover the models the provider currently serves.
 
         Providers that expose a model-list endpoint (OpenAI ``/v1/models``,
         Anthropic ``/v1/models``, Gemini ``ListModels``, Ollama ``/api/tags``,
@@ -256,8 +256,8 @@ class ModelProvider(ABC):
 class AuthStrategy(Protocol):
     """Computes the auth headers for a single outbound provider request.
 
-    2.0 introduces this so :class:`HTTPProvider` is no longer limited to a
-    static api-key header: enterprise endpoints (AWS Bedrock SigV4, Google
+    Lets :class:`HTTPProvider` go beyond a static api-key header: enterprise
+    endpoints (AWS Bedrock SigV4, Google
     Vertex service-account OAuth, Azure ``api-key``/AAD) plug their per-request
     signing in here, routed through the same registry, capability guards, swap
     gate, residency, and audit chain as every other provider.
@@ -294,7 +294,7 @@ class HTTPProvider(ModelProvider):
         self._client = client
         self._owns_client = client is None
         self._client_loop: asyncio.AbstractEventLoop | None = None
-        # 2.0: optional per-request auth strategy. When None, the static
+        # optional per-request auth strategy. When None, the static
         # ``_headers()`` path is used unchanged (every 1.x provider).
         self.auth = auth
 
@@ -562,7 +562,7 @@ class FailoverChain(ModelProvider):
     Each entry is ``(provider, model_override | None)``. On non-retryable
     auth errors or exhausted retries, the next entry is attempted.
 
-    With ``guard_capabilities`` (default on, 1.8) every entry is pre-flighted
+    With ``guard_capabilities`` (default on) every entry is pre-flighted
     against the :class:`~vincio.providers.registry.ModelRegistry` before it is
     attempted: a *retired* model is skipped as a terminal lifecycle error and a
     *capability-mismatched* one (cannot serve the request's vision/tools/schema/
@@ -571,7 +571,7 @@ class FailoverChain(ModelProvider):
     :class:`~vincio.core.errors.ModelRetiredError` ("rotate now"); a
     capability-only failure raises :class:`CapabilityMismatchError`; otherwise the
     usual :class:`ProviderUnavailableError`. Set ``guard_capabilities=False`` to
-    restore the pre-1.8 attempt-everything behavior. Unknown models are never
+    restore the previous attempt-everything behavior. Unknown models are never
     blocked.
     """
 

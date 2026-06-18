@@ -209,7 +209,7 @@ __all__ = [
     "ModelRegistry",
     "default_model_registry",
     "ModelCascade",
-    # 1.8 — provider/model rotation & swap regression
+    # provider/model rotation & swap regression
     "Router",
     "SwapGate",
     "SwapVerdict",
@@ -239,7 +239,7 @@ __all__ = [
     "ProvenanceManifest",
     "FertilityTracker",
     "PoisoningDetector",
-    # 1.9 — documents & images flow OUT
+    # documents & images flow OUT
     "DocumentBuilder",
     "DocumentContract",
     "DocumentArtifact",
@@ -255,7 +255,7 @@ __all__ = [
     "RiskTierClassifier",
     "AnnexIVBuilder",
     "FRIAGenerator",
-    # 2.1 — scale out & train for real
+    # scale out & train for real
     "WorkerPoolBackend",
     "DistributedCheckpointer",
     "Send",
@@ -272,7 +272,7 @@ __all__ = [
     "serve_viewer",
     "TwoStageIndex",
     "FastEmbedEmbedder",
-    # 2.2 — environment eval, benchmarks, retrieval eval, agent fabric
+    # environment eval, benchmarks, retrieval eval, agent fabric
     "Environment",
     "ToolEnvironment",
     "EnvironmentSimulator",

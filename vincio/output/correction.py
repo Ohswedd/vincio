@@ -1,4 +1,4 @@
-"""Self-correcting output loops (0.7).
+"""Self-correcting output loops.
 
 Bounded validate → critique → repair cycles with hard cost ceilings. The
 critique is deterministic — it is built from the :class:`ValidationReport`,

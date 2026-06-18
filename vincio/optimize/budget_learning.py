@@ -82,7 +82,7 @@ def _perturb(
 
 
 class BudgetLearner:
-    """Tunes per-task budget allocation from eval outcomes (0.8)."""
+    """Tunes per-task budget allocation from eval outcomes."""
 
     def __init__(
         self,

@@ -1,6 +1,6 @@
 """Metric-as-guardrail adapter.
 
-The 1.2 interconnection promise: *every metric is the same object usable as a
+The interconnection promise: *every metric is the same object usable as a
 runtime guardrail*. :func:`metric_guardrail` wraps an eval :data:`Metric` as a
 deterministic rail predicate ``(text, params) -> message | None``, so the metric
 you gate releases with offline (e.g. ``answer_relevance``, ``toxicity``,

@@ -1,4 +1,4 @@
-"""Indexed trace/cost store for the served observability plane (2.1).
+"""Indexed trace/cost store for the served observability plane.
 
 The zero-dependency JSONL exporter is perfect for a single run and a static
 HTML export, but answering "p95 latency for tenant X over the last hour" or

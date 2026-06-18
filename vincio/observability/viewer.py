@@ -27,7 +27,7 @@ __all__ = [
     "trace_to_html",
     "session_to_html",
     "trace_diff_html",
-    # 2.1: served observability plane
+    # served observability plane
     "ViewerApp",
     "serve_viewer",
 ]
@@ -268,7 +268,7 @@ def trace_diff_html(a: Trace, b: Trace, *, title: str | None = None) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Served observability plane (2.1)
+# Served observability plane
 # ---------------------------------------------------------------------------
 
 _WINDOWS = {"1h": timedelta(hours=1), "24h": timedelta(hours=24), "7d": timedelta(days=7)}

@@ -1,9 +1,9 @@
-"""Distributed durable execution (2.1): lease + CAS coordination, BSP parallel
+"""Distributed durable execution: lease + CAS coordination, BSP parallel
 super-steps, Send map-reduce, worker-pool fan-out, Ray/Temporal export adapters,
 and workflow map-reduce. All offline and deterministic.
 
-The 2.1.1 follow-up adds a cross-backend conformance battery
-(:func:`vincio.testing.assert_backend_conformance`) that holds every backend to
+A cross-backend conformance battery
+(:func:`vincio.testing.assert_backend_conformance`) holds every backend to
 the native engine's semantics, and exercises the channel-default reducer so a
 map-reduce needs no upstream seed node."""
 
@@ -344,7 +344,7 @@ async def test_backend_conformance_flags_a_divergent_backend():
 
 
 # ---------------------------------------------------------------------------
-# Channel-default reducer: map-reduce without an upstream seed node (2.1.1)
+# Channel-default reducer: map-reduce without an upstream seed node
 # ---------------------------------------------------------------------------
 
 

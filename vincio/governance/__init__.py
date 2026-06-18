@@ -1,4 +1,4 @@
-"""Vincio governance & compliance (1.6).
+"""Vincio governance & compliance.
 
 Enterprise governance evidence generated *in the library, from the running
 system* — no hosted compliance program, just the artifacts and controls as
@@ -15,10 +15,10 @@ files you own:
   synthetic-content marking, AI-interaction disclosure, grounding-data summary.
 * **Lineage & provable erasure** (:mod:`~vincio.governance.lineage`) — source →
   chunk → evidence → output, with right-to-erasure-by-source and a signed,
-  content-bound :class:`~vincio.governance.lineage.ErasureProof` (3.0).
+  content-bound :class:`~vincio.governance.lineage.ErasureProof`.
 * **Consent & purpose** (:mod:`~vincio.governance.consent`) — a
   :class:`~vincio.governance.consent.ConsentLedger` binding data to a GDPR
-  purpose and lawful basis, consulted by access decisions and memory recall (3.0).
+  purpose and lawful basis, consulted by access decisions and memory recall.
 * **Data-residency routing** (:mod:`~vincio.governance.residency`) — refuse
   egress to disallowed provider regions, deterministically.
 * **Tokenizer fertility** (:mod:`~vincio.governance.fertility`) — the non-English
@@ -99,7 +99,7 @@ __all__ = [
     "ComplianceMapper",
     "map_compliance",
     "CONTROL_CATALOG",
-    # EU AI Act conformity pack (1.9)
+    # EU AI Act conformity pack
     "RiskTier",
     "RiskAssessment",
     "RiskTierClassifier",
@@ -123,14 +123,14 @@ __all__ = [
     "write_sidecar_manifest",
     "ai_disclosure",
     "data_summary",
-    # lineage & provable erasure (3.0)
+    # lineage & provable erasure
     "LineageRecord",
     "LineageIndex",
     "ErasureResult",
     "ErasureProof",
     "build_erasure_proof",
     "verify_erasure_proof",
-    # consent & purpose (3.0)
+    # consent & purpose
     "ConsentLedger",
     "ConsentRecord",
     "ConsentDecision",

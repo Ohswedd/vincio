@@ -166,7 +166,7 @@ class ModelCascade(BaseModel):
         self, model: str, confidence: float, is_capable: Any
     ) -> CascadeRung | None:
         """Like :meth:`next_rung` but skips rungs whose model cannot serve the
-        request (capability guard, 1.8): once escalation is warranted, walk up
+        request (capability guard): once escalation is warranted, walk up
         past any incapable rung to the first capable stronger model."""
         nxt = self.next_rung(model, confidence)
         while nxt is not None and not is_capable(nxt.model):
@@ -426,7 +426,7 @@ def _inverse(m: list[list[float]]) -> list[list[float]]:
 
 
 # ---------------------------------------------------------------------------
-# Registry-backed router provider (1.8)
+# Registry-backed router provider
 # ---------------------------------------------------------------------------
 
 from typing import Literal  # noqa: E402 - kept beside the router it annotates

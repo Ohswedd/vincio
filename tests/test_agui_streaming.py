@@ -1,4 +1,4 @@
-"""Tests for AG-UI streaming + agent/crew astream + MCP UI resources (2.2)."""
+"""Tests for AG-UI streaming + agent/crew astream + MCP UI resources."""
 
 from __future__ import annotations
 

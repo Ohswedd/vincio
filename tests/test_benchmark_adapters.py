@@ -1,4 +1,4 @@
-"""Tests for the agentic benchmark adapters (2.2)."""
+"""Tests for the agentic benchmark adapters."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Model-lifecycle watcher & migration proposals (1.8).
+"""Model-lifecycle watcher & migration proposals.
 
 The :class:`~vincio.providers.registry.ModelRegistry` already binds GA /
 deprecation / retirement dates and a suggested ``successor`` to every model.
@@ -12,7 +12,6 @@ deprecation / retirement dates and a suggested ``successor`` to every model.
 A proposal can rewrite a :class:`~vincio.optimize.routing.ModelCascade`,
 :class:`~vincio.optimize.routing.RoutingPolicy`, or ``config.model`` in place, so
 the rotation flows through the same promotion machinery as every other change.
-``@experimental`` on the frozen 1.0 API.
 """
 
 from __future__ import annotations
@@ -24,7 +23,6 @@ from pydantic import BaseModel
 
 from ..core.types import ModelCapabilities, ModelLifecycle, ModelProfile
 from ..core.utils import utcnow
-from ..stability import experimental
 
 __all__ = [
     "LifecycleAlert",
@@ -117,7 +115,6 @@ def _capability_superset(candidate: ModelCapabilities, base: ModelCapabilities) 
     return set(base.input_modalities).issubset(set(candidate.input_modalities))
 
 
-@experimental(since="1.8")
 class LifecycleWatcher:
     """Watch pinned models for sunset and propose migrations off them."""
 

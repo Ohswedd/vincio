@@ -23,7 +23,6 @@ from ..core.errors import CitationValidationError
 from ..core.types import EvidenceItem
 from ..evals.metrics import _supported_strict, _verifiable_claims
 from ..output.parsers import extract_citations
-from ..stability import experimental
 from .builder import DocumentBuilder, markdown_to_model
 from .model import DocumentModel
 from .render import DocumentArtifact, RenderFormat, render
@@ -113,7 +112,6 @@ def _evidence_keys(item: EvidenceItem) -> set[str]:
     return {k for k in keys if k}
 
 
-@experimental(since="1.9")
 class CitedReportBuilder:
     """Resolve citations, verify per-claim support, render a cited report."""
 

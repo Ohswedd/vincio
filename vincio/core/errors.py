@@ -181,7 +181,7 @@ class BatchError(ProviderError):
 
 
 class FineTuneError(ProviderError):
-    """A provider fine-tuning job submission/poll failure (2.1).
+    """A provider fine-tuning job submission/poll failure.
 
     Raised when a distillation fine-tune job cannot be submitted, polls to a
     failed/cancelled terminal state, or exceeds its wait budget — so the
@@ -195,7 +195,7 @@ class FineTuneError(ProviderError):
 class CapabilityMismatchError(ProviderError):
     """A model cannot serve the request (missing vision/tools/context/etc.).
 
-    Raised by the capability guard (1.8) when a substitution would route a
+    Raised by the capability guard when a substitution would route a
     request to a model that structurally cannot fulfil it. Non-retryable: the
     fix is to escalate to a capable model, not to retry the same one.
     """
@@ -209,7 +209,7 @@ class CapabilityMismatchError(ProviderError):
 
 
 class ModelRetiredError(ProviderError):
-    """A pinned model is past its registry retirement date (1.8).
+    """A pinned model is past its registry retirement date.
 
     Terminal and lifecycle-classified, distinct from a transient availability
     error: a retired-model failure surfaces "rotate now" rather than being
@@ -377,7 +377,7 @@ class GraphError(AgentEngineError):
 
 
 class CheckpointConflictError(GraphError):
-    """A distributed super-step commit lost the optimistic-concurrency race (2.1).
+    """A distributed super-step commit lost the optimistic-concurrency race.
 
     Raised when a checkpoint write's expected version no longer matches the
     thread head — another worker advanced the thread first. The losing worker
@@ -445,7 +445,7 @@ class CitationValidationError(OutputError):
     code = "CITATION_INVALID"
 
 
-# --- generation (documents & media out, 1.9) --------------------------------
+# --- generation (documents & media out) --------------------------------
 
 
 class GenerationError(VincioError):

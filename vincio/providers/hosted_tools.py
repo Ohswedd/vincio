@@ -1,4 +1,4 @@
-"""Provider-native hosted tools as namespaced Vincio tools (1.10).
+"""Provider-native hosted tools as namespaced Vincio tools.
 
 OpenAI's Responses API ships built-in, server-executed tools — ``web_search``,
 ``file_search``, ``code_interpreter``, ``computer_use`` — that the model invokes

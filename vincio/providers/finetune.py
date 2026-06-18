@@ -1,9 +1,9 @@
-"""Provider fine-tune job backends (providers/finetune, 2.1).
+"""Provider fine-tune job backends.
 
-The distillation flywheel (1.4) curates production traces into grounded,
-provider-ready JSONL and gates a *student* model on the eval suite — but until
-2.1 the "trainer" that turns that JSONL into an actual cheaper model was an
-injected no-op. These backends close the loop: they submit and poll real
+The distillation flywheel curates production traces into grounded,
+provider-ready JSONL and gates a *student* model on the eval suite. These
+backends are the "trainer" that turns that JSONL into an actual cheaper model:
+they submit and poll real
 fine-tune jobs on the first-party APIs, returning the trained model id so the
 :class:`~vincio.optimize.distill.BootstrapFinetune` loop can register it and
 gate-promote it through the same significance swap gate as a model rotation.

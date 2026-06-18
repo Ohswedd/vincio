@@ -46,7 +46,7 @@ proxy/service that sits in front of your app.
   min_prefix_tokens=1024)` applies caching only where `ModelCapabilities`
   support it, and it's default-on via the `vincio.yaml` cache section
   (`provider_cache`, `provider_cache_ttl`, `provider_cache_min_prefix_tokens`).
-- **Capability-aware routing and a gated swap (1.8).** Where LiteLLM Router
+- **Capability-aware routing and a gated swap.** Where LiteLLM Router
   load-balances by health and cost, Vincio's `app.use_router([...])` routes by
   **capability *and* cost** — it refuses a model that can't serve the request
   (vision/tools/schema/reasoning/context), so failover never silently returns a

@@ -51,7 +51,7 @@ class AccessDecision(BaseModel):
     allowed: bool
     rule: str = ""
     reason: str = ""
-    # (3.0) GDPR purpose / lawful-basis tags ride on the decision so an audited
+    # GDPR purpose / lawful-basis tags ride on the decision so an audited
     # access carries *why* the data was reachable, not just whether.
     purpose: str | None = None
     lawful_basis: str | None = None
@@ -76,13 +76,13 @@ class AccessController:
         self.rules = sorted(rules or [], key=lambda r: r.priority)
         self.tenant_isolation = tenant_isolation
         self.default_allow = default_allow
-        # (3.0) Optional consent ledger consulted by :meth:`check_purpose`, so a
+        # Optional consent ledger consulted by :meth:`check_purpose`, so a
         # purpose-bound access is denied in code when consent is absent/withdrawn.
         self.consent_ledger = consent_ledger
         # When True, an untagged (``tenant_id is None``) resource is NOT treated
         # as globally readable: tenant access requires an explicit, matching
         # scope on both sides. Closes the cross-tenant fail-open (a correctness
-        # and exfiltration risk). Defaults False to preserve the pre-1.7 behavior
+        # and exfiltration risk). Defaults False to preserve the previous behavior
         # for one minor; flip it on to fail closed.
         self.require_explicit_tenant = require_explicit_tenant
 
@@ -154,7 +154,7 @@ class AccessController:
 
         In strict mode (``require_explicit_tenant``) a resource with no tenant
         tag is not globally readable: both sides must carry an explicit, matching
-        tenant. In legacy mode an untagged resource passes (the pre-1.7
+        tenant. In legacy mode an untagged resource passes (the previous
         fail-open, kept for one minor)."""
         if not self.tenant_isolation:
             return
@@ -187,7 +187,7 @@ class AccessController:
         """Drop items belonging to other tenants (items expose .tenant_id).
 
         In strict mode an untagged item is dropped (it is not globally visible);
-        in legacy mode an untagged item is kept (the pre-1.7 fail-open)."""
+        in legacy mode an untagged item is kept (the previous fail-open)."""
         if not self.tenant_isolation:
             return list(items)
         kept = []
@@ -208,7 +208,7 @@ class AccessController:
             return True
         return any(self.has_scope(principal, perm) for perm in permissions)
 
-    # -- consent / purpose (3.0) -------------------------------------------------
+    # -- consent / purpose -------------------------------------------------
 
     def check_purpose(
         self,
@@ -239,7 +239,7 @@ class AccessController:
 
 
 class AllowListGate:
-    """A reachability allow-list for the agent fabric (2.2).
+    """A reachability allow-list for the agent fabric.
 
     Governs which agents / servers an org will resolve and reach. It is a thin,
     **fail-closed** view over :class:`AccessController`: ``deny`` patterns are

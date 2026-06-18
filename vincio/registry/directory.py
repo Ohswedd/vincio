@@ -1,4 +1,4 @@
-"""Agent directory & capability discovery (2.2).
+"""Agent directory & capability discovery.
 
 An :class:`AgentDirectory` indexes :class:`AgentRecord`\\ s — normalized from A2A
 Agent Cards, AGNTCY/ACP manifests, or MCP server records — and answers
@@ -17,7 +17,6 @@ from pydantic import BaseModel, Field
 from ..a2a.protocol import AgentCard, AgentSkill
 from ..core.errors import AccessDeniedError
 from ..security.access import AccessDecision, AllowListGate, Principal
-from ..stability import experimental
 
 __all__ = ["AgentRecord", "AgentResolution", "AgentDirectory"]
 
@@ -85,7 +84,6 @@ class AgentResolution(BaseModel):
     record: AgentRecord | None = None
 
 
-@experimental(since="2.2")
 class AgentDirectory:
     """A governed, discoverable directory of agents across A2A / ACP / MCP."""
 
