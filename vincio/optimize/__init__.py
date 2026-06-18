@@ -84,6 +84,19 @@ from .routing import (
     response_confidence,
 )
 from .search import Candidate, FitnessWeights, OptimizationResult, evolution_loop, fitness
+from .self_improvement import (
+    CanarySpec,
+    CanaryVerdict,
+    DeployResult,
+    MetaSpec,
+    SelfImprovementController,
+    SelfImprovementEvent,
+    SelfImprovementPolicy,
+    deploy_candidate,
+    learn_fitness_weights,
+    select_for_labeling,
+    successive_halving,
+)
 from .strategies import (
     AnnealingSearch,
     HillClimbSearch,
@@ -134,6 +147,17 @@ __all__ = [
     "ControllerDecision",
     "ExperimentProposal",
     "ExperimentProposer",
+    "SelfImprovementPolicy",
+    "SelfImprovementController",
+    "SelfImprovementEvent",
+    "CanarySpec",
+    "CanaryVerdict",
+    "MetaSpec",
+    "DeployResult",
+    "deploy_candidate",
+    "successive_halving",
+    "learn_fitness_weights",
+    "select_for_labeling",
     "DEFAULT_OBJECTIVES",
     "AGENTIC_OBJECTIVES",
     "ObjectiveSpec",

@@ -8,11 +8,14 @@ Decisions are deterministic and explainable: every check returns an
 from __future__ import annotations
 
 from fnmatch import fnmatch
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
 from ..core.errors import AccessDeniedError, TenantIsolationError
+
+if TYPE_CHECKING:  # pragma: no cover - typing only
+    from ..governance.consent import ConsentLedger
 
 __all__ = ["Principal", "Role", "AccessRule", "AccessDecision", "AccessController", "AllowListGate"]
 
@@ -48,6 +51,10 @@ class AccessDecision(BaseModel):
     allowed: bool
     rule: str = ""
     reason: str = ""
+    # (3.0) GDPR purpose / lawful-basis tags ride on the decision so an audited
+    # access carries *why* the data was reachable, not just whether.
+    purpose: str | None = None
+    lawful_basis: str | None = None
 
     def raise_if_denied(self) -> None:
         if not self.allowed:
@@ -63,11 +70,15 @@ class AccessController:
         tenant_isolation: bool = True,
         default_allow: bool = False,
         require_explicit_tenant: bool = False,
+        consent_ledger: ConsentLedger | None = None,
     ) -> None:
         self.roles = {role.name: role for role in (roles or [])}
         self.rules = sorted(rules or [], key=lambda r: r.priority)
         self.tenant_isolation = tenant_isolation
         self.default_allow = default_allow
+        # (3.0) Optional consent ledger consulted by :meth:`check_purpose`, so a
+        # purpose-bound access is denied in code when consent is absent/withdrawn.
+        self.consent_ledger = consent_ledger
         # When True, an untagged (``tenant_id is None``) resource is NOT treated
         # as globally readable: tenant access requires an explicit, matching
         # scope on both sides. Closes the cross-tenant fail-open (a correctness
@@ -196,6 +207,35 @@ class AccessController:
         if not permissions:
             return True
         return any(self.has_scope(principal, perm) for perm in permissions)
+
+    # -- consent / purpose (3.0) -------------------------------------------------
+
+    def check_purpose(
+        self,
+        principal: Principal,
+        *,
+        purpose: str,
+        subject_id: str | None = None,
+    ) -> AccessDecision:
+        """Decide whether processing for ``purpose`` is consented for a subject.
+
+        Defaults to the principal's own ``user_id`` as the data subject. With no
+        :attr:`consent_ledger` configured the check is a no-op allow (consent is
+        opt-in); with one, the ledger's verdict — and the lawful basis it found —
+        rides back on the :class:`AccessDecision`."""
+        subject = subject_id or principal.user_id
+        if self.consent_ledger is None or subject is None:
+            return AccessDecision(
+                allowed=True, rule="consent", reason="no consent ledger configured", purpose=purpose
+            )
+        verdict = self.consent_ledger.check(subject, purpose)
+        return AccessDecision(
+            allowed=verdict.allowed,
+            rule="consent",
+            reason=verdict.reason,
+            purpose=purpose,
+            lawful_basis=verdict.lawful_basis,
+        )
 
 
 class AllowListGate:

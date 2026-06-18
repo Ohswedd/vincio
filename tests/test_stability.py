@@ -21,10 +21,11 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "2.2.1"
+    assert vincio.__version__ == "3.0.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
-    # release. 2.2 is additive on the frozen 2.0 surface, so it stays "2.0".
-    assert API_VERSION == "2.0"
+    # release. 3.0 is the second deliberate breaking window — the unified
+    # self-improvement contract, provable erasure, and the async-canonical core.
+    assert API_VERSION == "3.0"
 
 
 def test_public_api_is_stable_surface():

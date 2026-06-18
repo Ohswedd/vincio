@@ -3,10 +3,11 @@
 ## Supported versions
 
 Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
-1.0. Security fixes land on the latest 2.x line.
+1.0. Security fixes land on the latest 3.x line.
 
 | Version | Supported |
 | ------- | --------- |
+| 3.0.x   | ✅        |
 | 2.2.x   | ✅        |
 | 2.1.x   | ✅        |
 | 2.0.x   | ✅        |
@@ -209,6 +210,22 @@ inherits the run's provenance, budget metering, and audit rather than opening a
 side channel, and MCP-UI resources are static, app-provided content served through
 the same MCP resource path. The agent directory is something you run on your own
 infrastructure — a governed catalog, never a hosted control plane.
+
+Since 3.0, **erasure is provable, not merely logged**, and data carries a
+**consent/purpose** binding. `app.erase_source` returns a signed, content-bound
+`ErasureProof` (`governance/lineage.py`): a manifest of exactly which chunk /
+document / memory / generated-artifact ids were removed, bound by SHA-256 over
+the sorted removed-id set (tampering breaks `verify_erasure_proof`), signed with
+the app's `content_signer`, and anchored to the audit chain's Merkle root — so a
+right-to-erasure claim is checkable offline against the precise removal. A
+`ConsentLedger` (`governance/consent.py`) binds a data subject to a GDPR
+`Purpose` and `LawfulBasis`; `AccessController.check_purpose` consults it and
+memory recall drops any item whose purpose lost consent, so purpose limitation is
+enforced in code, not delegated to a downstream policy. Memory is **bi-temporal**
+(`valid_from` / `valid_to`, as-of recall) with **per-memory ACLs** and a `TEAM`
+scope, so team-shared memory surfaces only to permitted readers and a corrected
+fact never silently rewrites history. Every grant, revoke, denied check, and
+erasure proof lands on the same hash-chained audit chain.
 
 ## Supply-chain integrity
 

@@ -1196,8 +1196,8 @@ genuinely needed the schema change.
 `Send` map-reduce), executed swap-gated fine-tuning, a served (still self-hosted) observability and
 alerting plane, Redis shared state with `vincio serve`, and quantized two-stage retrieval plus
 batteries-included local neural models. **2.2** is the environment-based agentic eval harness and the
-governed agent fabric. **3.0** is the next breaking culmination: a single declarative self-improvement
-contract, provable erasure with consent modeling, and an async-first canonical core.
+governed agent fabric. **3.0** (shipped) is the breaking culmination: a single declarative
+self-improvement contract, provable erasure with consent modeling, and an async-first canonical core.
 
 The three founding principles are unchanged — **beat the specialist and add what it structurally
 cannot** (provenance, budgeting, eval-gating, one trace); **interconnect, don't bolt on** (every
@@ -1406,63 +1406,76 @@ See the [CHANGELOG](CHANGELOG.md) for the complete 2.1.0 and 2.1.1 notes.
 
 See the [CHANGELOG](CHANGELOG.md) for the complete 2.2.0 notes.
 
-### 🚧 3.0 — The next breaking culmination: one self-improvement contract, provable erasure & the async-first canonical core (vs the field's hosted self-improvement & governance platforms)
+### ✅ 3.0 — The breaking culmination: one self-improvement contract, provable erasure & the async-first canonical core (vs the field's hosted self-improvement & governance platforms) (shipped)
 
 *By 2.x, continual self-improvement, rotation, regression, documents/images-out, distribution, and
-benchmarks all ship — but as composed capabilities, each carrying its own surface. 3.0 is the next
-breaking window: it unifies them under one declarative, governed self-improvement contract; makes the
-data model honest about consent and **provable** erasure (not merely traceable); and makes the async
-API canonical with sync as the thin wrapper — the three changes that genuinely require reshaping
-interfaces the 2.x surface still carries as additive bolt-ons. It ships only when there is a real
-breaking need, never for its own sake, and lands with the same mechanical deprecation runway 1.0
-established — every collapsed alias deprecated, warned, and dated before removal.*
+benchmarks all shipped — but as composed capabilities, each carrying its own surface. 3.0 is the
+second deliberate breaking window: it unifies them under one declarative, governed self-improvement
+contract; makes the data model honest about consent and **provable** erasure (not merely traceable);
+and makes the async API canonical with sync as the thin wrapper. It ships with the same mechanical
+deprecation runway 1.0 established — every collapsed alias deprecated, warned, and dated before
+removal — and nothing breaks outside the window: the flat `app.<method>` API and the 2.x organs stay
+fully supported.*
 
-- **Unified declarative self-improvement contract** — one `SelfImprovementPolicy` composes scheduling,
-  autonomous experiment proposal, online updates, canary/rollback, label acquisition (active learning),
-  and meta-optimization — learned fitness weights plus auto strategy/budget selection via
-  successive-halving — under a single audited, governed contract. It reshapes the 1.10/2.x
-  `ImprovementLoop` and optimizer interfaces (`optimize/loop.py`, `optimize/search.py`,
-  `optimize/reflective.py`) from composed tools into one streaming controller (`policy.stream()` emits
-  proposal → canary → promote/rollback events), which is why this is breaking. It also lands the
-  canary-driven prompt/policy **promotion** reserved out of 1.10 as a new serving/deploy surface on
-  `core/app.py` (`app.deploy(...)` gated by a canary verdict), so the system tunes itself, decides what
-  to tune, and rolls itself back — all under one policy you own.
-- **Provable erasure + consent/purpose modeling** — a persistent lineage index (`governance/lineage.py`)
-  gains **erasure proof artifacts**: signed manifests recording exactly what was removed across every
-  index, cache, memory, and **generated artifact**, on the same hash-chained audit log the citations
-  already use. GDPR purpose / lawful-basis tags ride on the data feeding access decisions
-  (`security/access.py`), a `ConsentLedger` binds consent to that data, and `memory/engine.py` becomes
-  bi-temporal (`valid_from` / `valid_to` plus as-of recall) with per-memory ACLs / team-shared memory.
-  Reshaping the `MemoryItem` and lineage data model is why this is breaking; multimodal memory items
-  (image / doc-chunk content) ride the 2.0 multimodal packet, so an erased document is erased as evidence,
-  as memory, and as generated output in one operation.
-- **Async-first canonical core & finalized telemetry contract** — the async API becomes canonical: sync
-  `run()` becomes a thin wrapper that requires no running loop, and the async store / index / event
-  protocols (`storage/base.py`, `core/events.py`) become *the* contract, removing the sync-store and
-  sync-event ambiguities that constrained scale. The unified spans + metrics + cost telemetry model
-  (`core/runtime.py`, observability) is locked as the single source of truth, retiring the transitional
-  shims 2.0 carried. Pydantic / Python floor bumps land here if needed — the structural simplifications
-  the 1.x sync/async duality could not resolve, made at the only window where the duality can be collapsed.
+- ✅ **Unified declarative self-improvement contract** — one `SelfImprovementPolicy` composes
+  scheduling, autonomous experiment proposal, online updates, canary/rollback, label acquisition
+  (active learning), and meta-optimization — learned fitness weights (`learn_fitness_weights`) plus
+  auto strategy/budget selection via `successive_halving` — under a single audited, governed contract.
+  `SelfImprovementController` (`optimize/self_improvement.py`, `app.self_improvement(policy)`) drives
+  the 1.10/2.x organs (`ImprovementLoop`, `ExperimentProposer`, `ContinuousImprovementController`,
+  canary) from one streaming controller: `astream()` emits the cycle as `observe → proposal → meta →
+  label → reeval → canary → promote/rollback` events, each on the shared audit chain and event bus.
+  Every promotion still passes the *same* significance + safety + golden non-regression gates the loop
+  always used. The canary-driven prompt/policy **promotion** reserved out of 1.10 lands as a new
+  serving surface — `app.deploy(candidate, dataset=...)` promotes live only on a no-regression canary
+  verdict and rolls back to the last known-good version otherwise. `app.continuous_improvement` /
+  `app.experiment_proposer` are deprecated (`since=3.0`, `removed_in=4.0`) in favour of the unified
+  contract, and stay functional through 3.x.
+- ✅ **Provable erasure + consent/purpose modeling** — the lineage index (`governance/lineage.py`)
+  gains **erasure proof artifacts**: `ErasureProof` is a signed, content-bound manifest recording
+  exactly which chunk / document / memory / **generated-artifact** ids were removed, bound by SHA-256
+  over the sorted removed-id set, signed with the app's `content_signer`, and anchored to the audit
+  chain's Merkle root (`build_erasure_proof` / `verify_erasure_proof`, returned on
+  `app.erase_source(...).proof`). A `ConsentLedger` (`governance/consent.py`) binds data to a GDPR
+  `Purpose` and `LawfulBasis`; access decisions consult it (`AccessController.check_purpose`,
+  `app.use_consent_ledger`) and memory recall drops any item whose purpose lost consent. `MemoryItem`
+  becomes bi-temporal (`valid_from` / `valid_to` + `valid_at`, as-of recall via `asearch(as_of=...)`,
+  and `MemoryEngine.correct()` which closes the old interval) with per-memory ACLs (`acl`, `readable_by`)
+  and a new `MemoryScope.TEAM` for team-shared memory. Reshaping the `MemoryItem` and lineage data model
+  is the breaking change; the new fields default backward-compatibly and SQLite migrates in place.
+- ✅ **Async-first canonical core & finalized telemetry contract** — the async store / index / event
+  protocols are *the* contract: the in-memory reference store is now async-native
+  (`asave`/`aget`/`aquery`/`adelete`/`acount`), so the module-level helpers take the native fast path
+  with no worker-thread hop, and sync `run()` stays a thin wrapper requiring no running loop. The
+  telemetry contract is finalized — `EVENT_SCHEMA_VERSION` is `3.0` and the typed event catalog gains
+  the self-improvement, deploy, and provable-erasure payloads, so spans, metrics, and cost are one
+  source of truth. `API_VERSION` moves to `3.0`.
 - *Interconnection:* 3.0 collapses the 2.x composed surfaces into canonical contracts while preserving
-  the one packet / ledger / audit / trace: the self-improvement policy drives the same gated promotion and
-  rollback the loop always used; provable erasure rides the same lineage and audit chain the citations
-  already walk; and the async-first core makes every store, event, and telemetry contract the one Vincio
-  actually runs on. The culmination is fewer, truer abstractions — not more features.
-- *Edge over specialists:* hosted self-improvement / optimizer platforms make continual tuning a service
-  you send traces to; Vincio makes it a **single declarative, governed, in-process contract** that decides
-  what to tune and rolls itself back under one audited policy. OneTrust/Transcend orchestrate erasure
-  across systems and report it; Vincio emits a **signed erasure proof** across every index, cache, memory,
-  and generated document on the same audit chain — erasure that is provable, with consent bound to the
-  data, not merely traceable. And against the dual sync/async SDKs (Vercel AI SDK, the async-canonical
-  frontier), Vincio makes async the one true contract with sync as a zero-cost wrapper — the scale ceiling
-  the `run_sync` bridge and sync stores imposed, finally removed.
-- *Definition of done:* the unified self-improvement contract end-to-end; signed erasure proofs across
-  every store with consent / purpose enforcement and bi-temporal recall; and the async-canonical core with
-  the finalized telemetry contract — all covered offline. Gated by the VincioBench **loop**, **governance**,
-  **scale**, and **memory** families (declarative self-improvement + meta-optimization in `loop`;
-  erasure-proof correctness + consent enforcement in `governance`; async-canonical throughput in `scale`;
-  bi-temporal recall + per-memory ACL in `memory`), with a new runnable example, the SLOs, and the
-  mechanical deprecation runway for every collapsed surface documented before release.
+  the one packet / ledger / audit / trace: the self-improvement policy drives the same gated promotion
+  and rollback the loop always used; provable erasure rides the same lineage and audit chain the
+  citations already walk; and the async-first core makes every store, event, and telemetry contract the
+  one Vincio actually runs on. The culmination is fewer, truer abstractions — not more features.
+- *Edge over specialists (delivered):* hosted self-improvement / optimizer platforms make continual
+  tuning a service you send traces to; Vincio makes it a **single declarative, governed, in-process
+  contract** that decides what to tune and rolls itself back under one audited policy. OneTrust/Transcend
+  orchestrate erasure across systems and report it; Vincio emits a **signed erasure proof** across every
+  index, cache, memory, and generated document on the same audit chain — erasure that is provable, with
+  consent bound to the data, not merely traceable. And against the dual sync/async SDKs, Vincio makes
+  async the one true contract with sync as a zero-cost wrapper.
+- *Definition of done (delivered):* the unified self-improvement contract end-to-end; signed erasure
+  proofs across every store with consent / purpose enforcement and bi-temporal recall; and the
+  async-canonical core with the finalized telemetry contract — all covered offline and gated by the
+  VincioBench **loop** (declarative self-improvement + meta-optimization), **governance** (erasure-proof
+  correctness + consent enforcement), **scale** (async-canonical throughput), and **memory** (bi-temporal
+  recall + per-memory ACL) families, with `examples/38_self_improvement_and_provable_erasure.py`, eight
+  new SLOs, and the deprecation runway documented in the [stability policy](docs/reference/stability.md).
+- **1613 tests passing offline in ~7s; ruff + mypy clean**; thirty-eight runnable examples; VincioBench
+  holds the 3.0 guarantees under CI-gated budgets (274 budgets, 85 SLOs). Everything new sits behind the
+  `vincio.optimize` self-improvement entry points, `vincio.governance` (consent + erasure proof), and
+  the bi-temporal `vincio.memory` surface, all `@experimental(since="3.0")` on the new 3.0 frozen
+  surface. **The 3.0 milestone carries no deferred items.**
+
+See the [CHANGELOG](CHANGELOG.md) for the complete 3.0.0 notes.
 
 ### 🔭 Exploring — beyond 3.0
 

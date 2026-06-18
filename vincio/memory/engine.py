@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
-from datetime import UTC, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -41,6 +41,7 @@ from .policies import (
 from .stores import InMemoryMemoryStore, MemoryStore
 
 if TYPE_CHECKING:
+    from ..governance.consent import ConsentLedger
     from ..security.audit import AuditLog
     from .consolidation import ConsolidationReport
 
@@ -72,6 +73,7 @@ class ScopedMemory:
             MemoryScope.USER: "user_id",
             MemoryScope.AGENT: "agent_id",
             MemoryScope.SESSION: "session_id",
+            MemoryScope.TEAM: "team_id",
             MemoryScope.TENANT: "tenant_id",
             MemoryScope.ORGANIZATION: "tenant_id",
         }[self.scope]
@@ -115,6 +117,7 @@ class MemoryEngine:
         retention_weight: float = 0.5,
         ttl_days: Mapping[str, float] | None = None,
         audit: AuditLog | None = None,
+        consent_ledger: ConsentLedger | None = None,
     ) -> None:
         self.store = store or InMemoryMemoryStore()
         self.write_policy = write_policy or MemoryWritePolicy()
@@ -126,6 +129,9 @@ class MemoryEngine:
         self.retention_weight = max(0.0, min(1.0, retention_weight))
         self.ttl_days = dict(ttl_days or {})
         self.audit = audit
+        # (3.0) Optional consent ledger: when set, recall drops any memory whose
+        # ``purpose`` no longer has active consent for its subject (``owner_id``).
+        self.consent_ledger = consent_ledger
         self.working: dict[str, Any] = {}  # L0 working memory (one run)
         self.conflicts: list[dict[str, str]] = []
         self._embedding_cache: dict[str, list[float]] = {}
@@ -145,6 +151,11 @@ class MemoryEngine:
     def for_session(self, session_id: str) -> ScopedMemory:
         return ScopedMemory(self, scope=MemoryScope.SESSION, owner_id=session_id)
 
+    def for_team(self, team_id: str) -> ScopedMemory:
+        """Team-shared memory (3.0): one owner is the team; per-memory ACLs gate
+        which members may recall an item."""
+        return ScopedMemory(self, scope=MemoryScope.TEAM, owner_id=team_id)
+
     def for_tenant(self, tenant_id: str) -> ScopedMemory:
         return ScopedMemory(self, scope=MemoryScope.TENANT, owner_id=tenant_id)
 
@@ -155,6 +166,7 @@ class MemoryEngine:
         user_id: str | None = None,
         agent_id: str | None = None,
         session_id: str | None = None,
+        team_id: str | None = None,
         tenant_id: str | None = None,
         scope: MemoryScope | str | None = None,
         type: MemoryType | str | None = None,
@@ -164,19 +176,34 @@ class MemoryEngine:
         source_trace_id: str | None = None,
         metadata: dict[str, Any] | None = None,
         ttl_days: float | None = None,
+        valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
+        acl: list[str] | None = None,
+        purpose: str | None = None,
+        consent_id: str | None = None,
     ) -> MemoryItem:
         """Ergonomic write: infers scope from the most specific owner id
-        given (session > agent > user > tenant) and classifies the memory
-        type when not stated. Still policy-checked end to end."""
+        given (session > agent > team > user > tenant) and classifies the memory
+        type when not stated. Still policy-checked end to end. Bi-temporal
+        validity (``valid_from`` / ``valid_to``), a per-memory ``acl``, and a
+        GDPR ``purpose`` / ``consent_id`` (3.0) ride through unchanged."""
         inferred: list[tuple[MemoryScope, str | None]] = [
             (MemoryScope.SESSION, session_id),
             (MemoryScope.AGENT, agent_id),
+            (MemoryScope.TEAM, team_id),
             (MemoryScope.USER, user_id),
             (MemoryScope.TENANT, tenant_id),
         ]
         if scope is not None:
             scope = MemoryScope(scope)
-            owner_id = dict(inferred).get(scope) or session_id or agent_id or user_id or tenant_id
+            owner_id = (
+                dict(inferred).get(scope)
+                or session_id
+                or agent_id
+                or team_id
+                or user_id
+                or tenant_id
+            )
         else:
             scope, owner_id = next(
                 ((s, o) for s, o in inferred if o is not None), (MemoryScope.GLOBAL, None)
@@ -195,6 +222,11 @@ class MemoryEngine:
             entities=entities,
             metadata=meta,
             ttl_days=ttl_days,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            acl=acl,
+            purpose=purpose,
+            consent_id=consent_id,
         )
 
     async def arecall(
@@ -203,19 +235,25 @@ class MemoryEngine:
         *,
         user_id: str | None = None,
         agent_id: str | None = None,
+        team_id: str | None = None,
         tenant_id: str | None = None,
         session_id: str | None = None,
         top_k: int = 5,
         task_entities: list[str] | None = None,
+        as_of: datetime | None = None,
+        reader: str | None = None,
     ) -> list[MemoryItem]:
         results = await self.asearch(
             query,
             user_id=user_id,
             agent_id=agent_id,
+            team_id=team_id,
             tenant_id=tenant_id,
             session_id=session_id,
             top_k=top_k,
             task_entities=task_entities,
+            as_of=as_of,
+            reader=reader,
         )
         return [r.item for r in results]
 
@@ -238,6 +276,11 @@ class MemoryEngine:
         entities: list[str] | None = None,
         metadata: dict[str, Any] | None = None,
         ttl_days: float | None = None,
+        valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
+        acl: list[str] | None = None,
+        purpose: str | None = None,
+        consent_id: str | None = None,
     ) -> MemoryItem:
         """Direct, policy-checked write of a single memory."""
         candidate = MemoryCandidate(
@@ -250,7 +293,15 @@ class MemoryEngine:
             metadata=metadata or {},
         )
         item = self._admit_and_store(
-            candidate, owner_id=owner_id, source_trace_id=source_trace_id, ttl_days=ttl_days
+            candidate,
+            owner_id=owner_id,
+            source_trace_id=source_trace_id,
+            ttl_days=ttl_days,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            acl=acl,
+            purpose=purpose,
+            consent_id=consent_id,
         )
         if item is None:
             raise MemoryPolicyError(
@@ -267,11 +318,17 @@ class MemoryEngine:
         source_trace_id: str | None,
         status: str = "active",
         ttl_days: float | None = None,
+        valid_from: datetime | None = None,
+        valid_to: datetime | None = None,
+        acl: list[str] | None = None,
+        purpose: str | None = None,
+        consent_id: str | None = None,
     ) -> MemoryItem | None:
         ok, reason = self.write_policy.admit(candidate)
         if not ok:
             candidate.metadata["rejected_reason"] = reason
             return None
+        now = utcnow()
         # Contradiction / duplicate handling against existing memories.
         existing_items = self.store.all_items(scope=candidate.scope, owner_id=owner_id)
         superseded: str | None = None
@@ -281,12 +338,17 @@ class MemoryEngine:
                 existing.confirmations += 1
                 existing.usage_count += 1
                 existing.status = "active"
-                existing.updated_at = utcnow()
+                existing.updated_at = now
                 self.store.put(existing)
                 return existing
             resolution = self.write_policy.resolve_conflict(candidate, existing)
             if resolution == "supersede":
                 existing.status = "archived"
+                # (3.0) Bi-temporal correction: close the old fact's valid
+                # interval at the moment the new one takes effect, so as-of
+                # recall before that moment still returns the prior value.
+                if existing.valid_to is None:
+                    existing.valid_to = valid_from or now
                 self.store.put(existing)
                 superseded = existing.id
             elif resolution == "conflict":
@@ -305,11 +367,16 @@ class MemoryEngine:
             status=status,  # type: ignore[arg-type]
             entities=candidate.entities,
             supersedes=superseded,
+            valid_from=valid_from,
+            valid_to=valid_to,
+            acl=list(acl or []),
+            purpose=purpose,
+            consent_id=consent_id,
             metadata=candidate.metadata,
         )
         ttl = ttl_days if ttl_days is not None else self.ttl_days.get(item.scope.value)
         if item.expires_at is None and ttl:
-            item.expires_at = utcnow() + timedelta(days=float(ttl))
+            item.expires_at = now + timedelta(days=float(ttl))
         self.store.put(item)
         if self.graph is not None:
             self.graph.add_memory(item)
@@ -417,14 +484,24 @@ class MemoryEngine:
         *,
         user_id: str | None = None,
         agent_id: str | None = None,
+        team_id: str | None = None,
         tenant_id: str | None = None,
         session_id: str | None = None,
         task_entities: list[str] | None = None,
         top_k: int = 8,
         max_privacy: PrivacyClass = PrivacyClass.PII,
+        as_of: datetime | None = None,
+        reader: str | None = None,
     ) -> list[MemorySearchResult]:
         """Hybrid recall: lexical + vector relevance fused with graph
-        adjacency, in one scored, scope- and privacy-filtered query."""
+        adjacency, in one scored, scope- and privacy-filtered query.
+
+        (3.0) ``as_of`` makes recall **bi-temporal** — it returns the memories
+        that were *valid* at that moment, including ones later superseded
+        (their ``valid_to`` was closed by the correction); ``reader`` enforces
+        per-memory ACLs so team-shared memory only surfaces to permitted
+        members; and a configured :attr:`consent_ledger` drops any item whose
+        ``purpose`` lost consent."""
         privacy_order = [
             PrivacyClass.PUBLIC,
             PrivacyClass.INTERNAL,
@@ -434,18 +511,45 @@ class MemoryEngine:
         ]
         max_privacy_rank = privacy_order.index(max_privacy)
         now = utcnow()
+        moment = as_of or now
+        # As-of recall must see superseded/archived items that were valid then,
+        # so it widens the status filter; current recall keeps the live set.
+        statuses = () if as_of is not None else _SEARCH_STATUSES
 
-        # Pass 1: scope/privacy/lifetime filters.
+        # Pass 1: scope/privacy/lifetime/validity/ACL/consent filters.
         eligible: list[tuple[MemoryItem, float, float]] = []
-        for item in self.store.all_items(statuses=_SEARCH_STATUSES):
+        for item in self.store.all_items(statuses=statuses):
             scope_match = self._scope_match(
-                item, user_id=user_id, agent_id=agent_id, tenant_id=tenant_id, session_id=session_id
+                item,
+                user_id=user_id,
+                agent_id=agent_id,
+                team_id=team_id,
+                tenant_id=tenant_id,
+                session_id=session_id,
             )
             if scope_match == 0.0:
                 continue
             if privacy_order.index(item.privacy_class) > max_privacy_rank:
                 continue
             if self._expired(item, now):
+                continue
+            # Bi-temporal validity: items carrying a valid interval must contain
+            # the recall moment; non-bi-temporal items (no interval set) always
+            # pass, so this is fully backward compatible.
+            if (item.valid_from is not None or item.valid_to is not None) and not item.valid_at(
+                moment
+            ):
+                continue
+            # Per-memory ACL: a populated ACL admits only listed readers.
+            if not item.readable_by(reader):
+                continue
+            # Consent / purpose: drop a memory whose purpose lost consent.
+            if (
+                self.consent_ledger is not None
+                and item.purpose
+                and item.owner_id
+                and not self.consent_ledger.allows(item.owner_id, item.purpose)
+            ):
                 continue
             confidence = decayed_confidence(item, decay_lambda=self.decay_lambda)
             if confidence < self.min_confidence:
@@ -541,6 +645,7 @@ class MemoryEngine:
         *,
         user_id: str | None,
         agent_id: str | None = None,
+        team_id: str | None = None,
         tenant_id: str | None,
         session_id: str | None,
     ) -> float:
@@ -556,6 +661,10 @@ class MemoryEngine:
             return 0.0
         if item.scope == MemoryScope.AGENT:
             if agent_id and item.owner_id == agent_id:
+                return 1.0
+            return 0.0
+        if item.scope == MemoryScope.TEAM:
+            if team_id and item.owner_id == team_id:
                 return 1.0
             return 0.0
         if item.scope in (MemoryScope.TENANT, MemoryScope.ORGANIZATION):
@@ -641,6 +750,55 @@ class MemoryEngine:
             details={"previous": previous[:120], "current": item.content[:120]},
         )
         return item
+
+    def correct(
+        self,
+        memory_id: str,
+        new_content: str,
+        *,
+        valid_from: datetime | None = None,
+        confidence: float | None = None,
+    ) -> MemoryItem:
+        """Bi-temporal correction (3.0): close the existing memory's valid
+        interval and open a new one carrying the corrected content.
+
+        Unlike :meth:`edit` (which mutates the record in place, losing history),
+        ``correct`` preserves the old value so an as-of recall before the
+        correction still returns what was believed true then. The old item is
+        archived with its ``valid_to`` set; the new item inherits the scope,
+        owner, ACL, and purpose, with ``valid_from`` at the correction moment."""
+        item = self.store.get(memory_id)
+        if item is None:
+            raise MemoryPolicyError(f"memory not found: {memory_id}")
+        moment = valid_from or utcnow()
+        if item.valid_to is None:
+            item.valid_to = moment
+        item.status = "archived"
+        item.updated_at = utcnow()
+        self.store.put(item)
+        new_item = self.write_fact(
+            new_content,
+            scope=item.scope,
+            owner_id=item.owner_id,
+            type=item.type,
+            confidence=confidence if confidence is not None else item.confidence,
+            privacy_class=item.privacy_class,
+            entities=item.entities,
+            metadata={**item.metadata, "corrected_from": item.id},
+            valid_from=moment,
+            acl=list(item.acl),
+            purpose=item.purpose,
+            consent_id=item.consent_id,
+        )
+        new_item.supersedes = item.id
+        self.store.put(new_item)
+        self._record(
+            "memory_correct",
+            user_id=item.owner_id if item.scope == MemoryScope.USER else None,
+            resource=item.id,
+            details={"new_id": new_item.id, "valid_to": moment.isoformat()},
+        )
+        return new_item
 
     def delete(self, memory_id: str) -> bool:
         item = self.store.get(memory_id)

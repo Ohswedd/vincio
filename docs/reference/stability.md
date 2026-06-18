@@ -112,6 +112,35 @@ model and `RunOutput.from_*` constructors, `Simulator` / `DriftMonitor` /
 None of this removes or repurposes any 1.0 public symbol — upgrading across the
 1.x line never breaks working code.
 
+## Breaking windows: 2.0 and 3.0
+
+`API_VERSION` (returned by `vincio.stability.API_VERSION`) tracks the frozen
+public-API contract and bumps only on a deliberate breaking window. There have
+been two: **2.0** (the structural refactor — facades, async-first stores, the
+multimodal-native packet, enterprise endpoints) and **3.0** (the unified
+self-improvement contract, provable erasure with consent modeling, and the
+async-canonical core). Each shipped through the mechanical deprecation runway
+above, and nothing breaks *outside* a window.
+
+### Collapsed at 3.0
+
+3.0 collapses the separately-wired self-improvement convenience methods into the
+unified `app.self_improvement(...)` contract. The superseded methods are **kept
+working** through the entire 3.x line and removed no earlier than 4.0:
+
+| Deprecated (`since=3.0`, `removed_in=4.0`) | Replacement |
+| --- | --- |
+| `app.continuous_improvement(...)` | `app.self_improvement(policy)` — the policy's `online` arm |
+| `app.experiment_proposer(...)` | `app.self_improvement(policy)` — the policy's `propose` arm |
+
+The underlying organs (`ContinuousImprovementController`, `ExperimentProposer`,
+`ImprovementLoop`) remain public; only the app-level convenience entry points are
+deprecated in favour of the one contract. The 3.0 additions —
+`SelfImprovementPolicy` / `SelfImprovementController` / `app.deploy`, provable
+erasure (`ErasureProof`), the `ConsentLedger`, and the bi-temporal `MemoryItem`
+fields (`valid_from` / `valid_to` / `acl` / `purpose`) — are all `@experimental`
+while their shape settles; the new `MemoryItem` fields default backward-compatibly.
+
 ## Supported versions
 
 See [SECURITY.md](https://github.com/Ohswedd/vincio/blob/main/SECURITY.md) for

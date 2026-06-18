@@ -396,3 +396,53 @@ Three more 1.10 organs make the closed loop safer and more informed:
 The VincioBench `loop` family gates the drift detectors, the controller's
 rollback, the non-regression guard, and restart-safe online state; the
 `agentic_evals` family gates the reflector's failure-mode diagnosis.
+
+## The unified self-improvement contract (3.0, `@experimental`)
+
+By 2.x every organ above shipped, but as separately-wired tools. 3.0 collapses
+them under one declarative, governed contract. A `SelfImprovementPolicy` is the
+spec — *what to watch, when to propose, how to meta-optimize, whether to canary,
+how much to spend* — and `app.self_improvement(policy, dataset=...)` returns a
+`SelfImprovementController` that drives the existing loop, proposer, controller,
+and canary as **one streaming engine**:
+
+```python
+from vincio.optimize import SelfImprovementPolicy, MetaSpec, CanarySpec
+
+policy = SelfImprovementPolicy(
+    metrics=["lexical_overlap", "groundedness"],
+    meta=MetaSpec(strategies=["reflective", "evolution"], budgets=[4, 8]),  # how to optimize
+    canary=CanarySpec(metric="lexical_overlap"),                            # gate before serving
+    active_learning=True, label_budget=5,                                   # acquire labels
+)
+controller = app.self_improvement(policy, dataset=golden)
+async for event in controller.astream():
+    print(event.phase, event.action, event.reason)
+# observe → proposal → meta → label → reeval → canary → promote / rollback
+```
+
+Two parts are first-class here rather than ad-hoc knobs:
+
+- **Meta-optimization** — `successive_halving` screens the `strategies × budgets`
+  grid on a minibatch and keeps the best config; `learn_fitness_weights` adapts
+  the fitness weights toward the metric with the most headroom, so the system
+  also decides *how* to tune itself.
+- **Active learning** — `select_for_labeling` queues the most-uncertain cases
+  (scores nearest the decision midpoint) for human labels, the acquisition step
+  before the next round.
+
+Every promotion still passes the **same** significance + safety + golden
+non-regression gates the loop always used. The canary-driven prompt/policy
+**promotion** reserved out of 1.10 lands as a serving surface:
+
+```python
+result = app.deploy(candidate_spec, dataset=golden)  # canary-gated
+# Promotes live (registry push + tag + apply + audit) only on a no-regression
+# verdict; a failing gate refuses and rolls back to the last known-good version.
+```
+
+`app.continuous_improvement` and `app.experiment_proposer` are deprecated
+(`since=3.0`, `removed_in=4.0`) in favour of the unified contract and stay
+functional through 3.x. The `loop` family's `self_improvement` checks gate the
+streaming cycle, meta-optimization, and the canary-gated deploy. See
+[`38_self_improvement_and_provable_erasure.py`](../../examples/38_self_improvement_and_provable_erasure.py).
