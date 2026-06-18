@@ -215,7 +215,7 @@
     {
       "id": "judge_kappa_tracking",
       "category": "quality",
-      "statement": "Cohen's κ between an agreeing judge and human labels is tracked at 0.75 or higher before the judge earns gating weight.",
+      "statement": "Cohen's \u03ba between an agreeing judge and human labels is tracked at 0.75 or higher before the judge earns gating weight.",
       "metric": "families.agentic_evals.cohen_kappa_tracked",
       "direction": "gte",
       "threshold": 0.75,
@@ -230,7 +230,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.scale.batch.reconciled_ok",
-      "rationale": "Latency-tolerant batch work must return a result for every request — losing one corrupts evals and bulk extraction."
+      "rationale": "Latency-tolerant batch work must return a result for every request \u2014 losing one corrupts evals and bulk extraction."
     },
     {
       "id": "failover_circuit_recovery",
@@ -470,7 +470,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.evals.swap_gate_blocks_regression",
-      "rationale": "A model is promoted into the live path only if it clears the gate — the swap is gated, not merely compared."
+      "rationale": "A model is promoted into the live path only if it clears the gate \u2014 the swap is gated, not merely compared."
     },
     {
       "id": "rotation_canary_auto_rollback",
@@ -500,7 +500,7 @@
       "direction": "gte",
       "threshold": 1.0,
       "enforced_by": "families.generation.citation.coverage",
-      "rationale": "Citations resolve to footnotes/bibliography and unresolved markers are surfaced — every claim is cited, not 'one citation anywhere'."
+      "rationale": "Citations resolve to footnotes/bibliography and unresolved markers are surfaced \u2014 every claim is cited, not 'one citation anywhere'."
     },
     {
       "id": "generation_media_provenance_bound",
@@ -530,7 +530,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.loop.non_regression.guard_blocks_regression",
-      "rationale": "Sequential auto-promotions can never silently undo a prior fix — the growing golden suite gates each one."
+      "rationale": "Sequential auto-promotions can never silently undo a prior fix \u2014 the growing golden suite gates each one."
     },
     {
       "id": "online_state_restart_safe",
@@ -700,7 +700,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.loop.executed_distillation.swap_gate_blocks_regression",
-      "rationale": "The flywheel ships a cheaper model only if it provably does not regress — the same gate as a model rotation."
+      "rationale": "The flywheel ships a cheaper model only if it provably does not regress \u2014 the same gate as a model rotation."
     },
     {
       "id": "burn_rate_alerting",
@@ -711,6 +711,66 @@
       "threshold": true,
       "enforced_by": "families.cost.alerting.burn_rate_fires",
       "rationale": "A self-hosted observability plane is only useful if its alert rules actually fire on the conditions that matter."
+    },
+    {
+      "id": "env_task_success_oracle",
+      "category": "quality",
+      "statement": "The stateful-environment harness verifies task success on the database end state (not turn plausibility).",
+      "metric": "families.agentic_evals.environment_eval.environment.oracle_success",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agentic_evals.environment_eval.environment.oracle_success",
+      "rationale": "End-state verification is the contract the agentic leaderboards judge on; a companion budget also gates that policy violations are rejected."
+    },
+    {
+      "id": "benchmark_adapter_determinism",
+      "category": "quality",
+      "statement": "All five benchmark adapters (SWE-bench/\u03c4-bench/GAIA/WebArena/BFCL) replay deterministically offline.",
+      "metric": "families.agentic_evals.environment_eval.adapters.all_deterministic",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agentic_evals.environment_eval.adapters.all_deterministic",
+      "rationale": "Reproducible leaderboard scores require offline determinism; a companion budget gates that each task set is hash-pinned to catch drift."
+    },
+    {
+      "id": "retrieval_eval_recall",
+      "category": "quality",
+      "statement": "The retrieval-eval harness reports recall@3 of at least 0.80 on the golden set.",
+      "metric": "families.rag.retrieval_eval.recall_at_3",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.rag.retrieval_eval.recall_at_3",
+      "rationale": "The budget gates 0.90 to leave headroom under the published 0.80 promise."
+    },
+    {
+      "id": "index_version_regression_caught",
+      "category": "quality",
+      "statement": "A retrieval config that regresses recall/nDCG vs its recorded baseline is caught as a CI gate using the same significance test as a model swap.",
+      "metric": "families.rag.retrieval_eval.regression_detected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.rag.retrieval_eval.regression_detected",
+      "rationale": "A re-embed or chunking change that drops recall must fail closed, not ship."
+    },
+    {
+      "id": "agent_fabric_allow_list",
+      "category": "security",
+      "statement": "Every agent/server resolution across A2A, AGNTCY/ACP, and the MCP registry passes an allow-list gate and is recorded as an audited access decision.",
+      "metric": "families.protocols.fabric.allow_list_enforced",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.protocols.fabric.allow_list_enforced",
+      "rationale": "A discoverable fabric must stay governed; a companion budget gates that each resolution is recorded on the audit chain."
+    },
+    {
+      "id": "generative_ui_streaming",
+      "category": "reliability",
+      "statement": "Agent and crew runs stream token/tool events that translate to a complete AG-UI run lifecycle for interactive frontends.",
+      "metric": "families.agent.streaming.agui_run_lifecycle",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agent.streaming.agui_run_lifecycle",
+      "rationale": "Generative UI inherits the run's provenance/budget/audit only if it streams over the same run, not a bolt-on layer."
     }
   ]
 }

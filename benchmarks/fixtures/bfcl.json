@@ -1,0 +1,82 @@
+{
+  "name": "bfcl",
+  "description": "Recorded BFCL items scored by AST match (function name + arguments) against the gold call(s); the relevance category rewards abstaining.",
+  "tasks": [
+    {
+      "id": "bfcl-simple-weather",
+      "prompt": "What's the weather in San Francisco?",
+      "gold": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "SF"
+          }
+        }
+      ],
+      "recorded": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "sf"
+          }
+        }
+      ],
+      "metadata": {
+        "category": "simple"
+      }
+    },
+    {
+      "id": "bfcl-parallel-convert",
+      "prompt": "Convert 10 USD to EUR and 5 GBP to USD.",
+      "gold": [
+        {
+          "name": "convert",
+          "arguments": {
+            "amount": 10,
+            "from": "USD",
+            "to": "EUR"
+          }
+        },
+        {
+          "name": "convert",
+          "arguments": {
+            "amount": 5,
+            "from": "GBP",
+            "to": "USD"
+          }
+        }
+      ],
+      "recorded": [
+        {
+          "name": "convert",
+          "arguments": {
+            "amount": 5,
+            "from": "GBP",
+            "to": "USD"
+          }
+        },
+        {
+          "name": "convert",
+          "arguments": {
+            "amount": 10,
+            "from": "USD",
+            "to": "EUR"
+          }
+        }
+      ],
+      "metadata": {
+        "category": "parallel"
+      }
+    },
+    {
+      "id": "bfcl-relevance-abstain",
+      "prompt": "Tell me a joke. (No tool should be called.)",
+      "gold": [],
+      "recorded": [],
+      "metadata": {
+        "category": "relevance"
+      }
+    }
+  ],
+  "task_set_hash": "54522ffdaf5b18c2"
+}

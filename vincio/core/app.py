@@ -1837,13 +1837,16 @@ class ContextApp:
         name: str | None = None,
         expose_resources: bool = True,
         expose_prompts: bool = True,
+        ui_resources: list[Any] | None = None,
         token_validator: Any | None = None,
     ) -> Any:
         """Expose this app as an MCP server (returns an :class:`MCPServer`).
 
         Registered tools become MCP tools (run through the permissioned,
         sandboxed, audited runtime); evidence/sources become resources; the
-        prompt spec becomes a prompt. Run it over stdio with
+        prompt spec becomes a prompt. Pass ``ui_resources`` (2.2) — a list of
+        :class:`~vincio.mcp.MCPUIResource` — to also serve MCP-UI / AG-UI
+        resources for generative-UI hosts. Run it over stdio with
         ``vincio.mcp.serve_stdio(server)`` or the ``vincio mcp serve`` CLI.
         """
         from ..mcp import build_app_server
@@ -1853,6 +1856,7 @@ class ContextApp:
             name=name,
             expose_resources=expose_resources,
             expose_prompts=expose_prompts,
+            ui_resources=ui_resources,
             token_validator=token_validator,
         )
 
@@ -1943,6 +1947,30 @@ class ContextApp:
         raise ConfigError(
             "serve_a2a target must be a Crew, a compiled StateGraph, or None (the app)"
         )
+
+    @experimental(since="2.2")
+    def agent_directory(
+        self,
+        *,
+        allow: list[str] | None = None,
+        deny: list[str] | None = None,
+        default_allow: bool = False,
+    ) -> Any:
+        """A governed, audited :class:`~vincio.registry.AgentDirectory` for this app.
+
+        Resolutions pass an allow-list gate (``allow`` / ``deny`` fnmatch globs;
+        fail-closed by default) and are recorded as access decisions on this app's
+        hash-chained audit log, so the agent fabric is as accountable as a local
+        tool call. Register A2A Agent Cards directly, or discover agents from an
+        AGNTCY/ACP or MCP registry into it.
+        """
+        from ..registry import AgentDirectory
+        from ..security.access import AllowListGate
+
+        gate = None
+        if allow is not None or deny is not None or default_allow is False:
+            gate = AllowListGate(allow=allow, deny=deny, default_allow=default_allow)
+        return AgentDirectory(allow_list=gate, audit=self.audit)
 
     # -- evaluators / optimizers ----------------------------------------------------------------------
 

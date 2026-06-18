@@ -4,6 +4,87 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - 2026-06-18
+
+Prove it on the world's benchmarks: environment eval, agentic leaderboards, the
+governed agent fabric, and generative UI. Entirely additive behind
+`@experimental(since="2.2")` on the frozen 2.0 surface — `API_VERSION` stays
+`2.0`, the single-process asyncio path stays the default, and nothing here is
+required to run Vincio. All offline and deterministic; the benchmark adapters and
+registry clients use only the core `httpx` dependency.
+
+### Added
+
+- **Stateful-environment eval harness + task-success oracle.** A new
+  `vincio.evals.environment` ships an `Environment` protocol
+  (`reset` / `step` / `observe` / `verify`), a deterministic in-process
+  `ToolEnvironment` (whose world is a dict mutated by tools), a declarative
+  end-state oracle (`StateCheck` / `TaskVerification`), and an
+  `EnvironmentSimulator` that drives an agent *policy* through a *mutable* world
+  and projects the interaction onto the existing `Trajectory` — scoring
+  **verifiable end-state**, not turn-by-turn plausibility. `make_retail_environment`
+  is a τ-bench-style reference world; `scripted_policy` / `task_success` round it
+  out. Re-exported from `vincio` (`Environment`, `ToolEnvironment`,
+  `EnvironmentSimulator`, `make_retail_environment`).
+- **Agentic benchmark adapters (SWE-bench Verified / τ-bench / τ²-bench / GAIA /
+  WebArena / BFCL).** `vincio.evals.benchmarks` ships one `BenchmarkAdapter`
+  contract and the five adapters, each scoring the benchmark's own **verifiable
+  end state** (SWE-bench's fail-to-pass/pass-to-pass transition, τ-bench's database
+  end state via the environment oracle, GAIA's normalized exact match, WebArena's
+  functional check, BFCL's AST match). Each pins its task set by a content hash
+  (`task_set_hash()`, verified against the fixture on load) and degrades to
+  recorded-fixture replay offline (`adapter.replay()`; fixtures in
+  `benchmarks/fixtures/`); `BenchmarkReport.to_eval_report()` projects onto an
+  `EvalReport` the Pareto optimizer consumes. `load_benchmark` / `available_benchmarks`.
+- **Retrieval evaluation harness + index-version regression.**
+  `vincio.evals.retrieval_eval` (`RetrievalEvaluator` / `RetrievalGoldenSet` /
+  `RetrievalConfig`) benchmarks an embedder / reranker / chunker / index config on
+  recall@k / nDCG@k / MRR / context-precision (reusing the retrieval metrics), and
+  `retrieval_regression(...)` records a versioned artifact and gates a recall/nDCG
+  regression on **the same significance test as a model swap** (`ab_test`).
+  Artifacts persist through `vincio.storage.index_regression`
+  (`IndexRegressionStore` / `IndexRegressionArtifact` / `config_key`), keyed on
+  `(embedder, chunker, corpus hash)` over the `MetadataStore`.
+- **The governed agent fabric (AGNTCY / ACP + MCP Registry).** `vincio.registry`
+  ships an `AgentDirectory` (`AgentRecord` / `AgentResolution`) over the existing
+  A2A Agent Card — `find` by capability/tag/query, `resolve` governed by an
+  allow-list and recorded as an `agent_resolve` access decision on the audit chain.
+  An **AGNTCY/ACP** (REST-native Agent Connect Protocol) adapter (`ACPClient` /
+  `ACPAgentManifest` + `acp_to_agent_card` / `agent_card_to_acp`) and an **MCP
+  Registry** discovery client (`MCPRegistryClient` / `MCPServerRecord`) discover
+  agents/servers into the same directory under the same allow-list. A new
+  `AllowListGate` (`vincio.security.access`) is a fail-closed reachability gate over
+  `AccessController`; `app.agent_directory(allow=..., deny=...)` builds a directory
+  wired to the app's audit chain. Re-exported from `vincio` (`AgentDirectory`,
+  `AllowListGate`).
+- **Generative UI / AG-UI streaming.** `vincio.server.agui` ships an AG-UI /
+  MCP-UI compatible event protocol (`AGUIEvent` / `AGUIEventType`) and translators
+  (`run_stream_to_agui`, `agent_stream_to_agui`, `agui_sse`), plus the SSE endpoint
+  `POST /v1/apps/{app_id}/agui`. `AgentExecutor.astream(...)` and `Crew.astream(...)`
+  now yield flat `AgentEvent` / `CrewEvent` streams (run/step lifecycle, real text
+  deltas, `tool_call` / `tool_result`, a terminal `done` carrying the state/result)
+  matching the `graph` / `compose` streaming surface — crew streams forward each
+  member's tool/text events. `mcp.MCPUIResource` (`from_html` / `from_agui`) serves
+  MCP-UI resources via `build_app_server(..., ui_resources=[...])` /
+  `app.serve_mcp(ui_resources=[...])`. The interactive UI inherits the run's
+  provenance, budget metering, and audit — one streamed run.
+- **VincioBench guarantees.** New CI-gated checks fold into the existing families:
+  environment task-success oracle + benchmark-adapter determinism in
+  `agentic_evals.environment_eval`, retrieval-eval recall/nDCG + index-version
+  regression in `rag.retrieval_eval`, the governed fabric (AGNTCY/ACP + MCP-registry
+  discovery under the allow-list, audited resolution) in `protocols.fabric`, and
+  token/tool-event + AG-UI streaming in `agent.streaming` — 255 budgets, 77 SLOs.
+  New runnable example `37_benchmarks_and_fabric.py`.
+
+### Notes
+
+- Backward-compatible and additive: every new symbol is `@experimental(since="2.2")`
+  and reachable through a new entry point; no existing API changes behavior. The
+  benchmark adapters and reference environments are offline and deterministic and
+  never reach the network; the agent fabric is governed by construction (fail-closed
+  allow-list, every resolution audited); AG-UI streaming opens no new data-exposure
+  boundary (it is a translation of the run's existing `astream`).
+
 ## [2.1.1] - 2026-06-18
 
 Closes the three known limitations the 2.1.0 adversarial review surfaced. All

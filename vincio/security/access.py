@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import AccessDeniedError, TenantIsolationError
 
-__all__ = ["Principal", "Role", "AccessRule", "AccessDecision", "AccessController"]
+__all__ = ["Principal", "Role", "AccessRule", "AccessDecision", "AccessController", "AllowListGate"]
 
 
 class Principal(BaseModel):
@@ -196,3 +196,60 @@ class AccessController:
         if not permissions:
             return True
         return any(self.has_scope(principal, perm) for perm in permissions)
+
+
+class AllowListGate:
+    """A reachability allow-list for the agent fabric (2.2).
+
+    Governs which agents / servers an org will resolve and reach. It is a thin,
+    **fail-closed** view over :class:`AccessController`: ``deny`` patterns are
+    evaluated first (lowest priority), then ``allow`` patterns; anything matching
+    neither falls through to ``default_allow`` (False by default). Patterns are
+    fnmatch globs over the resource name or URL (e.g. ``"*.trusted.example"``,
+    ``"researcher"``). :meth:`check` returns an explainable
+    :class:`AccessDecision` the caller records on the audit chain.
+    """
+
+    def __init__(
+        self,
+        *,
+        allow: list[str] | None = None,
+        deny: list[str] | None = None,
+        default_allow: bool = False,
+        action: str = "agent_resolve",
+    ) -> None:
+        self.allow = list(allow or [])
+        self.deny = list(deny or [])
+        self.action = action
+        rules: list[AccessRule] = []
+        for i, pattern in enumerate(self.deny):
+            rules.append(
+                AccessRule(id=f"deny:{pattern}", effect="deny", resources=[pattern], priority=10 + i)
+            )
+        for i, pattern in enumerate(self.allow):
+            rules.append(
+                AccessRule(id=f"allow:{pattern}", effect="allow", resources=[pattern], priority=100 + i)
+            )
+        # Reachability is independent of tenant isolation; that stays on the data
+        # plane. The gate only decides whether a name/URL is contactable at all.
+        self.controller = AccessController(
+            rules=rules, default_allow=default_allow, tenant_isolation=False
+        )
+
+    def check(
+        self,
+        resource: str,
+        *,
+        principal: Principal | None = None,
+        action: str | None = None,
+        context: dict[str, Any] | None = None,
+    ) -> AccessDecision:
+        return self.controller.evaluate(
+            principal or Principal(),
+            action=action or self.action,
+            resource=resource,
+            context=context,
+        )
+
+    def allows(self, resource: str, **kwargs: Any) -> bool:
+        return self.check(resource, **kwargs).allowed

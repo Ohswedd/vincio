@@ -13,6 +13,8 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from pydantic import BaseModel
+
 from .protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -25,7 +27,46 @@ from .protocol import (
     text_content,
 )
 
-__all__ = ["MCPServer", "build_app_server", "serve_stdio"]
+__all__ = ["MCPServer", "MCPUIResource", "build_app_server", "serve_stdio"]
+
+
+class MCPUIResource(BaseModel):
+    """A UI resource exposed over MCP (MCP-UI / AG-UI compatible, 2.2).
+
+    MCP-UI carries interactive UI as a resource with a ``ui://`` URI and an
+    HTML (``text/html``) or AG-UI JSON (``application/vnd.ag-ui+json``) body, so a
+    host can render server-provided UI inline. Build one with raw ``html`` or an
+    ``agui`` event list/snapshot.
+    """
+
+    uri: str
+    name: str = ""
+    description: str = ""
+    mime_type: str = "text/html"
+    text: str = ""
+
+    @classmethod
+    def from_html(cls, uri: str, html: str, *, name: str = "", description: str = "") -> MCPUIResource:
+        return cls(uri=uri, name=name or uri, description=description, mime_type="text/html", text=html)
+
+    @classmethod
+    def from_agui(cls, uri: str, events: Any, *, name: str = "", description: str = "") -> MCPUIResource:
+        import json
+
+        body = json.dumps(events, default=lambda o: o.to_wire() if hasattr(o, "to_wire") else str(o))
+        return cls(
+            uri=uri,
+            name=name or uri,
+            description=description,
+            mime_type="application/vnd.ag-ui+json",
+            text=body,
+        )
+
+    def descriptor(self) -> dict[str, Any]:
+        return {"uri": self.uri, "name": self.name, "description": self.description, "mimeType": self.mime_type}
+
+    def content(self) -> dict[str, Any]:
+        return {"uri": self.uri, "mimeType": self.mime_type, "text": self.text}
 
 # A token validator returns a principal-ish identity dict, or raises MCPError.
 TokenValidator = Callable[[str | None], Awaitable[dict[str, Any]] | dict[str, Any]]
@@ -170,6 +211,7 @@ def build_app_server(
     name: str | None = None,
     expose_resources: bool = True,
     expose_prompts: bool = True,
+    ui_resources: list[MCPUIResource] | None = None,
     token_validator: TokenValidator | None = None,
 ) -> MCPServer:
     """Expose a :class:`ContextApp` as an MCP server.
@@ -177,9 +219,12 @@ def build_app_server(
     Registered tools become MCP tools (run through the permissioned, sandboxed,
     audited tool runtime); the app's evidence/sources become MCP resources; the
     prompt spec becomes an MCP prompt. Every inbound ``tools/call`` is recorded
-    on the hash-chained audit log.
+    on the hash-chained audit log. Pass ``ui_resources`` (2.2) to additionally
+    serve MCP-UI / AG-UI resources (``ui://…``) for generative-UI hosts.
     """
     from ..core.types import ToolCall
+
+    ui_map = {res.uri: res for res in (ui_resources or [])}
 
     def list_tools() -> list[dict[str, Any]]:
         names = app.enabled_tools or app.tool_registry.names
@@ -211,7 +256,7 @@ def build_app_server(
         return {"text": _stringify(result.output)}
 
     def list_resources() -> list[dict[str, Any]]:
-        out: list[dict[str, Any]] = []
+        out: list[dict[str, Any]] = [res.descriptor() for res in ui_map.values()]
         for ev in _app_resources(app):
             out.append(
                 {
@@ -224,6 +269,8 @@ def build_app_server(
         return out
 
     async def read_resource(uri: str) -> dict[str, Any]:
+        if uri in ui_map:
+            return ui_map[uri].content()
         ev_id = uri.rsplit("/", 1)[-1]
         for ev in _app_resources(app):
             if ev.id == ev_id:
@@ -252,12 +299,13 @@ def build_app_server(
         ]
         return {"description": spec.objective or "", "messages": messages}
 
+    serve_resources = expose_resources or bool(ui_map)
     return MCPServer(
         name=name or app.name,
         list_tools=list_tools,
         call_tool=call_tool,
-        list_resources=list_resources if expose_resources else None,
-        read_resource=read_resource if expose_resources else None,
+        list_resources=list_resources if serve_resources else None,
+        read_resource=read_resource if serve_resources else None,
         list_prompts=list_prompts if expose_prompts else None,
         get_prompt=get_prompt if expose_prompts else None,
         token_validator=token_validator,

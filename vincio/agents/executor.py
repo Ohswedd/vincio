@@ -9,8 +9,10 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Any, Literal
+
+from pydantic import BaseModel, Field
 
 from ..core.errors import ToolApprovalRequiredError, VincioError
 from ..core.types import (
@@ -32,10 +34,34 @@ from ..tools.runtime import ToolRuntime
 from .planner import Planner
 from .state import AgentError, AgentState, AgentStep
 
-__all__ = ["AgentExecutor"]
+__all__ = ["AgentExecutor", "AgentEvent"]
 
 RetrieveFn = Callable[[str], Awaitable[list[EvidenceItem]]]
 HumanGate = Callable[[str, dict[str, Any]], Awaitable[bool]]
+
+
+class AgentEvent(BaseModel):
+    """A streamed event from :meth:`AgentExecutor.astream` (2.2).
+
+    Mirrors the flat, ``type``-discriminated event surface ``graph`` and
+    ``compose`` already expose: step lifecycle, real text deltas, tool activity,
+    and a terminal ``done`` carrying the final :class:`AgentState`.
+    """
+
+    type: Literal[
+        "run_start", "step_start", "step_end", "text_delta", "tool_call", "tool_result", "done", "error"
+    ]
+    step: str = ""
+    step_type: str = ""
+    instruction: str = ""
+    tool_name: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    text: str | None = None
+    status: str = ""
+    result: Any = None
+    error: str | None = None
+    usage: dict[str, float] = Field(default_factory=dict)
+    payload: Any = None  # final AgentState (model_dump) on "done"
 
 _TOOL_ARGS_SCHEMA = {
     "type": "object",
@@ -118,6 +144,25 @@ class AgentExecutor:
         self.max_context_tokens = max_context_tokens
         self.max_parallel_steps = max(1, max_parallel_steps)
         self.max_replans = max_replans
+        # Streaming sink (2.2): set by ``astream`` so the step/tool/text handlers
+        # emit events live. ``None`` on the default ``run`` path — zero overhead.
+        self._event_sink: Callable[[AgentEvent], None] | None = None
+
+    # -- streaming emission (2.2) ----------------------------------------------------
+
+    def _emit(self, event: AgentEvent) -> None:
+        if self._event_sink is not None:
+            self._event_sink(event)
+
+    def _emit_text(self, text: str, *, step: str = "") -> None:
+        """Emit the produced text as word-grouped deltas (real text, chunked)."""
+        if self._event_sink is None or not text:
+            return
+        words = text.split(" ")
+        for i in range(0, len(words), 4):
+            chunk = " ".join(words[i : i + 4])
+            suffix = " " if i + 4 < len(words) else ""
+            self._emit(AgentEvent(type="text_delta", text=chunk + suffix, step=step))
 
     # -- budget / termination -------------------------------------------------------
 
@@ -199,6 +244,14 @@ class AgentExecutor:
         step.status = "running"
         step.attempts += 1
         started = time.monotonic()
+        self._emit(
+            AgentEvent(
+                type="step_start",
+                step=step.name or step.type,
+                step_type=step.type,
+                instruction=step.instruction[:300],
+            )
+        )
         try:
             handler = {
                 "retrieve": self._step_retrieve,
@@ -231,6 +284,15 @@ class AgentExecutor:
         finally:
             step.duration_ms = int((time.monotonic() - started) * 1000)
             state.usage.steps += 1
+            self._emit(
+                AgentEvent(
+                    type="step_end",
+                    step=step.name or step.type,
+                    step_type=step.type,
+                    status=step.status,
+                    error=step.error,
+                )
+            )
 
     async def _step_retrieve(self, state: AgentState, step: AgentStep) -> None:
         if self.retrieve_fn is None:
@@ -276,6 +338,9 @@ class AgentExecutor:
             if tool_name not in known_tools:
                 results.append({"tool": tool_name, "status": "error", "error": "unknown tool"})
                 continue
+            self._emit(
+                AgentEvent(type="tool_call", tool_name=tool_name, arguments=dict(call_spec.get("arguments", {})))
+            )
             try:
                 result = await self.tools.execute(  # type: ignore[union-attr]
                     ToolCall(tool_name=tool_name, arguments=call_spec.get("arguments", {})),
@@ -289,6 +354,14 @@ class AgentExecutor:
                 result = ToolResult(call_id="", tool_name=tool_name, status="error", error=exc.message)
             state.usage.tool_calls += 1
             state.tool_results.append(result)
+            self._emit(
+                AgentEvent(
+                    type="tool_result",
+                    tool_name=result.tool_name,
+                    status=result.status,
+                    result=result.output if result.status == "ok" else result.error,
+                )
+            )
             results.append({"tool": result.tool_name, "status": result.status})
         step.result = results
 
@@ -317,11 +390,20 @@ class AgentExecutor:
                 output_schema_name="tool_arguments",
             )
             arguments = (response.structured or {}).get("arguments", {})
+        self._emit(AgentEvent(type="tool_call", tool_name=step.tool_name, arguments=dict(arguments)))
         result = await self.tools.execute(
             ToolCall(tool_name=step.tool_name, arguments=arguments), principal=self.principal
         )
         state.usage.tool_calls += 1
         state.tool_results.append(result)
+        self._emit(
+            AgentEvent(
+                type="tool_result",
+                tool_name=step.tool_name,
+                status=result.status,
+                result=result.output if result.status == "ok" else result.error,
+            )
+        )
         step.result = result.output if result.status == "ok" else {"status": result.status, "error": result.error}
         if result.status not in ("ok",):
             step.metadata["tool_status"] = result.status
@@ -374,6 +456,7 @@ class AgentExecutor:
             kwargs["output_schema_name"] = contract.schema_name
         response = await self._model_call(state, self._context_messages(state, instruction), **kwargs)
         state.raw_answer_text = response.text
+        self._emit_text(response.text or "", step="finalize")
         if self.output_validator is not None:
             report = await self.output_validator.validate(
                 response.text,
@@ -433,6 +516,65 @@ class AgentExecutor:
                 "unrecoverable_error" if state.errors and state.final_answer is None else "objective_complete"
             )
         return state
+
+    async def astream(
+        self,
+        objective: Objective | str,
+        *,
+        budget: Budget | None = None,
+        initial_evidence: list[EvidenceItem] | None = None,
+        attribution: dict[str, Any] | None = None,
+    ) -> AsyncIterator[AgentEvent]:
+        """Stream the run as :class:`AgentEvent`\\ s (2.2).
+
+        Yields ``run_start``, then live ``step_start`` / ``step_end``,
+        ``tool_call`` / ``tool_result``, and real ``text_delta`` events, ending
+        with a terminal ``done`` carrying the final :class:`AgentState` (or
+        ``error``). Matches the streaming surface ``graph`` and ``compose`` expose
+        and feeds the AG-UI protocol over the server's SSE path.
+        """
+        queue: asyncio.Queue[AgentEvent | None] = asyncio.Queue()
+        previous_sink = self._event_sink
+        self._event_sink = queue.put_nowait
+        objective_text = objective if isinstance(objective, str) else objective.text
+        self._emit(AgentEvent(type="run_start", instruction=objective_text[:300]))
+
+        async def _drive() -> None:
+            try:
+                state = await self.run(
+                    objective,
+                    budget=budget,
+                    initial_evidence=initial_evidence,
+                    attribution=attribution,
+                )
+                queue.put_nowait(
+                    AgentEvent(
+                        type="done",
+                        status=state.termination_reason or "",
+                        result=state.final_answer,
+                        usage={
+                            "steps": float(state.usage.steps),
+                            "tool_calls": float(state.usage.tool_calls),
+                            "cost_usd": float(state.usage.cost_usd),
+                        },
+                        payload=state.model_dump(mode="json"),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - surface as a terminal event
+                queue.put_nowait(AgentEvent(type="error", error=f"{type(exc).__name__}: {exc}"))
+            finally:
+                queue.put_nowait(None)
+
+        task = asyncio.create_task(_drive())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield event
+        finally:
+            self._event_sink = previous_sink
+            await task
 
     async def _run_step_with_retry(self, state: AgentState, step: AgentStep) -> None:
         await self._run_step(state, step)
@@ -529,6 +671,9 @@ class AgentExecutor:
                         state.terminated = True
                         state.termination_reason = "budget_exhausted"
                         break
+                    self._emit(
+                        AgentEvent(type="tool_call", tool_name=tool_call.name, arguments=dict(tool_call.arguments))
+                    )
                     try:
                         result = await self.tools.execute(
                             ToolCall(tool_name=tool_call.name, arguments=tool_call.arguments),
@@ -542,6 +687,14 @@ class AgentExecutor:
                         )
                     state.usage.tool_calls += 1
                     state.tool_results.append(result)
+                    self._emit(
+                        AgentEvent(
+                            type="tool_result",
+                            tool_name=result.tool_name,
+                            status=result.status,
+                            result=result.output if result.status == "ok" else result.error,
+                        )
+                    )
                     messages.append(
                         Message(
                             role="tool",
@@ -553,6 +706,7 @@ class AgentExecutor:
                 continue
             # No tool calls: this is the final answer.
             state.raw_answer_text = response.text
+            self._emit_text(response.text or "", step="answer")
             if self.output_validator is not None:
                 report = await self.output_validator.validate(
                     response.text,

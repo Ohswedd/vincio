@@ -1,6 +1,20 @@
 """Vincio evaluation engine."""
 
 from .annotation import AnnotationItem, AnnotationQueue, cohens_kappa
+from .benchmarks import (
+    BenchmarkAdapter,
+    BenchmarkError,
+    BenchmarkReport,
+    BenchmarkResult,
+    BenchmarkTask,
+    BFCLAdapter,
+    GAIAAdapter,
+    SWEBenchAdapter,
+    TauBenchAdapter,
+    WebArenaAdapter,
+    available_benchmarks,
+    load_benchmark,
+)
 from .datasets import (
     Dataset,
     EvalCase,
@@ -16,6 +30,25 @@ from .drift import (
     ks_statistic,
     psi,
     rbf_mmd2,
+)
+from .environment import (
+    AgentPolicy,
+    EnvAction,
+    Environment,
+    EnvironmentResult,
+    EnvironmentSimulator,
+    EnvObservation,
+    EnvStepResult,
+    EnvTask,
+    EnvToolResult,
+    StateCheck,
+    TaskCheck,
+    TaskVerification,
+    ToolEnvironment,
+    make_counter_environment,
+    make_retail_environment,
+    scripted_policy,
+    task_success,
 )
 from .experiments import Experiment, ExperimentRun, ExperimentTracker, ab_test
 from .guardrails import metric_guardrail
@@ -38,6 +71,15 @@ from .redteam import (
 )
 from .replay import ReplayCase, ReplayResult, ReplayRunner
 from .reports import CaseResult, EvalReport, GateSpec, evaluate_gates
+from .retrieval_eval import (
+    RetrievalConfig,
+    RetrievalEvaluator,
+    RetrievalGoldenSet,
+    RetrievalQuery,
+    RetrievalRegressionVerdict,
+    as_search_fn,
+    retrieval_regression,
+)
 from .runners import EvalRunner, EvalTarget
 from .simulator import Persona, SimulatedConversation, Simulator
 from .swap import (
@@ -121,4 +163,43 @@ __all__ = [
     "AnnotationQueue",
     "AnnotationItem",
     "cohens_kappa",
+    # 2.2 — stateful-environment eval harness + task-success oracle
+    "Environment",
+    "ToolEnvironment",
+    "EnvObservation",
+    "EnvAction",
+    "EnvToolResult",
+    "EnvStepResult",
+    "StateCheck",
+    "TaskCheck",
+    "TaskVerification",
+    "EnvTask",
+    "EnvironmentResult",
+    "EnvironmentSimulator",
+    "AgentPolicy",
+    "scripted_policy",
+    "task_success",
+    "make_retail_environment",
+    "make_counter_environment",
+    # 2.2 — agentic benchmark adapters (SWE-bench/τ-bench/GAIA/WebArena/BFCL)
+    "BenchmarkAdapter",
+    "BenchmarkTask",
+    "BenchmarkResult",
+    "BenchmarkReport",
+    "BenchmarkError",
+    "SWEBenchAdapter",
+    "TauBenchAdapter",
+    "GAIAAdapter",
+    "WebArenaAdapter",
+    "BFCLAdapter",
+    "available_benchmarks",
+    "load_benchmark",
+    # 2.2 — retrieval evaluation harness + index-version regression
+    "RetrievalQuery",
+    "RetrievalGoldenSet",
+    "RetrievalConfig",
+    "RetrievalEvaluator",
+    "RetrievalRegressionVerdict",
+    "retrieval_regression",
+    "as_search_fn",
 ]

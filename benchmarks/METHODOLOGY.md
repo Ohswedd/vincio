@@ -32,17 +32,18 @@ where they are, so you can run it yourself and audit the claims.
 | Family | Question it answers | Naive baseline |
 |---|---|---|
 | **PromptBench** | Do compiled layouts cut tokens and raise cache prefix reuse vs hand-concatenation? Does the linter catch known defects? | string concatenation |
-| **RAGBench** | recall@3 / MRR per retrieval mode; GraphRAG community building | single-index BM25 |
+| **RAGBench** | recall@3 / MRR per retrieval mode; GraphRAG community building; (2.2) retrieval-eval recall@k/nDCG@k + index-version regression on recall deltas | single-index BM25 |
 | **MemoryBench** | preference recall, contradiction superseding, cross-user isolation, staleness | — |
-| **AgentBench** | budget adherence under adversarial loops, crew termination, durable-graph determinism | unbounded loop |
+| **AgentBench** | budget adherence under adversarial loops, crew termination, durable-graph determinism; (2.2) executor/crew token & tool-event streaming + AG-UI translation | unbounded loop |
 | **ToolBench** | reliability, p50 runtime overhead, invalid-arg rejection, cache hits | — |
 | **OutputBench** | recovery rate over malformed outputs vs raw parsing | `json.loads` |
 | **ReliabilityBench** | constrained-decode closure, mid-stream abort savings, self-correction, rails | validate-at-end |
 | **CostBench** | evidence-token reduction from the compiler | stuff-everything |
 | **SecurityBench** | injection detection / false-positive rate, PII coverage | — |
 | **EvalBench** | metric agreement, red-team judging, synthetic determinism, A/B significance | naive target |
+| **AgenticEvalsBench** | trajectory/tool metric agreement, simulator determinism, drift sensitivity/specificity, κ tracking; (2.2) stateful-environment task-success oracle + deterministic hash-pinned replay of the five benchmark adapters | output-only eval |
 | **LoopBench** | the closed loop end to end: promotion, gating, auto-memory, Pareto, learned budgets | ungated optimization |
-| **ProtocolsBench** | MCP tool schema-fidelity + resource provenance, A2A delegation termination, Agent-Skill progressive-disclosure savings | thin protocol adapter |
+| **ProtocolsBench** | MCP tool schema-fidelity + resource provenance, A2A delegation termination, Agent-Skill progressive-disclosure savings; (2.2) governed agent fabric (AGNTCY/ACP + MCP-registry discovery under the allow-list, audited resolution) | thin protocol adapter |
 | **GovernanceBench** | card/AI-BOM completeness, OWASP/NIST/MITRE/ISO-42001 mapping coverage, erasure correctness + audit, multilingual PII recall, RAG-poisoning detection rate/FP, residency endpoint inference, signed-manifest verification | English-only / ungoverned |
 | **GenerationBench** | document-contract validity (deficient rejected), cited-report coverage + per-claim entailment, media C2PA provenance binding + tamper rejection + disclosure, redline correctness, new-format ingestion recall, generated-media prompt safety | un-contracted / un-provenanced output |
 | **PerfBench** | compile/retrieval/run latency, cache speedups, concurrent throughput, TTFT | cold paths |
@@ -57,6 +58,17 @@ production document distribution; RAG quality numbers describe behavior on this
 reference corpus, and you should re-measure on your own data with the same
 harness. Bring your own corpus by editing the family fixtures; the metric code
 is unchanged.
+
+The **agentic benchmark adapters** (SWE-bench Verified / τ-bench / GAIA /
+WebArena / BFCL) read small recorded fixtures committed under
+`benchmarks/fixtures/`. Each fixture declares a `task_set_hash` the adapter
+recomputes and verifies on load, so a silent task-set change is caught; offline,
+the adapters **replay a recorded agent output against each benchmark's own
+verifiable scorer** (SWE-bench's fail-to-pass/pass-to-pass transition, τ-bench's
+database end state via the environment oracle, GAIA's normalized exact match,
+WebArena's functional check, BFCL's AST match) rather than cloning repos or
+driving a browser. Point an adapter at a live task set to score a real run; the
+scoring code is identical.
 
 ## Reproducing the numbers
 
