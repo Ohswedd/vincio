@@ -1,0 +1,47 @@
+{
+  "name": "swebench_verified",
+  "description": "Recorded SWE-bench Verified instances: a candidate patch resolves an issue iff the fail-to-pass tests turn green and the pass-to-pass tests stay green.",
+  "tasks": [
+    {
+      "id": "lib__core-3721",
+      "prompt": "Fix the off-by-one in the range slicer reported in issue #3721.",
+      "gold": {
+        "fail_to_pass": [
+          "test_slice_inclusive",
+          "test_slice_edge"
+        ],
+        "pass_to_pass": [
+          "test_slice_basic"
+        ]
+      },
+      "recorded": {
+        "tests": {
+          "test_slice_inclusive": "passed",
+          "test_slice_edge": "passed",
+          "test_slice_basic": "passed"
+        }
+      }
+    },
+    {
+      "id": "web__router-1188",
+      "prompt": "Resolve the redirect loop on trailing-slash routes in issue #1188.",
+      "gold": {
+        "fail_to_pass": [
+          "test_trailing_slash_redirect"
+        ],
+        "pass_to_pass": [
+          "test_basic_route",
+          "test_named_route"
+        ]
+      },
+      "recorded": {
+        "tests": {
+          "test_trailing_slash_redirect": "failed",
+          "test_basic_route": "passed",
+          "test_named_route": "passed"
+        }
+      }
+    }
+  ],
+  "task_set_hash": "27096458f574c761"
+}

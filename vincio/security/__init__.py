@@ -1,6 +1,13 @@
 """Vincio security: PII, secrets, injection defense, access, audit."""
 
-from .access import AccessController, AccessDecision, AccessRule, Principal, Role
+from .access import (
+    AccessController,
+    AccessDecision,
+    AccessRule,
+    AllowListGate,
+    Principal,
+    Role,
+)
 from .audit import (
     AuditEntry,
     AuditLog,
@@ -22,6 +29,7 @@ __all__ = [
     "AccessController",
     "AccessDecision",
     "AccessRule",
+    "AllowListGate",
     "Principal",
     "Role",
     "AuditEntry",

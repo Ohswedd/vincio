@@ -1,0 +1,37 @@
+{
+  "name": "webarena",
+  "description": "Recorded WebArena episodes scored by a functional check (string_match / url_match) on the agent's final answer.",
+  "tasks": [
+    {
+      "id": "wa-order-status",
+      "prompt": "What is the status of my latest order?",
+      "gold": {
+        "type": "must_include",
+        "value": [
+          "order",
+          "shipped"
+        ]
+      },
+      "recorded": "Your latest order has shipped and is in transit."
+    },
+    {
+      "id": "wa-total-price",
+      "prompt": "What is the total of the items in the cart?",
+      "gold": {
+        "type": "exact_match",
+        "value": "$42.00"
+      },
+      "recorded": "$42.00"
+    },
+    {
+      "id": "wa-product-url",
+      "prompt": "Navigate to the product page for the blue mug.",
+      "gold": {
+        "type": "url",
+        "value": "/products/blue-mug"
+      },
+      "recorded": "navigated to https://shop.example/products/blue-mug"
+    }
+  ],
+  "task_set_hash": "3f5d172a999f4406"
+}

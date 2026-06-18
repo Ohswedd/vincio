@@ -26,7 +26,7 @@ from .protocol import (
     MCPTask,
     MCPToolInfo,
 )
-from .server import MCPServer, build_app_server, serve_stdio
+from .server import MCPServer, MCPUIResource, build_app_server, serve_stdio
 from .transport import (
     InProcessTransport,
     MCPTransport,
@@ -37,6 +37,7 @@ from .transport import (
 __all__ = [
     "MCPClient",
     "MCPServer",
+    "MCPUIResource",
     "build_app_server",
     "serve_stdio",
     "MCPTransport",

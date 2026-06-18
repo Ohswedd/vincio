@@ -38,7 +38,15 @@ from .core.types import (
     TaskType,
     UserInput,
 )
+from .evals.benchmarks import BenchmarkAdapter, load_benchmark
 from .evals.datasets import Dataset, GoldenRegressionSuite
+from .evals.environment import (
+    Environment,
+    EnvironmentSimulator,
+    ToolEnvironment,
+    make_retail_environment,
+)
+from .evals.retrieval_eval import RetrievalEvaluator, RetrievalGoldenSet, retrieval_regression
 from .evals.swap import SwapGate, SwapVerdict, model_swap_regression
 from .generation import (
     CitationContract,
@@ -102,7 +110,9 @@ from .providers import (
     make_finetune_backend,
 )
 from .realtime import RealtimeSession
+from .registry import AgentDirectory
 from .retrieval import FastEmbedEmbedder, MatryoshkaEmbedder, ShardedIndex, TwoStageIndex
+from .security.access import AllowListGate
 from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
 from .stability import (
@@ -116,7 +126,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "2.1.1"
+__version__ = "2.2.0"
 
 __all__ = [
     "ContextApp",
@@ -242,6 +252,18 @@ __all__ = [
     "serve_viewer",
     "TwoStageIndex",
     "FastEmbedEmbedder",
+    # 2.2 — environment eval, benchmarks, retrieval eval, agent fabric
+    "Environment",
+    "ToolEnvironment",
+    "EnvironmentSimulator",
+    "make_retail_environment",
+    "BenchmarkAdapter",
+    "load_benchmark",
+    "RetrievalEvaluator",
+    "RetrievalGoldenSet",
+    "retrieval_regression",
+    "AgentDirectory",
+    "AllowListGate",
     "API_VERSION",
     "StabilityLevel",
     "VincioDeprecationWarning",

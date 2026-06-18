@@ -1,0 +1,34 @@
+{
+  "name": "gaia",
+  "description": "Recorded GAIA items scored by GAIA's normalized exact match (lowercase, drop articles/punctuation, strip thousands separators).",
+  "tasks": [
+    {
+      "id": "gaia-l1-count",
+      "prompt": "How many moons does Mars have?",
+      "gold": "2",
+      "recorded": "2",
+      "metadata": {
+        "level": 1
+      }
+    },
+    {
+      "id": "gaia-l1-capital",
+      "prompt": "What is the capital of France?",
+      "gold": "Paris",
+      "recorded": "Paris",
+      "metadata": {
+        "level": 1
+      }
+    },
+    {
+      "id": "gaia-l2-number",
+      "prompt": "What is one thousand written as digits?",
+      "gold": "1000",
+      "recorded": "1,000",
+      "metadata": {
+        "level": 2
+      }
+    }
+  ],
+  "task_set_hash": "9c4681341446e5c8"
+}

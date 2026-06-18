@@ -7,6 +7,7 @@ Vincio follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html) from
 
 | Version | Supported |
 | ------- | --------- |
+| 2.2.x   | ✅        |
 | 2.1.x   | ✅        |
 | 2.0.x   | ✅        |
 | 1.10.x  | ✅        |
@@ -189,6 +190,25 @@ enforce one coherent limit across a multi-worker fleet rather than one per worke
 Executed fine-tune jobs run through the provider's own authenticated transport
 (so the egress DLP scan and audit apply), and a trained student is promoted only
 past the significance swap gate — the flywheel cannot silently ship a regression.
+
+The 2.2 benchmarks-and-fabric surface is additive and keeps every new edge
+governed. The benchmark adapters and the reference environments are **offline and
+deterministic** — they replay recorded fixtures against verifiable scorers and
+never reach the network, so a benchmark run mirrors no traffic to a third party.
+The agent **fabric** makes discovery governed by construction: an `AgentDirectory`
+resolves an agent or MCP server only through an `AllowListGate`
+(`security/access.py`) — a **fail-closed** allow-list (deny patterns first, then
+allow; default deny) over the same `AccessController` the data plane uses — and
+**every resolution is recorded as an `agent_resolve` access decision on the
+hash-chained audit log**, so an unlisted agent is unreachable and each reachable
+one is accountable. The AGNTCY/ACP and MCP-registry discovery clients normalize
+remote records into the same governed directory; discovery never auto-trusts a
+result. Generative-UI streaming carries **no new data-exposure boundary**: AG-UI
+events are a translation of the run's existing `astream`, so the interactive UI
+inherits the run's provenance, budget metering, and audit rather than opening a
+side channel, and MCP-UI resources are static, app-provided content served through
+the same MCP resource path. The agent directory is something you run on your own
+infrastructure — a governed catalog, never a hosted control plane.
 
 ## Supply-chain integrity
 

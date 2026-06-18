@@ -208,13 +208,50 @@ Direction is inferred from `LOWER_IS_BETTER`: lower-is-better metrics fire when
 the value exceeds the threshold, higher-is-better when it falls below. Pass
 `evidence`/`expected`/`input` through the rail `params` for metrics that need them.
 
+## 8. Stateful environments, leaderboards, and retrieval regression (2.2)
+
+Turn-by-turn trajectory scoring judges *how plausible* each step looks. The agentic
+leaderboards judge something stronger: did the agent **change the world correctly**?
+A `vincio.evals.Environment` makes that measurable — `reset` / `step` / `observe` /
+`verify`, where `verify()` runs a **task-success oracle** over the *end state* and
+the run projects onto the same `Trajectory` the metrics already score.
+
+```python
+from vincio.evals import EnvAction, EnvironmentSimulator, make_retail_environment, scripted_policy
+
+env = make_retail_environment("cancel_refund")     # a τ-bench-style retail world
+result = EnvironmentSimulator().run(env, scripted_policy([
+    EnvAction(tool="cancel_order", arguments={"order_id": "O1002"}),
+    EnvAction(tool="refund_order", arguments={"order_id": "O1002"}),
+]))
+result.success                # the oracle: True iff every end-state check passed
+```
+
+Five `BenchmarkAdapter`s score a Vincio agent on the public leaderboards —
+**SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL** — each against the
+benchmark's own *verifiable* scorer, pinned by a task-set hash, replayable offline:
+
+```python
+from vincio.evals import load_benchmark
+
+report = await load_benchmark("tau_bench", fixture_path="benchmarks/fixtures/tau_bench.json").replay()
+report.success_rate
+report.to_eval_report()       # project onto an EvalReport for gates / the optimizer
+```
+
+And a retrieval-eval harness records a versioned artifact keyed on
+`(embedder, chunker, corpus hash)` and **gates a recall/nDCG regression on the same
+significance test as a model swap** — see the [run evals guide](run-evals.md).
+
 ## Why in-process
 
 LangSmith, Ragas, and DeepEval send your traces *out* to a platform to be scored.
 Vincio scores the trajectory **in your process**, in the same model that runs the
 agent at runtime — so the metric that gates a release offline is the identical
 object that guards live generations and that the optimizer maximizes. Offline and
-deterministic by default (mock provider, seed-deterministic simulator), with no
-hosted dependency. See the [evaluation concepts](../concepts/evals.md) and the
-[run evals guide](run-evals.md), and run
-[`examples/26_agentic_eval.py`](../../examples/26_agentic_eval.py) end to end.
+deterministic by default (mock provider, seed-deterministic simulator and
+environments), with no hosted dependency. See the [evaluation concepts](../concepts/evals.md)
+and the [run evals guide](run-evals.md), and run
+[`examples/26_agentic_eval.py`](../../examples/26_agentic_eval.py) and
+[`examples/37_benchmarks_and_fabric.py`](../../examples/37_benchmarks_and_fabric.py)
+end to end.

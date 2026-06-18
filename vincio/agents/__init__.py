@@ -11,7 +11,7 @@ from .backends import (
 )
 from .blackboard import Blackboard, BlackboardEntry
 from .compose import Composable, NodeEvent, branch, compose, parallel
-from .crew import AgentRole, Crew, CrewMemberReport, CrewResult, DelegationRecord
+from .crew import AgentRole, Crew, CrewEvent, CrewMemberReport, CrewResult, DelegationRecord
 from .dag import StepDAG
 from .distributed import (
     DistributedCheckpointer,
@@ -19,7 +19,7 @@ from .distributed import (
     InMemoryGraphCoordinator,
     RedisGraphCoordinator,
 )
-from .executor import AgentExecutor
+from .executor import AgentEvent, AgentExecutor
 from .graph import (
     END,
     START,
@@ -41,6 +41,7 @@ from .state import AgentError, AgentState, AgentStep, AgentStepType, Termination
 __all__ = [
     "StepDAG",
     "AgentExecutor",
+    "AgentEvent",
     "HandoffRecord",
     "HandoffRouter",
     "Planner",
@@ -60,6 +61,7 @@ __all__ = [
     "Crew",
     "CrewResult",
     "CrewMemberReport",
+    "CrewEvent",
     "DelegationRecord",
     # 0.6: durable stateful graphs
     "StateGraph",

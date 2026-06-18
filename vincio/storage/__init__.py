@@ -13,6 +13,7 @@ from .base import (
     create_metadata_store,
     parse_storage_url,
 )
+from .index_regression import IndexRegressionArtifact, IndexRegressionStore, config_key
 from .shared_state import (
     IdempotencyStore,
     InMemoryIdempotencyStore,
@@ -41,4 +42,8 @@ __all__ = [
     "IdempotencyStore",
     "InMemoryIdempotencyStore",
     "TenantQuotaManager",
+    # 2.2: index/retrieval regression artifacts
+    "IndexRegressionArtifact",
+    "IndexRegressionStore",
+    "config_key",
 ]

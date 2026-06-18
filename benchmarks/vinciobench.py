@@ -203,6 +203,255 @@ async def _retrieval_quality(
     return {"recall_at_3": _summary(recalls), "mrr": _summary(mrrs)}
 
 
+# ---------------------------------------------------------------------------
+# 2.2 helpers — environment eval, benchmark adapters, retrieval-eval regression,
+# the governed agent fabric, and generative-UI streaming. Folded into the
+# agentic_evals / rag / protocols / agent families below.
+# ---------------------------------------------------------------------------
+
+
+async def _agentic_evals_environment_2_2() -> dict[str, Any]:
+    """2.2 — stateful-environment task-success oracle + benchmark-adapter determinism."""
+    from vincio.evals import (
+        EnvAction,
+        EnvironmentSimulator,
+        load_benchmark,
+        make_retail_environment,
+        scripted_policy,
+    )
+
+    def _refund_policy(*actions: tuple[str, str]) -> Any:
+        return scripted_policy([EnvAction(tool=t, arguments={"order_id": o}) for t, o in actions])
+
+    correct = EnvironmentSimulator().run(
+        make_retail_environment("cancel_refund"),
+        _refund_policy(("cancel_order", "O1002"), ("refund_order", "O1002")),
+    )
+    violation = EnvironmentSimulator().run(
+        make_retail_environment("cancel_refund"), _refund_policy(("refund_order", "O1002"))
+    )
+    det_a = EnvironmentSimulator().run(
+        make_retail_environment("cancel_refund"),
+        _refund_policy(("cancel_order", "O1002"), ("refund_order", "O1002")),
+    )
+    det_b = EnvironmentSimulator().run(
+        make_retail_environment("cancel_refund"),
+        _refund_policy(("cancel_order", "O1002"), ("refund_order", "O1002")),
+    )
+
+    fixtures = Path(__file__).resolve().parent / "fixtures"
+    names = ["swebench_verified", "tau_bench", "gaia", "webarena", "bfcl"]
+    rates: dict[str, float] = {}
+    all_deterministic = True
+    hashes_pinned = True
+    for name in names:
+        report_a = await load_benchmark(name, fixture_path=fixtures / f"{name}.json").replay()
+        report_b = await load_benchmark(name, fixture_path=fixtures / f"{name}.json").replay()
+        all_deterministic = all_deterministic and (report_a.model_dump() == report_b.model_dump())
+        hashes_pinned = hashes_pinned and bool(report_a.task_set_hash)
+        rates[name] = report_a.success_rate
+
+    return {
+        "environment": {
+            "oracle_success": correct.success,
+            "oracle_rejects_policy_violation": not violation.success,
+            "deterministic": det_a.verification.model_dump() == det_b.verification.model_dump(),
+        },
+        "adapters": {
+            "count": len(names),
+            "all_deterministic": all_deterministic,
+            "hashes_pinned": hashes_pinned,
+            "swebench_verified_success_rate": rates["swebench_verified"],
+            "tau_bench_success_rate": rates["tau_bench"],
+            "gaia_exact_match_rate": rates["gaia"],
+            "webarena_success_rate": rates["webarena"],
+            "bfcl_ast_match_rate": rates["bfcl"],
+        },
+    }
+
+
+async def _rag_retrieval_eval_2_2() -> dict[str, Any]:
+    """2.2 — retrieval-eval recall/nDCG + index-version regression gated on deltas."""
+    from vincio.core.types import EvidenceItem
+    from vincio.evals import (
+        RetrievalConfig,
+        RetrievalGoldenSet,
+        RetrievalQuery,
+        retrieval_regression,
+    )
+    from vincio.storage import IndexRegressionStore
+
+    corpus = {
+        "d0": "refund policy window thirty days",
+        "d1": "shipping address change order",
+        "d2": "cancel order before dispatch",
+        "d3": "warranty coverage twelve months",
+        "d4": "password reset email link",
+        "d5": "loyalty points redemption rewards",
+        "d6": "invoice download tax pdf",
+        "d7": "subscription renewal billing cycle",
+    }
+    queries = [
+        RetrievalQuery(id="q0", query="how long is the refund window", relevant_ids=["d0"]),
+        RetrievalQuery(id="q1", query="change my shipping address", relevant_ids=["d1"]),
+        RetrievalQuery(id="q2", query="cancel an order", relevant_ids=["d2"]),
+        RetrievalQuery(id="q3", query="warranty coverage length", relevant_ids=["d3"]),
+        RetrievalQuery(id="q4", query="reset my password", relevant_ids=["d4"]),
+        RetrievalQuery(id="q5", query="redeem loyalty points", relevant_ids=["d5"]),
+        RetrievalQuery(id="q6", query="download my invoice pdf", relevant_ids=["d6"]),
+        RetrievalQuery(id="q7", query="subscription billing cycle", relevant_ids=["d7"]),
+    ]
+    items = [EvidenceItem(id=c, source_id=c, text=t) for c, t in corpus.items()]
+    golden = RetrievalGoldenSet(
+        name="bench_corpus", queries=queries, corpus_hash=RetrievalGoldenSet.corpus_hash_of(items)
+    )
+
+    def lexical(query: str, top_k: int) -> list[Any]:
+        qs = set(query.lower().split())
+        ranked = sorted(corpus.items(), key=lambda kv: len(qs & set(kv[1].split())), reverse=True)
+        return [EvidenceItem(id=c, source_id=c, text=t) for c, t in ranked[:top_k]]
+
+    def degraded(query: str, top_k: int) -> list[Any]:
+        fixed = list(corpus.items())[:top_k]
+        return [EvidenceItem(id=c, source_id=c, text=t) for c, t in fixed]
+
+    store = IndexRegressionStore()
+    config = RetrievalConfig(embedder="hash", chunker="fixed")
+    baseline = await retrieval_regression(lexical, golden, config, store=store)
+    stable = await retrieval_regression(lexical, golden, config, store=store)
+    regressed = await retrieval_regression(
+        degraded, golden, config, store=store, metrics=("recall_at_3", "ndcg_at_5")
+    )
+    return {
+        "recall_at_3": baseline.current.get("recall_at_3", 0.0),
+        "ndcg_at_5": baseline.current.get("ndcg_at_5", 0.0),
+        "stable_rerun_passes": stable.passed,
+        "regression_detected": (not regressed.passed) and ("recall_at_3" in regressed.regressions),
+        "index_version_keyed": baseline.key == config.key(golden.corpus_hash),
+    }
+
+
+async def _protocols_fabric_2_2() -> dict[str, Any]:
+    """2.2 — governed agent fabric: AGNTCY/ACP + MCP-registry discovery under one allow-list."""
+    from vincio.a2a.protocol import AgentCard, AgentSkill
+    from vincio.registry import (
+        ACPAgentManifest,
+        ACPClient,
+        AgentDirectory,
+        MCPRegistryClient,
+        MCPServerRecord,
+        acp_to_agent_card,
+        agent_card_to_acp,
+    )
+    from vincio.security.access import AllowListGate
+    from vincio.security.audit import AuditLog
+
+    audit = AuditLog(directory=None)
+    gate = AllowListGate(allow=["researcher", "acp-planner", "filesystem"], deny=["evil*"])
+    directory = AgentDirectory(allow_list=gate, audit=audit)
+    directory.register(
+        AgentCard(name="researcher", skills=[AgentSkill(id="research", name="research", tags=["research", "web"])]),
+        url="https://researcher.example",
+    )
+    directory.register(AgentCard(name="coder", skills=[AgentSkill(id="code", name="code", tags=["code"])]))
+
+    allowed = directory.try_resolve("researcher").allowed
+    denied = not directory.try_resolve("coder").allowed
+    capability_found = [r.name for r in directory.find(tag="research")] == ["researcher"]
+
+    manifest = ACPAgentManifest(
+        id="acp-planner", name="acp-planner", capabilities=["planning"], url="https://planner.example"
+    )
+    roundtrip = "planning" in agent_card_to_acp(acp_to_agent_card(manifest)).capabilities
+    acp_registered = await ACPClient(catalog=[manifest]).register_into_directory(directory)
+    acp_resolves = directory.try_resolve("acp-planner").allowed
+
+    mcp_catalog = [
+        MCPServerRecord(name="filesystem", url="https://fs.example/mcp"),
+        MCPServerRecord(name="evil-server"),
+    ]
+    mcp_registered = await MCPRegistryClient(catalog=mcp_catalog).register_into_directory(directory)
+    mcp_evil_denied = not directory.try_resolve("evil-server").allowed
+
+    decisions = audit.query(action="agent_resolve")
+    audited = any(d.decision == "allow" for d in decisions) and any(d.decision == "deny" for d in decisions)
+
+    return {
+        "allow_list_enforced": allowed and denied,
+        "resolution_audited": audited,
+        "capability_discovery": capability_found,
+        "acp_card_roundtrip": roundtrip,
+        "acp_discovered": len(acp_registered),
+        "acp_resolves_under_gate": acp_resolves,
+        "mcp_registry_discovered": len(mcp_registered),
+        "mcp_denied_unlisted": mcp_evil_denied,
+    }
+
+
+async def _agent_streaming_2_2() -> dict[str, Any]:
+    """2.2 — token/tool-event streaming from executor & crew + AG-UI generative UI."""
+    from vincio.agents import AgentExecutor, Crew
+    from vincio.agents.planner import Planner
+    from vincio.core.types import Budget
+    from vincio.mcp import MCPUIResource, build_app_server, connect_in_process
+    from vincio.server.agui import AGUIEventType, agent_stream_to_agui
+    from vincio.tools.registry import ToolRegistry
+    from vincio.tools.runtime import ToolRuntime
+
+    reg = ToolRegistry()
+
+    @reg.register()
+    def probe(q: str) -> dict:
+        """Probe tool."""
+        return {"q": q}
+
+    def _react() -> AgentExecutor:
+        looping = MockProvider(responder=lambda req: {"tool_call": {"name": "probe", "arguments": {"q": "x"}}})
+        return AgentExecutor(
+            looping, model="mock-1", planner=Planner(mode="react"),
+            tool_runtime=ToolRuntime(reg, cache_enabled=False), tool_specs=reg.specs(),
+        )
+
+    ex_events = [e async for e in _react().astream("work", budget=Budget(max_steps=3, max_tool_calls=2))]
+    ex_types = [e.type for e in ex_events]
+    executor_stream_ok = (
+        ex_types[0] == "run_start" and ex_types[-1] == "done"
+        and "tool_call" in ex_types and "tool_result" in ex_types
+    )
+
+    ui_events = [
+        e async for e in agent_stream_to_agui(_react().astream("work", budget=Budget(max_steps=3, max_tool_calls=2)))
+    ]
+    ui_types = [e.type for e in ui_events]
+    agui_lifecycle = ui_types[0] == AGUIEventType.RUN_STARTED and ui_types[-1] == AGUIEventType.RUN_FINISHED
+    agui_tool_events = AGUIEventType.TOOL_CALL_START in ui_types
+
+    good = MockProvider(default_text="done")
+    crew = Crew("team")
+    for name in ("a", "b"):
+        crew.add(name, AgentExecutor(good, model="mock-1", planner=Planner(mode="static")))
+    crew_types = [e.type async for e in crew.astream("objective")]
+    crew_stream_ok = (
+        crew_types[0] == "run_start" and crew_types[-1] == "done"
+        and crew_types.count("member_start") == 2 and "text_delta" in crew_types
+    )
+
+    app = ContextApp(name="ui_bench", provider=MockProvider(), model="mock-1")
+    server = build_app_server(app, ui_resources=[MCPUIResource.from_html("ui://dash", "<h1>Hi</h1>")])
+    client = connect_in_process(server)
+    await client.initialize()
+    ui_served = "ui://dash" in {r.uri for r in await client.list_resources()}
+
+    return {
+        "executor_stream_ok": executor_stream_ok,
+        "crew_stream_forwards_member": crew_stream_ok,
+        "agui_run_lifecycle": agui_lifecycle,
+        "agui_tool_events": agui_tool_events,
+        "mcp_ui_resource_served": ui_served,
+        "token_deltas": sum(1 for t in crew_types if t == "text_delta"),
+    }
+
+
 async def bench_rag() -> dict[str, Any]:
     """RAGBench: retrieval quality (recall@k/MRR) across retrieval modes —
     BM25 baseline, hybrid RRF, learned sparse, late interaction (exact and
@@ -324,6 +573,8 @@ async def bench_rag() -> dict[str, Any]:
             "index_size": len(multimodal_chunks),
         },
         "index_size": len(chunks),
+        # 2.2 — retrieval-eval harness (recall/nDCG) + index-version regression
+        "retrieval_eval": await _rag_retrieval_eval_2_2(),
     }
 
 
@@ -1004,6 +1255,8 @@ async def bench_agent() -> dict[str, Any]:
             "intact_under_budget": compaction_under_budget_intact,
             "keeps_anchor": compaction_keeps_anchor,
         },
+        # 2.2 — token/tool-event streaming (executor & crew) + AG-UI generative UI
+        "streaming": await _agent_streaming_2_2(),
     }
 
 
@@ -1969,6 +2222,8 @@ async def bench_protocols() -> dict[str, Any]:
             "relevant_bodies": relevant_bodies,
             "disclosure_savings": disclosure_savings,
         },
+        # 2.2 — governed agent fabric: AGNTCY/ACP + MCP-registry discovery under the allow-list
+        "fabric": await _protocols_fabric_2_2(),
     }
 
 
@@ -2137,6 +2392,8 @@ async def bench_agentic_evals() -> dict[str, Any]:
             "deduped": research_deduped,
             "has_sources": len(research.sources) >= 1,
         },
+        # 2.2 — stateful-environment task-success oracle + benchmark-adapter determinism
+        "environment_eval": await _agentic_evals_environment_2_2(),
     }
 
 

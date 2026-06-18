@@ -1,0 +1,77 @@
+{
+  "name": "tau_bench",
+  "description": "Recorded \u03c4-bench retail episodes: the agent's action sequence is replayed against the deterministic reference environment and scored on the database end state.",
+  "tasks": [
+    {
+      "id": "retail-cancel-refund",
+      "prompt": "Customer Amir wants to cancel order O1002 and be refunded.",
+      "inputs": {
+        "env": "retail",
+        "env_task": "cancel_refund"
+      },
+      "gold": {
+        "oracle": "environment"
+      },
+      "recorded": [
+        {
+          "tool": "get_order",
+          "arguments": {
+            "order_id": "O1002"
+          }
+        },
+        {
+          "tool": "cancel_order",
+          "arguments": {
+            "order_id": "O1002"
+          }
+        },
+        {
+          "tool": "refund_order",
+          "arguments": {
+            "order_id": "O1002"
+          }
+        }
+      ]
+    },
+    {
+      "id": "retail-refund-without-cancel",
+      "prompt": "A failing episode: the agent refunds without cancelling first (policy violation).",
+      "inputs": {
+        "env": "retail",
+        "env_task": "cancel_refund"
+      },
+      "gold": {
+        "oracle": "environment"
+      },
+      "recorded": [
+        {
+          "tool": "refund_order",
+          "arguments": {
+            "order_id": "O1002"
+          }
+        }
+      ]
+    },
+    {
+      "id": "retail-update-shipping",
+      "prompt": "Update the shipping address for order O1002 to '9 New Rd'.",
+      "inputs": {
+        "env": "retail",
+        "env_task": "update_shipping"
+      },
+      "gold": {
+        "oracle": "environment"
+      },
+      "recorded": [
+        {
+          "tool": "update_address",
+          "arguments": {
+            "order_id": "O1002",
+            "address": "9 New Rd"
+          }
+        }
+      ]
+    }
+  ],
+  "task_set_hash": "cdd1e5b4d63eeefe"
+}

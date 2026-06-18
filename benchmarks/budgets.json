@@ -1,5 +1,5 @@
 {
-  "_comment": "VincioBench budgets enforced in CI by check_budgets.py. Keys are dotted paths into the report; each entry sets gte/lte bounds. Latency bounds are deliberately loose (shared CI runners) — they catch order-of-magnitude regressions, while ratio and quality budgets are tight.",
+  "_comment": "VincioBench budgets enforced in CI by check_budgets.py. Keys are dotted paths into the report; each entry sets gte/lte bounds. Latency bounds are deliberately loose (shared CI runners) \u2014 they catch order-of-magnitude regressions, while ratio and quality budgets are tight.",
   "budgets": {
     "families.perf.context_compile.cold_p95_ms": {
       "lte": 250
@@ -693,6 +693,78 @@
     },
     "families.cost.alerting.ewma_anomaly_fires": {
       "eq": true
+    },
+    "families.agentic_evals.environment_eval.environment.oracle_success": {
+      "eq": true
+    },
+    "families.agentic_evals.environment_eval.environment.oracle_rejects_policy_violation": {
+      "eq": true
+    },
+    "families.agentic_evals.environment_eval.environment.deterministic": {
+      "eq": true
+    },
+    "families.agentic_evals.environment_eval.adapters.count": {
+      "gte": 5
+    },
+    "families.agentic_evals.environment_eval.adapters.all_deterministic": {
+      "eq": true
+    },
+    "families.agentic_evals.environment_eval.adapters.hashes_pinned": {
+      "eq": true
+    },
+    "families.rag.retrieval_eval.recall_at_3": {
+      "gte": 0.9
+    },
+    "families.rag.retrieval_eval.ndcg_at_5": {
+      "gte": 0.9
+    },
+    "families.rag.retrieval_eval.stable_rerun_passes": {
+      "eq": true
+    },
+    "families.rag.retrieval_eval.regression_detected": {
+      "eq": true
+    },
+    "families.rag.retrieval_eval.index_version_keyed": {
+      "eq": true
+    },
+    "families.protocols.fabric.allow_list_enforced": {
+      "eq": true
+    },
+    "families.protocols.fabric.resolution_audited": {
+      "eq": true
+    },
+    "families.protocols.fabric.capability_discovery": {
+      "eq": true
+    },
+    "families.protocols.fabric.acp_card_roundtrip": {
+      "eq": true
+    },
+    "families.protocols.fabric.acp_discovered": {
+      "gte": 1
+    },
+    "families.protocols.fabric.mcp_registry_discovered": {
+      "gte": 1
+    },
+    "families.protocols.fabric.mcp_denied_unlisted": {
+      "eq": true
+    },
+    "families.agent.streaming.executor_stream_ok": {
+      "eq": true
+    },
+    "families.agent.streaming.crew_stream_forwards_member": {
+      "eq": true
+    },
+    "families.agent.streaming.agui_run_lifecycle": {
+      "eq": true
+    },
+    "families.agent.streaming.agui_tool_events": {
+      "eq": true
+    },
+    "families.agent.streaming.mcp_ui_resource_served": {
+      "eq": true
+    },
+    "families.agent.streaming.token_deltas": {
+      "gte": 1
     }
   }
 }

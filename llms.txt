@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.1.1 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.2.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -103,6 +103,30 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `SpladeEncoder`, `ColBERTTokenEmbedder`, `LocalCrossEncoderReranker`, and a
   llama.cpp `GGUFProvider` (each with an offline fallback; extras
   `vincio[fastembed,splade,cross-encoder,gguf]`).
+- 2.2 (additive, `@experimental(since="2.2")` on the 2.0 surface; API_VERSION stays 2.0):
+  Stateful-environment eval — `from vincio.evals import Environment, ToolEnvironment,
+  EnvironmentSimulator, EnvAction, StateCheck, make_retail_environment, scripted_policy,
+  task_success`. An `Environment` is `reset()/step(action)/observe()/verify()`; `verify()`
+  runs declarative `StateCheck`s over the world end state (the task-success ORACLE);
+  `EnvironmentSimulator().run(env, policy)` projects onto a `Trajectory`. Benchmark
+  adapters — `from vincio.evals import SWEBenchAdapter, TauBenchAdapter, GAIAAdapter,
+  WebArenaAdapter, BFCLAdapter, BenchmarkTask, load_benchmark`; each pins its task set by
+  `task_set_hash()`, scores a verifiable end state, degrades to `adapter.replay()` offline
+  (fixtures in `benchmarks/fixtures/`), and `report.to_eval_report()` feeds the optimizer.
+  Retrieval eval — `from vincio.evals import RetrievalEvaluator, RetrievalGoldenSet,
+  RetrievalQuery, RetrievalConfig, retrieval_regression`; `from vincio.storage import
+  IndexRegressionStore` (artifacts keyed on `(embedder, chunker, corpus hash)`).
+  `retrieval_regression(search_fn, golden, config, store=...)` gates recall/nDCG deltas with
+  the swap significance test (`ab_test`). Agent fabric — `from vincio.registry import
+  AgentDirectory, ACPClient, ACPAgentManifest, MCPRegistryClient, MCPServerRecord`;
+  `from vincio.security import AllowListGate`. `app.agent_directory(allow=[...], deny=[...])`
+  is governed + audited; `directory.find(capability=|tag=|query=)`; `directory.resolve(name)`
+  passes the allow-list and records an `agent_resolve` access decision. `ACPClient` (AGNTCY/ACP,
+  REST) and `MCPRegistryClient` discover into the same directory. Generative UI — `from
+  vincio.server.agui import AGUIEvent, run_stream_to_agui, agent_stream_to_agui`; SSE endpoint
+  `POST /v1/apps/{id}/agui`; `AgentExecutor.astream(...)` / `Crew.astream(...)` yield flat
+  `AgentEvent`/`CrewEvent` (run/step lifecycle, text deltas, tool_call/tool_result, done);
+  `from vincio.mcp import MCPUIResource` served via `app.serve_mcp(ui_resources=[...])`.
 - Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
   mock (deterministic, offline; generates schema-valid structured output);
   plus OpenAI-compatible presets groq | together | fireworks | openrouter |

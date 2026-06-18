@@ -19,7 +19,9 @@ report, so crews are traced and scoreable like any other Vincio run.
 
 from __future__ import annotations
 
+import asyncio
 import json
+from collections.abc import AsyncIterator, Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -32,10 +34,34 @@ from ..observability.finops import CostLedger
 from ..observability.traces import Tracer
 from ..providers.base import ModelProvider, run_sync
 from .blackboard import Blackboard
-from .executor import AgentExecutor
+from .executor import AgentEvent, AgentExecutor
 from .state import AgentState
 
-__all__ = ["AgentRole", "DelegationRecord", "CrewMemberReport", "CrewResult", "Crew"]
+__all__ = ["AgentRole", "DelegationRecord", "CrewMemberReport", "CrewResult", "Crew", "CrewEvent"]
+
+
+class CrewEvent(BaseModel):
+    """A streamed event from :meth:`Crew.astream` (2.2).
+
+    Surfaces crew orchestration live — delegations and per-member start/end —
+    and **forwards each member's tool and text events** (tagged by ``member``),
+    ending with a terminal ``done`` carrying the final :class:`CrewResult`.
+    """
+
+    type: Literal[
+        "run_start", "delegation", "member_start", "member_end", "tool_call", "tool_result",
+        "text_delta", "round", "done", "error",
+    ]
+    member: str = ""
+    task: str = ""
+    round: int = 0
+    tool_name: str | None = None
+    arguments: dict[str, Any] = Field(default_factory=dict)
+    text: str | None = None
+    status: str = ""
+    result: Any = None
+    usage: dict[str, float] = Field(default_factory=dict)
+    payload: Any = None  # final CrewResult (model_dump) on "done"
 
 CrewProcess = Literal["sequential", "parallel", "hierarchical"]
 
@@ -165,6 +191,25 @@ class Crew:
         self.max_rounds = max_rounds
         self.concurrency = concurrency
         self._members: dict[str, _Member] = {}
+        # Streaming sink (2.2): set by ``astream`` so delegations/members and the
+        # members' tool/text events stream live. ``None`` on the ``arun`` path.
+        self._event_sink: Callable[[CrewEvent], None] | None = None
+
+    def _emit(self, event: CrewEvent) -> None:
+        if self._event_sink is not None:
+            self._event_sink(event)
+
+    def _forward_member_event(self, event: AgentEvent, member: str) -> None:
+        """Translate a member's tool/text events into crew events, tagged by member."""
+        if event.type == "tool_call":
+            self._emit(CrewEvent(type="tool_call", member=member, tool_name=event.tool_name, arguments=event.arguments))
+        elif event.type == "tool_result":
+            self._emit(
+                CrewEvent(type="tool_result", member=member, tool_name=event.tool_name,
+                          status=event.status, result=event.result)
+            )
+        elif event.type == "text_delta":
+            self._emit(CrewEvent(type="text_delta", member=member, text=event.text))
 
     def add(
         self,
@@ -232,17 +277,34 @@ class Crew:
         self, member: _Member, task: str, budget: Budget, usage: BudgetUsage
     ) -> CrewMemberReport:
         role = member.role
-        with self.tracer.span(role.name, type="crew_agent") as span:
-            span.set(crew=self.name, task=task[:300])
-            state: AgentState = await member.executor.run(
-                self._member_objective(role, task),
-                budget=self._member_budget(role, budget, usage),
-                attribution=self.attribution or None,
-            )
-            span.set(termination_reason=state.termination_reason)
+        self._emit(CrewEvent(type="member_start", member=role.name, task=task[:300]))
+        # When streaming, forward the member's own tool/text events as crew events.
+        if self._event_sink is not None:
+            member.executor._event_sink = lambda ev, m=role.name: self._forward_member_event(ev, m)
+        try:
+            with self.tracer.span(role.name, type="crew_agent") as span:
+                span.set(crew=self.name, task=task[:300])
+                state: AgentState = await member.executor.run(
+                    self._member_objective(role, task),
+                    budget=self._member_budget(role, budget, usage),
+                    attribution=self.attribution or None,
+                )
+                span.set(termination_reason=state.termination_reason)
+        finally:
+            if self._event_sink is not None:
+                member.executor._event_sink = None
         usage.add(state.usage)
         answer = state.final_answer if state.final_answer is not None else state.raw_answer_text
         self.blackboard.post(role.name, answer, author=role.name, task=task)
+        self._emit(
+            CrewEvent(
+                type="member_end",
+                member=role.name,
+                status=state.termination_reason or "",
+                result=answer,
+                usage={"cost_usd": float(state.usage.cost_usd), "tool_calls": float(state.usage.tool_calls)},
+            )
+        )
         return CrewMemberReport(
             role=role.name,
             task=task,
@@ -419,6 +481,9 @@ class Crew:
                         delegations.append(
                             DelegationRecord(to_agent=agent, task=task, reason=reason, round=rounds)
                         )
+                        self._emit(
+                            CrewEvent(type="delegation", member=agent, task=task[:300], round=rounds, status=reason[:120])
+                        )
                         reports.append(
                             await self._run_member(self._members[agent], task, budget, usage)
                         )
@@ -474,3 +539,57 @@ class Crew:
                 tenant_id=tenant_id, user_id=user_id, feature=feature,
             )
         )
+
+    async def astream(
+        self,
+        objective: Objective | str,
+        *,
+        tasks: list[str] | dict[str, str] | None = None,
+        budget: Budget | None = None,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        feature: str | None = None,
+    ) -> AsyncIterator[CrewEvent]:
+        """Stream the crew run as :class:`CrewEvent`\\ s (2.2).
+
+        Yields ``run_start``, then live ``delegation`` / ``member_start`` /
+        ``member_end`` plus each member's forwarded ``tool_call`` /
+        ``tool_result`` / ``text_delta`` events, ending with a terminal ``done``
+        carrying the final :class:`CrewResult`. Matches the streaming surface
+        ``graph`` and ``compose`` expose and feeds the AG-UI protocol.
+        """
+        queue: asyncio.Queue[CrewEvent | None] = asyncio.Queue()
+        previous_sink = self._event_sink
+        self._event_sink = queue.put_nowait
+        self._emit(CrewEvent(type="run_start", task=str(objective)[:300]))
+
+        async def _drive() -> None:
+            try:
+                result = await self.arun(
+                    objective, tasks=tasks, budget=budget,
+                    tenant_id=tenant_id, user_id=user_id, feature=feature,
+                )
+                queue.put_nowait(
+                    CrewEvent(
+                        type="done",
+                        status=result.status,
+                        result=result.output,
+                        usage={"cost_usd": float(result.usage.cost_usd), "rounds": float(result.rounds)},
+                        payload=result.model_dump(mode="json"),
+                    )
+                )
+            except Exception as exc:  # noqa: BLE001 - surface as a terminal event
+                queue.put_nowait(CrewEvent(type="error", status=f"{type(exc).__name__}: {exc}"))
+            finally:
+                queue.put_nowait(None)
+
+        task_handle = asyncio.create_task(_drive())
+        try:
+            while True:
+                event = await queue.get()
+                if event is None:
+                    break
+                yield event
+        finally:
+            self._event_sink = previous_sink
+            await task_handle

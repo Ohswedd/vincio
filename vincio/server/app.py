@@ -4,6 +4,7 @@ Endpoints::
 
     POST /v1/apps/{app_id}/run
     POST /v1/apps/{app_id}/stream
+    POST /v1/apps/{app_id}/agui
     POST /v1/evals/run
     GET  /v1/runs/{run_id}
     GET  /v1/traces/{trace_id}
@@ -270,6 +271,29 @@ def create_app(
                     )
                     payload["type"] = event.type
                     yield f"data: {json.dumps(payload, default=str)}\n\n"
+
+        return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+    @api.post("/v1/apps/{app_id}/agui")
+    async def agui_app(app_id: str, request: RunRequest, context: AuthContext = Depends(auth)):
+        # Generative UI (2.2): the same astream run, translated into AG-UI events
+        # so an interactive frontend renders text/tool/state deltas live. The UI
+        # inherits the run's provenance, budget metering, and audit — one run.
+        app = get_app(app_id)
+        tenant_id = scope_tenant(request.tenant_id, context)
+        from .agui import run_stream_to_agui
+
+        async def event_stream():
+            stream = app.astream(
+                request.input,
+                files=request.files or None,
+                tenant_id=tenant_id,
+                user_id=request.user_id or context.subject,
+                session_id=request.session_id,
+                config=RunConfig(model=request.model, temperature=request.temperature, stream=True),
+            )
+            async for ui_event in run_stream_to_agui(stream, run_id=request.session_id or None):
+                yield ui_event.to_sse()
 
         return StreamingResponse(event_stream(), media_type="text/event-stream")
 
