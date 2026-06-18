@@ -2857,11 +2857,13 @@ class ContextApp:
         return SelfImprovementController(self, policy, **kwargs)
 
     @experimental(since="3.0")
-    def deploy(self, candidate: Any, *, dataset: Any, **kwargs: Any):
+    def deploy(self, candidate: Any, *, dataset: Any = None, **kwargs: Any):
         """Canary-gate a prompt/policy candidate and deploy it only if it clears.
 
-        The candidate is evaluated against the current live prompt on the canary
-        ``dataset``; on a pass it is pushed to the prompt registry, tagged,
+        Two modes: an **offline** gated comparison against the live prompt on a
+        canary ``dataset=``, or a **live-traffic** canary that ramps a fraction of
+        ``live_inputs=`` onto the candidate (scored by ``score_fn=``) with
+        auto-rollback. On a pass it is pushed to the prompt registry, tagged,
         applied live, and audited (``deploy``); on a fail it is refused and rolled
         back to the last known-good version (3.0). Returns a
         :class:`~vincio.optimize.self_improvement.DeployResult`. This is the

@@ -851,6 +851,26 @@
       "threshold": 1000,
       "enforced_by": "families.scale.async_canonical.saves_per_s",
       "rationale": "Async-native stores must persist off the event loop without a worker-thread hop; the budget gates 1000/s, matched to the promise with wide observed headroom."
+    },
+    {
+      "id": "live_canary_gated_deploy",
+      "category": "reliability",
+      "statement": "A live-traffic canary promotes a prompt/policy only after it clears on ramped live runs, and auto-rolls-back a regression.",
+      "metric": "families.loop.self_improvement.live_canary_rolls_back",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.self_improvement.live_canary_rolls_back",
+      "rationale": "The live serving promotion must observe-and-revert on a regression, never deploy blind to a real-traffic ramp."
+    },
+    {
+      "id": "async_canonical_run_path",
+      "category": "performance",
+      "statement": "Every run-path persistence (interactive, streaming, and batch) goes through the async store contract, never a blocking write.",
+      "metric": "families.scale.async_canonical.run_path_persists_async",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.scale.async_canonical.run_path_persists_async",
+      "rationale": "Async is the canonical contract; a blocking store write on any run path would stall the event loop under load."
     }
   ]
 }

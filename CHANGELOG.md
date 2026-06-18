@@ -4,6 +4,37 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-06-18
+
+Closes the two honest scoping notes the 3.0.0 milestone shipped with. Both
+additive and backward-compatible — `API_VERSION` stays `3.0`, and the default
+`app.deploy(dataset=...)` and `run`/`arun`/`abatch` paths are unchanged.
+
+### Added
+
+- **Live-traffic canary bound to the deploy surface.** `app.deploy` (and
+  `deploy_candidate`) gain a live mode — `app.deploy(candidate, live_inputs=...,
+  score_fn=...)` — that ramps `CanarySpec.percent` of the supplied live runs onto
+  the candidate prompt/policy, scores each arm online with `score_fn(RunResult)`,
+  and once `min_samples` candidate observations land applies the same
+  no-regression verdict: promote, or **freeze + auto-roll-back** on a regression.
+  The new `LiveCanary` (`vincio.optimize`) is the reusable prompt-layer analog of
+  the 1.8 `CanaryRouter` (per-run observation via `aobserve`, `verdict()`,
+  `afinalize()`); each observation still returns a real answer to the caller.
+  `CanarySpec` gains `percent`. VincioBench gates
+  `families.loop.self_improvement.live_canary_promotes` / `live_canary_rolls_back`.
+
+### Changed
+
+- **The async-canonical run path is now literally true on every path.** The
+  batch path's `VincioRuntime._persist_run` is now a coroutine that persists
+  through the canonical async store contract (`await asave`), matching the
+  interactive/streaming epilogue — so no run path blocks the event loop with a
+  synchronous store write. VincioBench gates
+  `families.scale.async_canonical.run_path_persists_async`.
+
+**1623 tests passing offline; ruff + mypy clean; VincioBench 277 budgets / 87 SLOs.**
+
 ## [3.0.0] - 2026-06-18
 
 The breaking culmination — fewer, truer abstractions. 3.0 is the second

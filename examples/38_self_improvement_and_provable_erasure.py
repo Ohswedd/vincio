@@ -10,8 +10,10 @@ The 3.0 surface, all offline on the deterministic mock:
      promote/rollback events — every promotion on the same gated path the loop
      always used.
   2. Canary-gated deploy: ``app.deploy(candidate, dataset=...)`` promotes a
-     prompt/policy live only if it clears a no-regression canary verdict; a
-     failing gate rolls back to the last known-good version.
+     prompt/policy live only if it clears a no-regression canary verdict (offline
+     gated comparison); a failing gate rolls back to the last known-good version.
+     The live form — ``app.deploy(live_inputs=..., score_fn=...)`` — ramps a
+     fraction of real runs onto the candidate and auto-rolls-back a regression.
   3. Provable erasure: ``app.erase_source(...)`` emits a signed, content-bound
      ``ErasureProof`` over the exact removed-id set across indexes, memory, and
      generated artifacts — erasure that *verifies*, not merely logs.
@@ -108,6 +110,28 @@ async def canary_gated_deploy(tmp) -> None:
           f"rolled_back_to={refused.rolled_back_to}")
 
 
+def live_canary_deploy(tmp) -> None:
+    banner("2b. Live-traffic canary (ramp real runs, auto-rollback)")
+    from vincio.prompts.compiler import CompilerOptions
+    from vincio.prompts.optimizers import PromptVariant
+
+    app = build_app(tmp)
+    # The candidate renders XML; the citing mock answers either way, so a simple
+    # length-based score stands in for an online quality signal here.
+    candidate = PromptVariant(
+        name="xml", spec=app.prompt_spec, compiler_options=CompilerOptions(format="xml")
+    )
+    score_fn = lambda result: float(len(str(result.output)) > 0)  # noqa: E731
+    result = app.deploy(
+        candidate,
+        live_inputs=["refund window?"] * 12,   # a sampled live stream
+        score_fn=score_fn,
+        canary=CanarySpec(metric="answered", percent=50.0, min_samples=4),
+    )
+    print(f"  ramped {12} live runs at 50% -> deployed={result.deployed}")
+    print(f"  verdict: {result.verdict.reason}")
+
+
 def provable_erasure(tmp) -> None:
     banner("3. Provable erasure (signed, content-bound manifest)")
     app = build_app(tmp)
@@ -163,6 +187,7 @@ async def main() -> None:
     tmp = Path(tempfile.mkdtemp())
     await self_improvement_contract(tmp)
     await canary_gated_deploy(tmp)
+    live_canary_deploy(tmp)
     provable_erasure(tmp)
     consent_and_purpose()
     bitemporal_memory()

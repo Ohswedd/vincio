@@ -47,6 +47,7 @@ __all__ = [
     "SelfImprovementController",
     "CanaryVerdict",
     "DeployResult",
+    "LiveCanary",
     "successive_halving",
     "learn_fitness_weights",
     "select_for_labeling",
@@ -66,11 +67,18 @@ SelfImprovementPhase = Literal[
 class CanarySpec(BaseModel):
     """How a candidate is qualified before it is deployed live.
 
-    The canary is a *held-out, gated comparison*: a candidate is evaluated
-    against the current baseline on the canary set and only clears when it does
-    not regress the watched metric beyond ``regression_threshold`` (a tie passes
-    — deploying a no-regression change is safe) and a significant regression is
-    blocked outright.
+    Two qualification modes, same verdict:
+
+    * **Offline gated comparison** (the default `app.deploy(dataset=...)` path) —
+      the candidate is evaluated against the current baseline on a held-out set
+      and only clears when it does not regress the watched metric beyond
+      ``regression_threshold`` (a tie passes — deploying a no-regression change is
+      safe) and no significant regression is detected.
+    * **Live-traffic canary** (`app.deploy(live_inputs=..., score_fn=...)`) —
+      ``percent`` of live runs ramp onto the candidate, each arm is scored online,
+      and once ``min_samples`` candidate observations land the same no-regression
+      verdict promotes the candidate or freezes + rolls it back (the prompt-layer
+      analog of the 1.8 ``CanaryRouter``).
     """
 
     metric: str = "lexical_overlap"
@@ -78,6 +86,8 @@ class CanarySpec(BaseModel):
     min_samples: int = 4
     require_significance: bool = True
     alpha: float = 0.05
+    # Fraction of live traffic ramped onto the candidate in the live-canary path.
+    percent: float = 50.0
 
 
 class MetaSpec(BaseModel):
@@ -360,11 +370,209 @@ def _canary_verdict(
     )
 
 
+def _finalize_deploy(
+    app: ContextApp,
+    spec: Any,
+    compiler_options: Any,
+    verdict: CanaryVerdict,
+    *,
+    registry: PromptRegistry,
+    prompt_name: str,
+    tag: str,
+    candidate_report: Any = None,
+    dataset_name: str = "",
+    rollback_on_fail: bool = True,
+    dry_run: bool = False,
+    live: bool = False,
+) -> DeployResult:
+    """Refuse + (optionally) roll back, or promote — the shared decision both the
+    offline and live-canary deploy paths take once a verdict is in hand."""
+    result = DeployResult(verdict=verdict, reason=verdict.reason)
+
+    if not verdict.passed:
+        app.audit.record(
+            "deploy", decision="deny", resource=prompt_name,
+            details={"reason": verdict.reason, "verdict": verdict.model_dump(), "live": live},
+        )
+        if rollback_on_fail:
+            try:
+                versions = registry.versions(prompt_name)
+            except Exception:  # noqa: BLE001 - no history is a no-op
+                versions = []
+            known_good = next((v for v in reversed(versions) if tag in v.tags), None)
+            if known_good is not None:
+                new_head = registry.rollback(prompt_name, to_version=known_good.version)
+                app.prompt_spec = new_head.spec
+                result.rolled_back_to = known_good.ref
+                result.reason = f"{verdict.reason}; rolled back to {known_good.ref}"
+                app.events.emit(
+                    "deploy.rolled_back", {"prompt": prompt_name, "restored": known_good.ref}
+                )
+        return result
+
+    if dry_run:
+        result.reason = f"dry run: would deploy ({verdict.reason})"
+        return result
+
+    registry.push(app.prompt_spec, name=prompt_name, message="deploy baseline")
+    version = registry.push(
+        spec, name=prompt_name, tags=[tag], message=f"canary-gated deploy: {verdict.reason}"
+    )
+    if candidate_report is not None:
+        registry.link_eval(prompt_name, version.version, candidate_report, dataset=dataset_name)
+    app.prompt_spec = spec
+    if compiler_options is not None:
+        app.prompt_compiler.options = compiler_options
+    result.deployed = True
+    result.ref = version.ref
+    result.reason = f"deployed {version.ref}: {verdict.reason}"
+    app.audit.record(
+        "deploy", decision="allow", resource=prompt_name,
+        details={
+            "ref": version.ref, "tag": tag, "metric": verdict.metric,
+            "delta": verdict.delta, "significance": verdict.significance, "live": live,
+        },
+    )
+    app.events.emit(
+        "deploy.completed",
+        {"prompt": version.ref, "tag": tag, "metric": verdict.metric, "live": live},
+    )
+    return result
+
+
+class LiveCanary:
+    """Qualify a candidate prompt/policy on **live traffic** and auto-roll-back.
+
+    The prompt-layer analog of the 1.8 :class:`~vincio.providers.shadow.CanaryRouter`:
+    it ramps ``canary.percent`` of live runs onto the candidate spec (a
+    deterministic accumulator, like the provider canary), scores each arm online
+    with ``score_fn``, and — once ``min_samples`` candidate observations land —
+    decides with the same no-regression verdict: promote, or freeze + roll back if
+    the candidate regresses beyond ``regression_threshold``. The user always gets a
+    real answer (baseline or candidate); the canary only governs whether the
+    candidate is promoted to the live default. Observations are processed
+    sequentially (feed it a sampled live stream), so the transient per-run prompt
+    swap is race-free.
+    """
+
+    def __init__(
+        self,
+        app: ContextApp,
+        candidate: Any,
+        *,
+        score_fn: Callable[[Any], float],
+        canary: CanarySpec | None = None,
+        registry: PromptRegistry | None = None,
+        prompt_name: str | None = None,
+    ) -> None:
+        from ..prompts.registry import PromptRegistry
+
+        self.app = app
+        self.spec = getattr(candidate, "spec", candidate)
+        self.compiler_options = getattr(candidate, "compiler_options", None)
+        self.score_fn = score_fn
+        self.canary = canary or CanarySpec()
+        self.registry = registry or getattr(app, "prompt_registry", None) or PromptRegistry()
+        self.prompt_name = prompt_name or app.prompt_spec.name
+        self._accum = 0.0
+        self._base: list[float] = []
+        self._cand: list[float] = []
+        self.frozen = False  # stopped ramping to the candidate (post-rollback)
+        self.rolled_back = False
+        self.calls = 0
+
+    def _route_to_candidate(self) -> bool:
+        if self.frozen or self.rolled_back:
+            return False
+        self._accum += self.canary.percent
+        if self._accum >= 100.0:
+            self._accum -= 100.0
+            return True
+        return False
+
+    async def aobserve(self, user_input: Any, **run_kwargs: Any) -> Any:
+        """Serve one live run through the chosen arm, score it, and update state.
+
+        Returns the `RunResult` (the caller still gets a real answer)."""
+        self.calls += 1
+        to_candidate = self._route_to_candidate()
+        original_spec = self.app.prompt_spec
+        original_options = self.app.prompt_compiler.options
+        if to_candidate:
+            self.app.prompt_spec = self.spec
+            if self.compiler_options is not None:
+                self.app.prompt_compiler.options = self.compiler_options
+        try:
+            result = await self.app.arun(user_input, **run_kwargs)
+        finally:
+            self.app.prompt_spec = original_spec
+            self.app.prompt_compiler.options = original_options
+        score = float(self.score_fn(result))
+        (self._cand if to_candidate else self._base).append(score)
+        self._maybe_rollback()
+        return result
+
+    @staticmethod
+    def _mean(values: list[float]) -> float:
+        return sum(values) / len(values) if values else 0.0
+
+    def _maybe_rollback(self) -> None:
+        if self.rolled_back or len(self._cand) < self.canary.min_samples:
+            return
+        if self._mean(self._cand) < self._mean(self._base) - self.canary.regression_threshold:
+            self.rolled_back = True
+            self.frozen = True
+            self.app.events.emit(
+                "canary.rollback",
+                {
+                    "prompt": self.prompt_name,
+                    "candidate_mean": round(self._mean(self._cand), 6),
+                    "baseline_mean": round(self._mean(self._base), 6),
+                },
+            )
+
+    def verdict(self) -> CanaryVerdict:
+        baseline = self._mean(self._base)
+        candidate = self._mean(self._cand)
+        delta = candidate - baseline
+        samples = len(self._cand)
+        if samples < self.canary.min_samples:
+            passed, reason = (
+                False,
+                f"insufficient live canary samples ({samples} < {self.canary.min_samples})",
+            )
+        elif self.rolled_back:
+            passed, reason = False, "candidate regressed on live traffic; rolled back"
+        else:
+            passed = delta >= -self.canary.regression_threshold
+            reason = (
+                f"{self.canary.metric} held on live traffic (Δ={delta:+.4f}, n={samples})"
+                if passed
+                else f"{self.canary.metric} regressed on live traffic (Δ={delta:+.4f})"
+            )
+        return CanaryVerdict(
+            passed=passed, metric=self.canary.metric, baseline=round(baseline, 6),
+            candidate=round(candidate, 6), delta=round(delta, 6), samples=samples, reason=reason,
+        )
+
+    async def afinalize(
+        self, *, tag: str = "production", rollback_on_fail: bool = True, dry_run: bool = False
+    ) -> DeployResult:
+        """Decide the deploy from the live verdict — promote or refuse/roll back."""
+        return _finalize_deploy(
+            self.app, self.spec, self.compiler_options, self.verdict(),
+            registry=self.registry, prompt_name=self.prompt_name, tag=tag,
+            rollback_on_fail=rollback_on_fail, dry_run=dry_run, live=True,
+        )
+
+
 async def deploy_candidate(
     app: ContextApp,
     candidate: Any,
     *,
-    dataset: Dataset,
+    dataset: Dataset | None = None,
+    live_inputs: list[Any] | None = None,
+    score_fn: Callable[[Any], float] | None = None,
     canary: CanarySpec | None = None,
     metrics: list[str] | None = None,
     gates: dict[str, str] | None = None,
@@ -377,20 +585,48 @@ async def deploy_candidate(
     """Canary-gate a prompt/policy candidate and deploy it only if it clears.
 
     The candidate may be a ``PromptSpec`` or any object carrying ``.spec`` (a
-    ``PromptVariant``). It is evaluated against the current live prompt on the
-    canary ``dataset``; on a pass it is pushed to the prompt registry, tagged,
-    applied live, and audited (``deploy``); on a fail it is refused and — when
+    ``PromptVariant``). Two qualification modes:
+
+    * **Offline gated comparison** (``dataset=``) — the candidate is evaluated
+      against the current live prompt on the canary ``dataset`` (this is the
+      default).
+    * **Live-traffic canary** (``live_inputs=`` + ``score_fn=``) — ``percent`` of
+      the supplied live runs ramp onto the candidate and each arm is scored online
+      with ``score_fn(RunResult) -> float``; the same no-regression verdict
+      decides, with auto-rollback if the candidate regresses mid-ramp (see
+      :class:`LiveCanary`).
+
+    On a pass the candidate is pushed to the prompt registry, tagged, applied
+    live, and audited (``deploy``); on a fail it is refused and — when
     ``rollback_on_fail`` — the live prompt is rolled back to the last known-good
     registry version. This is the canary-driven promotion surface 1.10 reserved
-    for a serving window.
+    for a serving window, in both its offline and live forms.
     """
     from ..prompts.registry import PromptRegistry
 
     canary = canary or CanarySpec()
-    metrics = metrics or [canary.metric]
     prompt_name = prompt_name or app.prompt_spec.name
     registry = registry or getattr(app, "prompt_registry", None) or PromptRegistry()
 
+    # Live-traffic canary path: ramp, score online, then decide.
+    if live_inputs is not None:
+        if score_fn is None:
+            raise ValueError("live-canary deploy requires score_fn(RunResult) -> float")
+        live = LiveCanary(
+            app, candidate, score_fn=score_fn, canary=canary,
+            registry=registry, prompt_name=prompt_name,
+        )
+        for user_input in live_inputs:
+            await live.aobserve(user_input)
+        return await live.afinalize(tag=tag, rollback_on_fail=rollback_on_fail, dry_run=dry_run)
+
+    if dataset is None:
+        raise ValueError(
+            "deploy_candidate requires a dataset (offline canary) or "
+            "live_inputs + score_fn (live canary)"
+        )
+
+    metrics = metrics or [canary.metric]
     spec = getattr(candidate, "spec", candidate)
     compiler_options = getattr(candidate, "compiler_options", None)
 
@@ -410,58 +646,11 @@ async def deploy_candidate(
             verdict.passed = False
             verdict.reason = f"deploy gates failed: {failed}"
 
-    result = DeployResult(verdict=verdict, reason=verdict.reason)
-
-    if not verdict.passed:
-        app.audit.record(
-            "deploy", decision="deny", resource=prompt_name,
-            details={"reason": verdict.reason, "verdict": verdict.model_dump()},
-        )
-        if rollback_on_fail:
-            try:
-                versions = registry.versions(prompt_name)
-            except Exception:  # noqa: BLE001 - no history is a no-op
-                versions = []
-            known_good = next(
-                (v for v in reversed(versions) if tag in v.tags), None
-            )
-            if known_good is not None:
-                new_head = registry.rollback(prompt_name, to_version=known_good.version)
-                app.prompt_spec = new_head.spec
-                result.rolled_back_to = known_good.ref
-                result.reason = f"{verdict.reason}; rolled back to {known_good.ref}"
-                app.events.emit(
-                    "deploy.rolled_back",
-                    {"prompt": prompt_name, "restored": known_good.ref},
-                )
-        return result
-
-    if dry_run:
-        result.reason = f"dry run: would deploy ({verdict.reason})"
-        return result
-
-    registry.push(app.prompt_spec, name=prompt_name, message="deploy baseline")
-    version = registry.push(
-        spec, name=prompt_name, tags=[tag], message=f"canary-gated deploy: {verdict.reason}"
+    return _finalize_deploy(
+        app, spec, compiler_options, verdict, registry=registry, prompt_name=prompt_name,
+        tag=tag, candidate_report=candidate_report, dataset_name=dataset.name,
+        rollback_on_fail=rollback_on_fail, dry_run=dry_run, live=False,
     )
-    registry.link_eval(prompt_name, version.version, candidate_report, dataset=dataset.name)
-    app.prompt_spec = spec
-    if compiler_options is not None:
-        app.prompt_compiler.options = compiler_options
-    result.deployed = True
-    result.ref = version.ref
-    result.reason = f"deployed {version.ref}: {verdict.reason}"
-    app.audit.record(
-        "deploy", decision="allow", resource=prompt_name,
-        details={
-            "ref": version.ref, "tag": tag, "metric": verdict.metric,
-            "delta": verdict.delta, "significance": verdict.significance,
-        },
-    )
-    app.events.emit(
-        "deploy.completed", {"prompt": version.ref, "tag": tag, "metric": verdict.metric}
-    )
-    return result
 
 
 # ---------------------------------------------------------------------------

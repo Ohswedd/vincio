@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v3.0.0 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v3.0.1 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -142,9 +142,13 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `app.self_improvement(policy, dataset=...)` returns a controller whose
   `astream()`/`step()`/`run()` emit `observe → proposal → meta → label → reeval → canary →
   promote/rollback` events. Meta-optimization = `successive_halving` over the strategy/budget grid
-  + `learn_fitness_weights`. Canary-gated serving — `app.deploy(candidate, dataset=...)` promotes
-  live only on a no-regression `CanaryVerdict`, else rolls back. `app.continuous_improvement` /
-  `app.experiment_proposer` are `@deprecated(since=3.0, removed_in=4.0)` → `app.self_improvement`.
+  + `learn_fitness_weights`. Canary-gated serving — `app.deploy(candidate, dataset=...)` (offline
+  gated comparison) or `app.deploy(candidate, live_inputs=[...], score_fn=...)` (live-traffic canary
+  via `LiveCanary`: ramps `CanarySpec.percent` onto the candidate, scores each arm online, promotes
+  on no regression or auto-rolls-back) promotes live only on a no-regression `CanaryVerdict`.
+  `app.continuous_improvement` / `app.experiment_proposer` are `@deprecated(since=3.0, removed_in=4.0)`
+  → `app.self_improvement`. The run path persists through the async store contract on every path
+  (interactive / streaming / batch — `VincioRuntime._persist_run` is a coroutine awaiting `asave`).
   Provable erasure — `from vincio.governance import ErasureProof, build_erasure_proof,
   verify_erasure_proof`; `app.erase_source(source)` returns `ErasureResult` with `.proof` (signed
   with `app.content_signer`, content-bound by SHA-256 over the removed-id set across chunks /
