@@ -1,4 +1,4 @@
-"""Stateful-environment evaluation harness (2.2).
+"""Stateful-environment evaluation harness.
 
 The conversational :class:`~vincio.evals.simulator.Simulator` scores *what an
 agent says*. An :class:`Environment` scores *what an agent does to a mutable
@@ -25,7 +25,6 @@ from typing import Any, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
 
 from ..providers.base import run_sync
-from ..stability import experimental
 from .trajectory import Trajectory, TrajectoryStep
 
 __all__ = [
@@ -214,7 +213,6 @@ class Environment(Protocol):
 EnvToolHandler = Callable[[dict[str, Any], dict[str, Any]], EnvToolResult]
 
 
-@experimental(since="2.2")
 class ToolEnvironment:
     """A deterministic, in-process environment whose world is a dict mutated by tools.
 
@@ -310,7 +308,6 @@ class EnvironmentResult(BaseModel):
         return self.verification.passed
 
 
-@experimental(since="2.2")
 class EnvironmentSimulator:
     """Drive an agent *policy* through an :class:`Environment` to a verified end state.
 

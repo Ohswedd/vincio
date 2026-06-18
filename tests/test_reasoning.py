@@ -1,4 +1,4 @@
-"""Reasoning & Responses surface (1.1): effort/thinking controls, cost accounting."""
+"""Reasoning & Responses surface: effort/thinking controls, cost accounting."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""0.8 closed-loop ecosystem tests: improvement loop, Pareto optimization,
+"""Closed-loop ecosystem tests: improvement loop, Pareto optimization,
 guided search strategies, learned budgeting, retrieval feedback, auto-memory."""
 
 import re

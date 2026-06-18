@@ -1,4 +1,4 @@
-"""Tests for the retrieval evaluation harness + index-version regression (2.2)."""
+"""Tests for the retrieval evaluation harness + index-version regression."""
 
 from __future__ import annotations
 

@@ -1,4 +1,4 @@
-"""Advanced retrieval (0.3): learned sparse + late interaction fused with
+"""Advanced retrieval: learned sparse + late interaction fused with
 BM25/dense in one RRF, sentence-window and auto-merging retrieval, query
 understanding (HyDE / multi-query / step-back), GraphRAG with global vs
 local routing, a live index with TTL, and a SQL connector — fully offline.

@@ -1,6 +1,6 @@
 """Docs-completeness gate: every subsystem and example stays documented.
 
-Operationalizes the 1.0 "a guide and a tested example for every subsystem and
+Operationalizes the "a guide and a tested example for every subsystem and
 every public API" goal so coverage can't silently regress.
 """
 

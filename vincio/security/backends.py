@@ -1,4 +1,4 @@
-"""Pluggable detector backends (1.7).
+"""Pluggable detector backends.
 
 The PII, injection, and secret detectors are deterministic by default. A
 :class:`DetectorBackend` lets a caller plug an ML model (NER, a classifier,

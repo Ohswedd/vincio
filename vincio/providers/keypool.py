@@ -1,4 +1,4 @@
-"""Health-aware key/region pooling with rate-limit queueing (1.3).
+"""Health-aware key/region pooling with rate-limit queueing.
 
 :class:`KeyPool` spreads load across several API keys or regions of the same
 provider. It round-robins **health-aware** (skipping keys whose circuit breaker

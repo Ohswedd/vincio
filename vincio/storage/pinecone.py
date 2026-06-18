@@ -62,7 +62,7 @@ class PineconeVectorIndex:
         return int(stats.get("total_vector_count", 0))
 
     def _metadata(self, chunk: Chunk) -> dict[str, Any]:
-        # 2.0: flat filterable fields become Pinecone metadata so a compiled
+        # flat filterable fields become Pinecone metadata so a compiled
         # FilterSpec matches server-side.
         return {"_chunk": chunk.model_dump_json(), **flat_filter_fields(chunk)}
 
@@ -88,7 +88,7 @@ class PineconeVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await self.embedder.embed([query])
-        # 2.0: push a FilterSpec down as a Pinecone metadata filter (its real
+        # push a FilterSpec down as a Pinecone metadata filter (its real
         # wire format); the as_predicate net guarantees correctness regardless.
         native = where.to_pinecone() if isinstance(where, FilterSpec) else None
         predicate = as_predicate(where)

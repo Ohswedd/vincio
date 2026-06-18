@@ -1,4 +1,4 @@
-"""Multimodal, embeddings & retrieval breadth (1.5).
+"""Multimodal, embeddings & retrieval breadth.
 
 Keeping retrieval best-in-field as the embedding and ingestion frontier moves —
 every new embedder, store, and parser sits behind an interface that already

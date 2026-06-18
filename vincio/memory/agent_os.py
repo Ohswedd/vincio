@@ -1,4 +1,4 @@
-"""Agent memory OS (1.10): self-editing memory as permissioned tools + a pager.
+"""Agent memory OS: self-editing memory as permissioned tools + a pager.
 
 A MemGPT/Letta-class self-editing memory, but built on Vincio's *audited* write
 pipeline rather than beside it. The agent edits its own memory through four

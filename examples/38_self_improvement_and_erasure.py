@@ -1,7 +1,6 @@
-"""The 3.0 breaking culmination — one self-improvement contract, provable
-erasure & the async-canonical core (3.0).
+"""One self-improvement contract, provable erasure & the async-canonical core.
 
-The 3.0 surface, all offline on the deterministic mock:
+All offline on the deterministic mock:
 
   1. Unified self-improvement contract: one ``SelfImprovementPolicy`` composes
      proposal, meta-optimization (successive-halving + learned weights),
@@ -23,8 +22,7 @@ The 3.0 surface, all offline on the deterministic mock:
      recall still returns what was believed true then; per-memory ACLs gate
      team-shared memory.
 
-Everything is opt-in behind ``@experimental(since="3.0")`` on the frozen 2.0
-surface; the flat ``app.<method>`` API stays fully supported.
+Everything is opt-in; the flat ``app.<method>`` API stays fully supported.
 """
 
 from __future__ import annotations

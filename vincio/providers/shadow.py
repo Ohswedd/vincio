@@ -1,4 +1,4 @@
-"""Shadow & canary providers for live model qualification (1.8).
+"""Shadow & canary providers for live model qualification.
 
 Two provider-layer rollout primitives that qualify a candidate model on real
 traffic without a hosted control plane:
@@ -13,10 +13,9 @@ traffic without a hosted control plane:
   the moment the candidate's quality regresses past a threshold.
 
 Both implement :class:`~vincio.providers.base.ModelProvider`, so they nest
-cleanly inside ``CircuitBreaker`` / ``KeyPool`` / ``FailoverChain``. The
-canary-driven prompt/policy *promotion* that needs a new serving surface is
-reserved for 2.0; this is the observe-and-revert provider-layer form.
-``@experimental`` on the frozen 1.0 API.
+cleanly inside ``CircuitBreaker`` / ``KeyPool`` / ``FailoverChain``. This is the
+observe-and-revert provider-layer form of rollout; the canary-driven
+prompt/policy *promotion* surface lives in :mod:`vincio.optimize.self_improvement`.
 """
 
 from __future__ import annotations
@@ -31,7 +30,6 @@ from typing import Any
 from pydantic import BaseModel
 
 from ..core.types import ModelEvent, ModelRequest, ModelResponse
-from ..stability import experimental
 from .base import ModelProvider
 
 __all__ = [
@@ -65,7 +63,6 @@ class ShadowObservation(BaseModel):
     candidate_error: str | None = None
 
 
-@experimental(since="1.8")
 class ShadowProvider(ModelProvider):
     """Return the primary's answer; dual-dispatch the candidate for offline diff.
 
@@ -233,7 +230,6 @@ class CanaryState(BaseModel):
     rollback_reason: str = ""
 
 
-@experimental(since="1.8")
 class CanaryRouter(ModelProvider):
     """Ramp a percentage of live traffic onto a candidate, with auto-rollback.
 

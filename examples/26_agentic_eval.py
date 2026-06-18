@@ -1,6 +1,6 @@
-"""Agentic evaluation & continuous quality (1.2).
+"""Agentic evaluation & continuous quality.
 
-Vincio can run and trace a crew, a graph, and a tool loop — 1.2 makes it *score*
+Vincio can run and trace a crew, a graph, and a tool loop — and *score*
 them, over the trajectory, a multi-turn conversation, and live traffic, reusing
 the same metric objects offline, as runtime guardrails, and as optimizer fitness:
 

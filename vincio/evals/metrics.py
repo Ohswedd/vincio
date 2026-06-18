@@ -174,7 +174,7 @@ class MetricResult(BaseModel):
     name: str
     value: float
     passed: bool | None = None
-    # 2.0: a metric that has no reference to score against (no ground truth, no
+    # a metric that has no reference to score against (no ground truth, no
     # claims, no trajectory) returns ``skipped=True`` instead of a neutral
     # ``1.0``. The runner excludes skipped results from ``CaseResult.metrics``,
     # so they never inflate a mean or silently pass a gate. ``value`` is still
@@ -240,10 +240,9 @@ def exact_match(case: EvalCase, run: RunOutput) -> MetricResult:
 def lexical_overlap(case: EvalCase, run: RunOutput) -> MetricResult:
     """Stemmed bag-of-words overlap between expected and produced text.
 
-    This is the metric that shipped through 1.x under the misleading name
-    ``semantic_similarity``: it is purely lexical (token Jaccard with stemming
-    and stop-word removal), not embedding-based. 2.0 gives it its true name and
-    reserves ``semantic_similarity`` for the embedding-backed metric below.
+    Purely lexical (token Jaccard with stemming and stop-word removal), not
+    embedding-based — the name ``semantic_similarity`` is reserved for the
+    embedding-backed metric below.
     """
     value = lexical_similarity(_expected_text(case), run.output_text)
     return MetricResult(name="lexical_overlap", value=round(value, 4))

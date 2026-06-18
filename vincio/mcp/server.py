@@ -31,7 +31,7 @@ __all__ = ["MCPServer", "MCPUIResource", "build_app_server", "serve_stdio"]
 
 
 class MCPUIResource(BaseModel):
-    """A UI resource exposed over MCP (MCP-UI / AG-UI compatible, 2.2).
+    """A UI resource exposed over MCP (MCP-UI / AG-UI compatible).
 
     MCP-UI carries interactive UI as a resource with a ``ui://`` URI and an
     HTML (``text/html``) or AG-UI JSON (``application/vnd.ag-ui+json``) body, so a
@@ -219,7 +219,7 @@ def build_app_server(
     Registered tools become MCP tools (run through the permissioned, sandboxed,
     audited tool runtime); the app's evidence/sources become MCP resources; the
     prompt spec becomes an MCP prompt. Every inbound ``tools/call`` is recorded
-    on the hash-chained audit log. Pass ``ui_resources`` (2.2) to additionally
+    on the hash-chained audit log. Pass ``ui_resources`` to additionally
     serve MCP-UI / AG-UI resources (``ui://…``) for generative-UI hosts.
     """
     from ..core.types import ToolCall

@@ -1,4 +1,4 @@
-"""Versioned index/retrieval regression artifacts (2.2).
+"""Versioned index/retrieval regression artifacts.
 
 A re-embed, a chunking tweak, or an index swap can silently regress retrieval
 quality. This module persists a **regression artifact** for each retrieval
@@ -19,8 +19,6 @@ import hashlib
 from typing import Any
 
 from pydantic import BaseModel, Field
-
-from ..stability import experimental
 
 __all__ = ["IndexRegressionArtifact", "IndexRegressionStore", "config_key"]
 
@@ -61,7 +59,6 @@ class IndexRegressionArtifact(BaseModel):
         return config_key(embedder, chunker, corpus_hash, reranker=reranker, index=index)
 
 
-@experimental(since="2.2")
 class IndexRegressionStore:
     """Persist and look up :class:`IndexRegressionArtifact`\\ s by config key.
 

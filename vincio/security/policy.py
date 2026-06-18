@@ -4,7 +4,7 @@ Evaluates run-level policies before and after model execution. Policy
 enforcement never depends on model judgment: each check is plain code over
 the run state, producing explainable :class:`PolicyViolation` records.
 
-Programmable rails (0.7) plug in here: a :class:`~vincio.security.rails.RailEngine`
+Programmable rails plug in here: a :class:`~vincio.security.rails.RailEngine`
 attached to the policy engine evaluates topic / format / safety / custom
 rails inside the same input and output checks, so rails are enforced
 before and after every generation with zero extra wiring.
@@ -63,7 +63,7 @@ class PolicyEngine:
         self.injection = injection_detector or InjectionDetector()
         self.rails = rails
         self.secrets = secret_scanner or SecretScanner()
-        # 2.0: always-on egress DLP mode for the assembled provider request.
+        # always-on egress DLP mode for the assembled provider request.
         self.egress_dlp = egress_dlp
 
     def _check_rails(

@@ -1,4 +1,4 @@
-"""Tests for the 1.9 EU AI Act conformity pack and ISO/IEC 42001 mapping."""
+"""Tests for the EU AI Act conformity pack and ISO/IEC 42001 mapping."""
 
 from __future__ import annotations
 
@@ -13,8 +13,6 @@ from vincio.governance import (
     RiskTierClassifier,
 )
 from vincio.providers import MockProvider
-
-pytestmark = pytest.mark.filterwarnings("ignore::vincio.VincioExperimentalWarning")
 
 
 @pytest.fixture()

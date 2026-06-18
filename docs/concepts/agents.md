@@ -146,7 +146,7 @@ a prior step receives its output), and trace spans for every step.
 | Agent | uncertain task requiring exploration |
 | Hybrid | workflow steps that call `app.agent(...)` |
 
-## The agentic frontier (1.10, `@experimental`)
+## The agentic frontier
 
 The agent loop gains four capabilities, all on the same bounded, permissioned,
 audited runtime:
@@ -163,7 +163,7 @@ audited runtime:
 - **Deep-research agent** — `app.research(question, budget=ResearchBudget(...))`
   loops search → read → reflect → verify → synthesize over the query-understanding
   planners and the grounded-fact extractor, dedups sources, and emits a cited
-  report through the 1.9 `CitedReportBuilder` — every claim cited and grounded by
+  report through the `CitedReportBuilder` — every claim cited and grounded by
   construction, scored for citation coverage / grounding / source diversity.
 - **Agent memory OS** — `app.enable_memory_os(...)` exposes self-editing memory
   (`memory_append` / `memory_replace` / `memory_search` / `memory_archive`) as
@@ -178,4 +178,4 @@ pluggable `IsolationBackend` in `tools/sandbox.py` (subprocess is the zero-dep
 default but not a security boundary; container / microVM / gVisor / WASM are real
 boundaries, enforced by `require_real_isolation` for code-executing and
 computer-use workloads). See
-[`examples/34_continual_loop_and_agentic_frontier.py`](../../examples/34_continual_loop_and_agentic_frontier.py).
+[`examples/34_self_improving_loop_and_agents.py`](../../examples/34_self_improving_loop_and_agents.py).

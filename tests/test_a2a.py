@@ -1,4 +1,4 @@
-"""A2A (1.1): agent card, task lifecycle, crew/graph exposure, remote delegate."""
+"""A2A: agent card, task lifecycle, crew/graph exposure, remote delegate."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ async def test_agent_card_served():
     assert card.name == "helper"
     assert card.protocol_version == "0.3.0"
     # Streaming is advertised False until message/stream is actually dispatched
-    # (1.7 honesty fix): the card must not claim a capability the server lacks.
+    # (honesty fix): the card must not claim a capability the server lacks.
     assert card.capabilities.get("streaming") is False
 
 

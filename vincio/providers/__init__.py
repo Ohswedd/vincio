@@ -101,7 +101,7 @@ __all__ = [
     "OpenAIBatchBackend",
     "AnthropicBatchBackend",
     "GoogleBatchBackend",
-    # 2.1: executed fine-tune jobs
+    # executed fine-tune jobs
     "FineTuneBackend",
     "FineTuneJob",
     "FineTuneStatus",
@@ -118,7 +118,7 @@ __all__ = [
     "default_model_registry",
     "discover_entry_points",
     "discover_models",
-    # capability guard + rotation (1.8)
+    # capability guard + rotation
     "RequestNeeds",
     "CapabilityVerdict",
     "requirements_for",
@@ -170,7 +170,7 @@ _registry.register("mock", lambda **kw: MockProvider(**{k: v for k, v in kw.item
 # presets (groq, together, fireworks, openrouter, deepseek, perplexity, xai,
 # nvidia). Their API keys resolve from the conventional <NAME>_API_KEY env var.
 _registry.register("openai_compat", OpenAICompatibleProvider)
-# 2.0: enterprise deployment endpoints behind the pluggable AuthStrategy —
+# enterprise deployment endpoints behind the pluggable AuthStrategy —
 # routed through the same registry, capability guards, swap gate, residency, and
 # audit chain as every other provider. Bedrock requires (region + AWS creds),
 # Vertex requires (project + access token), Azure requires (endpoint + key/AAD).

@@ -1,4 +1,4 @@
-"""MCP (Model Context Protocol) — consume a server *and* expose your app (1.1).
+"""MCP (Model Context Protocol) — consume a server *and* expose your app.
 
 Vincio speaks MCP both ways. Here we (1) connect to an MCP server and register
 its tools + resources into an app — they run through the *same* permissioned,

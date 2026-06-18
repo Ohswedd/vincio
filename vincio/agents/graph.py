@@ -92,7 +92,7 @@ def interrupt(state: dict[str, Any], payload: Any = None) -> Any:
 
 
 class Send(BaseModel):
-    """Dynamic fan-out instruction for map-reduce super-steps (2.1).
+    """Dynamic fan-out instruction for map-reduce super-steps.
 
     A node returns a list of :class:`Send` to spawn ``node`` once per item with
     its own ``state`` overlay; the spawned instances run concurrently (bounded)
@@ -119,7 +119,7 @@ class Checkpoint(BaseModel):
     thread_id: str
     graph: str = ""
     step: int = 0
-    # Optimistic-concurrency token (2.1): the head checkpoint's version is the
+    # Optimistic-concurrency token: the head checkpoint's version is the
     # value a distributed worker must compare-and-swap against to commit the
     # next super-step. ``0`` for the single-process path, which never CASes.
     version: int = 0
@@ -128,7 +128,7 @@ class Checkpoint(BaseModel):
     status: Literal["running", "interrupted", "done", "max_steps"] = "running"
     interrupt_payload: Any = None
     parent_id: str | None = None
-    # Distributed lease holder that wrote this checkpoint (2.1), for audit/debug.
+    # Distributed lease holder that wrote this checkpoint, for audit/debug.
     lease_owner: str | None = None
     created_at: str = Field(default_factory=lambda: utcnow().isoformat())
 
@@ -151,7 +151,7 @@ class Checkpointer:
         """Hook called once when a thread begins/resumes execution.
 
         A no-op for the single-process checkpointer; the distributed
-        checkpointer (2.1) overrides it to acquire the thread's lease.
+        checkpointer overrides it to acquire the thread's lease.
         """
 
     def on_thread_end(self, thread_id: str) -> None:

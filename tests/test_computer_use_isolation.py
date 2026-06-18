@@ -1,4 +1,4 @@
-"""1.10 — computer-use / agentic browsing, pluggable isolation backends, and
+"""Computer-use / agentic browsing, pluggable isolation backends, and
 provider-native hosted tools."""
 
 import warnings

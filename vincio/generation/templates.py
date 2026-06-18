@@ -17,7 +17,6 @@ from pydantic import BaseModel
 
 from ..core.errors import GenerationError
 from ..output.parsers import extract_citations
-from ..stability import experimental
 
 __all__ = ["Slot", "fill_text_template", "fill_docx_form", "fill_pdf_form"]
 
@@ -89,7 +88,6 @@ def _resolve_values(
     return resolved
 
 
-@experimental(since="1.9")
 def fill_text_template(
     template: str,
     values: dict[str, Any],
@@ -118,7 +116,6 @@ def fill_text_template(
     return _PLACEHOLDER_RE.sub(replace, template)
 
 
-@experimental(since="1.9")
 def fill_docx_form(
     template_path: str,
     values: dict[str, Any],
@@ -171,7 +168,6 @@ def fill_docx_form(
     return data
 
 
-@experimental(since="1.9")
 def fill_pdf_form(
     template_path: str,
     values: dict[str, Any],

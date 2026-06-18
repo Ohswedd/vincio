@@ -1,4 +1,4 @@
-"""Trace-replay executor (1.7).
+"""Trace-replay executor.
 
 ``trace_replay_plan`` (observability) only *extracts* a replay; nothing executed
 it. ``ReplayRunner`` is the missing executor: it re-runs captured trace inputs
@@ -11,9 +11,7 @@ through a target :class:`~vincio.core.app.ContextApp` and diffs
 so behavioral regression becomes a reproducible primitive instead of a stub.
 Recorded tool outputs can be *pinned* so the replay is deterministic even when
 tools are non-deterministic. Surfaced from the CLI as ``vincio trace replay
---against <app>``; it is the building block the 1.8 ``SwapGate`` composes.
-
-Everything is additive and ``@experimental`` on the frozen 1.0 API.
+--against <app>``; it is the building block the ``SwapGate`` composes.
 """
 
 from __future__ import annotations
@@ -28,7 +26,6 @@ from ..core.types import ToolResult
 from ..observability.exporters import TraceExporter
 from ..observability.spans import Trace
 from ..observability.traces import trace_diff, trace_replay_plan
-from ..stability import experimental
 from .reports import CaseResult, EvalReport
 
 __all__ = ["ReplayCase", "ReplayResult", "ReplayRunner"]
@@ -117,7 +114,6 @@ def _recorded_cost(trace: Trace) -> float:
     return 0.0
 
 
-@experimental(since="1.7")
 class ReplayRunner:
     """Re-run captured trace inputs through a target app and diff the results."""
 

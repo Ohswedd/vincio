@@ -109,7 +109,7 @@ class QdrantVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await self.embedder.embed([query])
-        # 2.0: push a FilterSpec into Qdrant's native filter so selectivity is
+        # push a FilterSpec into Qdrant's native filter so selectivity is
         # applied server-side — fetch exactly top_k (no over-fetch under-fill)
         # and never round-trip other tenants' rows. A legacy callable still
         # post-filters client-side over a 4x over-fetch.

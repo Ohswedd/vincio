@@ -1,4 +1,4 @@
-"""1.10 — agent memory OS, in-loop context compaction, level-parallel DAG
+"""Agent memory OS, in-loop context compaction, level-parallel DAG
 execution, and the plan-and-execute replanning loop."""
 
 import warnings

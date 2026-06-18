@@ -43,10 +43,9 @@ __all__ = [
 logger = logging.getLogger("vincio.events")
 
 # Bumped only when a payload model changes incompatibly; stamped on every Event
-# so external sinks can bind to a stable schema and detect version skew. 3.0
-# finalizes the telemetry contract — the unified spans + metrics + cost model is
-# the single source of truth, and the catalog gains the self-improvement, deploy,
-# and provable-erasure events.
+# so external sinks can bind to a stable schema and detect version skew. The
+# unified spans + metrics + cost model is the single source of truth, and the
+# catalog covers the self-improvement, deploy, and provable-erasure events.
 EVENT_SCHEMA_VERSION = "3.0"
 
 
@@ -67,8 +66,8 @@ class Event(BaseModel):
 class EventPayload(BaseModel):
     """Base for documented event payloads.
 
-    2.0 promotes events from stringly-typed names + free-form dicts to a typed,
-    versioned catalog: each documented event has a payload model with a stable
+    Events are a typed, versioned catalog rather than stringly-typed names +
+    free-form dicts: each documented event has a payload model with a stable
     ``event`` name, so observers and external sinks bind to a schema instead of
     guessing dict keys. ``extra="allow"`` keeps it forward-compatible — emitting
     extra keys never rejects an event — while the documented fields are typed.
@@ -142,7 +141,7 @@ class DriftDetected(EventPayload):
 
 
 class SelfImprovementPhaseEvent(EventPayload):
-    """A phase of a unified self-improvement cycle (3.0).
+    """A phase of a unified self-improvement cycle.
 
     Published under ``self_improvement.<phase>`` (observe / proposal / meta /
     label / reeval / canary / promote / rollback), so a sink binds to one schema

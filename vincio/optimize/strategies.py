@@ -89,7 +89,7 @@ class _StrategyBase:
 
 
 class RandomSearch(_StrategyBase):
-    """Uniform random sampling (the 0.7 behaviour, as a strategy)."""
+    """Uniform random sampling (the behaviour, as a strategy)."""
 
     def propose(self, history: History, *, n: int) -> list[dict[str, Any]]:
         batch: list[dict[str, Any]] = []

@@ -1,4 +1,4 @@
-"""0.2 performance & core hardening: concurrency, caches, streaming,
+"""Performance & core hardening: concurrency, caches, streaming,
 throughput primitives, zero-copy packets."""
 
 from __future__ import annotations

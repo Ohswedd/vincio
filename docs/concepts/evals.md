@@ -198,7 +198,6 @@ await app.aflush_online()            # drain in-flight scoring (tests/shutdown)
 
 Each score is written as a time series to the metadata store (kind
 `eval_results`) and emits an `eval.online` event — no external mirroring.
-`app.add_online_evaluator` is `@experimental(since="1.2")`.
 
 ## Drift detection
 
@@ -241,7 +240,7 @@ ab_test(baseline_report, hybrid_report, "groundedness")  # {delta, p_value, sign
 ```
 
 `app.experiment` runs variants of the live app over a golden dataset and tests
-the same way (`@experimental(since="1.2")`):
+the same way:
 
 ```python
 exp = app.experiment("prompt_ab",
@@ -295,7 +294,6 @@ frontier — the `AGENTIC_OBJECTIVES` preset is `goal_accuracy`,
 `ObjectiveSpec` list. Unlike platforms that ship traces out to score them,
 Vincio scores the trajectory in-process, in the same model as the runtime, and
 turns the very same metric into a guardrail and an optimization target.
-`app.add_metric_rail` is `@experimental(since="1.2")`.
 
 ## Testing ergonomics
 

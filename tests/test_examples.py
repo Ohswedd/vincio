@@ -1,6 +1,6 @@
 """Every shipped example must run end to end, fully offline.
 
-This is the executable half of the 1.0 "tested example for every subsystem"
+This is the executable half of the "tested example for every subsystem"
 guarantee: the docs make claims, these tests prove the code behind them runs.
 Examples default to the deterministic MockProvider, so no API keys or network
 are needed. Each example is executed exactly as ``python examples/NN_*.py``

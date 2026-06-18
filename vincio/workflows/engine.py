@@ -158,7 +158,7 @@ class Workflow:
         when: ConditionFn | None = None,
         compensation: CompensationFn | None = None,
     ) -> Workflow:
-        """Register a map-reduce fan-out step (2.1).
+        """Register a map-reduce fan-out step.
 
         ``over`` names a prior step whose output is a list (or a callable that
         returns the items from the context); ``fn`` is applied to **each item**

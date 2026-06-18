@@ -1,6 +1,6 @@
 """Retrieval feedback: eval-scored relevance tunes retrieval automatically.
 
-Closes the retrieval half of the loop (0.8): relevance labels that already
+Closes the retrieval half of the loop: relevance labels that already
 live on eval cases (``rubric.relevant_ids``) drive deterministic, bounded
 searches over the knobs retrieval exposes — per-index RRF fusion weights and
 the heuristic reranker's blend — and a chunking recommendation picks the

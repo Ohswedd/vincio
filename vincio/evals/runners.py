@@ -54,7 +54,7 @@ class EvalRunner:
         self.judges = judges or []
         self.concurrency = max(1, concurrency)
         self.gates = gates or {}
-        # Repeats + flake control (1.8): run each case ``repeats`` times, report
+        # Repeats + flake control: run each case ``repeats`` times, report
         # per-case mean/stdev, aggregate by ``repeat_aggregate``, and (when
         # ``flake_quarantine``) tag cases whose quality metrics vary beyond
         # ``flake_threshold`` so non-mock provider noise never makes a swap gate
@@ -105,7 +105,7 @@ class EvalRunner:
                 continue
             if metric_result.details:
                 details[metric_result.name] = metric_result.details
-            # 2.0: unscoreable metrics are excluded from aggregation entirely so
+            # unscoreable metrics are excluded from aggregation entirely so
             # they cannot inflate a mean or silently pass a gate.
             if metric_result.skipped:
                 details.setdefault("_skipped_metrics", []).append(metric_result.name)

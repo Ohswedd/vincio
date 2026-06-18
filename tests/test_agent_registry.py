@@ -1,4 +1,4 @@
-"""Tests for the agent registry / discovery fabric + allow-list (2.2)."""
+"""Tests for the agent registry / discovery fabric + allow-list."""
 
 from __future__ import annotations
 

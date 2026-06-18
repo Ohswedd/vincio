@@ -1,4 +1,4 @@
-"""2.0 breaking eval semantics: unscoreable metrics are skipped (not a neutral
+"""Eval semantics: unscoreable metrics are skipped (not a neutral
 1.0), and ``semantic_similarity`` is embedding-backed while the lexical metric
 is honestly named ``lexical_overlap``."""
 

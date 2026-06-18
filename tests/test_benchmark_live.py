@@ -1,4 +1,4 @@
-"""The benchmark adapters' LIVE-run path (2.2): a real Vincio agent produces
+"""The benchmark adapters' LIVE-run path: a real Vincio agent produces
 fresh output that the *identical* benchmark scorer evaluates — not replay.
 
 Together with `test_benchmark_adapters.py` (the offline recorded-fixture path),

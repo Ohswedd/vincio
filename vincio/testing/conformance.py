@@ -1,4 +1,4 @@
-"""Distributed-backend conformance harness (2.1.1).
+"""Distributed-backend conformance harness.
 
 The native durable engine is the reference semantics for every runtime backend.
 A backend that runs a Vincio :class:`~vincio.agents.graph.StateGraph` elsewhere —

@@ -30,7 +30,6 @@ from typing import TYPE_CHECKING, Any, cast
 from pydantic import BaseModel, Field
 
 from ..core.utils import utcnow
-from ..stability import experimental
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..core.app import ContextApp
@@ -292,7 +291,6 @@ class ComplianceReport(BaseModel):
         return "\n".join(lines)
 
 
-@experimental(since="1.6")
 class ComplianceMapper:
     """Map Vincio's measured controls onto governance frameworks.
 
@@ -354,7 +352,7 @@ class ComplianceMapper:
         def cfg_flag(*evidence: str) -> _CapabilityEvidence:
             # A *measurable* control that config enables but no test has yet
             # exercised. Honestly "partial" until red-team/eval evidence
-            # corroborates it (1.7): a config flag alone can no longer reach
+            # corroborates it: a config flag alone can no longer reach
             # "covered" — the auditor matrix reflects defense actually exercised.
             return _CapabilityEvidence(status="partial", evidence=list(evidence))
 

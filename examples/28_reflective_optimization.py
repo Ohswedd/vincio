@@ -1,4 +1,4 @@
-"""Reflective optimization & the data flywheel (1.4).
+"""Reflective optimization & the data flywheel.
 
 Sharpen the optimizer to the 2025–26 state of the art, and add the one lever
 the field is missing — turning production traces into cheaper inference — while

@@ -84,7 +84,7 @@ class _ElasticLikeIndex:
             "k": fetch,
             "num_candidates": max(fetch, 50),
         }
-        # 2.0: a kNN `filter` is applied server-side before the top_k cut.
+        # a kNN `filter` is applied server-side before the top_k cut.
         if native_filter is not None:
             knn["filter"] = native_filter
         return self.client.search(index=self.index, knn=knn, size=fetch)
@@ -95,7 +95,7 @@ class _ElasticLikeIndex:
         return int(self.client.count(index=self.index)["count"])
 
     def _document(self, chunk: Chunk, vector: list[float]) -> dict[str, Any]:
-        # 2.0: persist flat filterable fields so a compiled FilterSpec `bool`
+        # persist flat filterable fields so a compiled FilterSpec `bool`
         # query matches server-side (dynamic-mapped keywords).
         return {"vector": list(vector), "json": chunk.model_dump_json(), **flat_filter_fields(chunk)}
 
@@ -122,7 +122,7 @@ class _ElasticLikeIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
-        # 2.0: push a FilterSpec down as an Elasticsearch `bool` filter (its real
+        # push a FilterSpec down as an Elasticsearch `bool` filter (its real
         # wire format); the as_predicate net guarantees correctness regardless.
         native = where.to_elasticsearch() if isinstance(where, FilterSpec) else None
         predicate = as_predicate(where)

@@ -1346,7 +1346,7 @@ def cmd_mcp_serve(args: argparse.Namespace) -> int:
 
 
 def cmd_serve(args: argparse.Namespace) -> int:
-    """Launch the HTTP API server with uvicorn (2.1).
+    """Launch the HTTP API server with uvicorn.
 
     Closes the audit finding that server mode shipped but was unlaunchable:
     builds the FastAPI app from one or more ``ContextApp`` files and serves it
@@ -1609,7 +1609,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_opt_run.set_defaults(fn=cmd_optimize_run)
 
     p_opt_refl = optimize_sub.add_parser(
-        "reflective", help="GEPA-style reflective prompt optimization (1.4)"
+        "reflective", help="GEPA-style reflective prompt optimization"
     )
     p_opt_refl.add_argument("--app", required=True)
     p_opt_refl.add_argument("--dataset", required=True)
@@ -1623,7 +1623,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_opt_refl.add_argument("--output", default=None, help="write winning spec YAML here")
     p_opt_refl.set_defaults(fn=cmd_optimize_reflective)
 
-    p_distill = sub.add_parser("distill", help="curate traces into grounded fine-tuning JSONL (1.4)")
+    p_distill = sub.add_parser("distill", help="curate traces into grounded fine-tuning JSONL")
     p_distill.add_argument("--traces-dir", default=".vincio/traces", help="directory of captured traces")
     p_distill.add_argument("--output", required=True, help="output JSONL path")
     p_distill.add_argument("--format", default="openai", choices=["openai", "anthropic"])
@@ -1636,7 +1636,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_distill.set_defaults(fn=cmd_distill)
 
-    p_loop = sub.add_parser("loop", help="closed improvement loop (0.8)")
+    p_loop = sub.add_parser("loop", help="closed improvement loop")
     loop_sub = p_loop.add_subparsers(dest="loop_command", required=True)
     p_loop_run = loop_sub.add_parser(
         "run", help="trace → dataset → eval → optimize → promote, one cycle"
@@ -1652,7 +1652,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_loop_run.add_argument("--experiment", default="improvement_loop")
     p_loop_run.add_argument("--dry-run", action="store_true", help="report the decision without promoting")
     p_loop_run.add_argument(
-        "--reflective", action="store_true", help="use the GEPA-style reflective optimizer (1.4)"
+        "--reflective", action="store_true", help="use the GEPA-style reflective optimizer"
     )
     p_loop_run.set_defaults(fn=cmd_loop_run)
 

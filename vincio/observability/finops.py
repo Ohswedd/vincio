@@ -1,4 +1,4 @@
-"""Cost attribution and budget SLOs (1.3).
+"""Cost attribution and budget SLOs.
 
 Every model call records a :class:`CostEvent` carrying the request-time
 attribution dimensions — ``tenant`` / ``user`` / ``feature`` / ``run`` — so cost
@@ -43,7 +43,7 @@ __all__ = [
     "CostBudget",
     "BudgetDecision",
     "BudgetManager",
-    # 2.1: served alerting rule engine
+    # served alerting rule engine
     "AlertRule",
     "AlertManager",
 ]
@@ -373,7 +373,7 @@ class BudgetManager:
 
 
 # ---------------------------------------------------------------------------
-# Served alerting rule engine (2.1)
+# Served alerting rule engine
 # ---------------------------------------------------------------------------
 
 

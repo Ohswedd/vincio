@@ -23,7 +23,7 @@
 prompts, memory, retrieval, tools, schemas, and policies into optimized, testable, observable,
 provider-neutral **context packets** — then validates and evaluates every output.
 
-Most LLM frameworks help you call a model. Vincio governs the *boundary* between your application
+Most frameworks help you *call* a model. Vincio governs the **boundary** between your application
 state and the model: what evidence is selected, how it is scored and budgeted, how it is rendered
 for cache reuse, and how the result is validated, measured, and traced. Named for **Leonardo da
 Vinci** — engineering and craft in equal measure.
@@ -37,10 +37,10 @@ Raw Input → Normalization → Objective Detection → Memory Selection
 
 ## Contents
 
-[Why Vincio](#why-vincio) · [Install](#install) · [60-second quickstart](#60-second-quickstart) ·
+[Why Vincio](#why-vincio) · [Install](#install) · [Quickstart](#quickstart) ·
 [Features](#features) · [Benchmarks](#benchmarks) · [Comparison](#how-vincio-compares) ·
-[Use cases](#use-cases) · [Examples](#more-examples) · [CLI](#command-line) ·
-[Architecture](#architecture) · [Roadmap](#roadmap) · [Documentation](#documentation)
+[Use cases](#use-cases) · [CLI](#command-line) · [Architecture](#architecture) ·
+[Roadmap](#roadmap) · [Documentation](#documentation)
 
 ## Why Vincio
 
@@ -75,7 +75,7 @@ pip install "vincio[all]"           # every optional integration
 Python 3.11+. Core dependencies are just `pydantic`, `httpx`, `pyyaml`, and `typing-extensions`;
 every heavy integration (vector stores, OCR, server, OpenTelemetry, …) is an opt-in extra.
 
-## 60-second quickstart
+## Quickstart
 
 ```python
 from vincio import ContextApp
@@ -177,6 +177,21 @@ report = EvalRunner(app).run(dataset)
 report.print_summary()     # groundedness, citation accuracy, schema validity, cost — with CI exit codes
 ```
 
+### Self-improvement as a contract
+
+```python
+from vincio.optimize import SelfImprovementPolicy
+
+# One declarative policy composes scheduling, autonomous proposal, online updates,
+# meta-optimization, active-learning labels, and canary-gated promotion/rollback.
+controller = app.self_improvement(SelfImprovementPolicy(), dataset=golden)
+async for ev in controller.astream():
+    print(ev.phase, ev.reason)   # observe → proposal → meta → canary → promote/rollback
+
+# Promote a candidate live only if it clears a no-regression canary verdict.
+app.deploy(candidate, dataset=golden)
+```
+
 ### Interoperate: MCP, A2A, Skills
 
 ```python
@@ -199,42 +214,37 @@ app.run("Plan the migration", config=RunConfig(reasoning_effort="high"))
 ## Features
 
 Vincio is organized into composable subsystems. Use the high-level `ContextApp` runtime, or reach
-for any engine directly.
+for any engine directly. Everything below is implemented, tested offline, and documented.
 
 | Subsystem | What it does |
 |---|---|
 | **Prompt compiler** | Typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, diffing, variant generation. |
-| **Context compiler** | Scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget — with an *excluded-context report* explaining every omission. |
-| **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; **Matryoshka (MRL) dimension truncation**, **contextual (Voyage context-3)** and **unified text+image multimodal (Cohere v4 / Voyage)** embedders, and query-vs-document input-type hints behind one `build_embedder`; citations. |
-| **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. |
-| **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, a resource-limited sandbox (timeout, output caps, scrubbed env, POSIX CPU/memory/fd `setrlimit`), reliability scoring, idempotent write-action guardrails with approval callbacks. |
-| **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement. |
-| **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events; runtime backends exporting to LangGraph and the OpenAI Agents SDK. |
+| **Context compiler** | Scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget — with an *excluded-context report* explaining every omission. Image, table, and text evidence are first-class candidates in **one scored packet**, with modality-aware token cost and slim packets that `materialize()` cross-process from a content-addressed evidence store. |
+| **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; Matryoshka (MRL) dimension truncation, contextual (Voyage context-3) and unified text+image multimodal (Cohere v4 / Voyage) embedders behind one `build_embedder`; a structured **`FilterSpec`** (`eq`/`in`/`range`/`and`/`or`) that pushes down to each backend's native filter with tenant scope enforced in the engine. |
+| **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session/team scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. Memory is **bi-temporal** (`valid_from`/`valid_to` + as-of recall, `correct()` that preserves history) with **per-memory ACLs** and a `TEAM` scope. |
+| **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, a resource-limited sandbox (timeout, output caps, scrubbed env, POSIX CPU/memory/fd `setrlimit`), reliability scoring, idempotent write-action guardrails with approval callbacks; **computer-use** and provider-native **hosted tools** behind a pluggable `IsolationBackend` (container / microVM / gVisor / WASM). |
+| **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement; a budgeted, citation-gated **deep-research agent** (`app.research`) that loops search → read → reflect → verify → synthesize into a cited report; a self-editing **memory OS** (`app.enable_memory_os`) exposing memory ops as audited tools with a context-pressure pager. |
+| **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events. A **distributed durable-execution backend** runs the same graph/workflow across a worker pool with a TTL lease + checkpoint-version CAS so two workers never double-execute a step, with BSP parallel super-steps, a `Send` map-reduce primitive, and LangGraph / OpenAI Agents SDK / Ray / Temporal export adapters. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates that pause the run and resume without re-executing finished steps. |
 | **Structured output** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
-| **Evaluation** | Golden JSONL datasets, 30+ task / grounding / quality / safety / conversational / **trajectory & tool-use** / retrieval / operational metrics (faithfulness, answer relevance, hallucination with strict number checks, toxicity, bias, summarization, knowledge retention, tool-call accuracy/F1, goal accuracy, plan adherence, step efficiency), deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). |
-| **Agentic eval & continuous quality** | Score *how* a run reached its answer, not just the text: trajectory & tool-use metrics over a `Trajectory` projected from any crew / graph / trace (no re-instrumentation); a deterministic multi-turn `Simulator`; **online evaluation** on a sampled slice of live traffic (restart-safe, worker-aggregatable score series, off the hot path); **drift detection** — score, embedding-distribution, **KS / PSI / MMD distributional**, and a streaming **CUSUM** changepoint — raising a `drift.detected` event; human annotation with **Cohen's-κ** judge calibration; production A/B with cost + significance per variant. Every metric doubles as a runtime guardrail (`add_metric_rail`) and optimizer fitness term. |
-| **Optimization** | Prompt / context / routing / cache search driven by an eval-fitness function, with safety-gated promotion that blocks any candidate regressing schema validity or safety. |
-| **The closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited. Plus: grounded auto-memory from runs, eval-driven retrieval feedback (gated fusion/reranker tuning, chunking recommendations), cost/quality Pareto frontiers with knee-point selection, learned per-task budget allocation, and hill-climb/annealing search strategies — every signal flowing through one packet, ledger, and trace. |
-| **Reflective optimization & the flywheel** | A GEPA-style `ReflectiveOptimizer` that reads eval failures, reflects on why a prompt lost, and proposes targeted edits, evolving a Pareto frontier under a hard rollout budget (plus MIPRO joint instruction+example proposal); a **distillation flywheel** (`app.export_training_set` / `vincio distill`) that curates grounded production traces into provider-ready fine-tuning JSONL and gates a cheaper student into the routing cascade only when it holds quality; **learned prompt compression** (`LLMLinguaCompressor`) as a faithfulness-gated compiler pass; and reflective calibration of the optimizer's own LLM judge against κ-validated labels. |
-| **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. |
-| **Security** | Deterministic PII / secret detection and redaction (with non-English locale packs for France/Germany/Spain/India/Singapore/Brazil/UK), prompt-injection defense, **authority/provenance RAG-poisoning detection** on retrieved evidence, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
-| **Governance & compliance** | Evidence generated from the running system, as files you own: machine-readable **model & system cards** (`app.model_card` / `system_card`), a **compliance coverage matrix** across OWASP LLM Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE ATLAS / ISO IEC 42001 backed by red-team and eval evidence (`app.compliance_report`), an **AI-BOM** with SHA-256 model-hash verification (`app.aibom`), EU AI Act **synthetic-content marking** (now media-aware — binds image/audio bytes, optionally signed + verifiable), an **EU AI Act conformity pack** (risk-tier classification + cited Annex IV technical documentation + Article 27 FRIA, `app.risk_tier` / `app.annex_iv` / `app.fria`), **data lineage** with right-to-erasure-by-source (`app.erase_source`), **data-residency-aware** egress refusal that infers the region from a pinned endpoint (`app.set_residency`), and the non-English **token tax** surfaced per language/tenant — see the [governance guide](docs/guides/governance.md). |
-| **Documents & media out (generation)** | The deliverable comes out under the same guarantees as text in. A `DocumentBuilder` renders a *validated* result into **cited DOCX/PDF/PPTX/HTML/Markdown** (`app.build_document`), structurally validated against a `DocumentContract` with formatting-only repair, plus template/form filling and tracked-change **redlines**. A `CitedReportBuilder` resolves `[E1]` markers to **footnotes + a bibliography** with sentence-level citation coverage and **per-claim entailment** (`app.cited_report`). **Image generation/editing** and **TTS** are first-class output modalities (`app.generate_image` / `app.synthesize_speech`) where every asset is **C2PA-provenance-stamped, budget-metered, and audited**. Inputs get richer too: OCR auto-fallback for scanned PDFs, audio **transcript ingestion** (`app.load_media`), new-format loaders (PPTX/EPUB/RTF/ODT/Parquet/mbox), a real-parser HTML/JSON/YAML path, and offline **forms/KYC** extraction — see the [generation guide](docs/guides/generate-documents.md). |
-| **Continual self-improvement & the agentic frontier** | The loop closes itself, and the frontier runs on the same cited, audited spine. An **online improvement controller** (`app.continuous_improvement`) turns sustained live drift into one *gated, reversible* action — a targeted re-eval, a fresh `ImprovementLoop` run, or a rollback to the last known-good prompt — debounced, eval-budgeted, audited, and restart-safe. A real provider-backed **GEPA reflector** (`reflective_optimize(reflector="llm")`) reads the actual failing cases, clusters them into failure modes, and proposes the targeted fix; an **autonomous experiment proposer** (`app.experiment_proposer`) ranks the weakest subsystem and schedules the highest-ROI experiment; **guarded online bandits** (`app.use_bandit_router`, ε-greedy / UCB1 / contextual LinUCB) learn the live route behind a safety floor with auto-rollback; and a **held-out, growing golden regression suite** gates every promotion so an auto-promotion can never undo a prior fix. A budgeted, citation-gated **deep-research agent** (`app.research`) loops search → read → reflect → verify → synthesize into a cited report; a **self-editing memory OS** (`app.enable_memory_os`) exposes `memory_append`/`replace`/`search`/`archive` as audited tools with a context-pressure pager; and **computer-use** (`app.enable_computer_use`) plus provider-native **hosted tools** (`app.use_hosted_tools`) run behind a pluggable **`IsolationBackend`** (container / microVM / gVisor / WASM) on the permissioned, audited, budgeted runtime (experimental, since 1.10). |
-| **Multimodal-native context & enterprise endpoints** | Image, table, and text evidence are first-class candidates in **one scored Context Packet** — selected, budgeted, ordered, and cited together — with modality-aware token cost and slim packets that `materialize()` cross-process from a content-addressed evidence store. A structured **`FilterSpec`** (serializable `eq`/`in`/`range`/`and`/`or`) pushes down to each backend's native filter — server-side across Qdrant, pgvector, Pinecone, Weaviate, Milvus, and Elasticsearch — and tenant scope is enforced in the engine so other tenants' rows are never fetched. Enterprise endpoints — **AWS Bedrock** (SigV4), **Google Vertex**, **Azure OpenAI** — sit behind a pluggable `AuthStrategy` inside the same registry, capability guards, swap gate, residency, and audit as every other provider. The public surface is organized into lazy **capability facades** (`app.runs` / `.knowledge` / `.governance` / `.optimization` / `.serving` / `.training`) over async-first stores and a typed, versioned event catalog. |
-| **Distributed execution, executed fine-tuning & served observability** | Scale out without a control plane. A **distributed durable-execution backend** runs the same `StateGraph`/`Workflow` across a worker pool with a TTL lease + checkpoint-version CAS, so two workers never double-execute a step; durable graphs gain BSP parallel super-steps and a `Send` map-reduce primitive (`WorkerPoolBackend`, plus Ray/Temporal export adapters). The distillation flywheel becomes an **executed cheaper model**: provider fine-tune jobs (OpenAI/Gemini/Anthropic) train a student that promotes into the routing cascade **only past the significance swap gate**. A **served, self-hosted observability & alerting plane** — an indexed trace/cost store with rollups, a stdlib dashboard (`serve_viewer`), and a rule engine (threshold / EWMA-anomaly / SRE burn-rate) over webhook/Slack/PagerDuty/Prometheus sinks — replaces O(n) JSONL scans, with prompt/completion content **off by default** at the export boundary. **Redis-backed shared state** + a first-class `vincio serve` (health/readiness/metrics, graceful shutdown) keep multi-worker deployments coherent. **Quantized two-stage retrieval** and batteries-included **local neural models** (fastembed embedder, SPLADE, ColBERT, a cross-encoder, and a llama.cpp **GGUF** in-process provider) give air-gapped/edge deployments true offline inference behind the same interfaces (experimental, since 2.1). |
-| **Benchmarks, the agent fabric & generative UI** | Measure on the scores buyers compare on, compose into a governed fabric, embed in a product. A **stateful-environment eval harness** (`Environment` reset/step/observe/verify with a **task-success oracle**) drives an agent policy through a *mutable* world and scores the verifiable **end state**, not turn plausibility — and projects onto the same `Trajectory` the optimizer already tunes. Five **agentic benchmark adapters** — **SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL** — run inside VincioBench behind one `BenchmarkAdapter` contract, each pinned by a task-set hash; replay a recorded run offline or solve **live** with a real agent (`make_agent_solver`), scored either way by the benchmark's own verifiable scorer. A **retrieval-eval harness** (recall@k / nDCG / MRR / context-precision) records versioned **index-regression artifacts** keyed on `(embedder, chunker, corpus hash)` and gates a recall/nDCG regression on the **same significance test as a model swap**. The **agent fabric** is an `AgentDirectory` over the A2A Agent Card, **AGNTCY/ACP**, and the **MCP Registry**, where every resolution passes an **`AllowListGate`** and lands as an audited access decision. And **generative UI** streams a run as **AG-UI** events (`/v1/apps/{id}/agui`, plus `AgentExecutor.astream` / `Crew.astream` genuine provider token deltas, tool events, and MCP-UI resources) so an interactive frontend inherits the run's provenance, budget, and audit — one streamed run (experimental, since 2.2). |
-| **One self-improvement contract, provable erasure & the async-canonical core** | The breaking culmination — fewer, truer abstractions. One declarative **`SelfImprovementPolicy`** composes scheduling, autonomous proposal, online updates, **meta-optimization** (learned fitness weights + successive-halving over the strategy/budget grid), active-learning label acquisition, and canary/rollback; `app.self_improvement(policy).astream()` drives the existing organs as **one streaming controller** — `observe → proposal → meta → reeval → canary → promote/rollback` — and **`app.deploy`** promotes a prompt/policy live only on a no-regression **canary verdict** — an offline gated comparison *or* a **live-traffic canary** (`LiveCanary`) that ramps a fraction of real runs onto the candidate and auto-rolls-back a regression. Erasure becomes **provable**: `app.erase_source` emits a **signed, content-bound `ErasureProof`** over the exact removed-id set across indexes, memory, and **generated artifacts**, anchored to the audit chain's Merkle root and verifiable offline. A **`ConsentLedger`** binds data to a GDPR **purpose** and **lawful basis** that access decisions and memory recall enforce, and **memory is bi-temporal** (`valid_from`/`valid_to` + as-of recall, `correct()` that preserves history) with **per-memory ACLs** and a `TEAM` scope for team-shared memory. The **async store/event contracts are canonical** (the in-memory store is async-native; sync is the thin wrapper) and the telemetry contract is finalized (`EVENT_SCHEMA_VERSION` 3.0). Every promotion still passes the same significance + safety + golden gates; every decision lands on one audit chain (experimental, since 3.0). |
-| **Storage** | Pluggable metadata (in-memory / SQLite / Postgres, async-first with a psycopg3 pool), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB / Weaviate / Milvus / Elasticsearch / OpenSearch / Vespa behind one `build_vector_index` factory), and graph (Neo4j) backends. |
-| **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, and **capability-aware failover** (refuses a substitution that can't serve the request), with in-flight request coalescing. A data-driven `ModelRegistry` (capabilities, pricing, lifecycle) is the single source the cost table, capability guards, and rotation all read from. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. Opt-in **voice/realtime** sessions (OpenAI Realtime, Gemini Live) via `vincio.realtime` — VAD, interruption, and in-session tool calls through the permissioned runtime. |
-| **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. All via `app.add_mcp_server` / `serve_mcp` / `serve_a2a` / `add_skill` (experimental, since 1.1). |
-| **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, and CI-gated VincioBench performance budgets. |
-| **Cost & reliability (FinOps)** | Production-traffic resilience in-process, not a proxy hop: **batch execution** at ~50% cost (OpenAI Batch + Anthropic Message Batches + Google/Vertex batch, `app.batch`), **circuit breaking** + **health-aware failover** and **key pooling** with RPM+TPM rate limiting (retry → fallback → circuit-break), **runtime model cascades** (start cheap, escalate on low confidence, `app.use_cascade`), **cost attribution** by tenant/feature (`app.cost_report` / `vincio cost report`) with enforced **budget SLOs** (cap / degrade / queue-to-batch + `cost.anomaly`), provider-aware **prompt caching** with TTL choice and cache-hit telemetry, and **incremental** (content-hash) + **sharded** indexing at scale. |
-| **Provider/model rotation & swap regression** | The migration safety net for the riskiest production change. A registry-backed **`Router`** (`app.use_router`) picks the cheapest / fastest / least-busy *capable* model per request and downgrades to a per-request budget. A **`SwapGate`** (`app.gate_swap` / `vincio providers regress`) replays golden traces and runs an eval + cost + latency + behavioral diff with statistical significance, PASS/FAILing the swap; **model-swap regression** (`app.swap_regression` / `vincio eval regress`) swaps *only* the model and reports per-metric significance, the cost/latency trade, and the worst-regressed slices, with `repeats`/flake quarantine. A **shadow provider** and a capped **canary** qualify a candidate on live traffic with automatic rollback (`app.shadow` / `app.canary`), and a **lifecycle watcher** (`app.watch_lifecycle` / `vincio providers lifecycle`) proposes migrations off deprecated models (experimental, since 1.8). |
+| **Evaluation** | Golden JSONL datasets, 30+ task / grounding / quality / safety / conversational / trajectory & tool-use / retrieval / operational metrics, deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). A **stateful-environment harness** (`Environment` reset/step/observe/verify with a task-success oracle) scores the verifiable end state of a mutable world, and five **agentic benchmark adapters** (SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL) run inside VincioBench behind one contract — replayed offline or solved live, scored either way by the benchmark's own scorer. A **retrieval-eval harness** (recall@k / nDCG / MRR / context-precision) records versioned index-regression artifacts keyed on `(embedder, chunker, corpus hash)` and gates a regression on the same significance test as a model swap. |
+| **Agentic eval & continuous quality** | Score *how* a run reached its answer: trajectory & tool-use metrics over a `Trajectory` projected from any crew / graph / trace (no re-instrumentation); a deterministic multi-turn `Simulator`; **online evaluation** on a sampled slice of live traffic (restart-safe, worker-aggregatable, off the hot path); **drift detection** — score, embedding-distribution, KS / PSI / MMD distributional, and a streaming CUSUM changepoint — raising a `drift.detected` event; human annotation with Cohen's-κ judge calibration; production A/B with cost + significance per variant. Every metric doubles as a runtime guardrail (`add_metric_rail`) and optimizer fitness term. |
+| **Optimization & the closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited — with safety-gated promotion that blocks any candidate regressing schema validity or safety. Plus grounded auto-memory from runs, eval-driven retrieval feedback, cost/quality Pareto frontiers with knee-point selection, and learned per-task budget allocation. |
+| **Self-improvement** | One declarative **`SelfImprovementPolicy`** composes scheduling, autonomous proposal, online updates, meta-optimization (learned fitness weights + successive-halving), active-learning label acquisition, and canary/rollback; `app.self_improvement(policy).astream()` drives the organs as one streaming controller — `observe → proposal → meta → reeval → canary → promote/rollback`. **`app.deploy`** promotes a prompt/policy live only on a no-regression canary verdict — an offline gated comparison *or* a live-traffic canary that ramps a fraction of real runs and auto-rolls-back a regression. Every promotion passes the same significance + safety + golden gates. |
+| **Reflective optimization & the flywheel** | A GEPA-style `ReflectiveOptimizer` that reads eval failures, reflects on why a prompt lost, and proposes targeted edits, evolving a Pareto frontier under a hard rollout budget (plus MIPRO joint instruction+example proposal); a **distillation flywheel** (`app.export_training_set` / `vincio distill`) that curates grounded production traces into provider-ready fine-tuning JSONL and gates a cheaper student into the routing cascade only when it holds quality, with executed fine-tune jobs (OpenAI/Gemini/Anthropic); **learned prompt compression** (`LLMLinguaCompressor`) as a faithfulness-gated compiler pass; and reflective calibration of the optimizer's own LLM judge against κ-validated labels. |
+| **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions, including agentic spans); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. A **served, self-hosted observability & alerting plane** — an indexed trace/cost store with rollups, a stdlib dashboard (`serve_viewer`), and a rule engine (threshold / EWMA-anomaly / SRE burn-rate) over webhook/Slack/PagerDuty/Prometheus sinks — replaces O(n) JSONL scans, with prompt/completion content off by default at the export boundary. |
+| **Security** | Deterministic PII / secret detection and redaction (with non-English locale packs for France/Germany/Spain/India/Singapore/Brazil/UK), prompt-injection defense, authority/provenance RAG-poisoning detection on retrieved evidence, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained, signed Merkle-checkpointed audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
+| **Governance & compliance** | Evidence generated from the running system, as files you own: machine-readable **model & system cards**, a **compliance coverage matrix** across OWASP LLM Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE ATLAS / ISO IEC 42001 backed by red-team and eval evidence, an **AI-BOM** with SHA-256 model-hash verification, EU AI Act **synthetic-content marking** (media-aware, optionally signed + verifiable), an **EU AI Act conformity pack** (risk-tier + cited Annex IV + Article 27 FRIA), **provable erasure** (`app.erase_source` emits a signed, content-bound `ErasureProof` over the exact removed-id set across indexes, memory, and generated artifacts, anchored to the audit chain's Merkle root and verifiable offline), a **`ConsentLedger`** binding data to a GDPR purpose + lawful basis that access and recall enforce, **data lineage**, **data-residency-aware** egress refusal, and the non-English **token tax** surfaced per language/tenant — see the [governance guide](docs/guides/governance.md). |
+| **Documents & media out (generation)** | The deliverable comes out under the same guarantees as text in. A `DocumentBuilder` renders a *validated* result into **cited DOCX/PDF/PPTX/HTML/Markdown**, structurally validated against a `DocumentContract` with formatting-only repair, plus template/form filling and tracked-change **redlines**. A `CitedReportBuilder` resolves `[E1]` markers to **footnotes + a bibliography** with sentence-level citation coverage and per-claim entailment. **Image generation/editing** and **TTS** are first-class output modalities where every asset is **C2PA-provenance-stamped, budget-metered, and audited**. Inputs get richer too: OCR auto-fallback for scanned PDFs, audio transcript ingestion, new-format loaders (PPTX/EPUB/RTF/ODT/Parquet/mbox), a real-parser HTML/JSON/YAML path, and offline forms/KYC extraction — see the [generation guide](docs/guides/generate-documents.md). |
+| **Storage** | Pluggable metadata (in-memory / SQLite / Postgres, async-first with a psycopg3 pool), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB / Weaviate / Milvus / Elasticsearch / OpenSearch / Vespa behind one `build_vector_index` factory), and graph (Neo4j) backends. Redis-backed shared state + a first-class `vincio serve` keep multi-worker deployments coherent. |
+| **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), enterprise endpoints (**AWS Bedrock** SigV4, **Google Vertex**, **Azure OpenAI**) behind a pluggable `AuthStrategy` in the same registry, and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, and **capability-aware failover**, with in-flight request coalescing. A data-driven `ModelRegistry` (capabilities, pricing, lifecycle) is the single source the cost table, capability guards, and rotation read from. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. Opt-in **voice/realtime** sessions (OpenAI Realtime, Gemini Live) via `vincio.realtime`. Batteries-included **local neural models** (fastembed, SPLADE, ColBERT, a cross-encoder, and a llama.cpp **GGUF** in-process provider) give air-gapped/edge deployments true offline inference behind the same interfaces. |
+| **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. A governed **agent fabric** (`AgentDirectory` over A2A Agent Cards, AGNTCY/ACP, and the MCP Registry) resolves agents behind an `AllowListGate`, every resolution an audited access decision. **Generative UI** streams a run as AG-UI events so an interactive frontend inherits the run's provenance, budget, and audit. |
+| **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output and genuine provider token deltas, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, zero-copy (slim) context packets, quantized two-stage retrieval, and CI-gated VincioBench performance budgets. |
+| **Cost & reliability (FinOps)** | Production-traffic resilience in-process, not a proxy hop: **batch execution** at ~50% cost (OpenAI Batch + Anthropic Message Batches + Google/Vertex batch), **circuit breaking** + **health-aware failover** and **key pooling** with RPM+TPM rate limiting, **runtime model cascades** (start cheap, escalate on low confidence), **cost attribution** by tenant/feature with enforced **budget SLOs** (cap / degrade / queue-to-batch + `cost.anomaly`), provider-aware **prompt caching** with TTL choice and cache-hit telemetry, and **incremental** (content-hash) + **sharded** indexing at scale. |
+| **Provider/model rotation & swap regression** | The migration safety net for the riskiest production change. A registry-backed **`Router`** picks the cheapest / fastest / least-busy *capable* model per request. A **`SwapGate`** replays golden traces and runs an eval + cost + latency + behavioral diff with statistical significance, PASS/FAILing the swap; **model-swap regression** swaps *only* the model and reports per-metric significance, the cost/latency trade, and the worst-regressed slices, with flake quarantine. A **shadow provider** and a capped **canary** qualify a candidate on live traffic with automatic rollback, and a **lifecycle watcher** proposes migrations off deprecated models. |
 | **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. |
 | **Integrations & DX** | LangChain + LlamaIndex interop (`vincio.interop`) for tools, retrievers, loaders, and embeddings — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
-| **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a frozen public surface (`vincio.__all__`) with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `@experimental` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
+| **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a frozen public surface (`vincio.__all__`) with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
 
 Every extension point — providers, metrics, chunkers, rerankers, judges, validators, tools — accepts
 your own implementation via a registry.
@@ -269,25 +279,14 @@ baseline. Representative results on the bundled reference corpus:
 | | schema routing / classification accuracy | **100%** | — |
 | **Closed loop** | loop promotion fires · deterministic · gates block regressions | **pass** | — |
 | | grounded facts written · ungrounded excluded | **pass** | — |
-| | retrieval feedback (noisy index corrected · healthy index untouched) | **pass** | — |
 | | Pareto front excludes dominated · knee balanced · learned budgets promote | **pass** | — |
-| **Protocols** | MCP tool schema fidelity · resource provenance · round-trip | **1.00 · pass · pass** | thin adapter |
-| | A2A budget-bounded delegation terminates | **pass** | — |
-| | Agent-Skill progressive-disclosure token savings (off-topic) | **100%** | — |
-| **Cost & reliability (scale)** | batch reconciliation by custom id · partial failures surfaced | **pass · pass** | dropped silently |
-| | circuit opens on systemic failure → half-open recovers · failover steers healthy | **pass** | one slow timeout/request |
-| | prompt-cache hit rate (warm stable prefix) · cost-attribution accuracy | **72% · 100%** | — |
-| | cascade savings vs always-strong (cheap-first, escalate on low confidence) | **−70%** | — |
+| **Cost & reliability** | prompt-cache hit rate · cost-attribution accuracy | **72% · 100%** | — |
+| | cascade savings vs always-strong (escalate on low confidence) | **−70%** | — |
 | | canary auto-rolls-back under load → serves primary after | **pass** | serves the regression |
-| **Provider/model rotation & swap** | router picks cheapest capable · budget downgrade · capability filter | **pass** | routes to incapable/pricier |
-| | capability guard skips incapable failover · lifecycle error classified (rotate now) | **pass** | silent wrong answer / buried 404 |
-| | swap gate blocks a regression · passes a safe swap (significance) · replay-diff fidelity | **pass** | swap on one noisy run |
-| | Google/Vertex batch parity (half-cost) | **pass** | — |
-| **Reflective optimization & flywheel** | reflective search beats baseline within rollout budget · deterministic | **pass** | blind mutation |
-| | distillation exports grounded-only · gates student on quality hold | **pass** | trains on hallucinations |
-| | learned compression preserves cited facts under faithfulness gate | **pass** | drops evidence |
+| **Rotation & swap** | router picks cheapest capable · capability guard skips incapable failover | **pass** | routes to incapable/pricier |
+| | swap gate blocks a regression · passes a safe swap (significance) | **pass** | swap on one noisy run |
 | **Governance** | card/AI-BOM completeness · framework-mapping coverage | **pass · 79%** | — |
-| | erasure correctness (chunks removed = lineage) · audited | **pass** | — |
+| | erasure correctness (removed = lineage) · audited · proof verifies | **pass** | — |
 | | multilingual PII recall · RAG-poisoning detection (FP rate) | **100% · 100% (0%)** | English-only |
 
 > **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
@@ -307,7 +306,7 @@ in-library** capabilities — not what is reachable by bolting on a separate pro
 | Typed prompt **AST + lint + cache layout** | ✅ | ❌ | ❌ | ➖ | ❌ |
 | Hybrid (BM25 + dense) **RAG** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Sparse + late-interaction + GraphRAG** in one fusion | ✅ | ➖ | ➖ | ❌ | ❌ |
-| Layered **memory** (decay, conflicts, scopes) | ✅ | ➖ | ➖ | ❌ | ❌ |
+| Layered **memory** (decay, conflicts, scopes, bi-temporal) | ✅ | ➖ | ➖ | ❌ | ❌ |
 | **Permissioned** tool registry (RBAC/ABAC) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Bounded **agents** + deterministic workflows | ✅ | ✅ | ➖ | ➖ | ❌ |
 | **Durable graphs** (checkpoint / resume / time-travel) + bounded crews | ✅ | ➖ | ❌ | ❌ | ❌ |
@@ -320,15 +319,14 @@ in-library** capabilities — not what is reachable by bolting on a separate pro
 | **Deterministic security** (PII / injection / audit) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **MCP** client *and* server + **A2A** + **Agent Skills** | ✅ | ➖ | ➖ | ➖ | ❌ |
 | **In-process FinOps**: batch · circuit-break · cascades · cost attribution + budgets | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Capability-aware rotation + gated swap regression** (router · swap gate · canary) | ✅ | ➖ | ❌ | ❌ | ❌ |
-| **Governance evidence**: cards · OWASP/NIST/MITRE mapping · AI-BOM · erasure · residency | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **Capability-aware rotation + gated swap regression** | ✅ | ➖ | ❌ | ❌ | ❌ |
+| **Governance evidence**: cards · framework mapping · AI-BOM · provable erasure · residency | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-<sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Reflects
-mid-2026; ecosystems evolve. Vincio is built to *interoperate* — it speaks MCP (client *and* server),
-A2A, and Agent Skills in-process, `vincio.interop` brings LangChain and LlamaIndex tools, retrievers,
-loaders, and embeddings in (and hands Vincio's back), and you can point at any OpenAI-compatible model
-and the vector store you already run. See the
-[migration guides](docs/guides/migrate-from-langchain.md), the
+<sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Ecosystems
+evolve. Vincio is built to *interoperate* — it speaks MCP (client *and* server), A2A, and Agent Skills
+in-process, `vincio.interop` brings LangChain and LlamaIndex tools, retrievers, loaders, and embeddings
+in (and hands Vincio's back), and you can point at any OpenAI-compatible model and the vector store you
+already run. See the [migration guides](docs/guides/migrate-from-langchain.md), the
 [integrations guide](docs/guides/integrations.md), and the in-depth write-ups in
 [`docs/comparisons/`](docs/comparisons).</sub>
 
@@ -347,7 +345,7 @@ and the vector store you already run. See the
 | Gate quality in CI | datasets, gates, baseline diff | [`09_eval_pipeline.py`](examples/09_eval_pipeline.py) |
 | Tune prompts/context against an eval suite | optimization + gated promotion | [`10_optimization_run.py`](examples/10_optimization_run.py) |
 | Stream answers token-by-token through the full pipeline | `astream` + partial-JSON + compile caches | [`11_streaming_performance.py`](examples/11_streaming_performance.py) |
-| Push retrieval quality with the full retrieval toolkit | sparse+late-interaction fusion, HyDE, auto-merge, GraphRAG, connectors | [`12_advanced_rag.py`](examples/12_advanced_rag.py) |
+| Push retrieval quality with the full toolkit | sparse+late-interaction fusion, HyDE, auto-merge, GraphRAG, connectors | [`12_advanced_rag.py`](examples/12_advanced_rag.py) |
 | Personalize an app with governed memory | scoped remember/recall, consolidation, hygiene, memory evals | [`13_memory_personalization.py`](examples/13_memory_personalization.py) |
 | Evaluate, test, and observe without a platform | quality metrics, synthetic data, red-teaming, experiments, prompt registry, sessions + trace viewer | [`14_evaluation_observability.py`](examples/14_evaluation_observability.py) |
 | Run a multi-agent team with roles and delegation | crews + shared blackboard + budget guarantees | [`15_multi_agent_crew.py`](examples/15_multi_agent_crew.py) |
@@ -361,21 +359,22 @@ and the vector store you already run. See the
 | Expose a crew over A2A and delegate across vendor agents | A2A agent card + task lifecycle + remote delegate | [`23_a2a_delegation.py`](examples/23_a2a_delegation.py) |
 | Drop in portable `SKILL.md` knowledge with budgeting | Agent Skills + progressive disclosure | [`24_agent_skills.py`](examples/24_agent_skills.py) |
 | Control reasoning effort across providers with honest cost | unified reasoning control + Responses API | [`25_reasoning_control.py`](examples/25_reasoning_control.py) |
-| Score agents over their trajectory and live traffic | trajectory & tool-use metrics, multi-turn simulator, online eval + drift, Cohen's-κ annotation, A/B + metric-as-guardrail | [`26_agentic_eval.py`](examples/26_agentic_eval.py) |
+| Score agents over their trajectory and live traffic | trajectory & tool-use metrics, multi-turn simulator, online eval + drift, annotation, A/B | [`26_agentic_eval.py`](examples/26_agentic_eval.py) |
 | Survive outages and account for every dollar at scale | batch execution, circuit breaking + failover, key pooling, model cascades, cost attribution + budgets, prompt caching, sharded indexing | [`27_cost_and_reliability.py`](examples/27_cost_and_reliability.py) |
 | Optimize prompts reflectively and distill traces into a cheaper model | GEPA/MIPRO reflective optimizer, distillation flywheel, learned compression, optimizer-judge calibration | [`28_reflective_optimization.py`](examples/28_reflective_optimization.py) |
-| Shrink embeddings, retrieve across text+image, and add stores | Matryoshka (MRL) truncation, contextual & multimodal embedders, new vector stores, layout-aware extraction, voice/realtime | [`29_multimodal_retrieval.py`](examples/29_multimodal_retrieval.py) |
-| Generate compliance evidence and satisfy a data-erasure request | model/system cards, OWASP/NIST/MITRE mapping, AI-BOM, lineage + erasure, residency, multilingual PII | [`30_governance_compliance.py`](examples/30_governance_compliance.py) |
-| Close the improvement loop online and run the agentic frontier | online controller (drift → gated rollback), real GEPA reflector, experiment proposer, guarded bandits, golden non-regression guard, deep-research agent, memory OS, computer-use + isolation | [`34_continual_loop_and_agentic_frontier.py`](examples/34_continual_loop_and_agentic_frontier.py) |
-| Run the 2.0 breaking window end to end | capability facades, multimodal-native packet (image/table + cross-process materialize), structured `FilterSpec` pushdown + tenant scope, typed event catalog, enterprise endpoints behind `AuthStrategy`, egress DLP + signed Merkle-checkpointed audit chain | [`35_breaking_window_2_0.py`](examples/35_breaking_window_2_0.py) |
-| Scale out across workers, train a cheaper model, and serve a dashboard | distributed durable execution (lease/CAS + worker pool + `Send` map-reduce), executed swap-gated distillation, served observability + burn-rate alerting, quantized two-stage retrieval, in-process GGUF + local neural models | [`36_scale_out_and_train.py`](examples/36_scale_out_and_train.py) |
-| Score on the leaderboards, govern a fabric, and stream a UI | stateful-environment eval with a task-success oracle, the five benchmark adapters (SWE-bench/τ-bench/GAIA/WebArena/BFCL), retrieval-eval + index-version regression, the `AgentDirectory` over A2A/AGNTCY-ACP/MCP-registry under an `AllowListGate`, and AG-UI generative-UI streaming | [`37_benchmarks_and_fabric.py`](examples/37_benchmarks_and_fabric.py) |
-| Run continual self-improvement and prove a data-erasure request | one `SelfImprovementPolicy` (streaming proposal→meta→canary→promote/rollback), canary-gated `app.deploy`, signed & verifiable `ErasureProof`, a GDPR `ConsentLedger`, and bi-temporal memory (as-of recall + per-memory ACL) | [`38_self_improvement_and_provable_erasure.py`](examples/38_self_improvement_and_provable_erasure.py) |
+| Shrink embeddings, retrieve across text+image, and add stores | Matryoshka truncation, contextual & multimodal embedders, new vector stores, layout-aware extraction, voice/realtime | [`29_multimodal_retrieval.py`](examples/29_multimodal_retrieval.py) |
+| Generate compliance evidence and satisfy a data-erasure request | model/system cards, framework mapping, AI-BOM, lineage + erasure, residency, multilingual PII | [`30_governance_compliance.py`](examples/30_governance_compliance.py) |
+| Enforce the honest, fast spine | hard budgets, the `ModelRegistry`, semantic scoring, cancellation, significance-gated promotion + replay | [`31_honest_fast_spine.py`](examples/31_honest_fast_spine.py) |
+| Rotate providers/models safely | router, `SwapGate`, swap regression with quarantine, shadow + canary, lifecycle migrations | [`32_swap_regression.py`](examples/32_swap_regression.py) |
+| Let documents and images flow out under the same guarantees | `DocumentBuilder` + `DocumentContract`, `CitedReportBuilder`, redlines, image/TTS with C2PA, richer inputs, EU AI Act pack | [`33_documents_and_media_out.py`](examples/33_documents_and_media_out.py) |
+| Run a self-improving loop with agentic capabilities | online controller, GEPA reflector, experiment proposer, golden non-regression guard, deep-research agent, memory OS, computer-use + isolation | [`34_self_improving_loop_and_agents.py`](examples/34_self_improving_loop_and_agents.py) |
+| Work with the multimodal-native packet and capability facades | facades, multimodal packet + cross-process materialize, structured `FilterSpec` pushdown + tenant scope, typed event catalog, enterprise endpoints, egress DLP + signed audit chain | [`35_multimodal_packet_and_facades.py`](examples/35_multimodal_packet_and_facades.py) |
+| Scale out across workers, train a cheaper model, and serve a dashboard | distributed durable execution (lease/CAS + worker pool + `Send` map-reduce), swap-gated distillation, served observability + burn-rate alerting, quantized two-stage retrieval, in-process GGUF | [`36_distributed_scale_and_finetune.py`](examples/36_distributed_scale_and_finetune.py) |
+| Score on the leaderboards, govern a fabric, and stream a UI | stateful-environment eval with a task-success oracle, the five benchmark adapters, retrieval-eval + index regression, the `AgentDirectory` under an `AllowListGate`, AG-UI streaming | [`37_benchmarks_and_agent_fabric.py`](examples/37_benchmarks_and_agent_fabric.py) |
+| Run continual self-improvement and prove a data-erasure request | one `SelfImprovementPolicy` (streaming proposal→meta→canary→promote/rollback), canary-gated `app.deploy`, signed & verifiable `ErasureProof`, a GDPR `ConsentLedger`, bi-temporal memory | [`38_self_improvement_and_erasure.py`](examples/38_self_improvement_and_erasure.py) |
 
-## More examples
-
-All thirty-eight examples in [`examples/`](examples) run **fully offline** with no API keys. Point them
-at a real model with environment variables:
+All examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at a real
+model with environment variables:
 
 ```bash
 export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
@@ -397,17 +396,13 @@ vincio prompt push prompts/support.yaml --tag production  # version a prompt
 vincio trace view trace_123      # TUI trace tree with scores + feedback
 vincio trace export trace_123    # self-contained static HTML (also --session)
 vincio trace diff a b --html diff.html  # visual side-by-side diff
-vincio trace sessions            # list sessions with aggregates
-vincio trace feedback trace_123 --score 1.0
 vincio optimize run --target groundedness
 vincio optimize reflective --app app.py --dataset golden.jsonl  # GEPA-style reflective optimization
 vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"  # one closed-loop cycle
 vincio distill --traces-dir .vincio/traces --output train.jsonl  # grounded fine-tuning JSONL
 vincio index build ./docs        # build a retrieval index
-vincio memory inspect --user u1  # inspect a user's memory
 vincio memory recall "answer style" --user u1  # scored hybrid recall
 vincio audit verify              # verify the audit-log hash chain offline
-vincio mcp tools --command "python server.py"  # inspect an MCP server's tools
 vincio mcp serve app.py          # expose an app as an MCP server (stdio)
 vincio serve --app app.py        # launch the HTTP API (health/readiness/metrics)
 ```
@@ -443,8 +438,10 @@ so rate-limit and idempotency state stays coherent across workers.
                     └─────────────────────────────────────────┘
 ```
 
-See [`AGENTS.md`](AGENTS.md) for the package layout and [`docs/concepts/`](docs/concepts) for a tour
-of each engine.
+The public surface is organized into lazy **capability facades** (`app.runs` / `.knowledge` /
+`.governance` / `.optimization` / `.serving` / `.training`) over async-first stores and a typed,
+versioned event catalog. See [`AGENTS.md`](AGENTS.md) for the package layout and
+[`docs/concepts/`](docs/concepts) for a tour of each engine.
 
 ## Roadmap
 
@@ -456,46 +453,12 @@ are [published as SLOs](docs/reference/slo.md) and gated by VincioBench; the
 a resource-limited tool sandbox; and releases ship a CycloneDX SBOM with SLSA provenance attestations.
 
 New capabilities are added without breaking working code: each one sits behind a new entry point or an
-opt-in extra, and unproven surface is marked [`@experimental`](docs/reference/stability.md). Vincio
-adopts the ecosystem's standards — the MCP, A2A, and Agent Skills protocols, and the OWASP LLM 2025 /
-OWASP Agentic / NIST AI RMF / MITRE ATLAS governance frameworks — *in your process*; it never becomes
-a hosted service to do so.
+opt-in extra. Vincio adopts the ecosystem's standards — the MCP, A2A, and Agent Skills protocols, and
+the OWASP LLM / OWASP Agentic / NIST AI RMF / MITRE ATLAS governance frameworks — *in your process*; it
+never becomes a hosted service to do so.
 
-**1.7 makes the spine's promises literally true:** the advertised `Budget` is a hard cap, the compiler
-scores and selects context by embedding cosine (with MMR and value-level contradiction) when you opt
-in, the streaming and non-streaming run paths are unified behind one cooperative-cancellation
-epilogue, and a data-driven `ModelRegistry` (capabilities, pricing, lifecycle) replaces substring
-guesswork — every promotion now gated on statistical significance, with a trace-replay executor for
-reproducible behavioral regression. **1.8 turns that registry into a rotation-and-regression
-discipline:** capability guards refuse a substitution that can't serve the request, a `SwapGate`
-replays golden traces and diffs quality/cost/latency/behavior with significance to PASS/FAIL a model
-swap, a shadow provider and a capped canary qualify a candidate on live traffic with automatic
-rollback, and a lifecycle watcher proposes migrations off deprecated models. **1.9 makes documents
-and images flow *out*:** a `DocumentBuilder` renders a validated, cited result into structurally-
-contracted DOCX/PDF/PPTX/HTML/Markdown; a `CitedReportBuilder` resolves citations to footnotes with
-per-claim entailment; image generation and TTS join as first-class output modalities with C2PA
-provenance, budget metering, and eval-gating; OCR, transcripts, and new-format loaders close the
-inputs gap; and an EU AI Act conformity pack (risk tier + Annex IV + FRIA) is generated from the live
-system. **1.10 closes the loop and opens the agentic frontier:** an online controller turns sustained
-drift into a gated re-eval / re-optimization / rollback, a real provider-backed GEPA reflector and an
-autonomous experiment proposer drive informed improvement behind a held-out non-regression guard,
-guarded online bandits learn the live route safely, and a budgeted citation-gated deep-research agent,
-a self-editing memory OS, and computer-use behind hardened isolation join — all on one packet, ledger,
-audit log, and trace, in-process. **2.0 was the one breaking window** — capability facades over a
-decomposed core, a multimodal-native Context Packet, structured filter pushdown, and enterprise
-endpoints behind one `AuthStrategy`; **2.1 scaled it out** with distributed durable execution, executed
-swap-gated distillation, and a served observability plane; **2.2 proves it on the world's
-benchmarks** — a stateful-environment eval harness with a task-success oracle, the SWE-bench/τ-bench/
-GAIA/WebArena/BFCL adapters inside VincioBench, a retrieval-eval + index-version-regression gate, a
-governed agent fabric (A2A + AGNTCY/ACP + the MCP registry under one allow-list), and AG-UI
-generative-UI streaming. **3.0 is the breaking culmination** — one declarative `SelfImprovementPolicy`
-(a streaming controller composing proposal, meta-optimization, canary, and rollback) plus a
-canary-gated `app.deploy`; **provable erasure** (a signed, content-bound `ErasureProof` over exactly
-what was removed) with a GDPR `ConsentLedger` and bi-temporal, ACL-gated memory; and an async-canonical
-core with a finalized telemetry contract. **2.0 and 3.0 are the only breaking windows.**
-
-See **[ROADMAP.md](ROADMAP.md)** for what ships today, what's planned, and what's intentionally out of
-scope.
+See **[ROADMAP.md](ROADMAP.md)** for what ships today, what is planned next, and what is intentionally
+out of scope.
 
 Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
 retention, tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own
@@ -533,8 +496,7 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [config](docs/reference/config.md) · [API stability & deprecation policy](docs/reference/stability.md) ·
   [performance & quality SLOs](docs/reference/slo.md)
 - **Security & governance** — [threat model](docs/security/threat-model.md) ·
-  [security policy](SECURITY.md) · [reliability & guardrails guide](docs/guides/reliability-guardrails.md) ·
-  [governance & compliance](docs/guides/governance.md)
+  [security policy](SECURITY.md) · [governance & compliance](docs/guides/governance.md)
 - **Comparisons** — [LangChain](docs/comparisons/langchain.md) ·
   [LlamaIndex](docs/comparisons/llamaindex.md) · [RAGatouille](docs/comparisons/ragatouille.md) ·
   [Mem0](docs/comparisons/mem0.md) · [CrewAI](docs/comparisons/crewai.md) ·
@@ -551,6 +513,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 pip install -e ".[dev]"
 python -m pytest tests/ -q     # 1623 tests, no network or API keys required
 ruff check vincio/ tests/
+mypy vincio
 ```
 
 See [`AGENTS.md`](AGENTS.md) for the codebase layout and engineering conventions.

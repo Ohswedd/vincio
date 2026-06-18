@@ -1,4 +1,4 @@
-"""Served observability & alerting plane (2.1): indexed trace/cost store with
+"""Served observability & alerting plane: indexed trace/cost store with
 rollups + retention, tail-based sampling, the alert rule engine + sinks, and the
 served viewer app. All offline and deterministic."""
 

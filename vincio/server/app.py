@@ -111,7 +111,7 @@ def create_app(
 
     metrics = PrometheusExporter()
 
-    # 2.1: shared rate-limit state — Redis-backed when configured (coherent
+    # shared rate-limit state — Redis-backed when configured (coherent
     # across uvicorn workers), process-local otherwise.
     from ..storage.shared_state import RateLimiter
 
@@ -129,7 +129,7 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        # 2.1: graceful startup/shutdown. Readiness flips true after startup and
+        # graceful startup/shutdown. Readiness flips true after startup and
         # false on shutdown so load balancers drain in flight before exit.
         app.state.ready = True
         try:
@@ -251,7 +251,7 @@ def create_app(
         tenant_id = scope_tenant(request.tenant_id, context)
 
         async def event_stream():
-            # End-to-end streaming (0.2): events arrive as the pipeline and
+            # End-to-end streaming: events arrive as the pipeline and
             # the provider produce them — stage markers, real token deltas,
             # partial structured output, tool activity, then the result.
             async for event in app.astream(
@@ -276,7 +276,7 @@ def create_app(
 
     @api.post("/v1/apps/{app_id}/agui")
     async def agui_app(app_id: str, request: RunRequest, context: AuthContext = Depends(auth)):
-        # Generative UI (2.2): the same astream run, translated into AG-UI events
+        # Generative UI: the same astream run, translated into AG-UI events
         # so an interactive frontend renders text/tool/state deltas live. The UI
         # inherits the run's provenance, budget metering, and audit — one run.
         app = get_app(app_id)

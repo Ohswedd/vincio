@@ -6,7 +6,7 @@ effect 2 Aug 2026. Vincio supplies the *artifacts and hooks*, configurable and
 date-agnostic — it does not hard-code a deadline or become a compliance service.
 
 * :func:`mark_synthetic_content` emits a C2PA-style **provenance manifest** that
-  binds to the output by SHA-256 — text *or* raw media bytes (1.9), with the
+  binds to the output by SHA-256 — text *or* raw media bytes, with the
   IPTC ``trainedAlgorithmicMedia`` / ``compositeWithTrainedAlgorithmicMedia``
   digital source type — suitable for attaching as content credentials.
 * :func:`embed_provenance` writes the manifest into a generated asset's file
@@ -193,7 +193,7 @@ def mark_synthetic_content(
     """Build a provenance manifest marking ``content`` as AI-generated.
 
     ``content`` may be a text answer *or* raw media bytes (a generated image or
-    audio clip, 1.9): the manifest is bound by SHA-256 over whichever was given,
+    audio clip): the manifest is bound by SHA-256 over whichever was given,
     so a downstream consumer can confirm the credential matches the bytes it
     received. ``media_type`` records the asset's IANA type (defaults to
     ``text/plain`` for ``str``); ``edited=True`` marks an edit/composite with the

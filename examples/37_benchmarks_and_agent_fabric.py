@@ -1,7 +1,7 @@
-"""Prove it on the world's benchmarks + the agent fabric (2.2).
+"""Prove it on the world's benchmarks + the agent fabric.
 
-The additive 2.2 surface on the frozen 2.0 API — measurability, composability,
-and embeddability, all offline on the deterministic mock:
+Measurability, composability, and embeddability, all offline on the
+deterministic mock:
 
   1. Stateful-environment eval: an Environment (reset/step/observe/verify) drives
      an agent policy through a *mutable* world; a task-success ORACLE verifies the
@@ -20,8 +20,7 @@ and embeddability, all offline on the deterministic mock:
      AG-UI protocol for an interactive frontend — one streamed run, with the run's
      provenance and audit, not a bolt-on UI layer.
 
-Everything here is opt-in and additive behind ``@experimental(since="2.2")``;
-nothing below is required to run Vincio.
+Everything here is opt-in and additive; nothing below is required to run Vincio.
 """
 
 from __future__ import annotations

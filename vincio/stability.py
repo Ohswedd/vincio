@@ -47,11 +47,8 @@ __all__ = [
 
 # The public-API contract version. Bumped only on a MAJOR release; it is the
 # promise SemVer is applied against, independent of the package patch level.
-# 2.0 was the first deliberate breaking window (the structural refactor,
-# async-first stores, multimodal-native packet, enterprise endpoints); 3.0 is
-# the second and (for now) last — the unified self-improvement contract,
-# provable erasure with consent modeling, and the async-canonical core — after
-# which the surface is frozen again under the same mechanical deprecation runway.
+# The public surface is frozen and evolves only under the mechanical
+# deprecation runway described above.
 API_VERSION = "3.0"
 
 _STABILITY_ATTR = "__vincio_stability__"

@@ -1,4 +1,4 @@
-"""Agentic benchmark adapters (2.2): run Vincio agents on the world's leaderboards.
+"""Agentic benchmark adapters: run Vincio agents on the world's leaderboards.
 
 The field compares agents on public leaderboards — **SWE-bench Verified**,
 **τ-bench / τ²-bench**, **GAIA**, **WebArena**, and **BFCL**. This module ships
@@ -38,7 +38,6 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..core.errors import VincioError
-from ..stability import experimental
 from .environment import EnvAction, EnvironmentSimulator, make_retail_environment, scripted_policy
 from .reports import CaseResult, EvalReport
 
@@ -137,7 +136,6 @@ class BenchmarkReport(BaseModel):
         )
 
 
-@experimental(since="2.2")
 class BenchmarkAdapter(ABC):
     """Base contract for a leaderboard adapter.
 
@@ -233,7 +231,6 @@ class BenchmarkAdapter(ABC):
 # ---------------------------------------------------------------------------
 
 
-@experimental(since="2.2")
 class SWEBenchAdapter(BenchmarkAdapter):
     """SWE-bench Verified: a patch *resolves* an issue iff the fail-to-pass tests
     turn green and the pass-to-pass tests stay green.
@@ -270,7 +267,6 @@ class SWEBenchAdapter(BenchmarkAdapter):
 # ---------------------------------------------------------------------------
 
 
-@experimental(since="2.2")
 class TauBenchAdapter(BenchmarkAdapter):
     """τ-bench / τ²-bench: a tool agent operates a customer-service world; success
     is the **database end state**, scored by the :mod:`~vincio.evals.environment`
@@ -324,7 +320,6 @@ def _gaia_normalize(text: Any) -> str:
     return " ".join(tokens).strip()
 
 
-@experimental(since="2.2")
 class GAIAAdapter(BenchmarkAdapter):
     """GAIA: a general-assistant question with a single gold answer, scored by
     GAIA's normalized **exact match** (lowercase, drop articles/punctuation,
@@ -351,7 +346,6 @@ class GAIAAdapter(BenchmarkAdapter):
 # ---------------------------------------------------------------------------
 
 
-@experimental(since="2.2")
 class WebArenaAdapter(BenchmarkAdapter):
     """WebArena: a web-navigation task scored by a functional check on the agent's
     final answer / end state.
@@ -410,7 +404,6 @@ def _norm_value(value: Any) -> Any:
     return value
 
 
-@experimental(since="2.2")
 class BFCLAdapter(BenchmarkAdapter):
     """BFCL (Berkeley Function-Calling Leaderboard): score the agent's function
     call(s) by **AST match** — function name + arguments — against the gold call(s).

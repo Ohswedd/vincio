@@ -1,10 +1,10 @@
-"""Tests for Vincio 1.7 — the honest, fast spine.
+"""The honest, fast spine.
 
-Covers all eight 1.7 deliverables: enforced budgets, semantic scoring + MMR +
-value contradiction, the unified run pipeline + RunHandle cancellation + async
-stores, the ModelRegistry, significance-gated promotion + the ReplayRunner, the
-local-image fix + truthful protocols, the sub-quadratic/inverted-index hot
-paths, and the hardened detectors + evidence-gated compliance.
+Covers enforced budgets, semantic scoring + MMR + value contradiction, the
+unified run pipeline + RunHandle cancellation + async stores, the ModelRegistry,
+significance-gated promotion + the ReplayRunner, the local-image fix + truthful
+protocols, the sub-quadratic/inverted-index hot paths, and the hardened
+detectors + evidence-gated compliance.
 """
 
 from __future__ import annotations
@@ -19,8 +19,6 @@ from vincio.core.errors import TenantIsolationError
 from vincio.core.types import RunConfig
 from vincio.observability.costs import ModelPrice
 from vincio.providers.mock import MockProvider
-
-pytestmark = pytest.mark.filterwarnings("ignore::vincio.VincioExperimentalWarning")
 
 
 def _app(text: str = "ok", **kw) -> ContextApp:

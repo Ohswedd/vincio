@@ -1,4 +1,4 @@
-"""Agent Skills (1.1): SKILL.md parsing, progressive disclosure, sandboxed scripts."""
+"""Agent Skills: SKILL.md parsing, progressive disclosure, sandboxed scripts."""
 
 from __future__ import annotations
 

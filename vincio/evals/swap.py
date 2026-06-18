@@ -1,4 +1,4 @@
-"""Model-swap regression & the swap gate (1.8).
+"""Model-swap regression & the swap gate.
 
 A model swap is the most common and the riskiest change in production. This
 module turns "is the new model safe?" into a gated, statistically-backed answer,
@@ -8,7 +8,7 @@ composed entirely from organs Vincio already ships:
   the model, and reports per-metric significance (:func:`~vincio.evals.ab_test`),
   per-case deltas, the cost / latency trade, and the **worst-regressed slices** —
   the body of ``vincio eval regress``.
-* :class:`SwapGate` wraps that with the 1.7 :class:`~vincio.evals.ReplayRunner`
+* :class:`SwapGate` wraps that with the :class:`~vincio.evals.ReplayRunner`
   over golden traces, a :class:`~vincio.evals.DriftMonitor` check,
   :func:`~vincio.evals.evaluate_gates`, and **behavioral shape diffs**
   (tool-call rate, refusal rate, output-length distribution), and emits a
@@ -18,7 +18,6 @@ composed entirely from organs Vincio already ships:
 Everything runs offline against the deterministic mock and recorded provider
 cassettes; the flake controls on :class:`~vincio.evals.runners.EvalRunner`
 (``repeats`` + quarantine) keep non-mock variance from making the gate noisy.
-``@experimental`` on the frozen 1.0 API.
 """
 
 from __future__ import annotations
@@ -29,7 +28,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ..stability import experimental
 from .experiments import Experiment, ab_test
 from .metrics import LOWER_IS_BETTER, MetricResult, RunOutput
 from .reports import EvalReport, evaluate_gates
@@ -310,7 +308,6 @@ def _worst_cases(base: EvalReport, cand: EvalReport, metric: str) -> list[dict[s
     return rows[:10]
 
 
-@experimental(since="1.8")
 async def model_swap_regression(
     app: Any,
     dataset: Any,
@@ -341,7 +338,6 @@ async def model_swap_regression(
     )
 
 
-@experimental(since="1.8")
 class SwapGate:
     """Gate a model/provider change on replayed golden traces + an eval/cost/
     latency/behavioral diff with statistical backing.

@@ -1,4 +1,4 @@
-"""3.0 provable erasure + consent/purpose + bi-temporal memory:
+"""Provable erasure + consent/purpose + bi-temporal memory:
 signed erasure proofs across stores, the ConsentLedger, and as-of / ACL recall."""
 
 from datetime import UTC, datetime

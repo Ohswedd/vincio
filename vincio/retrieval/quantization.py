@@ -1,4 +1,4 @@
-"""Vector quantization + Matryoshka two-stage retrieval (2.1).
+"""Vector quantization + Matryoshka two-stage retrieval.
 
 At scale, holding every full-precision vector in RAM and scoring all of them is
 the cost. The standard answer is **two-stage retrieval**: a cheap coarse pass

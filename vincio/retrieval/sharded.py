@@ -1,4 +1,4 @@
-"""Sharded indexing for scale (1.3).
+"""Sharded indexing for scale.
 
 :class:`ShardedIndex` splits a corpus across N backend indexes and queries them
 **in parallel**, merging the per-shard hits — so a corpus too large (or too

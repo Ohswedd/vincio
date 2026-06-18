@@ -1,4 +1,4 @@
-"""Generative UI / AG-UI streaming protocol (2.2).
+"""Generative UI / AG-UI streaming protocol.
 
 The field streams *structured UI events* to interactive frontends. **AG-UI** (and
 the overlapping MCP-UI surface) standardize that as a small set of typed events —

@@ -1,4 +1,4 @@
-"""Content-addressed compilation caches (0.2).
+"""Content-addressed compilation caches.
 
 Incremental & cached compilation: the prompt-compile, chunking, and
 context-compile stages are pure functions of their inputs, so each gets a

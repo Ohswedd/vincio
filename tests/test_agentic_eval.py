@@ -1,4 +1,4 @@
-"""Tests for 1.2 — agentic evaluation & continuous quality.
+"""Tests for agentic evaluation & continuous quality.
 
 Trajectory & tool-use metrics, the multi-turn simulator + conversation metrics,
 online/continuous eval, drift detection, human annotation with Cohen's κ,

@@ -1,4 +1,4 @@
-"""Multi-schema routing (0.7).
+"""Multi-schema routing.
 
 Choose and validate against alternative output schemas by task or content.
 A :class:`SchemaRouter` holds named routes — each a schema plus the

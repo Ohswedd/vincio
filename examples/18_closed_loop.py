@@ -1,4 +1,4 @@
-"""The closed-loop ecosystem (0.8).
+"""The closed-loop ecosystem.
 
 One continuous, reproducible cycle that no single-purpose library can ship:
 production traces become datasets, datasets drive gated optimization, the

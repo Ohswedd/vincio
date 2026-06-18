@@ -1,4 +1,4 @@
-"""Tests for the 1.9 generation engine: documents & media flow OUT."""
+"""Tests for the generation engine: documents & media flow OUT."""
 
 from __future__ import annotations
 
@@ -36,8 +36,6 @@ from vincio.governance.transparency import (
     write_sidecar_manifest,
 )
 from vincio.security.audit import AuditLog
-
-pytestmark = pytest.mark.filterwarnings("ignore::vincio.VincioExperimentalWarning")
 
 SAMPLE_MD = """# Quarterly Memo
 

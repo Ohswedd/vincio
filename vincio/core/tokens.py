@@ -8,7 +8,7 @@ exact BPE counts are used for known model families.
 Provider-native exact counters (Anthropic ``count_tokens``, Gemini
 ``countTokens``) sit behind the :class:`TokenCounter` Protocol and are selected
 by resolved model id via :func:`register_token_counter` — the registry
-foundation (1.7) lets a provider plug in its exact counter without changing the
+foundation lets a provider plug in its exact counter without changing the
 offline default. ``count_tokens`` is memoized so repeated compiler passes and
 incremental recompiles never re-tokenize the same text.
 """

@@ -1,4 +1,4 @@
-"""Tests for the stateful-environment eval harness (2.2)."""
+"""Tests for the stateful-environment eval harness."""
 
 from __future__ import annotations
 

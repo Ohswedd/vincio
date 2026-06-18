@@ -1,4 +1,4 @@
-"""Content-capture controls for telemetry export (2.1).
+"""Content-capture controls for telemetry export.
 
 Prompts and completions are the most sensitive thing a run touches, and the
 served observability plane must not widen your data-exposure surface. So raw

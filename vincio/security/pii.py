@@ -6,7 +6,7 @@ keys/secrets. Detection returns spans with type and confidence so policies
 can decide between blocking, redaction, and pass-through.
 
 The built-in patterns are English/US-centric. Non-English **locale packs**
-(1.6, :mod:`vincio.security.locales`) extend detection with national-ID and
+(:mod:`vincio.security.locales`) extend detection with national-ID and
 locale phone formats (e.g. France NIR, Germany Steuer-ID, India Aadhaar/PAN,
 Singapore NRIC) without changing the built-in path: pass ``locales=`` to
 :class:`PIIDetector`. Locale matches carry a ``locale`` tag on the

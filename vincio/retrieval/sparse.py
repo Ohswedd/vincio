@@ -101,7 +101,7 @@ class CallableSparseEncoder:
 
 
 class SpladeEncoder:
-    """Real SPLADE learned-sparse encoder via a local ``transformers`` model (2.1).
+    """Real SPLADE learned-sparse encoder via a local ``transformers`` model.
 
     SPLADE expands a passage into term-impact weights over the model vocabulary —
     far richer than the offline :class:`LocalImpactEncoder` approximation. Lazily

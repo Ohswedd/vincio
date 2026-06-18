@@ -1,8 +1,7 @@
-"""Capability facades over :class:`~vincio.core.app.ContextApp` (2.0).
+"""Capability facades over :class:`~vincio.core.app.ContextApp`.
 
-Five milestones of additive growth grew ``ContextApp`` into a ~3000-line
-god-object that couples every feature. 2.0 decomposes its public surface into
-narrow, independently-testable capability facades — ``RunFacade``,
+``ContextApp`` exposes a large, cohesive surface. The facades decompose that
+surface into narrow, independently-testable capability groups — ``RunFacade``,
 ``RetrievalFacade``, ``GovernanceFacade``, ``OptimizationFacade``,
 ``ServingFacade``, ``TrainingFacade`` — each exposing one cohesive method group
 and delegating to the app's implementation. They are constructed lazily (on
@@ -114,8 +113,6 @@ class OptimizationFacade(CapabilityFacade):
             "reflective_optimize",
             "use_bandit_router",
             "self_improvement",
-            "continuous_improvement",
-            "experiment_proposer",
             "gate_compression",
             "calibrate_judge",
             "use_learned_budgets",
@@ -131,7 +128,7 @@ class OptimizationFacade(CapabilityFacade):
 
 class ServingFacade(CapabilityFacade):
     """Serving surfaces: MCP server, A2A server, realtime sessions, and the
-    canary-gated deploy surface (3.0)."""
+    canary-gated deploy surface."""
 
     _METHODS = frozenset({"serve_mcp", "serve_a2a", "realtime_session", "deploy"})
 

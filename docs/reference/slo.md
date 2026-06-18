@@ -59,7 +59,7 @@ portable.
 
 | SLO | Target | VincioBench metric |
 |---|---|---|
-| MCP tool schema fidelity | exact (1.0) | `protocols.mcp.schema_fidelity` |
+| MCP tool schema fidelity | exact | `protocols.mcp.schema_fidelity` |
 | A2A budget-bounded delegation terminates | always | `protocols.a2a.terminates` |
 | Skill progressive-disclosure token savings | ≥ 0.50 | `protocols.skills.disclosure_savings` |
 

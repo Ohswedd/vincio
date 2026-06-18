@@ -57,7 +57,7 @@ class MilvusVectorIndex:
         return int(stats.get("row_count", 0))
 
     def _row(self, chunk: Chunk, vector: list[float]) -> dict[str, Any]:
-        # 2.0: flat filterable fields land in Milvus's dynamic field so a
+        # flat filterable fields land in Milvus's dynamic field so a
         # compiled FilterSpec `expr` matches server-side.
         return {
             "id": chunk.id,
@@ -83,7 +83,7 @@ class MilvusVectorIndex:
         self, query: str, *, top_k: int = 10, where: Where | None = None
     ) -> list[SearchHit]:
         [vector] = await embed_texts(self.embedder, [query], input_type="query")
-        # 2.0: push a FilterSpec down as a Milvus boolean `expr` (its real wire
+        # push a FilterSpec down as a Milvus boolean `expr` (its real wire
         # format); the as_predicate net guarantees correctness regardless.
         native = where.to_milvus() if isinstance(where, FilterSpec) else None
         predicate = as_predicate(where)

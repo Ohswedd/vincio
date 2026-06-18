@@ -1,4 +1,4 @@
-"""Domain packs: a grounded support assistant in three lines (0.9).
+"""Domain packs: a grounded support assistant in three lines.
 
 ``use_pack`` applies a domain bundle — role/objective/rules, a structured
 output schema, recommended policies, evaluators, and a golden eval set — through

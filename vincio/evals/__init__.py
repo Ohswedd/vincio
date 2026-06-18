@@ -141,14 +141,14 @@ __all__ = [
     "ReplayRunner",
     "ReplayResult",
     "ReplayCase",
-    # 1.8 — model-swap regression & the swap gate
+    # model-swap regression & the swap gate
     "SwapGate",
     "SwapVerdict",
     "SwapRegressionReport",
     "model_swap_regression",
     "behavioral_shapes",
     "SyntheticGenerator",
-    # 1.2 — agentic evaluation & continuous quality
+    # agentic evaluation & continuous quality
     "Trajectory",
     "TrajectoryStep",
     "trajectory_from_agent_state",
@@ -169,7 +169,7 @@ __all__ = [
     "AnnotationQueue",
     "AnnotationItem",
     "cohens_kappa",
-    # 2.2 — stateful-environment eval harness + task-success oracle
+    # stateful-environment eval harness + task-success oracle
     "Environment",
     "ToolEnvironment",
     "EnvObservation",
@@ -187,7 +187,7 @@ __all__ = [
     "task_success",
     "make_retail_environment",
     "make_counter_environment",
-    # 2.2 — agentic benchmark adapters (SWE-bench/τ-bench/GAIA/WebArena/BFCL)
+    # agentic benchmark adapters (SWE-bench/τ-bench/GAIA/WebArena/BFCL)
     "BenchmarkAdapter",
     "BenchmarkTask",
     "BenchmarkResult",
@@ -206,7 +206,7 @@ __all__ = [
     "gaia_tasks_from_export",
     "swebench_tasks_from_export",
     "bfcl_tasks_from_export",
-    # 2.2 — retrieval evaluation harness + index-version regression
+    # retrieval evaluation harness + index-version regression
     "RetrievalQuery",
     "RetrievalGoldenSet",
     "RetrievalConfig",

@@ -75,7 +75,7 @@ __all__ = [
     "render_session_text",
     "trace_to_html",
     "trace_diff_html",
-    # 2.1: served observability & alerting plane
+    # served observability & alerting plane
     "IndexedTraceStore",
     "Percentiles",
     "RollupBucket",

@@ -23,7 +23,7 @@ __all__ = [
     "ConsoleExporter",
     "MultiExporter",
     "NullExporter",
-    # 2.1: tail-based sampling + alert sinks
+    # tail-based sampling + alert sinks
     "TailSamplingExporter",
     "Alert",
     "AlertSink",
@@ -159,7 +159,7 @@ class MultiExporter:
 
 
 class TailSamplingExporter:
-    """Tail-based, error-prioritized sampling in front of an inner exporter (2.1).
+    """Tail-based, error-prioritized sampling in front of an inner exporter.
 
     The served plane should keep what matters and drop the noise: this wrapper
     **always** keeps error traces (and any trace slower than ``keep_slow_ms``),
@@ -205,7 +205,7 @@ class TailSamplingExporter:
 
 
 # ---------------------------------------------------------------------------
-# Alerting sinks (2.1)
+# Alerting sinks
 # ---------------------------------------------------------------------------
 
 
@@ -317,7 +317,7 @@ class PagerDutyAlertSink(WebhookAlertSink):
 
 
 class PrometheusExporter:
-    """Scrape-friendly Prometheus metrics for the served plane (2.1).
+    """Scrape-friendly Prometheus metrics for the served plane.
 
     Prometheus pulls, so this is a registry the ``/metrics`` endpoint renders in
     the text exposition format — and an :class:`AlertSink` that increments a

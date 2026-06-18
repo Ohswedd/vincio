@@ -64,7 +64,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
 
 - All public data contracts are Pydantic v2 models.
 - Async-first: every engine has `arun`/async methods plus sync wrappers.
-- 2.0 (breaking window): `ContextApp`'s surface is grouped into lazy capability
+- Capability facades, multimodal packet & structured filters: `ContextApp`'s surface is grouped into lazy capability
   facades (`app.runs` / `.knowledge` / `.governance` / `.optimization` /
   `.serving` / `.training`); the flat `app.<method>` API still works.
   `EvidenceItem`/`ContextCandidate` carry a `modality` (text/image/table) and
@@ -78,7 +78,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   (`security.audit_signing_key`). Eval: `lexical_overlap` is the lexical metric;
   `semantic_similarity` is embedding-backed; unscoreable cases return
   `MetricResult(skipped=True)` and are excluded from gates.
-- 2.1 (additive, `@experimental` on the 2.0 surface; API_VERSION stays 2.0):
+- Distributed execution, fine-tuning & served observability:
   Distributed durable execution — `from vincio.agents import WorkerPoolBackend,
   DistributedCheckpointer, InMemoryGraphCoordinator, Send`. `WorkerPoolBackend(workers=N)`
   has `run(graph, input)` and `run_batch(graph, inputs)`; `DistributedCheckpointer(store,
@@ -103,7 +103,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `SpladeEncoder`, `ColBERTTokenEmbedder`, `LocalCrossEncoderReranker`, and a
   llama.cpp `GGUFProvider` (each with an offline fallback; extras
   `vincio[fastembed,splade,cross-encoder,gguf]`).
-- 2.2 (additive, `@experimental(since="2.2")` on the 2.0 surface; API_VERSION stays 2.0):
+- Benchmarks, the agent fabric & generative UI:
   Stateful-environment eval — `from vincio.evals import Environment, ToolEnvironment,
   EnvironmentSimulator, EnvAction, StateCheck, make_retail_environment, scripted_policy,
   task_success`. An `Environment` is `reset()/step(action)/observe()/verify()`; `verify()`
@@ -132,9 +132,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `AgentEvent`/`CrewEvent` (run/step lifecycle, genuine provider token deltas via
   `provider.stream()`, tool_call/tool_result, done);
   `from vincio.mcp import MCPUIResource` served via `app.serve_mcp(ui_resources=[...])`.
-- 3.0 (the second breaking window; API_VERSION moves to 3.0, `EVENT_SCHEMA_VERSION` to 3.0;
-  all new surface `@experimental(since="3.0")`; the flat `app.<method>` API and 2.x organs stay
-  supported):
+- Self-improvement contract, provable erasure & the async-canonical core:
   Unified self-improvement contract — `from vincio.optimize import SelfImprovementPolicy,
   SelfImprovementController, MetaSpec, CanarySpec, SelfImprovementEvent, DeployResult,
   successive_halving, learn_fitness_weights, select_for_labeling, deploy_candidate`. One
@@ -146,8 +144,9 @@ result.output; result.citations; result.trace_id; result.cost_usd
   gated comparison) or `app.deploy(candidate, live_inputs=[...], score_fn=...)` (live-traffic canary
   via `LiveCanary`: ramps `CanarySpec.percent` onto the candidate, scores each arm online, promotes
   on no regression or auto-rolls-back) promotes live only on a no-regression `CanaryVerdict`.
-  `app.continuous_improvement` / `app.experiment_proposer` are `@deprecated(since=3.0, removed_in=4.0)`
-  → `app.self_improvement`. The run path persists through the async store contract on every path
+  `app.self_improvement` is the unified app-level surface; `ContinuousImprovementController` and
+  `ExperimentProposer` remain public for wiring one organ directly. The run path persists through
+  the async store contract on every path
   (interactive / streaming / batch — `VincioRuntime._persist_run` is a coroutine awaiting `asave`).
   Provable erasure — `from vincio.governance import ErasureProof, build_erasure_proof,
   verify_erasure_proof`; `app.erase_source(source)` returns `ErasureResult` with `.proof` (signed
@@ -266,7 +265,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `assert_eval` / `assert_grounded` / `assert_metric` / `assert_safe` +
   pytest plugin with `vincio_snapshot` fixture
   (`--vincio-update-snapshots`).
-- Agentic evaluation & continuous quality (1.2): trajectory & tool-use metrics
+- Agentic evaluation & continuous quality: trajectory & tool-use metrics
   `tool_call_accuracy | tool_call_f1 | goal_accuracy | plan_adherence |
   plan_quality | step_efficiency | topic_adherence` score the agent
   `trajectory` carried on a RunOutput — build it with
@@ -332,7 +331,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")`
   or `guided_search(space, evaluate, strategy=, budget=, seed=)` —
   deterministic, budget-bounded, gate-respecting.
-- Reflective optimization & the data flywheel (1.4, all `@experimental`):
+- Reflective optimization & the data flywheel:
   reflective optimizer `app.reflective_optimize(dataset, strategy="reflective|
   mipro", budget=, minibatch_size=, gates=, apply=)` → `ReflectiveResult`
   (drop-in `OptimizationResult` with `.frontier` / `.reflections`); reads eval
@@ -366,7 +365,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   + `to_langchain_*` / `to_llamaindex_*` (extras `vincio[langchain]` /
   `vincio[llamaindex]`); embedders `build_embedder("local|jina|voyage|cohere|
   voyage-context|voyage-multimodal|cohere-multimodal|<provider>", dimensions=N)`
-  (1.5: Matryoshka/MRL truncation, contextual & unified text+image multimodal
+  (Matryoshka/MRL truncation, contextual & unified text+image multimodal
   embedders, query/document `input_type` hints via `embed_texts`); rerankers
   `build_reranker("heuristic|recency|authority|llm|cohere|jina|voyage")` (hosted
   ones are httpx-only); vector stores `from vincio.storage import
@@ -374,8 +373,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   lancedb | weaviate | milvus | elasticsearch | opensearch | vespa (extras
   `vincio[chroma|pinecone|lancedb|weaviate|milvus|elasticsearch|opensearch|
   vespa]`); layout-aware PDF extraction `load_document(path, layout=True)` /
-  `extract_pdf_layout` (extra `vincio[pdf-layout]`); voice/realtime (1.5,
-  optional) `from vincio.realtime import RealtimeSession, connect_realtime`
+  `extract_pdf_layout` (extra `vincio[pdf-layout]`); voice/realtime (optional) `from vincio.realtime import RealtimeSession, connect_realtime`
   (backends inprocess|openai|gemini; VAD, interruption, in-session tools via the
   permissioned runtime; `app.realtime_session(...)`; extra `vincio[realtime]`);
   domain packs `app.use_pack("support|engineering|finance|legal")`,
@@ -383,7 +381,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   reprs `from vincio import enable_rich_reprs` (RunResult/Trace/EvalReport/
   MemoryItem/SearchHit); interactive inspector `vincio.tui.TUI` / `vincio tui`;
   typed config schema `vincio.core.config.config_json_schema()`.
-- Stability & guarantees (1.0): SemVer on the frozen public surface
+- Stability & guarantees: SemVer on the frozen public surface
   (`vincio.__all__` / `vincio.stability.public_api()`); `from vincio import
   deprecated, experimental, stability_of` — `@deprecated(since=, removed_in=,
   alternative=)` / `@experimental(since=)` emit `VincioDeprecationWarning` /
@@ -398,7 +396,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `SandboxedPython(max_cpu_seconds=, max_memory_bytes=, max_open_files=)`);
   releases ship a CycloneDX SBOM + SLSA provenance attestations. Threat model
   in `docs/security/threat-model.md`.
-- Governance & compliance (1.6, experimental; `vincio.governance`): generated
+- Governance & compliance: generated
   from the running system, no hosted dependency. Model/system cards
   `app.model_card()` / `app.system_card()` (`CardFormat` vincio|open_model_card|
   ai_card) / `vincio governance card`. Compliance mapping `app.compliance_report()`
@@ -426,7 +424,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `app.fertility.token_tax(lang)`. RAG-poisoning: `from vincio.security import
   PoisoningDetector` (authority/provenance signals + classifier hook; FP/FN via
   `PoisoningReport.telemetry`).
-- The honest, fast spine (1.7, experimental): the advertised `Budget` is a hard
+- The honest, fast spine: the advertised `Budget` is a hard
   cap on `app.run()`/`arun()` — `max_cost_usd`/`max_input_tokens`/
   `max_output_tokens`/`max_steps` raise `BudgetExceededError` (on the same audit
   chain as residency/policy), with a pre-flight input-token check and
@@ -462,7 +460,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   PII/injection/secret detectors, `AccessController(require_explicit_tenant=True)`
   fails closed on untagged tenants, and `ComplianceMapper` marks a control
   `covered` only with measured red-team/eval evidence (config flags ⇒ `partial`).
-- Provider/model rotation & swap regression (1.8, experimental): capability guard
+- Provider/model rotation & swap regression: capability guard
   — `from vincio.providers import requirements_for, capability_check` intersect a
   request's needs (vision/tools/structured-output/reasoning/context) with a
   model's `ModelCapabilities`; unknown models are never blocked. `FailoverChain` /
@@ -499,7 +497,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `LifecycleWatcher`. Edge: routes by capability *and* cost inside your audit
   boundary, refuses mismatched substitutions, gates every swap on replayed golden
   traces with significance, and auto-rolls-back a canary — in-process, not a proxy.
-- Documents & images flow OUT (1.9, experimental, `vincio.generation`): documents
+- Documents & images flow OUT: documents
   and media come out under the same guarantees as text in. DocumentBuilder —
   `app.build_document(source, *, format="markdown|html|docx|pdf|pptx",
   contract=DocumentContract(required_sections=, table_specs=[TableSpec(...)],
@@ -542,11 +540,11 @@ result.output; result.citations; result.trace_id; result.cost_usd
   Edge: a generated image is C2PA-stamped and a cited report is per-claim *entailed*,
   not just `[E1]`-marked — documents/media out under text's exact guarantees, on one
   audit chain, in-process.
-- The loop closes itself + the agentic frontier (1.10, experimental): continual,
+- The loop closes itself + the agentic frontier: continual,
   online, safe self-improvement plus deep research, self-editing memory, and
   computer-use on the same cited/audited spine. Online controller —
-  `app.continuous_improvement(metrics=, golden=, sustain=, cooldown_s=,
-  eval_budget=, quality_floor=, reoptimize=)` → `ContinuousImprovementController`;
+  `ContinuousImprovementController(app, metrics=, golden=, sustain=, cooldown_s=,
+  eval_budget=, quality_floor=, reoptimize=)`;
   `.set_baseline(metric, values).attach()` subscribes to `drift.detected` +
   `eval.online`, debounces, and turns sustained drift into one gated action
   (re-eval / `ImprovementLoop` re-optimize / rollback to last known-good prompt),
@@ -558,8 +556,8 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `LLMReflector(provider, model)` reads actual failing cases, `cluster_failures`
   groups them into modes, proposes schema-validated edits;
   `app.reflective_optimize(..., reflector="llm")` / `ImprovementLoop(reflector=)`,
-  heuristic fallback offline. Experiment proposer — `app.experiment_proposer(...)`
-  → `ExperimentProposer.rank/propose/run_next` ranks the weakest metric and
+  heuristic fallback offline. Experiment proposer — `ExperimentProposer(app, ...)`
+  with `.rank/propose/run_next` ranks the weakest metric and
   schedules a prompt/retrieval/budget/routing/distillation experiment. Guarded
   bandits — `GuardedBanditRouter(entries, bandit="epsilon_greedy|ucb1|linucb")`
   (a `ModelProvider`) with a safety floor (no exploration on high-risk/safety
@@ -606,7 +604,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   providers list/lifecycle/discover/regress.
 - Server: `vincio serve --app app.py` (uvicorn launcher; health/readiness/metrics,
   graceful shutdown) or `from vincio.server import create_app` (FastAPI; API key + JWT).
-- Protocols & interoperability (1.1, experimental): MCP client + server
+- Protocols & interoperability: MCP client + server
   (`vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,
   `app.serve_mcp()`; stdio / Streamable HTTP / in-process; MCP tools register
   through the permissioned/sandboxed/audited runtime, resources become evidence
@@ -618,7 +616,7 @@ result.output; result.citations; result.trace_id; result.cost_usd
   reasoning control: `RunConfig(reasoning_effort="low|medium|high")` /
   `thinking_budget_tokens` across OpenAI/Anthropic/Gemini, thinking tokens
   billed; optional `OpenAIResponsesProvider` (`build_provider("openai_responses")`).
-- Cost, reliability & scale (1.3, experimental): batch — `app.batch(inputs, *,
+- Cost, reliability & scale: batch — `app.batch(inputs, *,
   discount=0.5)` / `app.abatch(...)` → `list[RunResult]`, or
   `BatchRunner(backend_or_provider, *, discount=0.5).run(requests)` →
   `BatchRunResult` (`.cost_usd`, `.succeeded`, `.failed`, `.by_id()`,

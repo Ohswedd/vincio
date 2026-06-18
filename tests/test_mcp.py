@@ -1,4 +1,4 @@
-"""MCP client + server (1.1), offline via the in-process transport + httpx mocks."""
+"""MCP client + server, offline via the in-process transport + httpx mocks."""
 
 from __future__ import annotations
 

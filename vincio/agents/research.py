@@ -1,4 +1,4 @@
-"""Deep-research agent (1.10): budgeted, citation-gated, eval-scored.
+"""Deep-research agent: budgeted, citation-gated, eval-scored.
 
 A :class:`ResearchAgent` runs the loop the field now expects of a deep-research
 product — **search → read → reflect → verify → synthesize** — but composed
@@ -16,7 +16,7 @@ entirely from organs Vincio already ships, so every claim is grounded and cited
 - **verify** keeps only claims the cited evidence supports
   (:func:`~vincio.memory.facts.extract_grounded_facts`, optionally a faithfulness
   judge from :mod:`vincio.evals.judges`);
-- **synthesize** emits a cited report through the 1.9
+- **synthesize** emits a cited report through the
   :class:`~vincio.generation.report.CitedReportBuilder`.
 
 The whole loop is bounded by an explicit breadth/depth/source/token budget, and

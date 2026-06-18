@@ -52,7 +52,7 @@ class LineageRecord(BaseModel):
     chunks: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     runs: list[str] = Field(default_factory=list)
-    # (3.0) generated artifacts (cited documents, images, audio blob keys) whose
+    # generated artifacts (cited documents, images, audio blob keys) whose
     # content derives from this source, so an erasure removes the deliverable too.
     artifacts: list[str] = Field(default_factory=list)
 
@@ -73,12 +73,12 @@ class ErasureResult(BaseModel):
     memories_removed: int = 0
     caches_invalidated: int = 0
     indexes_swept: int = 0
-    # (3.0) generated artifacts (cited documents, images, audio) tied to the
+    # generated artifacts (cited documents, images, audio) tied to the
     # source and removed in the same sweep — so an erased source is erased as
     # evidence, as memory, *and* as generated output in one operation.
     artifacts_removed: int = 0
     audit_entry_id: str | None = None
-    # (3.0) the signed, content-bound proof of exactly what was removed.
+    # the signed, content-bound proof of exactly what was removed.
     proof: ErasureProof | None = None
 
     @property
@@ -92,7 +92,7 @@ class ErasureResult(BaseModel):
 
 
 class ErasureProof(BaseModel):
-    """A signed, content-bound manifest of exactly what an erasure removed (3.0).
+    """A signed, content-bound manifest of exactly what an erasure removed.
 
     The proof records the per-store removal counts *and* a SHA-256 digest over
     the sorted set of removed identifiers (chunk ids, document ids, memory ids,
@@ -248,7 +248,7 @@ class LineageIndex:
 
     def record_artifact(self, source: str, artifact_key: str) -> None:
         """Record that a generated artifact (a cited document, image, or audio
-        blob key) derives from ``source`` — so erasure removes it too (3.0)."""
+        blob key) derives from ``source`` — so erasure removes it too."""
         record = self._record(source)
         if artifact_key not in record.artifacts:
             record.artifacts.append(artifact_key)

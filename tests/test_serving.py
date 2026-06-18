@@ -1,5 +1,5 @@
 """Redis-backed shared server state + content-capture controls + vincio serve
-(2.1). Shared state and content gating are exercised offline; the server
+. Shared state and content gating are exercised offline; the server
 endpoints use FastAPI's TestClient; the Redis classes use an injected fake."""
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""0.9 framework interop: LangChain + LlamaIndex bridges, exercised with
+"""Framework interop: LangChain + LlamaIndex bridges, exercised with
 duck-typed fakes so the suite never needs the real frameworks installed."""
 
 from __future__ import annotations

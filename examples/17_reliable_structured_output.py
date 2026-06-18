@@ -1,4 +1,4 @@
-"""Structured output, guardrails & reliability (0.7).
+"""Structured output, guardrails & reliability.
 
 Typed signatures, constrained decoding, streaming validation, programmable
 rails, bounded self-correction, and multi-schema routing — reliability as a

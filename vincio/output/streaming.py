@@ -1,4 +1,4 @@
-"""Streaming validation (0.7).
+"""Streaming validation.
 
 Validate and repair partial structured output while it streams. The
 :class:`StreamingValidator` accumulates text deltas, parses the

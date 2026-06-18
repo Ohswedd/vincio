@@ -1,4 +1,4 @@
-"""A2A (Agent-to-Agent) — expose a crew and delegate across agents (1.1).
+"""A2A (Agent-to-Agent) — expose a crew and delegate across agents.
 
 Expose a Vincio crew as an A2A agent (Agent Card + task lifecycle), reach it
 over the protocol, and plug a remote A2A agent into a local crew as a *bounded,

@@ -1,4 +1,4 @@
-"""Consent & purpose modeling (3.0): bind data to a lawful basis.
+"""Consent & purpose modeling: bind data to a lawful basis.
 
 Provable erasure answers *"forget this"*; consent modeling answers the prior
 question *"were we ever allowed to keep it, and for what?"*. The

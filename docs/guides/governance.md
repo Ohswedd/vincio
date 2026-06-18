@@ -2,13 +2,12 @@
 
 Regulated buyers ask for evidence: a model card, a control-coverage matrix, an
 AI bill of materials, proof you can erase a customer's data, a data-residency
-guarantee. Vincio's `vincio.governance` module (1.6) generates that evidence
+guarantee. Vincio's `vincio.governance` module generates that evidence
 **in the library, from the running system** — there is no hosted compliance
 program. Every artifact is a view over data Vincio already holds: the
 hash-chained audit log, the evidence ledger, eval reports, and the price table.
 
-Everything here is additive and opt-in, behind `@experimental` 1.6 entry points
-on the frozen 1.0 public API.
+Everything here is additive and opt-in.
 
 ## Model & system cards
 
@@ -214,10 +213,10 @@ print(report.flagged_ids)
 print(report.telemetry(poisoned_ids={"bad1"}))   # precision/recall/FP/FN
 ```
 
-## Provable erasure, consent & bi-temporal memory (3.0, `@experimental`)
+## Provable erasure, consent & bi-temporal memory
 
-1.6 made erasure *traceable* — `app.erase_source` removed a source's chunks,
-documents, memories, and cache entries and logged it. 3.0 makes it **provable**.
+`app.erase_source` removes a source's chunks,
+documents, memories, and cache entries and logs it — and makes the removal **provable**.
 The sweep now returns a signed, content-bound `ErasureProof` on the result:
 
 ```python
@@ -271,7 +270,7 @@ scope gate **team-shared memory** — `engine.for_team("eng").remember(..., acl=
 surfaces only to listed readers. The VincioBench `governance` family gates
 erasure-proof verification, tamper detection, and consent enforcement; the
 `memory` family gates as-of recall and per-memory ACLs. See
-[`38_self_improvement_and_provable_erasure.py`](../../examples/38_self_improvement_and_provable_erasure.py).
+[`38_self_improvement_and_erasure.py`](../../examples/38_self_improvement_and_erasure.py).
 
 ## How it interconnects
 

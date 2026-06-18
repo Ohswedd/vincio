@@ -1,4 +1,4 @@
-"""Throughput primitives for the provider transport (0.2).
+"""Throughput primitives for the provider transport.
 
 - :class:`CoalescingProvider` — in-flight request coalescing: concurrent,
   identical ``generate`` calls share a single provider call instead of

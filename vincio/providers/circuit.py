@@ -1,4 +1,4 @@
-"""Circuit breaking and health-aware failover (1.3).
+"""Circuit breaking and health-aware failover.
 
 A :class:`CircuitBreaker` wraps any :class:`~vincio.providers.base.ModelProvider`
 and tracks its recent outcomes (errors and slow calls) over a rolling window.

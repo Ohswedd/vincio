@@ -8,8 +8,7 @@ fabric* that spans both interop camps (A2A and **AGNTCY/ACP**) and the official
 **MCP Registry**, with every resolution recorded as an access decision on the
 hash-chained audit log.
 
-This is additive and experimental (`@experimental(since="2.2")`); it changes
-nothing about how a single agent runs.
+This is additive; it changes nothing about how a single agent runs.
 
 ## The directory
 
@@ -107,4 +106,4 @@ duality the MCP and A2A clients already use.
   infrastructure — never a hosted control plane.
 
 See the [API reference](../reference/api.md) (`vincio.registry`) and the runnable
-[`37_benchmarks_and_fabric.py`](../../examples/37_benchmarks_and_fabric.py) example.
+[`37_benchmarks_and_agent_fabric.py`](../../examples/37_benchmarks_and_agent_fabric.py) example.

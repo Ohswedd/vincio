@@ -1,4 +1,4 @@
-"""AGNTCY / ACP (Agent Connect Protocol) adapter (2.2).
+"""AGNTCY / ACP (Agent Connect Protocol) adapter.
 
 AGNTCY's Agent Connect Protocol is the **REST-native** interop camp (vs A2A's
 JSON-RPC). This adapter lets Vincio span both: it models an ACP **agent
@@ -21,7 +21,6 @@ from pydantic import BaseModel, Field
 
 from ..a2a.protocol import AgentCard, AgentSkill
 from ..core.errors import VincioError
-from ..stability import experimental
 
 __all__ = ["ACPAgentManifest", "ACPClient", "acp_to_agent_card", "agent_card_to_acp"]
 
@@ -78,7 +77,6 @@ def agent_card_to_acp(card: AgentCard, *, agent_id: str | None = None) -> ACPAge
     )
 
 
-@experimental(since="2.2")
 class ACPClient:
     """Discover agents from an AGNTCY/ACP registry over REST (or a local catalog).
 

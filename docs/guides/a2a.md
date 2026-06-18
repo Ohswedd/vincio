@@ -1,8 +1,5 @@
 # Agent-to-Agent (A2A)
 
-> **Experimental (1.1).** The A2A surface (`vincio.a2a`, `app.serve_a2a`) is new
-> and may change within the 1.x line.
-
 [A2A](https://a2a-protocol.org) is the cross-vendor agent interoperability
 protocol (Google → Linux Foundation): an **Agent Card** at
 `/.well-known/agent.json` plus a JSON-RPC **task lifecycle**

@@ -1,8 +1,5 @@
 # Model Context Protocol (MCP)
 
-> **Experimental (1.1).** The MCP surface (`vincio.mcp`, `app.add_mcp_server`,
-> `app.serve_mcp`) is new and may change within the 1.x line.
-
 Vincio speaks [MCP](https://modelcontextprotocol.io) both ways: it **consumes**
 MCP servers (their tools, resources, and prompts) and **serves** a `ContextApp`
 as an MCP server. The edge over a thin adapter: an MCP tool runs through the

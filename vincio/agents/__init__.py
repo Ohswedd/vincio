@@ -54,7 +54,7 @@ __all__ = [
     "AgentStep",
     "AgentStepType",
     "TerminationReason",
-    # 0.6: multi-agent teams
+    # multi-agent teams
     "Blackboard",
     "BlackboardEntry",
     "AgentRole",
@@ -63,7 +63,7 @@ __all__ = [
     "CrewMemberReport",
     "CrewEvent",
     "DelegationRecord",
-    # 0.6: durable stateful graphs
+    # durable stateful graphs
     "StateGraph",
     "CompiledGraph",
     "Checkpoint",
@@ -74,17 +74,17 @@ __all__ = [
     "START",
     "END",
     "interrupt",
-    # 0.6: declarative composition
+    # declarative composition
     "compose",
     "parallel",
     "branch",
     "Composable",
     "NodeEvent",
-    # 0.6: runtime backends
+    # runtime backends
     "RuntimeBackend",
     "LangGraphBackend",
     "OpenAIAgentsBackend",
-    # 2.1: distributed durable execution
+    # distributed durable execution
     "Send",
     "WorkerPoolBackend",
     "RayBackend",

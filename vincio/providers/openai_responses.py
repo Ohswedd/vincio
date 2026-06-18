@@ -75,7 +75,7 @@ class OpenAIResponsesProvider(OpenAIProvider):
 
     def _render_tools(self, tools: list[ToolSpec]) -> list[dict[str, Any]]:
         # Responses tools are flat (no nested "function" wrapper). Hosted tools
-        # (web_search / file_search / code_interpreter / computer_use, 1.10) emit
+        # (web_search / file_search / code_interpreter / computer_use) emit
         # their provider-native built-in descriptor instead of a function tool.
         from .hosted_tools import hosted_payload, is_hosted
 

@@ -1,4 +1,4 @@
-"""1.5 retrieval breadth: Matryoshka + input-type embeddings, contextual and
+"""Retrieval breadth: Matryoshka + input-type embeddings, contextual and
 multimodal embedders, the new vector-store adapters, and layout-aware PDF
 extraction. All offline via httpx MockTransport and injected fake clients."""
 

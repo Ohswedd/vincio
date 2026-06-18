@@ -1,4 +1,4 @@
-"""Vincio generation engine (1.9) — documents & media flow OUT.
+"""Vincio generation engine — documents & media flow OUT.
 
 Documents and images flow *out* under the same guarantees Vincio applies to
 text *in*: cited, structurally-validated, provenance-stamped, budget-metered,
@@ -16,10 +16,8 @@ eval-gated deliverables, all on one trace and one audit chain, in-process.
 * Template/form filling (:func:`fill_text_template`, :func:`fill_docx_form`,
   :func:`fill_pdf_form`) and :func:`generate_redline` round out the deliverables.
 
-The generation entry points (builders, providers, and the ``app.*`` methods) are
-``@experimental``; their data-model shapes follow the same no-stability-guarantee
-policy as other 1.x additions. Everything is additive behind ``vincio[gen-docx|
-gen-pdf|gen-pptx]`` (and the richer-input) extras on the frozen 1.0 API.
+The native renderers are dependency-free; DOCX/PDF/PPTX output and richer
+inputs install behind the ``vincio[gen-docx|gen-pdf|gen-pptx]`` extras.
 """
 
 from .builder import DocumentBuilder, generate_redline, markdown_to_model

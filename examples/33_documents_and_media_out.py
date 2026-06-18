@@ -1,7 +1,7 @@
-"""Documents & images flow OUT — cited, governed, eval-gated artifacts (1.9).
+"""Documents & images flow OUT — cited, governed, eval-gated artifacts.
 
 Vincio reads a DOCX, a PDF, and a scanned packet, and validates a JSON answer —
-1.9 closes the loop so the *deliverable* comes out under the same guarantees:
+and closes the loop so the *deliverable* comes out under the same guarantees:
 
   1. DocumentBuilder — turn a validated result into a structurally-contracted,
      provenance-audited artifact (Markdown/HTML dependency-free; DOCX/PDF/PPTX

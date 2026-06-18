@@ -1,4 +1,4 @@
-"""Retrieval evaluation harness + index-version regression (2.2).
+"""Retrieval evaluation harness + index-version regression.
 
 A golden-set harness scoped to **retrieval**: it quantitatively benchmarks an
 embedder / reranker / chunker / index configuration against a fixed query set on
@@ -26,7 +26,6 @@ from pydantic import BaseModel, Field
 
 from ..core.types import EvidenceItem
 from ..providers.base import run_sync
-from ..stability import experimental
 from ..storage.index_regression import IndexRegressionArtifact, IndexRegressionStore
 from .datasets import EvalCase
 from .experiments import ab_test
@@ -131,7 +130,6 @@ def as_search_fn(retriever: Any) -> SearchFn:
     return search
 
 
-@experimental(since="2.2")
 class RetrievalEvaluator:
     """Score a retriever against a :class:`RetrievalGoldenSet` on the IR metrics."""
 
@@ -202,7 +200,6 @@ class RetrievalRegressionVerdict(BaseModel):
         }
 
 
-@experimental(since="2.2")
 async def retrieval_regression(
     search_fn: SearchFn,
     golden: RetrievalGoldenSet,

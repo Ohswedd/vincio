@@ -69,7 +69,7 @@ vincio eval regress DATASET.jsonl --app APP.py --candidate-model Y
         [--alpha 0.05] [--repeats N] [--no-flake-quarantine] [--output report.json]
     Swap only the model and report a statistically grounded regression:
     per-metric significance, the cost/latency trade, and worst-regressed slices.
-    Exits non-zero on a significant quality regression. (1.8)
+    Exits non-zero on a significant quality regression.
 
 vincio prompt lint PATH
     Lint prompt spec YAML files (PROMPT001–PROMPT009); exits non-zero on errors.
@@ -110,7 +110,7 @@ vincio optimize run --app APP.py --dataset DATASET.jsonl
 vincio optimize reflective --app APP.py --dataset DATASET.jsonl
         [--strategy reflective|mipro] [--target quality|groundedness|cost]
         [--budget N] [--minibatch N] [--seed N] [--apply] [--output winning.yaml]
-    GEPA-style reflective optimization (1.4): reads eval failures, reflects on
+    GEPA-style reflective optimization: reads eval failures, reflects on
     why the prompt lost, proposes targeted edits, and evolves a Pareto frontier
     under a hard rollout budget. --strategy mipro switches to joint
     instruction+example proposal; --apply installs the winner on the app.
@@ -123,12 +123,12 @@ vincio loop run --app APP.py [--dataset DATASET.jsonl | --min-feedback X]
     filtered). The promoted version is pushed to the prompt registry,
     tagged, eval-linked, applied to the app, and audited; --dry-run
     reports the decision without acting on it; --reflective uses the
-    GEPA-style reflective optimizer (1.4).
+    GEPA-style reflective optimizer.
 
 vincio distill --output TRAIN.jsonl [--traces-dir DIR]
         [--format openai|anthropic] [--min-feedback X] [--min-support X]
         [--max-examples N] [--allow-ungrounded]
-    Curate captured traces into grounded fine-tuning JSONL (1.4): feedback-
+    Curate captured traces into grounded fine-tuning JSONL: feedback-
     filtered, grounding-checked against cited evidence, deduped, with full
     provenance. Ungrounded examples are dropped unless --allow-ungrounded.
 
@@ -199,24 +199,24 @@ vincio serve [--app FILE ...] [--config vincio.yaml] [--host H] [--port P]
     Launch the HTTP API (FastAPI + uvicorn) serving one or more ContextApps,
     with /v1/health, /v1/health/ready, /v1/metrics (Prometheus), real-token SSE
     streaming, and graceful shutdown. Configure server.redis_url for coherent
-    rate-limit/idempotency state across workers. (2.1)
+    rate-limit/idempotency state across workers.
 
 vincio providers list [--provider NAME] [--json]
-    List the model registry catalog (tier, lifecycle, pricing, successor). (1.8)
+    List the model registry catalog (tier, lifecycle, pricing, successor).
 
 vincio providers lifecycle [--app APP.py] [--model ID]... [--as-of YYYY-MM-DD]
         [--warn-within-days N] [--json]
     Scan pinned models (the app's, or --model ids) for sunset and propose
     migrations off deprecated/retired ones; exits non-zero on a warn/critical
-    alert. (1.8)
+    alert.
 
 vincio providers discover PROVIDER [--mark-missing-deprecated] [--json]
     Reconcile a provider's live model list into the registry (offline-safe —
-    the shipped catalog stands when no endpoint is reachable). (1.8)
+    the shipped catalog stands when no endpoint is reachable).
 
 vincio providers regress --app APP.py --candidate-model Y [--baseline-model X]
         [--dataset DATASET.jsonl] [--trace TRACE_ID]... [--traces-dir DIR]
         [--gate "metric=>= 0.9"]... [--quality-metric M] [--alpha 0.05] [--repeats N]
     Gate a model swap: replay golden traces + an eval/cost/latency/behavioral
-    diff with significance; exits non-zero on a FAIL verdict. (1.8)
+    diff with significance; exits non-zero on a FAIL verdict.
 ```

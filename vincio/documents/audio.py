@@ -136,7 +136,7 @@ class WhisperTranscriber:
 class ProviderAudioTranscriber:
     """Transcribe via an audio-capable :class:`~vincio.providers.base.ModelProvider`.
 
-    Sends the clip as a chat ``input_audio`` part (the 1.9 audio-input wiring),
+    Sends the clip as a chat ``input_audio`` part (the audio-input wiring),
     so any provider that accepts audio input can transcribe without a dedicated
     speech-to-text endpoint. Segment timing is not recovered (one segment).
     """

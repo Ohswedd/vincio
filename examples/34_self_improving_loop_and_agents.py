@@ -1,7 +1,7 @@
-"""The loop closes itself + the agentic frontier (1.10).
+"""Self-improving loop + the agentic frontier.
 
 Continual, online, safe self-improvement on the same cited, grounded spine —
-plus the agentic frontier the field now expects, all in-process and gated:
+plus the agentic capabilities the field now expects, all in-process and gated:
 
   1. Online improvement controller: live drift → a gated re-eval / re-optimization
      / rollback to the last known-good prompt, debounced, budgeted, audited.
@@ -23,6 +23,7 @@ import re
 from vincio import (
     ContextApp,
     ContinuousImprovementController,
+    ExperimentProposer,
     GoldenRegressionSuite,
     ResearchBudget,
     VincioConfig,
@@ -58,8 +59,8 @@ def controller_demo() -> None:
     registry.push(app.prompt_spec.model_copy(update={"objective": "a regressed head"}))
     app.prompt_spec = registry.get(app.prompt_spec.name).spec
 
-    ctl: ContinuousImprovementController = app.continuous_improvement(
-        metrics=["safety"], sustain=2, registry=registry, prompt_name=app.prompt_spec.name,
+    ctl = ContinuousImprovementController(
+        app, metrics=["safety"], sustain=2, registry=registry, prompt_name=app.prompt_spec.name,
     )
     # First sustained safety-drift signal observes; the second acts.
     ctl.evaluate("safety", {"method": "cusum"})
@@ -97,7 +98,7 @@ def reflector_demo() -> None:
 def experiment_proposer_demo() -> None:
     _section("3. Experiment proposer + held-out growing golden suite")
     app = _app()
-    proposer = app.experiment_proposer(eval_budget=12)
+    proposer = ExperimentProposer(app, eval_budget=12)
     proposals = proposer.rank({"groundedness": 0.5, "schema_validity": 0.97})
     for p in proposals:
         print(f"  weakest: {p.target_metric} ({p.current}) → {p.kind} experiment, budget {p.eval_budget}")

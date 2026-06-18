@@ -1,4 +1,4 @@
-"""MCP Registry discovery client (2.2).
+"""MCP Registry discovery client.
 
 Resolve MCP servers from the official **MCP Registry** so they can be discovered
 and reached under the same :class:`~vincio.security.access.AllowListGate` as A2A
@@ -16,7 +16,6 @@ from pydantic import BaseModel, Field
 
 from ..a2a.protocol import AgentCard, AgentSkill
 from ..core.errors import VincioError
-from ..stability import experimental
 
 __all__ = ["MCPServerRecord", "MCPRegistryClient"]
 
@@ -69,7 +68,6 @@ class MCPServerRecord(BaseModel):
         )
 
 
-@experimental(since="2.2")
 class MCPRegistryClient:
     """Discover MCP servers from the official registry (or a local catalog)."""
 

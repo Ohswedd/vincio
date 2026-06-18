@@ -4,8 +4,7 @@ Vincio runs the FinOps and resilience layer in-process: batch at half cost,
 compose retries / failover / circuit-breaking, pool keys across regions,
 cascade cheap→strong by confidence, attribute and budget every dollar, cache
 provider prefixes, and index incrementally or sharded — all on the same trace,
-audit log, and policy engine as the rest of the run. Everything here is
-`@experimental` since 1.3 unless noted, and the examples run offline.
+audit log, and policy engine as the rest of the run. The examples run offline.
 
 ## Batch at ~50% cost
 
@@ -278,11 +277,10 @@ hits = await index.search(query, top_k=10)   # fan-out + merge
 Pass a custom `router=lambda chunk: ...` to shard by tenant, region, or any key
 you choose.
 
-## Provider/model rotation & swap regression (1.8)
+## Provider/model rotation & swap regression
 
 A model swap is the most common and the riskiest change in production. Vincio
-makes it a gated, statistically-backed discipline rather than a hope. All of the
-APIs below are `@experimental` on the frozen 1.0 API.
+makes it a gated, statistically-backed discipline rather than a hope.
 
 ### Capability-aware routing
 
@@ -302,7 +300,7 @@ that cannot serve the request is **skipped** (not silently returning a wrong
 answer), a retired model raises `ModelRetiredError` ("rotate now"), and a
 terminal lifecycle/config error (a removed/unknown model) is classified
 distinctly from a transient outage. Unknown models are never blocked; pass
-`guard_capabilities=False` to restore the pre-1.8 attempt-everything behavior.
+`guard_capabilities=False` to restore the previous attempt-everything behavior.
 
 When a [residency policy](governance.md) is configured, every model a run can
 reach — the router's candidates, a cascade's rungs, a budget-degrade target, and

@@ -1,4 +1,4 @@
-"""Cost, reliability & scale (1.3).
+"""Cost, reliability & scale.
 
 What real teams hit when an LLM app meets production traffic — outages, rate
 limits, runaway spend, and the need to attribute every dollar — handled

@@ -1,4 +1,4 @@
-"""Executed distillation & provider fine-tune jobs (2.1): cassette-backed
+"""Executed distillation & provider fine-tune jobs: cassette-backed
 submit/poll lifecycles, the executed StudentTrainer that registers the trained
 model, export semantic-dedup + truncation guard, and swap-gate-backed
 promotion. All offline and deterministic."""

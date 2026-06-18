@@ -1,4 +1,4 @@
-"""0.7 reliability tests: constrained generation, streaming validation,
+"""Reliability tests: constrained generation, streaming validation,
 typed signatures, rails, self-correction, multi-schema routing, and the
 provider reliability fixes."""
 

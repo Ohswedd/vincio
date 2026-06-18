@@ -1,4 +1,4 @@
-"""Distillation / fine-tune data flywheel (1.4).
+"""Distillation / fine-tune data flywheel.
 
 The one lever the rest of the field is missing: turn the traces production runs
 already write into *cheaper inference*. Two pieces, both grounded and gated:
@@ -14,8 +14,8 @@ already write into *cheaper inference*. Two pieces, both grounded and gated:
   **only** when it holds quality on the eval suite within tolerance while
   costing less — the same gated, eval-driven discipline as every other promotion.
 
-Everything reuses what 0.8 shipped — ``dataset_from_traces`` and the grounded-
-fact extractor — and the routing cascade from 1.3. No new stores, no SDKs;
+Everything reuses what the platform already ships — ``dataset_from_traces``, the
+grounded-fact extractor, and the routing cascade. No new stores, no SDKs;
 JSONL is emitted with the standard library only.
 """
 
@@ -161,7 +161,7 @@ def _grounded_example(
 ) -> TrainingExample | None:
     """Build one grounded training example, or ``None`` if it fails the gate.
 
-    Grounding reuses the deterministic extractor 0.8 uses for auto-memory: the
+    Grounding reuses the deterministic extractor that backs auto-memory: the
     output must contain at least one claim the supplied evidence supports at
     ``min_support``. With ``require_grounding`` off, an example whose evidence
     does not support it is kept but flagged ``grounded=False``.
@@ -213,7 +213,7 @@ def export_training_set(
     ``min_feedback_score`` if set, (3) carries both an input and an output, and
     (4) when ``require_grounding`` is on, has at least one output claim the
     cited evidence supports at ``min_support`` (via the same deterministic
-    extractor 0.8 uses for auto-memory). Duplicates (same input + output) are
+    extractor that backs auto-memory). Duplicates (same input + output) are
     collapsed. Every surviving example keeps trace/run/session provenance and
     its measured support — so a reviewer can audit exactly what the student
     will learn from.
@@ -400,7 +400,7 @@ async def semantic_dedupe(
     embedder: Embedder | None = None,
     threshold: float = 0.92,
 ) -> TrainingSet:
-    """Drop near-duplicate examples by embedding similarity (2.1).
+    """Drop near-duplicate examples by embedding similarity.
 
     Exact (input+output) duplicates are already collapsed at export time; this
     catches *paraphrases* — runs that say the same thing differently — so the
@@ -434,8 +434,8 @@ async def semantic_dedupe(
 
 # trainer(training_set, base_model) -> the student model name to evaluate.
 # In production this submits a fine-tune job and returns the resulting model id;
-# offline it returns the base model unchanged (a faithful no-op). 2.1 ships
-# :func:`provider_trainer` as the executed implementation.
+# offline it returns the base model unchanged (a faithful no-op).
+# :func:`provider_trainer` is the executed implementation.
 StudentTrainer = Callable[[TrainingSet, str], Awaitable[str]]
 # evaluate_model(model, dataset) -> EvalReport on a held-out set.
 ModelEvaluateFn = Callable[[str, Dataset], Awaitable[EvalReport]]
@@ -489,7 +489,7 @@ def provider_trainer(
     poll_interval_s: float = 5.0,
     max_polls: int = 240,
 ) -> StudentTrainer:
-    """Build an *executed* :data:`StudentTrainer` over a fine-tune backend (2.1).
+    """Build an *executed* :data:`StudentTrainer` over a fine-tune backend.
 
     The returned async callable renders the grounded :class:`TrainingSet` to
     provider JSONL, submits and polls a real fine-tune job through ``backend``
@@ -550,7 +550,7 @@ class DistillationResult(BaseModel):
     promoted: bool = False
     reason: str = ""
     cascade: ModelCascade | None = None
-    # 2.1: when a swap gate backs the promotion, its significance verdict.
+    # when a swap gate backs the promotion, its significance verdict.
     swap_passed: bool | None = None
     swap_reason: str = ""
 
@@ -583,7 +583,7 @@ class BootstrapFinetune:
         self.min_quality_ratio = min_quality_ratio
         self.gates = gates
         self.trainer = trainer
-        # 2.1: an optional SwapGate adds a significance-backed final check, so the
+        # an optional SwapGate adds a significance-backed final check, so the
         # student promotes only if it provably does not regress — the same gate a
         # model rotation clears.
         self.swap_gate = swap_gate
@@ -665,7 +665,7 @@ class BootstrapFinetune:
             result.reason = reason
             return result
 
-        # 2.1: a significance-backed swap gate is the same final check a model
+        # a significance-backed swap gate is the same final check a model
         # rotation clears — promote the trained student only if it provably does
         # not regress against the teacher on a replayed/scored diff.
         if self.swap_gate is not None:

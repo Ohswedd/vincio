@@ -1,6 +1,6 @@
 # Voice & realtime (optional module)
 
-> **Experimental, since 1.5.** A separate, opt-in module for stateful
+> **Optional module.** A separate, opt-in module for stateful
 > bidirectional voice/realtime sessions. It is explicitly scoped as a *stateful
 > bidirectional* module — **not** core context engineering — and lives behind
 > the `vincio[realtime]` extra. The dependency-free in-process backend is the

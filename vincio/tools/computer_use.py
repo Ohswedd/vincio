@@ -1,4 +1,4 @@
-"""Computer-use / agentic-browsing action surface (1.10).
+"""Computer-use / agentic-browsing action surface.
 
 A small, explicit action vocabulary — navigate / click / type / screenshot
 (plus scroll / key / wait) — exposed as ordinary Vincio tools, so a computer-use

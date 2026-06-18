@@ -1,4 +1,4 @@
-"""Constrained generation (0.7).
+"""Constrained generation.
 
 Provider-native schema-constrained decoding where the provider supports it,
 with the robust-parser fallback everywhere else. The decoding mode is

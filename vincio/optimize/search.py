@@ -5,7 +5,8 @@ Implements the evolution loop::
     baseline → generate candidate configs → run eval subset
     → select top candidates → run full eval → promote if gates pass
 
-with the §3.9 fitness function and §22.8 promotion safety rules.
+with a multi-objective fitness function and statistically-backed promotion
+safety rules.
 """
 
 from __future__ import annotations
@@ -161,7 +162,7 @@ class OptimizationResult(BaseModel):
     reason: str = ""
     candidates: list[Candidate] = Field(default_factory=list)
     history: list[dict[str, Any]] = Field(default_factory=list)
-    # Statistical backing for the promotion decision (1.7): the ab_test verdict
+    # Statistical backing for the promotion decision: the ab_test verdict
     # on the primary metric (p-value, confidence interval, effect size), so a
     # promotion is defensible at a confidence level rather than a point estimate.
     significance: dict[str, Any] | None = None
@@ -273,7 +274,7 @@ async def evolution_loop(
         result.reason = reason
         return result
 
-    # Significance gate (1.7): call the t-test at the gate so the promotion is
+    # Significance gate: call the t-test at the gate so the promotion is
     # defensible at a confidence level, not a point estimate.
     blocked, gate_reason = apply_significance_gate(
         result,

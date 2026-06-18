@@ -1,4 +1,4 @@
-"""2.0 mandatory egress DLP: a deterministic last-mile scan of the assembled
+"""Mandatory egress DLP: a deterministic last-mile scan of the assembled
 provider request, enforced at the provider boundary regardless of call-site."""
 
 from __future__ import annotations

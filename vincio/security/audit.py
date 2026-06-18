@@ -4,7 +4,7 @@ Records who requested what, which context/sources/tools were used, what was
 returned, and what memory was written. Entries are append-only JSONL with an
 integrity hash chain so tampering is detectable.
 
-2.0 makes the chain tamper-*evident against a privileged attacker*. A plain
+The chain is tamper-*evident against a privileged attacker*. A plain
 hash chain detects an outside editor, but anyone who can rewrite the whole file
 can recompute every public SHA-256 hash and forge a clean chain. Two additions
 close that gap:
@@ -155,7 +155,7 @@ class AuditEntry(BaseModel):
     details: dict[str, Any] = Field(default_factory=dict)
     prev_hash: str = ""
     entry_hash: str = ""
-    # 2.0: signature over ``entry_hash`` and the id of the key that produced it.
+    # signature over ``entry_hash`` and the id of the key that produced it.
     # Empty on an unsigned log; the hash is deliberately excluded from
     # ``compute_hash`` so 1.x entries keep the same hash and still verify.
     signature: str = ""
@@ -365,7 +365,7 @@ class ChainVerification(BaseModel):
     entries: int
     broken_at: int | None = None  # 1-based line number where the chain broke
     reason: str | None = None
-    # 2.0: how many entries carried a signature, and (when a verifier was
+    # how many entries carried a signature, and (when a verifier was
     # supplied) whether all of them verified. ``signatures_ok`` is ``None`` when
     # no verifier was provided — the hash chain was checked but signatures were
     # not.

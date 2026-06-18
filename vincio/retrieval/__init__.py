@@ -156,7 +156,7 @@ __all__ = [
     "SpladeEncoder",
     "SparseEncoder",
     "SparseIndex",
-    # 2.1: quantization + two-stage retrieval
+    # quantization + two-stage retrieval
     "TwoStageIndex",
     "quantize_scalar",
     "quantize_binary",

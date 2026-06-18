@@ -1,4 +1,4 @@
-"""Capability preflight for model substitution (1.8).
+"""Capability preflight for model substitution.
 
 Before Vincio substitutes one model for another — a :class:`ModelCascade` rung,
 a :class:`~vincio.providers.base.FailoverChain` entry, or a

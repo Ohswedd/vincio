@@ -1,4 +1,4 @@
-"""Provider/model rotation & swap regression (1.8).
+"""Provider/model rotation & swap regression.
 
 Covers the capability guard, the registry-backed router, the swap gate +
 model-swap regression with flake control, the shadow & canary providers with
@@ -642,7 +642,7 @@ class TestAppWiring:
 
 
 # --------------------------------------------------------------------------- #
-# Review-hardening regressions (review of the 1.8 diff)
+# Review-hardening regressions (review of the diff)
 # --------------------------------------------------------------------------- #
 
 

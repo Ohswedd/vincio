@@ -40,7 +40,6 @@ from ..core.concurrency import gather_bounded
 from ..core.errors import ConfigError, ProviderAuthError, ProviderError
 from ..core.types import ImageRef
 from ..providers.base import ModelProvider, run_sync
-from ..stability import experimental
 
 __all__ = [
     "Embedder",
@@ -365,7 +364,6 @@ class BatchingEmbedder:
                         future.set_result(vector)
 
 
-@experimental(since="1.5")
 class MatryoshkaEmbedder:
     """Matryoshka (MRL) dimension truncation over any embedder.
 
@@ -786,7 +784,7 @@ def _discovered_embedders() -> dict[str, Any]:
 
 
 class FastEmbedEmbedder:
-    """Local ONNX dense embedder via ``fastembed`` (2.1).
+    """Local ONNX dense embedder via ``fastembed``.
 
     Batteries-included on-device embeddings with real semantic quality and true
     offline inference — no server. Lazily loads the ONNX model the first time it
@@ -849,7 +847,7 @@ class FastEmbedEmbedder:
 
 
 class ColBERTTokenEmbedder:
-    """Token-level dense embedder for late interaction / ColBERT (2.1).
+    """Token-level dense embedder for late interaction / ColBERT.
 
     :class:`~vincio.retrieval.late_interaction.LateInteractionIndex` embeds
     individual tokens and scores by MaxSim; this provides ColBERT-quality token

@@ -86,7 +86,7 @@ class ContextOptimizer:
 
         ``strategy`` picks how candidates are proposed: ``"random"`` samples
         the grid blindly; ``"hill_climb"`` and ``"anneal"`` condition each
-        proposal batch on subset scores already observed (0.8). Guided
+        proposal batch on subset scores already observed. Guided
         candidates arrive pre-scored, so the evolution loop goes straight to
         full-dataset verification and gated promotion for the survivors.
         """

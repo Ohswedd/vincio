@@ -1,4 +1,4 @@
-"""0.3 retrieval features: learned sparse, late interaction, hierarchical
+"""Retrieval features: learned sparse, late interaction, hierarchical
 indexing, query understanding, GraphRAG, live indexes."""
 
 import pytest

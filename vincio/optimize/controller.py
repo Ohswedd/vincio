@@ -1,4 +1,4 @@
-"""The continual loop: an online improvement controller (1.10).
+"""The continual loop: an online improvement controller.
 
 Vincio already *observes* online — the :class:`~vincio.evals.online.OnlineEvaluator`
 scores sampled runs and the :class:`~vincio.evals.drift.DriftMonitor` raises

@@ -1,6 +1,6 @@
 """Redis cache backend + shared server state (rate limit / idempotency).
 
-The :class:`RedisCache` implements the ``CacheBackend`` protocol; the 2.1
+The :class:`RedisCache` implements the ``CacheBackend`` protocol; the
 :class:`RedisRateLimiter` and :class:`RedisIdempotencyStore` implement the
 shared-state protocols (:mod:`vincio.storage.shared_state`) so a multi-worker
 ``vincio serve`` deployment enforces one coherent rate limit and dedups writes

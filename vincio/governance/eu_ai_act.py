@@ -4,7 +4,7 @@ The document-generation engine's first governance application. A
 :class:`RiskTierClassifier` places a configured app into the Act's risk tiers;
 an :class:`AnnexIVBuilder` renders the **Annex IV technical documentation** and a
 :class:`FRIAGenerator` the Article 27 **fundamental-rights impact assessment** —
-both as cited documents through the 1.9
+both as cited documents through the
 :class:`~vincio.generation.builder.DocumentBuilder`, every field drawn from the
 live config, the model/system cards, the compliance matrix, and the eval/red-team
 evidence Vincio already holds. The pack is a *view* over the running system,
@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from ..stability import experimental
 from .cards import generate_model_card, generate_system_card
 from .frameworks import ComplianceMapper
 
@@ -119,7 +118,6 @@ _OBLIGATIONS = {
 }
 
 
-@experimental(since="1.9")
 class RiskTierClassifier:
     """Place an app into the EU AI Act risk tiers from its declared profile.
 
@@ -209,7 +207,6 @@ def _matrix_table(report: Any) -> dict[str, Any]:
     return {"title": "Control coverage", "columns": ["Framework", "Control", "Title", "Status", "Evidence"], "rows": rows}
 
 
-@experimental(since="1.9")
 class AnnexIVBuilder:
     """Render EU AI Act **Annex IV** technical documentation as a cited document.
 
@@ -304,7 +301,6 @@ class AnnexIVBuilder:
         ]
 
 
-@experimental(since="1.9")
 class FRIAGenerator:
     """Generate an Article 27 **fundamental-rights impact assessment** (FRIA).
 

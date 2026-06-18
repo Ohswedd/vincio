@@ -1,4 +1,4 @@
-"""1.10 — the deep-research agent: budgeted search→read→reflect→verify→synthesize,
+"""The deep-research agent: budgeted search→read→reflect→verify→synthesize,
 with cited, grounded, eval-scored output."""
 
 import re

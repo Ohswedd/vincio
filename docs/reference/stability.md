@@ -93,53 +93,24 @@ They emit a one-time `VincioExperimentalWarning` per process so their status is
 visible without being noisy. Use them, but pin your Vincio version if you
 depend on their exact shape.
 
-The **1.1 protocol & interoperability surfaces are experimental** while the
-underlying standards settle: `vincio.mcp` (MCP client/server), `vincio.a2a`
-(agent-to-agent), `vincio.skills` (Agent Skills), and the `ContextApp` methods
-`add_mcp_server` / `serve_mcp` / `add_skill` / `serve_a2a` (which emit the
-warning). The unified reasoning controls (`RunConfig.reasoning_effort` /
-`thinking_budget_tokens`) and the `OpenAIResponsesProvider` are additive and
-do not change existing behavior.
+The public API is currently **stable end to end** — no shipped symbol is marked
+`@experimental`. Future, unproven surface will carry the marker and emit the
+warning until its shape settles, at which point it graduates to stable. The
+marker is part of the contract, not a permanent state.
 
-The **1.2 continuous-quality entry points are experimental** while their shape
-settles: the `ContextApp` methods `add_online_evaluator`, `experiment`, and
-`add_metric_rail` (which emit the warning). The rest of 1.2 is stable, additive
-API: the new trajectory/conversational metrics in `METRICS`, the `Trajectory`
-model and `RunOutput.from_*` constructors, `Simulator` / `DriftMonitor` /
-`AnnotationQueue` / `Experiment` / `metric_guardrail`, `dataset_from_traces`'s
-`group_by_session` parameter, and the new `vincio eval drift|annotate` commands.
-
-None of this removes or repurposes any 1.0 public symbol — upgrading across the
-1.x line never breaks working code.
-
-## Breaking windows: 2.0 and 3.0
+## The breaking-window contract
 
 `API_VERSION` (returned by `vincio.stability.API_VERSION`) tracks the frozen
-public-API contract and bumps only on a deliberate breaking window. There have
-been two: **2.0** (the structural refactor — facades, async-first stores, the
-multimodal-native packet, enterprise endpoints) and **3.0** (the unified
-self-improvement contract, provable erasure with consent modeling, and the
-async-canonical core). Each shipped through the mechanical deprecation runway
-above, and nothing breaks *outside* a window.
+public-API contract and bumps only on a deliberate breaking window — announced in
+advance and shipped through the mechanical deprecation runway above. Nothing
+breaks *outside* such a window: across a minor or patch release, upgrading never
+breaks working code.
 
-### Collapsed at 3.0
+## Currently deprecated
 
-3.0 collapses the separately-wired self-improvement convenience methods into the
-unified `app.self_improvement(...)` contract. The superseded methods are **kept
-working** through the entire 3.x line and removed no earlier than 4.0:
-
-| Deprecated (`since=3.0`, `removed_in=4.0`) | Replacement |
-| --- | --- |
-| `app.continuous_improvement(...)` | `app.self_improvement(policy)` — the policy's `online` arm |
-| `app.experiment_proposer(...)` | `app.self_improvement(policy)` — the policy's `propose` arm |
-
-The underlying organs (`ContinuousImprovementController`, `ExperimentProposer`,
-`ImprovementLoop`) remain public; only the app-level convenience entry points are
-deprecated in favour of the one contract. The 3.0 additions —
-`SelfImprovementPolicy` / `SelfImprovementController` / `app.deploy`, provable
-erasure (`ErasureProof`), the `ConsentLedger`, and the bi-temporal `MemoryItem`
-fields (`valid_from` / `valid_to` / `acl` / `purpose`) — are all `@experimental`
-while their shape settles; the new `MemoryItem` fields default backward-compatibly.
+No public APIs are currently deprecated. When one is, it appears here with its
+replacement and removal version, and `stability_of(symbol)` reports the same
+contract programmatically so tooling can detect it.
 
 ## Supported versions
 

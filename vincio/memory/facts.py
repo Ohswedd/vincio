@@ -1,4 +1,4 @@
-"""Auto-memory from runs: grounded-fact extraction (0.8).
+"""Auto-memory from runs: grounded-fact extraction.
 
 High-confidence, well-grounded facts surfaced during a run become candidate
 memories. A fact qualifies only when it is a verifiable claim from the run's

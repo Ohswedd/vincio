@@ -1,4 +1,4 @@
-"""Tests for 1.0 security hardening: offline audit verification and sandbox limits."""
+"""Tests for security hardening: offline audit verification and sandbox limits."""
 
 from __future__ import annotations
 
