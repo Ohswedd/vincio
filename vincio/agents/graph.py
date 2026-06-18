@@ -59,6 +59,19 @@ _CHECKPOINT_KIND = "graph_checkpoints"
 _RESUME_KEY = "__resume__"
 
 
+class _Missing:
+    """Sentinel: a reduced key has no declared empty, so the legacy first-write
+    passthrough applies. Distinct from ``None`` (a legitimate channel default)."""
+
+    __slots__ = ()
+
+    def __repr__(self) -> str:  # pragma: no cover - debug aid
+        return "<no-default>"
+
+
+_MISSING = _Missing()
+
+
 class GraphInterrupt(Exception):
     """Control-flow signal raised by :func:`interrupt`; not an error."""
 
@@ -86,8 +99,12 @@ class Send(BaseModel):
     within the dispatching super-step and their updates reduce back into the
     shared state in deterministic order. Pair an additive reducer on the
     collected key (e.g. ``operator.add`` over a list) with a downstream reduce
-    node to complete the map-reduce. Mirrors LangGraph's ``Send`` so a graph
-    that fans out runs the same on the native engine and a distributed backend.
+    node to complete the map-reduce. Declare the channel's empty value once via
+    ``StateGraph(..., defaults={"collected": list})`` (or a ``state_schema``
+    field default) and the reducer is applied from the very first write — no
+    need to seed the key with an upstream node. Mirrors LangGraph's ``Send`` so a
+    graph that fans out runs the same on the native engine and a distributed
+    backend.
     """
 
     node: str
@@ -187,10 +204,18 @@ class StateGraph:
         *,
         state_schema: type[BaseModel] | None = None,
         reducers: dict[str, Reducer] | None = None,
+        defaults: dict[str, Any] | None = None,
     ) -> None:
         self.name = name
         self.state_schema = state_schema
         self.reducers = reducers or {}
+        # Per-channel empty value: a literal or a zero-arg factory (``list``,
+        # ``dict``, ...). When a reduced key is absent on its first write, the
+        # reducer is applied against this default instead of passing the raw
+        # value through — so a map-reduce needs no upstream seed node. Defaults
+        # are also inferred from ``state_schema`` field defaults (see
+        # :meth:`reducer_default`); the explicit map wins.
+        self.defaults = defaults or {}
         self.nodes: dict[str, NodeFn] = {}
         self.edges: dict[str, list[str]] = {}
         self.routers: dict[str, tuple[RouterFn, dict[str, str] | None]] = {}
@@ -236,6 +261,24 @@ class StateGraph:
         for name in names:
             if name != END and name not in self.nodes:
                 raise GraphError(f"unknown node {name!r}")
+
+    def reducer_default(self, key: str) -> Any:
+        """The empty value a reducer folds the first write into, or ``_MISSING``.
+
+        Resolution order: an explicit entry in ``defaults`` (a zero-arg factory
+        is called) wins; otherwise a non-required ``state_schema`` field supplies
+        its default. ``_MISSING`` means no default is known, so the legacy
+        first-write passthrough applies and the raw value is stored as-is.
+        """
+        if key in self.defaults:
+            factory = self.defaults[key]
+            return factory() if callable(factory) else factory
+        schema = self.state_schema
+        if schema is not None:
+            field = schema.model_fields.get(key)
+            if field is not None and not field.is_required():
+                return field.get_default(call_default_factory=True)
+        return _MISSING
 
     def compile(
         self,
@@ -296,7 +339,16 @@ class CompiledGraph:
             )
         for key, value in updates.items():
             reducer = self.graph.reducers.get(key)
-            state[key] = reducer(state.get(key), value) if reducer and key in state else value
+            if reducer is None:
+                state[key] = value
+            elif key in state:
+                state[key] = reducer(state[key], value)
+            else:
+                # First write to a reduced key: fold into the channel's declared
+                # empty so the reducer runs from the start (no seed node needed).
+                # When no default is known, keep the legacy passthrough.
+                default = self.graph.reducer_default(key)
+                state[key] = value if default is _MISSING else reducer(default, value)
         if self.graph.state_schema is not None:
             try:
                 self.graph.state_schema.model_validate(state)

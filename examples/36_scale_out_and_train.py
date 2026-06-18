@@ -23,6 +23,7 @@ the default and nothing below is required to run Vincio.
 from __future__ import annotations
 
 import asyncio
+import operator
 from types import SimpleNamespace
 
 from vincio.agents import (
@@ -72,13 +73,13 @@ async def distributed_execution() -> None:
     print(f"   worker-pool fan-out: {[r.state['n'] for r in results]}")
 
     # Send map-reduce: a dispatcher fans out to workers, a reducer collects.
-    mr = StateGraph("mapreduce", reducers={"out": lambda acc, v: (acc or []) + v})
-    mr.add_node("start", lambda s: {"out": []})
+    # The channel default (2.1.1) makes the reducer fold the first write into an
+    # empty list, so a non-defensive ``operator.add`` needs no upstream seed node.
+    mr = StateGraph("mapreduce", reducers={"out": operator.add}, defaults={"out": list})
     mr.add_node("dispatch", lambda s: [Send("double", {"x": v}) for v in s["items"]])
     mr.add_node("double", lambda s: {"out": [s["x"] * 2]})
     mr.add_node("reduce", lambda s: {"total": sum(s["out"])})
-    mr.set_entry("start")
-    mr.add_edge("start", "dispatch")
+    mr.set_entry("dispatch")
     mr.add_edge("dispatch", "reduce")
     mr.add_edge("reduce", END)
     out = await mr.compile().ainvoke({"items": [1, 2, 3, 4]})

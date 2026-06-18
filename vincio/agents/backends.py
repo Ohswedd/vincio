@@ -320,7 +320,10 @@ class RayBackend:
         """Build an equivalent graph whose nodes run as Ray tasks."""
         ray = self.module
         wrapped = StateGraph(
-            graph.name, state_schema=graph.state_schema, reducers=dict(graph.reducers)
+            graph.name,
+            state_schema=graph.state_schema,
+            reducers=dict(graph.reducers),
+            defaults=dict(graph.defaults),
         )
         for name, fn in graph.nodes.items():
             task = ray.remote(fn)
