@@ -197,6 +197,107 @@ class TestDeploy:
         actions = [e.action for e in si_app.audit.entries]
         assert "deploy" in actions
 
+    def test_deploy_requires_dataset_or_live_inputs(self, si_app, tmp_cwd):
+        with pytest.raises(ValueError, match="dataset.*or.*live"):
+            si_app.deploy(si_app.prompt_spec)
+
+
+def _xml_variant(app):
+    """A candidate that renders XML — the format-sensitive provider answers it
+    correctly while the default markdown baseline does not."""
+    from vincio.prompts.compiler import CompilerOptions
+    from vincio.prompts.optimizers import PromptVariant
+
+    return PromptVariant(
+        name="xml", spec=app.prompt_spec, compiler_options=CompilerOptions(format="xml")
+    )
+
+
+def _answered(result):
+    return 1.0 if "30 days" in str(result.output) else 0.0
+
+
+class TestLiveCanary:
+    def test_live_canary_promotes_no_regression(self, si_app, tmp_cwd):
+        # The XML candidate answers correctly; the markdown baseline does not, so
+        # the candidate clears the live canary and is promoted.
+        result = si_app.deploy(
+            _xml_variant(si_app),
+            live_inputs=["refund window?"] * 12,
+            score_fn=_answered,
+            canary=CanarySpec(metric="answered", percent=50.0, min_samples=4),
+        )
+        assert result.deployed
+        assert result.verdict.passed and result.verdict.samples >= 4
+        assert result.verdict.candidate > result.verdict.baseline
+
+    def test_live_canary_auto_rolls_back_a_regression(self, si_app, tmp_cwd):
+        from vincio.prompts.compiler import CompilerOptions
+        from vincio.prompts.optimizers import PromptVariant
+
+        # Baseline renders XML (correct); the markdown candidate regresses, so the
+        # live canary freezes and rolls back rather than promoting.
+        si_app.prompt_compiler.options = CompilerOptions(format="xml")
+        candidate = PromptVariant(
+            name="md", spec=si_app.prompt_spec, compiler_options=CompilerOptions(format="markdown")
+        )
+        result = si_app.deploy(
+            candidate,
+            live_inputs=["refund window?"] * 12,
+            score_fn=_answered,
+            canary=CanarySpec(metric="answered", percent=50.0, min_samples=4, regression_threshold=0.1),
+        )
+        assert not result.deployed
+        assert "rolled back" in result.reason
+
+    async def test_live_canary_observe_returns_real_answers(self, si_app, tmp_cwd):
+        from vincio.optimize import LiveCanary
+
+        canary = LiveCanary(
+            si_app, _xml_variant(si_app), score_fn=_answered,
+            canary=CanarySpec(metric="answered", percent=50.0, min_samples=4),
+        )
+        # Every observation returns a real RunResult (the user is served live).
+        for _ in range(10):
+            result = await canary.aobserve("refund window?")
+            assert result.output is not None
+        assert canary.calls == 10
+        # Some traffic reached each arm at 50%.
+        assert canary._cand and canary._base
+
+    def test_live_canary_insufficient_samples_refuses(self, si_app, tmp_cwd):
+        result = si_app.deploy(
+            _xml_variant(si_app),
+            live_inputs=["refund window?"] * 2,  # < min_samples candidate observations
+            score_fn=_answered,
+            canary=CanarySpec(metric="answered", percent=50.0, min_samples=8),
+        )
+        assert not result.deployed
+        assert "insufficient live canary samples" in result.verdict.reason
+
+
+class TestAsyncCanonicalRunPath:
+    def test_batch_persists_runs_through_async_store(self, sample_docs_dir, offline_config, tmp_cwd):
+        # The batch path persists through the canonical async store contract
+        # (await asave) — verified against a non-in-memory (SQLite) store.
+        app = ContextApp(
+            name="batch_async", provider=MockProvider(), model="mock-1", config=offline_config
+        )
+        results = app.batch(["one", "two", "three"])
+        assert len(results) == 3
+        # Each run was persisted to the metadata store off the event loop.
+        run_ids = {r.run_id for r in results}
+        persisted = {row["id"] for row in app.store.query("runs", limit=100)}
+        assert run_ids <= persisted
+
+    def test_persist_run_is_a_coroutine(self):
+        # The run-path persistence is async-canonical (no blocking store.save).
+        import inspect
+
+        from vincio.core.runtime import VincioRuntime
+
+        assert inspect.iscoroutinefunction(VincioRuntime._persist_run)
+
 
 # ---------------------------------------------------------------------------
 # The unified streaming controller

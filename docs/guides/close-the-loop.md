@@ -436,9 +436,21 @@ non-regression gates the loop always used. The canary-driven prompt/policy
 **promotion** reserved out of 1.10 lands as a serving surface:
 
 ```python
-result = app.deploy(candidate_spec, dataset=golden)  # canary-gated
+result = app.deploy(candidate_spec, dataset=golden)  # offline canary-gated
 # Promotes live (registry push + tag + apply + audit) only on a no-regression
 # verdict; a failing gate refuses and rolls back to the last known-good version.
+
+# Or qualify on *live traffic* — the prompt-layer analog of the 1.8 CanaryRouter:
+result = app.deploy(
+    candidate_spec,
+    live_inputs=sampled_live_runs,        # a sampled stream of real inputs
+    score_fn=lambda r: online_score(r),   # score each arm online
+    canary=CanarySpec(percent=10.0, min_samples=20),
+)
+# Ramps ~10% of the runs onto the candidate, scores each arm, and once enough
+# candidate observations land promotes on no regression — or freezes and
+# auto-rolls-back. The reusable LiveCanary (aobserve / verdict / afinalize) drives
+# a true live stream one run at a time; each observation still serves a real answer.
 ```
 
 `app.continuous_improvement` and `app.experiment_proposer` are deprecated

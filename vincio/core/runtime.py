@@ -307,7 +307,7 @@ class VincioRuntime:
                 )
             if prepared is None:
                 app.tracer.export(trace)
-                self._persist_run(result, run_id, user_input)
+                await self._persist_run(result, run_id, user_input)
                 prepared_runs.append((None, result, run_id, user_input, trace))
                 continue
             request = ModelRequest(
@@ -366,7 +366,7 @@ class VincioRuntime:
                     )
                     await self._finalize(prepared, response, result, run_id, user_input, policies)
             app.tracer.export(trace)
-            self._persist_run(result, run_id, user_input)
+            await self._persist_run(result, run_id, user_input)
             app.events.emit(
                 "run.completed",
                 {"run_id": run_id, "status": result.status.value, "batch": True},
@@ -1590,8 +1590,12 @@ class VincioRuntime:
             "trace_id": result.trace_id,
         }
 
-    def _persist_run(self, result: RunResult, run_id: str, user_input: UserInput) -> None:
-        self.app.store.save("runs", self._run_record(result, run_id, user_input, self.app.name))
+    async def _persist_run(self, result: RunResult, run_id: str, user_input: UserInput) -> None:
+        # Persist through the canonical async store contract so the batch path
+        # (like the interactive/streaming epilogue) never blocks the event loop.
+        await asave(
+            self.app.store, "runs", self._run_record(result, run_id, user_input, self.app.name)
+        )
 
     # ------------------------------------------------------------------
     # shared epilogue (both run paths, including cancellation)

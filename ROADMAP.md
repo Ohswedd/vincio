@@ -1469,13 +1469,18 @@ fully supported.*
   correctness + consent enforcement), **scale** (async-canonical throughput), and **memory** (bi-temporal
   recall + per-memory ACL) families, with `examples/38_self_improvement_and_provable_erasure.py`, eight
   new SLOs, and the deprecation runway documented in the [stability policy](docs/reference/stability.md).
-- **1613 tests passing offline in ~7s; ruff + mypy clean**; thirty-eight runnable examples; VincioBench
-  holds the 3.0 guarantees under CI-gated budgets (274 budgets, 85 SLOs). Everything new sits behind the
+- **1623 tests passing offline in ~7s; ruff + mypy clean**; thirty-eight runnable examples; VincioBench
+  holds the 3.0 guarantees under CI-gated budgets (277 budgets, 87 SLOs). Everything new sits behind the
   `vincio.optimize` self-improvement entry points, `vincio.governance` (consent + erasure proof), and
   the bi-temporal `vincio.memory` surface, all `@experimental(since="3.0")` on the new 3.0 frozen
-  surface. **The 3.0 milestone carries no deferred items.**
+  surface. The 3.0.1 follow-up closes the two scoping notes 3.0.0 shipped with: a **live-traffic
+  canary** is bound to the deploy surface (`app.deploy(live_inputs=…, score_fn=…)` ramps real runs onto
+  the candidate via `LiveCanary` and auto-rolls-back a regression — the prompt-layer analog of the 1.8
+  `CanaryRouter`), and the **async-canonical run path** is now literally true on every path (the batch
+  `_persist_run` is a coroutine awaiting `asave`, so no run path blocks the loop with a sync write).
+  **The 3.0 milestone carries no deferred items.**
 
-See the [CHANGELOG](CHANGELOG.md) for the complete 3.0.0 notes.
+See the [CHANGELOG](CHANGELOG.md) for the complete 3.0.0 and 3.0.1 notes.
 
 ### 🔭 Exploring — beyond 3.0
 

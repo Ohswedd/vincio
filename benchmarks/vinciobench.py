@@ -2002,6 +2002,34 @@ async def bench_loop() -> dict[str, Any]:
     )
     deploy_gated = deploy_result.deployed and deploy_result.verdict.passed
 
+    # Live-traffic canary: ramp a fraction of live runs onto an XML-rendering
+    # candidate (the format-sensitive provider answers it; the markdown baseline
+    # does not), score each arm online, and promote on no regression. A markdown
+    # candidate against an XML baseline regresses and auto-rolls-back.
+    from vincio.prompts.compiler import CompilerOptions
+    from vincio.prompts.optimizers import PromptVariant
+
+    def _answered(r):
+        return 1.0 if "30 days" in str(r.output) else 0.0
+
+    live_app = build_app()
+    xml_candidate = PromptVariant(
+        name="xml", spec=live_app.prompt_spec, compiler_options=CompilerOptions(format="xml")
+    )
+    live_promote = live_app.deploy(
+        xml_candidate, live_inputs=["refund window?"] * 12, score_fn=_answered,
+        canary=CanarySpec(metric="answered", percent=50.0, min_samples=4),
+    )
+    rollback_app = build_app()
+    rollback_app.prompt_compiler.options = CompilerOptions(format="xml")  # good baseline
+    md_candidate = PromptVariant(
+        name="md", spec=rollback_app.prompt_spec, compiler_options=CompilerOptions(format="markdown")
+    )
+    live_rollback = rollback_app.deploy(
+        md_candidate, live_inputs=["refund window?"] * 12, score_fn=_answered,
+        canary=CanarySpec(metric="answered", percent=50.0, min_samples=4, regression_threshold=0.1),
+    )
+
     return {
         # 2.1 — executed distillation gated by the significance swap gate
         "executed_distillation": distillation_2_1,
@@ -2013,6 +2041,10 @@ async def bench_loop() -> dict[str, Any]:
             "halving_rounds": len({h["round"] for h in sh_history}),
             "canary_gated_deploy": deploy_gated,
             "budget_bounded": si_events[-1].budget_remaining >= 0,
+            # 3.0 follow-up: live-traffic canary bound to the deploy surface
+            "live_canary_promotes": live_promote.deployed and live_promote.verdict.passed,
+            "live_canary_rolls_back": (not live_rollback.deployed)
+            and "rolled back" in live_rollback.reason,
         },
         "promotion": {
             "promoted": result_a.promoted,
@@ -2633,10 +2665,17 @@ async def bench_scale() -> dict[str, Any]:
     async_elapsed = time.perf_counter() - async_started
     persisted = await aquery(async_store, "runs", limit=burst + 10)
     async_throughput = round(burst / async_elapsed) if async_elapsed > 0 else burst
+    # The run path itself persists through the async contract on every path,
+    # including batch: VincioRuntime._persist_run is a coroutine (awaited via
+    # asave), so a batched run never blocks the event loop with a sync write.
+    from vincio.core.runtime import VincioRuntime
+
+    run_path_async = inspect.iscoroutinefunction(VincioRuntime._persist_run)
     async_canonical = {
         "store_is_async_native": async_native,
         "concurrent_saves": len(persisted) == burst,
         "saves_per_s": async_throughput,
+        "run_path_persists_async": run_path_async,
     }
 
     return {

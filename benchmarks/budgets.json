@@ -822,6 +822,15 @@
     },
     "families.scale.async_canonical.saves_per_s": {
       "gte": 1000
+    },
+    "families.loop.self_improvement.live_canary_promotes": {
+      "eq": true
+    },
+    "families.loop.self_improvement.live_canary_rolls_back": {
+      "eq": true
+    },
+    "families.scale.async_canonical.run_path_persists_async": {
+      "eq": true
     }
   }
 }
