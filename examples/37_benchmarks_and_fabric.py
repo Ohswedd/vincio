@@ -37,11 +37,13 @@ from vincio.core.types import Budget, EvidenceItem
 from vincio.evals import (
     EnvAction,
     EnvironmentSimulator,
+    GAIAAdapter,
     RetrievalConfig,
     RetrievalGoldenSet,
     RetrievalQuery,
     SWEBenchAdapter,
     TauBenchAdapter,
+    make_agent_solver,
     make_retail_environment,
     retrieval_regression,
     scripted_policy,
@@ -111,6 +113,13 @@ async def benchmark_adapters() -> None:
     print(f"  tau_bench:         success={tau_report.success_rate}  (end-state oracle)")
     # The score projects onto an EvalReport, so the optimizer/gates consume it.
     print(f"  -> EvalReport success mean = {tau_report.to_eval_report().summary()['success']['mean']}")
+
+    # LIVE run — the identical scorer grades fresh agent output (not a recording).
+    # `make_agent_solver` drives any ContextApp/AgentExecutor; here a stand-in
+    # callable plays the agent. `make_env_solver` runs a policy through the world.
+    gaia = GAIAAdapter([{"id": "g", "prompt": "capital of France?", "gold": "Paris"}])
+    live = await gaia.run(make_agent_solver(lambda prompt: "Paris"))
+    print(f"  gaia (live solve): success={live.success_rate}  replayed={live.replayed}")
 
 
 async def retrieval_eval() -> None:

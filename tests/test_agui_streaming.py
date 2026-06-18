@@ -100,6 +100,38 @@ async def test_executor_astream_to_agui_end_to_end():
 
 
 @pytest.mark.asyncio
+async def test_executor_astream_emits_genuine_provider_token_deltas():
+    # The text deltas are the provider's real stream (MockProvider emits 16-char
+    # chunks), not a post-hoc word split of the finished text: multiple deltas
+    # arrive and concatenate back to the exact produced answer.
+    answer = "The refund window is thirty days from delivery for most items."
+    ex = AgentExecutor(MockProvider(default_text=answer), model="mock-1", planner=Planner(mode="react"))
+    deltas = [e.text async for e in ex.astream("summarize the refund policy") if e.type == "text_delta"]
+    assert len(deltas) > 1, "streaming should emit multiple provider deltas, not one chunk"
+    assert "".join(deltas) == answer  # the deltas are the real stream, reassembled exactly
+    # 16-char provider chunks, not whitespace-aligned word groups.
+    assert any(not d.endswith(" ") and len(d) == 16 for d in deltas[:-1])
+
+
+@pytest.mark.asyncio
+async def test_structured_output_call_is_not_streamed_as_text():
+    # A schema (structured-output) call stays on generate — its JSON is not
+    # emitted as user-facing text deltas.
+    from vincio.output.schemas import OutputContract, OutputSchema
+    from vincio.output.validators import OutputValidator
+
+    schema = OutputSchema(name="ans", json_schema={
+        "type": "object", "properties": {"answer": {"type": "string"}}, "required": ["answer"],
+    })
+    validator = OutputValidator(OutputContract(schema=schema))
+    ex = AgentExecutor(
+        MockProvider(), model="mock-1", planner=Planner(mode="react"), output_validator=validator
+    )
+    types = [e.type async for e in ex.astream("answer with structured output")]
+    assert types[0] == "run_start" and types[-1] == "done"  # still a well-formed stream
+
+
+@pytest.mark.asyncio
 async def test_crew_astream_forwards_member_events():
     good = MockProvider(default_text="member done")
     crew = Crew("team")

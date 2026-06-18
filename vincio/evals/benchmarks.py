@@ -56,6 +56,13 @@ __all__ = [
     "BENCHMARK_ADAPTERS",
     "load_benchmark",
     "available_benchmarks",
+    # live-run path: drive a real Vincio agent and load official task sets
+    "make_agent_solver",
+    "make_env_solver",
+    "tasks_from_jsonl",
+    "gaia_tasks_from_export",
+    "swebench_tasks_from_export",
+    "bfcl_tasks_from_export",
 ]
 
 
@@ -441,6 +448,193 @@ class BFCLAdapter(BenchmarkAdapter):
             details={"matched": matched, "expected": len(gold_calls),
                      "category": task.metadata.get("category", "simple")},
         )
+
+
+# ---------------------------------------------------------------------------
+# Live-run path: drive a real Vincio agent, and load official task sets
+# ---------------------------------------------------------------------------
+#
+# ``adapter.replay()`` is the offline path (a recorded output per task).
+# ``adapter.run(solver)`` is the **live** path: it calls ``solver(task)`` to
+# produce a *fresh* output and scores it with the **identical** ``score()``.
+# The helpers below turn a Vincio agent into a solver, and load a real benchmark
+# export into ``BenchmarkTask``s, so pointing an adapter at a live task set is a
+# one-liner — not a reimplementation of the scorer.
+
+
+def _coerce_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    try:
+        return json.dumps(value, default=str)
+    except (TypeError, ValueError):  # pragma: no cover - defensive
+        return str(value)
+
+
+def make_agent_solver(runner: Any, *, mode: str = "text", prompt_key: str | None = None) -> Solver:
+    """Turn a Vincio agent into a benchmark :data:`Solver` (the live-run path).
+
+    ``runner`` may be a :class:`~vincio.core.app.ContextApp` (driven via ``arun``),
+    an :class:`~vincio.agents.executor.AgentExecutor` (via ``run``), or any
+    ``callable(prompt) -> output``. ``mode``:
+
+    * ``"text"`` — return the agent's final answer string (GAIA, WebArena, or a
+      SWE-bench answer agent emitting a test-outcome dict).
+    * ``"calls"`` — return the agent's tool calls as ``[{"name", "arguments"}]``
+      (BFCL). Requires an ``AgentExecutor`` runner (the calls come from its
+      trajectory).
+
+    ``prompt_key`` reads the prompt from ``task.inputs[prompt_key]`` instead of
+    ``task.prompt`` when set.
+    """
+    if mode not in ("text", "calls"):
+        raise BenchmarkError(f"unknown solver mode {mode!r}; expected 'text' or 'calls'")
+
+    async def solve(task: BenchmarkTask) -> Any:
+        prompt = task.prompt if prompt_key is None else _coerce_text(task.inputs.get(prompt_key))
+        prompt = prompt or task.prompt
+
+        if hasattr(runner, "arun"):  # ContextApp
+            if mode == "calls":
+                raise BenchmarkError("mode='calls' requires an AgentExecutor runner")
+            result = await runner.arun(prompt)
+            return getattr(result, "raw_text", "") or _coerce_text(getattr(result, "output", result))
+
+        if hasattr(runner, "astream") and hasattr(runner, "model"):  # AgentExecutor
+            # Drive the agent's own event stream: tool_call events carry the
+            # arguments (a ReAct trajectory does not), and the terminal done event
+            # carries the final answer — so one path serves both modes.
+            calls: list[dict[str, Any]] = []
+            text = ""
+            async for event in runner.astream(prompt):
+                if event.type == "tool_call":
+                    calls.append({"name": event.tool_name, "arguments": dict(event.arguments or {})})
+                elif event.type == "done":
+                    text = _coerce_text(event.result)
+            return calls if mode == "calls" else text
+
+        if callable(runner):
+            if mode == "calls":
+                raise BenchmarkError("mode='calls' requires an AgentExecutor runner")
+            out = runner(prompt)
+            if hasattr(out, "__await__"):
+                out = await out
+            return out
+
+        raise BenchmarkError("solver runner must be a ContextApp, AgentExecutor, or callable")
+
+    return solve
+
+
+def make_env_solver(policy: Any) -> Solver:
+    """Drive an agent ``policy`` through the environment a τ-bench task names and
+    return the action list — the live τ-bench run path.
+
+    The agent *decides* the actions by interacting with the deterministic
+    reference world; :class:`TauBenchAdapter` then scores those actions on the
+    database end state with the identical oracle. ``policy`` is any
+    ``AgentPolicy`` (``callable(observation) -> EnvAction``).
+    """
+
+    async def solve(task: BenchmarkTask) -> Any:
+        from .environment import EnvironmentSimulator, make_retail_environment
+
+        env_name = task.inputs.get("env", "retail")
+        if env_name != "retail":
+            raise BenchmarkError(f"make_env_solver: unsupported env {env_name!r}")
+        env = make_retail_environment(task.inputs.get("env_task", "cancel_refund"))
+        result = await EnvironmentSimulator().arun(env, policy)
+        return [
+            {"tool": step.tool_name, "arguments": dict(step.tool_arguments)}
+            for step in result.trajectory.steps
+            if step.is_tool
+        ]
+
+    return solve
+
+
+def _maybe_json(value: Any) -> Any:
+    """Parse a JSON-encoded string (SWE-bench's FAIL_TO_PASS et al.), else passthrough."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return value
+    return value
+
+
+def tasks_from_jsonl(path: str | Path) -> list[BenchmarkTask]:
+    """Load `BenchmarkTask`s from a JSONL file (one task object per line)."""
+    out: list[BenchmarkTask] = []
+    for line in Path(path).read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line:
+            out.append(BenchmarkTask.model_validate(json.loads(line)))
+    return out
+
+
+def gaia_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map official GAIA records (``task_id`` / ``Question`` / ``Final answer`` /
+    ``Level``) onto `BenchmarkTask`s for :class:`GAIAAdapter`."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        gold = rec.get("Final answer", rec.get("final_answer", rec.get("answer")))
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("task_id", rec.get("id", f"gaia-{index}"))),
+                prompt=str(rec.get("Question", rec.get("question", ""))),
+                gold=gold,
+                metadata={"level": rec.get("Level", rec.get("level"))},
+            )
+        )
+    return tasks
+
+
+def swebench_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map official SWE-bench (Verified) records (``instance_id`` /
+    ``FAIL_TO_PASS`` / ``PASS_TO_PASS``) onto `BenchmarkTask`s for
+    :class:`SWEBenchAdapter`. ``FAIL_TO_PASS`` / ``PASS_TO_PASS`` may be JSON
+    strings (the released format) or lists."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        fail_to_pass = _maybe_json(rec.get("FAIL_TO_PASS", rec.get("fail_to_pass", [])))
+        pass_to_pass = _maybe_json(rec.get("PASS_TO_PASS", rec.get("pass_to_pass", [])))
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("instance_id", rec.get("id", f"swe-{index}"))),
+                prompt=str(rec.get("problem_statement", "")),
+                gold={"fail_to_pass": list(fail_to_pass or []), "pass_to_pass": list(pass_to_pass or [])},
+                inputs={"repo": rec.get("repo"), "base_commit": rec.get("base_commit")},
+            )
+        )
+    return tasks
+
+
+def bfcl_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map BFCL records (``id`` / ``question`` / ``function`` / ``ground_truth``)
+    onto `BenchmarkTask`s for :class:`BFCLAdapter`. The available functions ride
+    on ``inputs['functions']`` so a live solver can register them as tools."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        question = rec.get("question", rec.get("prompt", ""))
+        if isinstance(question, list):  # BFCL multi-turn message format
+            question = " ".join(
+                m.get("content", "") for turn in question
+                for m in (turn if isinstance(turn, list) else [turn])
+                if isinstance(m, dict)
+            )
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("id", f"bfcl-{index}")),
+                prompt=str(question),
+                gold=rec.get("ground_truth", rec.get("gold", [])),
+                inputs={"functions": rec.get("function", rec.get("functions", []))},
+                metadata={"category": rec.get("category", "simple")},
+            )
+        )
+    return tasks
 
 
 BENCHMARK_ADAPTERS: dict[str, type[BenchmarkAdapter]] = {
