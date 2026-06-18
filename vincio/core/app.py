@@ -2470,11 +2470,14 @@ class ContextApp:
         *,
         state_schema: type[BaseModel] | None = None,
         reducers: dict[str, Callable[[Any, Any], Any]] | None = None,
+        defaults: dict[str, Any] | None = None,
     ) -> StateGraph:
         """A durable :class:`StateGraph` bound to the app's tracer and
         metadata store: checkpoints persist wherever the app's runs do, so
         threads survive restarts when the store is SQLite/Postgres."""
-        graph = StateGraph(name, state_schema=state_schema, reducers=reducers)
+        graph = StateGraph(
+            name, state_schema=state_schema, reducers=reducers, defaults=defaults
+        )
         graph.default_tracer = self.tracer
         graph.default_checkpointer = Checkpointer(self.store)
         return graph

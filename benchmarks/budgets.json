@@ -664,6 +664,12 @@
     "families.scale.distributed.worker_pool_fanout_ok": {
       "eq": true
     },
+    "families.scale.distributed.backend_conformant": {
+      "eq": true
+    },
+    "families.scale.distributed.map_reduce_no_seed_ok": {
+      "eq": true
+    },
     "families.scale.shared_state.rate_limit_coherent": {
       "eq": true
     },

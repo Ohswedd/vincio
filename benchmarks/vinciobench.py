@@ -2696,15 +2696,19 @@ async def bench_breaking_2_0() -> dict[str, Any]:
 
 
 async def _scale_distributed_2_1() -> dict[str, Any]:
+    import operator
+
     from vincio.agents import (
         END,
         DistributedCheckpointer,
         InMemoryGraphCoordinator,
+        Send,
         StateGraph,
         WorkerPoolBackend,
     )
     from vincio.core.errors import CheckpointConflictError
     from vincio.storage.base import InMemoryMetadataStore
+    from vincio.testing import assert_backend_conformance
 
     store = InMemoryMetadataStore()
     coordinator = InMemoryGraphCoordinator()
@@ -2729,10 +2733,31 @@ async def _scale_distributed_2_1() -> dict[str, Any]:
     backend = WorkerPoolBackend(workers=4)
     results = await backend.run_batch(graph, [{"n": i} for i in range(12)])
     fanout_ok = [r.state["n"] for r in results] == [i + 1 for i in range(12)]
+
+    # 2.1.1 — the reference distributed executor must reproduce the native
+    # engine across the canonical battery (sequential / conditional / map-reduce).
+    backend_conformant = True
+    try:
+        await assert_backend_conformance(WorkerPoolBackend(workers=4))
+    except AssertionError:
+        backend_conformant = False
+
+    # 2.1.1 — a map-reduce needs no upstream seed node: the channel default
+    # makes a non-defensive reducer (operator.add) fold from the first write.
+    mr = StateGraph("mr", reducers={"out": operator.add}, defaults={"out": list})
+    mr.add_node("fan", lambda s: [Send("dbl", {"v": v}) for v in s["items"]])
+    mr.add_node("dbl", lambda s: {"out": [s["v"] * 2]})
+    mr.set_entry("fan")
+    mr.add_edge("fan", END)
+    mr_result = await mr.compile().ainvoke({"items": [1, 2, 3, 4]})
+    map_reduce_no_seed_ok = sorted(mr_result.state["out"]) == [2, 4, 6, 8]
+
     return {
         "lease_prevents_double_execution": double_exec_blocked,
         "version_monotonic": version_monotonic,
         "worker_pool_fanout_ok": fanout_ok,
+        "backend_conformant": backend_conformant,
+        "map_reduce_no_seed_ok": map_reduce_no_seed_ok,
     }
 
 

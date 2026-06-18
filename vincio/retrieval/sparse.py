@@ -106,10 +106,13 @@ class SpladeEncoder:
     SPLADE expands a passage into term-impact weights over the model vocabulary —
     far richer than the offline :class:`LocalImpactEncoder` approximation. Lazily
     loads a Hugging Face masked-LM (the model the SPLADE checkpoint fine-tuned),
-    computes the log-saturated max-pooled term weights, and returns them as a
-    :data:`SparseVector`. Injectable via ``encode_fn`` for offline tests, with a
-    fallback to :class:`LocalImpactEncoder` when the dependency is missing and
-    ``fallback=True``. Install with ``pip install "vincio[splade]"``.
+    runs a forward pass under ``torch``, and pools the logits into a
+    :data:`SparseVector`. The numerical pooling is pure Python
+    (:meth:`pool_logits`); the model/tokenizer/``torch`` are injectable (offline
+    tests drive the full forward path against faithful fakes, exactly like
+    :class:`~vincio.providers.local.GGUFProvider`), and ``fallback=True`` degrades
+    to :class:`LocalImpactEncoder` when the dependency is missing. Install with
+    ``pip install "vincio[splade]"``.
     """
 
     def __init__(
@@ -117,6 +120,9 @@ class SpladeEncoder:
         model_name: str = "naver/splade-v3",
         *,
         encode_fn: Callable[[list[str], bool], list[SparseVector]] | None = None,
+        model: Any = None,
+        tokenizer: Any = None,
+        torch_module: Any = None,
         fallback: bool = False,
         top_k: int = 256,
     ) -> None:
@@ -124,8 +130,9 @@ class SpladeEncoder:
         self.top_k = top_k
         self._encode_fn = encode_fn
         self._fallback = fallback
-        self._model: Any = None
-        self._tokenizer: Any = None
+        self._model: Any = model
+        self._tokenizer: Any = tokenizer
+        self._torch: Any = torch_module
         self._fallback_encoder: LocalImpactEncoder | None = None
 
     def _ensure(self) -> None:
@@ -136,6 +143,7 @@ class SpladeEncoder:
         ):
             return
         try:
+            import torch  # type: ignore[import-not-found]
             from transformers import (  # type: ignore[import-untyped]
                 AutoModelForMaskedLM,
                 AutoTokenizer,
@@ -143,6 +151,7 @@ class SpladeEncoder:
 
             self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
             self._model = AutoModelForMaskedLM.from_pretrained(self.model_name)
+            self._torch = torch
         except ImportError as exc:
             if self._fallback:
                 self._fallback_encoder = LocalImpactEncoder()
@@ -154,25 +163,45 @@ class SpladeEncoder:
                 "(or construct with fallback=True / inject encode_fn)"
             ) from exc
 
-    def _encode_model(self, texts: list[str]) -> list[SparseVector]:  # pragma: no cover - needs torch
-        import torch
+    def pool_logits(self, logits: list[list[float]], attention_mask: list[int]) -> dict[int, float]:
+        """SPLADE pooling, pure Python: ``log(1 + relu(x))`` max-pooled over the
+        unmasked tokens, then the top-``k`` vocabulary ids by weight.
 
-        vectors: list[SparseVector] = []
+        ``logits`` is ``seq_len × vocab`` and ``attention_mask`` is ``seq_len``
+        (one logits row and mask flag per token), matching what a Hugging Face
+        masked-LM forward returns once detached to lists — so this carries the
+        SPLADE numerics independently of ``torch``.
+        """
+        vocab = len(logits[0]) if logits else 0
+        pooled = [0.0] * vocab
+        for row, keep in zip(logits, attention_mask, strict=True):
+            if not keep:
+                continue
+            for j, x in enumerate(row):
+                if x > 0.0:
+                    weight = math.log1p(x)
+                    if weight > pooled[j]:
+                        pooled[j] = weight
+        ranked = sorted(range(vocab), key=pooled.__getitem__, reverse=True)[: self.top_k]
+        return {j: pooled[j] for j in ranked if pooled[j] > 0.0}
+
+    def _encode_model(self, texts: list[str]) -> list[SparseVector]:
+        torch = self._torch
+        if torch is None:  # a real model was injected without torch_module
+            import torch  # type: ignore[import-not-found, no-redef] # pragma: no cover - needs torch
         tokenizer, model = self._tokenizer, self._model
+        vectors: list[SparseVector] = []
         for text in texts:
             inputs = tokenizer(text, return_tensors="pt", truncation=True)
             with torch.no_grad():
                 logits = model(**inputs).logits
-            # SPLADE term importance: log(1 + relu(logits)) max-pooled over tokens.
-            weights = torch.max(
-                torch.log1p(torch.relu(logits)) * inputs["attention_mask"].unsqueeze(-1), dim=1
-            ).values.squeeze()
-            top = torch.topk(weights, k=min(self.top_k, weights.shape[-1]))
-            vector: SparseVector = {}
-            for value, idx in zip(top.values.tolist(), top.indices.tolist(), strict=False):
-                if value > 0:
-                    vector[tokenizer.convert_ids_to_tokens(int(idx))] = float(value)
-            vectors.append(vector)
+            # Detach the forward pass to plain lists, then pool in pure Python.
+            rows = logits.tolist()[0]
+            mask = inputs["attention_mask"].tolist()[0]
+            pooled = self.pool_logits(rows, mask)
+            vectors.append(
+                {tokenizer.convert_ids_to_tokens(int(idx)): float(w) for idx, w in pooled.items()}
+            )
         return vectors
 
     async def encode(self, texts: list[str], *, is_query: bool = False) -> list[SparseVector]:

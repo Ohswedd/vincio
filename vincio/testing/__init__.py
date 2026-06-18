@@ -16,6 +16,7 @@ option for refreshing them.
 """
 
 from .asserts import assert_eval, assert_grounded, assert_metric, assert_safe
+from .conformance import assert_backend_conformance, conformance_cases
 from .snapshots import Snapshot, normalize_packet, normalize_trace
 
 __all__ = [
@@ -23,6 +24,8 @@ __all__ = [
     "assert_grounded",
     "assert_metric",
     "assert_safe",
+    "assert_backend_conformance",
+    "conformance_cases",
     "Snapshot",
     "normalize_packet",
     "normalize_trace",

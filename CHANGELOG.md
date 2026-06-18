@@ -4,6 +4,51 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-06-18
+
+Closes the three known limitations the 2.1.0 adversarial review surfaced. All
+additive and backward-compatible — `API_VERSION` stays `2.0`, the single-process
+asyncio path stays the default, and no existing graph, reducer, or backend
+changes behavior.
+
+### Added
+
+- **Channel-default reducers — a map-reduce no longer needs a seed node.**
+  `StateGraph(..., defaults={...})` (and non-required `state_schema` field
+  defaults, inferred automatically) declare a reduced key's empty value, so the
+  reducer folds the **first** write into that default instead of passing the raw
+  value through. A `Send` map-reduce can now use a non-defensive reducer
+  (`operator.add`) with no upstream node seeding the collected key. The legacy
+  first-write passthrough is unchanged whenever no default is known, so existing
+  bare-callable reducers keep their exact semantics. Defaults ride through
+  `app.graph(defaults=...)` and survive `RayBackend` export. This replaces the
+  2.1.0 workaround of seeding the collected key, at its root.
+- **`vincio.testing.assert_backend_conformance`** (+ `conformance_cases`) — the
+  offline contract every runtime backend must satisfy: it runs a battery
+  (sequential, conditional routing, `Send` map-reduce with a channel default)
+  through a backend and asserts it reproduces the native durable engine. The
+  `RayBackend` / `TemporalBackend` export adapters — which can only be exercised
+  against injected fakes offline — are now held to this contract, not merely
+  "runs one graph," and a real cluster wiring can validate itself the same way.
+  VincioBench's scale family gains `backend_conformant` and
+  `map_reduce_no_seed_ok` budgets.
+
+### Changed
+
+- **The real local-neural-model paths are now exercised offline.**
+  `SpladeEncoder`, `LocalCrossEncoderReranker`, and `FastEmbedEmbedder` accept an
+  injected model object (`model=` / `tokenizer=` / `torch_module=`), mirroring
+  `GGUFProvider(llama=...)`, so the real forward / `predict` / `embed` paths run
+  against faithful fakes with the heavy deps absent. `SpladeEncoder.pool_logits`
+  extracts the SPLADE log-saturated max-pool + top-k into pure, directly tested
+  Python (the model forward stays in `torch`). The `# pragma: no cover` markers
+  on those real-model paths are removed — they are covered now.
+
+### Notes
+
+- 1497 tests passing offline; ruff + mypy clean. VincioBench: 18 families, 231
+  CI budgets, 71 SLOs. The 2.1 milestone now carries no deferred items.
+
 ## [2.1.0] - 2026-06-17
 
 Scale out & train for real — distributed execution, executed fine-tuning, and a

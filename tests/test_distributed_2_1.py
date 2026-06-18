@@ -1,12 +1,19 @@
 """Distributed durable execution (2.1): lease + CAS coordination, BSP parallel
 super-steps, Send map-reduce, worker-pool fan-out, Ray/Temporal export adapters,
-and workflow map-reduce. All offline and deterministic."""
+and workflow map-reduce. All offline and deterministic.
+
+The 2.1.1 follow-up adds a cross-backend conformance battery
+(:func:`vincio.testing.assert_backend_conformance`) that holds every backend to
+the native engine's semantics, and exercises the channel-default reducer so a
+map-reduce needs no upstream seed node."""
 
 from __future__ import annotations
 
 import asyncio
+import operator
 
 import pytest
+from pydantic import BaseModel, Field
 
 from vincio.agents import (
     END,
@@ -21,6 +28,7 @@ from vincio.agents import (
 )
 from vincio.core.errors import CheckpointConflictError
 from vincio.storage.base import InMemoryMetadataStore
+from vincio.testing import assert_backend_conformance
 from vincio.workflows import Workflow
 
 
@@ -301,3 +309,81 @@ def test_compiled_graph_preserves_parallel_flag():
     compiled = _inc_graph().compile(parallel=True, fanout_limit=4)
     assert isinstance(compiled, CompiledGraph)
     assert compiled.parallel is True and compiled.fanout_limit == 4
+
+
+# ---------------------------------------------------------------------------
+# Cross-backend conformance: every backend reproduces the native engine
+# ---------------------------------------------------------------------------
+
+
+def _make_backend(label):
+    """Each named distributed backend, wired to its offline driver/fake."""
+    return {
+        "worker_pool": lambda: WorkerPoolBackend(workers=3),
+        "ray": lambda: RayBackend(module=_FakeRay()),
+        "temporal": lambda: TemporalBackend(client=_FakeTemporalClient()),
+    }[label]()
+
+
+@pytest.mark.parametrize("label", ["worker_pool", "ray", "temporal"])
+async def test_backend_conformance(label):
+    # The reference is the native engine; the battery includes the no-seed
+    # map-reduce, so this also proves the channel default survives export.
+    await assert_backend_conformance(_make_backend(label), label=label)
+
+
+async def test_backend_conformance_flags_a_divergent_backend():
+    class _BrokenBackend:
+        name = "broken"
+
+        async def run(self, graph, payload, **kwargs):
+            return await graph.compile().ainvoke({})  # ignores the input -> wrong state
+
+    with pytest.raises(AssertionError, match="diverged from the native engine"):
+        await assert_backend_conformance(_BrokenBackend())
+
+
+# ---------------------------------------------------------------------------
+# Channel-default reducer: map-reduce without an upstream seed node (2.1.1)
+# ---------------------------------------------------------------------------
+
+
+async def test_send_map_reduce_without_seed_node():
+    # operator.add is non-defensive; the declared default is what makes the
+    # first write fold correctly — no "start" node seeding ``results``.
+    g = StateGraph("mr", reducers={"results": operator.add}, defaults={"results": list})
+    g.add_node("dispatch", lambda s: [Send("worker", {"x": v}) for v in s["items"]])
+    g.add_node("worker", lambda s: {"results": [s["x"] * 2]})
+    g.add_node("reduce", lambda s: {"total": sum(s["results"])})
+    g.set_entry("dispatch")
+    g.add_edge("dispatch", "reduce")
+    g.add_edge("reduce", END)
+
+    result = await g.compile().ainvoke({"items": [1, 2, 3]})
+    assert sorted(result.state["results"]) == [2, 4, 6]
+    assert result.state["total"] == 12
+
+
+async def test_channel_default_inferred_from_state_schema():
+    class S(BaseModel):
+        log: list = Field(default_factory=list)
+
+    g = StateGraph("schema_default", state_schema=S, reducers={"log": operator.add})
+    g.add_node("a", lambda s: {"log": ["a"]})
+    g.add_node("b", lambda s: {"log": ["b"]})
+    g.add_edge("a", "b")
+    g.add_edge("b", END)
+    result = await g.compile().ainvoke({})
+    assert result.state["log"] == ["a", "b"]  # reducer applied from the first write
+
+
+def test_no_default_keeps_legacy_first_write_passthrough():
+    g = StateGraph("legacy", reducers={"items": operator.add})
+    assert g.reducer_default("items").__class__.__name__ == "_Missing"
+    # the bare operator.add reducer still passes the first raw value through
+    g.add_node("seed", lambda s: {"items": ["seed"]})
+    g.add_node("more", lambda s: {"items": ["more"]})
+    g.add_edge("seed", "more")
+    g.add_edge("more", END)
+    result = asyncio.run(g.compile().ainvoke({}))
+    assert result.state["items"] == ["seed", "more"]

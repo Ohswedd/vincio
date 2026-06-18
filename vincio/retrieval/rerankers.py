@@ -218,9 +218,11 @@ class LocalCrossEncoderReranker:
 
     Batteries-included on-device reranking with real cross-encoder quality and
     no server: lazily loads a ``CrossEncoder`` model and scores each
-    (query, passage) pair. Injectable via ``score_fn`` (offline tests); with
-    ``fallback=True`` it degrades to :class:`HeuristicReranker` when the
-    dependency is missing. Install with ``pip install "vincio[cross-encoder]"``.
+    (query, passage) pair. Injectable via ``score_fn`` for a fully custom scorer
+    or ``model`` for a ``CrossEncoder``-shaped object (offline tests drive the
+    real ``model.predict`` path against a faithful fake); with ``fallback=True``
+    it degrades to :class:`HeuristicReranker` when the dependency is missing.
+    Install with ``pip install "vincio[cross-encoder]"``.
     """
 
     def __init__(
@@ -228,12 +230,13 @@ class LocalCrossEncoderReranker:
         model_name: str = "cross-encoder/ms-marco-MiniLM-L-6-v2",
         *,
         score_fn: CrossEncoderFn | None = None,
+        model: Any = None,
         fallback: bool = False,
     ) -> None:
         self.model_name = model_name
         self._score_fn = score_fn
         self._fallback = fallback
-        self._model: Any = None
+        self._model: Any = model
         self._fallback_reranker: HeuristicReranker | None = None
 
     def _ensure(self) -> None:
@@ -267,7 +270,7 @@ class LocalCrossEncoderReranker:
         passages = [hit.chunk.text for hit in hits]
         if self._score_fn is not None:
             scores = await self._score_fn(query, passages)
-        else:  # pragma: no cover - needs the model installed
+        else:
             import asyncio
 
             loop = asyncio.get_running_loop()

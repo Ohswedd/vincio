@@ -115,6 +115,17 @@ class TestLocalEmbedders:
         vecs = await emb.embed(["abc"])
         assert vecs == [[3.0, 3.0, 3.0, 3.0]]
 
+    async def test_fastembed_real_model_embed_path(self):
+        # Inject a TextEmbedding-shaped object so the real ``model.embed``
+        # executor path runs offline against a faithful fake (no fastembed dep).
+        class _FakeTextEmbedding:
+            def embed(self, texts):
+                return [[float(len(t))] * 3 for t in texts]
+
+        emb = FastEmbedEmbedder(model=_FakeTextEmbedding())
+        vecs = await emb.embed(["abcd", "xy"])
+        assert vecs == [[4.0, 4.0, 4.0], [2.0, 2.0, 2.0]]
+
     async def test_fastembed_fallback_offline(self):
         emb = FastEmbedEmbedder(dim=16, fallback=True)
         vecs = await emb.embed(["hello world"])
@@ -136,6 +147,47 @@ class TestLocalEmbedders:
         assert isinstance(emb, FastEmbedEmbedder)
 
 
+class _FakeTensor:
+    """A torch-tensor-shaped wrapper: just enough surface for ``.tolist()``."""
+
+    def __init__(self, data):
+        self._data = data
+
+    def tolist(self):
+        return self._data
+
+
+class _FakeTorch:
+    @staticmethod
+    def no_grad():
+        import contextlib
+
+        return contextlib.nullcontext()
+
+
+class _FakeMaskedLM:
+    """A Hugging Face masked-LM forward: returns ``.logits`` as (1, seq, vocab)."""
+
+    def __init__(self, logits):
+        self._logits = logits
+
+    def __call__(self, **inputs):
+        return type("Out", (), {"logits": _FakeTensor([self._logits])})()
+
+
+class _FakeTokenizer:
+    _VOCAB = {0: "[CLS]", 1: "refund", 2: "policy", 3: "[SEP]"}
+
+    def __init__(self, mask):
+        self._mask = mask
+
+    def __call__(self, text, **kwargs):
+        return {"attention_mask": _FakeTensor([self._mask])}
+
+    def convert_ids_to_tokens(self, idx):
+        return self._VOCAB[idx]
+
+
 class TestSpladeEncoder:
     async def test_injected(self):
         enc = SpladeEncoder(encode_fn=lambda texts, is_query: [{"refund": 2.0} for _ in texts])
@@ -153,6 +205,29 @@ class TestSpladeEncoder:
         with pytest.raises(ConfigError):
             SpladeEncoder()._ensure()
 
+    def test_pool_logits_is_log_saturated_max_pool(self):
+        enc = SpladeEncoder(top_k=2)
+        # vocab dim 1 peaks at 5.0 across tokens; dim 2 at 1.0; masked row ignored.
+        pooled = enc.pool_logits([[0.0, 2.0, 0.0], [0.0, 5.0, 1.0], [9.0, 9.0, 9.0]], [1, 1, 0])
+        import math
+
+        assert pooled == {1: math.log1p(5.0), 2: math.log1p(1.0)}  # top-2, dim 0 dropped
+
+    async def test_real_model_forward_path(self):
+        # Drive the full forward path (tokenizer -> torch.no_grad -> model ->
+        # pool) offline against faithful fakes, exactly the real code path the
+        # heavy deps would take — no ``# pragma: no cover`` needed.
+        enc = SpladeEncoder(
+            model=_FakeMaskedLM([[0.0, 2.0, 0.0], [0.0, 5.0, 1.0]]),
+            tokenizer=_FakeTokenizer([1, 1]),
+            torch_module=_FakeTorch(),
+            top_k=2,
+        )
+        out = await enc.encode(["refund policy"])
+        import math
+
+        assert out == [{"refund": math.log1p(5.0), "policy": math.log1p(1.0)}]
+
 
 class TestLocalCrossEncoder:
     async def test_injected_score_fn(self):
@@ -166,6 +241,27 @@ class TestLocalCrossEncoder:
         ]
         ranked = await reranker.rerank("q", hits, top_k=2)
         assert ranked[0].chunk.id == "b"  # longest scored highest
+
+    async def test_real_model_predict_path(self):
+        # Inject a CrossEncoder-shaped object so the real ``model.predict``
+        # executor path (thread-offloaded, float-coerced) runs offline.
+        class _FakeCrossEncoder:
+            def __init__(self):
+                self.calls = []
+
+            def predict(self, pairs):
+                self.calls.append(pairs)
+                return [len(p) for _, p in pairs]  # numpy-like floats in real life
+
+        model = _FakeCrossEncoder()
+        reranker = LocalCrossEncoderReranker(model=model)
+        hits = [
+            SearchHit(chunk=Chunk(id="a", document_id="d", text="short"), score=0.1),
+            SearchHit(chunk=Chunk(id="b", document_id="d", text="a much longer passage"), score=0.1),
+        ]
+        ranked = await reranker.rerank("q", hits, top_k=2)
+        assert ranked[0].chunk.id == "b"  # longest passage scored highest
+        assert model.calls == [[("q", "short"), ("q", "a much longer passage")]]
 
     async def test_fallback_to_heuristic(self):
         reranker = LocalCrossEncoderReranker(fallback=True)

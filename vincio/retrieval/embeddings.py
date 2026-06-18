@@ -792,8 +792,9 @@ class FastEmbedEmbedder:
     offline inference — no server. Lazily loads the ONNX model the first time it
     runs; with ``fallback=True`` it degrades to the deterministic
     :class:`LocalHashEmbedder` so the dependency-free path still works. Pass
-    ``encode_fn`` to inject a model (offline tests). Install with
-    ``pip install "vincio[fastembed]"``.
+    ``encode_fn`` for a custom encoder or ``model`` for a ``TextEmbedding``-shaped
+    object (offline tests drive the real ``model.embed`` executor path against a
+    faithful fake). Install with ``pip install "vincio[fastembed]"``.
     """
 
     supports_input_type = False
@@ -805,13 +806,14 @@ class FastEmbedEmbedder:
         *,
         dim: int = 384,
         encode_fn: Any = None,
+        model: Any = None,
         fallback: bool = False,
     ) -> None:
         self.model_name = model_name
         self.dim = dim
         self._encode_fn = encode_fn
         self._fallback = fallback
-        self._model: Any = None
+        self._model: Any = model
         self._fallback_embedder: LocalHashEmbedder | None = None
 
     def _ensure(self) -> None:
