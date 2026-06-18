@@ -83,11 +83,21 @@ CREATE TABLE IF NOT EXISTS memory_items (
   metadata TEXT,
   created_at TEXT,
   updated_at TEXT,
-  expires_at TEXT
+  expires_at TEXT,
+  valid_from TEXT,
+  valid_to TEXT,
+  acl TEXT,
+  purpose TEXT,
+  consent_id TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_memory_scope_owner ON memory_items(scope, owner_id);
 CREATE INDEX IF NOT EXISTS idx_memory_status ON memory_items(status);
 """
+
+# (3.0) Columns added after the original schema; ``ALTER TABLE ADD COLUMN`` is
+# applied for each one missing from an existing DB so a pre-3.0 memory file
+# upgrades in place without a destructive rebuild.
+_MIGRATIONS_3_0 = ("valid_from", "valid_to", "acl", "purpose", "consent_id")
 
 
 class SQLiteMemoryStore:
@@ -97,7 +107,15 @@ class SQLiteMemoryStore:
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(str(self.path), check_same_thread=False)
         self._conn.executescript(_SCHEMA)
+        self._migrate()
         self._conn.commit()
+
+    def _migrate(self) -> None:
+        """Add any 3.0 columns missing from a pre-3.0 ``memory_items`` table."""
+        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(memory_items)")}
+        for column in _MIGRATIONS_3_0:
+            if column not in existing:
+                self._conn.execute(f"ALTER TABLE memory_items ADD COLUMN {column} TEXT")
 
     def close(self) -> None:
         self._conn.close()
@@ -108,8 +126,9 @@ class SQLiteMemoryStore:
                 """INSERT OR REPLACE INTO memory_items
                    (id, scope, owner_id, type, content, confidence, privacy_class, status,
                     source_trace_id, supersedes, usage_count, confirmations, entities,
-                    metadata, created_at, updated_at, expires_at)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                    metadata, created_at, updated_at, expires_at,
+                    valid_from, valid_to, acl, purpose, consent_id)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     item.id,
                     item.scope.value,
@@ -128,6 +147,11 @@ class SQLiteMemoryStore:
                     item.created_at.isoformat(),
                     item.updated_at.isoformat(),
                     item.expires_at.isoformat() if item.expires_at else None,
+                    item.valid_from.isoformat() if item.valid_from else None,
+                    item.valid_to.isoformat() if item.valid_to else None,
+                    json.dumps(item.acl),
+                    item.purpose,
+                    item.consent_id,
                 ),
             )
             self._conn.commit()
@@ -152,6 +176,11 @@ class SQLiteMemoryStore:
             created_at=datetime.fromisoformat(row[14]),
             updated_at=datetime.fromisoformat(row[15]),
             expires_at=datetime.fromisoformat(row[16]) if row[16] else None,
+            valid_from=datetime.fromisoformat(row[17]) if len(row) > 17 and row[17] else None,
+            valid_to=datetime.fromisoformat(row[18]) if len(row) > 18 and row[18] else None,
+            acl=json.loads(row[19]) if len(row) > 19 and row[19] else [],
+            purpose=row[20] if len(row) > 20 else None,
+            consent_id=row[21] if len(row) > 21 else None,
         )
 
     def get(self, memory_id: str) -> MemoryItem | None:

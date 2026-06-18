@@ -113,6 +113,7 @@ class OptimizationFacade(CapabilityFacade):
             "improvement_loop",
             "reflective_optimize",
             "use_bandit_router",
+            "self_improvement",
             "continuous_improvement",
             "experiment_proposer",
             "gate_compression",
@@ -129,9 +130,10 @@ class OptimizationFacade(CapabilityFacade):
 
 
 class ServingFacade(CapabilityFacade):
-    """Serving surfaces: MCP server, A2A server, realtime sessions."""
+    """Serving surfaces: MCP server, A2A server, realtime sessions, and the
+    canary-gated deploy surface (3.0)."""
 
-    _METHODS = frozenset({"serve_mcp", "serve_a2a", "realtime_session"})
+    _METHODS = frozenset({"serve_mcp", "serve_a2a", "realtime_session", "deploy"})
 
 
 class TrainingFacade(CapabilityFacade):

@@ -34,14 +34,20 @@ __all__ = [
     "PolicyChanged",
     "EgressDLP",
     "DriftDetected",
+    "SelfImprovementPhaseEvent",
+    "DeployCompleted",
+    "SourceErased",
     "payload_model_for",
 ]
 
 logger = logging.getLogger("vincio.events")
 
 # Bumped only when a payload model changes incompatibly; stamped on every Event
-# so external sinks can bind to a stable schema and detect version skew.
-EVENT_SCHEMA_VERSION = "2.0"
+# so external sinks can bind to a stable schema and detect version skew. 3.0
+# finalizes the telemetry contract — the unified spans + metrics + cost model is
+# the single source of truth, and the catalog gains the self-improvement, deploy,
+# and provable-erasure events.
+EVENT_SCHEMA_VERSION = "3.0"
 
 
 class Event(BaseModel):
@@ -135,6 +141,38 @@ class DriftDetected(EventPayload):
     method: str = ""
 
 
+class SelfImprovementPhaseEvent(EventPayload):
+    """A phase of a unified self-improvement cycle (3.0).
+
+    Published under ``self_improvement.<phase>`` (observe / proposal / meta /
+    label / reeval / canary / promote / rollback), so a sink binds to one schema
+    across the whole cycle.
+    """
+
+    event: ClassVar[str] = "self_improvement.promote"
+    phase: str = ""
+    action: str = ""
+    reason: str = ""
+    promoted_ref: str | None = None
+    rolled_back_to: str | None = None
+    budget_spent: float = 0.0
+
+
+class DeployCompleted(EventPayload):
+    event: ClassVar[str] = "deploy.completed"
+    prompt: str = ""
+    tag: str = ""
+    metric: str = ""
+
+
+class SourceErased(EventPayload):
+    event: ClassVar[str] = "governance.source_erased"
+    source: str = ""
+    found: bool = False
+    proven: bool = False
+    content_sha256: str | None = None
+
+
 # name -> payload model. Observers can look up the schema for an event name;
 # the bus validates dict payloads against it (leniently) on emit.
 EVENT_CATALOG: dict[str, type[EventPayload]] = {
@@ -149,6 +187,9 @@ EVENT_CATALOG: dict[str, type[EventPayload]] = {
         PolicyChanged,
         EgressDLP,
         DriftDetected,
+        SelfImprovementPhaseEvent,
+        DeployCompleted,
+        SourceErased,
     )
 }
 

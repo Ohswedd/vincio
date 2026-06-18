@@ -4,6 +4,85 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.0] - 2026-06-18
+
+The breaking culmination — fewer, truer abstractions. 3.0 is the second
+deliberate breaking window (after 2.0): it unifies the 2.x self-improvement
+organs under one declarative contract, makes erasure **provable** with consent
+modeling, and makes the async store/event contracts canonical. `API_VERSION`
+moves to `3.0` and `EVENT_SCHEMA_VERSION` to `3.0`. Nothing breaks *outside* the
+window — the flat `app.<method>` API, the 2.x organs, and every existing run path
+stay fully supported; the new surface is `@experimental(since="3.0")`.
+
+### Added
+
+- **Unified declarative self-improvement contract** (`vincio.optimize.self_improvement`).
+  One `SelfImprovementPolicy` composes scheduling, autonomous proposal, online
+  updates, canary/rollback, active-learning label acquisition, and
+  meta-optimization. `app.self_improvement(policy, dataset=...)` returns a
+  `SelfImprovementController` whose `astream()` / `step()` / `run()` drive the
+  existing `ImprovementLoop`, `ExperimentProposer`, `ContinuousImprovementController`,
+  and canary as **one streaming engine**, emitting `observe → proposal → meta →
+  label → reeval → canary → promote/rollback` events on the shared audit chain and
+  event bus. Meta-optimization ships as `successive_halving` (over the
+  strategy/budget grid) + `learn_fitness_weights`; active learning as
+  `select_for_labeling`. Every promotion still passes the same significance +
+  safety + golden non-regression gates.
+- **Canary-gated deployment** — `app.deploy(candidate, dataset=...)` /
+  `deploy_candidate` promote a prompt/policy live (registry push + tag + apply +
+  audit) only on a no-regression `CanaryVerdict`, and refuse + roll back to the
+  last known-good version otherwise. This is the canary-driven promotion surface
+  reserved out of 1.10.
+- **Provable erasure** — `app.erase_source(...)` now returns a signed,
+  content-bound `ErasureProof` on `ErasureResult.proof`: a manifest of exactly
+  which chunk / document / memory / **generated-artifact** ids were removed, bound
+  by SHA-256 over the sorted removed-id set, signed with the app's
+  `content_signer`, and anchored to the audit chain's Merkle root
+  (`build_erasure_proof` / `verify_erasure_proof`). `LineageRecord` gains
+  `artifacts` + `LineageIndex.record_artifact`, so an erased source is erased as
+  evidence, memory, *and* generated output in one operation.
+- **Consent & purpose modeling** (`vincio.governance.consent`) — a `ConsentLedger`
+  binds a data subject to a GDPR `Purpose` and `LawfulBasis`
+  (`grant` / `revoke` / `check`), persisted to the store and audited.
+  `app.use_consent_ledger()` wires it into `AccessController.check_purpose` and
+  memory recall, which drops any item whose purpose lost consent. `AccessDecision`
+  carries `purpose` / `lawful_basis`.
+- **Bi-temporal, ACL-gated memory** — `MemoryItem` gains `valid_from` / `valid_to`
+  (+ `valid_at()`), a per-memory `acl` (+ `readable_by()`), and `purpose` /
+  `consent_id`. `MemoryScope.TEAM` and `MemoryEngine.for_team(...)` add team-shared
+  memory; `MemoryEngine.correct(...)` closes a fact's valid interval and opens a
+  corrected one; `recall` / `asearch` accept `as_of=` (as-of recall, including
+  superseded facts), `reader=` (ACL), and `team_id=`. SQLite persists the new
+  columns and migrates a pre-3.0 store in place.
+- **Async-canonical core & finalized telemetry** — `InMemoryMetadataStore` is now
+  async-native (`asave` / `aget` / `aquery` / `adelete` / `acount`), so the
+  module-level helpers take the native fast path with no worker-thread hop. The
+  typed event catalog gains `SelfImprovementPhaseEvent`, `DeployCompleted`, and
+  `SourceErased`; `EVENT_SCHEMA_VERSION` is `3.0`.
+- `examples/38_self_improvement_and_provable_erasure.py`, the VincioBench `loop` /
+  `governance` / `scale` / `memory` family checks for the above, eight new SLOs
+  (**274 budgets, 85 SLOs**), and a runnable example smoke-tested offline.
+
+### Changed
+
+- `API_VERSION` → `3.0`; `vincio.__version__` → `3.0.0`.
+- The public surface adds `SelfImprovementPolicy`, `SelfImprovementController`,
+  `CanarySpec`, `DeployResult`, `ErasureProof`, `verify_erasure_proof`,
+  `ConsentLedger`, `Purpose`, and `LawfulBasis` (plus the `vincio.optimize` /
+  `vincio.governance` subpackage exports).
+
+### Deprecated
+
+- `app.continuous_improvement(...)` and `app.experiment_proposer(...)` are
+  deprecated (`since=3.0`, `removed_in=4.0`) in favour of `app.self_improvement`.
+  Both stay fully functional through the 3.x line; the underlying
+  `ContinuousImprovementController` / `ExperimentProposer` classes remain public.
+
+**1613 tests passing offline in ~7s; ruff + mypy clean.** The 3.0 milestone
+carries no deferred items.
+
+See [ROADMAP.md](ROADMAP.md) for the milestone framing.
+
 ## [2.2.1] - 2026-06-18
 
 Closes the two honest scoping notes the 2.2.0 milestone shipped with. Both

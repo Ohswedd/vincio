@@ -18,17 +18,30 @@ module owns the lineage data model and the erasure result it produces.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-__all__ = ["LineageRecord", "LineageIndex", "ErasureResult"]
+from ..core.utils import utcnow
+
+__all__ = [
+    "LineageRecord",
+    "LineageIndex",
+    "ErasureResult",
+    "ErasureProof",
+    "build_erasure_proof",
+    "verify_erasure_proof",
+]
 
 _logger = logging.getLogger("vincio.governance.lineage")
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
     from ..core.types import Chunk, Document, RunResult
+    from .transparency import ContentSigner
 
 
 class LineageRecord(BaseModel):
@@ -39,10 +52,15 @@ class LineageRecord(BaseModel):
     chunks: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     runs: list[str] = Field(default_factory=list)
+    # (3.0) generated artifacts (cited documents, images, audio blob keys) whose
+    # content derives from this source, so an erasure removes the deliverable too.
+    artifacts: list[str] = Field(default_factory=list)
 
     @property
     def is_empty(self) -> bool:
-        return not (self.documents or self.chunks or self.evidence or self.runs)
+        return not (
+            self.documents or self.chunks or self.evidence or self.runs or self.artifacts
+        )
 
 
 class ErasureResult(BaseModel):
@@ -55,11 +73,121 @@ class ErasureResult(BaseModel):
     memories_removed: int = 0
     caches_invalidated: int = 0
     indexes_swept: int = 0
+    # (3.0) generated artifacts (cited documents, images, audio) tied to the
+    # source and removed in the same sweep — so an erased source is erased as
+    # evidence, as memory, *and* as generated output in one operation.
+    artifacts_removed: int = 0
     audit_entry_id: str | None = None
+    # (3.0) the signed, content-bound proof of exactly what was removed.
+    proof: ErasureProof | None = None
 
     @property
     def total_removed(self) -> int:
-        return self.documents_removed + self.chunks_removed + self.memories_removed
+        return (
+            self.documents_removed
+            + self.chunks_removed
+            + self.memories_removed
+            + self.artifacts_removed
+        )
+
+
+class ErasureProof(BaseModel):
+    """A signed, content-bound manifest of exactly what an erasure removed (3.0).
+
+    The proof records the per-store removal counts *and* a SHA-256 digest over
+    the sorted set of removed identifiers (chunk ids, document ids, memory ids,
+    artifact keys). The digest binds the proof to the precise removal: a later
+    "we deleted everything" claim can be checked against the recorded ids, and
+    the optional signature makes the manifest tamper-evident against an attacker
+    who can edit the file. It rides the same hash-chained audit log (and its
+    Merkle checkpoints) that the citations already use, so erasure is *provable*,
+    not merely logged.
+    """
+
+    source: str
+    created_at: datetime = Field(default_factory=utcnow)
+    claim_generator: str = "vincio"
+    removed: dict[str, int] = Field(default_factory=dict)  # store -> count
+    removed_ids: dict[str, list[str]] = Field(default_factory=dict)  # store -> ids
+    content_sha256: str = ""  # digest over the sorted removed-id set
+    audit_entry_id: str | None = None
+    audit_merkle_root: str | None = None  # the chain root at proof time
+    signature: dict[str, Any] | None = None
+    key_id: str | None = None
+
+    def digest_payload(self) -> str:
+        """Canonical bytes the content digest covers (the removed-id set)."""
+        canonical = {store: sorted(ids) for store, ids in sorted(self.removed_ids.items())}
+        return json.dumps({"source": self.source, "removed_ids": canonical}, sort_keys=True)
+
+    def signing_payload(self) -> str:
+        """Deterministic bytes the signature covers (binds the credential)."""
+        return json.dumps(
+            {
+                "source": self.source,
+                "created_at": self.created_at.isoformat(),
+                "claim_generator": self.claim_generator,
+                "removed": dict(sorted(self.removed.items())),
+                "content_sha256": self.content_sha256,
+                "audit_merkle_root": self.audit_merkle_root,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return self.model_dump(mode="json")
+
+
+def build_erasure_proof(
+    source: str,
+    removed_ids: dict[str, list[str]],
+    *,
+    counts: dict[str, int] | None = None,
+    signer: ContentSigner | None = None,
+    claim_generator: str | None = None,
+    audit_entry_id: str | None = None,
+    audit_merkle_root: str | None = None,
+) -> ErasureProof:
+    """Assemble (and optionally sign) the proof for one erasure sweep."""
+    import vincio
+
+    proof = ErasureProof(
+        source=source,
+        claim_generator=claim_generator or f"vincio/{vincio.__version__}",
+        removed=counts or {store: len(ids) for store, ids in removed_ids.items()},
+        removed_ids={store: list(ids) for store, ids in removed_ids.items()},
+        audit_entry_id=audit_entry_id,
+        audit_merkle_root=audit_merkle_root,
+    )
+    proof.content_sha256 = hashlib.sha256(proof.digest_payload().encode("utf-8")).hexdigest()
+    if signer is not None:
+        proof.signature = {
+            "alg": getattr(signer, "alg", "HMAC-SHA256"),
+            "key_id": getattr(signer, "key_id", "default"),
+            "value": signer.sign(proof.signing_payload()),
+        }
+        proof.key_id = getattr(signer, "key_id", "default")
+    return proof
+
+
+def verify_erasure_proof(
+    proof: ErasureProof, *, signer: ContentSigner | None = None
+) -> bool:
+    """Verify a proof's content binding and (if present) its signature.
+
+    Recomputes the digest over the recorded removed-id set and checks it against
+    ``content_sha256``; if a signature is present, a ``signer`` with the matching
+    key must verify it (a present-but-unverifiable signature is never reported
+    valid)."""
+    expected = hashlib.sha256(proof.digest_payload().encode("utf-8")).hexdigest()
+    if proof.content_sha256 != expected:
+        return False
+    if proof.signature is not None:
+        if signer is None:
+            return False
+        return signer.verify(proof.signing_payload(), proof.signature.get("value", ""))
+    return True
 
 
 class LineageIndex:
@@ -117,6 +245,13 @@ class LineageIndex:
                 record.runs.append(run_id)
         if orphaned:
             _logger.debug("run %s: %d evidence item(s) had no registered source", run_id, orphaned)
+
+    def record_artifact(self, source: str, artifact_key: str) -> None:
+        """Record that a generated artifact (a cited document, image, or audio
+        blob key) derives from ``source`` — so erasure removes it too (3.0)."""
+        record = self._record(source)
+        if artifact_key not in record.artifacts:
+            record.artifacts.append(artifact_key)
 
     def trace(self, source: str) -> LineageRecord:
         """Return the lineage for a source name or a document id."""

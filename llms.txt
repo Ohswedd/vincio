@@ -5,7 +5,7 @@
 > optimized, validated, observable, provider-neutral context packets, then
 > validates and evaluates every output.
 
-Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v2.2.1 (SemVer)
+Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · v3.0.0 (SemVer)
 Main entry point: `from vincio import ContextApp`
 
 ## Quickstart
@@ -132,6 +132,30 @@ result.output; result.citations; result.trace_id; result.cost_usd
   `AgentEvent`/`CrewEvent` (run/step lifecycle, genuine provider token deltas via
   `provider.stream()`, tool_call/tool_result, done);
   `from vincio.mcp import MCPUIResource` served via `app.serve_mcp(ui_resources=[...])`.
+- 3.0 (the second breaking window; API_VERSION moves to 3.0, `EVENT_SCHEMA_VERSION` to 3.0;
+  all new surface `@experimental(since="3.0")`; the flat `app.<method>` API and 2.x organs stay
+  supported):
+  Unified self-improvement contract — `from vincio.optimize import SelfImprovementPolicy,
+  SelfImprovementController, MetaSpec, CanarySpec, SelfImprovementEvent, DeployResult,
+  successive_halving, learn_fitness_weights, select_for_labeling, deploy_candidate`. One
+  `SelfImprovementPolicy` composes scheduling/proposal/online/canary/active-learning/meta;
+  `app.self_improvement(policy, dataset=...)` returns a controller whose
+  `astream()`/`step()`/`run()` emit `observe → proposal → meta → label → reeval → canary →
+  promote/rollback` events. Meta-optimization = `successive_halving` over the strategy/budget grid
+  + `learn_fitness_weights`. Canary-gated serving — `app.deploy(candidate, dataset=...)` promotes
+  live only on a no-regression `CanaryVerdict`, else rolls back. `app.continuous_improvement` /
+  `app.experiment_proposer` are `@deprecated(since=3.0, removed_in=4.0)` → `app.self_improvement`.
+  Provable erasure — `from vincio.governance import ErasureProof, build_erasure_proof,
+  verify_erasure_proof`; `app.erase_source(source)` returns `ErasureResult` with `.proof` (signed
+  with `app.content_signer`, content-bound by SHA-256 over the removed-id set across chunks /
+  documents / memories / generated artifacts, anchored to the audit Merkle root). Consent —
+  `from vincio.governance import ConsentLedger, ConsentRecord, ConsentDecision, Purpose,
+  LawfulBasis`; `app.use_consent_ledger()`; `AccessController.check_purpose(principal, purpose=)`.
+  Bi-temporal memory — `MemoryItem` gains `valid_from`/`valid_to`/`valid_at()`/`acl`/`readable_by()`/
+  `purpose`/`consent_id`; `MemoryScope.TEAM`; `MemoryEngine.correct(...)`, `for_team(...)`,
+  `asearch(..., as_of=, reader=)` (as-of recall + ACL + consent filtering). Async-canonical core —
+  `InMemoryMetadataStore` is async-native (`asave`/`aget`/`aquery`/`adelete`/`acount`); the typed
+  event catalog gains `SelfImprovementPhaseEvent`/`DeployCompleted`/`SourceErased`.
 - Providers: openai, anthropic, google, mistral, local (OpenAI-compatible),
   mock (deterministic, offline; generates schema-valid structured output);
   plus OpenAI-compatible presets groq | together | fireworks | openrouter |

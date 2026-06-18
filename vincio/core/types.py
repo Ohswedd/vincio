@@ -7,7 +7,7 @@ live in their own packages and import from here.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 from enum import StrEnum
 from typing import Any, Literal
 
@@ -348,6 +348,7 @@ class MemoryScope(StrEnum):
     SESSION = "session"
     USER = "user"
     AGENT = "agent"
+    TEAM = "team"  # (3.0) shared across a team, gated by per-memory ACL
     TENANT = "tenant"
     ORGANIZATION = "organization"
     GLOBAL = "global"
@@ -384,12 +385,55 @@ class MemoryItem(BaseModel):
     supersedes: str | None = None
     usage_count: int = 0
     confirmations: int = 0
+    # (3.0) Bi-temporal validity. ``created_at`` / ``updated_at`` are *transaction*
+    # time (when the system learned the fact); ``valid_from`` / ``valid_to`` are
+    # *valid* time (when the fact is true in the world). As-of recall answers
+    # "what did we believe was true at time T" without mutating history — a
+    # corrected fact closes the old item's ``valid_to`` and opens a new one.
+    valid_from: datetime | None = None
+    valid_to: datetime | None = None
+    # (3.0) Per-memory access-control list for team-shared memory: reader ids
+    # (user / agent / team ids) allowed to recall this item. Empty means the
+    # scope's own ownership rule governs (the pre-3.0 behaviour, unchanged).
+    acl: list[str] = Field(default_factory=list)
+    # (3.0) GDPR purpose / consent binding: the purpose this memory was collected
+    # for and the consent record that authorises retaining it. Recall and erasure
+    # consult these so a withdrawn consent or a purpose mismatch is enforceable.
+    purpose: str | None = None
+    consent_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @field_validator("confidence")
     @classmethod
     def _clamp_confidence(cls, v: float) -> float:
         return min(1.0, max(0.0, v))
+
+    def valid_at(self, moment: datetime) -> bool:
+        """True when this memory's *valid time* interval contains ``moment``.
+
+        Items with no ``valid_from`` are treated as valid from creation; items
+        with no ``valid_to`` are open-ended. Naive datetimes are read as UTC so a
+        mixed-tz store never raises mid-recall.
+        """
+
+        def _aware(dt: datetime) -> datetime:
+            return dt if dt.tzinfo is not None else dt.replace(tzinfo=UTC)
+
+        moment = _aware(moment)
+        start = _aware(self.valid_from) if self.valid_from is not None else _aware(self.created_at)
+        if moment < start:
+            return False
+        if self.valid_to is not None and moment >= _aware(self.valid_to):
+            return False
+        return True
+
+    def readable_by(self, reader: str | None) -> bool:
+        """ACL check: an empty ACL is scope-governed (open); a populated ACL
+        admits only listed readers (``None`` reader is admitted only to open
+        items)."""
+        if not self.acl:
+            return True
+        return reader is not None and reader in self.acl
 
 
 class ToolSpec(BaseModel):

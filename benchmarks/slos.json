@@ -771,6 +771,86 @@
       "threshold": true,
       "enforced_by": "families.agent.streaming.agui_run_lifecycle",
       "rationale": "Generative UI inherits the run's provenance/budget/audit only if it streams over the same run, not a bolt-on layer."
+    },
+    {
+      "id": "self_improvement_contract",
+      "category": "reliability",
+      "statement": "The unified self-improvement controller drives a full cycle to a gated serving decision (promote or rollback).",
+      "metric": "families.loop.self_improvement.cycle_reaches_serving_decision",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.self_improvement.cycle_reaches_serving_decision",
+      "rationale": "Continual self-improvement is only safe if every cycle ends in an audited, gated promote/rollback rather than an unbounded action."
+    },
+    {
+      "id": "self_improvement_canary_gate",
+      "category": "reliability",
+      "statement": "A prompt/policy deploy is promoted live only after clearing the canary verdict.",
+      "metric": "families.loop.self_improvement.canary_gated_deploy",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.loop.self_improvement.canary_gated_deploy",
+      "rationale": "The serving promotion surface must gate on a no-regression canary, never deploy blind."
+    },
+    {
+      "id": "erasure_proof_verifies",
+      "category": "security",
+      "statement": "Right-to-erasure produces a signed, content-bound proof that verifies against the recorded removed-id set.",
+      "metric": "families.governance.provable_erasure.proof_verifies",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.governance.provable_erasure.proof_verifies",
+      "rationale": "Erasure must be provable, not merely logged: the proof binds to exactly what was removed and is tamper-evident."
+    },
+    {
+      "id": "erasure_tamper_evident",
+      "category": "security",
+      "statement": "Tampering with an erasure proof's removed-id set is detected by the content binding.",
+      "metric": "families.governance.provable_erasure.tamper_detected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.governance.provable_erasure.tamper_detected",
+      "rationale": "A 'we deleted everything' claim is only trustworthy if altering the recorded set breaks verification."
+    },
+    {
+      "id": "consent_purpose_enforced",
+      "category": "security",
+      "statement": "Withdrawing consent for a purpose stops the affected memories from surfacing in recall.",
+      "metric": "families.governance.consent.purpose_enforced",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.governance.consent.purpose_enforced",
+      "rationale": "GDPR purpose limitation must be enforced in code at recall time, not delegated to a downstream policy."
+    },
+    {
+      "id": "bitemporal_acl_recall",
+      "category": "security",
+      "statement": "Per-memory ACLs admit only listed readers to team-shared memory.",
+      "metric": "families.memory.bitemporal.acl_denies_nonmember",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.memory.bitemporal.acl_denies_nonmember",
+      "rationale": "Team-shared memory is only safe if a non-member never recalls an ACL-restricted item."
+    },
+    {
+      "id": "bitemporal_as_of_recall",
+      "category": "quality",
+      "statement": "As-of recall returns the value that was valid at the queried moment, including superseded facts.",
+      "metric": "families.memory.bitemporal.as_of_is_historical",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.memory.bitemporal.as_of_is_historical",
+      "rationale": "Bi-temporal memory must answer 'what did we believe was true at T' without mutating history."
+    },
+    {
+      "id": "async_canonical_throughput",
+      "category": "performance",
+      "statement": "The async-canonical store sustains at least 1000 concurrent saves per second on the in-memory reference path.",
+      "metric": "families.scale.async_canonical.saves_per_s",
+      "direction": "gte",
+      "threshold": 1000,
+      "enforced_by": "families.scale.async_canonical.saves_per_s",
+      "rationale": "Async-native stores must persist off the event loop without a worker-thread hop; the budget gates 1000/s, matched to the promise with wide observed headroom."
     }
   ]
 }

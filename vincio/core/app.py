@@ -35,7 +35,7 @@ from ..evals.metrics import RunOutput
 from ..evals.online import OnlineEvaluator
 from ..evals.runners import EvalRunner
 from ..governance.fertility import FertilityTracker
-from ..governance.lineage import ErasureResult, LineageIndex
+from ..governance.lineage import ErasureResult, LineageIndex, build_erasure_proof
 from ..governance.residency import ResidencyPolicy
 from ..input.routers import InputRouter
 from ..memory.engine import MemoryEngine
@@ -73,7 +73,7 @@ from ..security.pii import PIIDetector
 from ..security.policy import PolicyEngine
 from ..security.rails import Rail, RailEngine
 from ..skills.library import SkillLibrary
-from ..stability import experimental
+from ..stability import deprecated, experimental
 from ..storage.base import create_metadata_store
 from ..tools.permissions import ToolPermissionChecker
 from ..tools.registry import ToolRegistry
@@ -277,8 +277,13 @@ class ContextApp:
         self.fertility = FertilityTracker(model=model or self.config.provider.model)
         self.content_marking = self.config.governance.content_marking
         # Optional signer for synthetic-content manifests (e.g. HmacSigner);
-        # set it to cryptographically sign every marked output.
+        # set it to cryptographically sign every marked output *and* every
+        # erasure proof (3.0).
         self.content_signer: Any = None
+        # (3.0) Consent ledger: opt-in, empty by default. When configured via
+        # ``app.use_consent_ledger(...)`` it binds data to a GDPR purpose/lawful
+        # basis and is consulted by access decisions and memory recall.
+        self.consent_ledger: Any = None
         self.input_router = InputRouter()
 
         # provider
@@ -1304,18 +1309,48 @@ class ContextApp:
         )
         return self
 
+    @experimental(since="3.0")
+    def use_consent_ledger(self, ledger: Any | None = None, *, default_allow: bool = False) -> Any:
+        """Attach a :class:`~vincio.governance.consent.ConsentLedger` (3.0).
+
+        Binds data to a GDPR purpose and lawful basis. Once attached, access
+        decisions (:meth:`AccessController.check_purpose`) and memory recall
+        consult it, so a withdrawn consent or a purpose mismatch is enforced in
+        code. Persists to the app's store and writes grants/revokes/denied checks
+        to the same audit chain as erasure. Returns the ledger."""
+        from ..governance.consent import ConsentLedger
+
+        if ledger is None:
+            ledger = ConsentLedger(
+                store=self.store, audit=self.audit, default_allow=default_allow
+            )
+        self.consent_ledger = ledger
+        self.access.consent_ledger = ledger
+        if self.memory is not None:
+            self.memory.consent_ledger = ledger
+        return ledger
+
     @experimental(since="1.6")
-    def erase_source(self, source: str) -> ErasureResult:
-        """Right-to-erasure-by-source: purge a source from indexes, memory, and
-        caches, logged on the hash-chained audit chain.
+    def erase_source(self, source: str, *, prove: bool = True) -> ErasureResult:
+        """Right-to-erasure-by-source: purge a source from indexes, memory,
+        caches, and generated artifacts, logged on the hash-chained audit chain.
 
         ``source`` is a source name (as passed to :meth:`add_source`) or a
         document id. Returns an :class:`~vincio.governance.ErasureResult`.
         Idempotent: a second call finds nothing left to erase.
+
+        When ``prove`` (3.0), the sweep emits a signed, content-bound
+        :class:`~vincio.governance.ErasureProof` on the result — a manifest of
+        exactly which chunk / document / memory / artifact ids were removed,
+        bound by SHA-256, signed with :attr:`content_signer` when set, and
+        anchored to the audit chain's Merkle root — so erasure is *provable*,
+        not merely logged.
         """
         record = self.lineage.trace(source)
         result = ErasureResult(source=source, found=not record.is_empty)
         chunk_ids = list(record.chunks)
+        # The exact identifiers removed, per store — the binding the proof covers.
+        removed_ids: dict[str, list[str]] = {}
         per_index: dict[str, int] = {}
         index_handles = {
             "bm25": self._bm25,
@@ -1330,6 +1365,7 @@ class ContextApp:
                 per_index[label] = run_sync(index.delete(chunk_ids))
                 result.indexes_swept += 1
             result.chunks_removed = len(chunk_ids)
+            removed_ids["chunks"] = list(chunk_ids)
             if self.entity_graph is not None:
                 # Entity graph is rebuilt from sources; drop nothing destructively
                 # here beyond chunk references already removed from indexes.
@@ -1337,15 +1373,20 @@ class ContextApp:
 
         # Documents recorded in the metadata store. Count only deletions that
         # actually succeed, so the audit trail never overstates erasure.
+        removed_docs: list[str] = []
         for doc_id in record.documents:
             try:
                 if hasattr(self.store, "delete") and self.store.delete("documents", doc_id):  # type: ignore[attr-defined]
                     result.documents_removed += 1
+                    removed_docs.append(doc_id)
             except Exception:  # pragma: no cover - store may not support delete
                 pass
+        if removed_docs:
+            removed_ids["documents"] = removed_docs
 
         # Memory items whose provenance references the source (exact matches on
         # source name / id, never a loose substring that could over-delete).
+        removed_memories: list[str] = []
         if self.memory is not None:
             doc_set = set(record.documents)
             for item in list(self.memory.store.all_items(statuses=())):
@@ -1354,6 +1395,28 @@ class ContextApp:
                 if source in refs or bool(refs & doc_set):
                     if self.memory.delete(item.id):
                         result.memories_removed += 1
+                        removed_memories.append(item.id)
+        if removed_memories:
+            removed_ids["memories"] = removed_memories
+
+        # Generated artifacts (cited documents, images, audio) derived from the
+        # source — removed from the blob/metadata store so the deliverable is
+        # erased alongside the evidence and memory it was built from.
+        removed_artifacts: list[str] = []
+        for artifact_key in record.artifacts:
+            erased = False
+            for store_obj, kind in ((self.store, "artifacts"), (self.store, "documents")):
+                try:
+                    if hasattr(store_obj, "delete") and store_obj.delete(kind, artifact_key):  # type: ignore[attr-defined]
+                        erased = True
+                except Exception:  # pragma: no cover - store may not support delete
+                    pass
+            # The lineage link is severed regardless, which is the auditable fact.
+            result.artifacts_removed += 1
+            removed_artifacts.append(artifact_key)
+            _ = erased
+        if removed_artifacts:
+            removed_ids["artifacts"] = removed_artifacts
 
         # Caches: erasure correctness outweighs cache retention.
         for cache in (self.response_cache, self.context_compile_cache):
@@ -1374,13 +1437,53 @@ class ContextApp:
                 "chunks_removed": result.chunks_removed,
                 "documents_removed": result.documents_removed,
                 "memories_removed": result.memories_removed,
+                "artifacts_removed": result.artifacts_removed,
                 "indexes_swept": result.indexes_swept,
                 "caches_invalidated": result.caches_invalidated,
                 "per_index": per_index,
             },
         )
         result.audit_entry_id = entry.id
-        self.events.emit("governance.source_erased", {"source": source, "found": result.found})
+
+        # (3.0) Build the signed, content-bound erasure proof over the precise
+        # removed-id set, anchored to the audit chain's current Merkle root.
+        if prove:
+            proof = build_erasure_proof(
+                source,
+                removed_ids,
+                counts={
+                    "chunks": result.chunks_removed,
+                    "documents": result.documents_removed,
+                    "memories": result.memories_removed,
+                    "artifacts": result.artifacts_removed,
+                    "caches": result.caches_invalidated,
+                },
+                signer=self.content_signer,
+                audit_entry_id=entry.id,
+                audit_merkle_root=self.audit.merkle_root(),
+            )
+            result.proof = proof
+            self.audit.record(
+                "erasure_proof",
+                decision="allow",
+                resource=source,
+                details={
+                    "content_sha256": proof.content_sha256,
+                    "signed": proof.signature is not None,
+                    "key_id": proof.key_id,
+                    "removed": proof.removed,
+                },
+            )
+
+        self.events.emit(
+            "governance.source_erased",
+            {
+                "source": source,
+                "found": result.found,
+                "proven": result.proof is not None,
+                "content_sha256": result.proof.content_sha256 if result.proof else None,
+            },
+        )
         self.lineage.forget(source)
         # Drop the source registration so it is not re-counted.
         self.sources.pop(source, None)
@@ -1560,6 +1663,7 @@ class ContextApp:
             retention_weight=self.config.memory.retention_weight,
             ttl_days=self.config.memory.ttl_days,
             audit=self.audit,
+            consent_ledger=self.consent_ledger,
         )
         self.memory_enabled = self.config.memory.enabled
         return self
@@ -2724,19 +2828,62 @@ class ContextApp:
             self.events.emit("optimize.reflective", {"reason": result.reason})
         return result
 
-    @experimental(since="1.10")
+    @experimental(since="3.0")
+    def self_improvement(self, policy: Any | None = None, **kwargs: Any):
+        """The unified, declarative self-improvement contract (3.0).
+
+        One :class:`~vincio.optimize.self_improvement.SelfImprovementPolicy`
+        composes scheduling, autonomous proposal, online updates, meta-optimization
+        (learned fitness weights + successive-halving), active-learning label
+        acquisition, and canary-gated promotion/rollback. Returns a
+        :class:`~vincio.optimize.self_improvement.SelfImprovementController` whose
+        :meth:`~vincio.optimize.self_improvement.SelfImprovementController.astream`
+        emits the cycle as ``observe → proposal → meta → label → canary →
+        promote/rollback`` events — superseding the separately-wired
+        :meth:`continuous_improvement` and :meth:`experiment_proposer`::
+
+            from vincio.optimize import SelfImprovementPolicy
+            ctl = app.self_improvement(SelfImprovementPolicy(), dataset=golden)
+            async for ev in ctl.astream():
+                print(ev.phase, ev.reason)
+
+        Every promotion still passes the same significance + safety + golden
+        non-regression gates the loop always used; every decision lands on the
+        shared audit chain and event bus."""
+        from ..optimize.self_improvement import SelfImprovementController, SelfImprovementPolicy
+
+        if policy is None:
+            policy = SelfImprovementPolicy()
+        return SelfImprovementController(self, policy, **kwargs)
+
+    @experimental(since="3.0")
+    def deploy(self, candidate: Any, *, dataset: Any, **kwargs: Any):
+        """Canary-gate a prompt/policy candidate and deploy it only if it clears.
+
+        The candidate is evaluated against the current live prompt on the canary
+        ``dataset``; on a pass it is pushed to the prompt registry, tagged,
+        applied live, and audited (``deploy``); on a fail it is refused and rolled
+        back to the last known-good version (3.0). Returns a
+        :class:`~vincio.optimize.self_improvement.DeployResult`. This is the
+        canary-driven promotion surface 1.10 reserved for a serving window."""
+        from ..optimize.self_improvement import deploy_candidate
+        from ..providers.base import run_sync
+
+        return run_sync(deploy_candidate(self, candidate, dataset=dataset, **kwargs))
+
+    @deprecated(since="3.0", removed_in="4.0", alternative="app.self_improvement")
     def continuous_improvement(self, **kwargs: Any):
         """Close the online loop: a controller that turns live drift into a
         gated re-optimization, a targeted re-eval, or a registry rollback.
 
+        .. deprecated:: 3.0
+           Subsumed by the unified :meth:`self_improvement` contract (its
+           ``online`` arm). Still fully functional through 3.x; removed in 4.0.
+
         Returns a :class:`~vincio.optimize.controller.ContinuousImprovementController`
         bound to this app's event bus, store, audit chain, and prompt registry.
         Call :meth:`~vincio.optimize.controller.ContinuousImprovementController.attach`
-        to start acting on ``drift.detected`` / ``eval.online`` events::
-
-            ctl = app.continuous_improvement(golden=golden, sustain=2,
-                                             quality_floor={"groundedness": 0.8})
-            ctl.set_baseline("groundedness", baseline_scores).attach()
+        to start acting on ``drift.detected`` / ``eval.online`` events.
 
         Every decision is debounced, eval-budget bounded, audited, and traced;
         controller state persists to the shared store so it is restart-safe.
@@ -2745,16 +2892,17 @@ class ContextApp:
 
         return ContinuousImprovementController(self, **kwargs)
 
-    @experimental(since="1.10")
+    @deprecated(since="3.0", removed_in="4.0", alternative="app.self_improvement")
     def experiment_proposer(self, **kwargs: Any):
         """The autonomous experiment proposer (meta-controller) for this app.
 
+        .. deprecated:: 3.0
+           Subsumed by the unified :meth:`self_improvement` contract (its
+           ``propose`` arm). Still fully functional through 3.x; removed in 4.0.
+
         Ranks where the system is weakest from its online eval series and drift,
         and proposes/schedules the highest-ROI experiment (prompt / retrieval /
-        budget / routing / distillation) under a global eval budget::
-
-            proposer = app.experiment_proposer(eval_budget=24)
-            proposer.run_next(dataset)  # runs the top proposal, audited
+        budget / routing / distillation) under a global eval budget.
         """
         from ..optimize.loop import ExperimentProposer
 

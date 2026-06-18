@@ -774,6 +774,54 @@
     },
     "families.agent.streaming.provider_deltas": {
       "gte": 2
+    },
+    "families.memory.bitemporal.current_is_latest": {
+      "eq": true
+    },
+    "families.memory.bitemporal.as_of_is_historical": {
+      "eq": true
+    },
+    "families.memory.bitemporal.acl_admits_member": {
+      "eq": true
+    },
+    "families.memory.bitemporal.acl_denies_nonmember": {
+      "eq": true
+    },
+    "families.governance.provable_erasure.proof_signed": {
+      "eq": true
+    },
+    "families.governance.provable_erasure.proof_verifies": {
+      "eq": true
+    },
+    "families.governance.provable_erasure.tamper_detected": {
+      "eq": true
+    },
+    "families.governance.provable_erasure.covers_artifacts": {
+      "eq": true
+    },
+    "families.governance.consent.purpose_enforced": {
+      "eq": true
+    },
+    "families.loop.self_improvement.cycle_reaches_serving_decision": {
+      "eq": true
+    },
+    "families.loop.self_improvement.meta_picks_best_config": {
+      "eq": true
+    },
+    "families.loop.self_improvement.canary_gated_deploy": {
+      "eq": true
+    },
+    "families.loop.self_improvement.budget_bounded": {
+      "eq": true
+    },
+    "families.scale.async_canonical.store_is_async_native": {
+      "eq": true
+    },
+    "families.scale.async_canonical.concurrent_saves": {
+      "eq": true
+    },
+    "families.scale.async_canonical.saves_per_s": {
+      "gte": 1000
     }
   }
 }

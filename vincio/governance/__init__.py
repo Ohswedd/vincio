@@ -13,8 +13,12 @@ files you own:
   SHA-256 model-hash verification, extending the shipped CycloneDX SBOM.
 * **EU AI Act transparency** (:mod:`~vincio.governance.transparency`) —
   synthetic-content marking, AI-interaction disclosure, grounding-data summary.
-* **Lineage & erasure** (:mod:`~vincio.governance.lineage`) — source → chunk →
-  evidence → output, with right-to-erasure-by-source.
+* **Lineage & provable erasure** (:mod:`~vincio.governance.lineage`) — source →
+  chunk → evidence → output, with right-to-erasure-by-source and a signed,
+  content-bound :class:`~vincio.governance.lineage.ErasureProof` (3.0).
+* **Consent & purpose** (:mod:`~vincio.governance.consent`) — a
+  :class:`~vincio.governance.consent.ConsentLedger` binding data to a GDPR
+  purpose and lawful basis, consulted by access decisions and memory recall (3.0).
 * **Data-residency routing** (:mod:`~vincio.governance.residency`) — refuse
   egress to disallowed provider regions, deterministically.
 * **Tokenizer fertility** (:mod:`~vincio.governance.fertility`) — the non-English
@@ -33,6 +37,13 @@ from .cards import (
     generate_model_card,
     generate_system_card,
 )
+from .consent import (
+    ConsentDecision,
+    ConsentLedger,
+    ConsentRecord,
+    LawfulBasis,
+    Purpose,
+)
 from .eu_ai_act import (
     AnnexIVBuilder,
     FRIAGenerator,
@@ -50,7 +61,14 @@ from .frameworks import (
     ControlCoverage,
     map_compliance,
 )
-from .lineage import ErasureResult, LineageIndex, LineageRecord
+from .lineage import (
+    ErasureProof,
+    ErasureResult,
+    LineageIndex,
+    LineageRecord,
+    build_erasure_proof,
+    verify_erasure_proof,
+)
 from .residency import ResidencyPolicy, infer_region_from_url, residency_violation
 from .transparency import (
     ContentSigner,
@@ -105,10 +123,19 @@ __all__ = [
     "write_sidecar_manifest",
     "ai_disclosure",
     "data_summary",
-    # lineage
+    # lineage & provable erasure (3.0)
     "LineageRecord",
     "LineageIndex",
     "ErasureResult",
+    "ErasureProof",
+    "build_erasure_proof",
+    "verify_erasure_proof",
+    # consent & purpose (3.0)
+    "ConsentLedger",
+    "ConsentRecord",
+    "ConsentDecision",
+    "Purpose",
+    "LawfulBasis",
     # residency
     "ResidencyPolicy",
     "residency_violation",

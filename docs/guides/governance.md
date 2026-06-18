@@ -214,6 +214,65 @@ print(report.flagged_ids)
 print(report.telemetry(poisoned_ids={"bad1"}))   # precision/recall/FP/FN
 ```
 
+## Provable erasure, consent & bi-temporal memory (3.0, `@experimental`)
+
+1.6 made erasure *traceable* — `app.erase_source` removed a source's chunks,
+documents, memories, and cache entries and logged it. 3.0 makes it **provable**.
+The sweep now returns a signed, content-bound `ErasureProof` on the result:
+
+```python
+from vincio.governance import HmacSigner, verify_erasure_proof
+
+app.content_signer = HmacSigner("erasure-key", key_id="erase")
+result = app.erase_source("customer_uploads")     # also covers generated artifacts
+proof = result.proof
+assert verify_erasure_proof(proof, signer=app.content_signer)   # binds to the removed ids
+```
+
+The proof records the exact chunk / document / memory / **generated-artifact**
+ids removed, binds them by SHA-256 over the sorted set (tampering with the
+recorded set breaks verification), signs the manifest with the app's
+`content_signer`, and anchors it to the audit chain's Merkle root — so a
+"we deleted everything" claim is checkable, not just logged. Unlike OneTrust /
+Transcend, which orchestrate erasure across systems and report it, the proof is
+emitted *from the running system* on the same hash-chained audit chain the
+citations already use.
+
+**Consent & purpose.** A `ConsentLedger` binds a data subject to a GDPR
+`Purpose` and `LawfulBasis`; access decisions and memory recall consult it:
+
+```python
+from vincio.governance import Purpose, LawfulBasis
+
+ledger = app.use_consent_ledger()
+ledger.grant("u1", [Purpose.PERSONALIZATION], lawful_basis=LawfulBasis.CONSENT)
+app.remember("Prefers concise answers", user_id="u1", purpose="personalization")
+ledger.revoke("u1")                  # withdraw consent
+app.recall("answer style", user_id="u1")   # → [] : the purpose-bound memory no longer surfaces
+```
+
+`AccessController.check_purpose(principal, purpose=...)` returns an explainable
+`AccessDecision` carrying the lawful basis it found, on the same audit path as
+every other access check.
+
+**Bi-temporal memory.** A `MemoryItem` carries `valid_from` / `valid_to`
+(*valid* time) alongside `created_at` / `updated_at` (*transaction* time).
+`MemoryEngine.correct()` closes the old fact's interval and opens a new one, so
+an **as-of** recall still returns what was believed true then:
+
+```python
+engine.correct(item_id, "User lives in Munich", valid_from=moved_at)
+engine.recall("where does the user live", user_id="u1")              # → Munich (current)
+engine.recall("where does the user live", user_id="u1", as_of=last_month)  # → Berlin (historical)
+```
+
+Per-memory ACLs (`acl=[...]`, `MemoryItem.readable_by`) and a `MemoryScope.TEAM`
+scope gate **team-shared memory** — `engine.for_team("eng").remember(..., acl=["alice"])`
+surfaces only to listed readers. The VincioBench `governance` family gates
+erasure-proof verification, tamper detection, and consent enforcement; the
+`memory` family gates as-of recall and per-memory ACLs. See
+[`38_self_improvement_and_provable_erasure.py`](../../examples/38_self_improvement_and_provable_erasure.py).
+
 ## How it interconnects
 
 Every artifact reads from data Vincio already holds — the audit chain, the

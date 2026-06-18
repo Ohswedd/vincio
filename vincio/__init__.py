@@ -67,15 +67,20 @@ from .governance import (
     AnnexIVBuilder,
     ComplianceFramework,
     ComplianceReport,
+    ConsentLedger,
+    ErasureProof,
     ErasureResult,
     FertilityTracker,
     FRIAGenerator,
+    LawfulBasis,
     LineageRecord,
     ModelCard,
     ProvenanceManifest,
+    Purpose,
     ResidencyPolicy,
     RiskTierClassifier,
     SystemCard,
+    verify_erasure_proof,
 )
 from .memory.engine import MemoryEngine, ScopedMemory
 from .notebook import enable_rich_reprs
@@ -90,6 +95,12 @@ from .optimize.judge_calibration import JudgeCalibrator
 from .optimize.loop import ExperimentProposer, ImprovementLoop, LoopResult
 from .optimize.reflective import ReflectiveOptimizer
 from .optimize.routing import GuardedBanditRouter, ModelCascade, Router
+from .optimize.self_improvement import (
+    CanarySpec,
+    DeployResult,
+    SelfImprovementController,
+    SelfImprovementPolicy,
+)
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
 from .packs import Pack, available_packs, load_pack
@@ -126,7 +137,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "2.2.1"
+__version__ = "3.0.0"
 
 __all__ = [
     "ContextApp",
@@ -165,6 +176,10 @@ __all__ = [
     "ContinuousImprovementController",
     "ControllerDecision",
     "ExperimentProposer",
+    "SelfImprovementPolicy",
+    "SelfImprovementController",
+    "CanarySpec",
+    "DeployResult",
     "GoldenRegressionSuite",
     "GuardedBanditRouter",
     "ReflectiveOptimizer",
@@ -216,6 +231,11 @@ __all__ = [
     "ResidencyPolicy",
     "LineageRecord",
     "ErasureResult",
+    "ErasureProof",
+    "verify_erasure_proof",
+    "ConsentLedger",
+    "Purpose",
+    "LawfulBasis",
     "ProvenanceManifest",
     "FertilityTracker",
     "PoisoningDetector",

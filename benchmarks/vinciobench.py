@@ -1113,6 +1113,28 @@ async def bench_memory() -> dict[str, Any]:
                    importance=0.5 + i * 0.04)
     memory_os_pager_bounded = mos.core_tokens() <= 24 or len(mos.core_ids) == 1
 
+    # 3.0 — bi-temporal recall (as-of) + per-memory ACL / team-shared memory.
+    bt_engine = MemoryEngine(embedder=LocalHashEmbedder())
+    t0 = utcnow() - timedelta(days=120)
+    located = bt_engine.write_fact(
+        "User lives in Berlin", scope="user", owner_id="bt1", valid_from=t0
+    )
+    bt_engine.correct(
+        located.id, "User lives in Munich", valid_from=utcnow() - timedelta(days=30)
+    )
+    current_recall = bt_engine.recall("where does the user live", user_id="bt1")
+    asof_recall = bt_engine.recall(
+        "where does the user live", user_id="bt1", as_of=utcnow() - timedelta(days=60)
+    )
+    bitemporal_current_is_latest = any("Munich" in m.content for m in current_recall) and not any(
+        "Berlin" in m.content for m in current_recall
+    )
+    bitemporal_as_of_is_historical = any("Berlin" in m.content for m in asof_recall)
+    # Per-memory ACL gates team-shared recall: only listed readers see it.
+    bt_engine.for_team("eng").remember("Rotated the prod deploy key", acl=["alice"])
+    acl_admits_member = bool(bt_engine.recall("deploy key", team_id="eng", reader="alice"))
+    acl_denies_nonmember = not bt_engine.recall("deploy key", team_id="eng", reader="bob")
+
     return {
         "preference_recall": round(recall_hits / len(queries), 4),
         "contradiction_superseded": new.supersedes == old.id,
@@ -1130,6 +1152,13 @@ async def bench_memory() -> dict[str, Any]:
             "append_search": memory_os_append_search,
             "archive_pages_out": memory_os_archive_pages_out,
             "pager_bounded": memory_os_pager_bounded,
+        },
+        # 3.0 — bi-temporal recall + per-memory ACL / team-shared memory
+        "bitemporal": {
+            "current_is_latest": bitemporal_current_is_latest,
+            "as_of_is_historical": bitemporal_as_of_is_historical,
+            "acl_admits_member": acl_admits_member,
+            "acl_denies_nonmember": acl_denies_nonmember,
         },
     }
 
@@ -1935,9 +1964,56 @@ async def bench_loop() -> dict[str, Any]:
     online_worker_aggregated = ev1.observed_total() == 10
 
     distillation_2_1 = await _loop_distillation_2_1()
+
+    # 3.0 — the unified self-improvement contract: one streaming controller
+    # composes proposal → meta → re-optimization → canary → promote, and
+    # meta-optimization (successive-halving) picks the strategy/budget.
+    from vincio.optimize import (
+        CanarySpec,
+        MetaSpec,
+        SelfImprovementPolicy,
+        successive_halving,
+    )
+
+    async def _sh_score(config):
+        return float(config[1])  # prefer the larger budget, deterministically
+
+    sh_best, sh_history = await successive_halving(
+        [("evolution", 2), ("reflective", 4), ("evolution", 8)], _sh_score, rounds=2
+    )
+    meta_picks_best = sh_best == ("evolution", 8)
+
+    si_app = build_app()
+    si_policy = SelfImprovementPolicy(
+        metrics=metrics,
+        meta=MetaSpec(strategies=["evolution"], budgets=[4]),
+        canary=CanarySpec(metric="lexical_overlap"),
+    )
+    si_events = si_app.self_improvement(si_policy, dataset=dataset).run()
+    si_phases = [e.phase for e in si_events]
+    self_improvement_cycle = (
+        si_phases[0] == "observe"
+        and "meta" in si_phases
+        and si_phases[-1] in ("promote", "rollback")
+    )
+    # A no-regression candidate clears the canary gate and deploys.
+    deploy_result = build_app().deploy(
+        si_app.prompt_spec, dataset=dataset, canary=CanarySpec(metric="lexical_overlap")
+    )
+    deploy_gated = deploy_result.deployed and deploy_result.verdict.passed
+
     return {
         # 2.1 — executed distillation gated by the significance swap gate
         "executed_distillation": distillation_2_1,
+        # 3.0 — unified declarative self-improvement contract + meta-optimization
+        "self_improvement": {
+            "cycle_reaches_serving_decision": self_improvement_cycle,
+            "phases": len(si_phases),
+            "meta_picks_best_config": meta_picks_best,
+            "halving_rounds": len({h["round"] for h in sh_history}),
+            "canary_gated_deploy": deploy_gated,
+            "budget_bounded": si_events[-1].budget_remaining >= 0,
+        },
         "promotion": {
             "promoted": result_a.promoted,
             "deterministic": deterministic,
@@ -2536,12 +2612,42 @@ async def bench_scale() -> dict[str, Any]:
 
     distributed_2_1 = await _scale_distributed_2_1()
     shared_state_2_1 = _scale_shared_state_2_1()
+
+    # -- 3.0: async-canonical store throughput --------------------------------
+    # The canonical async store contract is the one the run path binds to. The
+    # in-memory reference store is async-native (asave/aquery are coroutines), so
+    # the module-level helpers take the native fast path with no worker-thread
+    # hop. A concurrent burst of saves completes without blocking the loop, and a
+    # native async store advertises the coroutine contract.
+    import inspect
+
+    from vincio.storage.base import InMemoryMetadataStore, aquery, asave
+
+    async_store = InMemoryMetadataStore()
+    async_native = inspect.iscoroutinefunction(getattr(async_store, "asave", None))
+    burst = 500
+    async_started = time.perf_counter()
+    await asyncio.gather(
+        *(asave(async_store, "runs", {"id": f"r{i}", "v": i}) for i in range(burst))
+    )
+    async_elapsed = time.perf_counter() - async_started
+    persisted = await aquery(async_store, "runs", limit=burst + 10)
+    async_throughput = round(burst / async_elapsed) if async_elapsed > 0 else burst
+    async_canonical = {
+        "store_is_async_native": async_native,
+        "concurrent_saves": len(persisted) == burst,
+        "saves_per_s": async_throughput,
+    }
+
     return {
         "batch": {
             "reconciled_ok": reconciled_ok,
             "partial_failures_surfaced": partial_surfaced,
             "cost_discount": cost_discount,
         },
+        # 3.0 — async-canonical core: the async store contract is the one the
+        # run path binds to; sync is the thin wrapper.
+        "async_canonical": async_canonical,
         # 2.1 — distributed durable execution + multi-worker shared state
         "distributed": distributed_2_1,
         "shared_state": shared_state_2_1,
@@ -2669,6 +2775,40 @@ async def bench_governance() -> dict[str, Any]:
         and verify_manifest(signed, "benchmark output", signer=HmacSigner("other")) is False
     )
 
+    # -- 3.0: provable erasure (signed, content-bound manifest) --
+    from vincio.governance import Purpose, verify_erasure_proof
+
+    proof_app = ContextApp("bench_gov_proof", provider=MockProvider(), model="gpt-5.2-mini", config=VincioConfig())
+    proof_app.content_signer = HmacSigner("erasure-secret", key_id="erase")
+    proof_app.add_source("kb", documents=corpus_documents(), retrieval="bm25")
+    proof_app.lineage.record_artifact("kb", "reports/board-memo.pdf")
+    proof_result = proof_app.erase_source("kb")
+    erasure_proof_signed = proof_result.proof is not None and proof_result.proof.signature is not None
+    erasure_proof_verifies = proof_result.proof is not None and verify_erasure_proof(
+        proof_result.proof, signer=proof_app.content_signer
+    )
+    # Tampering with the recorded id set breaks the content binding.
+    tampered_ok = True
+    if proof_result.proof is not None:
+        tampered = proof_result.proof.model_copy(deep=True)
+        next(iter(tampered.removed_ids.values())).append("smuggled")
+        tampered_ok = not verify_erasure_proof(tampered, signer=proof_app.content_signer)
+    erasure_covers_artifacts = proof_result.artifacts_removed == 1
+
+    # -- 3.0: consent / purpose enforcement on memory recall --
+    from vincio.memory import MemoryEngine as _ME
+
+    ledger = ContextApp("bench_gov_consent", provider=MockProvider(), model="gpt-5.2-mini",
+                        config=VincioConfig()).use_consent_ledger()
+    ledger.grant("subj1", [Purpose.PERSONALIZATION])
+    consent_engine = _ME(consent_ledger=ledger)
+    consent_engine.write_fact("User prefers concise answers", scope="user", owner_id="subj1",
+                              type="preference", purpose="personalization")
+    consent_before = bool(consent_engine.recall("answer style", user_id="subj1"))
+    ledger.revoke("subj1")
+    consent_after = not consent_engine.recall("answer style", user_id="subj1")
+    consent_enforced = consent_before and consent_after
+
     return {
         "card": {
             "model_card_complete": model_card_complete,
@@ -2701,6 +2841,16 @@ async def bench_governance() -> dict[str, Any]:
         },
         "transparency": {
             "signature_verifies": signature_verifies,
+        },
+        # 3.0 — provable erasure + consent/purpose enforcement
+        "provable_erasure": {
+            "proof_signed": erasure_proof_signed,
+            "proof_verifies": erasure_proof_verifies,
+            "tamper_detected": tampered_ok,
+            "covers_artifacts": erasure_covers_artifacts,
+        },
+        "consent": {
+            "purpose_enforced": consent_enforced,
         },
     }
 

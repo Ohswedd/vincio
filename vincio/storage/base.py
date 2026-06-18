@@ -111,6 +111,28 @@ class InMemoryMetadataStore:
     def count(self, kind: str) -> int:
         return len(self._table(kind))
 
+    # Async-native methods (3.0): the in-memory store is the canonical async
+    # contract's reference implementation — its operations are non-blocking, so
+    # the module-level asave/aquery helpers take the native fast path (no
+    # worker-thread hop) rather than the sync shim.
+
+    async def asave(self, kind: str, record: dict[str, Any]) -> None:
+        self.save(kind, record)
+
+    async def aget(self, kind: str, record_id: str) -> dict[str, Any] | None:
+        return self.get(kind, record_id)
+
+    async def aquery(
+        self, kind: str, *, where: dict[str, Any] | None = None, limit: int = 100, offset: int = 0
+    ) -> list[dict[str, Any]]:
+        return self.query(kind, where=where, limit=limit, offset=offset)
+
+    async def adelete(self, kind: str, record_id: str) -> bool:
+        return self.delete(kind, record_id)
+
+    async def acount(self, kind: str) -> int:
+        return self.count(kind)
+
 
 class BlobStore(Protocol):
     def put(self, key: str, data: bytes) -> str: ...
