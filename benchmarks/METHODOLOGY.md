@@ -47,6 +47,7 @@ where they are, so you can run it yourself and audit the claims.
 | **GovernanceBench** | card/AI-BOM completeness, OWASP/NIST/MITRE/ISO-42001 mapping coverage, erasure correctness + audit, multilingual PII recall, RAG-poisoning detection rate/FP, residency endpoint inference, signed-manifest verification | English-only / ungoverned |
 | **GenerationBench** | document-contract validity (deficient rejected), cited-report coverage + per-claim entailment, media C2PA provenance binding + tamper rejection + disclosure, redline correctness, new-format ingestion recall, generated-media prompt safety | un-contracted / un-provenanced output |
 | **PerfBench** | compile/retrieval/run latency, cache speedups, concurrent throughput, TTFT | cold paths |
+| **IntegrationsBench** | every first-party connector round-trips offline against a recorded fixture with provenance; the plugin contract loads compatible plugins and gates incompatible majors; the signed community registry resolves under an allow-list (audited), verifies signatures, and detects tampering; Haystack/DSPy bridges adapt in; the MCP-server marketplace bridge discovers→governs→connects in one call | hand-wired loaders / ungoverned, unsigned registries |
 
 ## Corpora and provenance
 

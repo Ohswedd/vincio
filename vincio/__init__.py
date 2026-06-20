@@ -114,6 +114,7 @@ from .optimize.self_improvement import (
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
 from .packs import Pack, available_packs, load_pack
+from .plugins import PluginInfo, discover_plugins, installed_plugins, load_plugins
 from .prompts.signatures import InputField, OutputField, Predict, Signature, signature
 from .prompts.templates import PromptSpec
 from .providers import (
@@ -131,7 +132,7 @@ from .providers import (
     make_finetune_backend,
 )
 from .realtime import RealtimeSession
-from .registry import AgentDirectory
+from .registry import AgentDirectory, BundleRecord, CommunityRegistry
 from .retrieval import FastEmbedEmbedder, MatryoshkaEmbedder, ShardedIndex, TwoStageIndex
 from .security.access import AllowListGate
 from .security.poisoning import PoisoningDetector
@@ -147,7 +148,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.2.0"
+__version__ = "3.3.0"
 
 __all__ = [
     "ContextApp",
@@ -211,6 +212,10 @@ __all__ = [
     "Pack",
     "load_pack",
     "available_packs",
+    "PluginInfo",
+    "discover_plugins",
+    "installed_plugins",
+    "load_plugins",
     "enable_rich_reprs",
     "BatchRunner",
     "CircuitBreaker",
@@ -304,6 +309,8 @@ __all__ = [
     "RetrievalGoldenSet",
     "retrieval_regression",
     "AgentDirectory",
+    "CommunityRegistry",
+    "BundleRecord",
     "AllowListGate",
     "API_VERSION",
     "StabilityLevel",

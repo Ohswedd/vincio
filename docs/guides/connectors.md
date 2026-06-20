@@ -43,14 +43,31 @@ returned documents also work standalone: `docs = await connector.load()`.
 | `notion` | database pages / page blocks | none |
 | `confluence` | space pages (storage-format HTML) | none |
 | `slack` | channel history (one document per channel) | none |
+| `jira` | issues via the Jira Cloud REST API (ADF rendered to text) | none |
+| `linear` | issues via the Linear GraphQL API | none |
+| `gdrive` | files via the Drive API (Google-native docs exported) | none |
+| `sharepoint` | document-library files via Microsoft Graph | none |
+| `salesforce` | SOQL query results via the REST API | none |
+| `zendesk` | Help Center articles via the REST API | none |
+| `bigquery` | query rows | `pip install "vincio[bigquery]"` |
+| `snowflake` | query rows | `pip install "vincio[snowflake]"` |
 
 Notes:
 
-- REST connectors accept an injected `client=` (`httpx.AsyncClient`) — use
-  `httpx.MockTransport` for offline tests.
-- `s3`/`gcs` accept an injected boto3 / `google.cloud.storage` client.
+- REST connectors (`web`, `github`, `notion`, `confluence`, `slack`, `jira`,
+  `linear`, `gdrive`, `sharepoint`, `salesforce`, `zendesk`) run on the core
+  `httpx` dependency and accept an injected `client=` (`httpx.AsyncClient`) —
+  use `httpx.MockTransport` for offline tests.
+- `s3`/`gcs`/`bigquery` accept an injected client; `snowflake` an injected
+  DB-API connection. The heavy SDK import is lazy, so they round-trip offline.
 - For an injected sqlite3 connection that `add_source` will use, open it
   with `check_same_thread=False`.
+- Authentication is per-connector: Jira/Zendesk take email + API token (Basic)
+  or a bearer token; Linear an API key; Google Drive / SharePoint a bearer
+  access token; Salesforce an instance URL + bearer token.
+
+Third-party connectors can also register themselves on install via the
+`vincio.connectors` entry-point group — see the [plugins guide](plugins.md).
 
 ## Custom connectors
 

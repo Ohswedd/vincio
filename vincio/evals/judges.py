@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import json
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from typing import Any
 
 from ..core.types import Message, ModelRequest
@@ -26,6 +27,9 @@ __all__ = [
     "EmbeddingJudge",
     "HybridJudge",
     "GEvalJudge",
+    "JUDGES",
+    "register_judge",
+    "build_judge",
 ]
 
 
@@ -382,3 +386,30 @@ class HybridJudge(Judge):
             result.name: result.value for result in results
         }
         return MetricResult(name=self.name, value=round(value, 4), details=details)
+
+
+# -- name registry & factory ----------------------------------------------------
+
+# Built-in judges resolvable by name. Third-party judges register here on install
+# via the ``vincio.judges`` entry-point group (see :mod:`vincio.plugins`) or
+# directly with :func:`register_judge`.
+JUDGES: dict[str, Callable[..., Judge]] = {
+    "deterministic": DeterministicJudge,
+    "model": ModelJudge,
+    "geval": GEvalJudge,
+    "embedding": EmbeddingJudge,
+    "hybrid": HybridJudge,
+}
+
+
+def register_judge(name: str, factory: Callable[..., Judge]) -> Callable[..., Judge]:
+    """Register a judge factory under ``name`` so :func:`build_judge` finds it."""
+    JUDGES[name] = factory
+    return factory
+
+
+def build_judge(kind: str, **kwargs: Any) -> Judge:
+    """Construct a judge by name, e.g. ``build_judge("model", provider=p, model=m)``."""
+    if kind not in JUDGES:
+        raise ValueError(f"unknown judge {kind!r}; known: {sorted(JUDGES)}")
+    return JUDGES[kind](**kwargs)

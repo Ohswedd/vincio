@@ -214,3 +214,178 @@ async def test_from_llamaindex_embedding():
 def test_to_llamaindex_requires_extra():
     with pytest.raises(ConfigError):
         li.to_llamaindex_documents([Document(text="x")])
+
+
+# -- Haystack fakes -------------------------------------------------------------
+
+
+class FakeHSDoc:
+    def __init__(self, content, meta=None, score=None):
+        self.content = content
+        self.meta = meta or {}
+        self.score = score
+
+
+class FakeHSRetriever:
+    def __init__(self, docs):
+        self._docs = docs
+
+    def run(self, query):
+        return {"documents": self._docs}
+
+
+class FakeHSComponent:
+    name = "ranker"
+    description = "Rank documents."
+
+    def run(self, **kwargs):
+        return {"ranked": kwargs.get("query")}
+
+
+class FakeHSEmbedder:
+    def run(self, text):
+        return {"embedding": [float(len(text)), 3.0]}
+
+
+# -- Haystack from_* ------------------------------------------------------------
+
+
+def test_from_haystack_document_maps_fields():
+    from vincio.interop import haystack as hs
+
+    doc = hs.from_haystack_document(FakeHSDoc("body", {"source": "s3://x", "title": "Doc"}))
+    assert doc.text == "body"
+    assert doc.source_uri == "s3://x"
+    assert doc.title == "Doc"
+
+
+@pytest.mark.asyncio
+async def test_from_haystack_retriever_uses_scores():
+    from vincio.interop import haystack as hs
+
+    retriever = hs.from_haystack_retriever(
+        FakeHSRetriever([FakeHSDoc("hot", {"source": "a"}, 0.9), FakeHSDoc("cold", {"source": "b"}, 0.3)])
+    )
+    hits = await retriever.search("q", top_k=2)
+    assert [h.chunk.text for h in hits] == ["hot", "cold"]
+    assert hits[0].score == 0.9
+
+
+def test_add_haystack_component_to_app():
+    from vincio.interop import haystack as hs
+
+    app = ContextApp(name="t", provider=MockProvider(), model="mock-1")
+    hs.add_haystack_component(app, FakeHSComponent())
+    assert "ranker" in app.enabled_tools
+    assert app.tool_registry.get("ranker").handler(query="x") == {"ranked": "x"}
+
+
+@pytest.mark.asyncio
+async def test_from_haystack_embedder():
+    from vincio.interop import haystack as hs
+
+    embedder = hs.from_haystack_embedder(FakeHSEmbedder())
+    vectors = await embedder.embed(["ab", "abcd"])
+    assert vectors == [[2.0, 3.0], [4.0, 3.0]]
+    assert embedder.dim == 2
+
+
+_HAS_HAYSTACK = importlib.util.find_spec("haystack") is not None
+
+
+@pytest.mark.skipif(_HAS_HAYSTACK, reason="haystack is installed")
+def test_to_haystack_requires_extra():
+    from vincio.interop import haystack as hs
+
+    with pytest.raises(ConfigError):
+        hs.to_haystack_documents([Document(text="x")])
+
+
+# -- DSPy fakes -----------------------------------------------------------------
+
+
+class FakeDSPyField:
+    def __init__(self, desc):
+        self.json_schema_extra = {"desc": desc}
+
+
+class FakeDSPySignature:
+    instructions = "Answer the question."
+    input_fields = {"question": FakeDSPyField("the question")}
+    output_fields = {"answer": FakeDSPyField("the answer")}
+
+
+class FakeDSPyPrediction:
+    def __init__(self, data):
+        self._data = data
+
+    def toDict(self):
+        return self._data
+
+
+class FakeDSPyModule:
+    signature = FakeDSPySignature()
+
+    def __call__(self, **kwargs):
+        return FakeDSPyPrediction({"answer": f"A:{kwargs['question']}"})
+
+
+class FakeDSPyPassage:
+    def __init__(self, text, score):
+        self.long_text = text
+        self.score = score
+
+
+class FakeDSPyRM:
+    def __call__(self, query, k=10):
+        return [FakeDSPyPassage("p1", 0.8), FakeDSPyPassage("p2", 0.5)]
+
+
+# -- DSPy from_* ----------------------------------------------------------------
+
+
+def test_from_dspy_signature_summary():
+    from vincio.interop import dspy as dp
+
+    summary = dp.from_dspy_signature(FakeDSPySignature())
+    assert summary["inputs"] == {"question": "the question"}
+    assert summary["outputs"] == {"answer": "the answer"}
+    assert summary["instructions"] == "Answer the question."
+
+
+def test_from_dspy_module_handler_and_schema():
+    from vincio.interop import dspy as dp
+
+    adapter = dp.from_dspy_module(FakeDSPyModule())
+    assert adapter["name"] == "FakeDSPyModule"
+    assert adapter["input_schema"]["properties"]["question"]["type"] == "string"
+    assert adapter["handler"](question="hi") == {"answer": "A:hi"}
+
+
+def test_add_dspy_module_is_pure_by_default():
+    from vincio.interop import dspy as dp
+
+    app = ContextApp(name="t", provider=MockProvider(), model="mock-1")
+    dp.add_dspy_module(app, FakeDSPyModule(), name="qa")
+    assert "qa" in app.enabled_tools
+    assert app.tool_registry.get("qa").spec.side_effects == "pure"
+
+
+@pytest.mark.asyncio
+async def test_from_dspy_retriever_uses_scores():
+    from vincio.interop import dspy as dp
+
+    retriever = dp.from_dspy_retriever(FakeDSPyRM())
+    hits = await retriever.search("q", top_k=2)
+    assert [h.chunk.text for h in hits] == ["p1", "p2"]
+    assert hits[0].score == 0.8
+
+
+def test_to_dspy_lm_from_app_is_callable():
+    from vincio.interop import dspy as dp
+
+    app = ContextApp(name="t", provider=MockProvider(default_text="hello"), model="mock-1")
+    lm = dp.to_dspy_lm(app)
+    out = lm(prompt="hi")
+    assert isinstance(out, list) and out == ["hello"]
+    assert lm.history  # records the call

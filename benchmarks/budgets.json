@@ -903,6 +903,48 @@
     },
     "families.scale.async_canonical.run_path_persists_async": {
       "eq": true
+    },
+    "families.integrations.connectors_round_trip": {
+      "eq": true
+    },
+    "families.integrations.connector_provenance": {
+      "eq": true
+    },
+    "families.integrations.connector_count": {
+      "gte": 8
+    },
+    "families.integrations.plugin_loads_on_install": {
+      "eq": true
+    },
+    "families.integrations.plugin_gates_incompatible": {
+      "eq": true
+    },
+    "families.integrations.registry_resolution_governed": {
+      "eq": true
+    },
+    "families.integrations.registry_resolution_audited": {
+      "eq": true
+    },
+    "families.integrations.registry_signature_verified": {
+      "eq": true
+    },
+    "families.integrations.registry_tamper_detected": {
+      "eq": true
+    },
+    "families.integrations.haystack_bridge": {
+      "eq": true
+    },
+    "families.integrations.dspy_bridge": {
+      "eq": true
+    },
+    "families.integrations.mcp_marketplace_tool_landed": {
+      "eq": true
+    },
+    "families.integrations.mcp_marketplace_audited": {
+      "eq": true
+    },
+    "families.integrations.mcp_marketplace_denies_unlisted": {
+      "eq": true
     }
   }
 }

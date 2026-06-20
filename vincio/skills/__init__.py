@@ -18,6 +18,7 @@ from .skill import (
     load_skill,
     load_skills,
     parse_skill_md,
+    skill_from_markdown,
 )
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "SkillError",
     "SkillLibrary",
     "parse_skill_md",
+    "skill_from_markdown",
     "load_skill",
     "load_skills",
     "make_script_handler",

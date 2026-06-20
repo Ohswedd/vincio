@@ -20,7 +20,15 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import VincioError
 
-__all__ = ["Skill", "SkillScript", "SkillError", "parse_skill_md", "load_skill", "load_skills"]
+__all__ = [
+    "Skill",
+    "SkillScript",
+    "SkillError",
+    "parse_skill_md",
+    "skill_from_markdown",
+    "load_skill",
+    "load_skills",
+]
 
 
 class SkillError(VincioError):
@@ -127,6 +135,38 @@ def _language_for(path: str) -> str:
     return "shell" if path.endswith(".sh") else "python"
 
 
+def skill_from_markdown(
+    text: str,
+    *,
+    name: str | None = None,
+    scripts: list[SkillScript] | None = None,
+    path: str | None = None,
+) -> Skill:
+    """Build a :class:`Skill` from in-memory ``SKILL.md`` text (no filesystem).
+
+    Used to materialize a skill served from a registry or bundle. ``name`` is a
+    fallback when the frontmatter omits one; bundled ``scripts`` (which can only
+    be discovered from a directory) are passed through when known.
+    """
+    meta, body = parse_skill_md(text)
+    skill_name = str(meta.get("name") or name or "").strip()
+    if not skill_name:
+        raise SkillError("SKILL.md is missing a 'name' (and no fallback was given)")
+    description = str(meta.get("description") or "").strip()
+    if not description:
+        raise SkillError(f"skill {skill_name!r} is missing a 'description' (required for disclosure)")
+    extras = {k: v for k, v in meta.items() if k not in ("name", "description", "keywords", "tags", "scripts")}
+    return Skill(
+        name=skill_name,
+        description=description,
+        instructions=body,
+        keywords=_keywords_from(meta),
+        scripts=list(scripts or []),
+        metadata=extras,
+        path=path,
+    )
+
+
 def load_skill(path: str | Path) -> Skill:
     """Load one skill from a SKILL.md file or a directory containing one."""
     p = Path(path)
@@ -138,19 +178,12 @@ def load_skill(path: str | Path) -> Skill:
         directory = p.parent
     if not md.is_file():
         raise SkillError(f"no SKILL.md found at {path}")
-    meta, body = parse_skill_md(md.read_text(encoding="utf-8"))
-    name = str(meta.get("name") or directory.name)
-    description = str(meta.get("description") or "").strip()
-    if not description:
-        raise SkillError(f"skill {name!r} is missing a 'description' (required for disclosure)")
-    extras = {k: v for k, v in meta.items() if k not in ("name", "description", "keywords", "tags", "scripts")}
-    return Skill(
-        name=name,
-        description=description,
-        instructions=body,
-        keywords=_keywords_from(meta),
+    text = md.read_text(encoding="utf-8")
+    meta, _ = parse_skill_md(text)
+    return skill_from_markdown(
+        text,
+        name=directory.name,
         scripts=_discover_scripts(directory, meta),
-        metadata=extras,
         path=str(directory),
     )
 

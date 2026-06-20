@@ -1,0 +1,73 @@
+{
+  "_comment": "Recorded API fixtures for the VincioBench `integrations` family. Each connector round-trips offline against these — no network, no keys.",
+  "jira": {
+    "total": 1,
+    "issues": [
+      {
+        "key": "ENG-1",
+        "fields": {
+          "summary": "SSO login fails",
+          "description": {
+            "type": "doc",
+            "content": [
+              {"type": "paragraph", "content": [{"type": "text", "text": "Refunds are processed within 30 days of approval."}]}
+            ]
+          },
+          "status": {"name": "Open"},
+          "issuetype": {"name": "Bug"},
+          "project": {"key": "ENG"}
+        }
+      }
+    ]
+  },
+  "linear": {
+    "data": {
+      "issues": {
+        "nodes": [
+          {
+            "id": "uuid-1",
+            "identifier": "ENG-2",
+            "title": "Checkout crash",
+            "description": "Crash occurs after applying a refund coupon.",
+            "url": "https://linear.app/acme/issue/ENG-2",
+            "state": {"name": "Todo"},
+            "team": {"key": "ENG"}
+          }
+        ],
+        "pageInfo": {"hasNextPage": false, "endCursor": null}
+      }
+    }
+  },
+  "gdrive_list": {
+    "files": [
+      {"id": "f1", "name": "Refund Policy", "mimeType": "application/vnd.google-apps.document", "webViewLink": "https://drive.google.com/d/f1"},
+      {"id": "f2", "name": "logo.png", "mimeType": "image/png"}
+    ]
+  },
+  "gdrive_export": "Refunds are issued within 30 days for Pro-plan customers.",
+  "sharepoint_children": {
+    "value": [
+      {"id": "i1", "name": "sla.md", "file": {}, "webUrl": "https://contoso.sharepoint.com/sla"},
+      {"id": "d1", "name": "Archive", "folder": {}}
+    ]
+  },
+  "sharepoint_content": "Uptime is guaranteed at 99.9 percent per the SLA.",
+  "salesforce": {
+    "done": true,
+    "records": [
+      {"attributes": {"type": "Account"}, "Id": "001", "Name": "Acme Corp", "Description": "Strategic enterprise customer."}
+    ]
+  },
+  "zendesk": {
+    "articles": [
+      {"id": 7, "title": "Refund policy", "body": "<p>Refunds within 30 days.</p>", "html_url": "https://acme.zendesk.com/hc/en-us/articles/7", "section_id": 3, "locale": "en-us"},
+      {"id": 8, "title": "Draft article", "body": "<p>WIP</p>", "draft": true}
+    ],
+    "next_page": null
+  },
+  "bigquery_rows": [
+    {"id": 1, "question": "What is the refund window?", "answer": "30 days from approval."}
+  ],
+  "snowflake_columns": ["ID", "QUESTION", "ANSWER"],
+  "snowflake_rows": [[1, "What is the SLA?", "99.9 percent uptime."]]
+}

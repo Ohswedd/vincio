@@ -3824,6 +3824,244 @@ def _cost_alerting_2_1() -> dict[str, Any]:
     }
 
 
+async def bench_integrations() -> dict[str, Any]:
+    """Ecosystem & integration breadth: first-party connectors, the entry-point
+    plugin contract, the signed community registry, deeper framework interop, and
+    the MCP-server marketplace bridge — each round-tripped offline against a
+    recorded fixture in ``fixtures/integrations.json``."""
+    import httpx
+
+    from vincio.connectors import CONNECTORS, connect
+    from vincio.core.types import Document
+    from vincio.interop import from_dspy_module, from_haystack_retriever
+    from vincio.mcp import build_app_server
+    from vincio.packs import load_pack
+    from vincio.plugins import _EP, PLUGIN_API_VERSION, discover_plugins, load_plugins
+    from vincio.registry import (
+        BundleRecord,
+        CommunityRegistry,
+        MCPRegistryClient,
+        MCPServerRecord,
+    )
+    from vincio.security.access import AllowListGate
+    from vincio.security.audit import AuditLog, HMACSigner
+
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "integrations.json").read_text())
+
+    def mc(handler: Any) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    # -- connectors: every new connector round-trips offline ------------------
+    docs: dict[str, list[Document]] = {}
+
+    docs["jira"] = await connect(
+        "jira", base_url="https://acme.atlassian.net", email="a@b.c", token="t",
+        client=mc(lambda r: httpx.Response(200, json=fx["jira"])),
+    ).load()
+    docs["linear"] = await connect(
+        "linear", api_key="k", client=mc(lambda r: httpx.Response(200, json=fx["linear"]))
+    ).load()
+
+    def _gd(r: httpx.Request) -> httpx.Response:
+        if r.url.path.endswith("/files"):
+            return httpx.Response(200, json=fx["gdrive_list"])
+        return httpx.Response(200, text=fx["gdrive_export"])
+
+    docs["gdrive"] = await connect("gdrive", access_token="t", client=mc(_gd)).load()
+
+    def _sp(r: httpx.Request) -> httpx.Response:
+        if r.url.path.endswith("/children"):
+            return httpx.Response(200, json=fx["sharepoint_children"])
+        return httpx.Response(200, text=fx["sharepoint_content"])
+
+    docs["sharepoint"] = await connect("sharepoint", site_id="s", access_token="t", client=mc(_sp)).load()
+    docs["salesforce"] = await connect(
+        "salesforce", instance_url="https://x.my.salesforce.com", access_token="t",
+        soql="SELECT Id, Name, Description FROM Account",
+        client=mc(lambda r: httpx.Response(200, json=fx["salesforce"])),
+    ).load()
+    docs["zendesk"] = await connect(
+        "zendesk", subdomain="acme", email="a@b.c", token="t",
+        client=mc(lambda r: httpx.Response(200, json=fx["zendesk"])),
+    ).load()
+
+    class _BQRows(list):
+        def result(self) -> Any:
+            return self
+
+    class _BQClient:
+        def query(self, sql: str) -> Any:
+            return _BQRows(fx["bigquery_rows"])
+
+    docs["bigquery"] = await connect(
+        "bigquery", query="SELECT * FROM faq", project="p", client=_BQClient(),
+        id_column="id", title_column="question",
+    ).load()
+
+    class _SFCursor:
+        description = [(c,) for c in fx["snowflake_columns"]]
+
+        def execute(self, q: str) -> None:
+            self._rows = [tuple(row) for row in fx["snowflake_rows"]]
+
+        def fetchmany(self, n: int) -> list[Any]:
+            return self._rows
+
+    class _SFConn:
+        def cursor(self) -> Any:
+            return _SFCursor()
+
+    docs["snowflake"] = await connect(
+        "snowflake", query="SELECT * FROM faq", account="acct", connection=_SFConn(),
+        id_column="ID", title_column="QUESTION",
+    ).load()
+
+    connectors_round_trip = all(len(d) >= 1 for d in docs.values())
+    connector_provenance = all(
+        d and d[0].metadata.get("connector") == name and bool(d[0].source_uri)
+        for name, d in docs.items()
+    )
+
+    # -- plugin contract: installs register; incompatible majors are gated -----
+    def _bench_factory(**opts: Any) -> Any:
+        class _C:
+            name = "bench_plugin"
+
+            async def load(self) -> list[Document]:
+                return [Document(text="x")]
+
+        return _C()
+
+    plug_eps = [
+        _EP("bench_plugin", "vincio.connectors", "bench-dist", "0.1.0", lambda: _bench_factory),
+        _EP("api_version", "vincio.plugins", "bench-dist", "0.1.0", lambda: "1.0"),
+        _EP("future_plugin", "vincio.connectors", "future-dist", "9.0.0", lambda: _bench_factory),
+        _EP("api_version", "vincio.plugins", "future-dist", "9.0.0", lambda: "2.0"),
+    ]
+    discovered = {i.name: i.status for i in discover_plugins(entry_points=plug_eps)}
+    loaded = {i.name: i.status for i in load_plugins(entry_points=plug_eps)}
+    plugin_loads_on_install = loaded.get("bench_plugin") == "loaded" and "bench_plugin" in CONNECTORS
+    plugin_gates_incompatible = (
+        discovered.get("future_plugin") == "incompatible"
+        and loaded.get("future_plugin") == "incompatible"
+        and "future_plugin" not in CONNECTORS
+    )
+    CONNECTORS.pop("bench_plugin", None)  # keep the registry clean for other families
+
+    # -- community registry: governed + audited + signed resolution -----------
+    audit = AuditLog(directory=None)
+    signer = HMACSigner("bench-key")
+    registry = CommunityRegistry(
+        allow_list=AllowListGate(allow=["support-pro"]), audit=audit, signer=signer
+    )
+    registry.publish_pack(
+        load_pack("support").model_copy(update={"name": "support-pro"}),
+        version="1.0.0", publisher="acme",
+    )
+    registry.register(BundleRecord(name="evil", kind="pack", payload={"name": "e", "description": ""}))
+    resolved = registry.try_resolve("support-pro")
+    registry_resolution_governed = resolved.allowed and not registry.try_resolve("evil").allowed
+    bundle_decisions = audit.query(action="bundle_resolve")
+    registry_resolution_audited = (
+        any(d.decision == "allow" for d in bundle_decisions)
+        and any(d.decision == "deny" for d in bundle_decisions)
+    )
+    registry_signature_verified = resolved.verified
+
+    publisher = CommunityRegistry(allow_list=AllowListGate(allow=["*"]), signer=signer)
+    signed = publisher.publish_pack(
+        load_pack("legal").model_copy(update={"name": "legal-pro"}), version="1.0.0"
+    )
+    tampered = signed.model_copy(update={"payload": {**signed.payload, "role": "HIJACK"}})
+    verifier = CommunityRegistry(allow_list=AllowListGate(allow=["*"]), signer=signer, index=[tampered])
+    registry_tamper_detected = not verifier.try_resolve("legal-pro").allowed
+
+    # -- deeper interop: Haystack + DSPy bridges ------------------------------
+    class _HSDoc:
+        def __init__(self, content: str, meta: dict, score: float) -> None:
+            self.content, self.meta, self.score = content, meta, score
+
+    class _HSRetriever:
+        def run(self, query: str) -> dict[str, Any]:
+            return {"documents": [_HSDoc("hot", {"source": "a"}, 0.9), _HSDoc("cold", {"source": "b"}, 0.3)]}
+
+    hs_hits = await from_haystack_retriever(_HSRetriever()).search("q", top_k=2)
+    haystack_bridge = [h.chunk.text for h in hs_hits] == ["hot", "cold"]
+
+    class _Field:
+        def __init__(self, desc: str) -> None:
+            self.json_schema_extra = {"desc": desc}
+
+    class _Sig:
+        instructions = "Answer."
+        input_fields = {"q": _Field("the q")}
+        output_fields = {"a": _Field("the a")}
+
+    class _Pred:
+        def __init__(self, data: dict) -> None:
+            self._data = data
+
+        def toDict(self) -> dict:
+            return self._data
+
+    class _Mod:
+        signature = _Sig()
+
+        def __call__(self, **kwargs: Any) -> Any:
+            return _Pred({"a": kwargs["q"]})
+
+    dspy_adapter = from_dspy_module(_Mod())
+    dspy_bridge = dspy_adapter["handler"](q="hi") == {"a": "hi"}
+
+    # -- MCP-server marketplace bridge: discover -> govern -> connect ----------
+    provider_app = ContextApp(name="bench_weather", provider=MockProvider(), model="mock-1")
+
+    @provider_app.tool_registry.register(name="get_weather")
+    def _get_weather(city: str) -> dict:
+        """Look up the weather."""
+        return {"city": city}
+
+    provider_app.enabled_tools.append("get_weather")
+    server = build_app_server(provider_app)
+    consumer = ContextApp(name="bench_consumer", provider=MockProvider(), model="mock-1")
+    registry_client = MCPRegistryClient(
+        catalog=[
+            MCPServerRecord(name="weather", url="https://weather.example/mcp"),
+            MCPServerRecord(name="evil-server", url="https://evil.example/mcp"),
+        ]
+    )
+    consumer.add_mcp_from_registry("weather", registry=registry_client, server=server, allow=["weather"])
+    mcp_marketplace_tool_landed = any(t.startswith("weather.") for t in consumer.enabled_tools)
+    mcp_marketplace_audited = any(
+        d.decision == "allow" and d.resource == "weather"
+        for d in consumer.audit.query(action="agent_resolve")
+    )
+    try:
+        consumer.add_mcp_from_registry("evil-server", registry=registry_client, server=server, allow=["weather"])
+        mcp_marketplace_denies_unlisted = False
+    except Exception:  # noqa: BLE001 - expected AccessDeniedError
+        mcp_marketplace_denies_unlisted = True
+
+    return {
+        "connectors_round_trip": connectors_round_trip,
+        "connector_provenance": connector_provenance,
+        "connector_count": len(docs),
+        "connector_docs": {k: len(v) for k, v in docs.items()},
+        "plugin_api_version": PLUGIN_API_VERSION,
+        "plugin_loads_on_install": plugin_loads_on_install,
+        "plugin_gates_incompatible": plugin_gates_incompatible,
+        "registry_resolution_governed": registry_resolution_governed,
+        "registry_resolution_audited": registry_resolution_audited,
+        "registry_signature_verified": registry_signature_verified,
+        "registry_tamper_detected": registry_tamper_detected,
+        "haystack_bridge": haystack_bridge,
+        "dspy_bridge": dspy_bridge,
+        "mcp_marketplace_tool_landed": mcp_marketplace_tool_landed,
+        "mcp_marketplace_audited": mcp_marketplace_audited,
+        "mcp_marketplace_denies_unlisted": mcp_marketplace_denies_unlisted,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -3842,6 +4080,7 @@ FAMILIES = {
     "governance": bench_governance,
     "generation": bench_generation,
     "perf": bench_perf,
+    "integrations": bench_integrations,
     "breaking_2_0": bench_breaking_2_0,
 }
 

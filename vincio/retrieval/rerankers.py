@@ -30,6 +30,7 @@ __all__ = [
     "JinaReranker",
     "VoyageReranker",
     "build_reranker",
+    "register_reranker",
 ]
 
 
@@ -398,6 +399,16 @@ _HTTP_RERANKERS: dict[str, type[HTTPReranker]] = {
     "voyage": VoyageReranker,
 }
 
+# Third-party rerankers register here (on install via the ``vincio.rerankers``
+# entry-point group, or directly with :func:`register_reranker`).
+_PLUGIN_RERANKERS: dict[str, Callable[..., Reranker]] = {}
+
+
+def register_reranker(name: str, factory: Callable[..., Reranker]) -> Callable[..., Reranker]:
+    """Register a reranker factory under ``name`` so :func:`build_reranker` finds it."""
+    _PLUGIN_RERANKERS[name] = factory
+    return factory
+
 
 def build_reranker(kind: str | None, **kwargs) -> Reranker | None:
     if kind in (None, "none"):
@@ -414,4 +425,6 @@ def build_reranker(kind: str | None, **kwargs) -> Reranker | None:
         return LocalCrossEncoderReranker(**kwargs)
     if kind in _HTTP_RERANKERS:
         return _HTTP_RERANKERS[kind](**kwargs)
+    if kind in _PLUGIN_RERANKERS:
+        return _PLUGIN_RERANKERS[kind](**kwargs)
     raise ValueError(f"unknown reranker {kind!r}")

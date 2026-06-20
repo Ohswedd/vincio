@@ -49,6 +49,28 @@ for tool in await client.list_tools():
     print(tool.name, tool.input_schema)
 ```
 
+### Discover from a registry (marketplace bridge)
+
+`add_mcp_from_registry` composes discovery, governance, and connection in one
+call: an `MCPRegistryClient` (the official MCP Registry or an offline catalog)
+finds the server, a governed `AgentDirectory` under an `AllowListGate` decides
+reachability — recorded as an audited access decision on the app's audit chain —
+and the server's tools land in the permissioned runtime exactly as above.
+
+```python
+from vincio.registry import MCPRegistryClient
+
+registry = MCPRegistryClient()                       # or catalog=[...] offline
+app.add_mcp_from_registry("weather", registry=registry, allow=["weather"])
+# unlisted servers raise AccessDeniedError; the decision is on app.audit
+```
+
+Pass `directory=` to reuse an existing governed directory, or `allow` / `deny`
+fnmatch globs to build one (fail-closed; defaults to allowing exactly the named
+server). For offline or in-process use, pass `server=` (an in-process
+`MCPServer`) or `transport=`; otherwise the resolved server's URL or stdio
+command is used.
+
 ### Lower-level client
 
 ```python
