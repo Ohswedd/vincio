@@ -128,6 +128,121 @@ edited = await app.context_compiler.recompile(
 )
 ```
 
+### Compiled-prompt render program
+
+A prompt's stable prefix — role, objective, rules, safety policies,
+definitions, the output contract, and examples — depends only on the spec, not
+on the per-call task or evidence. The prompt compiler compiles that prefix once
+into a render program and reuses it across calls that share the spec, rendering
+only the volatile suffix:
+
+```yaml
+# vincio.yaml — on by default
+# (CompilerOptions.use_render_program)
+```
+
+The output is byte-identical to compiling from scratch — the program is a
+hot-path accelerator, not a behaviour change. On a representative spec the warm
+prefix reuse is several times faster than re-rendering it every call;
+`compiler.program_hits` counts the reuses. This is distinct from the
+`PromptCompileCache`, which only hits when *every* input (task and context
+blocks included) is unchanged.
+
+### Warm candidate arena
+
+Collecting and normalizing candidates — building a candidate for every
+evidence, memory, and tool item, collapsing whitespace, and screening privacy
+scope — is query-independent. In the common session pattern (the same retrieved
+corpus, a new turn each time) the compiler reuses that prepared set instead of
+rebuilding it, so a warm recompile is dominated by the query-dependent scoring
+and selection:
+
+```yaml
+performance:
+  reuse_candidate_set: true   # default
+```
+
+The reuse is correctness-preserving: the cached state is query-independent, and
+each compile works from a fresh copy, so the shared compiler stays safe under
+concurrent runs. `compiler.arena_hits` counts the reuses.
+
+## Vectorized scoring
+
+Candidate scoring runs in a single pass. The per-component scores for the whole
+candidate set are reduced against the weight vector together, and — when NumPy
+is installed — semantic relevance and the weighted reduction each collapse to a
+single matrix product. The pure-Python fallback is the zero-dependency default
+and produces bit-for-bit the same selection, so NumPy is an optional
+accelerator and never a requirement:
+
+```bash
+pip install numpy   # optional: accelerates large semantic candidate sets
+```
+
+Nothing to configure — the batched scorer is always on, and a build without
+NumPy compiles identical context to one with it.
+
+## Streaming-first compilation
+
+`ContextCompiler.compile_streaming` streams the compiled context as it becomes
+available. The stable prefix — objective, instructions, constraints, and the
+task — is always included and independent of which evidence is selected, so it
+is emitted *before* any candidate is scored; the selected evidence follows, then
+a terminal event carries the full `CompiledContext`:
+
+```python
+from vincio.context import CompileStreamEvent
+
+async for event in app.context_compiler.compile_streaming(
+    objective=app.objective,
+    user_input=UserInput(text="How do I configure SSO?"),
+    evidence=evidence,
+):
+    if event.type == "prefix":
+        begin_prompt(event.text)        # available before scoring runs
+    elif event.type == "evidence":
+        attach_evidence(event.evidence)
+    elif event.type == "done":
+        compiled = event.result         # authoritative, equals compile()
+```
+
+Back-pressure is the async generator itself: scoring and rendering advance only
+as the consumer pulls. The terminal `done` event is authoritative and identical
+to `compile()` for the same inputs.
+
+## Speculative retrieval prefetch
+
+Task classification is cheap and finishes before retrieval runs. With prefetch
+enabled, the query embedding is computed speculatively from the classification
+while memory recall and ingestion proceed, so retrieval's query embed lands as a
+cache hit instead of a fresh call:
+
+```yaml
+performance:
+  speculative_prefetch: true   # opt-in
+```
+
+The prefetch shares the app's embedder, so a warm that lands is a cache hit and
+a warm that does not costs only an embed retrieval would have done anyway. It is
+cancelled cleanly once preparation finishes, and a failed warm never affects the
+run.
+
+## Per-app memory-footprint budget
+
+Declare a resident-memory ceiling for the compiled context packet. When the
+selected context would exceed it, the compiler slims the packet (text moves to a
+hash reference) and then evicts the lowest-utility evidence until the estimate
+fits, recording each eviction in the excluded report:
+
+```yaml
+performance:
+  memory_budget_mb: 8   # resident-memory ceiling for the compiled packet
+```
+
+The estimated footprint is surfaced on every run as `result.memory_bytes` and
+rolled up as `peak_resident_bytes` in the cost summary, and a footprint
+regression gate in VincioBench holds the reference packet under its ceiling.
+
 ## Zero-copy context packets
 
 Large packets no longer have to duplicate every evidence text:

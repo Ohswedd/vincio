@@ -51,6 +51,7 @@ and a runnable example.
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
 | **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex interop. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
+| **Runtime performance** | A single-pass vectorized scorer (NumPy-optional, pure-Python fallback); a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and the prepared candidate set so a warm compile is dominated by scoring, not allocation; streaming-first compilation that emits the prefix before scoring; speculative retrieval prefetch that warms the query embedding from the task classification; and a per-app resident-memory budget held by slim packets and evidence eviction, surfaced in the cost report and gated by an SLO. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
 
@@ -62,27 +63,6 @@ Forward phases are scoped by theme and gated the same way everything else is —
 by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is additive on the
 frozen public surface; breaking changes are reserved for an announced major window and never shipped
 for their own sake.
-
-### 🚧 Runtime performance & efficiency
-
-*Make the spine fast enough that context engineering is never the bottleneck.*
-
-- **Sub-millisecond compile hot path** — an arena-allocated packet assembler and a compiled-prompt
-  bytecode cache so a warm app's compile step is dominated by scoring, not allocation; a
-  zero-allocation fast path when the candidate set is unchanged since the last run.
-- **Streaming-first compilation** — overlap retrieval, scoring, and rendering so the first token of
-  the compiled prefix is emitted before the last candidate is scored, with back-pressure into the
-  provider transport.
-- **Speculative retrieval prefetch** — warm embedding/rerank calls and connection pools from the
-  objective classifier's prediction while the query is still being normalized, cancelled cleanly if
-  the plan changes.
-- **Vectorized scoring** — batch candidate scoring through a single matrix path (NumPy-optional, with
-  a pure-Python fallback) so large candidate sets score in one pass instead of a Python loop.
-- **Per-app memory-footprint budget** — a declared resident-memory ceiling enforced by slim packets,
-  evidence eviction, and lazy materialization, surfaced in the cost report and gated by an SLO.
-- *Definition of done:* tightened p50/p99 compile and end-to-end latency SLOs and a new
-  `performance` budget family proving the hot path stays sub-millisecond on the reference corpus, with
-  a footprint regression gate.
 
 ### 🚧 Orchestrator & planner depth
 

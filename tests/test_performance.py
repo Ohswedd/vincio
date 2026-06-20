@@ -480,3 +480,497 @@ class TestRunHardening:
         first = rag_app.resolve_provider()
         second = rag_app.resolve_provider()
         assert first is second
+
+
+# ---------------------------------------------------------------------------
+# Vectorized candidate scoring
+# ---------------------------------------------------------------------------
+
+
+def _scoring_candidates(n: int) -> list:
+    from vincio.context.scoring import ContextCandidate
+
+    pool = []
+    for i in range(n):
+        pool.append(
+            ContextCandidate(
+                id=f"c{i}",
+                type="evidence" if i % 3 else "memory",
+                content=(
+                    f"Refund window clause {i}: customers on the Pro plan may request "
+                    f"a refund within {30 + i} days of purchase for ${i}.00."
+                ),
+                token_cost=10 + (i % 7),
+                authority=0.3 + (i % 5) / 10,
+                provenance=0.4 + (i % 4) / 10,
+                leakage_risk=0.0 if i % 4 else 0.2,
+                metadata={"upstream_relevance": (i % 10) / 10},
+            )
+        )
+    return pool
+
+
+class TestVectorizedScoring:
+    QUERY = "What is the refund window for the Pro plan?"
+
+    def test_batch_equals_per_candidate_loop(self):
+        from vincio.context.scoring import ContextScorer
+
+        pool = _scoring_candidates(40)
+        loop_scorer = ContextScorer()
+        for candidate in pool:
+            loop_scorer.score(candidate, query=self.QUERY, selected=[])
+        loop_totals = [c.scores.total for c in pool]
+
+        batch_pool = _scoring_candidates(40)
+        ContextScorer().score_batch(batch_pool, self.QUERY)
+        batch_totals = [c.scores.total for c in batch_pool]
+
+        assert len(batch_totals) == len(loop_totals)
+        for a, b in zip(loop_totals, batch_totals, strict=True):
+            assert a == pytest.approx(b, abs=1e-12)
+
+    def test_batch_fills_every_component(self):
+        from vincio.context.scoring import ContextScorer
+
+        pool = _scoring_candidates(5)
+        ContextScorer().score_batch(pool, self.QUERY)
+        for candidate in pool:
+            assert candidate.scores.novelty == 1.0
+            assert candidate.scores.duplication == 0.0
+            assert 0.0 <= candidate.scores.relevance <= 1.0
+
+    def test_empty_pool_is_noop(self):
+        from vincio.context.scoring import ContextScorer
+
+        ContextScorer().score_batch([], self.QUERY)  # must not raise
+
+    async def test_compile_selection_unchanged(self, sample_evidence):
+        # The batched path must not change which evidence the compiler selects.
+        compiler = ContextCompiler(ContextCompilerOptions())
+        compiled = await compiler.compile(
+            objective=Objective("Summarize renewal terms"),
+            user_input=UserInput(text="What are the renewal terms?"),
+            evidence=sample_evidence,
+            budget=Budget(max_input_tokens=4000),
+        )
+        kept = {e.id for e in compiled.ir.evidence}
+        assert "e1" in kept  # high-relevance renewal clause kept
+        assert "e3" not in kept  # irrelevant "bananas" evidence excluded
+
+    def test_weighted_totals_fallback_matches_numpy_contract(self):
+        from vincio.context.vectorized import weighted_totals
+
+        columns = [[1.0, 2.0, 3.0], [0.5, 0.5, 0.5]]
+        weights = [2.0, -1.0]
+        assert weighted_totals(columns, weights) == [1.5, 3.5, 5.5]
+        assert weighted_totals([], [1.0]) == []
+
+    def test_semantic_batch_equals_per_candidate_loop(self):
+        # Exercises the embedding-cosine relevance path (matrix product under
+        # NumPy, per-item cosine otherwise) and the reranker-verdict blend.
+        from vincio.context.scoring import ContextScorer
+
+        def vec(seed: int) -> list[float]:
+            return [((seed * (k + 3)) % 11) / 10.0 for k in range(8)]
+
+        vectors = {self.QUERY: vec(1)}
+        pool = _scoring_candidates(12)
+        for i, candidate in enumerate(pool):
+            vectors[candidate.content] = vec(i + 2)
+
+        loop = ContextScorer()
+        loop.set_embeddings(dict(vectors))
+        for candidate in pool:
+            loop.score(candidate, query=self.QUERY, selected=[])
+        loop_totals = [c.scores.total for c in pool]
+
+        batch_pool = _scoring_candidates(12)
+        for i, candidate in enumerate(batch_pool):
+            vectors[candidate.content] = vec(i + 2)
+        batch = ContextScorer()
+        batch.set_embeddings(dict(vectors))
+        batch.score_batch(batch_pool, self.QUERY)
+        batch_totals = [c.scores.total for c in batch_pool]
+
+        for a, b in zip(loop_totals, batch_totals, strict=True):
+            assert a == pytest.approx(b, abs=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Warm candidate arena
+# ---------------------------------------------------------------------------
+
+
+class TestWarmCandidateArena:
+    @staticmethod
+    def _kwargs(evidence, query):
+        return dict(
+            objective=Objective("Summarize renewal terms"),
+            user_input=UserInput(text=query),
+            evidence=evidence,
+            budget=Budget(max_input_tokens=4000),
+        )
+
+    async def test_reuse_on_unchanged_candidate_set(self, sample_evidence):
+        compiler = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+        await compiler.compile(**self._kwargs(sample_evidence, "What are the renewal terms?"))
+        assert compiler.arena_hits == 0  # cold: nothing to reuse yet
+        # A new query over the same candidate set reuses the prepared candidates.
+        await compiler.compile(**self._kwargs(sample_evidence, "When does it auto-renew?"))
+        assert compiler.arena_hits == 1
+
+    async def test_reuse_is_equivalent_to_cold(self, sample_evidence):
+        # Warming the arena must not change the compiled output for a new query.
+        warm = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+        await warm.compile(**self._kwargs(sample_evidence, "What are the renewal terms?"))
+        warm_compiled = await warm.compile(**self._kwargs(sample_evidence, "auto-renew window?"))
+        assert warm.arena_hits == 1
+
+        cold = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=False))
+        cold_compiled = await cold.compile(**self._kwargs(sample_evidence, "auto-renew window?"))
+
+        assert [e.id for e in warm_compiled.ir.evidence] == [
+            e.id for e in cold_compiled.ir.evidence
+        ]
+        assert warm_compiled.token_count == cold_compiled.token_count
+        assert warm_compiled.excluded_report == cold_compiled.excluded_report
+        assert warm_compiled.packet.spec_hash == cold_compiled.packet.spec_hash
+
+    async def test_changed_candidate_set_misses(self, sample_evidence):
+        compiler = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+        await compiler.compile(**self._kwargs(sample_evidence, "q1"))
+        await compiler.compile(**self._kwargs(sample_evidence[:1], "q1"))  # fewer items
+        assert compiler.arena_hits == 0
+
+    async def test_kept_memory_item_equivalent_across_reuse(self, sample_evidence):
+        # A kept memory item carries a query-independent memory_value (its
+        # confidence); the arena must preserve it so warm scoring matches cold.
+        from vincio.core.types import MemoryItem, MemoryScope, PolicySet
+
+        memory = [
+            MemoryItem(
+                id="m1",
+                content="The customer prefers refunds processed to the original card.",
+                scope=MemoryScope.USER,
+                owner_id="u1",
+                confidence=0.95,
+            )
+        ]
+        kwargs = dict(
+            objective=Objective("renewal"),
+            user_input=UserInput(text="refund preferences?", user_id="u1"),
+            evidence=sample_evidence,
+            memory=memory,
+            policies=PolicySet(privacy="open"),  # keep the memory item
+            budget=Budget(max_input_tokens=4000),
+        )
+        warm = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+        await warm.compile(**kwargs)
+        warm_compiled = await warm.compile(**dict(kwargs, user_input=UserInput(text="card refunds?", user_id="u1")))
+        assert warm.arena_hits == 1
+
+        cold = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=False))
+        cold_compiled = await cold.compile(**dict(kwargs, user_input=UserInput(text="card refunds?", user_id="u1")))
+
+        assert [m.id for m in warm_compiled.ir.memory] == [m.id for m in cold_compiled.ir.memory]
+        assert [e.id for e in warm_compiled.ir.evidence] == [e.id for e in cold_compiled.ir.evidence]
+        assert "m1" in {m.id for m in warm_compiled.ir.memory}  # the memory survived selection
+        assert warm_compiled.token_count == cold_compiled.token_count
+
+    async def test_privacy_exclusions_preserved_across_reuse(self):
+        from vincio.core.types import MemoryItem, MemoryScope, PolicySet
+
+        foreign = MemoryItem(
+            id="m_foreign",
+            content="Acme's internal renewal note.",
+            scope=MemoryScope.TENANT,
+            owner_id="other_corp",
+        )
+        evidence = [
+            EvidenceItem(id="e1", source_id="D1", text="Renews automatically after 60 days notice.")
+        ]
+        policies = PolicySet(privacy="tenant_isolated")
+        kwargs = dict(
+            objective=Objective("renewal"),
+            user_input=UserInput(text="renewal?", tenant_id="acme"),
+            evidence=evidence,
+            memory=[foreign],
+            policies=policies,
+            budget=Budget(max_input_tokens=4000),
+        )
+        compiler = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+        first = await compiler.compile(**kwargs)
+        kwargs2 = dict(kwargs, user_input=UserInput(text="renew window?", tenant_id="acme"))
+        second = await compiler.compile(**kwargs2)
+        assert compiler.arena_hits == 1
+
+        def reasons(c):
+            return sorted(e["reason"] for e in c.excluded_report)
+
+        assert "privacy_scope_mismatch" in reasons(first)
+        assert reasons(first) == reasons(second)
+        assert all(m.id != "m_foreign" for m in second.ir.memory)
+
+    async def test_page_change_misses(self):
+        # page feeds citation_ref, so evidence differing only by page must not
+        # reuse a cached candidate with a stale citation.
+        compiler = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+        base = dict(objective=Objective("refunds"), budget=Budget(max_input_tokens=4000))
+        query = UserInput(text="When are refunds available?")
+        ev1 = [EvidenceItem(id="e1", source_id="D1", text="Refunds are available within 30 days.", page=1, relevance=0.9)]
+        ev2 = [EvidenceItem(id="e1", source_id="D1", text="Refunds are available within 30 days.", page=2, relevance=0.9)]
+        await compiler.compile(user_input=query, evidence=ev1, **base)
+        compiled = await compiler.compile(user_input=query, evidence=ev2, **base)
+        assert compiler.arena_hits == 0  # page changed → distinct candidate set
+        assert compiled.packet.evidence_items[0]["citation_ref"] == "D1:p2"
+
+    async def test_concurrent_compiles_share_arena_safely(self, sample_evidence):
+        compiler = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+        results = await asyncio.gather(
+            *(compiler.compile(**self._kwargs(sample_evidence, f"q{i}")) for i in range(16))
+        )
+        ids = [tuple(e.id for e in r.ir.evidence) for r in results]
+        assert all(i == ids[0] for i in ids)  # identical selection under concurrency
+
+
+# ---------------------------------------------------------------------------
+# Streaming-first compilation
+# ---------------------------------------------------------------------------
+
+
+class TestStreamingCompilation:
+    @staticmethod
+    def _kwargs(evidence):
+        from vincio.core.types import Constraint, Instruction
+
+        return dict(
+            objective=Objective("Summarize renewal terms"),
+            user_input=UserInput(text="What are the renewal terms?"),
+            instructions=[Instruction("Answer only from the provided evidence.")],
+            constraints=[Constraint("Do not speculate beyond the documents.")],
+            evidence=evidence,
+            budget=Budget(max_input_tokens=4000),
+        )
+
+    async def test_prefix_emitted_before_scoring(self, sample_evidence):
+        compiler = ContextCompiler(ContextCompilerOptions())
+        state = {"compiled": False}
+        original = compiler.compile
+
+        async def flagged(**kw):
+            state["compiled"] = True
+            return await original(**kw)
+
+        compiler.compile = flagged  # type: ignore[method-assign]
+        gen = compiler.compile_streaming(**self._kwargs(sample_evidence))
+        first = await gen.__anext__()
+        assert first.type == "prefix"
+        # The compile (scoring + selection) has not run when the prefix arrives.
+        assert state["compiled"] is False
+        assert "renewal" in first.text.lower()
+        assert first.blocks["instructions"] == ["Answer only from the provided evidence."]
+
+        rest = [event async for event in gen]
+        assert state["compiled"] is True
+        assert [event.type for event in rest] == ["evidence", "done"]
+
+    async def test_done_equals_direct_compile(self, sample_evidence):
+        streamed = None
+        async for event in ContextCompiler(ContextCompilerOptions()).compile_streaming(
+            **self._kwargs(sample_evidence)
+        ):
+            if event.type == "evidence":
+                assert event.evidence  # selected evidence surfaced mid-stream
+            if event.type == "done":
+                streamed = event.result
+        assert streamed is not None
+
+        direct = await ContextCompiler(ContextCompilerOptions()).compile(
+            **self._kwargs(sample_evidence)
+        )
+        assert [e.id for e in streamed.ir.evidence] == [e.id for e in direct.ir.evidence]
+        assert streamed.token_count == direct.token_count
+        assert streamed.packet.spec_hash == direct.packet.spec_hash
+
+    async def test_backpressure_consumer_paced(self, sample_evidence):
+        # The async generator only advances when pulled — a consumer can stop
+        # after the prefix without forcing the rest of the compile.
+        compiler = ContextCompiler(ContextCompilerOptions())
+        gen = compiler.compile_streaming(**self._kwargs(sample_evidence))
+        first = await gen.__anext__()
+        assert first.type == "prefix"
+        await gen.aclose()  # closing mid-stream must not raise
+
+
+# ---------------------------------------------------------------------------
+# Speculative retrieval prefetch
+# ---------------------------------------------------------------------------
+
+
+class TestSpeculativePrefetch:
+    async def test_warm_makes_retrieval_embed_a_cache_hit(self):
+        from vincio.retrieval.embeddings import embed_texts
+        from vincio.retrieval.prefetch import SpeculativePrefetcher
+
+        inner = _CountingEmbedder()
+        cached = CachedEmbedder(inner)
+        prefetcher = SpeculativePrefetcher(cached)
+
+        warmed = await prefetcher.warm("what is the refund window?").result()
+        assert warmed == 1
+        assert prefetcher.warmed == 1
+        calls_after_warm = inner.calls
+
+        # Retrieval embeds the query the same way (input_type="query"); it now
+        # hits the warm cache instead of calling the embedder again.
+        await embed_texts(cached, ["what is the refund window?"], input_type="query")
+        assert inner.calls == calls_after_warm
+
+    def test_predict_queries(self):
+        from vincio.core.types import TaskType
+        from vincio.retrieval.prefetch import SpeculativePrefetcher
+
+        prefetcher = SpeculativePrefetcher(_CountingEmbedder())
+        assert prefetcher.predict_queries("  refund? ") == ["refund?"]
+        assert prefetcher.predict_queries("") == []
+        assert prefetcher.predict_queries("anything", TaskType.CLASSIFICATION) == []
+        assert prefetcher.predict_queries("docs?", TaskType.DOCUMENT_QA) == ["docs?"]
+
+    async def test_cancellation_is_clean(self):
+        from vincio.retrieval.prefetch import SpeculativePrefetcher
+
+        gate = asyncio.Event()
+
+        class SlowEmbedder:
+            dim = 8
+            calls = 0
+
+            async def embed(self, texts, **_):
+                type(self).calls += 1
+                await gate.wait()
+                return [[0.0] * self.dim for _ in texts]
+
+        prefetcher = SpeculativePrefetcher(SlowEmbedder())
+        handle = prefetcher.warm("slow query")
+        handle.cancel()
+        assert await handle.result() == 0  # cancelled, no exception
+        assert prefetcher.warmed == 0
+        gate.set()
+
+    async def test_failed_warm_never_raises(self):
+        from vincio.retrieval.prefetch import SpeculativePrefetcher
+
+        class BrokenEmbedder:
+            dim = 8
+
+            async def embed(self, texts, **_):
+                raise RuntimeError("embedding backend down")
+
+        prefetcher = SpeculativePrefetcher(BrokenEmbedder())
+        assert await prefetcher.warm("q").result() == 0  # swallowed
+
+    async def test_base_exception_stays_contained(self):
+        # Even a pathological non-Exception failure stays in the warming task —
+        # the run is never broken by prefetch.
+        from vincio.retrieval.prefetch import SpeculativePrefetcher
+
+        class FatalEmbedder:
+            dim = 8
+
+            async def embed(self, texts, **_):
+                raise SystemExit("pathological embedder")
+
+        assert await SpeculativePrefetcher(FatalEmbedder()).warm("q").result() == 0
+
+    async def test_app_run_with_prefetch_enabled(self, sample_docs_dir, offline_config, tmp_cwd):
+        offline_config.performance.speculative_prefetch = True
+        app = ContextApp(
+            name="prefetch", provider=MockProvider(), model="mock-1", config=offline_config
+        )
+        app.add_source("docs", path=str(sample_docs_dir), retrieval="hybrid")
+        assert app._prefetcher is not None
+        result = await app.arun("What is the refund window for the Pro plan?")
+        assert result.status == RunStatus.SUCCEEDED
+
+
+# ---------------------------------------------------------------------------
+# Per-app memory-footprint budget
+# ---------------------------------------------------------------------------
+
+
+def _sized_evidence(n: int, *, chars: int = 200) -> list:
+    out = []
+    for i in range(n):
+        body = f"renewal clause {i} " + "term notice renewal window " * (chars // 26)
+        out.append(
+            EvidenceItem(
+                id=f"ev{i}",
+                source_id=f"D{i}",
+                text=body,
+                authority=0.5,
+                relevance=0.9 - i * 0.05,
+            )
+        )
+    return out
+
+
+class TestMemoryFootprintBudget:
+    def test_estimator_is_monotonic_and_slim_helps(self):
+        from vincio.context.footprint import estimate_resident_bytes
+
+        small = estimate_resident_bytes(["abc"], [], slim=False)
+        large = estimate_resident_bytes(["abc", "defgh"], [], slim=False)
+        assert large > small  # more/larger evidence → larger estimate
+        slim = estimate_resident_bytes(["a" * 1000], [], slim=True)
+        full = estimate_resident_bytes(["a" * 1000], [], slim=False)
+        assert slim < full  # slim references text by hash instead of inlining it
+
+    async def test_resident_bytes_reported_by_default(self, sample_evidence):
+        compiled = await ContextCompiler(ContextCompilerOptions()).compile(
+            objective=Objective("renewal"),
+            user_input=UserInput(text="renewal terms?"),
+            evidence=sample_evidence,
+            budget=Budget(max_input_tokens=4000),
+        )
+        assert compiled.resident_bytes > 0  # always surfaced
+
+    async def test_budget_slims_and_evicts(self):
+        evidence = _sized_evidence(4)
+        unbounded = await ContextCompiler(ContextCompilerOptions()).compile(
+            objective=Objective("renewal"),
+            user_input=UserInput(text="renewal term notice window?"),
+            evidence=evidence,
+            budget=Budget(max_input_tokens=8000),
+        )
+        assert len(unbounded.ir.evidence) == 4  # all fit without a ceiling
+        ceiling = 1200
+        bounded = await ContextCompiler(
+            ContextCompilerOptions(max_resident_bytes=ceiling)
+        ).compile(
+            objective=Objective("renewal"),
+            user_input=UserInput(text="renewal term notice window?"),
+            evidence=evidence,
+            budget=Budget(max_input_tokens=8000),
+        )
+        assert bounded.packet.slim is True  # slimmed first
+        assert bounded.resident_bytes <= ceiling
+        assert len(bounded.ir.evidence) < 4  # lowest-utility evidence evicted
+        evicted = [e for e in bounded.excluded_report if e["reason"] == "memory_budget_exceeded"]
+        assert evicted
+        # The highest-utility evidence is the one that survives.
+        assert "ev0" in {e.id for e in bounded.ir.evidence}
+
+    async def test_app_surfaces_memory_in_result_and_cost(
+        self, sample_docs_dir, offline_config, tmp_cwd
+    ):
+        offline_config.performance.memory_budget_mb = 0.001  # 1000 bytes
+        app = ContextApp(
+            name="footprint", provider=MockProvider(), model="mock-1", config=offline_config
+        )
+        app.add_source("docs", path=str(sample_docs_dir), retrieval="hybrid")
+        result = await app.arun("What is the refund window for the Pro plan?")
+        assert result.status == RunStatus.SUCCEEDED
+        assert result.memory_bytes > 0
+        assert result.memory_bytes <= 1000
+        assert app.cost_tracker.summary()["peak_resident_bytes"] >= result.memory_bytes

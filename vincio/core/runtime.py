@@ -538,10 +538,29 @@ class VincioRuntime:
                 )
                 return screened
 
-        memory_items, ingested, retrieved = await gather_bounded(
-            (memory_candidates(), file_evidence(), retrieved_evidence()),
-            limit=app.config.performance.max_concurrency,
-        )
+        # Speculative retrieval prefetch: warm the query embedding from the task
+        # classification while memory recall, ingestion, and retrieval run, so
+        # retrieval's query embed lands as a cache hit. Cancelled cleanly once
+        # preparation finishes (retrieval has already embedded by then).
+        prefetch = None
+        prefetcher = getattr(app, "_prefetcher", None)
+        if (
+            app.config.performance.speculative_prefetch
+            and app.retrieval is not None
+            and prefetcher is not None
+        ):
+            prefetch = prefetcher.warm(
+                routed.input.text or routed.objective.text, routed.task.task_type
+            )
+        try:
+            memory_items, ingested, retrieved = await gather_bounded(
+                (memory_candidates(), file_evidence(), retrieved_evidence()),
+                limit=app.config.performance.max_concurrency,
+            )
+        finally:
+            if prefetch is not None:
+                prefetch.cancel()
+                await prefetch.result()
         evidence: list[EvidenceItem] = list(app.pending_evidence)
         evidence.extend(ingested)
         evidence.extend(retrieved)
@@ -581,11 +600,14 @@ class VincioRuntime:
             packet = compiled_context.packet
             result.context_packet_id = packet.id
             result.excluded_context = compiled_context.excluded_report
+            result.memory_bytes = compiled_context.resident_bytes
+            app.cost_tracker.record_memory(compiled_context.resident_bytes)
             span.set(
                 packet_id=packet.id,
                 token_count=compiled_context.token_count,
                 evidence_kept=len(compiled_context.ir.evidence),
                 excluded=len(compiled_context.excluded_report),
+                resident_bytes=compiled_context.resident_bytes,
                 cached=compiled_context.from_cache,
             )
             # Persist off the event loop so the packet write doesn't block the
@@ -1587,6 +1609,7 @@ class VincioRuntime:
             "started_at": utcnow().isoformat(),
             "cost_usd": result.cost_usd,
             "latency_ms": result.latency_ms,
+            "memory_bytes": result.memory_bytes,
             "trace_id": result.trace_id,
         }
 

@@ -104,7 +104,11 @@ The advertised `Budget` is a hard cap: cost / token / step overruns raise
 image/audio generation commits), recorded on the same audit chain. An unknown
 model warns rather than silently billing $0. Agents and crews are bounded and
 guaranteed to terminate; budget breaches surface as policy violations on the audit
-path.
+path. A declared per-app resident-memory ceiling (`performance.memory_budget_mb`)
+bounds the compiled context packet against memory exhaustion: when the selected
+context would exceed it, the compiler slims the packet and evicts the
+lowest-utility evidence to fit, recording each eviction in the excluded report
+and surfacing the footprint as `RunResult.memory_bytes`.
 
 ### Self-improvement safety
 

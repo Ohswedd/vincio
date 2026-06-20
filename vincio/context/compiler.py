@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from collections.abc import AsyncIterator
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -35,9 +36,11 @@ from ..core.types import (
     ToolSpec,
     UserInput,
 )
-from ..core.utils import new_id
+from ..core.utils import new_id, stable_hash
+from .arena import CandidateArena, PreparedCandidates
 from .budgeting import BudgetAllocator
 from .compression import distill_evidence_ledger, extractive_compress
+from .footprint import estimate_resident_bytes
 from .ir import ContextIR, OutputContractRef
 from .llmlingua import salient_units
 from .packet import ContextPacket
@@ -48,7 +51,12 @@ from .scoring import (
     _terms,
 )
 
-__all__ = ["ContextCompilerOptions", "CompiledContext", "ContextCompiler"]
+__all__ = [
+    "ContextCompilerOptions",
+    "CompiledContext",
+    "CompileStreamEvent",
+    "ContextCompiler",
+]
 
 
 class ContextCompilerOptions(BaseModel):
@@ -76,6 +84,20 @@ class ContextCompilerOptions(BaseModel):
     # so it never starves context. On by default; small corpora are unaffected
     # because the flexible blocks still fit everything.
     reserve_response_tokens: bool = True
+    # Warm candidate arena: when the candidate set (inputs + privacy scope) is
+    # unchanged since a recent compile, reuse the collected, normalized, and
+    # privacy-screened candidates instead of rebuilding them, so a steady-state
+    # recompile is dominated by the query-dependent scoring and selection.
+    # Correctness-preserving (the reused state is query-independent), on by
+    # default. The reused candidates are fresh per-compile copies, so the
+    # shared compiler stays concurrency-safe.
+    reuse_candidate_set: bool = True
+    # Per-app resident-memory ceiling for the compiled packet, in bytes. When
+    # set and the selected context would exceed it, the compiler slims the
+    # packet and evicts the lowest-utility evidence until the estimate is under
+    # the ceiling, recording each eviction in the excluded report. ``None``
+    # leaves the footprint unbounded (the default).
+    max_resident_bytes: int | None = None
 
 
 class CompiledContext(BaseModel):
@@ -85,12 +107,32 @@ class CompiledContext(BaseModel):
     budget_report: dict[str, Any] = Field(default_factory=dict)
     conflicts: list[dict[str, Any]] = Field(default_factory=list)
     token_count: int = 0
+    # Estimated resident-memory footprint of the packet's context, in bytes
+    # (deterministic; see :mod:`vincio.context.footprint`). Held under any
+    # declared ``max_resident_bytes`` ceiling and surfaced in the cost summary.
+    resident_bytes: int = 0
     from_cache: bool = False
     # Original (pre-selection) inputs, retained in memory for partial
     # recompiles; excluded from dumps so packets and caches stay slim.
     source_evidence: list[EvidenceItem] = Field(default_factory=list, exclude=True)
     source_memory: list[MemoryItem] = Field(default_factory=list, exclude=True)
     source_tool_results: list[ToolResult] = Field(default_factory=list, exclude=True)
+
+
+class CompileStreamEvent(BaseModel):
+    """An event from :meth:`ContextCompiler.compile_streaming`.
+
+    - ``prefix`` — the always-included, evidence-independent context (objective,
+      instructions, constraints, task), emitted before any candidate is scored.
+    - ``evidence`` — the selected evidence entries, once selection finishes.
+    - ``done`` — the terminal event carrying the full :class:`CompiledContext`.
+    """
+
+    type: Literal["prefix", "evidence", "done"]
+    text: str = ""
+    blocks: dict[str, Any] = Field(default_factory=dict)
+    evidence: list[dict[str, Any]] = Field(default_factory=list)
+    result: CompiledContext | None = None
 
 
 _NEGATION_RE = re.compile(r"\b(not|no|never|cannot|can't|won't|isn't|doesn't|without)\b")
@@ -156,6 +198,10 @@ class ContextCompiler:
         self.allocator = BudgetAllocator()
         self.cache = cache  # ContextCompileCache | None
         self.cache_hits = 0
+        # Warm candidate arena: reuse the prepared candidate set across compiles
+        # whose inputs are unchanged (see ``reuse_candidate_set``).
+        self.arena = CandidateArena() if self.options.reuse_candidate_set else None
+        self.arena_hits = 0
         # The inline evidence compressor. Defaults to extractive
         # compression; a learned compressor (e.g. ``LLMLinguaCompressor``) is a
         # drop-in with the same signature, installed via
@@ -243,6 +289,62 @@ class ContextCompiler:
             "budget": budget.model_dump(mode="json"),
             "policies": policies.model_dump(mode="json"),
             "options": self.options.model_dump(mode="json"),
+        }
+
+    def _candidate_signature(
+        self,
+        *,
+        evidence: list[EvidenceItem],
+        memory: list[MemoryItem],
+        tool_results: list[ToolResult],
+        privacy: str,
+        tenant_id: str | None,
+    ) -> dict[str, Any]:
+        """Query-independent signature of the candidate set.
+
+        Candidate collection, normalization, and the privacy screen depend only
+        on the inputs and the run's privacy scope — never on the query or
+        budget — so two compiles with this same signature share their prepared
+        candidate set. Mirrors the evidence/memory/tool fields the full compile
+        signature uses, with the modality and media identity that distinguish
+        image/table evidence and the privacy scope the screen reads.
+        """
+        return {
+            "evidence": [
+                (
+                    e.id,
+                    e.scorable_text,
+                    e.modality,
+                    e.authority,
+                    e.provenance,
+                    e.relevance,
+                    e.token_cost,
+                    e.source_id,
+                    e.page,  # affects citation_ref, which _collect caches in metadata
+                    None
+                    if e.modality == "text"
+                    else stable_hash(e.image.model_dump(mode="json") if e.image else e.table),
+                )
+                for e in evidence
+            ],
+            "memory": [
+                (
+                    m.id,
+                    m.content,
+                    m.confidence,
+                    m.scope.value,
+                    m.privacy_class.value,
+                    m.owner_id,
+                    bool(m.source_trace_id),
+                    m.updated_at.isoformat() if m.updated_at else None,
+                )
+                for m in memory
+            ],
+            "tool_results": [
+                (t.id, t.tool_name, t.status, str(t.output), t.error) for t in tool_results
+            ],
+            "privacy": privacy,
+            "tenant_id": tenant_id,
         }
 
     # -- candidate collection -----------------------------------------------------
@@ -519,8 +621,7 @@ class ContextCompiler:
             pool.append(candidate)
 
         # Score once with an empty selection: novelty=1, duplication=0.
-        for candidate in pool:
-            scorer.score(candidate, query=query, selected=[])
+        scorer.score_batch(pool, query)
         w = scorer.weights
         semantic = scorer.semantic
         lam = self.options.mmr_lambda
@@ -602,6 +703,55 @@ class ContextCompiler:
             return front + back[::-1]
         return ranked
 
+    def _enforce_footprint(
+        self,
+        evidence: list[ContextCandidate],
+        memory: list[ContextCandidate],
+        slim: bool,
+        excluded: list[dict[str, Any]],
+    ) -> tuple[bool, list[ContextCandidate]]:
+        """Hold the packet's estimated footprint under ``max_resident_bytes``.
+
+        First slims the packet (lossless — text moves to a hash reference);
+        then, if still over, evicts the lowest-utility evidence one at a time,
+        recording each eviction, until the estimate fits or no evidence remains.
+        Returns the effective slim flag and the surviving (order-preserved)
+        evidence.
+        """
+        ceiling = self.options.max_resident_bytes
+        assert ceiling is not None
+        memory_texts = [c.content for c in memory]
+
+        def estimate(items: list[ContextCandidate], slim_flag: bool) -> int:
+            return estimate_resident_bytes(
+                [c.content for c in items], memory_texts, slim=slim_flag
+            )
+
+        if estimate(evidence, slim) <= ceiling:
+            return slim, evidence
+        slim = True  # slim first — it never drops evidence
+        if estimate(evidence, slim) <= ceiling:
+            return slim, evidence
+
+        # Evict the lowest-utility evidence until the estimate fits.
+        kept = list(evidence)
+        order = sorted(range(len(kept)), key=lambda i: kept[i].scores.total)  # ascending utility
+        evict: set[int] = set()
+        for index in order:
+            if estimate([kept[i] for i in range(len(kept)) if i not in evict], slim) <= ceiling:
+                break
+            evict.add(index)
+            victim = kept[index]
+            excluded.append(
+                {
+                    "id": victim.id,
+                    "reason": "memory_budget_exceeded",
+                    "token_cost": victim.token_cost,
+                }
+            )
+        survivors = [kept[i] for i in range(len(kept)) if i not in evict]
+        return slim, survivors
+
     # -- main entry --------------------------------------------------------------
 
     async def compile(
@@ -659,36 +809,65 @@ class ContextCompiler:
                 return compiled
 
         # 1-3. collect, normalize, classify (type is assigned at collection).
-        candidates = self._collect(
-            evidence=evidence or [], memory=memory or [], tool_results=tool_results or []
-        )
-        candidates = self._normalize(candidates)
+        # The warm candidate arena reuses this query-independent prep when the
+        # candidate set is unchanged since a recent compile.
+        arena_key: str | None = None
+        prepared: PreparedCandidates | None = None
+        if self.arena is not None:
+            arena_key = self.arena.fingerprint(
+                self._candidate_signature(
+                    evidence=list(evidence or []),
+                    memory=list(memory or []),
+                    tool_results=list(tool_results or []),
+                    privacy=policies.privacy,
+                    tenant_id=user_input.tenant_id,
+                )
+            )
+            prepared = self.arena.get(arena_key)
 
-        # Policy screen: drop items whose privacy scope conflicts with the run.
-        if policies.privacy != "open":
-            allowed: list[ContextCandidate] = []
-            for candidate in candidates:
-                source = candidate.source
-                owner = getattr(source, "owner_id", None) or getattr(source, "tenant_id", None)
-                if (
-                    candidate.type == "memory"
-                    and owner
-                    and user_input.tenant_id
-                    and getattr(source, "scope", None) is not None
-                    and str(source.scope.value) in ("tenant", "organization")
-                    and owner != user_input.tenant_id
-                ):
-                    excluded.append({"id": candidate.id, "reason": "privacy_scope_mismatch"})
-                    continue
-                allowed.append(candidate)
-            candidates = allowed
+        if prepared is not None:
+            self.arena_hits += 1
+            candidates = prepared.candidates
+            excluded.extend(prepared.excluded)
+        else:
+            candidates = self._collect(
+                evidence=evidence or [], memory=memory or [], tool_results=tool_results or []
+            )
+            candidates = self._normalize(candidates)
+
+            # Policy screen: drop items whose privacy scope conflicts with the run.
+            static_excluded: list[dict[str, Any]] = []
+            if policies.privacy != "open":
+                allowed: list[ContextCandidate] = []
+                for candidate in candidates:
+                    source = candidate.source
+                    owner = getattr(source, "owner_id", None) or getattr(source, "tenant_id", None)
+                    if (
+                        candidate.type == "memory"
+                        and owner
+                        and user_input.tenant_id
+                        and getattr(source, "scope", None) is not None
+                        and str(source.scope.value) in ("tenant", "organization")
+                        and owner != user_input.tenant_id
+                    ):
+                        static_excluded.append(
+                            {"id": candidate.id, "reason": "privacy_scope_mismatch"}
+                        )
+                        continue
+                    allowed.append(candidate)
+                candidates = allowed
+            excluded.extend(static_excluded)
+            if self.arena is not None and arena_key is not None:
+                self.arena.put(
+                    arena_key,
+                    PreparedCandidates(candidates=candidates, excluded=static_excluded),
+                )
 
         # 4. score (with a per-compile scorer — semantic embeddings are installed
         # on a fresh scorer so the shared instance stays vector-less and concurrent
         # compiles never race on mutable state).
         scorer = await self._scorer_for(candidates, query)
-        for candidate in candidates:
-            scorer.score(candidate, query=query)
+        scorer.score_batch(candidates, query)
 
         # 5. dedupe
         candidates = self._remove_duplicates(candidates, excluded, scorer)
@@ -759,6 +938,17 @@ class ContextCompiler:
         # 9. order
         selected_evidence = self._order(selected_evidence, query)
 
+        # Per-app resident-memory ceiling: slim the packet and evict the
+        # lowest-utility evidence until the estimated footprint fits.
+        effective_slim = self.options.slim_packets
+        if self.options.max_resident_bytes is not None:
+            effective_slim, selected_evidence = self._enforce_footprint(
+                selected_evidence, selected_memory, effective_slim, excluded
+            )
+            allocation.block("evidence").used_tokens = sum(
+                c.token_cost for c in selected_evidence
+            )
+
         # Rebuild typed items from selected candidates (possibly compressed).
         final_evidence: list[EvidenceItem] = []
         for candidate in selected_evidence:
@@ -823,7 +1013,12 @@ class ContextCompiler:
             memory_excluded=memory_excluded,
             trace_parent_id=trace_parent_id,
             token_count=token_count,
-            slim=self.options.slim_packets,
+            slim=effective_slim,
+        )
+        resident_bytes = estimate_resident_bytes(
+            [c.content for c in selected_evidence],
+            [c.content for c in selected_memory],
+            slim=effective_slim,
         )
         compiled = CompiledContext(
             ir=ir,
@@ -832,6 +1027,7 @@ class ContextCompiler:
             budget_report=allocation.report(),
             conflicts=conflicts,
             token_count=token_count,
+            resident_bytes=resident_bytes,
             source_evidence=list(evidence or []),
             source_memory=list(memory or []),
             source_tool_results=list(tool_results or []),
@@ -843,6 +1039,71 @@ class ContextCompiler:
                 source_ids=sorted({e.source_id for e in compiled.ir.evidence if e.source_id}),
             )
         return compiled
+
+    @staticmethod
+    def _prefix_blocks(
+        objective: Objective,
+        instructions: list[Instruction],
+        constraints: list[Constraint],
+        user_input: UserInput,
+    ) -> dict[str, Any]:
+        """The evidence-independent prefix: objective, instructions,
+        constraints, and the user task. Known before any candidate is scored."""
+        return {
+            "objective": objective.text,
+            "instructions": [i.text for i in instructions],
+            "constraints": [c.text for c in constraints],
+            "task": user_input.text or "",
+        }
+
+    async def compile_streaming(
+        self,
+        *,
+        objective: Objective,
+        user_input: UserInput,
+        instructions: list[Instruction] | None = None,
+        constraints: list[Constraint] | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[CompileStreamEvent]:
+        """Compile, streaming the result as it becomes available.
+
+        The stable prefix — objective, instructions, constraints, and the task —
+        is always included and does not depend on which evidence is selected, so
+        it is emitted first, *before* any candidate is scored: a downstream
+        consumer (the prompt compiler or the provider transport) can begin on
+        the prefix while selection runs. The selected evidence follows once
+        scoring and selection finish, then a terminal ``done`` event carries the
+        full :class:`CompiledContext`. Back-pressure is the async generator
+        itself — scoring and rendering advance only as the consumer pulls.
+
+        ``"".join`` of the prefix/evidence is not the contract; the terminal
+        ``done`` event's :class:`CompiledContext` is authoritative and identical
+        to :meth:`compile` for the same inputs.
+        """
+        instructions = list(instructions or [])
+        constraints = list(constraints or [])
+        blocks = self._prefix_blocks(objective, instructions, constraints, user_input)
+        prefix_text = "\n".join(
+            part
+            for part in (
+                blocks["objective"],
+                "\n".join(blocks["instructions"]),
+                "\n".join(blocks["constraints"]),
+                blocks["task"],
+            )
+            if part
+        )
+        yield CompileStreamEvent(type="prefix", text=prefix_text, blocks=blocks)
+
+        compiled = await self.compile(
+            objective=objective,
+            user_input=user_input,
+            instructions=instructions,
+            constraints=constraints,
+            **kwargs,
+        )
+        yield CompileStreamEvent(type="evidence", evidence=compiled.packet.evidence_items)
+        yield CompileStreamEvent(type="done", result=compiled)
 
     async def recompile(
         self,

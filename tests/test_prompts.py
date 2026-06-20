@@ -177,3 +177,66 @@ class TestVariantsAndDiff:
 
     def test_diff_rendered(self):
         assert "+world" in diff_rendered("hello", "world")
+
+
+class TestRenderProgram:
+    """The compiled-prompt render program must be a pure accelerator: its
+    output is byte-identical to compiling the stable prefix from scratch."""
+
+    _VARS = {"plan": "Gold"}
+    _EVIDENCE = [{"id": "E1", "text": "Plan Gold reimburses up to $5,000."}]
+    _MEMORY = [{"id": "M1", "text": "Customer is a long-standing Gold member."}]
+
+    @staticmethod
+    def _fields(compiled):
+        return compiled.model_dump(mode="json", exclude={"created_at"})
+
+    def test_program_output_is_byte_identical(self, spec):
+        with_program = PromptCompiler(CompilerOptions(use_render_program=True))
+        without = PromptCompiler(CompilerOptions(use_render_program=False))
+        kwargs = dict(
+            spec=spec,
+            user_task="Is claim C reimbursable?",
+            variables=self._VARS,
+            evidence_items=self._EVIDENCE,
+            memory_items=self._MEMORY,
+        )
+        a = with_program.compile(**kwargs)
+        b = without.compile(**kwargs)
+        assert self._fields(a) == self._fields(b)
+
+    def test_stable_prefix_reused_across_tasks(self, spec):
+        compiler = PromptCompiler(CompilerOptions(use_render_program=True))
+        first = compiler.compile(spec, user_task="Q1?", variables=self._VARS)
+        assert compiler.program_hits == 0  # cold
+        second = compiler.compile(
+            spec, user_task="A different question entirely?", variables=self._VARS,
+            evidence_items=self._EVIDENCE,
+        )
+        assert compiler.program_hits == 1  # stable prefix reused
+        assert first.system_text == second.system_text
+        assert first.stable_prefix_tokens == second.stable_prefix_tokens
+        # ...but the volatile suffix differs, so the full render differs.
+        assert first.user_text != second.user_text
+
+    def test_native_schema_uses_a_distinct_program(self, spec):
+        compiler = PromptCompiler(CompilerOptions(use_render_program=True))
+        inlined = compiler.compile(spec, user_task="Q?", variables=self._VARS)
+        native = compiler.compile(
+            spec, user_task="Q?", variables=self._VARS, provider_enforces_schema=True
+        )
+        # The schema is in the prefix only when the provider does not enforce it.
+        assert "JSON schema" in inlined.system_text
+        assert "JSON schema" not in native.system_text
+        assert compiler._program_cache.misses == 2  # two distinct stable prefixes
+
+    def test_program_path_with_result_cache(self, spec):
+        from vincio.caching import PromptCompileCache
+
+        compiler = PromptCompiler(
+            CompilerOptions(use_render_program=True), cache=PromptCompileCache()
+        )
+        first = compiler.compile(spec, user_task="same", variables=self._VARS)
+        second = compiler.compile(spec, user_task="same", variables=self._VARS)
+        assert compiler.cache_hits == 1  # exact-input result cache still hits
+        assert second.rendered_hash == first.rendered_hash

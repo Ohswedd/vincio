@@ -124,6 +124,13 @@ class CostTracker:
         self.tool_cost_usd = 0.0
         self.infra_cost_usd = 0.0
         self.usage = TokenUsage()
+        # Peak resident-memory footprint observed across the runs this tracker
+        # has accounted for, in bytes. Surfaced in :meth:`summary`.
+        self.peak_resident_bytes = 0
+
+    def record_memory(self, resident_bytes: int) -> None:
+        """Account a compiled packet's estimated resident footprint."""
+        self.peak_resident_bytes = max(self.peak_resident_bytes, max(0, int(resident_bytes)))
 
     def record_model_call(self, model: str, usage: TokenUsage) -> float:
         cost = self.price_table.cost(model, usage)
@@ -157,4 +164,5 @@ class CostTracker:
             "output_tokens": self.usage.output_tokens,
             "cached_input_tokens": self.usage.cached_input_tokens,
             "reasoning_tokens": self.usage.reasoning_tokens,
+            "peak_resident_bytes": self.peak_resident_bytes,
         }
