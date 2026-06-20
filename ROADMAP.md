@@ -43,7 +43,7 @@ and a runnable example.
 | **Agents & orchestration** | Bounded DAG agents with planners (direct / static / dynamic / ReAct / plan-and-execute / hierarchical HTN), critics, validators, and human gates; in-place plan repair (re-bind / substitute / reorder / drop on a tool failure, contradiction, or budget shock) and cost-aware action selection over `ModelRegistry` pricing and the live budget; a deep-research agent and a self-editing memory OS; multi-agent crews with a shared blackboard; durable graphs with checkpoint / resume / time-travel and durable timers (`sleep_until` / `wait_for_event`); distributed durable execution across a worker pool with lease + CAS, BSP super-steps, `Send` map-reduce, and a work-stealing sub-graph scheduler under a fair-share budget with SLA deadlines. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and resumable approval gates. |
 | **Structured output** | Pydantic contracts, provider-native constrained decoding, streaming validation with early abort, typed signatures, bounded self-correction, multi-schema routing, and structure-only repair. |
-| **Evaluation** | Golden datasets, 30+ metrics, judges with calibration, synthetic data, red-teaming, experiments with significance, regression gates, a pytest plugin, a stateful-environment harness with a task-success oracle, five agentic benchmark adapters, and retrieval-eval with index-version regression. |
+| **Evaluation** | Golden datasets, 30+ metrics, judges with calibration, judge ensembles whose disagreement is an uncertainty signal, synthetic data, red-teaming, experiments with significance, regression gates that attribute a failure to its cause (prompt / retrieval / model / budget) by Shapley counterfactual replay, adaptive sampling that converges a gate verdict for less budget, a pytest plugin, a stateful-environment harness with a task-success oracle, nine agentic benchmark adapters (SWE-bench, τ-bench, GAIA, WebArena, BFCL, AgentBench, ToolBench, LiveCodeBench, MMLU-Pro), and retrieval-eval with index-version regression. |
 | **Optimization & self-improvement** | The closed loop (trace → dataset → eval → optimize → promote) with safety-gated promotion; reflective (GEPA-style) optimization and MIPRO; a distillation flywheel with executed fine-tune jobs; learned prompt compression; one declarative `SelfImprovementPolicy` driving a streaming controller; and canary-gated `app.deploy`. |
 | **Observability** | Full trace span trees, sessions, feedback, eval scores on spans, JSONL + OpenTelemetry export; a local viewer; a served, self-hosted observability + alerting plane; a versioned prompt registry; per-run cost. |
 | **Security & governance** | Deterministic PII / secret / injection / RAG-poisoning detection, programmable rails, RBAC/ABAC, tenant isolation, a signed Merkle-checkpointed audit chain; model & system cards, a compliance coverage matrix, an AI-BOM, an EU AI Act conformity pack, provable erasure, a consent ledger, data lineage, and residency-aware egress refusal. |
@@ -67,22 +67,10 @@ by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is
 frozen public surface; breaking changes are reserved for an announced major window and never shipped
 for their own sake.
 
-### 🚧 Evaluation & quality frontier
-
-*Measure more of what buyers compare on, and explain regressions instead of just flagging them.*
-
-- **More benchmark adapters** — AgentBench, ToolBench, LiveCodeBench, and MMLU-Pro behind the same
-  `BenchmarkAdapter` contract, pinned by a task-set hash and scored by each benchmark's own scorer.
-- **Judge ensembles with disagreement detection** — a panel of judges whose disagreement is surfaced
-  as an uncertainty signal, with the ensemble itself calibrated against κ-validated labels.
-- **Causal regression attribution** — when a gate fails, attribute the regression to the changed
-  component (prompt / retrieval / model / budget) by counterfactual replay, not just report the score
-  drop.
-- **Adaptive eval sampling** — spend the eval budget where the variance is, so a CI gate converges on
-  the same verdict for less cost.
-- *Definition of done:* the new adapters and attribution cases join the `agentic_evals` and
-  `benchmarks` families offline, judge-ensemble calibration is gated, and adaptive sampling is proven
-  to preserve the gate verdict under a cost budget.
+The most recent scheduled theme — the **evaluation & quality frontier** (more benchmark adapters,
+judge ensembles with disagreement detection, causal regression attribution, and adaptive eval
+sampling) — has shipped and folded into the **Evaluation** row above. The next themes are pulled from
+the exploring list below as demand and the standards settle.
 
 ---
 

@@ -1,0 +1,76 @@
+{
+  "name": "mmlu_pro",
+  "description": "Recorded MMLU-Pro items scored by extracting the predicted A-J option letter from the answer and matching the gold letter.",
+  "tasks": [
+    {
+      "id": "mmlu-pro-econ-1",
+      "prompt": "Which best describes a Giffen good?",
+      "gold": "D",
+      "inputs": {
+        "options": [
+          "w",
+          "x",
+          "y",
+          "demand rises as price rises",
+          "z"
+        ]
+      },
+      "metadata": {
+        "category": "economics"
+      },
+      "recorded": "Reasoning about inferior goods... The answer is (D)."
+    },
+    {
+      "id": "mmlu-pro-bio-1",
+      "prompt": "Where does the citric acid cycle occur?",
+      "gold": 1,
+      "inputs": {
+        "options": [
+          "cytosol",
+          "mitochondrial matrix",
+          "nucleus",
+          "ER"
+        ]
+      },
+      "metadata": {
+        "category": "biology"
+      },
+      "recorded": "It happens in the mitochondrial matrix, so answer: B"
+    },
+    {
+      "id": "mmlu-pro-cs-1",
+      "prompt": "Worst-case time complexity of quicksort?",
+      "gold": "C",
+      "inputs": {
+        "options": [
+          "O(n)",
+          "O(n log n)",
+          "O(n^2)",
+          "O(log n)"
+        ]
+      },
+      "metadata": {
+        "category": "computer science"
+      },
+      "recorded": "The pivot can be unbalanced, giving (C)."
+    },
+    {
+      "id": "mmlu-pro-chem-miss",
+      "prompt": "An item the model gets wrong.",
+      "gold": "A",
+      "inputs": {
+        "options": [
+          "a",
+          "b",
+          "c",
+          "d"
+        ]
+      },
+      "metadata": {
+        "category": "chemistry"
+      },
+      "recorded": "I'll guess answer is (B)."
+    }
+  ],
+  "task_set_hash": "a0d9b3dc774e1ed1"
+}

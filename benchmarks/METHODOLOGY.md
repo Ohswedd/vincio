@@ -41,7 +41,7 @@ where they are, so you can run it yourself and audit the claims.
 | **CostBench** | evidence-token reduction from the compiler | stuff-everything |
 | **SecurityBench** | injection detection / false-positive rate, PII coverage | — |
 | **EvalBench** | metric agreement, red-team judging, synthetic determinism, A/B significance | naive target |
-| **AgenticEvalsBench** | trajectory/tool metric agreement, simulator determinism, drift sensitivity/specificity, κ tracking; (2.2) stateful-environment task-success oracle + deterministic hash-pinned replay of the five benchmark adapters | output-only eval |
+| **AgenticEvalsBench** | trajectory/tool metric agreement, simulator determinism, drift sensitivity/specificity, κ tracking; (2.2) stateful-environment task-success oracle + deterministic hash-pinned replay of the nine benchmark adapters; κ-gated judge ensembles, Shapley causal regression attribution, verdict-preserving adaptive sampling | output-only eval |
 | **LoopBench** | the closed loop end to end: promotion, gating, auto-memory, Pareto, learned budgets | ungated optimization |
 | **ProtocolsBench** | MCP tool schema-fidelity + resource provenance, A2A delegation termination, Agent-Skill progressive-disclosure savings; (2.2) governed agent fabric (AGNTCY/ACP + MCP-registry discovery under the allow-list, audited resolution) | thin protocol adapter |
 | **GovernanceBench** | card/AI-BOM completeness, OWASP/NIST/MITRE/ISO-42001 mapping coverage, erasure correctness + audit, multilingual PII recall, RAG-poisoning detection rate/FP, residency endpoint inference, signed-manifest verification | English-only / ungoverned |

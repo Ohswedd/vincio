@@ -59,6 +59,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `47_recipe_data_room_qa.py` | cookbook recipe — due-diligence Q&A over a virtual data room with citations back to the exact source documents |
 | `48_recipe_multimodal_rag.py` | cookbook recipe — multimodal RAG over slides & PDFs: text, a table, and a slide image scored and cited together in one budgeted context packet |
 | `49_professionalism.py` | professionalism & API ergonomics — actionable errors (`.code` / `.remediation` / `.docs_url`), automatic `vincio.yaml` schema migrations (`config migrate` + in-memory upgrade on load), the deprecation-aware `vincio doctor`, and the `stability_of` contract behind it all |
+| `50_evaluation_quality_frontier.py` | evaluation & quality frontier — four more benchmark adapters (AgentBench / ToolBench / LiveCodeBench / MMLU-Pro), judge ensembles whose disagreement is an uncertainty signal (`JudgeEnsemble`), causal regression attribution by Shapley counterfactual replay (`CausalAttributor`), and adaptive eval sampling that decides a gate for fewer samples (`AdaptiveSampler`) |
 
 Run any of them:
 

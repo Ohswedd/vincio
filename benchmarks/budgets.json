@@ -734,12 +734,45 @@
       "eq": true
     },
     "families.agentic_evals.environment_eval.adapters.count": {
-      "gte": 5
+      "gte": 9
     },
     "families.agentic_evals.environment_eval.adapters.all_deterministic": {
       "eq": true
     },
     "families.agentic_evals.environment_eval.adapters.hashes_pinned": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.judge_ensemble.agreement_not_uncertain": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.judge_ensemble.disagreement_flagged": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.judge_ensemble.calibration_kappa": {
+      "gte": 0.6
+    },
+    "families.agentic_evals.quality_frontier.judge_ensemble.calibration_gated": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.attribution.regressed": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.attribution.dominant_is_model": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.attribution.concentration": {
+      "gte": 0.9
+    },
+    "families.agentic_evals.quality_frontier.attribution.explained": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.adaptive_sampling.verdict_preserved": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.adaptive_sampling.decided": {
+      "eq": true
+    },
+    "families.agentic_evals.quality_frontier.adaptive_sampling.cheaper_than_full": {
       "eq": true
     },
     "families.rag.retrieval_eval.recall_at_3": {

@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.6.0] - 2026-06-20
+
+Evaluation & quality frontier: measure more of what buyers compare on, and
+explain regressions instead of just flagging them. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path
+is the default, and every existing entry point is unchanged.
+
+### Added
+
+- **Four more benchmark adapters.** `AgentBenchAdapter`, `ToolBenchAdapter`,
+  `LiveCodeBenchAdapter`, and `MMLUProAdapter` join the existing five behind the
+  same `BenchmarkAdapter` contract — nine in all — each scored by the benchmark's
+  own verifiable scorer: AgentBench's per-environment exact / contains / set /
+  numeric match, ToolBench's solvable pass-rate over a call path (terminate with an
+  answer, no hallucinated APIs, gold-answer match), LiveCodeBench's all-tests-pass
+  (`pass@1`) over recorded per-test outcomes, and MMLU-Pro's A–J option-letter
+  extraction-and-match. Each is task-set-hash pinned, replayable from a shipped
+  fixture, and loadable from the official export format via
+  `agentbench_tasks_from_export` / `toolbench_tasks_from_export` /
+  `livecodebench_tasks_from_export` / `mmlu_pro_tasks_from_export`.
+- **Judge ensembles with disagreement detection.** `JudgeEnsemble` scores a panel
+  of judges together (`"mean"` / `"median"` / outlier-robust `"trimmed_mean"`),
+  surfaces their spread as an uncertainty signal (`judge_disagreement`,
+  `EnsembleVerdict.uncertain` / `.spread`), and is calibrated as a whole against
+  human labels — `calibrate()` records the panel-vs-human Cohen's κ that
+  `gating_weight()` gates on, so a split or uncalibrated panel cannot block CI.
+- **Causal regression attribution.** `CausalAttributor` / `attribute_regression`
+  attribute a metric delta to the components a release changed (prompt / retrieval
+  / model / budget, declared as `AttributionFactor`s) by **Shapley counterfactual
+  replay** over all `2**k` baseline/candidate coalitions. The resulting
+  `AttributionReport` names the dominant cause and how concentrated the blame is;
+  its per-factor `FactorContribution`s sum exactly to the total delta (efficiency),
+  splitting interactions fairly rather than double-counting them.
+- **Adaptive eval sampling.** `AdaptiveSampler` decides a mean-aggregate gate with
+  the fewest samples by seeding every case, then allocating each next sample to the
+  highest-variance case (Neyman-optimal, run sequentially) and stopping the moment
+  the confidence interval clears the threshold. `AdaptiveSamplingResult` reports the
+  verdict, the CI, the per-case allocation, and the savings — the same verdict as
+  the exhaustive run, for fewer samples.
+
+### Changed
+
+- `JudgeEnsemble`, `CausalAttributor`, `attribute_regression`, and
+  `AdaptiveSampler` are re-exported from the top-level `vincio` namespace; the full
+  set (adapters, ensemble, attribution, adaptive types) is exported from
+  `vincio.evals`.
+- VincioBench's `agentic_evals` family gains a `quality_frontier` block and folds
+  the four new adapters into its determinism check (now nine); new budgets and
+  three SLOs (`judge_ensemble_calibration_gated`, `causal_regression_attribution`,
+  `adaptive_sampling_preserves_verdict`) gate the guarantees offline.
+
 ## [3.5.0] - 2026-06-20
 
 Professionalism & API ergonomics: make the platform's public surface as

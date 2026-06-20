@@ -1,0 +1,99 @@
+{
+  "name": "toolbench",
+  "description": "Recorded ToolBench solution paths scored by the solvable pass-rate criterion: terminate with an answer, use only available APIs, and match the gold final answer.",
+  "tasks": [
+    {
+      "id": "toolbench-weather-trip",
+      "prompt": "Plan a trip: get the weather in Paris then suggest an activity.",
+      "gold": {
+        "final_answer": "Visit the Louvre; mild weather expected."
+      },
+      "inputs": {
+        "available_apis": [
+          "get_weather",
+          "suggest_activity"
+        ]
+      },
+      "metadata": {
+        "category": "planning"
+      },
+      "recorded": [
+        {
+          "name": "get_weather",
+          "arguments": {
+            "city": "Paris"
+          }
+        },
+        {
+          "name": "suggest_activity",
+          "arguments": {
+            "city": "Paris",
+            "weather": "mild"
+          }
+        },
+        {
+          "name": "Finish",
+          "arguments": {
+            "return_type": "give_answer",
+            "final_answer": "Visit the Louvre; mild weather expected."
+          }
+        }
+      ]
+    },
+    {
+      "id": "toolbench-stock",
+      "prompt": "Look up the price of the stock and report it.",
+      "gold": {},
+      "inputs": {
+        "available_apis": [
+          "get_stock_price"
+        ]
+      },
+      "metadata": {
+        "category": "finance"
+      },
+      "recorded": [
+        {
+          "name": "get_stock_price",
+          "arguments": {
+            "ticker": "ACME"
+          }
+        },
+        {
+          "name": "give_answer",
+          "arguments": {
+            "final_answer": "ACME trades at 42.10."
+          }
+        }
+      ]
+    },
+    {
+      "id": "toolbench-giveup",
+      "prompt": "An unsatisfiable request the agent abandons.",
+      "gold": {},
+      "inputs": {
+        "available_apis": [
+          "search"
+        ]
+      },
+      "metadata": {
+        "category": "unsolvable"
+      },
+      "recorded": [
+        {
+          "name": "search",
+          "arguments": {
+            "q": "x"
+          }
+        },
+        {
+          "name": "Finish",
+          "arguments": {
+            "return_type": "give_up_and_restart"
+          }
+        }
+      ]
+    }
+  ],
+  "task_set_hash": "e79de13177decc86"
+}

@@ -1,0 +1,79 @@
+{
+  "name": "agentbench",
+  "description": "Recorded AgentBench items scored on the verifiable end state per environment (OS exact match, DB numeric aggregation, KG set match).",
+  "tasks": [
+    {
+      "id": "agentbench-os-listcount",
+      "prompt": "How many .log files are in /var/log?",
+      "gold": {
+        "match": "numeric",
+        "value": 3,
+        "tolerance": 0.0
+      },
+      "inputs": {
+        "env": "os"
+      },
+      "metadata": {
+        "env": "os"
+      },
+      "recorded": "3"
+    },
+    {
+      "id": "agentbench-db-sum",
+      "prompt": "What is the total revenue across all orders?",
+      "gold": {
+        "match": "numeric",
+        "value": 1540.5,
+        "tolerance": 0.01
+      },
+      "inputs": {
+        "env": "db"
+      },
+      "metadata": {
+        "env": "db"
+      },
+      "recorded": "1540.50"
+    },
+    {
+      "id": "agentbench-kg-neighbors",
+      "prompt": "List the countries bordering France.",
+      "gold": {
+        "match": "set_match",
+        "value": [
+          "spain",
+          "germany",
+          "italy",
+          "belgium"
+        ]
+      },
+      "inputs": {
+        "env": "kg"
+      },
+      "metadata": {
+        "env": "kg"
+      },
+      "recorded": [
+        "Germany",
+        "Spain",
+        "Italy",
+        "Belgium"
+      ]
+    },
+    {
+      "id": "agentbench-os-path",
+      "prompt": "Print the absolute path of the config file.",
+      "gold": {
+        "match": "exact_match",
+        "value": "/etc/app/config.yaml"
+      },
+      "inputs": {
+        "env": "os"
+      },
+      "metadata": {
+        "env": "os"
+      },
+      "recorded": "/etc/app/config.yaml"
+    }
+  ],
+  "task_set_hash": "c9730899375b2025"
+}

@@ -52,6 +52,10 @@ __all__ = [
     "GAIAAdapter",
     "WebArenaAdapter",
     "BFCLAdapter",
+    "AgentBenchAdapter",
+    "ToolBenchAdapter",
+    "LiveCodeBenchAdapter",
+    "MMLUProAdapter",
     "BENCHMARK_ADAPTERS",
     "load_benchmark",
     "available_benchmarks",
@@ -62,6 +66,10 @@ __all__ = [
     "gaia_tasks_from_export",
     "swebench_tasks_from_export",
     "bfcl_tasks_from_export",
+    "agentbench_tasks_from_export",
+    "toolbench_tasks_from_export",
+    "livecodebench_tasks_from_export",
+    "mmlu_pro_tasks_from_export",
 ]
 
 
@@ -446,6 +454,259 @@ class BFCLAdapter(BenchmarkAdapter):
 
 
 # ---------------------------------------------------------------------------
+# AgentBench  (multi-environment agent; per-environment verifiable end state)
+# ---------------------------------------------------------------------------
+
+
+def _norm_text(value: Any) -> str:
+    return str(value if value is not None else "").strip().lower()
+
+
+def _as_numeric(value: Any) -> float | None:
+    try:
+        return float(str(value).strip().replace(",", ""))
+    except (TypeError, ValueError):
+        return None
+
+
+class AgentBenchAdapter(BenchmarkAdapter):
+    """AgentBench: an agent operates one of several environments (OS, DB,
+    knowledge-graph, …); each task is scored on the **verifiable end state** the
+    environment defines, selected by ``gold["match"]``:
+
+    * ``exact_match`` — normalized string equality (OS / web tasks).
+    * ``contains`` — every needle present in the answer (free-form tasks).
+    * ``set_match`` — order-independent set equality of the returned items
+      (knowledge-graph queries); the continuous score is recall against the
+      gold set.
+    * ``numeric`` — value within ``gold["tolerance"]`` (default ``0``) of the
+      gold number (DB aggregation answers).
+
+    ``gold`` = ``{"match": ..., "value": ..., "tolerance": 0.0}``; ``output`` =
+    the agent's final answer (a string, or a list for ``set_match``). This scores
+    AgentBench's own verifiable task outcome — not a model-judge proxy — while
+    spanning its heterogeneous environments under one contract.
+    """
+
+    name = "agentbench"
+
+    async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
+        gold = task.gold if isinstance(task.gold, dict) else {"match": "exact_match", "value": task.gold}
+        match = gold.get("match", "exact_match")
+        value = gold.get("value")
+        env = task.inputs.get("env") or task.metadata.get("env")
+        if match == "exact_match":
+            ok = _norm_text(output) == _norm_text(value)
+            score = 1.0 if ok else 0.0
+        elif match == "contains":
+            needles = value if isinstance(value, list) else [value]
+            answer = _norm_text(output)
+            hits = sum(1 for n in needles if _norm_text(n) in answer)
+            ok = hits == len(needles) and bool(needles)
+            score = round(hits / len(needles), 4) if needles else 0.0
+        elif match == "set_match":
+            gold_set = {_norm_text(v) for v in (value or [])}
+            out_set = {_norm_text(v) for v in (output or [])}
+            hits = len(gold_set & out_set)
+            ok = bool(gold_set) and gold_set == out_set
+            score = round(hits / len(gold_set), 4) if gold_set else 0.0
+        elif match == "numeric":
+            predicted, target = _as_numeric(output), _as_numeric(value)
+            tolerance = float(gold.get("tolerance", 0.0) or 0.0)
+            ok = predicted is not None and target is not None and abs(predicted - target) <= tolerance
+            score = 1.0 if ok else 0.0
+        else:
+            raise BenchmarkError(f"agentbench: unknown match type {match!r}")
+        return BenchmarkResult(
+            task_id=task.id, success=ok, score=score, output=output,
+            details={"match": match, "env": env},
+        )
+
+
+# ---------------------------------------------------------------------------
+# ToolBench  (multi-step API solution path; solvable pass rate)
+# ---------------------------------------------------------------------------
+
+
+_FINISH_TOOLS = {"finish", "give_answer", "submit", "final_answer"}
+_GIVE_UP = {"give_up_and_restart", "give_up"}
+
+
+def _toolbench_action(call: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    name = _norm_text(call.get("name") or call.get("tool"))
+    args = call.get("arguments", call.get("args", {})) or {}
+    return name, args if isinstance(args, dict) else {}
+
+
+class ToolBenchAdapter(BenchmarkAdapter):
+    """ToolBench: an agent solves a task by a **multi-step path of API calls**
+    that terminates in a finish action. The adapter reproduces ToolBench's
+    *solvable pass-rate* criterion on the path — a task passes iff:
+
+    * the path **terminates with an answer** (a ``Finish``/``give_answer`` action,
+      or ``Finish`` with ``return_type == "give_answer"``) rather than giving up;
+    * every non-finish call names an **available API** (no hallucinated tool),
+      taken from ``inputs["available_apis"]`` when provided; and
+    * if ``gold["final_answer"]`` is set, the produced final answer matches it
+      (normalized).
+
+    ``output`` / ``recorded`` = ``[{"name", "arguments"}, …]`` (the call path, the
+    final element being the finish action). The continuous score is the fraction
+    of non-finish calls that reference a valid API. Unlike BFCL's single-call AST
+    match, this grades a whole tool-use trajectory's validity and termination.
+    """
+
+    name = "toolbench"
+
+    async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
+        calls = [_toolbench_action(c) for c in (output or []) if isinstance(c, dict)]
+        available = {_norm_text(a) for a in (task.inputs.get("available_apis") or task.inputs.get("functions") or [])}
+        gold = task.gold if isinstance(task.gold, dict) else {}
+
+        finish = next((c for c in reversed(calls) if c[0] in _FINISH_TOOLS or c[0] in _GIVE_UP), None)
+        gave_up = finish is not None and (
+            finish[0] in _GIVE_UP or _norm_text(finish[1].get("return_type")) == "give_up_and_restart"
+        )
+        answered = finish is not None and not gave_up
+        # The final answer is the finish action's answer argument, when present.
+        final_answer = ""
+        if finish is not None:
+            final_answer = str(
+                finish[1].get("final_answer", finish[1].get("answer", finish[1].get("response", "")))
+            )
+
+        worker_calls = [c for c in calls if c[0] not in _FINISH_TOOLS and c[0] not in _GIVE_UP]
+        if available:
+            valid = sum(1 for name, _ in worker_calls if name in available)
+        else:  # no API allow-list declared — every named call counts as valid
+            valid = len(worker_calls)
+        apis_ok = valid == len(worker_calls)
+        score = round(valid / len(worker_calls), 4) if worker_calls else (1.0 if answered else 0.0)
+
+        gold_answer = gold.get("final_answer")
+        answer_ok = gold_answer is None or _norm_text(final_answer) == _norm_text(gold_answer)
+
+        success = answered and apis_ok and answer_ok
+        return BenchmarkResult(
+            task_id=task.id, success=success, score=score, output=output,
+            details={
+                "answered": answered, "gave_up": gave_up, "apis_valid": apis_ok,
+                "valid_calls": valid, "worker_calls": len(worker_calls), "answer_ok": answer_ok,
+            },
+        )
+
+
+# ---------------------------------------------------------------------------
+# LiveCodeBench  (contamination-free code generation; all tests pass)
+# ---------------------------------------------------------------------------
+
+
+def _livecodebench_tests(gold: Any) -> list[str]:
+    if isinstance(gold, dict):
+        if "tests" in gold:
+            return [str(t) for t in (gold.get("tests") or [])]
+        return [str(t) for t in (gold.get("public", []) or []) + (gold.get("hidden", []) or [])]
+    if isinstance(gold, list):
+        return [str(t) for t in gold]
+    return []
+
+
+class LiveCodeBenchAdapter(BenchmarkAdapter):
+    """LiveCodeBench: a generated solution passes iff **every required test case
+    turns green**, scored on the test outcomes the benchmark's own runner
+    produces — mirroring SWE-bench's verifiable approach rather than executing
+    untrusted model code inside Vincio.
+
+    ``gold`` = ``{"tests": [...]}`` (the required test ids; or a
+    ``{"public": [...], "hidden": [...]}`` split, both of which must pass);
+    ``output`` = ``{"results": {test_id: "passed"|"failed"|"error"}}`` — the
+    candidate solution's per-test outcome. Success is all-tests-pass (the
+    contest-style ``pass@1`` criterion); the continuous score is the fraction of
+    required tests passed. ``metadata["release_date"]`` carries LiveCodeBench's
+    contamination-free release-window pin.
+    """
+
+    name = "livecodebench"
+
+    async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
+        required = _livecodebench_tests(task.gold)
+        results = (output or {}).get("results", {}) if isinstance(output, dict) else {}
+        passed = sum(1 for t in required if results.get(t) == "passed")
+        all_pass = bool(required) and passed == len(required)
+        return BenchmarkResult(
+            task_id=task.id,
+            success=all_pass,
+            score=round(passed / len(required), 4) if required else 0.0,
+            output=output,
+            details={"passed": passed, "required": len(required),
+                     "release_date": task.metadata.get("release_date")},
+        )
+
+
+# ---------------------------------------------------------------------------
+# MMLU-Pro  (10-way multiple choice; robust letter extraction)
+# ---------------------------------------------------------------------------
+
+
+# Answer-extraction patterns in priority order, mirroring MMLU-Pro's own
+# parser: an explicit "answer is (X)", then a bracketed/letter form, then a
+# bare trailing option letter.
+_MMLU_PATTERNS = [
+    re.compile(r"answer\s+is\s*:?\s*\(?\s*([A-J])\b", re.IGNORECASE),
+    re.compile(r"answer\s*:?\s*\(?\s*([A-J])\b", re.IGNORECASE),
+    re.compile(r"\(\s*([A-J])\s*\)"),
+    re.compile(r"\b([A-J])\b(?!.*\b[A-J]\b)", re.DOTALL),  # last standalone letter
+]
+
+
+def _mmlu_extract(output: Any) -> str:
+    text = str(output if output is not None else "").strip()
+    for pattern in _MMLU_PATTERNS:
+        match = pattern.search(text)
+        if match:
+            return match.group(1).upper()
+    return ""
+
+
+def _mmlu_gold_letter(gold: Any) -> str:
+    """Gold may be a letter ('D') or a 0-based index (3 -> 'D')."""
+    if isinstance(gold, bool):
+        return ""
+    if isinstance(gold, int):
+        return chr(ord("A") + gold) if 0 <= gold < 10 else ""
+    text = str(gold or "").strip().upper()
+    return text if len(text) == 1 and "A" <= text <= "J" else ""
+
+
+class MMLUProAdapter(BenchmarkAdapter):
+    """MMLU-Pro: a 10-option (A–J) multiple-choice question scored by extracting
+    the predicted option letter from the model's output and comparing it to the
+    gold letter — MMLU-Pro's own answer-extraction-and-match criterion.
+
+    ``gold`` = the correct option as a letter (``"D"``) or 0-based index (``3``);
+    ``output`` = the model's free-text answer (the letter is extracted with a
+    priority cascade of patterns). ``inputs["options"]`` may carry the choices
+    for a live solver to render. Distinct from GAIA's free-form exact match: the
+    answer space is the constrained option set, so extraction precedes the match.
+    """
+
+    name = "mmlu_pro"
+
+    async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
+        predicted = _mmlu_extract(output)
+        gold = _mmlu_gold_letter(task.gold)
+        match = bool(gold) and predicted == gold
+        return BenchmarkResult(
+            task_id=task.id,
+            success=match,
+            score=1.0 if match else 0.0,
+            output=output,
+            details={"predicted": predicted, "gold": gold,
+                     "category": task.metadata.get("category")},
+        )
+
+
+# ---------------------------------------------------------------------------
 # Live-run path: drive a real Vincio agent, and load official task sets
 # ---------------------------------------------------------------------------
 #
@@ -632,12 +893,116 @@ def bfcl_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]
     return tasks
 
 
+def agentbench_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map AgentBench records (``id`` / ``description`` / ``environment`` /
+    ``answer`` / ``match``) onto `BenchmarkTask`s for :class:`AgentBenchAdapter`.
+    ``match`` defaults to ``exact_match``; ``answer`` becomes ``gold["value"]``."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        gold = {
+            "match": rec.get("match", rec.get("metric", "exact_match")),
+            "value": rec.get("answer", rec.get("gold")),
+        }
+        if "tolerance" in rec:
+            gold["tolerance"] = rec["tolerance"]
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("id", f"agentbench-{index}")),
+                prompt=str(rec.get("description", rec.get("question", rec.get("prompt", "")))),
+                gold=gold,
+                inputs={"env": rec.get("environment", rec.get("env"))},
+                metadata={"env": rec.get("environment", rec.get("env"))},
+            )
+        )
+    return tasks
+
+
+def toolbench_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map ToolBench records (``id`` / ``query`` / ``api_list`` /
+    ``final_answer``) onto `BenchmarkTask`s for :class:`ToolBenchAdapter`. The
+    available API names ride on ``inputs['available_apis']`` so the solvable
+    pass-rate scorer can reject hallucinated tools."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        api_list = rec.get("api_list", rec.get("available_apis", rec.get("functions", [])))
+        names = [
+            (a.get("api_name") or a.get("name")) if isinstance(a, dict) else a
+            for a in (api_list or [])
+        ]
+        gold: dict[str, Any] = {}
+        if rec.get("final_answer") is not None or rec.get("answer") is not None:
+            gold["final_answer"] = rec.get("final_answer", rec.get("answer"))
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("id", rec.get("query_id", f"toolbench-{index}"))),
+                prompt=str(rec.get("query", rec.get("prompt", ""))),
+                gold=gold,
+                inputs={"available_apis": [n for n in names if n]},
+                metadata={"category": rec.get("category", "general")},
+            )
+        )
+    return tasks
+
+
+def livecodebench_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map LiveCodeBench records (``question_id`` / ``question_content`` /
+    ``public_test_cases`` / ``private_test_cases`` / ``release_date``) onto
+    `BenchmarkTask`s for :class:`LiveCodeBenchAdapter`. Test-case ids form the
+    required-pass gold; the release window pins contamination-free selection."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        def _ids(key: str, rec: dict[str, Any] = rec) -> list[str]:
+            cases = rec.get(key, []) or []
+            return [str(c.get("id", f"{key}-{i}")) if isinstance(c, dict) else str(c)
+                    for i, c in enumerate(cases)]
+
+        if "tests" in rec:
+            gold: Any = {"tests": [str(t) for t in rec["tests"]]}
+        else:
+            gold = {"public": _ids("public_test_cases"), "hidden": _ids("private_test_cases")}
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("question_id", rec.get("id", f"lcb-{index}"))),
+                prompt=str(rec.get("question_content", rec.get("prompt", ""))),
+                gold=gold,
+                metadata={"release_date": rec.get("release_date"),
+                          "difficulty": rec.get("difficulty")},
+            )
+        )
+    return tasks
+
+
+def mmlu_pro_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map MMLU-Pro records (``question_id`` / ``question`` / ``options`` /
+    ``answer`` or ``answer_index`` / ``category``) onto `BenchmarkTask`s for
+    :class:`MMLUProAdapter`. The option list rides on ``inputs['options']``."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        gold = rec.get("answer")
+        if gold is None and rec.get("answer_index") is not None:
+            gold = rec["answer_index"]
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("question_id", rec.get("id", f"mmlu-{index}"))),
+                prompt=str(rec.get("question", rec.get("prompt", ""))),
+                gold=gold,
+                inputs={"options": rec.get("options", [])},
+                metadata={"category": rec.get("category", rec.get("src"))},
+            )
+        )
+    return tasks
+
+
 BENCHMARK_ADAPTERS: dict[str, type[BenchmarkAdapter]] = {
     SWEBenchAdapter.name: SWEBenchAdapter,
     TauBenchAdapter.name: TauBenchAdapter,
     GAIAAdapter.name: GAIAAdapter,
     WebArenaAdapter.name: WebArenaAdapter,
     BFCLAdapter.name: BFCLAdapter,
+    AgentBenchAdapter.name: AgentBenchAdapter,
+    ToolBenchAdapter.name: ToolBenchAdapter,
+    LiveCodeBenchAdapter.name: LiveCodeBenchAdapter,
+    MMLUProAdapter.name: MMLUProAdapter,
 }
 
 

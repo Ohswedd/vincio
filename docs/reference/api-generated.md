@@ -6,13 +6,17 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**167** public symbols.
+**171** public symbols.
 
 ## Classes
 
 ### `AIBOM(**data)`
 
 An AI bill of materials, serializable as CycloneDX 1.6 JSON.
+
+### `AdaptiveSampler(cases, sample, gate, metric=…, budget, seed_samples=…, confidence=…, weights=…)`
+
+Decide a mean-aggregate gate with the fewest samples by allocating the budget to the highest-variance cases and stopping as soon as the verdict is certain.
 
 ### `AgentDirectory(allow_list=…, audit=…, principal=…)`
 
@@ -89,6 +93,10 @@ Ramp a percentage of live traffic onto a candidate, with auto-rollback.
 ### `CanarySpec(**data)`
 
 How a candidate is qualified before it is deployed live.
+
+### `CausalAttributor(app, dataset, factors, metric=…, aggregate=…, repeats=…, concurrency=…)`
+
+Attribute a metric delta to the components a release changed, by Shapley counterfactual replay over the dataset.
 
 ### `CircuitBreaker(inner, failure_threshold=…, min_calls=…, window=…, latency_threshold_ms=…, cooldown_s=…, half_open_max=…, events=…, clock=…)`
 
@@ -261,6 +269,10 @@ SQLite-backed, indexed trace + cost store with pre-aggregated rollups.
 ### `JudgeCalibrator(judge, reflector=…, kappa_bins=…, trust_threshold=…, min_kappa_gain=…)`
 
 Tune a :class:`~vincio.evals.judges.GEvalJudge`'s evaluation steps to maximize agreement with human labels, then leave the judge calibrated.
+
+### `JudgeEnsemble(judges, aggregate=…, disagreement_threshold=…, name=…)`
+
+A panel of judges scored together, with disagreement surfaced as uncertainty and the panel as a whole calibrated against human labels.
 
 ### `KeyPool(providers, rpm=…, tpm=…, breaker=…, labels=…, max_attempts=…, base_backoff_s=…, max_backoff_s=…, seed=…, events=…, clock=…)`
 
@@ -575,6 +587,10 @@ Declare a signature input field.
 ### `OutputField(desc=…, **kwargs)`
 
 Declare a signature output field.
+
+### `attribute_regression(app, dataset, factors, metric=…, aggregate=…, repeats=…)`
+
+Attribute a metric regression to the changed ``factors`` by Shapley counterfactual replay — the convenience entry point behind a failing gate.
 
 ### `available_packs()`
 

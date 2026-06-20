@@ -1,7 +1,16 @@
 """Vincio evaluation engine."""
 
+from .adaptive import AdaptiveSampler, AdaptiveSamplingResult, CaseEstimate
 from .annotation import AnnotationItem, AnnotationQueue, cohens_kappa
+from .attribution import (
+    AttributionFactor,
+    AttributionReport,
+    CausalAttributor,
+    FactorContribution,
+    attribute_regression,
+)
 from .benchmarks import (
+    AgentBenchAdapter,
     BenchmarkAdapter,
     BenchmarkError,
     BenchmarkReport,
@@ -9,17 +18,24 @@ from .benchmarks import (
     BenchmarkTask,
     BFCLAdapter,
     GAIAAdapter,
+    LiveCodeBenchAdapter,
+    MMLUProAdapter,
     SWEBenchAdapter,
     TauBenchAdapter,
+    ToolBenchAdapter,
     WebArenaAdapter,
+    agentbench_tasks_from_export,
     available_benchmarks,
     bfcl_tasks_from_export,
     gaia_tasks_from_export,
+    livecodebench_tasks_from_export,
     load_benchmark,
     make_agent_solver,
     make_env_solver,
+    mmlu_pro_tasks_from_export,
     swebench_tasks_from_export,
     tasks_from_jsonl,
+    toolbench_tasks_from_export,
 )
 from .datasets import (
     Dataset,
@@ -37,6 +53,7 @@ from .drift import (
     psi,
     rbf_mmd2,
 )
+from .ensemble import EnsembleVerdict, JudgeEnsemble, judge_disagreement
 from .environment import (
     AgentPolicy,
     EnvAction,
@@ -187,7 +204,8 @@ __all__ = [
     "task_success",
     "make_retail_environment",
     "make_counter_environment",
-    # agentic benchmark adapters (SWE-bench/τ-bench/GAIA/WebArena/BFCL)
+    # agentic benchmark adapters (SWE-bench/τ-bench/GAIA/WebArena/BFCL/
+    # AgentBench/ToolBench/LiveCodeBench/MMLU-Pro)
     "BenchmarkAdapter",
     "BenchmarkTask",
     "BenchmarkResult",
@@ -198,6 +216,10 @@ __all__ = [
     "GAIAAdapter",
     "WebArenaAdapter",
     "BFCLAdapter",
+    "AgentBenchAdapter",
+    "ToolBenchAdapter",
+    "LiveCodeBenchAdapter",
+    "MMLUProAdapter",
     "available_benchmarks",
     "load_benchmark",
     "make_agent_solver",
@@ -206,6 +228,24 @@ __all__ = [
     "gaia_tasks_from_export",
     "swebench_tasks_from_export",
     "bfcl_tasks_from_export",
+    "agentbench_tasks_from_export",
+    "toolbench_tasks_from_export",
+    "livecodebench_tasks_from_export",
+    "mmlu_pro_tasks_from_export",
+    # judge ensembles with disagreement detection
+    "JudgeEnsemble",
+    "EnsembleVerdict",
+    "judge_disagreement",
+    # causal regression attribution (counterfactual replay)
+    "CausalAttributor",
+    "AttributionFactor",
+    "AttributionReport",
+    "FactorContribution",
+    "attribute_regression",
+    # adaptive eval sampling
+    "AdaptiveSampler",
+    "AdaptiveSamplingResult",
+    "CaseEstimate",
     # retrieval evaluation harness + index-version regression
     "RetrievalQuery",
     "RetrievalGoldenSet",

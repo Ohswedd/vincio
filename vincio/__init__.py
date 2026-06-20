@@ -49,8 +49,11 @@ from .core.types import (
     TaskType,
     UserInput,
 )
+from .evals.adaptive import AdaptiveSampler
+from .evals.attribution import CausalAttributor, attribute_regression
 from .evals.benchmarks import BenchmarkAdapter, load_benchmark
 from .evals.datasets import Dataset, GoldenRegressionSuite
+from .evals.ensemble import JudgeEnsemble
 from .evals.environment import (
     Environment,
     EnvironmentSimulator,
@@ -149,7 +152,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.5.0"
+__version__ = "3.6.0"
 
 __all__ = [
     "ContextApp",
@@ -310,6 +313,11 @@ __all__ = [
     "make_retail_environment",
     "BenchmarkAdapter",
     "load_benchmark",
+    # evaluation & quality frontier
+    "JudgeEnsemble",
+    "CausalAttributor",
+    "attribute_regression",
+    "AdaptiveSampler",
     "RetrievalEvaluator",
     "RetrievalGoldenSet",
     "retrieval_regression",

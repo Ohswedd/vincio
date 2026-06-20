@@ -245,7 +245,10 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
     )
 
     fixtures = Path(__file__).resolve().parent / "fixtures"
-    names = ["swebench_verified", "tau_bench", "gaia", "webarena", "bfcl"]
+    names = [
+        "swebench_verified", "tau_bench", "gaia", "webarena", "bfcl",
+        "agentbench", "toolbench", "livecodebench", "mmlu_pro",
+    ]
     rates: dict[str, float] = {}
     all_deterministic = True
     hashes_pinned = True
@@ -291,6 +294,10 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
             "gaia_exact_match_rate": rates["gaia"],
             "webarena_success_rate": rates["webarena"],
             "bfcl_ast_match_rate": rates["bfcl"],
+            "agentbench_success_rate": rates["agentbench"],
+            "toolbench_pass_rate": rates["toolbench"],
+            "livecodebench_pass_rate": rates["livecodebench"],
+            "mmlu_pro_exact_match_rate": rates["mmlu_pro"],
         },
     }
 
@@ -2779,6 +2786,112 @@ async def bench_protocols() -> dict[str, Any]:
     }
 
 
+async def _quality_frontier() -> dict[str, Any]:
+    """Evaluation & quality frontier: judge ensembles with disagreement detection,
+    causal regression attribution by counterfactual replay, and adaptive eval
+    sampling — all offline and deterministic."""
+    import random
+
+    from vincio.evals import (
+        AdaptiveSampler,
+        AttributionFactor,
+        CausalAttributor,
+        JudgeEnsemble,
+    )
+    from vincio.evals.datasets import Dataset, EvalCase
+    from vincio.evals.judges import Judge
+    from vincio.evals.metrics import MetricResult, RunOutput
+
+    # 1. Judge ensemble: a unanimous panel is confident, a split panel is flagged
+    #    uncertain, and the panel earns gating weight only once its κ vs human
+    #    labels clears the bar.
+    class _Fixed(Judge):
+        def __init__(self, value: float, name: str) -> None:
+            self.value = value
+            self.name = name
+
+        async def score(self, case: Any, output: Any) -> MetricResult:
+            return MetricResult(name=self.name, value=self.value)
+
+    case = EvalCase(id="c", input="q", expected="a")
+    out = RunOutput(output="a")
+    agree = await JudgeEnsemble([_Fixed(0.9, "a"), _Fixed(0.92, "b"), _Fixed(0.88, "c")]).averdict(case, out)
+    split = await JudgeEnsemble(
+        [_Fixed(0.1, "a"), _Fixed(0.9, "b"), _Fixed(0.5, "c")], disagreement_threshold=0.2
+    ).averdict(case, out)
+    panel = JudgeEnsemble([_Fixed(0.7, "a"), _Fixed(0.9, "b")])
+    fit = panel.calibrate([(0.9, 1.0), (0.5, 0.6), (0.2, 0.1), (0.95, 0.9), (0.3, 0.25), (0.8, 0.85)])
+    ensemble_gated = panel.gating_weight(threshold=0.6) == 1.0
+
+    # 2. Causal attribution: a model swap breaks the answer; Shapley counterfactual
+    #    replay attributes the regression to the model, not the inert factor.
+    def _responder(request: ModelRequest) -> str:
+        return "The capital of France is Paris." if request.model == "gpt-5.2" else "unrelated text"
+
+    attr_app = ContextApp(name="frontier_attr", provider=MockProvider(responder=_responder), model="gpt-5.2")
+    attr_ds = Dataset(
+        name="caps",
+        cases=[
+            EvalCase(id=f"c{i}", input="What is the capital of France?",
+                     expected="The capital of France is Paris.")
+            for i in range(5)
+        ],
+    )
+    attribution = await CausalAttributor(
+        attr_app, attr_ds,
+        factors=[
+            AttributionFactor.model("model", baseline="gpt-5.2", candidate="gpt-5.2-nano"),
+            AttributionFactor.attr("inert", "name", baseline="frontier_attr", candidate="frontier_attr2"),
+        ],
+        metric="lexical_overlap",
+    ).attribute()
+
+    # 3. Adaptive sampling: reach the same gate verdict as the exhaustive run for
+    #    fewer samples, concentrating budget on the high-variance case.
+    class _C:
+        def __init__(self, cid: str, mean: float, sd: float) -> None:
+            self.id = cid
+            self.mean = mean
+            self.sd = sd
+
+    cases = [_C("a", 0.97, 0.02), _C("b", 0.96, 0.03), _C("c", 0.95, 0.02),
+             _C("noisy", 0.82, 0.2), _C("d", 0.94, 0.04)]
+    budget = 250
+
+    def _make_sample(seed: int) -> Any:
+        rng = random.Random(seed)
+        return lambda c: max(0.0, min(1.0, rng.gauss(c.mean, c.sd)))
+
+    adaptive = await AdaptiveSampler(cases, _make_sample(13), gate=">= 0.8", budget=budget).run()
+    full = await AdaptiveSampler(
+        cases, _make_sample(13), gate=">= 0.8", budget=budget, seed_samples=budget // len(cases)
+    ).run()
+
+    return {
+        "judge_ensemble": {
+            "agreement_not_uncertain": not agree.uncertain,
+            "disagreement_flagged": split.uncertain,
+            "disagreement_spread": round(split.spread, 4),
+            "calibration_kappa": fit["cohens_kappa"],
+            "calibration_gated": ensemble_gated,
+        },
+        "attribution": {
+            "regressed": attribution.regressed,
+            "dominant_is_model": attribution.dominant_factor == "model",
+            "concentration": attribution.concentration,
+            "explained": attribution.explained,
+            "coalitions": attribution.coalitions,
+        },
+        "adaptive_sampling": {
+            "verdict_preserved": adaptive.verdict == full.verdict == "pass",
+            "decided": adaptive.decided,
+            "samples_used": adaptive.samples_used,
+            "full_samples": full.samples_used,
+            "cheaper_than_full": adaptive.samples_used < full.samples_used,
+        },
+    }
+
+
 async def bench_agentic_evals() -> dict[str, Any]:
     """AgenticEvalsBench (1.2): does agentic evaluation hold up?
 
@@ -2946,6 +3059,9 @@ async def bench_agentic_evals() -> dict[str, Any]:
         },
         # 2.2 — stateful-environment task-success oracle + benchmark-adapter determinism
         "environment_eval": await _agentic_evals_environment_2_2(),
+        # evaluation & quality frontier — judge ensembles, causal attribution,
+        # adaptive sampling
+        "quality_frontier": await _quality_frontier(),
     }
 
 
