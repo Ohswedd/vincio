@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.4.0] - 2026-06-20
+
+Use-case coverage & verticals: go from primitives to a working app in one file,
+in more domains. Entirely additive and backward-compatible — `API_VERSION` stays
+`3.0`, the dependency-free offline path is the default, and every existing entry
+point is unchanged. The four existing domain packs and their behavior are
+untouched; the new capabilities sit behind new entry points or new pack names.
+
+### Added
+
+- **Vertical packs.** Five full-stack packs — `healthcare` (PHI), `ediscovery`
+  (legal e-discovery), `kyc` (financial KYC/AML), `customer_support`, and
+  `code_review` — preconfigure retrieval knobs, scoped memory, deterministic
+  rails, domain metrics, an in-jurisdiction data-residency posture, and a golden
+  eval set in one `app.use_pack(...)`. The `Pack` contract gains additive fields
+  `retrieval` / `memory` / `residency` / `purpose` (wired through the public app
+  API on `apply`) plus `Pack.is_vertical` and `Pack.retrieval_mode()`. A
+  residency-pinned pack applies `set_residency([...region, "on_prem"],
+  deny_on_unknown=False)` so the offline path runs while an identifiable
+  out-of-jurisdiction endpoint is still refused. Each ships a golden eval set via
+  `pack.dataset()` and a runnable example.
+- **Assistant.** `app.assistant(...)` returns a conversational, session-aware
+  `Assistant` over `ContextApp`: every `send` / `asend` is a full `run` threaded
+  under one `session_id`, with multi-turn state carried by session-scoped memory
+  write-back and a tool-approval surface (write tools denied and surfaced as
+  `pending_approvals` until `approve(...)`, an `auto_approve` allow-list, or an
+  `on_approval` callback grant them). Returns an `AssistantTurn`
+  (`text` / `output` / `citations` / `approvals` / `memory_writes` / `trace_id` /
+  `cost_usd`); `history()` / `reset()`; satisfies the `Simulator` agent contract
+  for multi-turn evaluation. New public surface: `Assistant`, `AssistantTurn`,
+  `ApprovalRecord` (`vincio.assistant`).
+- **End-to-end voice agent.** `app.voice_agent(...)` returns a `VoiceAgent`
+  (`vincio.realtime`) that wires a realtime session to the deep-research agent (an
+  in-session, cited `research` tool), the self-editing memory OS, and the app's
+  deterministic input/output rails over every spoken transcript and reply. Tool
+  calls route through the permissioned, sandboxed, audited runtime; the
+  dependency-free in-process backend keeps it offline-testable.
+- **Cookbook.** Task-shaped recipes ship as runnable, offline-gated examples:
+  contract redlining (`45`), incident triage (`46`), data-room Q&A (`47`), and
+  multimodal RAG over slides/PDFs (`48`), alongside capability examples for the
+  vertical packs (`42`), the Assistant (`43`), and the voice agent (`44`).
+
+### Changed
+
+- **Structured-output redaction.** An output `redact` rail now masks detected
+  PII/secrets in the string fields of a **structured** output (not only text
+  outputs), preserving the schema and field types. This closes a gap where a typed
+  deliverable could carry an identifier the rail had detected; the raw model
+  emission on the trace is unchanged (trace content capture remains off by
+  default).
+
 ## [3.3.0] - 2026-06-20
 
 Ecosystem & integration breadth: meet teams where their data and tools already

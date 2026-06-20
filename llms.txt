@@ -267,6 +267,30 @@ app.run("export button 500s").output.label
   "computer_use"])` surfaces OpenAI Responses built-ins as namespaced tools.
   Extra `vincio[computer-use]`.
 
+## Use-case coverage: verticals, Assistant, voice
+
+- **Vertical packs.** `app.use_pack("healthcare|ediscovery|kyc|customer_support|
+  code_review")` — full-stack bundles that preconfigure retrieval knobs, scoped
+  memory (`add_memory`), deterministic rails, domain metrics, a data-residency
+  posture (`set_residency`, fail-open on unknown so the offline path runs), and a
+  golden eval set, on top of the domain-pack contract. The `Pack` model gains
+  `retrieval`/`memory`/`residency`/`purpose`; `Pack.is_vertical`,
+  `Pack.retrieval_mode()`, `pack.dataset()` (golden set). A `redact` rail masks
+  PII/PHI in *structured* output fields, not just free text.
+- **Assistant.** `chat = app.assistant(user_id=, session_id=, memory_writeback=True,
+  auto_approve=[...], on_approval=fn)` — a session-aware multi-turn layer; each
+  `chat.send(text)`/`asend` is a full `run` threaded under one session, returns an
+  `AssistantTurn` (`text`/`output`/`citations`/`approvals`/`memory_writes`/`trace_id`).
+  Multi-turn state is session-scoped memory write-back. Write tools are denied and
+  surfaced as `chat.pending_approvals` until `chat.approve(tool)`; `chat.history()`,
+  `chat.reset()`. Drives as a `Simulator` agent for multi-turn evals.
+- **Voice agent.** `agent = app.voice_agent(backend="inprocess|openai|gemini",
+  research=True, memory_os=True, rails=True)` → a `VoiceAgent` (async context
+  manager: `send_text`/`send_audio`/`commit`/`interrupt`, rail-screened `events()`).
+  Wires the realtime session to the deep-research agent (in-session cited `research`
+  tool), the memory OS, and the app's input/output rails; tool calls route through
+  the permissioned runtime. Extra `vincio[realtime]` for hosted backends.
+
 ## Structured output & reliability
 
 - **Output schema.** Pass a Pydantic class as `output_schema=`; `result.output`
@@ -651,12 +675,16 @@ app.run("export button 500s").output.label
   embedding, add_llamaindex_tool, from_haystack_retriever/document/embedder,
   add_haystack_component, from_dspy_module/retriever/signature, add_dspy_module,
   to_dspy_lm` (duck-typed `from_*`) + `to_langchain_*`/`to_llamaindex_*`/
-  `to_haystack_*` (extras `vincio[langchain|llamaindex|haystack|dspy]`); domain packs
-  `app.use_pack("support|engineering|finance|legal")` (`load_pack`,
-  `available_packs`, `register_pack`); `enable_rich_reprs` (notebook), `vincio
-  tui`, `config_json_schema()`; voice/realtime `from vincio.realtime import
-  RealtimeSession, connect_realtime` / `app.realtime_session(...)` (backends
-  inprocess|openai|gemini; extra `vincio[realtime]`).
+  `to_haystack_*` (extras `vincio[langchain|llamaindex|haystack|dspy]`); packs
+  `app.use_pack(name)` (`load_pack`, `available_packs`, `register_pack`) — domain
+  packs `support|engineering|finance|legal` and full-stack vertical packs
+  `healthcare|ediscovery|kyc|customer_support|code_review` (the `Pack` contract's
+  `retrieval`/`memory`/`residency`/`purpose` fields also preconfigure retrieval,
+  scoped memory, rails, metrics, and a residency posture); `enable_rich_reprs`
+  (notebook), `vincio tui`, `config_json_schema()`; voice/realtime `from
+  vincio.realtime import RealtimeSession, connect_realtime` /
+  `app.realtime_session(...)` (backends inprocess|openai|gemini; extra
+  `vincio[realtime]`).
 
 ## Stability
 

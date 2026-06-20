@@ -15,7 +15,7 @@ import asyncio
 import logging
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel
 
@@ -107,6 +107,9 @@ from .types import (
     TaskType,
     UserInput,
 )
+
+if TYPE_CHECKING:
+    from ..assistant import Assistant
 
 __all__ = ["ContextApp", "RunHandle"]
 
@@ -2054,6 +2057,51 @@ class ContextApp:
             config = RealtimeConfig(model=backend_kwargs.pop("model", "gpt-realtime"))
         return connect_realtime(backend, config=config, tool_dispatcher=_dispatch, **backend_kwargs)
 
+    def voice_agent(
+        self,
+        *,
+        backend: str = "inprocess",
+        config: Any | None = None,
+        research: bool = True,
+        memory_os: bool = True,
+        rails: bool = True,
+        owner_id: str = "voice",
+        **backend_kwargs: Any,
+    ) -> Any:
+        """Open an end-to-end :class:`~vincio.realtime.VoiceAgent`.
+
+        A realtime session wired to the full stack: the deep-research agent (as
+        an in-session ``research`` tool), the self-editing memory OS, and the
+        app's deterministic input/output rails over every spoken transcript and
+        reply — so a spoken assistant inherits the same grounding, budget, and
+        audit guarantees as the text path. In-session tool calls route through
+        this app's permissioned, sandboxed, audited runtime::
+
+            app.add_source("kb", documents=[...])
+            agent = app.voice_agent()
+            async with agent:
+                await agent.send_text("What is the refund window?")
+                await agent.commit()
+                async for event in agent.events():
+                    ...
+
+        ``backend`` is ``inprocess`` (offline default), ``openai``, or ``gemini``
+        (hosted backends need ``pip install "vincio[realtime]"``). Optional
+        module — see :mod:`vincio.realtime`.
+        """
+        from ..realtime.voice_agent import VoiceAgent
+
+        return VoiceAgent(
+            self,
+            backend=backend,
+            config=config,
+            research=research,
+            memory_os=memory_os,
+            rails=rails,
+            owner_id=owner_id,
+            **backend_kwargs,
+        )
+
     # -- A2A ------------------------------------------------------------------------------------
 
     def serve_a2a(
@@ -2583,6 +2631,45 @@ class ContextApp:
             cost_aware_models=cost_aware_models,
         )
         return _AgentHandle(self, executor, max_steps)
+
+    def assistant(
+        self,
+        *,
+        user_id: str | None = None,
+        tenant_id: str | None = None,
+        session_id: str | None = None,
+        memory_writeback: bool = True,
+        auto_approve: list[str] | None = None,
+        on_approval: Any | None = None,
+        feature: str | None = "assistant",
+    ) -> Assistant:
+        """Open a conversational, session-aware :class:`~vincio.assistant.Assistant`.
+
+        A thin multi-turn layer over this app: every turn is still a full
+        :meth:`run` (retrieval, grounding, validation, rails, budget, trace,
+        audit all apply), threaded under one ``session_id`` with session-scoped
+        memory write-back and an approval surface for write tools::
+
+            chat = app.assistant(user_id="u-1")
+            print(chat.send("How do I reset my password?").text)
+            print(chat.send("And change my email?").text)   # remembers the thread
+
+        Write tools are denied by default and surfaced as pending approvals;
+        ``auto_approve=[...]`` pre-allows trusted tools, or pass ``on_approval``
+        for an interactive decision.
+        """
+        from ..assistant import Assistant
+
+        return Assistant(
+            self,
+            user_id=user_id,
+            tenant_id=tenant_id,
+            session_id=session_id,
+            memory_writeback=memory_writeback,
+            auto_approve=auto_approve,
+            on_approval=on_approval,
+            feature=feature,
+        )
 
     def research(self, question: str, *, objective: str = "", **kwargs: Any):
         """Run the deep-research loop: search → read → reflect → verify →
