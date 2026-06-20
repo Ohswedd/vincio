@@ -4,6 +4,65 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.1.0] - 2026-06-20
+
+Runtime performance & efficiency: make the compile spine fast enough that
+context engineering is never the bottleneck. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline
+path is the default, and every default run path is unchanged. NumPy is an
+optional accelerator, never a requirement.
+
+### Added
+
+- **Vectorized candidate scoring.** `ContextScorer.score_batch` scores a whole
+  candidate set in one pass — the per-component scores are reduced against the
+  weight vector together (a single matrix product under NumPy via the new
+  `vincio.context.vectorized`, an identical pure-Python reduction otherwise), and
+  each `ContextScores` is built without per-item validation. Bit-for-bit
+  identical selection to the per-candidate loop. VincioBench gates
+  `families.perf.vectorized_scoring.equivalent`.
+- **Compiled-prompt render program.** `PromptCompiler` compiles a spec's stable
+  prefix (role/objective/rules/safety/definitions/output-contract/examples) once
+  into a reusable render program (`vincio.prompts.program`,
+  `CompilerOptions.use_render_program`, default on) and reuses it across calls
+  that share the spec, rendering only the volatile suffix. Byte-identical output;
+  `program_hits` counts reuses. VincioBench gates
+  `families.perf.render_program.byte_identical`.
+- **Warm candidate arena.** When the candidate set (inputs + privacy scope) is
+  unchanged, the context compiler reuses the collected, normalized, and
+  privacy-screened candidates (`vincio.context.arena`,
+  `performance.reuse_candidate_set` / `ContextCompilerOptions.reuse_candidate_set`,
+  default on) instead of rebuilding them. Correctness-preserving and safe under
+  concurrent use; `arena_hits` counts reuses. VincioBench gates
+  `families.perf.warm_arena.equivalent`.
+- **Streaming-first compilation.** `ContextCompiler.compile_streaming` yields a
+  new `CompileStreamEvent` stream — the stable prefix (objective / instructions /
+  constraints / task) before any candidate is scored, then the selected evidence,
+  then a terminal `done` carrying the full `CompiledContext` (identical to
+  `compile`). Back-pressure is the async generator itself. VincioBench gates
+  `families.perf.streaming_compile.prefix_before_scoring`.
+- **Speculative retrieval prefetch.** Opt-in `performance.speculative_prefetch`
+  warms the query embedding (`vincio.retrieval.SpeculativePrefetcher` /
+  `PrefetchHandle`) from the task classification while preparation runs, so
+  retrieval's query embed lands as a cache hit; cancelled cleanly and best-effort.
+  VincioBench gates `families.perf.prefetch.warms_cache`.
+- **Per-app memory-footprint budget.** `performance.memory_budget_mb` declares a
+  resident-memory ceiling for the compiled packet; the compiler slims the packet
+  and evicts the lowest-utility evidence to fit (`vincio.context.footprint`),
+  recording each eviction. The footprint is surfaced as `RunResult.memory_bytes`
+  and rolled up as `peak_resident_bytes` in the cost summary. VincioBench gates
+  `families.perf.footprint.budget_enforced` and a resident-footprint regression
+  gate `families.perf.footprint.packet_bytes`.
+
+### Performance
+
+- New SLOs: p99 cold-compile latency, a sub-millisecond warm-compile hot path
+  (`families.perf.context_compile.cached_p50_ms`), and a resident-footprint
+  ceiling, plus the equivalence/byte-identity/streaming/prefetch invariants —
+  each backed by an at-least-as-strict VincioBench budget.
+
+**1663 tests passing offline; ruff + mypy clean; VincioBench 287 budgets / 96 SLOs.**
+
 ## [3.0.1] - 2026-06-18
 
 Closes the two honest scoping notes the 3.0.0 milestone shipped with. Both

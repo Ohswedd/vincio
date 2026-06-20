@@ -806,6 +806,9 @@ class RunResult(BaseModel):
     usage: TokenUsage = Field(default_factory=TokenUsage)
     cost_usd: float = 0.0
     latency_ms: int = 0
+    # Estimated resident-memory footprint of the compiled context packet, in
+    # bytes. Held under the app's ``memory_budget_mb`` ceiling when one is set.
+    memory_bytes: int = 0
     validation: dict[str, Any] = Field(default_factory=dict)
     eval_scores: dict[str, float] = Field(default_factory=dict)
     excluded_context: list[dict[str, Any]] = Field(default_factory=list)

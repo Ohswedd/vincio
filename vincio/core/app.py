@@ -65,6 +65,7 @@ from ..retrieval.indexes import (
     build_filter_spec,
 )
 from ..retrieval.late_interaction import LateInteractionIndex
+from ..retrieval.prefetch import SpeculativePrefetcher
 from ..retrieval.rerankers import build_reranker
 from ..retrieval.sparse import SparseIndex
 from ..security.access import AccessController, Principal
@@ -324,7 +325,15 @@ class ContextApp:
 
         # context compiler
         self.context_compiler = ContextCompiler(
-            ContextCompilerOptions(slim_packets=self.config.performance.slim_packets),
+            ContextCompilerOptions(
+                slim_packets=self.config.performance.slim_packets,
+                reuse_candidate_set=self.config.performance.reuse_candidate_set,
+                max_resident_bytes=(
+                    int(self.config.performance.memory_budget_mb * 1_000_000)
+                    if self.config.performance.memory_budget_mb is not None
+                    else None
+                ),
+            ),
             cache=self.context_compile_cache,
         )
         self.prompt_compiler = PromptCompiler(CompilerOptions(), cache=self.prompt_compile_cache)
@@ -353,6 +362,14 @@ class ContextApp:
             self.config.retrieval.semantic_context_scoring
         )
         self.context_compiler.options.mmr_lambda = self.config.retrieval.mmr_lambda
+        # Speculative retrieval prefetch: warms the query embedding from the task
+        # classification before retrieval runs (opt-in). Shares the app embedder
+        # so a landed warm is a cache hit for retrieval.
+        self._prefetcher = (
+            SpeculativePrefetcher(self.embedder)
+            if self.config.performance.speculative_prefetch
+            else None
+        )
         self.sources: dict[str, _SourceConfig] = {}
         self.retrieval: RetrievalEngine | None = None
         self._bm25: BM25Index | None = None

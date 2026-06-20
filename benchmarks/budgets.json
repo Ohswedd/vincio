@@ -421,6 +421,36 @@
     "families.perf.hot_paths.count_tokens_memoized": {
       "eq": true
     },
+    "families.perf.context_compile.cold_p99_ms": {
+      "lte": 350
+    },
+    "families.perf.context_compile.cached_p50_ms": {
+      "lte": 5
+    },
+    "families.perf.vectorized_scoring.equivalent": {
+      "eq": true
+    },
+    "families.perf.render_program.byte_identical": {
+      "eq": true
+    },
+    "families.perf.warm_arena.equivalent": {
+      "eq": true
+    },
+    "families.perf.streaming_compile.prefix_before_scoring": {
+      "eq": true
+    },
+    "families.perf.prefetch.warms_cache": {
+      "eq": true
+    },
+    "families.perf.footprint.slim_reduces_bytes": {
+      "eq": true
+    },
+    "families.perf.footprint.budget_enforced": {
+      "eq": true
+    },
+    "families.perf.footprint.packet_bytes": {
+      "lte": 5000
+    },
     "families.loop.promotion.significance_gated": {
       "eq": true
     },

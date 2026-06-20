@@ -138,14 +138,14 @@ class PromptSpec(BaseModel):
 
     # -- AST ---------------------------------------------------------------------
 
-    def build_ast(
-        self,
-        *,
-        user_task: str = "",
-        memory_items: list[dict[str, Any]] | None = None,
-        evidence_items: list[dict[str, Any]] | None = None,
-        tool_results: list[dict[str, Any]] | None = None,
-    ) -> PromptAST:
+    def build_stable_ast(self) -> PromptAST:
+        """The cacheable prefix: the nodes that depend only on the spec.
+
+        Role, objective, rules, safety policies, definitions, the output
+        contract, and examples — none of which vary with the per-call task or
+        context. Rendering these once and reusing them is what the compiler's
+        render program does.
+        """
         ast = PromptAST(metadata={"spec_name": self.name})
         if self.role:
             ast.add(SystemRoleNode(text=self.role))
@@ -179,6 +179,18 @@ class PromptSpec(BaseModel):
             )
         for example in self.examples:
             ast.add(ExampleNode(example=example, text=f"{example.input} -> {example.output}"))
+        return ast
+
+    def build_volatile_ast(
+        self,
+        *,
+        user_task: str = "",
+        memory_items: list[dict[str, Any]] | None = None,
+        evidence_items: list[dict[str, Any]] | None = None,
+        tool_results: list[dict[str, Any]] | None = None,
+    ) -> PromptAST:
+        """The per-call suffix: memory, evidence, tool results, and the task."""
+        ast = PromptAST(metadata={"spec_name": self.name})
         if memory_items:
             ast.add(MemoryBlockNode(items=memory_items))
         if evidence_items:
@@ -187,6 +199,24 @@ class PromptSpec(BaseModel):
             ast.add(ToolResultBlockNode(items=tool_results))
         if user_task:
             ast.add(UserTaskNode(text=user_task))
+        return ast
+
+    def build_ast(
+        self,
+        *,
+        user_task: str = "",
+        memory_items: list[dict[str, Any]] | None = None,
+        evidence_items: list[dict[str, Any]] | None = None,
+        tool_results: list[dict[str, Any]] | None = None,
+    ) -> PromptAST:
+        ast = self.build_stable_ast()
+        for node in self.build_volatile_ast(
+            user_task=user_task,
+            memory_items=memory_items,
+            evidence_items=evidence_items,
+            tool_results=tool_results,
+        ).nodes:
+            ast.add(node)
         return ast
 
     @property

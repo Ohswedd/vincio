@@ -41,6 +41,7 @@ from vincio.core.types import (
     Chunk,
     Document,
     EvidenceItem,
+    Example,
     Message,
     ModelRequest,
     ModelResponse,
@@ -2170,6 +2171,7 @@ async def bench_perf() -> dict[str, Any]:
     results["context_compile"] = {
         "cold_p50_ms": round(statistics.median(cold_ms), 3),
         "cold_p95_ms": round(percentile(cold_ms, 0.95), 3),
+        "cold_p99_ms": round(percentile(cold_ms, 0.99), 3),
         "cached_p50_ms": round(statistics.median(warm_ms), 3),
         "cache_speedup": round(statistics.median(cold_ms) / max(1e-6, statistics.median(warm_ms)), 2),
     }
@@ -2270,6 +2272,195 @@ async def bench_perf() -> dict[str, Any]:
     results["hot_paths"] = {
         "bm25_inverted_index": bm25_inverted_index,
         "count_tokens_memoized": count_tokens_memoized,
+    }
+
+    # -- runtime performance & efficiency hot-path families --------------------
+    from vincio.context.footprint import estimate_resident_bytes
+    from vincio.context.scoring import ContextCandidate, ContextScorer
+    from vincio.core.types import Constraint, Instruction
+    from vincio.retrieval.embeddings import CachedEmbedder, embed_texts
+    from vincio.retrieval.prefetch import SpeculativePrefetcher
+
+    def _pool() -> list[ContextCandidate]:
+        return [
+            ContextCandidate(
+                id=f"c{i}",
+                type="evidence",
+                content=f"{text} (variant {i}) refund renewal clause about {i} days.",
+                token_cost=12 + (i % 9),
+                authority=0.3 + (i % 5) / 10,
+                provenance=0.4 + (i % 4) / 10,
+            )
+            for i, (_n, text) in enumerate(CORPUS * 24)
+        ]
+
+    # Vectorized scoring: the batched single pass must score a large candidate
+    # set identically to the per-candidate loop (the NumPy fast lane reduces the
+    # whole set in one matrix product; the gate is the equivalence it preserves).
+    vquery = QA_CASES[0][0]
+    loop_pool, batch_pool = _pool(), _pool()
+    for candidate in loop_pool:
+        ContextScorer().score(candidate, query=vquery, selected=[])
+    ContextScorer().score_batch(batch_pool, vquery)
+    vectorized_equivalent = all(
+        abs(a.scores.total - b.scores.total) < 1e-9
+        for a, b in zip(loop_pool, batch_pool, strict=True)
+    )
+    results["vectorized_scoring"] = {"equivalent": bool(vectorized_equivalent)}
+
+    # Render program: byte-identical output; warm prefix reuse vs from scratch on
+    # a representative (large) spec where rendering the stable prefix dominates.
+    rspec = PromptSpec(
+        name="rp", role="a meticulous answering engine for enterprise documents",
+        objective="Answer the question strictly from the provided documents",
+        rules=[f"Rule {i}: follow document policy clause {i} exactly." for i in range(18)],
+        soft_rules=[f"Prefer style {i}." for i in range(6)],
+        definitions={f"term{i}": f"definition of term {i}" for i in range(10)},
+        safety_policies=[f"Never reveal {i}." for i in range(4)],
+        examples=[Example(input=f"q{i}", output=f"a{i}", quality=0.9 - i * 0.1) for i in range(6)],
+        citation_policy="Cite evidence IDs in square brackets.",
+        output_schema={"type": "object", "properties": {"answer": {"type": "string"}}},
+        output_format="json",
+    )
+    rev = [{"id": f"E{i}", "text": text} for i, (_n, text) in enumerate(CORPUS)]
+    with_prog = PromptCompiler(CompilerOptions(use_render_program=True))
+    without_prog = PromptCompiler(CompilerOptions(use_render_program=False))
+    a = with_prog.compile(rspec, user_task=vquery, evidence_items=rev)
+    b = without_prog.compile(rspec, user_task=vquery, evidence_items=rev)
+    program_identical = a.rendered_hash == b.rendered_hash and a.system_text == b.system_text
+    warm_prog = PromptCompiler(CompilerOptions(use_render_program=True))
+    warm_prog.compile(rspec, user_task="warm", evidence_items=rev)  # build the program
+    prog_warm_t, prog_cold_t = [], []
+    for i in range(60):
+        started = time.perf_counter()
+        warm_prog.compile(rspec, user_task=f"q{i}", evidence_items=rev)
+        prog_warm_t.append(time.perf_counter() - started)
+        started = time.perf_counter()
+        PromptCompiler(CompilerOptions(use_render_program=False)).compile(
+            rspec, user_task=f"q{i}", evidence_items=rev
+        )
+        prog_cold_t.append(time.perf_counter() - started)
+    results["render_program"] = {
+        "byte_identical": bool(program_identical),
+        "speedup": round(statistics.median(prog_cold_t) / max(1e-9, statistics.median(prog_warm_t)), 2),
+    }
+
+    # Warm candidate arena: reuse on a new query vs a cold recompile.
+    arena_evidence = [
+        EvidenceItem(id=f"ae{i}", source_id=f"doc_{n}", text=text, relevance=0.6)
+        for i, (n, text) in enumerate(CORPUS * 8)
+    ]
+
+    def _arena_kwargs(q: str) -> dict[str, Any]:
+        return dict(
+            objective=objective, user_input=UserInput(text=q), evidence=arena_evidence,
+            budget=Budget(max_input_tokens=8000),
+        )
+
+    warm_arena = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+    await warm_arena.compile(**_arena_kwargs("warm the arena"))  # populate
+    cold_arena = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=False))
+    warm_at, cold_at = [], []
+    for i in range(20):
+        started = time.perf_counter()
+        warm_r = await warm_arena.compile(**_arena_kwargs(f"arena query {i}"))
+        warm_at.append(time.perf_counter() - started)
+        started = time.perf_counter()
+        cold_r = await cold_arena.compile(**_arena_kwargs(f"arena query {i}"))
+        cold_at.append(time.perf_counter() - started)
+    arena_equivalent = [e.id for e in warm_r.ir.evidence] == [e.id for e in cold_r.ir.evidence]
+    results["warm_arena"] = {
+        "equivalent": bool(arena_equivalent),
+        "speedup": round(statistics.median(cold_at) / max(1e-9, statistics.median(warm_at)), 2),
+    }
+
+    # Streaming-first compilation: prefix emitted before scoring runs.
+    stream_compiler = ContextCompiler(ContextCompilerOptions())
+    state = {"compiled": False}
+    _orig_compile = stream_compiler.compile
+
+    async def _flagged(**kw: Any) -> Any:
+        state["compiled"] = True
+        return await _orig_compile(**kw)
+
+    stream_compiler.compile = _flagged  # type: ignore[method-assign]
+    sgen = stream_compiler.compile_streaming(
+        objective=objective,
+        user_input=UserInput(text=vquery),
+        instructions=[Instruction("Answer only from the evidence.")],
+        constraints=[Constraint("No speculation.")],
+        evidence=evidence,
+        budget=budget,
+    )
+    first_event = await sgen.__anext__()
+    prefix_before_scoring = first_event.type == "prefix" and state["compiled"] is False
+    async for _ in sgen:
+        pass
+    results["streaming_compile"] = {"prefix_before_scoring": bool(prefix_before_scoring)}
+
+    # Speculative prefetch: a warm makes retrieval's query embed a cache hit.
+    class _Counting:
+        dim = 8
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def embed(self, texts: list[str], **_: Any) -> list[list[float]]:
+            self.calls += 1
+            return [[float(len(t))] * self.dim for t in texts]
+
+    counting = _Counting()
+    cached_emb = CachedEmbedder(counting)
+    prefetcher = SpeculativePrefetcher(cached_emb)
+    await prefetcher.warm(vquery).result()
+    calls_after_warm = counting.calls
+    await embed_texts(cached_emb, [vquery], input_type="query")
+    results["prefetch"] = {"warms_cache": bool(counting.calls == calls_after_warm)}
+
+    # Per-app memory-footprint budget: slim helps, and a ceiling is enforced;
+    # the reference packet's resident footprint is the regression gate.
+    slim_bytes = estimate_resident_bytes(["x" * 4000], [], slim=True)
+    full_bytes = estimate_resident_bytes(["x" * 4000], [], slim=False)
+    # Distinct passages (different vocabulary, so dedup keeps them all) sized so
+    # the full set overruns the ceiling and the budget must slim and evict.
+    _passages = [
+        "The renewal clause requires written notice sixty days before the anniversary, "
+        "after which the agreement extends automatically for successive annual periods.",
+        "Termination for convenience needs thirty days notice, while termination for cause "
+        "follows a fifteen day cure window and a documented remediation plan.",
+        "Payment is net forty five from invoice receipt; overdue balances accrue interest "
+        "at one and a half percent monthly and disputes must be raised within ten days.",
+        "Liability is capped at the fees paid over the preceding twelve months, excluding "
+        "gross negligence, and neither side owes indirect or consequential damages.",
+        "Warranty coverage spans ninety days of conforming performance; remedies are limited "
+        "to repair or replacement and all implied warranties are expressly disclaimed.",
+    ]
+    fp_evidence = [
+        EvidenceItem(id=f"fp{i}", source_id=f"D{i}", relevance=0.9 - i * 0.05, text=text)
+        for i, text in enumerate(_passages)
+    ]
+    fp_kwargs = dict(
+        objective=objective,
+        user_input=UserInput(
+            text="What are the renewal, termination, payment, liability, and warranty terms?"
+        ),
+        evidence=fp_evidence, budget=Budget(max_input_tokens=8000),
+    )
+    unbounded_fp = await ContextCompiler(ContextCompilerOptions()).compile(**fp_kwargs)
+    bounded_fp = await ContextCompiler(
+        ContextCompilerOptions(max_resident_bytes=1500)
+    ).compile(**fp_kwargs)
+    budget_enforced = (
+        bounded_fp.packet.slim
+        and bounded_fp.resident_bytes <= 1500
+        and len(bounded_fp.ir.evidence) < len(unbounded_fp.ir.evidence)
+    )
+    # Reference packet footprint on the QA corpus (deterministic).
+    ref_fp = await ContextCompiler(ContextCompilerOptions()).compile(**compile_kwargs)
+    results["footprint"] = {
+        "slim_reduces_bytes": bool(slim_bytes < full_bytes),
+        "budget_enforced": bool(budget_enforced),
+        "packet_bytes": int(ref_fp.resident_bytes),
     }
     return results
 

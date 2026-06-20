@@ -21,6 +21,7 @@ from ..core.types import Example, Message, ModelProfile
 from ..core.utils import stable_hash, utcnow
 from .ast import ExampleNode, PromptAST, PromptNode
 from .lint import LintFinding, lint_ast, lint_spec
+from .program import ProgramCache, PromptProgram
 from .templates import PromptSpec
 
 __all__ = ["RenderFormat", "CompilerOptions", "CompiledPrompt", "PromptCompiler", "COMPILER_VERSION"]
@@ -37,6 +38,11 @@ class CompilerOptions(BaseModel):
     fail_on_lint_errors: bool = False
     include_schema_in_prompt: bool = True  # False when provider enforces natively
     section_headers: bool = True
+    # Compiled-prompt render program: cache and reuse the rendered stable
+    # prefix (role/objective/rules/examples/schema) across calls that share a
+    # spec, so a warm spec renders only the volatile suffix. The output is
+    # identical to compiling from scratch. On by default.
+    use_render_program: bool = True
 
 
 class CompiledPrompt(BaseModel):
@@ -104,6 +110,63 @@ class PromptCompiler:
         self.options = options or CompilerOptions()
         self.cache = cache  # PromptCompileCache | None
         self.cache_hits = 0
+        # Compiled-prompt render program cache: reuse the rendered stable prefix
+        # across calls sharing a spec (see ``use_render_program``).
+        self._program_cache = ProgramCache() if self.options.use_render_program else None
+        self.program_hits = 0
+
+    # -- render program -----------------------------------------------------------
+
+    def _build_program(
+        self, resolved: PromptSpec, *, include_schema: bool, model_name: str | None, key: str = ""
+    ) -> PromptProgram:
+        """Compile a spec's stable prefix once: normalize, dedupe, cap examples,
+        render the system text, and count its tokens. Equivalent to the stable
+        portion of a full compile, lifted out so it can be cached and reused."""
+        spec_lint = lint_spec(resolved)
+        ast = resolved.build_stable_ast()
+        ast = self._normalize(ast)
+        ast = self._dedupe(ast)
+        ast, excluded_examples = self._select_examples(ast)
+        stable_nodes = ast.nodes
+        ordered_stable = sorted(stable_nodes, key=lambda n: n.priority)
+        system_text = self._render_sections(
+            ordered_stable, self.options.format, include_schema=include_schema
+        )
+        return PromptProgram(
+            key=key,
+            system_text=system_text,
+            stable_tokens=count_tokens(system_text, model_name),
+            stable_nodes=stable_nodes,
+            excluded_examples=excluded_examples,
+            spec_lint=spec_lint,
+        )
+
+    def _render_program(
+        self, resolved: PromptSpec, *, include_schema: bool, model_name: str | None
+    ) -> PromptProgram:
+        if self._program_cache is None:
+            return self._build_program(
+                resolved, include_schema=include_schema, model_name=model_name
+            )
+        key = ProgramCache.key(
+            spec_hash=resolved.spec_hash,
+            format=self.options.format,
+            section_headers=self.options.section_headers,
+            max_examples=self.options.max_examples,
+            include_schema=include_schema,
+            model=model_name,
+            compiler_version=COMPILER_VERSION,
+        )
+        program = self._program_cache.get(key)
+        if program is not None:
+            self.program_hits += 1
+            return program
+        program = self._build_program(
+            resolved, include_schema=include_schema, model_name=model_name, key=key
+        )
+        self._program_cache.put(program)
+        return program
 
     # -- passes -----------------------------------------------------------------
 
@@ -263,18 +326,29 @@ class PromptCompiler:
                 self.cache_hits += 1
                 return CompiledPrompt.model_validate(cached)
 
-        lint_findings = lint_spec(resolved)
+        # Schema inclusion is resolved per call (never by mutating shared
+        # options — compile() must be safe under concurrent use).
+        include_schema = self.options.include_schema_in_prompt and not provider_enforces_schema
+        model_name = model_profile.model if model_profile else None
 
-        ast = resolved.build_ast(
-            user_task=user_task,
-            memory_items=memory_items,
-            evidence_items=evidence_items,
-            tool_results=tool_results,
+        # The stable prefix is compiled once per spec and reused; only the
+        # volatile suffix (memory / evidence / tools / task) is built per call.
+        program = self._render_program(
+            resolved, include_schema=include_schema, model_name=model_name
         )
-        ast = self._normalize(ast)
-        ast = self._dedupe(ast)
-        ast, excluded_examples = self._select_examples(ast)
-        lint_findings.extend(lint_ast(ast))
+        volatile = self._normalize(
+            resolved.build_volatile_ast(
+                user_task=user_task,
+                memory_items=memory_items,
+                evidence_items=evidence_items,
+                tool_results=tool_results,
+            )
+        )
+
+        lint_findings = list(program.spec_lint)
+        lint_findings.extend(
+            lint_ast(PromptAST(nodes=list(program.stable_nodes) + list(volatile.nodes)))
+        )
 
         if self.options.fail_on_lint_errors:
             errors = [f for f in lint_findings if f.severity == "error"]
@@ -286,20 +360,14 @@ class PromptCompiler:
                     findings=errors,
                 )
 
-        # Schema inclusion is resolved per call (never by mutating shared
-        # options — compile() must be safe under concurrent use).
-        include_schema = self.options.include_schema_in_prompt and not provider_enforces_schema
-        ordered = ast.ordered()
-        stable_nodes = [n for n in ordered if n.stable]
-        volatile_nodes = [n for n in ordered if not n.stable]
+        excluded_examples = program.excluded_examples
+        volatile_nodes = sorted(volatile.nodes, key=lambda n: n.priority)
         # The user task is delivered as the user message; other volatile
         # context blocks travel with it so the prefix stays stable.
         user_task_nodes = [n for n in volatile_nodes if n.kind == "user_task"]
         context_nodes = [n for n in volatile_nodes if n.kind != "user_task"]
 
-        system_text = self._render_sections(
-            stable_nodes, self.options.format, include_schema=include_schema
-        )
+        system_text = program.system_text
         context_text = self._render_sections(
             context_nodes, self.options.format, include_schema=include_schema
         )
@@ -313,8 +381,7 @@ class PromptCompiler:
             messages.append(Message(role="system", content=system_text, cache_hint=True))
         messages.append(Message(role="user", content=user_text or task_text or ""))
 
-        model_name = model_profile.model if model_profile else None
-        stable_tokens = count_tokens(system_text, model_name)
+        stable_tokens = program.stable_tokens
         total_tokens = stable_tokens + count_tokens(user_text, model_name)
         max_tokens = self.options.max_prompt_tokens
         if max_tokens is not None and total_tokens > max_tokens:

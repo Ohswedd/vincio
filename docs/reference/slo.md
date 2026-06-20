@@ -25,7 +25,16 @@ for tuning.
 | SLO | Target | VincioBench metric |
 |---|---|---|
 | Cold context compilation (p95) | ≤ 300 ms | `perf.context_compile.cold_p95_ms` |
+| Cold context compilation (p99) | ≤ 500 ms | `perf.context_compile.cold_p99_ms` |
+| Warm compile hot path (p50, cache hit) | ≤ 10 ms (sub-ms on the reference corpus) | `perf.context_compile.cached_p50_ms` |
 | Compile cache speedup | ≥ 1.5× | `perf.context_compile.cache_speedup` |
+| Vectorized scoring equivalence | batched == per-candidate loop | `perf.vectorized_scoring.equivalent` |
+| Render-program byte-identity | identical to from-scratch compile | `perf.render_program.byte_identical` |
+| Warm candidate arena equivalence | warm reuse == cold compile | `perf.warm_arena.equivalent` |
+| Streaming-first compilation | prefix before scoring | `perf.streaming_compile.prefix_before_scoring` |
+| Speculative prefetch | warms the retrieval embed | `perf.prefetch.warms_cache` |
+| Memory-footprint budget enforced | slim + evict to fit the ceiling | `perf.footprint.budget_enforced` |
+| Resident footprint (reference corpus) | ≤ 6 KB | `perf.footprint.packet_bytes` |
 | Retrieval latency (p95) | ≤ 150 ms | `perf.retrieval.p95_ms` |
 | Cached end-to-end run (p50) | ≤ 300 ms | `perf.run.p50_ms` |
 | Concurrent throughput | ≥ 50 runs/s | `perf.run.concurrent_runs_per_s` |

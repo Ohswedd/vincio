@@ -1,7 +1,12 @@
 """Vincio context compiler: IR, packet, scoring, budgeting, compression."""
 
 from .budgeting import DEFAULT_ALLOCATION, BlockBudget, BudgetAllocation, BudgetAllocator
-from .compiler import CompiledContext, ContextCompiler, ContextCompilerOptions
+from .compiler import (
+    CompiledContext,
+    CompileStreamEvent,
+    ContextCompiler,
+    ContextCompilerOptions,
+)
 from .compression import (
     CompressionResult,
     distill_evidence_ledger,
@@ -33,6 +38,7 @@ __all__ = [
     "BlockBudget",
     "DEFAULT_ALLOCATION",
     "CompiledContext",
+    "CompileStreamEvent",
     "ContextCompiler",
     "ContextCompilerOptions",
     "CompressionResult",
