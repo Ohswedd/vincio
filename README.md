@@ -7,11 +7,11 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-3.4.1-B98B2E" alt="Vincio 3.4.1"></a>
+  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-3.7.0-B98B2E" alt="Vincio 3.7.0"></a>
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-1805%20passing-2ea44f" alt="1805 tests passing">
+  <img src="https://img.shields.io/badge/tests-1929%20passing-2ea44f" alt="1929 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -191,6 +191,12 @@ async for ev in controller.astream():
 
 # Promote a candidate live only if it clears a no-regression canary verdict.
 app.deploy(candidate, dataset=golden)
+
+# On-policy reinforcement from verifiable rewards: improve a policy from the
+# task-success oracle and benchmark scorers, behind a KL clamp + no-regression gate.
+from vincio.optimize import OracleReward, RewardModel
+result = app.learn(tasks, reward=RewardModel([OracleReward()]))
+result.promoted, result.reward_delta, result.kl_to_reference
 ```
 
 ### Interoperate: MCP, A2A, Skills
@@ -233,6 +239,7 @@ for any engine directly. Everything below is implemented, tested offline, and do
 | **Optimization & the closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited — with safety-gated promotion that blocks any candidate regressing schema validity or safety. Plus grounded auto-memory from runs, eval-driven retrieval feedback, cost/quality Pareto frontiers with knee-point selection, and learned per-task budget allocation. |
 | **Self-improvement** | One declarative **`SelfImprovementPolicy`** composes scheduling, autonomous proposal, online updates, meta-optimization (learned fitness weights + successive-halving), active-learning label acquisition, and canary/rollback; `app.self_improvement(policy).astream()` drives the organs as one streaming controller — `observe → proposal → meta → reeval → canary → promote/rollback`. **`app.deploy`** promotes a prompt/policy live only on a no-regression canary verdict — an offline gated comparison *or* a live-traffic canary that ramps a fraction of real runs and auto-rolls-back a regression. Every promotion passes the same significance + safety + golden gates. |
 | **Reflective optimization & the flywheel** | A GEPA-style `ReflectiveOptimizer` that reads eval failures, reflects on why a prompt lost, and proposes targeted edits, evolving a Pareto frontier under a hard rollout budget (plus MIPRO joint instruction+example proposal); a **distillation flywheel** (`app.export_training_set` / `vincio distill`) that curates grounded production traces into provider-ready fine-tuning JSONL and gates a cheaper student into the routing cascade only when it holds quality, with executed fine-tune jobs (OpenAI/Gemini/Anthropic); **learned prompt compression** (`LLMLinguaCompressor`) as a faithfulness-gated compiler pass; and reflective calibration of the optimizer's own LLM judge against κ-validated labels. |
+| **On-policy reinforcement (RLVR)** | The learning loop closed on a *policy*, not just a prompt. A **`RewardModel`** turns the signals the platform already computes — the stateful-environment task-success oracle, the nine benchmark scorers, and a judge ensemble whose **disagreement down-weights itself** — into a verifiable reward; a **`TrajectoryAdvantage`** assigns step-level credit by Shapley counterfactual replay (the same kernel as causal regression attribution); and a GRPO-style **`TrajectoryOptimizer`** (**`app.learn`**) runs a group-relative update behind a **KL-to-reference clamp** and a **monotonic no-regression gate** — the served policy never regresses the baseline reward — emitting a fine-tune job through the existing flywheel under the same canary verdict a prompt deploy produces. The offline path runs a deterministic mock policy so the optimizer's math is fully tested without a GPU. |
 | **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions, including agentic spans); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. A **served, self-hosted observability & alerting plane** — an indexed trace/cost store with rollups, a stdlib dashboard (`serve_viewer`), and a rule engine (threshold / EWMA-anomaly / SRE burn-rate) over webhook/Slack/PagerDuty/Prometheus sinks — replaces O(n) JSONL scans, with prompt/completion content off by default at the export boundary. |
 | **Security** | Deterministic PII / secret detection and redaction (with non-English locale packs for France/Germany/Spain/India/Singapore/Brazil/UK), prompt-injection defense, authority/provenance RAG-poisoning detection on retrieved evidence, programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained, signed Merkle-checkpointed audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
 | **Governance & compliance** | Evidence generated from the running system, as files you own: machine-readable **model & system cards**, a **compliance coverage matrix** across OWASP LLM Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE ATLAS / ISO IEC 42001 backed by red-team and eval evidence, an **AI-BOM** with SHA-256 model-hash verification, EU AI Act **synthetic-content marking** (media-aware, optionally signed + verifiable), an **EU AI Act conformity pack** (risk-tier + cited Annex IV + Article 27 FRIA), **provable erasure** (`app.erase_source` emits a signed, content-bound `ErasureProof` over the exact removed-id set across indexes, memory, and generated artifacts, anchored to the audit chain's Merkle root and verifiable offline), a **`ConsentLedger`** binding data to a GDPR purpose + lawful basis that access and recall enforce, **data lineage**, **data-residency-aware** egress refusal, and the non-English **token tax** surfaced per language/tenant — see the [governance guide](docs/guides/governance.md). |
@@ -533,7 +540,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 1805 tests, no network or API keys required
+python -m pytest tests/ -q     # 1929 tests, no network or API keys required
 ruff check vincio/ tests/
 mypy vincio
 ```

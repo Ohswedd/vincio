@@ -423,6 +423,13 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "An optimization run failed. Check the dataset, fitness weights, and that "
             "the prompt spec is valid before retrying.",
         ),
+        _entry(
+            "REWARD_ERROR",
+            "Reward derivation error",
+            "A verifiable reward could not be derived from the sample. Provide the "
+            "signal the reward needs (an environment verification, adapter gold, or "
+            "judge inputs) before calling app.learn.",
+        ),
         # --- caching ---
         _entry(
             "CACHE_ERROR",

@@ -44,7 +44,7 @@ and a runnable example.
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and resumable approval gates. |
 | **Structured output** | Pydantic contracts, provider-native constrained decoding, streaming validation with early abort, typed signatures, bounded self-correction, multi-schema routing, and structure-only repair. |
 | **Evaluation** | Golden datasets, 30+ metrics, judges with calibration, judge ensembles whose disagreement is an uncertainty signal, synthetic data, red-teaming, experiments with significance, regression gates that attribute a failure to its cause (prompt / retrieval / model / budget) by Shapley counterfactual replay, adaptive sampling that converges a gate verdict for less budget, a pytest plugin, a stateful-environment harness with a task-success oracle, nine agentic benchmark adapters (SWE-bench, τ-bench, GAIA, WebArena, BFCL, AgentBench, ToolBench, LiveCodeBench, MMLU-Pro), and retrieval-eval with index-version regression. |
-| **Optimization & self-improvement** | The closed loop (trace → dataset → eval → optimize → promote) with safety-gated promotion; reflective (GEPA-style) optimization and MIPRO; a distillation flywheel with executed fine-tune jobs; learned prompt compression; one declarative `SelfImprovementPolicy` driving a streaming controller; and canary-gated `app.deploy`. |
+| **Optimization & self-improvement** | The closed loop (trace → dataset → eval → optimize → promote) with safety-gated promotion; reflective (GEPA-style) optimization and MIPRO; a distillation flywheel with executed fine-tune jobs; learned prompt compression; one declarative `SelfImprovementPolicy` driving a streaming controller; canary-gated `app.deploy`; and on-policy reinforcement from verifiable rewards (RLVR) — a `RewardModel` over the task-success oracle, benchmark scorers, and disagreement-down-weighted judge ensembles, step-level Shapley credit, and a GRPO `TrajectoryOptimizer` (`app.learn`) with a KL-to-reference clamp and a monotonic no-regression gate that emits a fine-tune job through the flywheel. |
 | **Observability** | Full trace span trees, sessions, feedback, eval scores on spans, JSONL + OpenTelemetry export; a local viewer; a served, self-hosted observability + alerting plane; a versioned prompt registry; per-run cost. |
 | **Security & governance** | Deterministic PII / secret / injection / RAG-poisoning detection, programmable rails, RBAC/ABAC, tenant isolation, a signed Merkle-checkpointed audit chain; model & system cards, a compliance coverage matrix, an AI-BOM, an EU AI Act conformity pack, provable erasure, a consent ledger, data lineage, and residency-aware egress refusal. |
 | **Generation** | Cited DOCX/PDF/PPTX/HTML/Markdown, a cited-report builder with per-claim entailment, redlines, image generation and TTS with C2PA provenance, and richer inputs (OCR, transcripts, new-format loaders, forms/KYC). |
@@ -64,34 +64,147 @@ VincioBench holds these guarantees under CI-gated budgets and SLOs; the full tes
 
 Forward phases are scoped by theme and gated the same way everything else is — covered offline, held
 by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is additive on the
-frozen public surface; breaking changes are reserved for an announced major window and never shipped
-for their own sake.
+frozen public surface (`API_VERSION` stays `3.0`), sits behind a new entry point or an opt-in extra,
+keeps the dependency-free offline path as the default, and ships with a deterministic-mock substitute
+for every model or external call so the whole theme is testable offline. Breaking changes are reserved
+for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — the **evaluation & quality frontier** (more benchmark adapters,
-judge ensembles with disagreement detection, causal regression attribution, and adaptive eval
-sampling) — has shipped and folded into the **Evaluation** row above. The next themes are pulled from
-the exploring list below as demand and the standards settle.
+The most recent scheduled theme — **the learning loop, closed with on-policy reinforcement** (RLVR:
+a `RewardModel` over the task-success oracle and benchmark scorers, step-level Shapley credit, and a
+GRPO `TrajectoryOptimizer` behind a KL clamp and a monotonic no-regression gate) — has shipped and
+folded into the **Optimization & self-improvement** row above. The next three themes are scheduled
+below in priority order. Each closes a specific gap in the platform's *own* frontier — a rung that
+exists in the literature and in buyer demand but not yet in the package — rather than a gap measured
+against any one competitor. Indicative minor-version targets are given; cadence holds one coherent
+theme per minor.
+
+### 1 · Provable prompt-injection containment & capability-secure agents *(target 3.8)*
+
+The security subsystem **detects** injection, RAG-poisoning, secrets, and PII deterministically and
+maps to OWASP LLM / Agentic, NIST AI RMF, and MITRE ATLAS. Detection is necessary but not sufficient:
+the frontier — and the most-asked enterprise question — is **containment that holds even when
+detection misses**. This theme separates the control plane from the data plane so instructions that
+arrive inside retrieved documents or tool results provably cannot escalate to an unauthorized tool
+call, in the spirit of dual-LLM / CaMeL designs, expressed in the library's own provenance and
+permission model.
+
+- **Information-flow labels** — every context candidate already carries provenance; this theme
+  promotes provenance to a typed **`TrustLabel`** (`trusted` / `untrusted` / `quarantined`) that
+  propagates through the context compiler, the packet, and tool arguments, so a value derived from
+  untrusted data is *tainted* end-to-end.
+- **`CapabilityToken` / capability-scoped tools** — a tool invocation must present an
+  unforgeable capability minted from the *user's* request, not from model output; a planner step
+  whose arguments carry an `untrusted` taint is refused or routed to the existing approval gate
+  before any side effect. This is the RBAC/ABAC registry tightened from "who may call" to "on what
+  authority, derived from where."
+- **`DualPlaneExecutor`** — a privileged planner that never sees untrusted bytes directly, only
+  typed, schema-validated extractions of them, so an injected instruction has no channel to the
+  control plane. Pairs with the *Formal verification* exploring item: the containment invariant
+  (`untrusted ⇒ no unapproved capability`) becomes machine-checkable over a run.
+
+*Ships as:* `vincio.security` gains `TrustLabel`, `CapabilityToken`, `DualPlaneExecutor`, and a
+taint-propagating `materialize()`; a `containment` VincioBench family with an adversarial
+injection-corpus SLO (escalation rate must be **0** on the gated corpus); runnable example
+`52_injection_containment.py`.
+
+### 2 · Test-time compute & reasoning orchestration *(target 3.9)*
+
+Reasoning-model thinking budgets and parallel test-time search are the cheapest quality lever left,
+and the platform already owns the pieces to orchestrate them: cost-aware action selection over
+`ModelRegistry` pricing, critics and validators that can act as verifiers, and reasoning-effort
+control. This theme makes test-time compute a *first-class, budgeted, cache-aware* dimension of the
+compile rather than a per-call knob.
+
+- **`ReasoningController`** — sets thinking effort per step from the task classification and the live
+  budget (the same signals that drive speculative retrieval prefetch and the capability-aware
+  router), with a hard token ceiling held by an SLO so a hard task cannot silently exhaust the run.
+- **`TestTimeSearch`** — verifier-guided best-of-N, self-consistency, and beam / MCTS over tool-use
+  trajectories, scored by the *existing* critics, validators, and judge ensembles, with early-exit
+  the moment the verifier's confidence interval clears the bar (the adaptive-sampling stop rule,
+  reused). Bounded by the same fair-share budget and SLA deadlines the orchestrator already enforces.
+- **Reasoning-trace-aware caching** — the compiled-prompt render program and warm candidate arena
+  extend to cache *reasoning prefixes*, so a re-ask that shares a thinking prefix reuses it under the
+  resident-memory budget.
+
+*Ships as:* `vincio.agents` / `vincio.optimize` gain `ReasoningController`, `TestTimeSearch`, and a
+verifier protocol; a `test_time_compute` VincioBench family with a quality-per-dollar SLO (Pareto
+improvement over single-shot at a fixed budget); runnable example `53_test_time_compute.py`.
+
+### 3 · Long-horizon context engineering *(target 3.10)*
+
+Vincio's namesake is context engineering, and the regime where it matters most is the one the
+platform has not yet made first-class: **million-token, multi-day, multi-session agent runs** where
+naïve accumulation degrades quality ("context rot") and blows the budget. The context compiler,
+memory OS, and content-addressed store already hold the primitives; this theme composes them into an
+explicit long-horizon governor.
+
+- **`ContextCompactor`** — hierarchical, provenance-preserving compaction that summarizes cold
+  spans of a long run into the memory OS and *pages them back* on demand via the existing
+  cross-process `materialize()`, so the live packet stays inside the resident-memory budget without
+  losing recall.
+- **Intra-run relevance decay** — the memory subsystem's decay model, applied *within a single long
+  run* so stale candidates lose weight before they crowd out fresh signal, surfaced in the
+  excluded-context report.
+- **`ContextGovernor`** — a per-run controller that holds a *context budget* (tokens, residency,
+  KV-cache footprint) the way the cost report holds a dollar budget, gated by an SLO that the same
+  task at 10× horizon stays within a bounded quality and cost envelope.
+
+*Ships as:* `vincio.context` gains `ContextCompactor`, `ContextGovernor`, and intra-run decay; a
+`long_horizon` VincioBench family with a horizon-scaling SLO (quality and cost bounded as run length
+grows 10×); runnable example `54_long_horizon_context.py`.
 
 ---
 
 ## 🔭 Exploring — later
 
-Candidates that are real but not yet scheduled — pulled forward when demand and the standards settle:
+Candidates that are real but not yet scheduled — pulled forward when demand and the standards settle.
+Grouped by where they would land.
+
+**Learning & adaptation**
 
 - 🔭 **Federated / cross-org self-improvement** — sharing gated optimizations and learned routing
   across trust boundaries without sharing raw traffic, once privacy-preserving aggregation standards
-  settle.
-- 🔭 **World-model / simulation-based planning** — agents that learn a tool/environment model and plan
-  against it, beyond the reset/step/verify environment-eval harness.
-- 🔭 **Native video understanding & generation** — a video `ContentPart` with frame sampling, temporal
-  segmentation, and generative output, extending multimodal beyond image and audio.
+  settle. Builds on the shipped on-policy learning loop and the existing canary-promoted release.
 - 🔭 **On-device fine-tuning / continual local adaptation** — LoRA-class local adaptation of the
   in-process GGUF provider from the same flywheel, beyond executed hosted fine-tune jobs.
-- 🔭 **MCP Apps & the evolving MCP spec** — server-rendered UI and stateless-core changes, adopted once
-  the spec ships stable, tracked alongside AG-UI streaming.
+- 🔭 **Differential-privacy memory & training** — a DP accountant over memory consolidation and the
+  learning loop so a per-user privacy budget is provable, beyond the consent ledger and provable
+  erasure.
+- 🔭 **World-model / simulation-based planning** — agents that learn a tool/environment model and plan
+  against it, beyond the reset/step/verify environment-eval harness; a natural consumer of the
+  test-time search verifiers (theme 2).
+
+**Modality & interaction**
+
+- 🔭 **Native video understanding & generation** — a video `ContentPart` with frame sampling, temporal
+  segmentation, and generative output, extending multimodal beyond image and audio.
+- 🔭 **MCP Apps & the evolving MCP spec** — server-rendered UI, elicitation, and stateless-core
+  changes, adopted once the spec ships stable, tracked alongside AG-UI generative-UI streaming.
+
+**Assurance & governance**
+
 - 🔭 **Formal verification of governance invariants** — machine-checkable proofs that residency,
-  erasure, and budget invariants hold across the whole pipeline, beyond the signed audit chain and
-  provable erasure.
+  erasure, budget, and the new injection-containment invariant (theme 1) hold across the whole
+  pipeline, beyond the signed audit chain and provable erasure.
+- 🔭 **Causal record-replay debugger** — deterministic, byte-faithful replay of a full agent run from
+  its trace for time-travel debugging, generalizing the eval-replay and durable-graph time-travel
+  already shipped into a first-class developer tool.
+- 🔭 **Energy & carbon accounting** — per-run energy and estimated carbon reported alongside cost and
+  held by an optional SLO, anticipating sustainability-disclosure demand, on the existing cost-report
+  surface.
+
+**Efficiency & reach**
+
+- 🔭 **Learned semantic cache & KV reuse** — a semantic-similarity cache and cross-request KV-prefix
+  reuse trained on the platform's own traces, extending exact-match prompt caching toward
+  near-miss reuse under the resident-memory budget.
+- 🔭 **Edge / WASM in-process runtime** — the dependency-free core compiled for constrained and
+  browser/WASM targets, extending "runs in your process" to "runs at the edge."
+- 🔭 **Agent negotiation & reputation** — bounded negotiation, contracting, and a reputation signal
+  over the existing A2A agent fabric and reliability scoring, for multi-org crews.
+
+**Breaking window**
+
 - 🔭 **A future breaking window** — reserved, as always, only for changes the frozen surface cannot
   make additively, shipped with the same mechanical deprecation runway and never for its own sake.
 

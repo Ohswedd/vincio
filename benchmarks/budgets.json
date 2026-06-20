@@ -1011,6 +1011,39 @@
     },
     "families.professionalism.legacy_config_upgraded": {
       "eq": true
+    },
+    "families.learning.reward.monotonic_improvement": {
+      "eq": true
+    },
+    "families.learning.reward.improved": {
+      "eq": true
+    },
+    "families.learning.kl.within_bound": {
+      "eq": true
+    },
+    "families.learning.kl.tight_clamp_holds": {
+      "eq": true
+    },
+    "families.learning.gate.blocks_regression": {
+      "eq": true
+    },
+    "families.learning.gate.no_regression_served": {
+      "eq": true
+    },
+    "families.learning.credit.explained": {
+      "eq": true
+    },
+    "families.learning.credit.enabling_step_dominant": {
+      "eq": true
+    },
+    "families.learning.reward_model.judge_disagreement_downweighted": {
+      "eq": true
+    },
+    "families.learning.reward_model.agreeing_panel_confident": {
+      "eq": true
+    },
+    "families.learning.flywheel.on_policy_distill_promoted": {
+      "eq": true
     }
   }
 }

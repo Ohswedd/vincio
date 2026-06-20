@@ -457,6 +457,28 @@ app.run("export button 500s").output.label
   scores each arm, auto-rolls-back) — promotes live only on a no-regression
   `CanaryVerdict`. This is the **prompt/policy** canary; for live **model**
   rotation see `app.canary` / `CanaryRouter` under Providers & models.
+- **On-policy reinforcement from verifiable rewards (RLVR).** `from
+  vincio.optimize import RewardModel, VerifiableReward, OracleReward,
+  BenchmarkReward, JudgeEnsembleReward, RewardSample, TrajectoryAdvantage,
+  environment_step_value, TrajectoryOptimizer, SoftmaxPolicy, LearningTask,
+  CandidateOutcome, LearningResult, compute_group_advantages, no_regression_gate,
+  kl_divergence`. `RewardModel([reward, ...])` composes verifiable rewards into a
+  dense signal — `OracleReward` (stateful-environment task-success oracle),
+  `BenchmarkReward(adapter)` (the nine benchmark scorers), `JudgeEnsembleReward(
+  ensemble)` (a split panel **down-weights itself**, leaning on what is
+  checkable). `TrajectoryAdvantage(value_fn).credit(trajectory)` assigns
+  step-level credit by Shapley counterfactual replay (shared
+  `vincio.core.shapley` kernel; `environment_step_value(env_factory)` re-verifies
+  the end state with kept tool steps). `app.learn(tasks, reward=, kl_max=,
+  iterations=, learning_rate=, min_reward_improvement=, flywheel=, held_out=,
+  teacher=, student=)` runs a GRPO group-relative update (`compute_group_advantages`)
+  with a KL-to-reference clamp and a monotonic `no_regression_gate` →
+  `LearningResult` (`.promoted/.reward_delta/.kl_to_reference/.kl_within_bound/
+  .reward_monotonic/.verdict` (a `CanaryVerdict`)/`.recommended/.training_set/
+  .distillation`). The served policy never regresses the baseline reward; a
+  promotion emits a fine-tune job through the existing flywheel from the on-policy
+  winners and is audited (`learn.promoted`/`learn.rejected`). Offline path uses a
+  deterministic mock `SoftmaxPolicy`.
 - **Building blocks (also usable directly).** `ContinuousImprovementController(
   app, metrics=, golden=, sustain=, cooldown_s=, eval_budget=, quality_floor=,
   reoptimize=)` → `ControllerDecision` (`.set_baseline(...).attach()` turns

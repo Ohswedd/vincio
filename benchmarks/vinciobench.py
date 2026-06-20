@@ -4232,6 +4232,175 @@ async def bench_professionalism() -> dict[str, Any]:
     }
 
 
+async def bench_learning() -> dict[str, Any]:
+    """LearningBench: on-policy reinforcement from verifiable rewards (RLVR).
+
+    Turns the verifiable signals the platform already computes — the
+    stateful-environment task-success oracle and the judge ensembles — into a
+    reward, and exercises the trajectory optimizer's safety math: group-relative
+    advantage, the KL-to-reference clamp, the monotonic no-regression gate,
+    Shapley step-level credit assignment, and the on-policy distillation flywheel.
+    All deterministic and offline against the reference retail environment."""
+    from vincio.evals.datasets import Dataset, EvalCase
+    from vincio.evals.ensemble import JudgeEnsemble
+    from vincio.evals.environment import (
+        EnvAction,
+        EnvironmentSimulator,
+        make_retail_environment,
+        scripted_policy,
+    )
+    from vincio.evals.judges import Judge
+    from vincio.evals.metrics import MetricResult, RunOutput
+    from vincio.evals.reports import CaseResult, EvalReport
+    from vincio.optimize import (
+        CandidateOutcome,
+        JudgeEnsembleReward,
+        LearningTask,
+        OracleReward,
+        RewardModel,
+        RewardSample,
+        TrajectoryAdvantage,
+        TrajectoryOptimizer,
+        environment_step_value,
+        no_regression_gate,
+    )
+    from vincio.optimize.distill import BootstrapFinetune
+
+    def run(actions: list[dict]) -> Any:
+        env = make_retail_environment("cancel_refund")
+        policy = scripted_policy([EnvAction(**a) for a in actions])
+        return EnvironmentSimulator().run(env, policy)
+
+    correct = run([
+        {"kind": "tool", "tool": "cancel_order", "arguments": {"order_id": "O1002"}},
+        {"kind": "tool", "tool": "refund_order", "arguments": {"order_id": "O1002"}},
+    ])
+    violation = run([{"kind": "tool", "tool": "refund_order", "arguments": {"order_id": "O1002"}}])
+
+    task = LearningTask(
+        id="refund",
+        prompt="Cancel order O1002 and refund it.",
+        candidates=[
+            CandidateOutcome(
+                action="cancel_then_refund",
+                sample=RewardSample(task_id="refund", verification=correct.verification),
+                text="cancel then refund",
+            ),
+            CandidateOutcome(
+                action="refund_only",
+                sample=RewardSample(task_id="refund", verification=violation.verification),
+                text="refund only",
+            ),
+        ],
+    )
+
+    # 1. On-policy GRPO update: reward improves, monotone, KL clamp holds.
+    optimizer = TrajectoryOptimizer(
+        RewardModel([OracleReward()]), kl_max=0.5, iterations=6, learning_rate=0.8
+    )
+    learned = await optimizer.alearn([task])
+
+    # 2. The KL clamp binds even under an aggressive update.
+    tight = TrajectoryOptimizer(
+        RewardModel([OracleReward()]), kl_max=0.02, iterations=10, learning_rate=2.0
+    )
+    tight_result = await tight.alearn([task])
+
+    # 3. The no-regression gate blocks a constructed regressor and never serves
+    #    below baseline.
+    gate_blocks, _ = no_regression_gate(0.8, 0.5, 0.1, kl_max=0.5)
+    flat = LearningTask(
+        id="flat",
+        prompt="q",
+        candidates=[
+            CandidateOutcome(action="a", sample=RewardSample(verification=correct.verification)),
+            CandidateOutcome(action="b", sample=RewardSample(verification=correct.verification)),
+        ],
+    )
+    blocked = await TrajectoryOptimizer(
+        RewardModel([OracleReward()]), min_reward_improvement=0.1
+    ).alearn([flat])
+
+    # 4. Shapley step-level credit: the enabling step earns the larger share and
+    #    the credits reconstruct the attributable value (efficiency).
+    advantage = TrajectoryAdvantage(
+        environment_step_value(lambda: make_retail_environment("cancel_refund"))
+    )
+    credits = advantage.credit(correct.trajectory)
+    by_name = {c.name: c.credit for c in credits}
+
+    # 5. Judge-ensemble disagreement down-weights itself in the reward blend.
+    class _Fixed(Judge):
+        def __init__(self, value: float, *, name: str) -> None:
+            self.value = value
+            self.name = name
+
+        async def score(self, case: EvalCase, output: RunOutput) -> MetricResult:
+            return MetricResult(name=self.name, value=self.value)
+
+    agree = await JudgeEnsembleReward(
+        JudgeEnsemble([_Fixed(0.9, name="a"), _Fixed(0.92, name="b")])
+    ).aevaluate(RewardSample(prompt="q", output="a", gold="a"))
+    split = await JudgeEnsembleReward(
+        JudgeEnsemble([_Fixed(0.1, name="a"), _Fixed(0.9, name="b")])
+    ).aevaluate(RewardSample(prompt="q", output="a", gold="a"))
+
+    # 6. The on-policy winners emit a fine-tune job through the existing flywheel.
+    async def evaluate_model(model: str, dataset: Dataset) -> EvalReport:
+        cost = 0.001 if "student" in model else 0.01
+        cases = [
+            CaseResult(case_id=f"c{i}", metrics={"lexical_overlap": 0.9, "cost": cost})
+            for i in range(6)
+        ]
+        return EvalReport(name=model, dataset="held", cases=cases)
+
+    async def trainer(training_set: Any, base_model: str) -> str:
+        return f"{base_model}-student"
+
+    held = Dataset(name="held", cases=[EvalCase(id=f"c{i}", input="q") for i in range(6)])
+    flywheel = BootstrapFinetune(evaluate_model, trainer=trainer, min_quality_ratio=0.9)
+    distilled = await TrajectoryOptimizer(
+        RewardModel([OracleReward()]), iterations=5, learning_rate=0.8
+    ).alearn([task], flywheel=flywheel, held_out=held, teacher="teacher", student="student")
+
+    return {
+        "reward": {
+            "baseline": learned.baseline_reward,
+            "policy": learned.policy_reward,
+            "improved": bool(learned.policy_reward > learned.baseline_reward),
+            "monotonic_improvement": bool(learned.reward_monotonic and learned.promoted),
+        },
+        "kl": {
+            "to_reference": learned.kl_to_reference,
+            "within_bound": bool(learned.kl_within_bound),
+            "tight_clamp_holds": bool(tight_result.kl_to_reference <= 0.02 + 1e-9),
+        },
+        "gate": {
+            "blocks_regression": bool(gate_blocks is False),
+            "no_regression_served": bool(
+                (not blocked.promoted)
+                and blocked.policy_reward >= blocked.baseline_reward - 1e-9
+            ),
+        },
+        "credit": {
+            "explained": bool(advantage.explained),
+            "enabling_step_dominant": bool(
+                by_name.get("cancel_order", 0.0) > by_name.get("refund_order", 0.0) > 0.0
+            ),
+        },
+        "reward_model": {
+            "judge_disagreement_downweighted": bool(split.weight < agree.weight),
+            "agreeing_panel_confident": bool(agree.weight > 0.9),
+        },
+        "flywheel": {
+            "on_policy_distill_promoted": bool(
+                distilled.promoted and distilled.distillation is not None
+                and distilled.distillation.promoted
+            ),
+        },
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -4245,6 +4414,7 @@ FAMILIES = {
     "evals": bench_evals,
     "agentic_evals": bench_agentic_evals,
     "loop": bench_loop,
+    "learning": bench_learning,
     "protocols": bench_protocols,
     "scale": bench_scale,
     "governance": bench_governance,

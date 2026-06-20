@@ -3049,6 +3049,87 @@ class ContextApp:
 
         return run_sync(deploy_candidate(self, candidate, dataset=dataset, **kwargs))
 
+    def learn(
+        self,
+        tasks: list[Any],
+        *,
+        reward: Any,
+        policy: Any | None = None,
+        learning_rate: float = 0.5,
+        kl_max: float = 0.5,
+        iterations: int = 3,
+        group_normalize: bool = True,
+        min_reward_improvement: float = 0.0,
+        flywheel: Any | None = None,
+        held_out: Any | None = None,
+        teacher: str | None = None,
+        student: str | None = None,
+    ):
+        """On-policy reinforcement from verifiable rewards (RLVR).
+
+        Closes the learning loop on a *policy*, not just a prompt. Each
+        :class:`~vincio.optimize.trajectory_opt.LearningTask` carries a group of
+        candidate outcomes; a :class:`~vincio.optimize.rewards.RewardModel` scores
+        them from the verifiable signals the platform already computes (the
+        task-success oracle, the benchmark scorers, calibrated judge ensembles),
+        and a GRPO-style update improves the policy behind the same safety
+        discipline prompt optimization uses — advantage normalization, a
+        KL-to-reference clamp, and a monotonic no-regression gate::
+
+            from vincio.optimize import LearningTask, OracleReward, RewardModel
+            result = app.learn(tasks, reward=RewardModel([OracleReward()]))
+            result.promoted, result.reward_delta, result.kl_to_reference
+
+        The result's verdict is the same
+        :class:`~vincio.optimize.self_improvement.CanaryVerdict` a prompt deploy
+        produces, and the decision lands on the shared audit chain and event bus.
+        On a promotion the on-policy winners are exported as a grounded
+        :class:`~vincio.optimize.distill.TrainingSet`; pass a configured
+        ``flywheel`` (with ``held_out`` / ``teacher`` / ``student``) to emit a
+        fine-tune job through the existing distillation flywheel in the same call.
+        Returns a :class:`~vincio.optimize.trajectory_opt.LearningResult`.
+        """
+        from ..optimize.trajectory_opt import TrajectoryOptimizer
+
+        optimizer = TrajectoryOptimizer(
+            reward,
+            policy=policy,
+            learning_rate=learning_rate,
+            kl_max=kl_max,
+            iterations=iterations,
+            group_normalize=group_normalize,
+            min_reward_improvement=min_reward_improvement,
+        )
+        result = run_sync(
+            optimizer.alearn(
+                tasks, flywheel=flywheel, held_out=held_out, teacher=teacher, student=student
+            )
+        )
+        self.audit.record(
+            "learn",
+            decision="allow" if result.promoted else "deny",
+            resource=self.name,
+            details={
+                "promoted": result.promoted,
+                "reason": result.reason,
+                "baseline_reward": result.baseline_reward,
+                "policy_reward": result.policy_reward,
+                "reward_delta": result.reward_delta,
+                "kl_to_reference": result.kl_to_reference,
+                "kl_within_bound": result.kl_within_bound,
+                "tasks": result.tasks,
+            },
+        )
+        self.events.emit(
+            "learn.promoted" if result.promoted else "learn.rejected",
+            {
+                "reward_delta": result.reward_delta,
+                "kl_to_reference": result.kl_to_reference,
+                "reason": result.reason,
+            },
+        )
+        return result
+
     def use_bandit_router(
         self, models: list[str], *, bandit: str = "epsilon_greedy", **kwargs: Any
     ) -> ContextApp:

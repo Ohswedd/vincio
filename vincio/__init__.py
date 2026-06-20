@@ -108,12 +108,18 @@ from .optimize.distill import BootstrapFinetune, TrainingSet, provider_trainer
 from .optimize.judge_calibration import JudgeCalibrator
 from .optimize.loop import ExperimentProposer, ImprovementLoop, LoopResult
 from .optimize.reflective import ReflectiveOptimizer
+from .optimize.rewards import RewardModel, VerifiableReward
 from .optimize.routing import GuardedBanditRouter, ModelCascade, Router
 from .optimize.self_improvement import (
     CanarySpec,
     DeployResult,
     SelfImprovementController,
     SelfImprovementPolicy,
+)
+from .optimize.trajectory_opt import (
+    LearningResult,
+    TrajectoryAdvantage,
+    TrajectoryOptimizer,
 )
 from .output.routing import SchemaRouter
 from .output.schemas import OutputContract, OutputSchema
@@ -152,7 +158,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.6.0"
+__version__ = "3.7.0"
 
 __all__ = [
     "ContextApp",
@@ -203,6 +209,11 @@ __all__ = [
     "ReflectiveOptimizer",
     "TrainingSet",
     "BootstrapFinetune",
+    "RewardModel",
+    "VerifiableReward",
+    "TrajectoryAdvantage",
+    "TrajectoryOptimizer",
+    "LearningResult",
     "LLMLinguaCompressor",
     "JudgeCalibrator",
     "OutputContract",

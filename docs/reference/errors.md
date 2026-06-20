@@ -243,6 +243,10 @@ without an entry here.
 
 **Optimization error.** An optimization run failed. Check the dataset, fitness weights, and that the prompt spec is valid before retrying.
 
+### REWARD_ERROR
+
+**Reward derivation error.** A verifiable reward could not be derived from the sample. Provide the signal the reward needs (an environment verification, adapter gold, or judge inputs) before calling app.learn.
+
 ### CACHE_ERROR
 
 **Cache error.** A cache backend failed. Verify the cache URL in `storage.cache`; an in-memory cache (`memory://`) always works as a fallback.
