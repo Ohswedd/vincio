@@ -154,26 +154,48 @@ bounding boxes), and figures via `vincio[pdf-layout]` (pdfplumber). The pure
 helpers `group_words_into_lines`, `order_blocks`, and `assemble_layout` are
 available for custom pipelines.
 
-## LangChain & LlamaIndex assets
+## Framework interop: LangChain, LlamaIndex, Haystack & DSPy
 
-`vincio.interop` brings LangChain and LlamaIndex tools, retrievers,
-loaders/readers, and embeddings into Vincio (and hands Vincio's back). The
-`from_*` direction is duck-typed and imports nothing heavy; the `to_*` direction
-needs `vincio[langchain]` / `vincio[llamaindex]`.
+`vincio.interop` brings other frameworks' tools, retrievers, loaders/readers,
+embedders, components, and compiled DSPy modules into Vincio (and hands Vincio's
+back). The `from_*` direction is duck-typed and imports nothing heavy; the `to_*`
+direction builds real framework objects and needs the matching extra
+(`vincio[langchain]` / `vincio[llamaindex]` / `vincio[haystack]` / `vincio[dspy]`).
 
 ```python
-from vincio.interop import add_langchain_tool, from_llamaindex_reader
+from vincio.interop import (
+    add_langchain_tool, from_llamaindex_reader,
+    from_haystack_retriever, add_haystack_component,
+    from_dspy_module, from_dspy_retriever,
+)
 
 add_langchain_tool(app, my_langchain_tool)        # register + enable
 docs = from_llamaindex_reader(my_reader)          # -> list[Document]
 app.add_source("kb", documents=docs, retrieval="hybrid")
+
+# Haystack: a retriever becomes a read-only index (async .search); a component
+# becomes a permissioned tool.
+hs_index = from_haystack_retriever(my_haystack_retriever)   # slots into RetrievalEngine
+add_haystack_component(app, my_haystack_ranker)
+
+# DSPy: a compiled program becomes a permissioned tool; a retriever an index.
+add_dspy_module(app, my_compiled_dspy_program, name="qa")
+dspy_index = from_dspy_retriever(my_dspy_rm)
 ```
 
 See the dedicated guides:
 [coming from LangChain](migrate-from-langchain.md),
 [coming from LlamaIndex](migrate-from-llamaindex.md).
 
-## Domain packs
+## Plugins: extend Vincio from a separate package
+
+Third-party providers, embedders, stores, connectors, chunkers, rerankers,
+judges, metrics, and packs register themselves on install via entry points,
+under a versioned contract. List them with `vincio plugins list` (or
+`installed_plugins()`); they resolve automatically on a registry name miss. See
+the [plugins guide](plugins.md) for the full contract.
+
+## Domain packs & the community registry
 
 Opt-in, dependency-free bundles configure an app for a domain in one call:
 
@@ -189,9 +211,38 @@ recommended policies and evaluators, and ships a golden eval set
 (`load_pack("support").dataset()`). Inspect them with `vincio packs list` and
 `vincio packs show <name>`.
 
+A `CommunityRegistry` indexes opt-in packs and `SKILL.md` skill bundles as a
+**signed, governed catalog**. Each bundle is content-bound (SHA-256) and may be
+signed (HMAC, or Ed25519 for third-party verification); every resolution passes
+the same allow-list gate the agent fabric uses and is recorded as an audited
+access decision — a tampered or unlisted bundle is denied, not served.
+
+```python
+from vincio import CommunityRegistry
+from vincio.security.access import AllowListGate
+from vincio.security.audit import HMACSigner
+
+registry = CommunityRegistry(
+    allow_list=AllowListGate(allow=["support-*"]),
+    audit=app.audit,
+    signer=HMACSigner("publisher-key"),
+)
+registry.publish_pack(my_pack, version="1.2.0", publisher="acme")  # signed
+pack = registry.load_pack("support-pro")     # governed + audited + signature-verified
+```
+
+## MCP-server marketplace bridge
+
+`app.add_mcp_from_registry(name, registry=...)` composes discovery, governance,
+and connection in one call: an `MCPRegistryClient` finds the server, a governed
+`AgentDirectory` under an allow-list decides reachability (recorded on the audit
+chain), and the server's tools land in the permissioned, sandboxed runtime —
+see the [MCP guide](mcp.md).
+
 ## Next steps
 
 - [connect external data sources](connectors.md)
+- [extend Vincio with plugins](plugins.md)
 - [build a RAG app](build-rag-app.md)
 - coming from [LangChain](migrate-from-langchain.md), [LlamaIndex](migrate-from-llamaindex.md),
   [Ragas](migrate-from-ragas.md), [Mem0](migrate-from-mem0.md)

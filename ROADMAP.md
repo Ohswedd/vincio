@@ -49,7 +49,8 @@ and a runnable example.
 | **Security & governance** | Deterministic PII / secret / injection / RAG-poisoning detection, programmable rails, RBAC/ABAC, tenant isolation, a signed Merkle-checkpointed audit chain; model & system cards, a compliance coverage matrix, an AI-BOM, an EU AI Act conformity pack, provable erasure, a consent ledger, data lineage, and residency-aware egress refusal. |
 | **Generation** | Cited DOCX/PDF/PPTX/HTML/Markdown, a cited-report builder with per-claim entailment, redlines, image generation and TTS with C2PA provenance, and richer inputs (OCR, transcripts, new-format loaders, forms/KYC). |
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
-| **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex interop. |
+| **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. |
+| **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
 | **Runtime performance** | A single-pass vectorized scorer (NumPy-optional, pure-Python fallback); a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and the prepared candidate set so a warm compile is dominated by scoring, not allocation; streaming-first compilation that emits the prefix before scoring; speculative retrieval prefetch that warms the query embedding from the task classification; and a per-app resident-memory budget held by slim packets and evidence eviction, surfaced in the cost report and gated by an SLO. |
 
@@ -63,25 +64,6 @@ Forward phases are scoped by theme and gated the same way everything else is —
 by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is additive on the
 frozen public surface; breaking changes are reserved for an announced major window and never shipped
 for their own sake.
-
-### 🚧 Ecosystem & integration breadth
-
-*Meet teams where their data and tools already live.*
-
-- **Connector breadth** — first-party connectors for Jira, Linear, Google Drive, SharePoint,
-  Salesforce, Zendesk, BigQuery, and Snowflake, all feeding the document engine with full provenance
-  behind the existing `register_connector` contract.
-- **Plugin discovery** — an entry-point plugin system so third-party providers, metrics, chunkers,
-  rerankers, judges, connectors, and packs register themselves on install, discoverable via
-  `vincio plugins list` and gated by a stable plugin-API contract.
-- **A community pack & skill registry** — a governed, signed index of opt-in domain packs and
-  `SKILL.md` bundles, resolvable through the existing `AgentDirectory` allow-list gate.
-- **Deeper framework interop** — Haystack and DSPy module interop alongside LangChain / LlamaIndex,
-  and an MCP-server marketplace bridge so a discovered server's tools land in the permissioned runtime
-  with one call.
-- *Definition of done:* each connector and interop bridge round-trips offline against a recorded
-  fixture in the `integrations` family, the plugin contract is versioned and documented, and the
-  registry resolution is an audited access decision.
 
 ### 🚧 Use-case coverage & verticals
 

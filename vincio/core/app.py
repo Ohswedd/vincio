@@ -1911,6 +1911,83 @@ class ContextApp:
         self.mcp_clients[name] = client
         return self
 
+    def add_mcp_from_registry(
+        self,
+        name: str,
+        *,
+        registry: Any,
+        directory: Any | None = None,
+        allow: list[str] | None = None,
+        deny: list[str] | None = None,
+        server: Any | None = None,
+        transport: Any | None = None,
+        headers: dict[str, str] | None = None,
+        http_client: Any | None = None,
+        tools: bool = True,
+        resources: bool = True,
+        prompts: bool = False,
+        permissions: list[str] | None = None,
+        principal: Any | None = None,
+    ) -> ContextApp:
+        """Discover an MCP server from a registry and land its tools in the
+        permissioned runtime — one governed call (the marketplace bridge).
+
+        Three concerns compose: **discovery** (an
+        :class:`~vincio.registry.MCPRegistryClient` — the official MCP Registry
+        or an offline catalog — finds the server), **governance** (a governed
+        :class:`~vincio.registry.AgentDirectory` under an
+        :class:`~vincio.security.access.AllowListGate` decides reachability and
+        records the decision on this app's audit chain), and **connection**
+        (:meth:`add_mcp_server` runs the server's tools through the existing
+        permissioned, sandboxed, audited runtime).
+
+        Pass ``directory=`` to reuse an existing governed directory, or
+        ``allow`` / ``deny`` globs to build one (fail-closed; defaults to
+        allowing exactly ``name``). For offline / in-process use, pass
+        ``server=`` (an in-process :class:`~vincio.mcp.MCPServer`) or
+        ``transport=``; otherwise the resolved server's URL or stdio command is
+        used. Raises :class:`~vincio.core.errors.AccessDeniedError` if the gate
+        denies the server.
+        """
+        from ..providers.base import run_sync
+
+        if directory is None:
+            directory = self.agent_directory(
+                allow=allow if allow is not None else [name], deny=deny
+            )
+        # Discovery registers candidate servers into the directory as governed,
+        # audited AgentRecords (protocol="mcp").
+        run_sync(registry.register_into_directory(directory))
+        # The governed resolution is the audited access decision.
+        record = directory.resolve(name, principal=principal)
+        srv = run_sync(registry.get_server(name))
+
+        conn: dict[str, Any] = {}
+        if transport is not None:
+            conn["transport"] = transport
+        elif server is not None:
+            conn["server"] = server
+        elif srv is not None and srv.url:
+            conn["url"] = srv.url
+        elif srv is not None and srv.command:
+            conn["command"] = srv.command
+        elif record.url:
+            conn["url"] = record.url
+        else:
+            raise ConfigError(
+                f"MCP server {name!r} has no url/command in the registry; pass server= or transport="
+            )
+        return self.add_mcp_server(
+            name,
+            headers=headers,
+            http_client=http_client,
+            tools=tools,
+            resources=resources,
+            prompts=prompts,
+            permissions=permissions,
+            **conn,
+        )
+
     def serve_mcp(
         self,
         *,

@@ -199,9 +199,31 @@ the data plane uses — and **every resolution is recorded as an `agent_resolve`
 access decision** on the audit chain, so an unlisted agent is unreachable and each
 reachable one is accountable. AGNTCY/ACP and MCP-registry discovery normalize
 remote records into the same governed directory; discovery never auto-trusts a
-result. Generative-UI (AG-UI) streaming opens no new data channel — it is a
-translation of the run's existing stream, inheriting its provenance, budget
+result. The **MCP-server marketplace bridge** (`app.add_mcp_from_registry`) runs
+the same gate: a server discovered from a registry is resolved through a governed
+`AgentDirectory` before any tool is registered, so reachability is an audited
+decision and an unlisted server is refused — discovery and connection never
+bypass governance. Generative-UI (AG-UI) streaming opens no new data channel — it
+is a translation of the run's existing stream, inheriting its provenance, budget
 metering, and audit.
+
+The **community pack & skill registry** (`CommunityRegistry`) extends the same
+model to opt-in content. Each bundle is **content-bound** (SHA-256 over its
+payload) and may be **signed** with a `ChainSigner` (HMAC, or Ed25519 so a
+consumer verifies with only the public key); resolution passes the same
+`AllowListGate`, verifies the digest and signature, and records an audited
+`bundle_resolve` decision — a tampered, unsigned-when-required, or unlisted
+bundle is denied rather than loaded. Vincio ships the engine; the signing keys
+and any PKI are yours.
+
+**Third-party plugins execute in your process.** The `vincio.plugins` entry-point
+system imports and runs code from any installed distribution advertising a
+`vincio.<kind>` entry point — treat plugins like any dependency and vet them
+before installing. Discovery (`installed_plugins()`) does **not** import target
+objects, so listing what is installed is side-effect-free; only `load_plugins()`
+(and the lazy auto-load on a registry name miss) imports them, and a plugin that
+fails to import is isolated and reported, never breaking the rest. A distribution
+that declares an incompatible plugin-API major is reported and **not** loaded.
 
 ### Data you export
 

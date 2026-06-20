@@ -7,11 +7,11 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-3.2.0-B98B2E" alt="Vincio 3.2.0"></a>
+  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-3.3.0-B98B2E" alt="Vincio 3.3.0"></a>
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-1705%20passing-2ea44f" alt="1705 tests passing">
+  <img src="https://img.shields.io/badge/tests-1761%20passing-2ea44f" alt="1761 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -68,7 +68,8 @@ pip install "vincio[anthropic]"     # + Anthropic provider
 pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, postgres,
                                     #   weaviate, milvus, elasticsearch, opensearch, vespa)
 pip install "vincio[realtime]"      # + voice/realtime sessions (OpenAI Realtime, Gemini Live)
-pip install "vincio[langchain]"     # + LangChain interop export (also: llamaindex)
+pip install "vincio[langchain]"     # + framework interop export (also: llamaindex, haystack, dspy)
+pip install "vincio[snowflake]"     # + a warehouse connector (also: bigquery)
 pip install "vincio[all]"           # every optional integration
 ```
 
@@ -238,12 +239,13 @@ for any engine directly. Everything below is implemented, tested offline, and do
 | **Documents & media out (generation)** | The deliverable comes out under the same guarantees as text in. A `DocumentBuilder` renders a *validated* result into **cited DOCX/PDF/PPTX/HTML/Markdown**, structurally validated against a `DocumentContract` with formatting-only repair, plus template/form filling and tracked-change **redlines**. A `CitedReportBuilder` resolves `[E1]` markers to **footnotes + a bibliography** with sentence-level citation coverage and per-claim entailment. **Image generation/editing** and **TTS** are first-class output modalities where every asset is **C2PA-provenance-stamped, budget-metered, and audited**. Inputs get richer too: OCR auto-fallback for scanned PDFs, audio transcript ingestion, new-format loaders (PPTX/EPUB/RTF/ODT/Parquet/mbox), a real-parser HTML/JSON/YAML path, and offline forms/KYC extraction — see the [generation guide](docs/guides/generate-documents.md). |
 | **Storage** | Pluggable metadata (in-memory / SQLite / Postgres, async-first with a psycopg3 pool), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB / Weaviate / Milvus / Elasticsearch / OpenSearch / Vespa behind one `build_vector_index` factory), and graph (Neo4j) backends. Redis-backed shared state + a first-class `vincio serve` keep multi-worker deployments coherent. |
 | **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), enterprise endpoints (**AWS Bedrock** SigV4, **Google Vertex**, **Azure OpenAI**) behind a pluggable `AuthStrategy` in the same registry, and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, and **capability-aware failover**, with in-flight request coalescing. A data-driven `ModelRegistry` (capabilities, pricing, lifecycle) is the single source the cost table, capability guards, and rotation read from. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. Opt-in **voice/realtime** sessions (OpenAI Realtime, Gemini Live) via `vincio.realtime`. Batteries-included **local neural models** (fastembed, SPLADE, ColBERT, a cross-encoder, and a llama.cpp **GGUF** in-process provider) give air-gapped/edge deployments true offline inference behind the same interfaces. |
-| **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. A governed **agent fabric** (`AgentDirectory` over A2A Agent Cards, AGNTCY/ACP, and the MCP Registry) resolves agents behind an `AllowListGate`, every resolution an audited access decision. **Generative UI** streams a run as AG-UI events so an interactive frontend inherits the run's provenance, budget, and audit. |
+| **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. A governed **agent fabric** (`AgentDirectory` over A2A Agent Cards, AGNTCY/ACP, and the MCP Registry) resolves agents behind an `AllowListGate`, every resolution an audited access decision; the same gate governs a signed **community pack & skill registry** and a one-call **MCP-server marketplace bridge** that lands a discovered server's tools in the permissioned runtime. **Generative UI** streams a run as AG-UI events so an interactive frontend inherits the run's provenance, budget, and audit. |
 | **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output and genuine provider token deltas, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, and zero-copy (slim) context packets. The compile hot path is **single-pass and allocation-light**: a vectorized candidate scorer (NumPy-optional, pure-Python fallback), a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and prepared candidate set so a warm compile is dominated by scoring not allocation, streaming-first compilation that emits the prefix before scoring, speculative retrieval prefetch that warms the query embedding from the task classification, and a per-app resident-memory budget held by slim packets and evidence eviction. Quantized two-stage retrieval, a sub-millisecond warm compile, and a footprint regression gate — all held by CI-gated VincioBench performance budgets. |
 | **Cost & reliability (FinOps)** | Production-traffic resilience in-process, not a proxy hop: **batch execution** at ~50% cost (OpenAI Batch + Anthropic Message Batches + Google/Vertex batch), **circuit breaking** + **health-aware failover** and **key pooling** with RPM+TPM rate limiting, **runtime model cascades** (start cheap, escalate on low confidence), **cost attribution** by tenant/feature with enforced **budget SLOs** (cap / degrade / queue-to-batch + `cost.anomaly`), provider-aware **prompt caching** with TTL choice and cache-hit telemetry, and **incremental** (content-hash) + **sharded** indexing at scale. |
 | **Provider/model rotation & swap regression** | The migration safety net for the riskiest production change. A registry-backed **`Router`** picks the cheapest / fastest / least-busy *capable* model per request. A **`SwapGate`** replays golden traces and runs an eval + cost + latency + behavioral diff with statistical significance, PASS/FAILing the swap; **model-swap regression** swaps *only* the model and reports per-metric significance, the cost/latency trade, and the worst-regressed slices, with flake quarantine. A **shadow provider** and a capped **canary** qualify a candidate on live traffic with automatic rollback, and a **lifecycle watcher** proposes migrations off deprecated models. |
-| **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. |
-| **Integrations & DX** | LangChain + LlamaIndex interop (`vincio.interop`) for tools, retrievers, loaders, and embeddings — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
+| **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, **Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, Snowflake**, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. The REST connectors ride the core `httpx` dependency; all accept an injected client so they round-trip offline. |
+| **Plugins & ecosystem** | An entry-point **plugin contract** (`vincio plugins list`) so third-party providers, embedders, stores, connectors, chunkers, rerankers, judges, metrics, and packs register themselves on install, gated by a versioned plugin API; a signed, allow-list-gated, audited **`CommunityRegistry`** of opt-in domain packs and `SKILL.md` bundles (content-bound SHA-256 + HMAC/Ed25519 signatures, resolution as an audited access decision); and an **MCP-server marketplace bridge** (`app.add_mcp_from_registry`) that discovers a server from a registry, governs reachability, and lands its tools in the permissioned runtime in one call. |
+| **Integrations & DX** | LangChain + LlamaIndex + **Haystack + DSPy** interop (`vincio.interop`) for tools, retrievers, loaders, embedders, components, and compiled DSPy modules — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
 | **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a frozen public surface (`vincio.__all__`) with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
 
 Every extension point — providers, metrics, chunkers, rerankers, judges, validators, tools — accepts
@@ -328,9 +330,10 @@ in-library** capabilities — not what is reachable by bolting on a separate pro
 
 <sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Ecosystems
 evolve. Vincio is built to *interoperate* — it speaks MCP (client *and* server), A2A, and Agent Skills
-in-process, `vincio.interop` brings LangChain and LlamaIndex tools, retrievers, loaders, and embeddings
-in (and hands Vincio's back), and you can point at any OpenAI-compatible model and the vector store you
-already run. See the [migration guides](docs/guides/migrate-from-langchain.md), the
+in-process, `vincio.interop` brings LangChain, LlamaIndex, Haystack, and DSPy tools, retrievers,
+loaders, embedders, components, and compiled modules in (and hands Vincio's back), first-party
+connectors and an entry-point plugin system meet your data and tools where they live, and you can
+point at any OpenAI-compatible model and the vector store you already run. See the [migration guides](docs/guides/migrate-from-langchain.md), the
 [integrations guide](docs/guides/integrations.md), and the in-depth write-ups in
 [`docs/comparisons/`](docs/comparisons).</sub>
 
@@ -377,6 +380,7 @@ already run. See the [migration guides](docs/guides/migrate-from-langchain.md), 
 | Score on the leaderboards, govern a fabric, and stream a UI | stateful-environment eval with a task-success oracle, the five benchmark adapters, retrieval-eval + index regression, the `AgentDirectory` under an `AllowListGate`, AG-UI streaming | [`37_benchmarks_and_agent_fabric.py`](examples/37_benchmarks_and_agent_fabric.py) |
 | Run continual self-improvement and prove a data-erasure request | one `SelfImprovementPolicy` (streaming proposal→meta→canary→promote/rollback), canary-gated `app.deploy`, signed & verifiable `ErasureProof`, a GDPR `ConsentLedger`, bi-temporal memory | [`38_self_improvement_and_erasure.py`](examples/38_self_improvement_and_erasure.py) |
 | Plan deeper, recover from failure, and schedule fairly at scale | HTN hierarchical planning, in-place plan repair, cost-aware action selection, parallel sub-graph scheduling, durable timers | [`40_orchestrator_planner_depth.py`](examples/40_orchestrator_planner_depth.py) |
+| Meet teams where their data and tools live | first-party connectors (Jira/Linear/Drive/SharePoint/Salesforce/Zendesk/BigQuery/Snowflake), the entry-point plugin system, a signed community pack/skill registry, Haystack + DSPy interop, the MCP-server marketplace bridge | [`41_ecosystem_and_integration.py`](examples/41_ecosystem_and_integration.py) |
 
 All examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at a real
 model with environment variables:
@@ -478,6 +482,7 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [evaluation](docs/concepts/evals.md) · [observability](docs/concepts/observability.md)
 - **Guides** — [build a RAG app](docs/guides/build-rag-app.md) ·
   [connect data sources](docs/guides/connectors.md) ·
+  [extend with plugins](docs/guides/plugins.md) ·
   [structured output](docs/guides/structured-output.md) ·
   [generate documents & media](docs/guides/generate-documents.md) ·
   [reliability & guardrails](docs/guides/reliability-guardrails.md) ·
@@ -516,7 +521,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 1705 tests, no network or API keys required
+python -m pytest tests/ -q     # 1761 tests, no network or API keys required
 ruff check vincio/ tests/
 mypy vincio
 ```

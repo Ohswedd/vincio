@@ -120,7 +120,10 @@ _CACHE: dict[str, Pack] = {}
 
 
 def available_packs() -> list[str]:
-    """Names of all packs that can be loaded (built-in + registered)."""
+    """Names of all packs that can be loaded (built-in + installed plugins + registered)."""
+    from ..plugins import ensure_loaded
+
+    ensure_loaded("vincio.packs")  # surface installed plugin packs (loads once)
     return sorted(set(_BUILTIN_MODULES) | set(_CACHE))
 
 
@@ -131,10 +134,16 @@ def register_pack(pack: Pack) -> Pack:
 
 
 def load_pack(name: str) -> Pack:
-    """Load a pack by name (built-in modules import lazily)."""
+    """Load a pack by name (built-in modules import lazily; installed plugin
+    packs register via the ``vincio.packs`` entry-point group on first miss)."""
     if name in _CACHE:
         return _CACHE[name]
     if name not in _BUILTIN_MODULES:
+        from ..plugins import ensure_loaded
+
+        ensure_loaded("vincio.packs")
+        if name in _CACHE:
+            return _CACHE[name]
         raise ConfigError(f"unknown pack {name!r}; available: {available_packs()}")
     module = importlib.import_module(_BUILTIN_MODULES[name])
     pack: Pack = module.PACK

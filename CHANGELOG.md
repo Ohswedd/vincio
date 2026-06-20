@@ -4,6 +4,72 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-06-20
+
+Ecosystem & integration breadth: meet teams where their data and tools already
+live. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, the
+dependency-free offline path is the default, and every existing entry point is
+unchanged. New heavy integrations are opt-in extras; the new plugin contract is
+versioned at `PLUGIN_API_VERSION = "1.0"`.
+
+### Added
+
+- **First-party connectors.** Eight new connectors feed the document engine with
+  full provenance behind the existing `register_connector` / `connect` contract:
+  `jira`, `linear`, `gdrive`, `sharepoint`, `salesforce`, and `zendesk` (REST,
+  riding the core `httpx` dependency), plus `bigquery` and `snowflake` (warehouse,
+  via an injected client/connection or the `vincio[bigquery]` / `vincio[snowflake]`
+  extra). Each accepts an injected client so it round-trips offline; each returns
+  `Document`s with `source_uri`, connector metadata, and timestamps. VincioBench
+  gates `families.integrations.{connectors_round_trip,connector_provenance}`.
+- **Entry-point plugin system.** A new `vincio.plugins` module formalizes a
+  versioned plugin contract: third-party providers, embedders, stores, connectors,
+  chunkers, rerankers, judges, metrics, and packs register themselves on install
+  via the `vincio.<kind>` entry-point groups. `installed_plugins()` /
+  `discover_plugins()` report without importing targets; `load_plugins()` registers
+  compatible plugins (idempotent, isolating a broken one). A distribution may
+  declare its targeted plugin-API major (`vincio.plugins:api_version`); a major
+  mismatch is reported and skipped. `connect()` / `load_pack()` auto-load on a name
+  miss; `vincio plugins list` (CLI). New `register_reranker` / `build_judge` /
+  `register_judge` / `JUDGES` and `skill_from_markdown`. VincioBench gates
+  `families.integrations.{plugin_loads_on_install,plugin_gates_incompatible}`.
+- **Community pack & skill registry.** `vincio.registry.CommunityRegistry` is a
+  signed, governed index of opt-in domain packs and `SKILL.md` skill bundles. Each
+  `BundleRecord` is content-bound (SHA-256) and may be signed with the library's
+  `ChainSigner` (HMAC, or Ed25519 for third-party verification); every resolution
+  passes the same `AllowListGate` the agent fabric uses, verifies the signature,
+  and is recorded as an audited `bundle_resolve` access decision — a tampered,
+  unlisted, or unsigned-when-required bundle is denied, not served.
+  `publish_pack` / `publish_skill` / `load_pack` / `load_skill` / `sign_index` /
+  `verify_index`. VincioBench gates `families.integrations.{registry_resolution_
+  governed,registry_resolution_audited,registry_signature_verified,registry_tamper_
+  detected}`.
+- **Deeper framework interop.** `vincio.interop` gains Haystack and DSPy bridges
+  alongside LangChain / LlamaIndex: `from_haystack_document` /
+  `from_haystack_retriever` / `from_haystack_embedder` / `add_haystack_component` /
+  `to_haystack_document(s)`, and `from_dspy_module` / `from_dspy_retriever` /
+  `from_dspy_signature` / `add_dspy_module` / `to_dspy_lm`. The `from_*` direction
+  is duck-typed (no heavy import); `to_*` needs `vincio[haystack]` / `vincio[dspy]`.
+  VincioBench gates `families.integrations.{haystack_bridge,dspy_bridge}`.
+- **MCP-server marketplace bridge.** `app.add_mcp_from_registry(name, registry=,
+  allow=/deny=/directory=)` composes discovery (`MCPRegistryClient`), governance (a
+  governed `AgentDirectory` under an `AllowListGate`, recording an audited
+  `agent_resolve` decision), and connection (the existing permissioned, sandboxed,
+  audited runtime) in one call — a discovered server's tools land namespaced and
+  enabled; an unlisted server raises `AccessDeniedError`. VincioBench gates
+  `families.integrations.{mcp_marketplace_tool_landed,mcp_marketplace_audited,
+  mcp_marketplace_denies_unlisted}`.
+
+### Reliability
+
+- New VincioBench `integrations` family: every connector and interop bridge
+  round-trips offline against a recorded fixture (`benchmarks/fixtures/
+  integrations.json`), the plugin contract is exercised end-to-end, and the
+  registry resolution is verified to be an audited access decision. Example
+  [`41_ecosystem_and_integration.py`](examples/41_ecosystem_and_integration.py).
+
+**1761 tests passing offline; ruff + mypy clean; VincioBench 315 budgets / 101 SLOs.**
+
 ## [3.2.0] - 2026-06-20
 
 Orchestrator & planner depth: make multi-step execution plan better, recover

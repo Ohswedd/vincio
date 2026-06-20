@@ -8,14 +8,22 @@ import httpx
 import pytest
 
 from vincio.connectors import CONNECTORS, connect, register_connector
+from vincio.connectors.bigquery import BigQueryConnector
 from vincio.connectors.confluence import ConfluenceConnector
 from vincio.connectors.gcs import GCSConnector
+from vincio.connectors.gdrive import GoogleDriveConnector
 from vincio.connectors.github import GitHubConnector
+from vincio.connectors.jira import JiraConnector, adf_to_text
+from vincio.connectors.linear import LinearConnector
 from vincio.connectors.notion import NotionConnector
 from vincio.connectors.s3 import S3Connector
+from vincio.connectors.salesforce import SalesforceConnector
+from vincio.connectors.sharepoint import SharePointConnector
 from vincio.connectors.slack import SlackConnector
+from vincio.connectors.snowflake import SnowflakeConnector
 from vincio.connectors.sql import SQLConnector
 from vincio.connectors.web import WebConnector
+from vincio.connectors.zendesk import ZendeskConnector
 from vincio.core.errors import ConfigError, LoaderError
 
 
@@ -335,3 +343,310 @@ class TestAppIntegration:
         [doc] = asyncio.run(connector.load())
         payload = json.loads(doc.model_dump_json())
         assert payload["metadata"]["connector"] == "web"
+
+
+# -- ecosystem & integration breadth (new connectors) ---------------------------
+
+
+class TestJira:
+    def test_adf_to_text_flattens_nested(self):
+        adf = {
+            "type": "doc",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "Refunds "}, {"type": "text", "text": "within 30 days."}]},
+                {"type": "paragraph", "content": [{"type": "text", "text": "Contact billing."}]},
+            ],
+        }
+        text = adf_to_text(adf)
+        assert "Refunds within 30 days." in text
+        assert "Contact billing." in text
+        assert adf_to_text("already a string") == "already a string"
+
+    async def test_loads_issues(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.params["jql"]
+            return httpx.Response(
+                200,
+                json={
+                    "total": 1,
+                    "issues": [
+                        {
+                            "key": "ENG-1",
+                            "fields": {
+                                "summary": "Login fails",
+                                "description": {
+                                    "type": "doc",
+                                    "content": [
+                                        {"type": "paragraph", "content": [{"type": "text", "text": "Crash on SSO."}]}
+                                    ],
+                                },
+                                "status": {"name": "Open"},
+                                "issuetype": {"name": "Bug"},
+                                "project": {"key": "ENG"},
+                            },
+                        }
+                    ],
+                },
+            )
+
+        connector = JiraConnector(
+            "https://acme.atlassian.net", email="a@b.c", token="t", client=mock_client(handler)
+        )
+        [doc] = await connector.load()
+        assert doc.title == "ENG-1: Login fails"
+        assert "Crash on SSO." in doc.text
+        assert doc.source_uri == "https://acme.atlassian.net/browse/ENG-1"
+        assert doc.metadata["status"] == "Open"
+        assert doc.metadata["project"] == "ENG"
+
+    async def test_http_error_raises(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(401)
+
+        connector = JiraConnector("https://acme.atlassian.net", client=mock_client(handler))
+        with pytest.raises(LoaderError):
+            await connector.load()
+
+
+class TestLinear:
+    async def test_loads_issues(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.host == "api.linear.app"
+            return httpx.Response(
+                200,
+                json={
+                    "data": {
+                        "issues": {
+                            "nodes": [
+                                {
+                                    "id": "uuid-1",
+                                    "identifier": "ENG-2",
+                                    "title": "Crash",
+                                    "description": "happens on login",
+                                    "url": "https://linear.app/acme/issue/ENG-2",
+                                    "state": {"name": "Todo"},
+                                    "team": {"key": "ENG"},
+                                }
+                            ],
+                            "pageInfo": {"hasNextPage": False, "endCursor": None},
+                        }
+                    }
+                },
+            )
+
+        connector = LinearConnector("lin_api_key", client=mock_client(handler))
+        [doc] = await connector.load()
+        assert doc.title == "ENG-2: Crash"
+        assert "happens on login" in doc.text
+        assert doc.source_uri == "https://linear.app/acme/issue/ENG-2"
+        assert doc.metadata["state"] == "Todo"
+
+    async def test_graphql_errors_raise(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json={"errors": [{"message": "bad token"}]})
+
+        connector = LinearConnector("bad", client=mock_client(handler))
+        with pytest.raises(LoaderError):
+            await connector.load()
+
+
+class TestGoogleDrive:
+    async def test_exports_docs_and_skips_binary(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/files"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "files": [
+                            {"id": "f1", "name": "Policy", "mimeType": "application/vnd.google-apps.document", "webViewLink": "https://drive.google.com/d/f1"},
+                            {"id": "f2", "name": "logo.png", "mimeType": "image/png"},
+                        ]
+                    },
+                )
+            if "/export" in request.url.path:
+                return httpx.Response(200, text="Refunds within 30 days.")
+            return httpx.Response(404)
+
+        connector = GoogleDriveConnector("token", client=mock_client(handler))
+        docs = await connector.load()
+        assert len(docs) == 1  # png skipped
+        assert docs[0].title == "Policy"
+        assert "Refunds within 30 days." in docs[0].text
+        assert docs[0].metadata["mime_type"] == "application/vnd.google-apps.document"
+
+
+class TestSharePoint:
+    async def test_lists_and_downloads_files(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            if request.url.path.endswith("/children"):
+                return httpx.Response(
+                    200,
+                    json={
+                        "value": [
+                            {"id": "i1", "name": "sla.md", "file": {}, "webUrl": "https://sp/sla"},
+                            {"id": "d1", "name": "Archive", "folder": {}},
+                        ]
+                    },
+                )
+            if request.url.path.endswith("/content"):
+                return httpx.Response(200, text="Uptime is 99.9 percent.")
+            return httpx.Response(404)
+
+        connector = SharePointConnector("site-1", "token", client=mock_client(handler))
+        [doc] = await connector.load()
+        assert doc.title == "sla.md"  # folder filtered out
+        assert "Uptime is 99.9 percent." in doc.text
+        assert doc.source_uri == "https://sp/sla"
+        assert doc.metadata["site_id"] == "site-1"
+
+
+class TestSalesforce:
+    async def test_soql_records(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            assert request.url.params["q"].startswith("SELECT")
+            return httpx.Response(
+                200,
+                json={
+                    "done": True,
+                    "records": [
+                        {
+                            "attributes": {"type": "Account"},
+                            "Id": "001",
+                            "Name": "Acme Corp",
+                            "Description": "Strategic customer.",
+                        }
+                    ],
+                },
+            )
+
+        connector = SalesforceConnector(
+            "https://x.my.salesforce.com",
+            "token",
+            "SELECT Id, Name, Description FROM Account",
+            client=mock_client(handler),
+        )
+        [doc] = await connector.load()
+        assert doc.title == "Acme Corp"
+        assert "Strategic customer." in doc.text
+        assert doc.metadata["sobject"] == "Account"
+        assert doc.source_uri == "https://x.my.salesforce.com/001"
+
+    async def test_follows_next_records_url(self):
+        pages = iter([
+            {"done": False, "nextRecordsUrl": "/services/data/v60.0/query/01g", "records": [
+                {"attributes": {"type": "Contact"}, "Id": "1", "Name": "A"}]},
+            {"done": True, "records": [{"attributes": {"type": "Contact"}, "Id": "2", "Name": "B"}]},
+        ])
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(200, json=next(pages))
+
+        connector = SalesforceConnector(
+            "https://x.my.salesforce.com", "t", "SELECT Id, Name FROM Contact", client=mock_client(handler)
+        )
+        docs = await connector.load()
+        assert [d.title for d in docs] == ["A", "B"]
+
+
+class TestZendesk:
+    async def test_help_center_articles(self):
+        def handler(request: httpx.Request) -> httpx.Response:
+            return httpx.Response(
+                200,
+                json={
+                    "articles": [
+                        {
+                            "id": 7,
+                            "title": "Refund policy",
+                            "body": "<p>Refunds within 30 days.</p>",
+                            "html_url": "https://acme.zendesk.com/hc/en-us/articles/7",
+                            "section_id": 3,
+                            "locale": "en-us",
+                        },
+                        {"id": 8, "title": "Draft", "body": "<p>WIP</p>", "draft": True},
+                    ],
+                    "next_page": None,
+                },
+            )
+
+        connector = ZendeskConnector("acme", email="a@b.c", token="t", client=mock_client(handler))
+        docs = await connector.load()
+        assert len(docs) == 1  # draft skipped
+        assert docs[0].title == "Refund policy"
+        assert "Refunds within 30 days." in docs[0].text
+        assert docs[0].metadata["article_id"] == 7
+
+    async def test_auth_username_uses_token_suffix(self):
+        seen = {}
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen["auth"] = request.headers.get("authorization")
+            return httpx.Response(200, json={"articles": [], "next_page": None})
+
+        connector = ZendeskConnector("acme", email="a@b.c", token="tok", client=mock_client(handler))
+        await connector.load()
+        # Basic auth header is present (email/token scheme).
+        assert seen["auth"] and seen["auth"].startswith("Basic ")
+
+
+class TestBigQuery:
+    async def test_injected_client_rows(self):
+        class _Rows(list):
+            def result(self):
+                return self
+
+        class _Client:
+            def query(self, sql):
+                assert "SELECT" in sql
+                return _Rows([{"id": 1, "question": "Refund window?", "answer": "30 days"}])
+
+        connector = BigQueryConnector(
+            "SELECT * FROM faq", project="proj", client=_Client(), id_column="id", title_column="question"
+        )
+        [doc] = await connector.load()
+        assert doc.title == "Refund window?"
+        assert "30 days" in doc.text
+        assert doc.source_uri == "bigquery://proj#1"
+        assert doc.metadata["row"]["id"] == "1"
+
+    async def test_missing_dependency_is_helpful(self):
+        with pytest.raises(LoaderError, match="bigquery"):
+            await BigQueryConnector("SELECT 1").load()
+
+
+class TestSnowflake:
+    async def test_injected_connection_rows(self):
+        class _Cursor:
+            description = [("ID",), ("Q",), ("A",)]
+
+            def execute(self, query):
+                self._rows = [(1, "Refund window?", "30 days")]
+
+            def fetchmany(self, n):
+                return self._rows
+
+        class _Conn:
+            def cursor(self):
+                return _Cursor()
+
+        connector = SnowflakeConnector(
+            "SELECT * FROM faq", account="acct", connection=_Conn(), id_column="ID", title_column="Q"
+        )
+        [doc] = await connector.load()
+        assert doc.title == "Refund window?"
+        assert "30 days" in doc.text
+        assert doc.source_uri == "snowflake://acct#1"
+
+    async def test_missing_dependency_is_helpful(self):
+        with pytest.raises(LoaderError, match="snowflake"):
+            await SnowflakeConnector("SELECT 1").load()
+
+
+class TestNewConnectorsRegistered:
+    @pytest.mark.parametrize(
+        "kind", ["jira", "linear", "gdrive", "sharepoint", "salesforce", "zendesk", "bigquery", "snowflake"]
+    )
+    def test_kind_in_registry(self, kind):
+        assert kind in set(CONNECTORS) or kind in __import__(
+            "vincio.connectors.base", fromlist=["_BUILTIN_MODULES"]
+        )._BUILTIN_MODULES
