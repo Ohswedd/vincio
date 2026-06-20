@@ -1,0 +1,81 @@
+{
+  "name": "livecodebench",
+  "description": "Recorded LiveCodeBench solutions scored on all-tests-pass (pass@1) over the runner's per-test outcomes, with a contamination-free release-window pin.",
+  "tasks": [
+    {
+      "id": "lcb-two-sum",
+      "prompt": "Return indices of the two numbers adding to target.",
+      "gold": {
+        "public": [
+          "p0",
+          "p1"
+        ],
+        "hidden": [
+          "h0",
+          "h1",
+          "h2"
+        ]
+      },
+      "metadata": {
+        "release_date": "2025-03-01",
+        "difficulty": "easy"
+      },
+      "recorded": {
+        "results": {
+          "p0": "passed",
+          "p1": "passed",
+          "h0": "passed",
+          "h1": "passed",
+          "h2": "passed"
+        }
+      }
+    },
+    {
+      "id": "lcb-interval-merge",
+      "prompt": "Merge all overlapping intervals.",
+      "gold": {
+        "public": [
+          "p0"
+        ],
+        "hidden": [
+          "h0",
+          "h1"
+        ]
+      },
+      "metadata": {
+        "release_date": "2025-04-12",
+        "difficulty": "medium"
+      },
+      "recorded": {
+        "results": {
+          "p0": "passed",
+          "h0": "passed",
+          "h1": "failed"
+        }
+      }
+    },
+    {
+      "id": "lcb-graph-color",
+      "prompt": "Determine if the graph is 2-colorable.",
+      "gold": {
+        "tests": [
+          "t0",
+          "t1",
+          "t2"
+        ]
+      },
+      "metadata": {
+        "release_date": "2025-05-20",
+        "difficulty": "hard"
+      },
+      "recorded": {
+        "results": {
+          "t0": "passed",
+          "t1": "error",
+          "t2": "passed"
+        }
+      }
+    }
+  ],
+  "task_set_hash": "09ea549e541658b8"
+}

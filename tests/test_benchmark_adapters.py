@@ -7,22 +7,40 @@ from pathlib import Path
 import pytest
 
 from vincio.evals import (
+    AgentBenchAdapter,
     BenchmarkError,
     BenchmarkTask,
     BFCLAdapter,
     GAIAAdapter,
+    LiveCodeBenchAdapter,
+    MMLUProAdapter,
     SWEBenchAdapter,
     TauBenchAdapter,
+    ToolBenchAdapter,
     WebArenaAdapter,
+    agentbench_tasks_from_export,
     available_benchmarks,
+    livecodebench_tasks_from_export,
     load_benchmark,
+    mmlu_pro_tasks_from_export,
+    toolbench_tasks_from_export,
 )
 
 FIXTURES = Path(__file__).resolve().parent.parent / "benchmarks" / "fixtures"
 
 
-def test_registry_lists_five_adapters():
-    assert available_benchmarks() == ["bfcl", "gaia", "swebench_verified", "tau_bench", "webarena"]
+def test_registry_lists_all_adapters():
+    assert available_benchmarks() == [
+        "agentbench",
+        "bfcl",
+        "gaia",
+        "livecodebench",
+        "mmlu_pro",
+        "swebench_verified",
+        "tau_bench",
+        "toolbench",
+        "webarena",
+    ]
 
 
 @pytest.mark.asyncio
@@ -126,7 +144,18 @@ def test_fixture_hash_mismatch_raises():
 
 
 @pytest.mark.parametrize(
-    "name", ["swebench_verified", "tau_bench", "gaia", "webarena", "bfcl"]
+    "name",
+    [
+        "swebench_verified",
+        "tau_bench",
+        "gaia",
+        "webarena",
+        "bfcl",
+        "agentbench",
+        "toolbench",
+        "livecodebench",
+        "mmlu_pro",
+    ],
 )
 @pytest.mark.asyncio
 async def test_shipped_fixtures_replay_deterministically(name):
@@ -160,3 +189,136 @@ async def test_run_with_solver_scores_fresh_output():
     report = await adapter.run(solver)
     assert report.success_rate == 1.0
     assert report.replayed is False
+
+
+# -- AgentBench: per-environment verifiable end state ------------------------
+
+
+@pytest.mark.asyncio
+async def test_agentbench_match_types():
+    adapter = AgentBenchAdapter()
+    exact = BenchmarkTask(id="e", gold={"match": "exact_match", "value": "/etc/app.conf"})
+    assert (await adapter.score(exact, "/etc/app.conf")).success is True
+    assert (await adapter.score(exact, "/etc/other")).success is False
+    # numeric tolerance
+    num = BenchmarkTask(id="n", gold={"match": "numeric", "value": 1540.5, "tolerance": 0.01})
+    assert (await adapter.score(num, "1540.50")).success is True
+    assert (await adapter.score(num, "1600")).success is False
+    # set match is order-independent; partial set scores < 1 and fails.
+    kg = BenchmarkTask(id="k", gold={"match": "set_match", "value": ["spain", "germany", "italy"]})
+    full = await adapter.score(kg, ["Italy", "Germany", "Spain"])
+    assert full.success is True and full.score == 1.0
+    partial = await adapter.score(kg, ["Spain", "Germany"])
+    assert partial.success is False and partial.score < 1.0
+
+
+@pytest.mark.asyncio
+async def test_agentbench_unknown_match_raises():
+    adapter = AgentBenchAdapter()
+    with pytest.raises(BenchmarkError):
+        await adapter.score(BenchmarkTask(id="x", gold={"match": "fuzzy", "value": "y"}), "y")
+
+
+def test_agentbench_export_mapping():
+    tasks = agentbench_tasks_from_export(
+        [{"id": "a1", "description": "count files", "environment": "os",
+          "match": "numeric", "answer": 3, "tolerance": 0.0}]
+    )
+    assert tasks[0].gold == {"match": "numeric", "value": 3, "tolerance": 0.0}
+    assert tasks[0].inputs["env"] == "os"
+
+
+# -- ToolBench: solvable pass rate over a call path --------------------------
+
+
+@pytest.mark.asyncio
+async def test_toolbench_solvable_pass_rate():
+    adapter = ToolBenchAdapter()
+    task = BenchmarkTask(
+        id="t", inputs={"available_apis": ["search", "summarize"]},
+        gold={"final_answer": "done"},
+    )
+    solved = [
+        {"name": "search", "arguments": {"q": "x"}},
+        {"name": "Finish", "arguments": {"return_type": "give_answer", "final_answer": "done"}},
+    ]
+    assert (await adapter.score(task, solved)).success is True
+    # gave up -> not solved even though APIs are valid.
+    gave_up = [
+        {"name": "search", "arguments": {"q": "x"}},
+        {"name": "Finish", "arguments": {"return_type": "give_up_and_restart"}},
+    ]
+    assert (await adapter.score(task, gave_up)).success is False
+    # hallucinated tool -> apis invalid -> fail, score reflects the bad call.
+    hallucinated = [
+        {"name": "teleport", "arguments": {}},
+        {"name": "give_answer", "arguments": {"final_answer": "done"}},
+    ]
+    result = await adapter.score(task, hallucinated)
+    assert result.success is False and result.score == 0.0
+
+
+@pytest.mark.asyncio
+async def test_toolbench_wrong_final_answer_fails():
+    adapter = ToolBenchAdapter()
+    task = BenchmarkTask(id="t", gold={"final_answer": "expected"})
+    path = [{"name": "give_answer", "arguments": {"final_answer": "something else"}}]
+    assert (await adapter.score(task, path)).success is False
+
+
+def test_toolbench_export_mapping():
+    tasks = toolbench_tasks_from_export(
+        [{"id": "q1", "query": "weather", "api_list": [{"api_name": "get_weather"}],
+          "final_answer": "sunny"}]
+    )
+    assert tasks[0].inputs["available_apis"] == ["get_weather"]
+    assert tasks[0].gold["final_answer"] == "sunny"
+
+
+# -- LiveCodeBench: all-tests-pass ------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_livecodebench_all_tests_pass():
+    adapter = LiveCodeBenchAdapter()
+    task = BenchmarkTask(id="l", gold={"public": ["p0"], "hidden": ["h0", "h1"]})
+    all_pass = {"results": {"p0": "passed", "h0": "passed", "h1": "passed"}}
+    assert (await adapter.score(task, all_pass)).success is True
+    one_fail = {"results": {"p0": "passed", "h0": "passed", "h1": "failed"}}
+    result = await adapter.score(task, one_fail)
+    assert result.success is False and result.score == round(2 / 3, 4)
+
+
+def test_livecodebench_export_mapping():
+    tasks = livecodebench_tasks_from_export(
+        [{"question_id": "abc", "question_content": "solve", "release_date": "2025-05-01",
+          "public_test_cases": [{"id": "p0"}], "private_test_cases": [{"id": "h0"}]}]
+    )
+    assert tasks[0].gold == {"public": ["p0"], "hidden": ["h0"]}
+    assert tasks[0].metadata["release_date"] == "2025-05-01"
+
+
+# -- MMLU-Pro: option-letter extraction --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_mmlu_pro_letter_extraction():
+    adapter = MMLUProAdapter()
+    letter = BenchmarkTask(id="m", gold="D")
+    assert (await adapter.score(letter, "After reasoning, the answer is (D).")).success is True
+    assert (await adapter.score(letter, "Answer: D")).success is True
+    assert (await adapter.score(letter, "I'll go with D")).success is True
+    assert (await adapter.score(letter, "The answer is (A).")).success is False
+    # gold may be a 0-based index (3 -> 'D').
+    indexed = BenchmarkTask(id="i", gold=3)
+    assert (await adapter.score(indexed, "answer is D")).success is True
+
+
+def test_mmlu_pro_export_mapping():
+    tasks = mmlu_pro_tasks_from_export(
+        [{"question_id": "q", "question": "?", "options": ["a", "b"], "answer_index": 1,
+          "category": "math"}]
+    )
+    assert tasks[0].gold == 1
+    assert tasks[0].inputs["options"] == ["a", "b"]
+    assert tasks[0].metadata["category"] == "math"

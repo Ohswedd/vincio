@@ -226,9 +226,12 @@ result = EnvironmentSimulator().run(env, scripted_policy([
 result.success                # the oracle: True iff every end-state check passed
 ```
 
-Five `BenchmarkAdapter`s score a Vincio agent on the public leaderboards —
-**SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL** — each against the
-benchmark's own *verifiable* scorer, pinned by a task-set hash, replayable offline:
+Nine `BenchmarkAdapter`s score a Vincio agent on the public leaderboards —
+**SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL, AgentBench, ToolBench,
+LiveCodeBench, MMLU-Pro** — each against the benchmark's own *verifiable* scorer
+(AgentBench's per-environment exact/contains/set/numeric match, ToolBench's solvable
+pass-rate over a call path, LiveCodeBench's all-tests-pass, MMLU-Pro's option-letter
+extraction), pinned by a task-set hash, replayable offline:
 
 ```python
 from vincio.evals import load_benchmark
@@ -251,6 +254,73 @@ report.to_eval_report()       # project onto an EvalReport for gates / the optim
 And a retrieval-eval harness records a versioned artifact keyed on
 `(embedder, chunker, corpus hash)` and **gates a recall/nDCG regression on the same
 significance test as a model swap** — see the [run evals guide](run-evals.md).
+
+## Trustworthy judges, explained gates, cheaper budgets
+
+A single LLM judge is a point estimate with unknown error. A `JudgeEnsemble`
+turns a **panel** into a distribution: it aggregates the judges (`"mean"`,
+`"median"`, or outlier-robust `"trimmed_mean"`) and surfaces their *disagreement*
+as an uncertainty signal, so a split panel is flagged for review instead of acting
+on a coin-flip. Like any judge that gates CI, the panel earns gating weight only
+once it agrees with people:
+
+```python
+from vincio.evals import JudgeEnsemble
+
+panel = JudgeEnsemble([judge_a, judge_b, judge_c], disagreement_threshold=0.2)
+verdict = await panel.averdict(case, output)
+verdict.value          # the aggregate score
+verdict.uncertain      # True when the judges disagree past the threshold
+verdict.disagreement   # {"stdev", "range", "mad", "max_gap"}
+
+panel.calibrate(human_pairs)        # fit + record the panel-vs-human Cohen's κ
+panel.gating_weight(threshold=0.6)  # 1.0 only once that κ clears the bar
+```
+
+When a gate *does* regress, reporting the score drop is not enough — a release
+usually changes several things at once. A `CausalAttributor` attributes the drop
+to the component that caused it by **Shapley counterfactual replay**: it
+re-evaluates the dataset under every combination of baseline and candidate
+components, and assigns each its average marginal contribution. The contributions
+sum exactly to the total delta, so the regression is fully accounted for — and
+interactions (a drop that only appears when the new prompt meets the new
+retriever) are split fairly rather than double-counted:
+
+```python
+from vincio.evals import AttributionFactor, attribute_regression
+
+report = await attribute_regression(
+    app, dataset,
+    factors=[
+        AttributionFactor.model("model", baseline="gpt-4o", candidate="gpt-4o-mini"),
+        AttributionFactor.prompt("prompt", baseline=old_spec, candidate=new_spec),
+        AttributionFactor.attr("retrieval", "retriever", baseline=bm25, candidate=hybrid),
+    ],
+    metric="groundedness",
+)
+report.dominant_factor   # the component that owns most of the regression
+report.contributions     # signed Shapley value per factor (sums to total_delta)
+report.concentration     # how concentrated the blame is
+```
+
+Finally, a noisy gate need not sample every case the same number of times. An
+`AdaptiveSampler` spends the eval budget where the variance is — seeding each case,
+then allocating each next sample to the case that most reduces the aggregate's
+variance, and **stopping the moment the confidence interval clears the
+threshold**. It reaches the same verdict as the exhaustive run for far fewer
+samples:
+
+```python
+from vincio.evals import AdaptiveSampler
+
+result = await AdaptiveSampler(
+    cases, sample_fn, gate=">= 0.9", budget=500, confidence=0.95
+).run()
+result.verdict        # "pass" | "fail" | "uncertain"
+result.decided        # the CI cleared the threshold
+result.samples_used   # fewer than the full budget
+result.allocations    # where the budget actually went
+```
 
 ## Why in-process
 

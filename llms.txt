@@ -361,17 +361,42 @@ app.run("export button 500s").output.label
   ToolEnvironment, EnvAction, StateCheck, make_retail_environment, scripted_policy,
   task_success`. `Environment` is `reset()/step(action)/observe()/verify()`;
   `verify()` runs `StateCheck`s over the world end state (the task-success
-  oracle); `EnvironmentSimulator().run(env, policy)` → `Trajectory`. Adapters
+  oracle); `EnvironmentSimulator().run(env, policy)` → `Trajectory`. Nine adapters
   `SWEBenchAdapter | TauBenchAdapter | GAIAAdapter | WebArenaAdapter |
-  BFCLAdapter` (+ `BenchmarkTask`, `load_benchmark`) pin a `task_set_hash()`,
-  score a verifiable end state, replay offline (`adapter.replay()`, fixtures in
-  `benchmarks/fixtures/`) or solve live (`adapter.run(make_agent_solver(app,
-  mode="text"|"calls"))` / `make_env_solver(policy)`; `tasks_from_jsonl`,
-  `gaia_tasks_from_export`); `report.to_eval_report()` feeds the optimizer.
-  Retrieval eval: `RetrievalEvaluator` / `retrieval_regression(search_fn,
+  BFCLAdapter | AgentBenchAdapter | ToolBenchAdapter | LiveCodeBenchAdapter |
+  MMLUProAdapter` (+ `BenchmarkTask`, `load_benchmark`, `available_benchmarks`)
+  pin a `task_set_hash()`, score a verifiable end state (AgentBench: per-env
+  exact/contains/set/numeric match; ToolBench: solvable pass-rate over a call
+  path; LiveCodeBench: all-tests-pass; MMLU-Pro: option-letter extraction),
+  replay offline (`adapter.replay()`, fixtures in `benchmarks/fixtures/`) or solve
+  live (`adapter.run(make_agent_solver(app, mode="text"|"calls"))` /
+  `make_env_solver(policy)`; `tasks_from_jsonl`, `gaia_tasks_from_export`,
+  `agentbench_tasks_from_export`, `toolbench_tasks_from_export`,
+  `livecodebench_tasks_from_export`, `mmlu_pro_tasks_from_export`);
+  `report.to_eval_report()` feeds the optimizer. Retrieval eval:
+  `RetrievalEvaluator` / `retrieval_regression(search_fn,
   RetrievalGoldenSet([RetrievalQuery(...)]), RetrievalConfig, store=
   IndexRegressionStore())` gates recall/nDCG deltas with the swap significance
   test.
+- **Quality frontier: ensembles, attribution, adaptive sampling.** Judge panel:
+  `JudgeEnsemble([j1, j2, j3], aggregate="mean"|"median"|"trimmed_mean",
+  disagreement_threshold=0.2)` → `await .averdict(case, out)` returns an
+  `EnsembleVerdict` (`.value`, `.scores`, `.disagreement`, `.uncertain`,
+  `.spread`); `judge_disagreement(scores)` quantifies spread; `.calibrate([(panel,
+  human), ...])` fits a linear correction + records panel-vs-human κ, and
+  `.gating_weight(threshold=0.6)` is `1.0` only once that κ clears the bar.
+  Causal attribution: `await attribute_regression(app, dataset, [
+  AttributionFactor.model("model", baseline=, candidate=),
+  AttributionFactor.prompt("prompt", baseline=, candidate=),
+  AttributionFactor.attr("retrieval", "retriever", baseline=, candidate=)],
+  metric="lexical_overlap")` (or `CausalAttributor(...).attribute()`) runs `2**k`
+  counterfactual coalitions and returns an `AttributionReport` with exact Shapley
+  `.contributions` (sum to `.total_delta`), `.dominant_factor`, `.concentration`,
+  `.explained`. Adaptive sampling: `await AdaptiveSampler(cases, sample_fn,
+  gate=">= 0.9", budget=, seed_samples=2, confidence=0.95).run()` seeds every
+  case then allocates by variance reduction, stopping when the CI clears the
+  threshold → `AdaptiveSamplingResult` (`.verdict` pass|fail|uncertain,
+  `.decided`, `.samples_used`, `.savings`, `.allocations`).
 - **Metric = guardrail = fitness.** Every metric is reusable as a runtime
   guardrail (`app.add_metric_rail(metric, threshold=)` / `metric_guardrail(metric,
   threshold=)`) and as optimizer fitness (`AGENTIC_OBJECTIVES`); per-language eval
