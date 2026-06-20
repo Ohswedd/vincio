@@ -14,7 +14,7 @@ from typing import Any
 
 from ..core.errors import LoaderError
 from ..core.types import Document
-from .base import register_connector
+from .base import register_connector, row_text
 
 __all__ = ["SQLConnector"]
 
@@ -67,10 +67,7 @@ class SQLConnector:
             documents: list[Document] = []
             for index, values in enumerate(rows):
                 row = dict(zip(columns, values, strict=False))
-                text_columns = self.text_columns or [
-                    c for c in columns if isinstance(row.get(c), str)
-                ]
-                text = "\n".join(f"{c}: {row[c]}" for c in text_columns if row.get(c) is not None)
+                text = row_text(row, self.text_columns)
                 row_id = str(row.get(self.id_column, index)) if self.id_column else str(index)
                 title = str(row[self.title_column]) if self.title_column and row.get(self.title_column) else f"row {row_id}"
                 documents.append(

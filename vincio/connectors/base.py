@@ -12,7 +12,14 @@ import httpx
 from ..core.errors import ConfigError
 from ..core.types import Document
 
-__all__ = ["Connector", "CONNECTORS", "register_connector", "connect", "managed_client"]
+__all__ = [
+    "Connector",
+    "CONNECTORS",
+    "register_connector",
+    "connect",
+    "managed_client",
+    "row_text",
+]
 
 
 @runtime_checkable
@@ -35,7 +42,25 @@ _BUILTIN_MODULES = {
     "notion": "vincio.connectors.notion",
     "confluence": "vincio.connectors.confluence",
     "slack": "vincio.connectors.slack",
+    "jira": "vincio.connectors.jira",
+    "linear": "vincio.connectors.linear",
+    "gdrive": "vincio.connectors.gdrive",
+    "sharepoint": "vincio.connectors.sharepoint",
+    "salesforce": "vincio.connectors.salesforce",
+    "zendesk": "vincio.connectors.zendesk",
+    "bigquery": "vincio.connectors.bigquery",
+    "snowflake": "vincio.connectors.snowflake",
 }
+
+
+def row_text(row: dict[str, Any], text_columns: list[str] | None = None) -> str:
+    """Render a result-set row as ``"column: value"`` lines.
+
+    Shared by the SQL-family connectors (``sql``, ``bigquery``, ``snowflake``).
+    With ``text_columns`` unset, every string-valued column is included.
+    """
+    columns = text_columns or [c for c, v in row.items() if isinstance(v, str)]
+    return "\n".join(f"{c}: {row[c]}" for c in columns if row.get(c) is not None)
 
 
 def register_connector(name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
@@ -52,6 +77,12 @@ def connect(kind: str, **options: Any) -> Connector:
     """Instantiate a connector by kind, e.g. ``connect("web", urls=[...])``."""
     if kind not in CONNECTORS and kind in _BUILTIN_MODULES:
         importlib.import_module(_BUILTIN_MODULES[kind])
+    if kind not in CONNECTORS:
+        # An installed third-party connector registers via the ``vincio.connectors``
+        # entry-point group on first miss.
+        from ..plugins import ensure_loaded
+
+        ensure_loaded("vincio.connectors")
     if kind not in CONNECTORS:
         known = sorted(set(CONNECTORS) | set(_BUILTIN_MODULES))
         raise ConfigError(f"unknown connector {kind!r}; known: {known}")

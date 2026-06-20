@@ -42,6 +42,7 @@ from .indexes import (
 )
 from .late_interaction import LateInteractionIndex
 from .live import LiveIndex, UpsertStats
+from .prefetch import PrefetchHandle, SpeculativePrefetcher
 from .quantization import (
     TwoStageIndex,
     binary_similarity,
@@ -156,6 +157,8 @@ __all__ = [
     "SpladeEncoder",
     "SparseEncoder",
     "SparseIndex",
+    "SpeculativePrefetcher",
+    "PrefetchHandle",
     # quantization + two-stage retrieval
     "TwoStageIndex",
     "quantize_scalar",

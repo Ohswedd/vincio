@@ -25,6 +25,7 @@ from pydantic import BaseModel, Field
 from ..core.tokens import count_tokens
 from ..core.utils import utcnow
 from ..retrieval.embeddings import cosine
+from .vectorized import HAS_NUMPY, matrix_vector_cosine, row_normalize, weighted_totals
 
 __all__ = [
     "CandidateType",
@@ -41,6 +42,10 @@ __all__ = [
 CandidateType = Literal[
     "instruction", "memory", "evidence", "tool_result", "example", "schema", "policy"
 ]
+
+# Below this candidate count, NumPy array construction costs more than it saves,
+# so batched scoring stays on the pure-Python reduction even when NumPy is present.
+_VECTOR_BATCH_MIN = 32
 
 _TOKEN_RE = re.compile(r"[a-z0-9]+")
 _STOPWORDS = frozenset(
@@ -348,3 +353,108 @@ class ContextScorer:
         )
         candidate.scores = scores
         return scores
+
+    # -- batched (single-pass) scoring --------------------------------------------
+
+    def _batch_relevance(self, candidates: list[ContextCandidate], query: str) -> list[float]:
+        """Relevance of every candidate against *query*.
+
+        In semantic mode with NumPy present the query similarities are one
+        matrix–vector product over the cached candidate embeddings; the
+        reranker-verdict blend is then applied per item exactly as
+        :meth:`relevance` does. Otherwise each candidate falls back to the
+        per-item path, so the result is identical either way.
+        """
+        if not (query and self.semantic and HAS_NUMPY and self._vectors is not None):
+            return [self.relevance(c, query) for c in candidates]
+        vectors = [self._vectors.get(c.content) for c in candidates]
+        query_vec = self._vectors.get(query)
+        if query_vec is None or any(v is None for v in vectors):
+            return [self.relevance(c, query) for c in candidates]
+        normalized = row_normalize(vectors)  # type: ignore[arg-type]
+        if normalized is None:  # pragma: no cover - guarded by HAS_NUMPY
+            return [self.relevance(c, query) for c in candidates]
+        bases = matrix_vector_cosine(normalized, query_vec)
+        out: list[float] = []
+        for candidate, base in zip(candidates, bases, strict=True):
+            base = min(1.0, base)
+            upstream = candidate.metadata.get("upstream_relevance")
+            if upstream is not None:
+                up = max(0.0, min(1.0, float(upstream)))
+                out.append(self._UPSTREAM_BLEND * up + (1.0 - self._UPSTREAM_BLEND) * base)
+            else:
+                out.append(base)
+        return out
+
+    def score_batch(self, candidates: list[ContextCandidate], query: str) -> None:
+        """Score every candidate against an empty selection in one pass.
+
+        Equivalent to calling :meth:`score` on each candidate with
+        ``selected=[]`` (novelty 1, duplication 0): the per-component scores are
+        computed once and reduced against the signed weight vector together
+        (a single matrix–vector product under NumPy, an equivalent weighted sum
+        otherwise), and each :class:`ContextScores` is built without per-item
+        validation. The totals — and therefore the selection that follows — are
+        identical to the per-candidate loop.
+        """
+        if not candidates:
+            return
+        w = self.weights
+        construct = ContextScores.model_construct  # skip per-item validation
+        if HAS_NUMPY and len(candidates) >= _VECTOR_BATCH_MIN:
+            # NumPy fast lane: semantic relevance and the weighted reduction each
+            # collapse to a single matrix product over the whole candidate set.
+            n = len(candidates)
+            relevance = self._batch_relevance(candidates, query)
+            authority = [c.authority for c in candidates]
+            freshness = [self.freshness(c) for c in candidates]
+            provenance = [c.provenance for c in candidates]
+            answerability = [self.answerability(c, query) for c in candidates]
+            memory_value = [
+                c.scores.memory_value if c.type == "memory" else 0.0 for c in candidates
+            ]
+            token_cost = [self.normalized_token_cost(c) for c in candidates]
+            leakage = [c.leakage_risk for c in candidates]
+            totals = weighted_totals(
+                [
+                    relevance, [1.0] * n, authority, freshness, provenance,
+                    answerability, memory_value, token_cost, [0.0] * n, leakage,
+                ],
+                [
+                    w.relevance, w.novelty, w.authority, w.freshness, w.provenance,
+                    w.question_answerability, w.memory_value,
+                    -w.token_cost, -w.duplication, -w.leakage_risk,
+                ],
+            )
+            for i, candidate in enumerate(candidates):
+                candidate.scores = construct(
+                    relevance=relevance[i], novelty=1.0, authority=authority[i],
+                    freshness=freshness[i], provenance=provenance[i],
+                    question_answerability=answerability[i], memory_value=memory_value[i],
+                    token_cost=token_cost[i], duplication=0.0, leakage_risk=leakage[i],
+                    total=totals[i],
+                )
+            return
+        # Pure-Python: a single pass with the total accumulated inline and the
+        # scores built without per-item validation — identical results to
+        # :meth:`score` with an empty selection.
+        wr, wn, wa, wf, wp = w.relevance, w.novelty, w.authority, w.freshness, w.provenance
+        wq, wm, wt, wk = w.question_answerability, w.memory_value, w.token_cost, w.leakage_risk
+        for candidate in candidates:
+            rel = self.relevance(candidate, query)
+            auth = candidate.authority
+            fresh = self.freshness(candidate)
+            prov = candidate.provenance
+            ans = self.answerability(candidate, query)
+            mem = candidate.scores.memory_value if candidate.type == "memory" else 0.0
+            tok = self.normalized_token_cost(candidate)
+            leak = candidate.leakage_risk
+            candidate.scores = construct(
+                relevance=rel, novelty=1.0, authority=auth, freshness=fresh, provenance=prov,
+                question_answerability=ans, memory_value=mem, token_cost=tok,
+                duplication=0.0, leakage_risk=leak,
+                total=(
+                    wr * rel + wn + wa * auth + wf * fresh + wp * prov + wq * ans + wm * mem
+                    - wt * tok - wk * leak
+                ),
+            )

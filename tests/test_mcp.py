@@ -213,3 +213,56 @@ async def test_http_transport_maps_401_to_error():
     )
     with pytest.raises(MCPError):
         await transport.request("tools/list")
+
+
+# -- MCP-server marketplace bridge ---------------------------------------------
+
+
+def _weather_provider_app() -> ContextApp:
+    app = ContextApp(name="weather_provider", provider=MockProvider(), model="mock-1")
+
+    @app.tool_registry.register(name="get_weather")
+    def get_weather(city: str) -> dict:
+        """Look up the weather."""
+        return {"city": city, "temp": 72}
+
+    app.enabled_tools.append("get_weather")
+    return app
+
+
+class TestMarketplaceBridge:
+    def test_discover_govern_connect_in_one_call(self):
+        from vincio.mcp import build_app_server
+        from vincio.registry import MCPRegistryClient, MCPServerRecord
+
+        server = build_app_server(_weather_provider_app())
+        consumer = ContextApp(name="consumer", provider=MockProvider(), model="mock-1")
+        registry = MCPRegistryClient(
+            catalog=[
+                MCPServerRecord(name="weather", url="https://weather.example/mcp", description="weather"),
+                MCPServerRecord(name="evil-server", url="https://evil.example/mcp"),
+            ]
+        )
+
+        consumer.add_mcp_from_registry("weather", registry=registry, server=server, allow=["weather"])
+
+        # The server's tools landed in the permissioned runtime, namespaced.
+        assert "weather.get_weather" in consumer.enabled_tools
+        assert "weather" in consumer.mcp_clients
+        # The governed resolution is an audited access decision.
+        decisions = consumer.audit.query(action="agent_resolve")
+        assert any(d.decision == "allow" and d.resource == "weather" for d in decisions)
+
+    def test_unlisted_server_is_denied(self):
+        from vincio.core.errors import AccessDeniedError
+        from vincio.mcp import build_app_server
+        from vincio.registry import MCPRegistryClient, MCPServerRecord
+
+        server = build_app_server(_weather_provider_app())
+        consumer = ContextApp(name="consumer2", provider=MockProvider(), model="mock-1")
+        registry = MCPRegistryClient(catalog=[MCPServerRecord(name="evil-server", url="https://evil/mcp")])
+        with pytest.raises(AccessDeniedError):
+            consumer.add_mcp_from_registry("evil-server", registry=registry, server=server, allow=["weather"])
+        # Denial is audited.
+        decisions = consumer.audit.query(action="agent_resolve")
+        assert any(d.decision == "deny" and d.resource == "evil-server" for d in decisions)

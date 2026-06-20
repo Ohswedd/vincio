@@ -65,6 +65,7 @@ from ..retrieval.indexes import (
     build_filter_spec,
 )
 from ..retrieval.late_interaction import LateInteractionIndex
+from ..retrieval.prefetch import SpeculativePrefetcher
 from ..retrieval.rerankers import build_reranker
 from ..retrieval.sparse import SparseIndex
 from ..security.access import AccessController, Principal
@@ -324,7 +325,15 @@ class ContextApp:
 
         # context compiler
         self.context_compiler = ContextCompiler(
-            ContextCompilerOptions(slim_packets=self.config.performance.slim_packets),
+            ContextCompilerOptions(
+                slim_packets=self.config.performance.slim_packets,
+                reuse_candidate_set=self.config.performance.reuse_candidate_set,
+                max_resident_bytes=(
+                    int(self.config.performance.memory_budget_mb * 1_000_000)
+                    if self.config.performance.memory_budget_mb is not None
+                    else None
+                ),
+            ),
             cache=self.context_compile_cache,
         )
         self.prompt_compiler = PromptCompiler(CompilerOptions(), cache=self.prompt_compile_cache)
@@ -353,6 +362,14 @@ class ContextApp:
             self.config.retrieval.semantic_context_scoring
         )
         self.context_compiler.options.mmr_lambda = self.config.retrieval.mmr_lambda
+        # Speculative retrieval prefetch: warms the query embedding from the task
+        # classification before retrieval runs (opt-in). Shares the app embedder
+        # so a landed warm is a cache hit for retrieval.
+        self._prefetcher = (
+            SpeculativePrefetcher(self.embedder)
+            if self.config.performance.speculative_prefetch
+            else None
+        )
         self.sources: dict[str, _SourceConfig] = {}
         self.retrieval: RetrievalEngine | None = None
         self._bm25: BM25Index | None = None
@@ -1894,6 +1911,83 @@ class ContextApp:
         self.mcp_clients[name] = client
         return self
 
+    def add_mcp_from_registry(
+        self,
+        name: str,
+        *,
+        registry: Any,
+        directory: Any | None = None,
+        allow: list[str] | None = None,
+        deny: list[str] | None = None,
+        server: Any | None = None,
+        transport: Any | None = None,
+        headers: dict[str, str] | None = None,
+        http_client: Any | None = None,
+        tools: bool = True,
+        resources: bool = True,
+        prompts: bool = False,
+        permissions: list[str] | None = None,
+        principal: Any | None = None,
+    ) -> ContextApp:
+        """Discover an MCP server from a registry and land its tools in the
+        permissioned runtime — one governed call (the marketplace bridge).
+
+        Three concerns compose: **discovery** (an
+        :class:`~vincio.registry.MCPRegistryClient` — the official MCP Registry
+        or an offline catalog — finds the server), **governance** (a governed
+        :class:`~vincio.registry.AgentDirectory` under an
+        :class:`~vincio.security.access.AllowListGate` decides reachability and
+        records the decision on this app's audit chain), and **connection**
+        (:meth:`add_mcp_server` runs the server's tools through the existing
+        permissioned, sandboxed, audited runtime).
+
+        Pass ``directory=`` to reuse an existing governed directory, or
+        ``allow`` / ``deny`` globs to build one (fail-closed; defaults to
+        allowing exactly ``name``). For offline / in-process use, pass
+        ``server=`` (an in-process :class:`~vincio.mcp.MCPServer`) or
+        ``transport=``; otherwise the resolved server's URL or stdio command is
+        used. Raises :class:`~vincio.core.errors.AccessDeniedError` if the gate
+        denies the server.
+        """
+        from ..providers.base import run_sync
+
+        if directory is None:
+            directory = self.agent_directory(
+                allow=allow if allow is not None else [name], deny=deny
+            )
+        # Discovery registers candidate servers into the directory as governed,
+        # audited AgentRecords (protocol="mcp").
+        run_sync(registry.register_into_directory(directory))
+        # The governed resolution is the audited access decision.
+        record = directory.resolve(name, principal=principal)
+        srv = run_sync(registry.get_server(name))
+
+        conn: dict[str, Any] = {}
+        if transport is not None:
+            conn["transport"] = transport
+        elif server is not None:
+            conn["server"] = server
+        elif srv is not None and srv.url:
+            conn["url"] = srv.url
+        elif srv is not None and srv.command:
+            conn["command"] = srv.command
+        elif record.url:
+            conn["url"] = record.url
+        else:
+            raise ConfigError(
+                f"MCP server {name!r} has no url/command in the registry; pass server= or transport="
+            )
+        return self.add_mcp_server(
+            name,
+            headers=headers,
+            http_client=http_client,
+            tools=tools,
+            resources=resources,
+            prompts=prompts,
+            permissions=permissions,
+            **conn,
+        )
+
     def serve_mcp(
         self,
         *,
@@ -2383,6 +2477,8 @@ class ContextApp:
         model: str | None = None,
         system_prompt_extra: str = "",
         restrict_tools: bool = False,
+        domain: Any | None = None,
+        cost_aware_models: list[str] | None = None,
     ) -> AgentExecutor:
         tool_names: list[str] = []
         for tool in tools or []:
@@ -2391,16 +2487,25 @@ class ContextApp:
         planner_mode = {
             "dag": "static", "static": "static", "dynamic": "dynamic", "react": "react",
             "direct": "direct", "plan_and_execute": "plan_and_execute",
+            "hierarchical": "hierarchical", "htn": "hierarchical",
         }.get(planner, "static")
         provider = self.resolve_provider()
         agent_model = model or self.model
-        llm_planning = planner_mode in ("dynamic", "plan_and_execute")
+        llm_planning = planner_mode in ("dynamic", "plan_and_execute", "hierarchical")
         planner_obj = Planner(
             mode=planner_mode,  # type: ignore[arg-type]
             provider=provider if llm_planning else None,
             model=agent_model if llm_planning else None,
             max_steps=max_steps,
+            domain=domain,
         )
+        # Cost-aware action selection over the candidate models, reading the
+        # data-driven model registry's pricing and the live budget.
+        selector = None
+        if cost_aware_models:
+            from ..agents.selection import CostAwareSelector
+
+            selector = CostAwareSelector(cost_aware_models, events=self.events)
         retrieve_fn = None
         if self.retrieval is not None:
             engine = self.retrieval
@@ -2440,6 +2545,8 @@ class ContextApp:
             tracer=self.tracer,
             cost_tracker=self.cost_tracker,
             cost_ledger=self.cost_ledger,
+            events=self.events,
+            selector=selector,
             system_prompt=system_prompt,
         )
 
@@ -2452,11 +2559,28 @@ class ContextApp:
         max_steps: int = 8,
         evaluator: str | None = None,
         model: str | None = None,
+        domain: Any | None = None,
+        cost_aware_models: list[str] | None = None,
     ) -> _AgentHandle:
+        """Build a bounded agent over the app's tools, memory, and retrieval.
+
+        ``planner`` selects the planning shape (``dag`` / ``dynamic`` / ``react``
+        / ``direct`` / ``plan_and_execute`` / ``hierarchical``). Pass an
+        :class:`~vincio.agents.HTNDomain` as ``domain`` to drive deterministic
+        hierarchical decomposition, and ``cost_aware_models`` (cheapest→strongest)
+        to enable cost-aware action selection. In-place plan repair is on by
+        default. Tool failures, validation contradictions, and budget shocks are
+        repaired in place rather than restarting the run.
+        """
         if evaluator is not None:
             self.add_evaluator(evaluator)
         executor = self._build_executor(
-            tools=tools, planner=planner, max_steps=max_steps, model=model
+            tools=tools,
+            planner=planner,
+            max_steps=max_steps,
+            model=model,
+            domain=domain,
+            cost_aware_models=cost_aware_models,
         )
         return _AgentHandle(self, executor, max_steps)
 

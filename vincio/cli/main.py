@@ -8,6 +8,7 @@ Commands::
     vincio config show
     vincio packs list
     vincio packs show support
+    vincio plugins list
     vincio tui
     vincio run app.py --input "..."
     vincio batch app.py --input "..." --input "..."   # Batch API, ~50% cost
@@ -310,6 +311,23 @@ def cmd_packs_show(args: argparse.Namespace) -> int:
     if pack.output_schema:
         print(f"output schema ({pack.output_schema_name or pack.name}):")
         print(json_dumps(pack.output_schema, indent=2))
+    return 0
+
+
+def cmd_plugins_list(args: argparse.Namespace) -> int:
+    from ..plugins import PLUGIN_API_VERSION, installed_plugins
+
+    plugins = installed_plugins()
+    print(f"vincio plugin API: {PLUGIN_API_VERSION}")
+    if not plugins:
+        print("no third-party plugins installed")
+        return 0
+    print(f"{'KIND':<10} {'NAME':<22} {'DISTRIBUTION':<22} {'VERSION':<10} STATUS")
+    for p in plugins:
+        detail = f"  ({p.detail})" if p.detail else ""
+        print(
+            f"{p.kind:<10} {p.name:<22} {p.distribution:<22} {p.version:<10} {p.status}{detail}"
+        )
     return 0
 
 
@@ -1429,6 +1447,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_packs_show = packs_sub.add_parser("show", help="show a pack's configuration")
     p_packs_show.add_argument("name")
     p_packs_show.set_defaults(fn=cmd_packs_show)
+
+    p_plugins = sub.add_parser("plugins", help="installed third-party plugins")
+    plugins_sub = p_plugins.add_subparsers(dest="plugins_command", required=True)
+    p_plugins_list = plugins_sub.add_parser("list", help="list installed Vincio plugins")
+    p_plugins_list.set_defaults(fn=cmd_plugins_list)
 
     p_tui = sub.add_parser("tui", help="interactive inspector for runs, traces, and memory")
     p_tui.add_argument("--traces-dir", default=".vincio/traces")

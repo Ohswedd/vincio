@@ -40,7 +40,7 @@ and a runnable example.
 | **Retrieval (RAG)** | BM25 + dense + learned-sparse + late-interaction fused in one RRF; query understanding (HyDE / multi-query / decompose / step-back); sentence-window / parent-document / auto-merging / contextual chunking; GraphRAG; live indexes; entity-graph, multi-hop, and reasoning retrieval; Matryoshka, contextual, and multimodal embedders; a structured `FilterSpec` pushed down to each backend with tenant scope enforced in the engine. |
 | **Memory** | Layered, guarded, decaying, conflict-resolving, privacy-scoped memory; hybrid vector+graph recall; consolidation with provenance; audited GDPR hygiene; a CI-gated memory eval harness; bi-temporal records with as-of recall, `correct()`, per-memory ACLs, and a `TEAM` scope. |
 | **Tools** | Permissioned registry (RBAC/ABAC), schema derivation, a resource-limited sandbox, reliability scoring, approval-gated writes; computer-use and provider-native hosted tools behind a pluggable `IsolationBackend`. |
-| **Agents & orchestration** | Bounded DAG agents with planners, critics, validators, and human gates; a deep-research agent and a self-editing memory OS; multi-agent crews with a shared blackboard; durable graphs with checkpoint / resume / time-travel; distributed durable execution across a worker pool with lease + CAS, BSP super-steps, and `Send` map-reduce. |
+| **Agents & orchestration** | Bounded DAG agents with planners (direct / static / dynamic / ReAct / plan-and-execute / hierarchical HTN), critics, validators, and human gates; in-place plan repair (re-bind / substitute / reorder / drop on a tool failure, contradiction, or budget shock) and cost-aware action selection over `ModelRegistry` pricing and the live budget; a deep-research agent and a self-editing memory OS; multi-agent crews with a shared blackboard; durable graphs with checkpoint / resume / time-travel and durable timers (`sleep_until` / `wait_for_event`); distributed durable execution across a worker pool with lease + CAS, BSP super-steps, `Send` map-reduce, and a work-stealing sub-graph scheduler under a fair-share budget with SLA deadlines. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and resumable approval gates. |
 | **Structured output** | Pydantic contracts, provider-native constrained decoding, streaming validation with early abort, typed signatures, bounded self-correction, multi-schema routing, and structure-only repair. |
 | **Evaluation** | Golden datasets, 30+ metrics, judges with calibration, synthetic data, red-teaming, experiments with significance, regression gates, a pytest plugin, a stateful-environment harness with a task-success oracle, five agentic benchmark adapters, and retrieval-eval with index-version regression. |
@@ -49,8 +49,10 @@ and a runnable example.
 | **Security & governance** | Deterministic PII / secret / injection / RAG-poisoning detection, programmable rails, RBAC/ABAC, tenant isolation, a signed Merkle-checkpointed audit chain; model & system cards, a compliance coverage matrix, an AI-BOM, an EU AI Act conformity pack, provable erasure, a consent ledger, data lineage, and residency-aware egress refusal. |
 | **Generation** | Cited DOCX/PDF/PPTX/HTML/Markdown, a cited-report builder with per-claim entailment, redlines, image generation and TTS with C2PA provenance, and richer inputs (OCR, transcripts, new-format loaders, forms/KYC). |
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
-| **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex interop. |
+| **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. |
+| **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
+| **Runtime performance** | A single-pass vectorized scorer (NumPy-optional, pure-Python fallback); a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and the prepared candidate set so a warm compile is dominated by scoring, not allocation; streaming-first compilation that emits the prefix before scoring; speculative retrieval prefetch that warms the query embedding from the task classification; and a per-app resident-memory budget held by slim packets and evidence eviction, surfaced in the cost report and gated by an SLO. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
 
@@ -62,69 +64,6 @@ Forward phases are scoped by theme and gated the same way everything else is —
 by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is additive on the
 frozen public surface; breaking changes are reserved for an announced major window and never shipped
 for their own sake.
-
-### 🚧 Runtime performance & efficiency
-
-*Make the spine fast enough that context engineering is never the bottleneck.*
-
-- **Sub-millisecond compile hot path** — an arena-allocated packet assembler and a compiled-prompt
-  bytecode cache so a warm app's compile step is dominated by scoring, not allocation; a
-  zero-allocation fast path when the candidate set is unchanged since the last run.
-- **Streaming-first compilation** — overlap retrieval, scoring, and rendering so the first token of
-  the compiled prefix is emitted before the last candidate is scored, with back-pressure into the
-  provider transport.
-- **Speculative retrieval prefetch** — warm embedding/rerank calls and connection pools from the
-  objective classifier's prediction while the query is still being normalized, cancelled cleanly if
-  the plan changes.
-- **Vectorized scoring** — batch candidate scoring through a single matrix path (NumPy-optional, with
-  a pure-Python fallback) so large candidate sets score in one pass instead of a Python loop.
-- **Per-app memory-footprint budget** — a declared resident-memory ceiling enforced by slim packets,
-  evidence eviction, and lazy materialization, surfaced in the cost report and gated by an SLO.
-- *Definition of done:* tightened p50/p99 compile and end-to-end latency SLOs and a new
-  `performance` budget family proving the hot path stays sub-millisecond on the reference corpus, with
-  a footprint regression gate.
-
-### 🚧 Orchestrator & planner depth
-
-*Make multi-step execution plan better, recover from failure, and schedule fairly at scale.*
-
-- **Hierarchical planning** — an HTN-style planner that decomposes a goal into a sub-goal tree and
-  binds each leaf to a bounded agent or tool, composable with the existing direct / ReAct /
-  plan-and-execute planners.
-- **Plan repair & replanning** — on a tool failure, contradiction, or budget shock, repair the
-  remaining plan in place (re-bind, re-order, or substitute) instead of restarting, with the repair
-  recorded as a trajectory event.
-- **Cost-aware action selection** — the planner consults the `ModelRegistry` pricing and the live
-  budget to choose the cheapest capable action that still clears the quality bar, escalating only
-  when confidence is low.
-- **Parallel sub-graph scheduling** — a work-stealing scheduler over the distributed backend so
-  independent sub-graphs run concurrently across workers under one fair-share budget, with graph-level
-  SLA deadlines that return a partial result rather than blow the deadline.
-- **Durable timers & scheduled steps** — first-class `sleep_until` / `wait_for_event` nodes that
-  survive a restart, so a graph can pause for an approval, a webhook, or a wall-clock delay without
-  holding a worker.
-- *Definition of done:* the `agent` and `orchestration` VincioBench families gain planner-repair
-  correctness, cost-aware-selection savings, parallel-subgraph speedup, and durable-timer
-  restart-safety cases, with a runnable example and new SLOs.
-
-### 🚧 Ecosystem & integration breadth
-
-*Meet teams where their data and tools already live.*
-
-- **Connector breadth** — first-party connectors for Jira, Linear, Google Drive, SharePoint,
-  Salesforce, Zendesk, BigQuery, and Snowflake, all feeding the document engine with full provenance
-  behind the existing `register_connector` contract.
-- **Plugin discovery** — an entry-point plugin system so third-party providers, metrics, chunkers,
-  rerankers, judges, connectors, and packs register themselves on install, discoverable via
-  `vincio plugins list` and gated by a stable plugin-API contract.
-- **A community pack & skill registry** — a governed, signed index of opt-in domain packs and
-  `SKILL.md` bundles, resolvable through the existing `AgentDirectory` allow-list gate.
-- **Deeper framework interop** — Haystack and DSPy module interop alongside LangChain / LlamaIndex,
-  and an MCP-server marketplace bridge so a discovered server's tools land in the permissioned runtime
-  with one call.
-- *Definition of done:* each connector and interop bridge round-trips offline against a recorded
-  fixture in the `integrations` family, the plugin contract is versioned and documented, and the
-  registry resolution is an audited access decision.
 
 ### 🚧 Use-case coverage & verticals
 

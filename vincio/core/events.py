@@ -37,6 +37,7 @@ __all__ = [
     "SelfImprovementPhaseEvent",
     "DeployCompleted",
     "SourceErased",
+    "PlanRepaired",
     "payload_model_for",
 ]
 
@@ -46,7 +47,7 @@ logger = logging.getLogger("vincio.events")
 # so external sinks can bind to a stable schema and detect version skew. The
 # unified spans + metrics + cost model is the single source of truth, and the
 # catalog covers the self-improvement, deploy, and provable-erasure events.
-EVENT_SCHEMA_VERSION = "3.0"
+EVENT_SCHEMA_VERSION = "3.1"
 
 
 class Event(BaseModel):
@@ -172,6 +173,21 @@ class SourceErased(EventPayload):
     content_sha256: str | None = None
 
 
+class PlanRepaired(EventPayload):
+    """An agent repaired its running plan in place rather than restarting.
+
+    Emitted when the plan-repair pass re-binds, substitutes, reorders, or drops
+    steps after a tool failure, a validation contradiction, or a budget shock —
+    so a repair is an auditable trajectory event on the bus, not a silent retry.
+    """
+
+    event: ClassVar[str] = "plan.repaired"
+    action: str = ""
+    trigger: str = ""
+    step_name: str = ""
+    detail: str = ""
+
+
 # name -> payload model. Observers can look up the schema for an event name;
 # the bus validates dict payloads against it (leniently) on emit.
 EVENT_CATALOG: dict[str, type[EventPayload]] = {
@@ -189,6 +205,7 @@ EVENT_CATALOG: dict[str, type[EventPayload]] = {
         SelfImprovementPhaseEvent,
         DeployCompleted,
         SourceErased,
+        PlanRepaired,
     )
 }
 

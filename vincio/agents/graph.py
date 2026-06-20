@@ -176,6 +176,20 @@ class Checkpointer:
         history = self.history(thread_id)
         return history[-1] if history else None
 
+    def latest_per_thread(self) -> list[Checkpoint]:
+        """The head checkpoint of every thread in the store, newest write last.
+
+        Used by the durable-timer service to scan all threads for paused timers
+        without holding a thread id per timer in memory."""
+        records = self.store.query(_CHECKPOINT_KIND, limit=100_000)
+        heads: dict[str, Checkpoint] = {}
+        for record in records:
+            ckpt = Checkpoint.model_validate(record)
+            current = heads.get(ckpt.thread_id)
+            if current is None or (ckpt.step, ckpt.created_at) >= (current.step, current.created_at):
+                heads[ckpt.thread_id] = ckpt
+        return list(heads.values())
+
 
 class GraphEvent(BaseModel):
     type: Literal["node_start", "node_end", "checkpoint", "interrupt", "done"]

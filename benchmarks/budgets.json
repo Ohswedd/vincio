@@ -421,6 +421,36 @@
     "families.perf.hot_paths.count_tokens_memoized": {
       "eq": true
     },
+    "families.perf.context_compile.cold_p99_ms": {
+      "lte": 350
+    },
+    "families.perf.context_compile.cached_p50_ms": {
+      "lte": 5
+    },
+    "families.perf.vectorized_scoring.equivalent": {
+      "eq": true
+    },
+    "families.perf.render_program.byte_identical": {
+      "eq": true
+    },
+    "families.perf.warm_arena.equivalent": {
+      "eq": true
+    },
+    "families.perf.streaming_compile.prefix_before_scoring": {
+      "eq": true
+    },
+    "families.perf.prefetch.warms_cache": {
+      "eq": true
+    },
+    "families.perf.footprint.slim_reduces_bytes": {
+      "eq": true
+    },
+    "families.perf.footprint.budget_enforced": {
+      "eq": true
+    },
+    "families.perf.footprint.packet_bytes": {
+      "lte": 5000
+    },
     "families.loop.promotion.significance_gated": {
       "eq": true
     },
@@ -775,6 +805,48 @@
     "families.agent.streaming.provider_deltas": {
       "gte": 2
     },
+    "families.agent.planner_depth.hierarchical_parallel": {
+      "eq": true
+    },
+    "families.agent.planner_depth.hierarchical_finalized": {
+      "eq": true
+    },
+    "families.agent.planner_depth.repair_rebind": {
+      "eq": true
+    },
+    "families.agent.planner_depth.repair_substitute": {
+      "eq": true
+    },
+    "families.agent.planner_depth.repair_budget_shock": {
+      "eq": true
+    },
+    "families.agent.planner_depth.cost_aware_savings": {
+      "gte": 0.3
+    },
+    "families.agent.planner_depth.cost_aware_escalates": {
+      "eq": true
+    },
+    "families.agent.planner_depth.durable_timer_restart_safe": {
+      "eq": true
+    },
+    "families.agent.planner_depth.durable_event_resumes": {
+      "eq": true
+    },
+    "families.scale.subgraph.parallel_concurrency": {
+      "gte": 2
+    },
+    "families.scale.subgraph.speedup": {
+      "gte": 1.5
+    },
+    "families.scale.subgraph.equivalent_to_serial": {
+      "eq": true
+    },
+    "families.scale.subgraph.fair_share_within_budget": {
+      "eq": true
+    },
+    "families.scale.subgraph.deadline_returns_partial": {
+      "eq": true
+    },
     "families.memory.bitemporal.current_is_latest": {
       "eq": true
     },
@@ -830,6 +902,48 @@
       "eq": true
     },
     "families.scale.async_canonical.run_path_persists_async": {
+      "eq": true
+    },
+    "families.integrations.connectors_round_trip": {
+      "eq": true
+    },
+    "families.integrations.connector_provenance": {
+      "eq": true
+    },
+    "families.integrations.connector_count": {
+      "gte": 8
+    },
+    "families.integrations.plugin_loads_on_install": {
+      "eq": true
+    },
+    "families.integrations.plugin_gates_incompatible": {
+      "eq": true
+    },
+    "families.integrations.registry_resolution_governed": {
+      "eq": true
+    },
+    "families.integrations.registry_resolution_audited": {
+      "eq": true
+    },
+    "families.integrations.registry_signature_verified": {
+      "eq": true
+    },
+    "families.integrations.registry_tamper_detected": {
+      "eq": true
+    },
+    "families.integrations.haystack_bridge": {
+      "eq": true
+    },
+    "families.integrations.dspy_bridge": {
+      "eq": true
+    },
+    "families.integrations.mcp_marketplace_tool_landed": {
+      "eq": true
+    },
+    "families.integrations.mcp_marketplace_audited": {
+      "eq": true
+    },
+    "families.integrations.mcp_marketplace_denies_unlisted": {
       "eq": true
     }
   }

@@ -47,8 +47,9 @@ app.run("export button 500s").output.label
   hash-chained audit entry; metrics, optimization, governance all ride them.
 - **Extend via registries.** Providers, metrics, chunkers, rerankers, judges,
   validators, tools, connectors, packs all accept your own implementation;
-  third-party packages auto-register via `vincio.providers`/`embedders`/`stores`
-  entry points.
+  third-party packages auto-register on install via the versioned entry-point
+  plugin contract (`vincio.{providers,embedders,stores,connectors,chunkers,
+  rerankers,metrics,judges,packs}`; `vincio plugins list`, `load_plugins()`).
 - **Two surfaces, same impl.** The flat `app.<method>` API and lazy capability
   facades (`app.runs` / `.knowledge` / `.governance` / `.optimization` /
   `.serving` / `.training`) both work.
@@ -79,7 +80,20 @@ app.run("export button 500s").output.label
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
-  deadline + cancellation propagation. VincioBench budgets gate CI
+  deadline + cancellation propagation. The compile hot path is single-pass and
+  allocation-light: a vectorized candidate scorer (`ContextScorer.score_batch`,
+  NumPy-optional with an identical pure-Python fallback); a compiled-prompt
+  render program (`CompilerOptions.use_render_program`, `program_hits`) reusing
+  the rendered stable prefix, and a warm candidate arena
+  (`performance.reuse_candidate_set`, `arena_hits`) reusing the prepared
+  candidate set — both correctness-preserving; streaming-first compilation
+  (`ContextCompiler.compile_streaming` → `CompileStreamEvent`, prefix before
+  scoring); opt-in speculative retrieval prefetch
+  (`performance.speculative_prefetch`, `SpeculativePrefetcher`) warming the
+  query embedding; and a per-app resident-memory budget
+  (`performance.memory_budget_mb`) held by slim packets + evidence eviction,
+  surfaced as `RunResult.memory_bytes`. VincioBench budgets gate CI incl. a
+  sub-millisecond warm-compile gate and a footprint regression gate
   (`benchmarks/check_budgets.py`).
 
 ## Prompts & context
@@ -143,8 +157,12 @@ app.run("export button 500s").output.label
   `LocalCrossEncoderReranker`, llama.cpp `GGUFProvider` (each accepts an injected
   `model=`/`tokenizer=`; extras `vincio[fastembed,splade,cross-encoder,gguf]`).
 - **Connectors.** `from vincio.connectors import connect` — `web, github, sql,
-  s3, gcs, notion, confluence, slack`, custom via `register_connector`;
-  `app.add_source("kb", connector=connect("web", urls=[...]))`.
+  s3, gcs, notion, confluence, slack, jira, linear, gdrive, sharepoint,
+  salesforce, zendesk, bigquery, snowflake`, custom via `register_connector`;
+  `app.add_source("kb", connector=connect("jira", base_url=..., token=...))`. The
+  REST connectors ride core `httpx` + an injected `client=` (offline tests);
+  `bigquery`/`snowflake` take an injected client/connection (`vincio[bigquery]` /
+  `vincio[snowflake]`). All return `Document`s with provenance.
 
 ## Memory
 
@@ -173,10 +191,27 @@ app.run("export button 500s").output.label
 - **Tools.** Permissioned registry (RBAC scopes + ABAC rules), schema from type
   hints, resource-limited sandbox, reliability scoring, idempotent approval-gated
   writes. Computer-use & provider-native hosted tools register on the same path.
-- **Agents.** `app.agent(tools=, planner="dag|dynamic|react|direct",
-  max_steps=)` → bounded `AgentState` with `metrics()`; level-parallel DAG over
+- **Agents.** `app.agent(tools=, planner="dag|dynamic|react|direct|
+  plan_and_execute|hierarchical", max_steps=, domain=, cost_aware_models=)` →
+  bounded `AgentState` with `metrics()`; level-parallel DAG over
   `topological_levels`, a real `plan_and_execute` replanning loop
   (`Planner.replan`), in-loop compaction (`ContextCompactor`).
+- **Hierarchical (HTN) planning.** `HTNDomain().method(task, [subtasks],
+  ordering="sequence|parallel", when=)` + `.operator(name, step_type=,
+  tool_name=, fallbacks=)`; `domain.decompose(task, context=)` → `HTNPlanNode`
+  sub-goal tree; `dag_from_plan_node(node, available_tools=)` → executable
+  `StepDAG`. `planner="hierarchical"` runs it (offline-deterministic with a
+  domain, model-driven without; static fallback).
+- **Plan repair.** On a tool failure / validation contradiction / budget shock
+  the executor edits the *remaining* plan in place (`PlanRepairer`: re-bind to a
+  `fallback_tools` / name-overlap tool, substitute to reasoning, reorder a
+  corrective step, or drop the optional tail) instead of restarting; each repair
+  is an `AgentState.repairs` entry, a `plan.repaired` event, and a trajectory
+  step. On by default (`AgentExecutor(repair=False)` to disable).
+- **Cost-aware action selection.** `cost_aware_models=[cheap, …, strong]` (or
+  `CostAwareSelector(models, registry=)`) picks the cheapest *capable* model per
+  step from `ModelRegistry` pricing + capabilities, escalating one tier only when
+  the prior step's confidence is low; `SelectionDecision` records the pick.
 - **Crews.** `app.crew(members=[{"name","description","goal","keywords",
   "budget_fraction"}], process="sequential|parallel|hierarchical", max_rounds=)`
   → `CrewResult` (output, reports, delegations, blackboard snapshot) — members
@@ -204,6 +239,19 @@ app.run("export button 500s").output.label
   `StateGraph.compile(parallel=True)` runs BSP super-steps; a node returning
   `[Send("node", {...})]` fans out map-reduce. `LangGraphBackend().compile(graph)`
   / `OpenAIAgentsBackend().export_crew(crew)` export (lazy, no lock-in).
+- **Parallel sub-graph scheduling.** `SubgraphScheduler(workers=N,
+  budget=Budget(...), deadline_s=)` work-steals independent sub-graphs across the
+  worker pool; `.run([SubgraphTask(graph, input, weight=)])` → `ScheduleResult`
+  (`completed`, `partial`, `peak_concurrency`, `speedup`, `shares_usd` summing to
+  the budget, `deadline_hit`). The SLA deadline returns completed + durable
+  partial results (latest checkpoint) rather than blowing the deadline.
+- **Durable timers / scheduled steps.** Inside a graph node: `sleep_until(state,
+  when)` / `sleep_for(state, seconds, clock=)` / `wait_for_event(state, name)`
+  pause the graph (the wake condition rides the checkpoint, so it survives a
+  restart without holding a worker). `TimerService(compiled, clock=)` →
+  `.tick(now=)` resumes due sleep timers, `.deliver(thread_id, event_name,
+  payload=)` wakes an event wait; `pending_timers` / `due_timers` /
+  `resume_due_timers` / `deliver_event` are the module-level forms.
 - **Deep research.** `app.research(question, *, budget=ResearchBudget(breadth=,
   depth=, max_sources=, top_k=))` → `ResearchAgent` / `ResearchReport` loops
   search→read→reflect→verify→synthesize, dedups sources, emits a cited report;
@@ -565,6 +613,11 @@ app.run("export button 500s").output.label
   (`origin: mcp:<server>`), sampling routes to the provider, elicitation to a
   human gate; OAuth 2.1 seams. `MCPUIResource` served via
   `app.serve_mcp(ui_resources=[...])`.
+- **MCP marketplace bridge.** `app.add_mcp_from_registry(name, registry=,
+  allow=/deny=/directory=)` — one call: discover via `MCPRegistryClient`, govern
+  reachability through a governed `AgentDirectory` (`AllowListGate`, audited
+  `agent_resolve`), then land the server's tools in the permissioned runtime;
+  `server=`/`transport=` for offline/in-process. Unlisted → `AccessDeniedError`.
 - **A2A.** `vincio.a2a`: `app.serve_a2a(crew|graph)` (Agent Card + JSON-RPC task
   lifecycle), `RemoteA2AAgent` as a bounded crew delegate.
 - **Agent Skills.** `vincio.skills`: `app.add_skill(path)` (`SKILL.md` progressive
@@ -575,6 +628,19 @@ app.run("export button 500s").output.label
   `directory.find(capability=|tag=|query=)`, `directory.resolve(name)` passes an
   `AllowListGate` (fail-closed) and records an `agent_resolve` decision. AGNTCY/ACP
   + MCP-registry discover into the same directory.
+- **Community pack & skill registry.** `from vincio import CommunityRegistry,
+  BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
+  index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,
+  `registry.load_pack/load_skill(name)` — resolution passes the same `AllowListGate`
+  the fabric uses, verifies the signature, and records an audited `bundle_resolve`
+  decision; tamper/unlisted/unsigned are denied. `sign_index()`/`verify_index()`.
+- **Plugins.** `from vincio import installed_plugins, load_plugins,
+  discover_plugins`; `from vincio.plugins import PLUGIN_API_VERSION`. Entry-point
+  groups `vincio.{providers,embedders,stores,connectors,chunkers,rerankers,metrics,
+  judges,packs}` register third-party extensions on install; a distribution may
+  declare its targeted API major via `vincio.plugins:api_version` (major mismatch →
+  reported + skipped). `connect()`/`load_pack()` auto-load on a name miss; `vincio
+  plugins list` (CLI).
 - **Generative UI.** `from vincio.server.agui import AGUIEvent,
   run_stream_to_agui, agent_stream_to_agui`; SSE `POST /v1/apps/{id}/agui`;
   `AgentExecutor.astream` /
@@ -582,8 +648,10 @@ app.run("export button 500s").output.label
   deltas, tool events) — inherits the run's provenance/budget/audit.
 - **Framework interop & DX.** `from vincio.interop import add_langchain_tool,
   from_langchain_loader/retriever/embeddings, from_llamaindex_reader/retriever/
-  embedding, add_llamaindex_tool` (duck-typed) + `to_langchain_*`/`to_llamaindex_*`
-  (extras `vincio[langchain|llamaindex]`); domain packs
+  embedding, add_llamaindex_tool, from_haystack_retriever/document/embedder,
+  add_haystack_component, from_dspy_module/retriever/signature, add_dspy_module,
+  to_dspy_lm` (duck-typed `from_*`) + `to_langchain_*`/`to_llamaindex_*`/
+  `to_haystack_*` (extras `vincio[langchain|llamaindex|haystack|dspy]`); domain packs
   `app.use_pack("support|engineering|finance|legal")` (`load_pack`,
   `available_packs`, `register_pack`); `enable_rich_reprs` (notebook), `vincio
   tui`, `config_json_schema()`; voice/realtime `from vincio.realtime import

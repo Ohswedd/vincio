@@ -23,6 +23,96 @@
       "rationale": "Repeat compilations of unchanged inputs must amortize; protects the caching contract."
     },
     {
+      "id": "compile_latency_p99",
+      "category": "performance",
+      "statement": "Cold context compilation completes within 500 ms at p99.",
+      "metric": "families.perf.context_compile.cold_p99_ms",
+      "direction": "lte",
+      "threshold": 500,
+      "enforced_by": "families.perf.context_compile.cold_p99_ms",
+      "rationale": "The tail of the compile hot path is gated, not just the median; the budget holds 350 ms for headroom."
+    },
+    {
+      "id": "warm_compile_hot_path",
+      "category": "performance",
+      "statement": "A warm compile (content-addressed cache hit) is dominated by the cache lookup, completing well under a millisecond on the reference corpus.",
+      "metric": "families.perf.context_compile.cached_p50_ms",
+      "direction": "lte",
+      "threshold": 10,
+      "enforced_by": "families.perf.context_compile.cached_p50_ms",
+      "rationale": "The warm hot path must stay allocation-free and sub-millisecond; the budget gates 5 ms for order-of-magnitude regression detection on shared runners."
+    },
+    {
+      "id": "vectorized_scoring_equivalent",
+      "category": "performance",
+      "statement": "Batched candidate scoring produces identical scores to the per-candidate loop.",
+      "metric": "families.perf.vectorized_scoring.equivalent",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.vectorized_scoring.equivalent",
+      "rationale": "The single-pass (NumPy-optional) scorer is a hot-path accelerator; it must never change which context is selected."
+    },
+    {
+      "id": "render_program_byte_identical",
+      "category": "performance",
+      "statement": "The compiled-prompt render program produces byte-identical output to compiling from scratch.",
+      "metric": "families.perf.render_program.byte_identical",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.render_program.byte_identical",
+      "rationale": "Reusing the rendered stable prefix must not alter the prompt; correctness is the precondition for the speedup."
+    },
+    {
+      "id": "warm_candidate_arena_equivalent",
+      "category": "performance",
+      "statement": "Reusing an unchanged candidate set compiles the same context as a cold compile for a new query.",
+      "metric": "families.perf.warm_arena.equivalent",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.warm_arena.equivalent",
+      "rationale": "The warm candidate arena reuses only query-independent preparation; the selected context must be identical."
+    },
+    {
+      "id": "streaming_first_compilation",
+      "category": "performance",
+      "statement": "Streaming compilation emits the stable prefix before any candidate is scored.",
+      "metric": "families.perf.streaming_compile.prefix_before_scoring",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.streaming_compile.prefix_before_scoring",
+      "rationale": "Overlapping the prefix with selection requires the prefix to be available first; a downstream consumer can begin while scoring runs."
+    },
+    {
+      "id": "speculative_prefetch_warms_cache",
+      "category": "performance",
+      "statement": "Speculative prefetch warms the query embedding so retrieval's embed is a cache hit.",
+      "metric": "families.perf.prefetch.warms_cache",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.prefetch.warms_cache",
+      "rationale": "Prefetch is only worthwhile if the warmed vector is the one retrieval needs; otherwise it is wasted work."
+    },
+    {
+      "id": "memory_footprint_budget_enforced",
+      "category": "performance",
+      "statement": "A declared per-app memory ceiling is held by slimming the packet and evicting the lowest-utility evidence.",
+      "metric": "families.perf.footprint.budget_enforced",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.footprint.budget_enforced",
+      "rationale": "A resident-memory budget is only a guarantee if it is actually enforced when the context would exceed it."
+    },
+    {
+      "id": "resident_footprint",
+      "category": "performance",
+      "statement": "The compiled context packet's estimated resident footprint on the reference corpus stays under 6 KB.",
+      "metric": "families.perf.footprint.packet_bytes",
+      "direction": "lte",
+      "threshold": 6000,
+      "enforced_by": "families.perf.footprint.packet_bytes",
+      "rationale": "A footprint regression gate catches packet bloat; the budget holds 5 KB, below the published ceiling."
+    },
+    {
       "id": "retrieval_latency_p95",
       "category": "performance",
       "statement": "Retrieval over an in-memory index returns within 150 ms at p95.",
@@ -871,6 +961,56 @@
       "threshold": true,
       "enforced_by": "families.scale.async_canonical.run_path_persists_async",
       "rationale": "Async is the canonical contract; a blocking store write on any run path would stall the event loop under load."
+    },
+    {
+      "id": "planner_repair_recovers_tool_failure",
+      "category": "reliability",
+      "statement": "On a tool failure an agent repairs the remaining plan in place (re-binds to an alternative tool) and still finishes, rather than restarting or dead-ending.",
+      "metric": "families.agent.planner_depth.repair_rebind",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agent.planner_depth.repair_rebind",
+      "rationale": "Resilience to a failing dependency is the point of in-place repair; a tool outage must not abort a run that can still succeed."
+    },
+    {
+      "id": "planner_repair_budget_shock",
+      "category": "reliability",
+      "statement": "Under a budget shock an agent drops the optional tail of its plan and finalizes directly, returning the best answer reachable inside the budget instead of exhausting it.",
+      "metric": "families.agent.planner_depth.repair_budget_shock",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agent.planner_depth.repair_budget_shock",
+      "rationale": "A budget is a hard cap; the planner must converge toward an answer under pressure, never blow the cap chasing optional work."
+    },
+    {
+      "id": "cost_aware_selection_savings",
+      "category": "cost",
+      "statement": "Cost-aware action selection cuts model spend by at least 25% versus always using the strongest model, by spending a cheaper capable model on the easy steps.",
+      "metric": "families.agent.planner_depth.cost_aware_savings",
+      "direction": "gte",
+      "threshold": 0.25,
+      "enforced_by": "families.agent.planner_depth.cost_aware_savings",
+      "rationale": "Reaching for the strongest model on every step overpays; the floor protects the savings the registry-priced selector exists to deliver."
+    },
+    {
+      "id": "parallel_subgraph_speedup",
+      "category": "performance",
+      "statement": "Independent sub-graphs scheduled across a worker pool achieve at least a 1.5x logical speedup over serial execution, with identical results.",
+      "metric": "families.scale.subgraph.speedup",
+      "direction": "gte",
+      "threshold": 1.5,
+      "enforced_by": "families.scale.subgraph.speedup",
+      "rationale": "Independent work should run concurrently; the floor protects the speedup the work-stealing scheduler exists to deliver."
+    },
+    {
+      "id": "durable_timer_restart_safety",
+      "category": "reliability",
+      "statement": "A graph paused on a durable timer survives a process restart and resumes when the timer comes due, without holding a worker while paused.",
+      "metric": "families.agent.planner_depth.durable_timer_restart_safe",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agent.planner_depth.durable_timer_restart_safe",
+      "rationale": "A timer that did not survive a restart would silently never fire; durability of the wake condition is the whole guarantee."
     }
   ]
 }

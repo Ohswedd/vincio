@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "3.0.1"
+version = "3.3.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -61,6 +61,11 @@ docx = ["python-docx>=1.1"]
 realtime = ["websockets>=12.0"]
 langchain = ["langchain-core>=0.3"]
 llamaindex = ["llama-index-core>=0.11"]
+haystack = ["haystack-ai>=2.0"]
+dspy = ["dspy-ai>=2.4"]
+# data-warehouse connectors (REST connectors run on the core httpx dependency)
+bigquery = ["google-cloud-bigquery>=3.0"]
+snowflake = ["snowflake-connector-python>=3.0"]
 # 1.9 — documents & images flow OUT (generation + richer inputs)
 gen-docx = ["python-docx>=1.1"]
 gen-pdf = ["reportlab>=4.0"]
@@ -83,7 +88,7 @@ dev = [
   "mypy>=1.9",
 ]
 all = [
-  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,gen-docx,gen-pdf,gen-pptx,ocr,parquet,msg,computer-use,fastembed,splade,cross-encoder,gguf]",
+  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,haystack,dspy,bigquery,snowflake,gen-docx,gen-pdf,gen-pptx,ocr,parquet,msg,computer-use,fastembed,splade,cross-encoder,gguf]",
 ]
 
 [project.scripts]

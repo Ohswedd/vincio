@@ -14,11 +14,16 @@ Protocol) — plus the official **MCP Registry** for server discovery.
     # discover from an AGNTCY/ACP registry or the MCP registry, under the gate
     await ACPClient(catalog=manifests).register_into_directory(directory)
     await MCPRegistryClient(catalog=servers).register_into_directory(directory)
+
+A :class:`CommunityRegistry` applies the same governance to opt-in domain
+**packs** and ``SKILL.md`` **skill** bundles: a signed, content-bound index whose
+resolutions pass the same allow-list gate and land on the audit chain.
 """
 
 from __future__ import annotations
 
 from .acp import ACPAgentManifest, ACPClient, acp_to_agent_card, agent_card_to_acp
+from .community import BundleKind, BundleRecord, BundleResolution, CommunityRegistry
 from .directory import AgentDirectory, AgentRecord, AgentResolution
 from .mcp_registry import MCPRegistryClient, MCPServerRecord
 
@@ -32,4 +37,8 @@ __all__ = [
     "agent_card_to_acp",
     "MCPRegistryClient",
     "MCPServerRecord",
+    "CommunityRegistry",
+    "BundleRecord",
+    "BundleResolution",
+    "BundleKind",
 ]

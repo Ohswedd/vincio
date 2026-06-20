@@ -25,7 +25,16 @@ for tuning.
 | SLO | Target | VincioBench metric |
 |---|---|---|
 | Cold context compilation (p95) | ≤ 300 ms | `perf.context_compile.cold_p95_ms` |
+| Cold context compilation (p99) | ≤ 500 ms | `perf.context_compile.cold_p99_ms` |
+| Warm compile hot path (p50, cache hit) | ≤ 10 ms (sub-ms on the reference corpus) | `perf.context_compile.cached_p50_ms` |
 | Compile cache speedup | ≥ 1.5× | `perf.context_compile.cache_speedup` |
+| Vectorized scoring equivalence | batched == per-candidate loop | `perf.vectorized_scoring.equivalent` |
+| Render-program byte-identity | identical to from-scratch compile | `perf.render_program.byte_identical` |
+| Warm candidate arena equivalence | warm reuse == cold compile | `perf.warm_arena.equivalent` |
+| Streaming-first compilation | prefix before scoring | `perf.streaming_compile.prefix_before_scoring` |
+| Speculative prefetch | warms the retrieval embed | `perf.prefetch.warms_cache` |
+| Memory-footprint budget enforced | slim + evict to fit the ceiling | `perf.footprint.budget_enforced` |
+| Resident footprint (reference corpus) | ≤ 6 KB | `perf.footprint.packet_bytes` |
 | Retrieval latency (p95) | ≤ 150 ms | `perf.retrieval.p95_ms` |
 | Cached end-to-end run (p50) | ≤ 300 ms | `perf.run.p50_ms` |
 | Concurrent throughput | ≥ 50 runs/s | `perf.run.concurrent_runs_per_s` |
@@ -100,6 +109,22 @@ a transient outage into a permanent one; stable system/tool/context prefixes are
 the bulk of input tokens, so caching them is the single biggest cost lever; and
 FinOps decisions and per-tenant budgets are only trustworthy if attribution is
 exact, not estimated.
+
+## Orchestrator & planner depth
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| On a tool failure, the agent repairs the plan in place (re-binds) and still finishes. | true | `families.agent.planner_depth.repair_rebind` |
+| Under a budget shock, the agent drops the optional tail and finalizes inside the budget. | true | `families.agent.planner_depth.repair_budget_shock` |
+| Cost-aware action selection cuts model spend vs always-strong. | ≥ 25% | `families.agent.planner_depth.cost_aware_savings` |
+| Independent sub-graphs scheduled across workers reach a logical speedup over serial. | ≥ 1.5× | `families.scale.subgraph.speedup` |
+| A graph paused on a durable timer survives a restart and resumes when due. | true | `families.agent.planner_depth.durable_timer_restart_safe` |
+
+A failing dependency must not abort a run that can still succeed, and a budget is
+a hard cap the planner converges toward rather than blows; reaching for the
+strongest model on every step overpays, so the cheapest capable model earns the
+easy steps; independent work should run concurrently, not serially; and a timer
+whose wake condition did not survive a restart would silently never fire.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

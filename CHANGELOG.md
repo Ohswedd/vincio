@@ -4,6 +4,191 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.3.0] - 2026-06-20
+
+Ecosystem & integration breadth: meet teams where their data and tools already
+live. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, the
+dependency-free offline path is the default, and every existing entry point is
+unchanged. New heavy integrations are opt-in extras; the new plugin contract is
+versioned at `PLUGIN_API_VERSION = "1.0"`.
+
+### Added
+
+- **First-party connectors.** Eight new connectors feed the document engine with
+  full provenance behind the existing `register_connector` / `connect` contract:
+  `jira`, `linear`, `gdrive`, `sharepoint`, `salesforce`, and `zendesk` (REST,
+  riding the core `httpx` dependency), plus `bigquery` and `snowflake` (warehouse,
+  via an injected client/connection or the `vincio[bigquery]` / `vincio[snowflake]`
+  extra). Each accepts an injected client so it round-trips offline; each returns
+  `Document`s with `source_uri`, connector metadata, and timestamps. VincioBench
+  gates `families.integrations.{connectors_round_trip,connector_provenance}`.
+- **Entry-point plugin system.** A new `vincio.plugins` module formalizes a
+  versioned plugin contract: third-party providers, embedders, stores, connectors,
+  chunkers, rerankers, judges, metrics, and packs register themselves on install
+  via the `vincio.<kind>` entry-point groups. `installed_plugins()` /
+  `discover_plugins()` report without importing targets; `load_plugins()` registers
+  compatible plugins (idempotent, isolating a broken one). A distribution may
+  declare its targeted plugin-API major (`vincio.plugins:api_version`); a major
+  mismatch is reported and skipped. `connect()` / `load_pack()` auto-load on a name
+  miss; `vincio plugins list` (CLI). New `register_reranker` / `build_judge` /
+  `register_judge` / `JUDGES` and `skill_from_markdown`. VincioBench gates
+  `families.integrations.{plugin_loads_on_install,plugin_gates_incompatible}`.
+- **Community pack & skill registry.** `vincio.registry.CommunityRegistry` is a
+  signed, governed index of opt-in domain packs and `SKILL.md` skill bundles. Each
+  `BundleRecord` is content-bound (SHA-256) and may be signed with the library's
+  `ChainSigner` (HMAC, or Ed25519 for third-party verification); every resolution
+  passes the same `AllowListGate` the agent fabric uses, verifies the signature,
+  and is recorded as an audited `bundle_resolve` access decision — a tampered,
+  unlisted, or unsigned-when-required bundle is denied, not served.
+  `publish_pack` / `publish_skill` / `load_pack` / `load_skill` / `sign_index` /
+  `verify_index`. VincioBench gates `families.integrations.{registry_resolution_
+  governed,registry_resolution_audited,registry_signature_verified,registry_tamper_
+  detected}`.
+- **Deeper framework interop.** `vincio.interop` gains Haystack and DSPy bridges
+  alongside LangChain / LlamaIndex: `from_haystack_document` /
+  `from_haystack_retriever` / `from_haystack_embedder` / `add_haystack_component` /
+  `to_haystack_document(s)`, and `from_dspy_module` / `from_dspy_retriever` /
+  `from_dspy_signature` / `add_dspy_module` / `to_dspy_lm`. The `from_*` direction
+  is duck-typed (no heavy import); `to_*` needs `vincio[haystack]` / `vincio[dspy]`.
+  VincioBench gates `families.integrations.{haystack_bridge,dspy_bridge}`.
+- **MCP-server marketplace bridge.** `app.add_mcp_from_registry(name, registry=,
+  allow=/deny=/directory=)` composes discovery (`MCPRegistryClient`), governance (a
+  governed `AgentDirectory` under an `AllowListGate`, recording an audited
+  `agent_resolve` decision), and connection (the existing permissioned, sandboxed,
+  audited runtime) in one call — a discovered server's tools land namespaced and
+  enabled; an unlisted server raises `AccessDeniedError`. VincioBench gates
+  `families.integrations.{mcp_marketplace_tool_landed,mcp_marketplace_audited,
+  mcp_marketplace_denies_unlisted}`.
+
+### Reliability
+
+- New VincioBench `integrations` family: every connector and interop bridge
+  round-trips offline against a recorded fixture (`benchmarks/fixtures/
+  integrations.json`), the plugin contract is exercised end-to-end, and the
+  registry resolution is verified to be an audited access decision. Example
+  [`41_ecosystem_and_integration.py`](examples/41_ecosystem_and_integration.py).
+
+**1761 tests passing offline; ruff + mypy clean; VincioBench 315 budgets / 101 SLOs.**
+
+## [3.2.0] - 2026-06-20
+
+Orchestrator & planner depth: make multi-step execution plan better, recover
+from failure, and schedule fairly at scale. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path
+is the default, and every existing planner / graph / agent path is unchanged.
+The event-catalog schema bumps to `3.1` for the new `plan.repaired` payload.
+
+### Added
+
+- **Hierarchical (HTN) planning.** A new `hierarchical` planner mode decomposes a
+  goal into a sub-goal tree and binds each leaf to a bounded step, composable with
+  the existing planners. `vincio.agents.HTNDomain` (`.method(task, subtasks,
+  ordering="sequence|parallel", when=)` / `.operator(name, step_type=, tool_name=,
+  fallbacks=)`) decomposes deterministically into an `HTNPlanNode` tree that
+  `dag_from_plan_node` flattens into an executable `StepDAG`; without a domain the
+  model proposes a two-level decomposition, with a static fallback offline.
+  `app.agent(planner="hierarchical", domain=...)`. VincioBench gates
+  `families.agent.planner_depth.hierarchical_parallel`.
+- **In-place plan repair.** On a tool failure, a validation contradiction, or a
+  budget shock the executor edits the *remaining* plan instead of restarting —
+  `vincio.agents.PlanRepairer` re-binds a failed tool to a `fallback_tools` /
+  name-overlap alternative, substitutes a reasoning step when none exists,
+  reorders a corrective re-analysis before the finalize, or drops the optional
+  tail to finalize inside the budget. On by default (`AgentExecutor(repair=False)`
+  to disable). Each repair is an `AgentState.repairs` entry, a typed
+  `plan.repaired` event, and a `plan_repair` trajectory step. VincioBench gates
+  `families.agent.planner_depth.repair_{rebind,substitute,budget_shock}`.
+- **Cost-aware action selection.** `app.agent(cost_aware_models=[cheap, …,
+  strong])` (or `vincio.agents.CostAwareSelector`) reads the data-driven
+  `ModelRegistry` pricing and capabilities and the live budget to spend the
+  cheapest capable model per step, escalating one tier only when the prior step's
+  confidence is low; capability never traded for price. Each pick is a
+  `SelectionDecision`. VincioBench gates
+  `families.agent.planner_depth.cost_aware_savings` (≈ −57% vs always-strong).
+- **Parallel sub-graph scheduling.** `vincio.agents.SubgraphScheduler` work-steals
+  independent durable sub-graphs across the worker pool under one weighted
+  fair-share budget (the shares sum to the cap), with a graph-level SLA deadline
+  that returns the completed results plus the durable partial state of the rest
+  rather than blowing the deadline. `.run([SubgraphTask(graph, input, weight=)])`
+  → `ScheduleResult`. VincioBench gates `families.scale.subgraph.{speedup,
+  fair_share_within_budget,deadline_returns_partial}`.
+- **Durable timers & scheduled steps.** First-class `sleep_until` / `sleep_for` /
+  `wait_for_event` node helpers pause a graph for a wall-clock delay, a webhook,
+  or an approval without holding a worker; the wake condition rides the
+  checkpoint, so it survives a restart. `TimerService(compiled).tick()` resumes
+  due sleep timers and `.deliver(thread_id, event_name, payload=)` wakes an event
+  wait (module-level `pending_timers` / `due_timers` / `resume_due_timers` /
+  `deliver_event`). VincioBench gates
+  `families.agent.planner_depth.durable_timer_restart_safe`.
+
+### Reliability
+
+- New SLOs: planner-repair recovery on a tool failure and a budget shock,
+  cost-aware-selection savings (≥ 25%), parallel-sub-graph speedup (≥ 1.5×), and
+  durable-timer restart safety — each backed by an at-least-as-strict VincioBench
+  budget. Example [`40_orchestrator_planner_depth.py`](examples/40_orchestrator_planner_depth.py).
+
+**1705 tests passing offline; ruff + mypy clean; VincioBench 301 budgets / 101 SLOs.**
+
+## [3.1.0] - 2026-06-20
+
+Runtime performance & efficiency: make the compile spine fast enough that
+context engineering is never the bottleneck. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline
+path is the default, and every default run path is unchanged. NumPy is an
+optional accelerator, never a requirement.
+
+### Added
+
+- **Vectorized candidate scoring.** `ContextScorer.score_batch` scores a whole
+  candidate set in one pass — the per-component scores are reduced against the
+  weight vector together (a single matrix product under NumPy via the new
+  `vincio.context.vectorized`, an identical pure-Python reduction otherwise), and
+  each `ContextScores` is built without per-item validation. Bit-for-bit
+  identical selection to the per-candidate loop. VincioBench gates
+  `families.perf.vectorized_scoring.equivalent`.
+- **Compiled-prompt render program.** `PromptCompiler` compiles a spec's stable
+  prefix (role/objective/rules/safety/definitions/output-contract/examples) once
+  into a reusable render program (`vincio.prompts.program`,
+  `CompilerOptions.use_render_program`, default on) and reuses it across calls
+  that share the spec, rendering only the volatile suffix. Byte-identical output;
+  `program_hits` counts reuses. VincioBench gates
+  `families.perf.render_program.byte_identical`.
+- **Warm candidate arena.** When the candidate set (inputs + privacy scope) is
+  unchanged, the context compiler reuses the collected, normalized, and
+  privacy-screened candidates (`vincio.context.arena`,
+  `performance.reuse_candidate_set` / `ContextCompilerOptions.reuse_candidate_set`,
+  default on) instead of rebuilding them. Correctness-preserving and safe under
+  concurrent use; `arena_hits` counts reuses. VincioBench gates
+  `families.perf.warm_arena.equivalent`.
+- **Streaming-first compilation.** `ContextCompiler.compile_streaming` yields a
+  new `CompileStreamEvent` stream — the stable prefix (objective / instructions /
+  constraints / task) before any candidate is scored, then the selected evidence,
+  then a terminal `done` carrying the full `CompiledContext` (identical to
+  `compile`). Back-pressure is the async generator itself. VincioBench gates
+  `families.perf.streaming_compile.prefix_before_scoring`.
+- **Speculative retrieval prefetch.** Opt-in `performance.speculative_prefetch`
+  warms the query embedding (`vincio.retrieval.SpeculativePrefetcher` /
+  `PrefetchHandle`) from the task classification while preparation runs, so
+  retrieval's query embed lands as a cache hit; cancelled cleanly and best-effort.
+  VincioBench gates `families.perf.prefetch.warms_cache`.
+- **Per-app memory-footprint budget.** `performance.memory_budget_mb` declares a
+  resident-memory ceiling for the compiled packet; the compiler slims the packet
+  and evicts the lowest-utility evidence to fit (`vincio.context.footprint`),
+  recording each eviction. The footprint is surfaced as `RunResult.memory_bytes`
+  and rolled up as `peak_resident_bytes` in the cost summary. VincioBench gates
+  `families.perf.footprint.budget_enforced` and a resident-footprint regression
+  gate `families.perf.footprint.packet_bytes`.
+
+### Performance
+
+- New SLOs: p99 cold-compile latency, a sub-millisecond warm-compile hot path
+  (`families.perf.context_compile.cached_p50_ms`), and a resident-footprint
+  ceiling, plus the equivalence/byte-identity/streaming/prefetch invariants —
+  each backed by an at-least-as-strict VincioBench budget.
+
+**1663 tests passing offline; ruff + mypy clean; VincioBench 287 budgets / 96 SLOs.**
+
 ## [3.0.1] - 2026-06-18
 
 Closes the two honest scoping notes the 3.0.0 milestone shipped with. Both

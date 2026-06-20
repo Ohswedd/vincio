@@ -34,7 +34,7 @@ where they are, so you can run it yourself and audit the claims.
 | **PromptBench** | Do compiled layouts cut tokens and raise cache prefix reuse vs hand-concatenation? Does the linter catch known defects? | string concatenation |
 | **RAGBench** | recall@3 / MRR per retrieval mode; GraphRAG community building; (2.2) retrieval-eval recall@k/nDCG@k + index-version regression on recall deltas | single-index BM25 |
 | **MemoryBench** | preference recall, contradiction superseding, cross-user isolation, staleness | — |
-| **AgentBench** | budget adherence under adversarial loops, crew termination, durable-graph determinism; (2.2) executor/crew token & tool-event streaming + AG-UI translation | unbounded loop |
+| **AgentBench** | budget adherence under adversarial loops, crew termination, durable-graph determinism; executor/crew token & tool-event streaming + AG-UI translation; orchestrator & planner depth (HTN decomposition, in-place plan repair, cost-aware action-selection savings, durable-timer restart safety) + parallel sub-graph scheduling (concurrency, speedup, fair-share budget, SLA-deadline partials) | unbounded loop / restart-on-failure / always-strong / serial |
 | **ToolBench** | reliability, p50 runtime overhead, invalid-arg rejection, cache hits | — |
 | **OutputBench** | recovery rate over malformed outputs vs raw parsing | `json.loads` |
 | **ReliabilityBench** | constrained-decode closure, mid-stream abort savings, self-correction, rails | validate-at-end |
@@ -47,6 +47,7 @@ where they are, so you can run it yourself and audit the claims.
 | **GovernanceBench** | card/AI-BOM completeness, OWASP/NIST/MITRE/ISO-42001 mapping coverage, erasure correctness + audit, multilingual PII recall, RAG-poisoning detection rate/FP, residency endpoint inference, signed-manifest verification | English-only / ungoverned |
 | **GenerationBench** | document-contract validity (deficient rejected), cited-report coverage + per-claim entailment, media C2PA provenance binding + tamper rejection + disclosure, redline correctness, new-format ingestion recall, generated-media prompt safety | un-contracted / un-provenanced output |
 | **PerfBench** | compile/retrieval/run latency, cache speedups, concurrent throughput, TTFT | cold paths |
+| **IntegrationsBench** | every first-party connector round-trips offline against a recorded fixture with provenance; the plugin contract loads compatible plugins and gates incompatible majors; the signed community registry resolves under an allow-list (audited), verifies signatures, and detects tampering; Haystack/DSPy bridges adapt in; the MCP-server marketplace bridge discovers→governs→connects in one call | hand-wired loaders / ungoverned, unsigned registries |
 
 ## Corpora and provenance
 

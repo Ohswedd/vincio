@@ -23,6 +23,12 @@ vincio packs list
 vincio packs show NAME
     Show a pack's role, objective, policies, evaluators, and output schema.
 
+vincio plugins list
+    List installed third-party plugins (providers, embedders, stores,
+    connectors, chunkers, rerankers, judges, metrics, packs) discovered via
+    entry points, with each one's distribution, version, and status
+    (available / loaded / incompatible / error) under the versioned plugin API.
+
 vincio tui [--traces-dir DIR] [--db FILE]
     Interactive terminal inspector for runs, traces, and memory.
 

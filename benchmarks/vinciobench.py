@@ -41,6 +41,7 @@ from vincio.core.types import (
     Chunk,
     Document,
     EvidenceItem,
+    Example,
     Message,
     ModelRequest,
     ModelResponse,
@@ -482,6 +483,223 @@ async def _agent_streaming_2_2() -> dict[str, Any]:
         "token_deltas": sum(1 for t in crew_types if t == "text_delta"),
         "genuine_token_streaming": genuine_token_streaming,
         "provider_deltas": len(static_deltas),
+    }
+
+
+async def _planner_depth() -> dict[str, Any]:
+    """Orchestrator & planner depth: hierarchical decomposition, in-place plan
+    repair, cost-aware action-selection savings, and durable-timer restart safety —
+    all measured offline and deterministically."""
+    from datetime import UTC, datetime, timedelta
+
+    from vincio.agents import (
+        AgentExecutor,
+        CostAwareSelector,
+        HTNDomain,
+        Planner,
+        PlanRepairer,
+        StateGraph,
+        TimerService,
+        dag_from_plan_node,
+        deliver_event,
+        sleep_for,
+        wait_for_event,
+    )
+    from vincio.agents.dag import StepDAG
+    from vincio.agents.graph import Checkpointer
+    from vincio.agents.state import AgentState, AgentStep
+    from vincio.core.types import Budget, ModelCapabilities, ModelProfile, Objective
+    from vincio.observability.costs import CostTracker, ModelPrice, PriceTable
+    from vincio.providers.capabilities import RequestNeeds
+    from vincio.providers.registry import ModelRegistry
+    from vincio.storage.base import InMemoryMetadataStore
+    from vincio.tools.registry import ToolRegistry
+    from vincio.tools.runtime import ToolRuntime
+
+    # -- hierarchical (HTN) decomposition: a parallel sub-goal lands its leaves on
+    #    one level and the plan ends in exactly one finalize.
+    domain = (
+        HTNDomain()
+        .method("root", ["gather", "answer"])
+        .method("gather", ["search", "lookup"], ordering="parallel")
+        .operator("search", step_type="think", instruction="search")
+        .operator("lookup", step_type="think", instruction="look up")
+        .operator("answer", step_type="finalize", instruction="answer")
+    )
+    htn_dag = dag_from_plan_node(domain.decompose("root"))
+    htn_levels = htn_dag.topological_levels()
+    hierarchical_parallel = len(htn_levels[0]) == 2
+    hierarchical_finalized = sum(1 for s in htn_dag.steps.values() if s.type == "finalize") == 1
+
+    # -- plan repair: a flaky tool re-binds to its backup; a lone failing tool
+    #    substitutes to reasoning; and the run still finalizes.
+    registry = ToolRegistry()
+
+    @registry.register()
+    def billing_lookup_primary(invoice: str = "x") -> dict:
+        """Primary (flaky)."""
+        raise RuntimeError("upstream 503")
+
+    @registry.register()
+    def billing_lookup_backup(invoice: str = "x") -> dict:
+        """Backup."""
+        return {"invoice": invoice, "amount": 42}
+
+    def _repair_executor() -> AgentExecutor:
+        return AgentExecutor(
+            MockProvider(), model="mock-1", planner=Planner(mode="static"),
+            tool_runtime=ToolRuntime(registry, cache_enabled=False), tool_specs=registry.specs(),
+        )
+
+    def _tool_dag(tool_name: str, metadata: dict | None = None):
+        dag = StepDAG()
+        tool_step = AgentStep(type="tool", name="lookup", instruction="look up",
+                              tool_name=tool_name, metadata=metadata or {})
+        dag.add(tool_step)
+        finalize = AgentStep(type="finalize", name="finalize", instruction="answer")
+        dag.add(finalize, depends_on=[tool_step.id])
+        return dag, tool_step, finalize
+
+    dag_r, tool_r, fin_r = _tool_dag(
+        "billing_lookup_primary", {"fallback_tools": ["billing_lookup_backup"]}
+    )
+    state_r = AgentState(objective=Objective("refund"), budget=Budget(max_steps=12))
+    state_r.steps = list(dag_r.steps.values())
+    await _repair_executor()._execute_dag(state_r, dag_r)
+    repair_rebind = (
+        any(r.action == "rebind" for r in state_r.repairs)
+        and tool_r.tool_name == "billing_lookup_backup"
+        and fin_r.status == "done"
+    )
+
+    dag_s, tool_s, fin_s = _tool_dag("billing_lookup_primary")  # no fallback declared
+    state_s = AgentState(objective=Objective("x"), budget=Budget(max_steps=12))
+    state_s.steps = list(dag_s.steps.values())
+    # only the flaky tool is available -> substitute to reasoning
+    lone = ToolRegistry()
+
+    @lone.register()
+    def billing_lookup_primary2(invoice: str = "x") -> dict:
+        """Lone flaky tool."""
+        raise RuntimeError("boom")
+
+    lone_exec = AgentExecutor(
+        MockProvider(), model="mock-1", planner=Planner(mode="static"),
+        tool_runtime=ToolRuntime(lone, cache_enabled=False), tool_specs=lone.specs(),
+    )
+    dag_sub, tool_sub, fin_sub = _tool_dag("billing_lookup_primary2")
+    state_sub = AgentState(objective=Objective("x"), budget=Budget(max_steps=12))
+    state_sub.steps = list(dag_sub.steps.values())
+    await lone_exec._execute_dag(state_sub, dag_sub)
+    repair_substitute = (
+        any(r.action == "substitute" for r in state_sub.repairs)
+        and tool_sub.type == "think" and fin_sub.status == "done"
+    )
+
+    # budget shock: the optional tail is dropped to finalize directly.
+    dag_b = StepDAG()
+    done_step = AgentStep(type="think", name="a")
+    dag_b.add(done_step)
+    done_step.status = "done"
+    opt = AgentStep(type="retrieve", name="b")
+    dag_b.add(opt, depends_on=[done_step.id])
+    fin_b = AgentStep(type="finalize", name="finalize")
+    dag_b.add(fin_b, depends_on=[opt.id])
+    state_b = AgentState(objective=Objective("x"), budget=Budget(max_cost_usd=1.0))
+    state_b.usage.cost_usd = 0.9
+    state_b.steps = list(dag_b.steps.values())
+    shock = PlanRepairer().repair_budget_shock(state_b, dag_b, state_b.budget)
+    repair_budget_shock = (
+        shock is not None and shock.action == "drop"
+        and opt.status == "skipped" and fin_b.input_refs == [done_step.id]
+    )
+
+    # -- cost-aware action selection: a cheap+strong pair drives genuine savings
+    #    versus always-strong, with capabilities and pricing read from the registry.
+    caps = ModelCapabilities(structured_output=True, tool_calling=True, reasoning=True)
+    cost_registry = ModelRegistry([
+        ModelProfile(name="Fast", provider="mock", model="fast-x", tier="fast",
+                     capabilities=caps, input_cost_per_mtok=0.15, output_cost_per_mtok=0.60),
+        ModelProfile(name="Strong", provider="mock", model="strong-x", tier="strong",
+                     capabilities=caps, input_cost_per_mtok=3.0, output_cost_per_mtok=15.0),
+    ])
+    price_table = PriceTable()
+    price_table.set("fast-x", ModelPrice(input_per_mtok=0.15, output_per_mtok=0.60))
+    price_table.set("strong-x", ModelPrice(input_per_mtok=3.0, output_per_mtok=15.0))
+
+    def _cost_executor(selector):
+        return AgentExecutor(
+            MockProvider(), model="strong-x", planner=Planner(mode="static"),
+            cost_tracker=CostTracker(price_table), selector=selector,
+        )
+
+    strong_run = await _cost_executor(None).run("Summarize", budget=Budget(max_cost_usd=1.0))
+    selector = CostAwareSelector(["fast-x", "strong-x"], registry=cost_registry)
+    cheap_run = await _cost_executor(selector).run("Summarize", budget=Budget(max_cost_usd=1.0))
+    cost_aware_savings = (
+        round(1 - (cheap_run.usage.cost_usd / strong_run.usage.cost_usd), 4)
+        if strong_run.usage.cost_usd else 0.0
+    )
+    # escalation: a low-confidence signal selects the stronger tier.
+    escalated = selector.select(
+        needs=RequestNeeds(), input_tokens=500, output_tokens=256, confidence=0.2
+    ).escalated
+
+    # -- durable timers: a paused sleep survives a "restart" (fresh checkpointer
+    #    over the same store) and resumes when due; an event-wait resumes on
+    #    delivery of its named event.
+    base = datetime(2026, 6, 20, 12, 0, 0, tzinfo=UTC)
+    store = InMemoryMetadataStore()
+
+    def _sleep_graph() -> StateGraph:
+        g = StateGraph("timed")
+        g.add_node("start", lambda s: {"stage": "started"})
+
+        def wait(s):
+            sleep_for(s, 3600, clock=lambda: base)
+            return {"stage": "woke"}
+
+        g.add_node("wait", wait)
+        g.add_node("done", lambda s: {"stage": "done"})
+        g.add_edge("start", "wait")
+        g.add_edge("wait", "done")
+        return g
+
+    paused = _sleep_graph().compile(checkpointer=Checkpointer(store)).invoke({}, thread_id="t1")
+    not_due = len(TimerService(
+        _sleep_graph().compile(checkpointer=Checkpointer(store)),
+        clock=lambda: base + timedelta(minutes=30),
+    ).tick()) == 0
+    restarted = _sleep_graph().compile(checkpointer=Checkpointer(store))
+    resumed = TimerService(restarted, clock=lambda: base + timedelta(hours=2)).tick()
+    durable_timer_restart_safe = (
+        paused.status == "interrupted" and not_due
+        and len(resumed) == 1 and resumed[0].status == "done"
+    )
+
+    eg = StateGraph("evt")
+    eg.add_node("a", lambda s: {"x": 1})
+    eg.add_node("w", lambda s: {"approval": wait_for_event(s, "approved")})
+    eg.add_edge("a", "w")
+    compiled_evt = eg.compile(checkpointer=Checkpointer(store))
+    evt_paused = compiled_evt.invoke({}, thread_id="t2")
+    wrong_ignored = deliver_event(compiled_evt, "t2", "rejected") is None
+    delivered = deliver_event(compiled_evt, "t2", "approved", payload={"by": "alice"})
+    durable_event_resumes = (
+        evt_paused.status == "interrupted" and wrong_ignored
+        and delivered.status == "done" and delivered.state["approval"] == {"by": "alice"}
+    )
+
+    return {
+        "hierarchical_parallel": hierarchical_parallel,
+        "hierarchical_finalized": hierarchical_finalized,
+        "repair_rebind": repair_rebind,
+        "repair_substitute": repair_substitute,
+        "repair_budget_shock": repair_budget_shock,
+        "cost_aware_savings": cost_aware_savings,
+        "cost_aware_escalates": escalated,
+        "durable_timer_restart_safe": durable_timer_restart_safe,
+        "durable_event_resumes": durable_event_resumes,
     }
 
 
@@ -1319,6 +1537,9 @@ async def bench_agent() -> dict[str, Any]:
         },
         # 2.2 — token/tool-event streaming (executor & crew) + AG-UI generative UI
         "streaming": await _agent_streaming_2_2(),
+        # orchestrator & planner depth: HTN decomposition, in-place plan repair,
+        # cost-aware action-selection savings, durable-timer restart safety.
+        "planner_depth": await _planner_depth(),
     }
 
 
@@ -2170,6 +2391,7 @@ async def bench_perf() -> dict[str, Any]:
     results["context_compile"] = {
         "cold_p50_ms": round(statistics.median(cold_ms), 3),
         "cold_p95_ms": round(percentile(cold_ms, 0.95), 3),
+        "cold_p99_ms": round(percentile(cold_ms, 0.99), 3),
         "cached_p50_ms": round(statistics.median(warm_ms), 3),
         "cache_speedup": round(statistics.median(cold_ms) / max(1e-6, statistics.median(warm_ms)), 2),
     }
@@ -2270,6 +2492,195 @@ async def bench_perf() -> dict[str, Any]:
     results["hot_paths"] = {
         "bm25_inverted_index": bm25_inverted_index,
         "count_tokens_memoized": count_tokens_memoized,
+    }
+
+    # -- runtime performance & efficiency hot-path families --------------------
+    from vincio.context.footprint import estimate_resident_bytes
+    from vincio.context.scoring import ContextCandidate, ContextScorer
+    from vincio.core.types import Constraint, Instruction
+    from vincio.retrieval.embeddings import CachedEmbedder, embed_texts
+    from vincio.retrieval.prefetch import SpeculativePrefetcher
+
+    def _pool() -> list[ContextCandidate]:
+        return [
+            ContextCandidate(
+                id=f"c{i}",
+                type="evidence",
+                content=f"{text} (variant {i}) refund renewal clause about {i} days.",
+                token_cost=12 + (i % 9),
+                authority=0.3 + (i % 5) / 10,
+                provenance=0.4 + (i % 4) / 10,
+            )
+            for i, (_n, text) in enumerate(CORPUS * 24)
+        ]
+
+    # Vectorized scoring: the batched single pass must score a large candidate
+    # set identically to the per-candidate loop (the NumPy fast lane reduces the
+    # whole set in one matrix product; the gate is the equivalence it preserves).
+    vquery = QA_CASES[0][0]
+    loop_pool, batch_pool = _pool(), _pool()
+    for candidate in loop_pool:
+        ContextScorer().score(candidate, query=vquery, selected=[])
+    ContextScorer().score_batch(batch_pool, vquery)
+    vectorized_equivalent = all(
+        abs(a.scores.total - b.scores.total) < 1e-9
+        for a, b in zip(loop_pool, batch_pool, strict=True)
+    )
+    results["vectorized_scoring"] = {"equivalent": bool(vectorized_equivalent)}
+
+    # Render program: byte-identical output; warm prefix reuse vs from scratch on
+    # a representative (large) spec where rendering the stable prefix dominates.
+    rspec = PromptSpec(
+        name="rp", role="a meticulous answering engine for enterprise documents",
+        objective="Answer the question strictly from the provided documents",
+        rules=[f"Rule {i}: follow document policy clause {i} exactly." for i in range(18)],
+        soft_rules=[f"Prefer style {i}." for i in range(6)],
+        definitions={f"term{i}": f"definition of term {i}" for i in range(10)},
+        safety_policies=[f"Never reveal {i}." for i in range(4)],
+        examples=[Example(input=f"q{i}", output=f"a{i}", quality=0.9 - i * 0.1) for i in range(6)],
+        citation_policy="Cite evidence IDs in square brackets.",
+        output_schema={"type": "object", "properties": {"answer": {"type": "string"}}},
+        output_format="json",
+    )
+    rev = [{"id": f"E{i}", "text": text} for i, (_n, text) in enumerate(CORPUS)]
+    with_prog = PromptCompiler(CompilerOptions(use_render_program=True))
+    without_prog = PromptCompiler(CompilerOptions(use_render_program=False))
+    a = with_prog.compile(rspec, user_task=vquery, evidence_items=rev)
+    b = without_prog.compile(rspec, user_task=vquery, evidence_items=rev)
+    program_identical = a.rendered_hash == b.rendered_hash and a.system_text == b.system_text
+    warm_prog = PromptCompiler(CompilerOptions(use_render_program=True))
+    warm_prog.compile(rspec, user_task="warm", evidence_items=rev)  # build the program
+    prog_warm_t, prog_cold_t = [], []
+    for i in range(60):
+        started = time.perf_counter()
+        warm_prog.compile(rspec, user_task=f"q{i}", evidence_items=rev)
+        prog_warm_t.append(time.perf_counter() - started)
+        started = time.perf_counter()
+        PromptCompiler(CompilerOptions(use_render_program=False)).compile(
+            rspec, user_task=f"q{i}", evidence_items=rev
+        )
+        prog_cold_t.append(time.perf_counter() - started)
+    results["render_program"] = {
+        "byte_identical": bool(program_identical),
+        "speedup": round(statistics.median(prog_cold_t) / max(1e-9, statistics.median(prog_warm_t)), 2),
+    }
+
+    # Warm candidate arena: reuse on a new query vs a cold recompile.
+    arena_evidence = [
+        EvidenceItem(id=f"ae{i}", source_id=f"doc_{n}", text=text, relevance=0.6)
+        for i, (n, text) in enumerate(CORPUS * 8)
+    ]
+
+    def _arena_kwargs(q: str) -> dict[str, Any]:
+        return dict(
+            objective=objective, user_input=UserInput(text=q), evidence=arena_evidence,
+            budget=Budget(max_input_tokens=8000),
+        )
+
+    warm_arena = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=True))
+    await warm_arena.compile(**_arena_kwargs("warm the arena"))  # populate
+    cold_arena = ContextCompiler(ContextCompilerOptions(reuse_candidate_set=False))
+    warm_at, cold_at = [], []
+    for i in range(20):
+        started = time.perf_counter()
+        warm_r = await warm_arena.compile(**_arena_kwargs(f"arena query {i}"))
+        warm_at.append(time.perf_counter() - started)
+        started = time.perf_counter()
+        cold_r = await cold_arena.compile(**_arena_kwargs(f"arena query {i}"))
+        cold_at.append(time.perf_counter() - started)
+    arena_equivalent = [e.id for e in warm_r.ir.evidence] == [e.id for e in cold_r.ir.evidence]
+    results["warm_arena"] = {
+        "equivalent": bool(arena_equivalent),
+        "speedup": round(statistics.median(cold_at) / max(1e-9, statistics.median(warm_at)), 2),
+    }
+
+    # Streaming-first compilation: prefix emitted before scoring runs.
+    stream_compiler = ContextCompiler(ContextCompilerOptions())
+    state = {"compiled": False}
+    _orig_compile = stream_compiler.compile
+
+    async def _flagged(**kw: Any) -> Any:
+        state["compiled"] = True
+        return await _orig_compile(**kw)
+
+    stream_compiler.compile = _flagged  # type: ignore[method-assign]
+    sgen = stream_compiler.compile_streaming(
+        objective=objective,
+        user_input=UserInput(text=vquery),
+        instructions=[Instruction("Answer only from the evidence.")],
+        constraints=[Constraint("No speculation.")],
+        evidence=evidence,
+        budget=budget,
+    )
+    first_event = await sgen.__anext__()
+    prefix_before_scoring = first_event.type == "prefix" and state["compiled"] is False
+    async for _ in sgen:
+        pass
+    results["streaming_compile"] = {"prefix_before_scoring": bool(prefix_before_scoring)}
+
+    # Speculative prefetch: a warm makes retrieval's query embed a cache hit.
+    class _Counting:
+        dim = 8
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def embed(self, texts: list[str], **_: Any) -> list[list[float]]:
+            self.calls += 1
+            return [[float(len(t))] * self.dim for t in texts]
+
+    counting = _Counting()
+    cached_emb = CachedEmbedder(counting)
+    prefetcher = SpeculativePrefetcher(cached_emb)
+    await prefetcher.warm(vquery).result()
+    calls_after_warm = counting.calls
+    await embed_texts(cached_emb, [vquery], input_type="query")
+    results["prefetch"] = {"warms_cache": bool(counting.calls == calls_after_warm)}
+
+    # Per-app memory-footprint budget: slim helps, and a ceiling is enforced;
+    # the reference packet's resident footprint is the regression gate.
+    slim_bytes = estimate_resident_bytes(["x" * 4000], [], slim=True)
+    full_bytes = estimate_resident_bytes(["x" * 4000], [], slim=False)
+    # Distinct passages (different vocabulary, so dedup keeps them all) sized so
+    # the full set overruns the ceiling and the budget must slim and evict.
+    _passages = [
+        "The renewal clause requires written notice sixty days before the anniversary, "
+        "after which the agreement extends automatically for successive annual periods.",
+        "Termination for convenience needs thirty days notice, while termination for cause "
+        "follows a fifteen day cure window and a documented remediation plan.",
+        "Payment is net forty five from invoice receipt; overdue balances accrue interest "
+        "at one and a half percent monthly and disputes must be raised within ten days.",
+        "Liability is capped at the fees paid over the preceding twelve months, excluding "
+        "gross negligence, and neither side owes indirect or consequential damages.",
+        "Warranty coverage spans ninety days of conforming performance; remedies are limited "
+        "to repair or replacement and all implied warranties are expressly disclaimed.",
+    ]
+    fp_evidence = [
+        EvidenceItem(id=f"fp{i}", source_id=f"D{i}", relevance=0.9 - i * 0.05, text=text)
+        for i, text in enumerate(_passages)
+    ]
+    fp_kwargs = dict(
+        objective=objective,
+        user_input=UserInput(
+            text="What are the renewal, termination, payment, liability, and warranty terms?"
+        ),
+        evidence=fp_evidence, budget=Budget(max_input_tokens=8000),
+    )
+    unbounded_fp = await ContextCompiler(ContextCompilerOptions()).compile(**fp_kwargs)
+    bounded_fp = await ContextCompiler(
+        ContextCompilerOptions(max_resident_bytes=1500)
+    ).compile(**fp_kwargs)
+    budget_enforced = (
+        bounded_fp.packet.slim
+        and bounded_fp.resident_bytes <= 1500
+        and len(bounded_fp.ir.evidence) < len(unbounded_fp.ir.evidence)
+    )
+    # Reference packet footprint on the QA corpus (deterministic).
+    ref_fp = await ContextCompiler(ContextCompilerOptions()).compile(**compile_kwargs)
+    results["footprint"] = {
+        "slim_reduces_bytes": bool(slim_bytes < full_bytes),
+        "budget_enforced": bool(budget_enforced),
+        "packet_bytes": int(ref_fp.resident_bytes),
     }
     return results
 
@@ -2643,6 +3054,7 @@ async def bench_scale() -> dict[str, Any]:
     post_rollback_served = (await canary.generate(canary_req)).text == "ok"
 
     distributed_2_1 = await _scale_distributed_2_1()
+    subgraph_scheduling = await _subgraph_scheduling()
     shared_state_2_1 = _scale_shared_state_2_1()
 
     # -- 3.0: async-canonical store throughput --------------------------------
@@ -2689,6 +3101,9 @@ async def bench_scale() -> dict[str, Any]:
         "async_canonical": async_canonical,
         # 2.1 — distributed durable execution + multi-worker shared state
         "distributed": distributed_2_1,
+        # parallel sub-graph scheduling: work-stealing concurrency + fair-share
+        # budget + SLA deadline returning partial results.
+        "subgraph": subgraph_scheduling,
         "shared_state": shared_state_2_1,
         "circuit": {
             "opens_on_systemic": opens_on_systemic,
@@ -3240,6 +3655,61 @@ async def _scale_distributed_2_1() -> dict[str, Any]:
     }
 
 
+async def _subgraph_scheduling() -> dict[str, Any]:
+    """Parallel sub-graph scheduling: independent sub-graphs run concurrently
+    across workers (genuine speedup, identical results to serial), under a
+    fair-share budget that sums to the cap, with an SLA deadline that returns
+    completed + durable partial results rather than blowing the deadline."""
+    from vincio.agents import StateGraph, SubgraphScheduler, SubgraphTask
+    from vincio.core.types import Budget
+
+    def make_graph(name: str) -> StateGraph:
+        g = StateGraph(name)
+        g.add_node("a", lambda s: {"n": s.get("n", 0) + 1})
+        g.add_node("b", lambda s: {"n": s["n"] * 10})
+        g.add_edge("a", "b")
+        return g
+
+    parallel = await SubgraphScheduler(workers=4, budget=Budget(max_cost_usd=1.0)).run(
+        [SubgraphTask(make_graph(f"p{i}"), {"n": i}) for i in range(4)]
+    )
+    serial = await SubgraphScheduler(workers=1).run(
+        [SubgraphTask(make_graph(f"s{i}"), {"n": i}) for i in range(4)]
+    )
+    equivalent_to_serial = serial.peak_concurrency == 1 and sorted(
+        o.result.state["n"] for o in serial.completed
+    ) == sorted(o.result.state["n"] for o in parallel.completed)
+    fair_share_within_budget = abs(sum(parallel.shares_usd) - 1.0) < 1e-9 and all(
+        abs(s - 0.25) < 1e-9 for s in parallel.shares_usd
+    )
+
+    class _FakeClock:
+        def __init__(self) -> None:
+            self.t = 0
+
+        def __call__(self) -> int:
+            self.t += 1
+            return self.t
+
+    deadline = await SubgraphScheduler(workers=1, deadline_s=2, clock=_FakeClock()).run(
+        [SubgraphTask(make_graph(f"d{i}"), {"n": i}) for i in range(4)]
+    )
+    deadline_returns_partial = (
+        deadline.deadline_hit
+        and len(deadline.completed) >= 1
+        and len(deadline.partial) >= 1
+        and all(o.status == "deadline" for o in deadline.partial)
+    )
+
+    return {
+        "parallel_concurrency": parallel.peak_concurrency,
+        "speedup": parallel.speedup,
+        "equivalent_to_serial": equivalent_to_serial,
+        "fair_share_within_budget": fair_share_within_budget,
+        "deadline_returns_partial": deadline_returns_partial,
+    }
+
+
 def _scale_shared_state_2_1() -> dict[str, Any]:
     from vincio.storage.shared_state import InMemoryIdempotencyStore, InMemoryRateLimiter
 
@@ -3354,6 +3824,244 @@ def _cost_alerting_2_1() -> dict[str, Any]:
     }
 
 
+async def bench_integrations() -> dict[str, Any]:
+    """Ecosystem & integration breadth: first-party connectors, the entry-point
+    plugin contract, the signed community registry, deeper framework interop, and
+    the MCP-server marketplace bridge — each round-tripped offline against a
+    recorded fixture in ``fixtures/integrations.json``."""
+    import httpx
+
+    from vincio.connectors import CONNECTORS, connect
+    from vincio.core.types import Document
+    from vincio.interop import from_dspy_module, from_haystack_retriever
+    from vincio.mcp import build_app_server
+    from vincio.packs import load_pack
+    from vincio.plugins import _EP, PLUGIN_API_VERSION, discover_plugins, load_plugins
+    from vincio.registry import (
+        BundleRecord,
+        CommunityRegistry,
+        MCPRegistryClient,
+        MCPServerRecord,
+    )
+    from vincio.security.access import AllowListGate
+    from vincio.security.audit import AuditLog, HMACSigner
+
+    fx = json.loads((Path(__file__).resolve().parent / "fixtures" / "integrations.json").read_text())
+
+    def mc(handler: Any) -> httpx.AsyncClient:
+        return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+    # -- connectors: every new connector round-trips offline ------------------
+    docs: dict[str, list[Document]] = {}
+
+    docs["jira"] = await connect(
+        "jira", base_url="https://acme.atlassian.net", email="a@b.c", token="t",
+        client=mc(lambda r: httpx.Response(200, json=fx["jira"])),
+    ).load()
+    docs["linear"] = await connect(
+        "linear", api_key="k", client=mc(lambda r: httpx.Response(200, json=fx["linear"]))
+    ).load()
+
+    def _gd(r: httpx.Request) -> httpx.Response:
+        if r.url.path.endswith("/files"):
+            return httpx.Response(200, json=fx["gdrive_list"])
+        return httpx.Response(200, text=fx["gdrive_export"])
+
+    docs["gdrive"] = await connect("gdrive", access_token="t", client=mc(_gd)).load()
+
+    def _sp(r: httpx.Request) -> httpx.Response:
+        if r.url.path.endswith("/children"):
+            return httpx.Response(200, json=fx["sharepoint_children"])
+        return httpx.Response(200, text=fx["sharepoint_content"])
+
+    docs["sharepoint"] = await connect("sharepoint", site_id="s", access_token="t", client=mc(_sp)).load()
+    docs["salesforce"] = await connect(
+        "salesforce", instance_url="https://x.my.salesforce.com", access_token="t",
+        soql="SELECT Id, Name, Description FROM Account",
+        client=mc(lambda r: httpx.Response(200, json=fx["salesforce"])),
+    ).load()
+    docs["zendesk"] = await connect(
+        "zendesk", subdomain="acme", email="a@b.c", token="t",
+        client=mc(lambda r: httpx.Response(200, json=fx["zendesk"])),
+    ).load()
+
+    class _BQRows(list):
+        def result(self) -> Any:
+            return self
+
+    class _BQClient:
+        def query(self, sql: str) -> Any:
+            return _BQRows(fx["bigquery_rows"])
+
+    docs["bigquery"] = await connect(
+        "bigquery", query="SELECT * FROM faq", project="p", client=_BQClient(),
+        id_column="id", title_column="question",
+    ).load()
+
+    class _SFCursor:
+        description = [(c,) for c in fx["snowflake_columns"]]
+
+        def execute(self, q: str) -> None:
+            self._rows = [tuple(row) for row in fx["snowflake_rows"]]
+
+        def fetchmany(self, n: int) -> list[Any]:
+            return self._rows
+
+    class _SFConn:
+        def cursor(self) -> Any:
+            return _SFCursor()
+
+    docs["snowflake"] = await connect(
+        "snowflake", query="SELECT * FROM faq", account="acct", connection=_SFConn(),
+        id_column="ID", title_column="QUESTION",
+    ).load()
+
+    connectors_round_trip = all(len(d) >= 1 for d in docs.values())
+    connector_provenance = all(
+        d and d[0].metadata.get("connector") == name and bool(d[0].source_uri)
+        for name, d in docs.items()
+    )
+
+    # -- plugin contract: installs register; incompatible majors are gated -----
+    def _bench_factory(**opts: Any) -> Any:
+        class _C:
+            name = "bench_plugin"
+
+            async def load(self) -> list[Document]:
+                return [Document(text="x")]
+
+        return _C()
+
+    plug_eps = [
+        _EP("bench_plugin", "vincio.connectors", "bench-dist", "0.1.0", lambda: _bench_factory),
+        _EP("api_version", "vincio.plugins", "bench-dist", "0.1.0", lambda: "1.0"),
+        _EP("future_plugin", "vincio.connectors", "future-dist", "9.0.0", lambda: _bench_factory),
+        _EP("api_version", "vincio.plugins", "future-dist", "9.0.0", lambda: "2.0"),
+    ]
+    discovered = {i.name: i.status for i in discover_plugins(entry_points=plug_eps)}
+    loaded = {i.name: i.status for i in load_plugins(entry_points=plug_eps)}
+    plugin_loads_on_install = loaded.get("bench_plugin") == "loaded" and "bench_plugin" in CONNECTORS
+    plugin_gates_incompatible = (
+        discovered.get("future_plugin") == "incompatible"
+        and loaded.get("future_plugin") == "incompatible"
+        and "future_plugin" not in CONNECTORS
+    )
+    CONNECTORS.pop("bench_plugin", None)  # keep the registry clean for other families
+
+    # -- community registry: governed + audited + signed resolution -----------
+    audit = AuditLog(directory=None)
+    signer = HMACSigner("bench-key")
+    registry = CommunityRegistry(
+        allow_list=AllowListGate(allow=["support-pro"]), audit=audit, signer=signer
+    )
+    registry.publish_pack(
+        load_pack("support").model_copy(update={"name": "support-pro"}),
+        version="1.0.0", publisher="acme",
+    )
+    registry.register(BundleRecord(name="evil", kind="pack", payload={"name": "e", "description": ""}))
+    resolved = registry.try_resolve("support-pro")
+    registry_resolution_governed = resolved.allowed and not registry.try_resolve("evil").allowed
+    bundle_decisions = audit.query(action="bundle_resolve")
+    registry_resolution_audited = (
+        any(d.decision == "allow" for d in bundle_decisions)
+        and any(d.decision == "deny" for d in bundle_decisions)
+    )
+    registry_signature_verified = resolved.verified
+
+    publisher = CommunityRegistry(allow_list=AllowListGate(allow=["*"]), signer=signer)
+    signed = publisher.publish_pack(
+        load_pack("legal").model_copy(update={"name": "legal-pro"}), version="1.0.0"
+    )
+    tampered = signed.model_copy(update={"payload": {**signed.payload, "role": "HIJACK"}})
+    verifier = CommunityRegistry(allow_list=AllowListGate(allow=["*"]), signer=signer, index=[tampered])
+    registry_tamper_detected = not verifier.try_resolve("legal-pro").allowed
+
+    # -- deeper interop: Haystack + DSPy bridges ------------------------------
+    class _HSDoc:
+        def __init__(self, content: str, meta: dict, score: float) -> None:
+            self.content, self.meta, self.score = content, meta, score
+
+    class _HSRetriever:
+        def run(self, query: str) -> dict[str, Any]:
+            return {"documents": [_HSDoc("hot", {"source": "a"}, 0.9), _HSDoc("cold", {"source": "b"}, 0.3)]}
+
+    hs_hits = await from_haystack_retriever(_HSRetriever()).search("q", top_k=2)
+    haystack_bridge = [h.chunk.text for h in hs_hits] == ["hot", "cold"]
+
+    class _Field:
+        def __init__(self, desc: str) -> None:
+            self.json_schema_extra = {"desc": desc}
+
+    class _Sig:
+        instructions = "Answer."
+        input_fields = {"q": _Field("the q")}
+        output_fields = {"a": _Field("the a")}
+
+    class _Pred:
+        def __init__(self, data: dict) -> None:
+            self._data = data
+
+        def toDict(self) -> dict:
+            return self._data
+
+    class _Mod:
+        signature = _Sig()
+
+        def __call__(self, **kwargs: Any) -> Any:
+            return _Pred({"a": kwargs["q"]})
+
+    dspy_adapter = from_dspy_module(_Mod())
+    dspy_bridge = dspy_adapter["handler"](q="hi") == {"a": "hi"}
+
+    # -- MCP-server marketplace bridge: discover -> govern -> connect ----------
+    provider_app = ContextApp(name="bench_weather", provider=MockProvider(), model="mock-1")
+
+    @provider_app.tool_registry.register(name="get_weather")
+    def _get_weather(city: str) -> dict:
+        """Look up the weather."""
+        return {"city": city}
+
+    provider_app.enabled_tools.append("get_weather")
+    server = build_app_server(provider_app)
+    consumer = ContextApp(name="bench_consumer", provider=MockProvider(), model="mock-1")
+    registry_client = MCPRegistryClient(
+        catalog=[
+            MCPServerRecord(name="weather", url="https://weather.example/mcp"),
+            MCPServerRecord(name="evil-server", url="https://evil.example/mcp"),
+        ]
+    )
+    consumer.add_mcp_from_registry("weather", registry=registry_client, server=server, allow=["weather"])
+    mcp_marketplace_tool_landed = any(t.startswith("weather.") for t in consumer.enabled_tools)
+    mcp_marketplace_audited = any(
+        d.decision == "allow" and d.resource == "weather"
+        for d in consumer.audit.query(action="agent_resolve")
+    )
+    try:
+        consumer.add_mcp_from_registry("evil-server", registry=registry_client, server=server, allow=["weather"])
+        mcp_marketplace_denies_unlisted = False
+    except Exception:  # noqa: BLE001 - expected AccessDeniedError
+        mcp_marketplace_denies_unlisted = True
+
+    return {
+        "connectors_round_trip": connectors_round_trip,
+        "connector_provenance": connector_provenance,
+        "connector_count": len(docs),
+        "connector_docs": {k: len(v) for k, v in docs.items()},
+        "plugin_api_version": PLUGIN_API_VERSION,
+        "plugin_loads_on_install": plugin_loads_on_install,
+        "plugin_gates_incompatible": plugin_gates_incompatible,
+        "registry_resolution_governed": registry_resolution_governed,
+        "registry_resolution_audited": registry_resolution_audited,
+        "registry_signature_verified": registry_signature_verified,
+        "registry_tamper_detected": registry_tamper_detected,
+        "haystack_bridge": haystack_bridge,
+        "dspy_bridge": dspy_bridge,
+        "mcp_marketplace_tool_landed": mcp_marketplace_tool_landed,
+        "mcp_marketplace_audited": mcp_marketplace_audited,
+        "mcp_marketplace_denies_unlisted": mcp_marketplace_denies_unlisted,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -3372,6 +4080,7 @@ FAMILIES = {
     "governance": bench_governance,
     "generation": bench_generation,
     "perf": bench_perf,
+    "integrations": bench_integrations,
     "breaking_2_0": bench_breaking_2_0,
 }
 

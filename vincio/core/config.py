@@ -204,6 +204,20 @@ class PerformanceConfig(BaseModel):
     max_keepalive_connections: int = 20
     slim_packets: bool = False  # persist packets without duplicated evidence text
     partial_parse_min_chars: int = 24  # min new chars between partial-JSON parses
+    # Warm candidate arena: reuse the collected+normalized candidate set across
+    # compiles whose inputs are unchanged, so a steady-state recompile skips
+    # re-collection. Correctness-preserving; on by default.
+    reuse_candidate_set: bool = True
+    # Speculative retrieval prefetch: warm the query embedding (and connection
+    # pool) from the task classification while the rest of preparation runs, so
+    # retrieval's query embed lands as a cache hit. Off by default; opt-in.
+    speculative_prefetch: bool = False
+    # Per-app resident-memory ceiling for the compiled context packet, in MB.
+    # When set, the compiler slims and evicts the lowest-utility evidence to keep
+    # the packet's estimated footprint under the ceiling, and the figure is
+    # surfaced in the run's cost summary. ``None`` leaves the footprint
+    # unbounded (the default).
+    memory_budget_mb: float | None = None
 
 
 class ServerConfig(BaseModel):
