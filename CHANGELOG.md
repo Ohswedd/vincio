@@ -4,6 +4,66 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.7.0] - 2026-06-20
+
+The learning loop, closed with on-policy reinforcement. Reinforcement from
+verifiable rewards (RLVR) turns the signals the platform already computes into a
+reward that improves a *policy*, not just a prompt — without adding a trainer
+dependency to the default path. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the dependency-free offline path is the default, and
+every existing entry point is unchanged.
+
+### Added
+
+- **Verifiable reward model.** `RewardModel` composes one or more
+  `VerifiableReward`s into a dense, confidence-weighted signal. `OracleReward`
+  reads the stateful-environment task-success oracle (dense partial credit or
+  pass/fail); `BenchmarkReward` turns any of the nine `BenchmarkAdapter` scorers
+  (exact / contains / `pass@1` / solvable-path) into a reward; and
+  `JudgeEnsembleReward` turns a judge panel into a reward whose **disagreement
+  down-weights itself** (`weight = 1 − spread`), so a split panel leans the blend
+  on the verifiable scorers rather than rewarding noise. `RewardSignal` /
+  `RewardSample` carry the value, the verifiable `success`, the confidence weight,
+  and provenance. New `RewardError` with a catalog entry.
+- **Step-level credit assignment.** `TrajectoryAdvantage` attributes a
+  trajectory's outcome reward back to the steps that earned it by Shapley
+  counterfactual replay — `environment_step_value` re-verifies the environment end
+  state with only the kept tool steps, so a step the success depended on earns its
+  marginal. Credits sum to the attributable value (efficiency) and `StepCredit`
+  reports each step's signed contribution and share.
+- **The trajectory optimizer (`app.learn`).** `TrajectoryOptimizer` runs a
+  GRPO-style group-relative update (`compute_group_advantages`) over a
+  deterministic `SoftmaxPolicy`, behind the same safety discipline prompt
+  optimization uses: a **KL-to-reference clamp** (`kl_divergence`, a binary-search
+  projection back into the trust region) and a **monotonic no-regression gate**
+  (`no_regression_gate`) so the served policy never regresses the baseline reward.
+  `app.learn(tasks, reward=, ...)` returns a `LearningResult` whose `verdict` is
+  the same `CanaryVerdict` a prompt deploy produces; the decision is audited
+  (`learn.promoted` / `learn.rejected`). On a promotion the on-policy winners are
+  exported as a grounded `TrainingSet`, and a configured `flywheel` emits a
+  fine-tune job through the existing distillation flywheel in the same call.
+- **Shared Shapley kernel.** `vincio.core.shapley` (`shapley_values`,
+  `ashapley_values`, `shapley_from_cache`, `is_efficient`, `coalitions`) is the
+  pure, dependency-free credit-assignment kernel now shared by both
+  `TrajectoryAdvantage` and the causal regression `CausalAttributor`.
+- **Runnable example.** `examples/51_reinforcement_from_verifiable_rewards.py`
+  walks verifiable rewards → step-level credit → the gated optimizer → emitting a
+  fine-tune job, fully offline.
+
+### Changed
+
+- `RewardModel`, `VerifiableReward`, `TrajectoryAdvantage`, `TrajectoryOptimizer`,
+  and `LearningResult` are re-exported from the top-level `vincio` namespace; the
+  full reward / advantage / policy / optimizer surface is exported from
+  `vincio.optimize`.
+- `CausalAttributor` now computes its Shapley decomposition through the shared
+  `vincio.core.shapley` kernel instead of an inlined loop (behavior unchanged).
+- VincioBench gains a `learning` family with three SLOs — reward-monotonicity
+  (`rlvr_reward_monotonicity`), KL-bound adherence (`rlvr_kl_bound_adherence`), and
+  no-regression-vs-baseline (`rlvr_no_regression_vs_baseline`) — backed by budgets
+  that also gate the Shapley step-credit efficiency, the judge-disagreement
+  down-weighting, and the on-policy flywheel emission offline.
+
 ## [3.6.0] - 2026-06-20
 
 Evaluation & quality frontier: measure more of what buyers compare on, and

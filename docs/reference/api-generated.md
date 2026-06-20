@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**171** public symbols.
+**176** public symbols.
 
 ## Classes
 
@@ -286,6 +286,10 @@ Token-importance compressor (callable, drop-in for ``extractive_compress``).
 
 GDPR Article 6(1) lawful bases for processing.
 
+### `LearningResult(**data)`
+
+The outcome of a :class:`TrajectoryOptimizer` run.
+
 ### `LifecycleWatcher(registry=…, warn_within_days=…, events=…)`
 
 Watch pinned models for sunset and propose migrations off them.
@@ -430,6 +434,10 @@ Score a retriever against a :class:`RetrievalGoldenSet` on the IR metrics.
 
 A fixed query set scored against a fixed corpus.
 
+### `RewardModel(rewards, success_threshold=…, name=…)`
+
+Compose verifiable rewards into one dense, confidence-weighted signal.
+
 ### `RiskTierClassifier(purpose=…, domains=…, prohibited_practices=…, human_oversight=…, interacts_with_humans=…, generates_content=…)`
 
 Place an app into the EU AI Act risk tiers from its declared profile.
@@ -542,6 +550,14 @@ A deterministic, in-process environment whose world is a dict mutated by tools.
 
 A curated, grounded fine-tuning corpus.
 
+### `TrajectoryAdvantage(value_fn, include=…, max_players=…)`
+
+Attribute a trajectory's outcome reward to the steps that earned it.
+
+### `TrajectoryOptimizer(reward_model, policy=…, learning_rate=…, kl_max=…, iterations=…, group_normalize=…, min_reward_improvement=…)`
+
+GRPO-style on-policy update over a deterministic policy, safety-gated.
+
 ### `TwoStageIndex(embedder=…, coarse_dims=…, quantization=…, rerank_factor=…)`
 
 Matryoshka + quantized coarse search, full-precision exact rerank.
@@ -549,6 +565,10 @@ Matryoshka + quantized coarse search, full-precision exact rerank.
 ### `UserInput(**data)`
 
 Structured task input.
+
+### `VerifiableReward()`
+
+Base contract: map a :class:`RewardSample` to a :class:`RewardSignal`.
 
 ### `VincioConfig(**data)`
 

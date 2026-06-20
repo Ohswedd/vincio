@@ -1041,6 +1041,36 @@
       "threshold": true,
       "enforced_by": "families.agent.planner_depth.durable_timer_restart_safe",
       "rationale": "A timer that did not survive a restart would silently never fire; durability of the wake condition is the whole guarantee."
+    },
+    {
+      "id": "rlvr_reward_monotonicity",
+      "category": "quality",
+      "statement": "An on-policy learning update is served only when it does not regress the reference policy's expected verifiable reward.",
+      "metric": "families.learning.reward.monotonic_improvement",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.learning.reward.monotonic_improvement",
+      "rationale": "Reinforcement from verifiable rewards must climb, not churn; the monotonic gate makes the served policy non-regressing in reward by construction."
+    },
+    {
+      "id": "rlvr_kl_bound_adherence",
+      "category": "reliability",
+      "statement": "An on-policy update stays inside its KL-to-reference trust region; the clamp holds the bound even under an aggressive step.",
+      "metric": "families.learning.kl.within_bound",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.learning.kl.within_bound",
+      "rationale": "A policy that drifts arbitrarily far from the reference is unsafe to ship; the KL clamp keeps the update inside a verifiable trust region."
+    },
+    {
+      "id": "rlvr_no_regression_vs_baseline",
+      "category": "reliability",
+      "statement": "The no-regression gate blocks a policy update that would regress the baseline reward, and the served policy never falls below it.",
+      "metric": "families.learning.gate.blocks_regression",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.learning.gate.blocks_regression",
+      "rationale": "On-policy learning must never silently trade away verifiable success; a regressing candidate is refused and the reference is served instead."
     }
   ]
 }

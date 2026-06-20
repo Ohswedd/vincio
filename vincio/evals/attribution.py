@@ -26,11 +26,11 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from itertools import combinations
-from math import factorial
 from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..core.shapley import shapley_from_cache
 from .metrics import LOWER_IS_BETTER
 from .reports import GateSpec
 
@@ -229,19 +229,11 @@ class CausalAttributor:
         candidate_value = cache[frozenset(names)]
         total_delta = candidate_value - baseline_value
 
-        # Exact Shapley value per factor: average marginal contribution over all
-        # coalitions of the other factors, weighted by coalition size.
-        contributions: dict[str, float] = {}
-        for name in names:
-            others = [n for n in names if n != name]
-            shapley = 0.0
-            for size in range(len(others) + 1):
-                weight = factorial(size) * factorial(k - size - 1) / factorial(k)
-                for subset in combinations(others, size):
-                    without = frozenset(subset)
-                    with_factor = without | {name}
-                    shapley += weight * (cache[with_factor] - cache[without])
-            contributions[name] = shapley
+        # Exact Shapley value per factor — the shared credit-assignment kernel:
+        # each factor's average marginal contribution over all coalitions of the
+        # others, weighted by coalition size. Built from the coalition cache this
+        # replay already populated.
+        contributions = shapley_from_cache(names, cache)
 
         total_abs = sum(abs(v) for v in contributions.values()) or 1.0
         rows = [

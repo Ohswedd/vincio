@@ -60,6 +60,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `48_recipe_multimodal_rag.py` | cookbook recipe — multimodal RAG over slides & PDFs: text, a table, and a slide image scored and cited together in one budgeted context packet |
 | `49_professionalism.py` | professionalism & API ergonomics — actionable errors (`.code` / `.remediation` / `.docs_url`), automatic `vincio.yaml` schema migrations (`config migrate` + in-memory upgrade on load), the deprecation-aware `vincio doctor`, and the `stability_of` contract behind it all |
 | `50_evaluation_quality_frontier.py` | evaluation & quality frontier — four more benchmark adapters (AgentBench / ToolBench / LiveCodeBench / MMLU-Pro), judge ensembles whose disagreement is an uncertainty signal (`JudgeEnsemble`), causal regression attribution by Shapley counterfactual replay (`CausalAttributor`), and adaptive eval sampling that decides a gate for fewer samples (`AdaptiveSampler`) |
+| `51_reinforcement_from_verifiable_rewards.py` | on-policy reinforcement from verifiable rewards (RLVR) — a `RewardModel` over the task-success oracle and a disagreement-down-weighted judge ensemble, step-level credit by Shapley counterfactual replay (`TrajectoryAdvantage`), and the GRPO-style `TrajectoryOptimizer` (`app.learn`) with a KL-to-reference clamp and a monotonic no-regression gate that emits a fine-tune job through the existing flywheel |
 
 Run any of them:
 

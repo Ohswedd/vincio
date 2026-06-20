@@ -242,6 +242,86 @@ ratio of the teacher, cost strictly less, and regress neither safety nor schema
 validity. `vincio distill --traces-dir .vincio/traces --output train.jsonl`
 exports from the CLI.
 
+## On-policy reinforcement from verifiable rewards (RLVR)
+
+Reflective optimization tunes a *prompt*; the flywheel distills a *model*. RLVR
+closes the loop on a **policy** — the choice the agent makes — using the
+verifiable signals the platform already computes as the reward, with no trainer
+dependency on the default path.
+
+**The reward is verifiable.** A `RewardModel` composes one or more
+`VerifiableReward`s, each grounded in a checkable end state rather than a free
+opinion:
+
+- `OracleReward` reads the stateful-environment task-success oracle (the database
+  end state) — a dense reward (fraction of checks satisfied) or a bare pass/fail.
+- `BenchmarkReward` wraps any benchmark adapter, so SWE-bench's test transition,
+  τ-bench's database state, GAIA's exact match, or ToolBench's solvable path *is*
+  the reward.
+- `JudgeEnsembleReward` turns a judge panel into a reward whose **disagreement
+  down-weights itself**: a split panel contributes a lower-confidence signal so
+  the blend leans on the verifiable scorers instead of rewarding noise.
+
+```python
+from vincio.optimize import OracleReward, JudgeEnsembleReward, RewardModel
+
+reward = RewardModel([(OracleReward(), 1.0), (JudgeEnsembleReward(panel), 0.5)])
+```
+
+**Credit is assigned to the steps that earned it.** `TrajectoryAdvantage`
+attributes a trajectory's outcome reward back to its steps by Shapley
+counterfactual replay — the same kernel that backs causal regression
+attribution. Drop a step, re-verify the end state, measure the marginal: the
+cancel a refund depended on carries the larger share, a no-op carries ~0, and the
+credits sum to the outcome value (efficiency).
+
+```python
+from vincio.optimize import TrajectoryAdvantage, environment_step_value
+from vincio.evals.environment import make_retail_environment
+
+advantage = TrajectoryAdvantage(
+    environment_step_value(lambda: make_retail_environment("cancel_refund"))
+)
+for credit in advantage.credit(trajectory):
+    print(credit.name, credit.credit)   # cancel_order +0.500, refund_order +0.167
+```
+
+**The update is safety-gated.** `app.learn` runs a GRPO-style group-relative
+update (`A_i = (r_i − mean) / (std + ε)`) over a deterministic policy, behind the
+same discipline prompt optimization uses: a **KL-to-reference clamp** keeps the
+policy inside a trust region, and a **monotonic no-regression gate** serves the
+updated policy only if its expected reward does not regress the reference —
+otherwise it reverts. The served policy is non-regressing in reward by
+construction.
+
+```python
+result = app.learn(tasks, reward=reward, kl_max=0.5, iterations=6)
+result.promoted            # cleared the no-regression gate
+result.reward_delta        # baseline → policy expected-reward gain
+result.kl_to_reference     # within result.kl_bound
+result.verdict             # the same CanaryVerdict a prompt deploy produces
+```
+
+The decision lands on the shared audit chain and event bus
+(`learn.promoted` / `learn.rejected`). On a promotion the on-policy winners are
+exported as a grounded `TrainingSet`; pass a configured flywheel to emit a
+fine-tune job in the same call:
+
+```python
+from vincio.optimize.distill import BootstrapFinetune
+
+flywheel = BootstrapFinetune(evaluate_model, trainer=trainer)
+result = app.learn(
+    tasks, reward=reward,
+    flywheel=flywheel, held_out=held_out, teacher="teacher", student="student",
+)
+result.distillation.promoted   # a cheaper student trained on the RL winners
+```
+
+The offline path runs a deterministic mock policy, so the optimizer's math
+(advantage normalization, the KL clamp, the no-regression gate) is fully tested
+without a GPU.
+
 ## Learned prompt compression
 
 Extractive compression keeps whole sentences; learned compression goes finer.
