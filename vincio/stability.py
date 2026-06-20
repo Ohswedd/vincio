@@ -147,10 +147,10 @@ def deprecated(
                 warnings.warn(message, VincioDeprecationWarning, stacklevel=2)
                 orig_init(self, *args, **kwargs)
 
-            obj.__init__ = __init__  # type: ignore[method-assign,misc]
+            obj.__init__ = __init__  # type: ignore[misc]
             _attach(obj, record)
             obj.__doc__ = f"[DEPRECATED] {message}\n\n{obj.__doc__ or ''}".rstrip()
-            return obj  # type: ignore[return-value]
+            return obj
 
         @functools.wraps(obj)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -194,9 +194,9 @@ def experimental(*, since: str, note: str | None = None) -> Callable[[F], F]:
                 _warn()
                 orig_init(self, *args, **kwargs)
 
-            obj.__init__ = __init__  # type: ignore[method-assign,misc]
+            obj.__init__ = __init__  # type: ignore[misc]
             _attach(obj, record)
-            return obj  # type: ignore[return-value]
+            return obj
 
         @functools.wraps(obj)
         def wrapper(*args: Any, **kwargs: Any) -> Any:

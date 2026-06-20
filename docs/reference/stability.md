@@ -33,7 +33,7 @@ Within a major version (`1.x.y`):
 | **MINOR** | `1.0.0 → 1.1.0` | Additive only: new symbols, new **optional** parameters with defaults. Existing code keeps working. |
 | **MAJOR** | `1.x → 2.0.0` | May remove or change public API — but only after the deprecation contract below. |
 
-`vincio.API_VERSION` (`"1.0"`) is the contract version SemVer is applied
+`vincio.API_VERSION` (`"3.0"`) is the contract version SemVer is applied
 against; it changes only on a major bump.
 
 ## Deprecation contract
@@ -60,6 +60,12 @@ stability_of(old_api)
 # {'level': StabilityLevel.DEPRECATED, 'since': '1.2',
 #  'removed_in': '2.0', 'alternative': 'new_api', 'note': None}
 ```
+
+Run `vincio doctor` to scan a project for any deprecated public API it still
+uses — each finding names the symbol, its replacement, and its removal version,
+read straight from the `stability_of` metadata above (the doctor also flags a
+`vincio.yaml` that is behind the current schema). See the
+[CLI reference](cli.md).
 
 `VincioDeprecationWarning` subclasses the built-in `DeprecationWarning`, so it's
 silent by default but visible under `python -W` and in test runs. To make

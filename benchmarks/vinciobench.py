@@ -4062,6 +4062,60 @@ async def bench_integrations() -> dict[str, Any]:
     }
 
 
+async def bench_professionalism() -> dict[str, Any]:
+    """Professionalism & API ergonomics: the surface is as trustworthy as the
+    internals — full docstring coverage, a complete actionable error catalog,
+    a graduated strict-typing set, and versioned, idempotent config migrations.
+    All deterministic and offline (pure introspection)."""
+    from vincio._apiref import public_symbols, undocumented_symbols
+    from vincio.cli.doctor import collect_deprecations
+    from vincio.core.config_migrations import migrate, needs_migration
+    from vincio.core.error_catalog import ERROR_CATALOG, remediation_for
+    from vincio.core.errors import ProviderError, VincioError
+
+    # Docstring coverage: every public symbol carries a docstring.
+    undocumented = undocumented_symbols()
+
+    # Error catalog: every string-coded error resolves a remediation + docs link.
+    sample = ProviderError("down", provider="openai")
+    errors_actionable = bool(sample.remediation) and bool(sample.docs_url)
+    base = VincioError("x")
+    catalog_resolves = remediation_for("VINCIO_ERROR") == base.remediation
+
+    # Strict-typing ladder graduates these modules (kept in lockstep with
+    # pyproject's [[tool.mypy.overrides]] and the CI --strict step).
+    strict_modules = (
+        "vincio.stability",
+        "vincio.core.errors",
+        "vincio.core.error_catalog",
+        "vincio.core.config",
+        "vincio.core.config_migrations",
+        "vincio._apiref",
+        "vincio.cli.doctor",
+    )
+
+    # Config migrations: a legacy file upgrades and re-migration is a no-op.
+    legacy = {"observability": {"exporter": "console"}}
+    once = migrate(legacy)
+    twice = migrate(once.data)
+    migration_idempotent = (not twice.steps) and twice.data == once.data
+    legacy_upgraded = once.data["observability"]["exporter"] == "jsonl"
+
+    return {
+        "public_symbols": len(public_symbols()),
+        "docstring_coverage_complete": not undocumented,
+        "undocumented_count": len(undocumented),
+        "error_catalog_size": len(ERROR_CATALOG),
+        "errors_actionable": errors_actionable,
+        "error_catalog_resolves": catalog_resolves,
+        "strict_typed_modules": len(strict_modules),
+        "deprecated_public_apis": len(collect_deprecations()),
+        "config_needs_migration_detected": needs_migration(legacy),
+        "config_migration_idempotent": migration_idempotent,
+        "legacy_config_upgraded": legacy_upgraded,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -4081,6 +4135,7 @@ FAMILIES = {
     "generation": bench_generation,
     "perf": bench_perf,
     "integrations": bench_integrations,
+    "professionalism": bench_professionalism,
     "breaking_2_0": bench_breaking_2_0,
 }
 

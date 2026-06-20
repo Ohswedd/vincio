@@ -6,6 +6,8 @@ Commands::
     vincio config schema --output vincio.schema.json
     vincio config validate vincio.yaml
     vincio config show
+    vincio config migrate [vincio.yaml] [--check] [--dry-run]   # versioned schema upgrade
+    vincio doctor [path] [--json]                               # deprecated-API & config drift
     vincio packs list
     vincio packs show support
     vincio plugins list
@@ -98,7 +100,10 @@ def _golden_line(**case: Any) -> str:
 
 
 def _vincio_yaml(project: str, provider: str, **sections: Any) -> str:
+    from ..core.config_migrations import CONFIG_SCHEMA_VERSION
+
     config: dict[str, Any] = {
+        "schema_version": CONFIG_SCHEMA_VERSION,
         "project": project,
         "provider": {"default": provider, "model": "gpt-5.2"},
         "storage": {"metadata": "sqlite:///.vincio/vincio.db"},
@@ -282,6 +287,95 @@ def cmd_config_show(args: argparse.Namespace) -> int:
     config = load_config(args.path) if args.path else load_config()
     print(config.to_yaml())
     return 0
+
+
+def cmd_config_migrate(args: argparse.Namespace) -> int:
+    from ..core.config import find_config_file
+    from ..core.config_migrations import migrate
+
+    raw_path = args.path or find_config_file()
+    if raw_path is None:
+        return _fail("no vincio config file found")
+    path = Path(raw_path)
+    if not path.is_file():
+        return _fail(f"config file not found: {path}")
+    original = path.read_text(encoding="utf-8")
+    try:
+        loaded = yaml.safe_load(original)
+    except yaml.YAMLError as exc:
+        return _fail(f"could not parse {path}: {exc}")
+    if not isinstance(loaded, dict):
+        return _fail(f"config root must be a mapping: {path}")
+
+    result = migrate(loaded)
+    if not result.steps:
+        print(f"{path}: already at schema version {result.to_version}; nothing to migrate")
+        return 0
+
+    print(f"{path}: schema version {result.from_version} → {result.to_version}")
+    for step in result.steps:
+        print(f"  [{step.from_version}→{step.to_version}] {step.description}")
+        for note in step.notes:
+            print(f"    - {note}")
+
+    body = yaml.safe_dump(result.data, sort_keys=False)
+    # Preserve a leading editor schema hint if the original file had one.
+    header = ""
+    first_line = original.splitlines()[0] if original.strip() else ""
+    if first_line.startswith("# yaml-language-server:"):
+        header = first_line + "\n"
+    rendered = header + body
+
+    if args.check:
+        print("(--check) migration available; file not written")
+        return 1
+    if args.dry_run:
+        print()
+        print(rendered, end="")
+        return 0
+    out = Path(args.output) if args.output else path
+    out.write_text(rendered, encoding="utf-8")
+    print(f"wrote {out}")
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    from .doctor import run_doctor
+
+    report = run_doctor(args.path)
+    if args.json:
+        print(
+            json_dumps(
+                {
+                    "ok": report.ok,
+                    "files_scanned": report.files_scanned,
+                    "deprecations_known": report.deprecations_known,
+                    "findings": [
+                        {
+                            "kind": f.kind,
+                            "file": f.file,
+                            "line": f.line,
+                            "message": f.message,
+                            "remediation": f.remediation,
+                        }
+                        for f in report.findings
+                    ],
+                }
+            )
+        )
+        return 0 if report.ok else 1
+    print(
+        f"vincio doctor: scanned {report.files_scanned} file(s); "
+        f"{report.deprecations_known} deprecated public API(s) known"
+    )
+    if report.ok:
+        print("no issues found")
+        return 0
+    for finding in report.findings:
+        print(f"  [{finding.kind}] {finding.file}:{finding.line}: {finding.message}")
+        print(f"      fix: {finding.remediation}")
+    print(f"\n{len(report.findings)} issue(s) found")
+    return 1
 
 
 def cmd_packs_list(args: argparse.Namespace) -> int:
@@ -1439,6 +1533,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_cfg_show = config_sub.add_parser("show", help="print the effective merged config")
     p_cfg_show.add_argument("path", nargs="?", default=None)
     p_cfg_show.set_defaults(fn=cmd_config_show)
+    p_cfg_migrate = config_sub.add_parser(
+        "migrate", help="upgrade a vincio.yaml to the current schema version"
+    )
+    p_cfg_migrate.add_argument("path", nargs="?", default=None)
+    p_cfg_migrate.add_argument("--output", default=None, help="write the upgraded config here (default: in place)")
+    p_cfg_migrate.add_argument("--dry-run", action="store_true", help="print the upgraded config without writing")
+    p_cfg_migrate.add_argument(
+        "--check", action="store_true",
+        help="exit non-zero if a migration is available, without writing (CI gate)",
+    )
+    p_cfg_migrate.set_defaults(fn=cmd_config_migrate)
 
     p_packs = sub.add_parser("packs", help="domain packs")
     packs_sub = p_packs.add_subparsers(dest="packs_command", required=True)
@@ -1452,6 +1557,13 @@ def build_parser() -> argparse.ArgumentParser:
     plugins_sub = p_plugins.add_subparsers(dest="plugins_command", required=True)
     p_plugins_list = plugins_sub.add_parser("list", help="list installed Vincio plugins")
     p_plugins_list.set_defaults(fn=cmd_plugins_list)
+
+    p_doctor = sub.add_parser(
+        "doctor", help="report deprecated-API usage and config schema drift in a project"
+    )
+    p_doctor.add_argument("path", nargs="?", default=".", help="project directory or file to scan")
+    p_doctor.add_argument("--json", action="store_true", help="emit findings as JSON")
+    p_doctor.set_defaults(fn=cmd_doctor)
 
     p_tui = sub.add_parser("tui", help="interactive inspector for runs, traces, and memory")
     p_tui.add_argument("--traces-dir", default=".vincio/traces")

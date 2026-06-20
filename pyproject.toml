@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "3.4.1"
+version = "3.5.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -123,3 +123,30 @@ ignore = ["E501", "B008"]
 python_version = "3.11"
 strict = false
 ignore_missing_imports = true
+
+# Strict-typing ladder. The whole package is type-checked and ships `py.typed`,
+# so downstream checkers see Vincio's inline contract. These modules are
+# additionally held to `mypy --strict`; the set grows over time and new modules
+# ship strict. The regular `mypy vincio` CI job tightens these modules via the
+# overrides below, and a dedicated `mypy --strict` step double-checks the set.
+[[tool.mypy.overrides]]
+module = [
+  "vincio.stability",
+  "vincio.core.errors",
+  "vincio.core.error_catalog",
+  "vincio.core.config",
+  "vincio.core.config_migrations",
+  "vincio._apiref",
+  "vincio.cli.doctor",
+]
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+disallow_untyped_calls = true
+disallow_untyped_decorators = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+warn_return_any = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+extra_checks = true

@@ -16,6 +16,14 @@ __all__ = ["OutputSchema", "ValidatorSpec", "RepairPolicy", "OutputContract", "S
 
 
 class OutputSchema:
+    """A named, provider-agnostic structured-output contract.
+
+    Wraps a JSON Schema (optionally backed by a Pydantic model) that the runtime
+    enforces via provider-native constrained decoding, streaming validation, and
+    bounded self-correction. Build one from a Pydantic model, a raw JSON Schema,
+    or the ``choice`` / ``regex`` helpers.
+    """
+
     def __init__(
         self,
         *,

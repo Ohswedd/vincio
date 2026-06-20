@@ -58,6 +58,7 @@ export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
 | `46_recipe_incident_triage.py` | cookbook recipe — typed, grounded incident triage (severity / component / mitigation / runbook ref) answered only from attached runbooks |
 | `47_recipe_data_room_qa.py` | cookbook recipe — due-diligence Q&A over a virtual data room with citations back to the exact source documents |
 | `48_recipe_multimodal_rag.py` | cookbook recipe — multimodal RAG over slides & PDFs: text, a table, and a slide image scored and cited together in one budgeted context packet |
+| `49_professionalism.py` | professionalism & API ergonomics — actionable errors (`.code` / `.remediation` / `.docs_url`), automatic `vincio.yaml` schema migrations (`config migrate` + in-memory upgrade on load), the deprecation-aware `vincio doctor`, and the `stability_of` contract behind it all |
 
 Run any of them:
 

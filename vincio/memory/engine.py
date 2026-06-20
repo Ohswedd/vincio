@@ -104,6 +104,14 @@ class ScopedMemory:
 
 
 class MemoryEngine:
+    """Layered, guarded, decaying long-term memory with hybrid recall.
+
+    Writes pass a configurable policy (``guarded`` / ``open`` / ``off``); recall
+    fuses lexical, vector, and graph signals and honors scope, ACLs, consent,
+    and bi-temporal as-of queries. Supports decay/TTL, conflict-resolving
+    ``correct()``, consolidation with provenance, and audited GDPR hygiene.
+    """
+
     def __init__(
         self,
         store: MemoryStore | None = None,

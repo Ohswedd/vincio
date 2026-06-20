@@ -68,6 +68,8 @@ __all__ = [
 class BenchmarkError(VincioError):
     """A benchmark adapter / task-set error."""
 
+    code = "BENCHMARK_ERROR"
+
 
 # A solver turns a task into an adapter-specific output (a string answer, a
 # patch's test outcome, a list of actions, …). May be sync or async.

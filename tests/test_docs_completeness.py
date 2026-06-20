@@ -46,8 +46,44 @@ def test_subsystem_is_documented(subsystem):
 
 
 def test_reference_pages_exist():
-    for page in ("api.md", "cli.md", "config.md", "stability.md", "slo.md"):
+    for page in (
+        "api.md",
+        "api-generated.md",
+        "cli.md",
+        "config.md",
+        "stability.md",
+        "slo.md",
+        "errors.md",
+        "typing.md",
+    ):
         assert (DOCS / "reference" / page).is_file(), f"missing docs/reference/{page}"
+
+
+def test_docstring_coverage_of_public_surface():
+    """The docs-completeness gate extends to docstring coverage: no public
+    symbol in ``vincio.__all__`` may ship without a docstring."""
+    from vincio._apiref import undocumented_symbols
+
+    missing = undocumented_symbols()
+    assert not missing, f"undocumented public symbols: {missing}"
+
+
+def test_error_catalog_completeness():
+    """The docs-completeness gate extends to the error catalog: every error
+    code is documented with a remediation in the reference page."""
+    from vincio.core.error_catalog import ERROR_CATALOG, render_error_reference
+
+    page = (DOCS / "reference" / "errors.md").read_text(encoding="utf-8")
+    assert page == render_error_reference(), "docs/reference/errors.md is stale"
+    for code, entry in ERROR_CATALOG.items():
+        assert f"### {code}" in page
+        assert entry.remediation
+
+
+def test_py_typed_marker_ships():
+    """Strict-typing deliverable: the PEP 561 marker must ship so downstream
+    type-checkers see Vincio's inline contract."""
+    assert (PKG / "py.typed").is_file(), "missing vincio/py.typed (PEP 561 marker)"
 
 
 def test_threat_model_documented():

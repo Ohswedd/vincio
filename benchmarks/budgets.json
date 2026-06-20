@@ -945,6 +945,39 @@
     },
     "families.integrations.mcp_marketplace_denies_unlisted": {
       "eq": true
+    },
+    "families.professionalism.docstring_coverage_complete": {
+      "eq": true
+    },
+    "families.professionalism.undocumented_count": {
+      "eq": 0
+    },
+    "families.professionalism.public_symbols": {
+      "gte": 160
+    },
+    "families.professionalism.error_catalog_size": {
+      "gte": 60
+    },
+    "families.professionalism.errors_actionable": {
+      "eq": true
+    },
+    "families.professionalism.error_catalog_resolves": {
+      "eq": true
+    },
+    "families.professionalism.strict_typed_modules": {
+      "gte": 7
+    },
+    "families.professionalism.deprecated_public_apis": {
+      "eq": 0
+    },
+    "families.professionalism.config_needs_migration_detected": {
+      "eq": true
+    },
+    "families.professionalism.config_migration_idempotent": {
+      "eq": true
+    },
+    "families.professionalism.legacy_config_upgraded": {
+      "eq": true
     }
   }
 }

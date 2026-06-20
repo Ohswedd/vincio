@@ -196,6 +196,17 @@ class _AgentHandle:
 
 
 class ContextApp:
+    """The top-level Vincio application: one object that compiles prompts,
+    memory, retrieval, tools, schemas, and policies into validated, observable,
+    model-ready context and runs the end-to-end pipeline.
+
+    Construct one with a name and an optional provider/model/config, attach
+    sources, tools, memory, evaluators, and rails declaratively, then ``run`` /
+    ``arun`` / ``astream`` to execute. The flat ``app.<method>`` surface is also
+    grouped into capability facades (``app.runs``, ``app.knowledge``,
+    ``app.governance``, ``app.optimization``, ``app.serving``, ``app.training``).
+    """
+
     def __init__(
         self,
         name: str = "vincio_app",

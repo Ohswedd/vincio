@@ -4,6 +4,66 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.5.0] - 2026-06-20
+
+Professionalism & API ergonomics: make the platform's public surface as
+trustworthy as its internals. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the dependency-free offline path is the default, and
+every existing entry point is unchanged.
+
+### Added
+
+- **Actionable, internationalizable errors.** Every `VincioError` now carries a
+  `.remediation` hint and a `.docs_url` deep link alongside its stable `.code`,
+  resolved from a new completeness-gated catalog (`vincio.core.error_catalog`:
+  `ERROR_CATALOG`, `catalog_entry`, `title_for`, `remediation_for`,
+  `docs_url_for`, `render_error_reference`). An i18n layer
+  (`register_error_locale` / `set_default_error_locale` / `available_error_locales`,
+  English shipped as the reference locale) keys translated titles and hints by the
+  same codes. `VincioError.to_dict()` includes `remediation` and `docs_url`, and a
+  per-instance `hint=` / `docs_url=` override is available. `BenchmarkError` and
+  `SkillError` gain their own codes (`BENCHMARK_ERROR` / `SKILL_ERROR`). New
+  reference page `docs/reference/errors.md`, generated from the catalog and gated.
+- **Versioned config migrations.** `VincioConfig` gains `schema_version`;
+  `vincio.core.config_migrations` (`CONFIG_SCHEMA_VERSION`, `Migration`, `migrate`,
+  `needs_migration`, `detect_version`) chains ordered, idempotent transforms.
+  `load_config` upgrades stale files **in memory** so a config never silently
+  drifts; `vincio config migrate [path] [--check] [--dry-run] [--output]` persists
+  the upgrade, reporting each step and preserving the editor schema hint. The v0→v1
+  migration introduces versioning and canonicalizes the legacy
+  `observability.exporter: console` alias.
+- **`vincio doctor`.** A static project scanner (`vincio.cli.doctor`:
+  `run_doctor`, `collect_deprecations`, `scan_source`, `scan_config`) reports a
+  project's use of any deprecated public API — its replacement and removal version
+  read from the same `stability_of` metadata the library marks its own surface with
+  — plus a `vincio.yaml` behind the current schema. AST-based: it never imports or
+  runs project code.
+- **Docstring-driven API reference + coverage gate.** `vincio._apiref`
+  (`public_symbols`, `undocumented_symbols`, `render_api_index`) generates the
+  exhaustive `docs/reference/api-generated.md` from `vincio.__all__`; a gate keeps
+  every public symbol documented (`ContextApp`, `Crew`, `MemoryEngine`,
+  `OutputSchema`, `Workflow` gained docstrings).
+- **Strict typing.** The package ships a PEP 561 `py.typed` marker, so downstream
+  type-checkers see Vincio's inline contract. A graduated, CI-enforced
+  `mypy --strict` ladder covers `stability`, `core.errors`, `core.error_catalog`,
+  `core.config`, `core.config_migrations`, `_apiref`, and `cli.doctor`, enforced by
+  per-module overrides plus a dedicated CI step. New reference page
+  `docs/reference/typing.md`.
+
+### Changed
+
+- The docs-completeness gate now also enforces docstring coverage and
+  error-catalog completeness. A new `professionalism` VincioBench family gates
+  these invariants under budgets. New runnable example `49_professionalism.py`.
+
+## [3.4.1] - 2026-06-20
+
+### Fixed
+
+- **Fail-closed vertical-pack residency.** Resolve the active provider's real
+  name when evaluating a residency posture so a vertical pack refuses an
+  identifiable out-of-jurisdiction endpoint instead of passing on a name mismatch.
+
 ## [3.4.0] - 2026-06-20
 
 Use-case coverage & verticals: go from primitives to a working app in one file,

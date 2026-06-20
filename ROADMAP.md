@@ -54,6 +54,7 @@ and a runnable example.
 | **Use-case coverage & verticals** | Full-stack vertical packs (healthcare/PHI, legal e-discovery, financial KYC/AML, customer support, code review) that preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set on top of the pack contract; a higher-level `Assistant` over `ContextApp` that threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval; an end-to-end `VoiceAgent` wiring the realtime session to the deep-research agent, the memory OS, and the rails; and a cookbook of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) as offline-gated runnable examples. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
 | **Runtime performance** | A single-pass vectorized scorer (NumPy-optional, pure-Python fallback); a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and the prepared candidate set so a warm compile is dominated by scoring, not allocation; streaming-first compilation that emits the prefix before scoring; speculative retrieval prefetch that warms the query embedding from the task classification; and a per-app resident-memory budget held by slim packets and evidence eviction, surfaced in the cost report and gated by an SLO. |
+| **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
 
@@ -65,24 +66,6 @@ Forward phases are scoped by theme and gated the same way everything else is —
 by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is additive on the
 frozen public surface; breaking changes are reserved for an announced major window and never shipped
 for their own sake.
-
-### 🚧 Professionalism & API ergonomics
-
-*Make the platform's surface as trustworthy as its internals.*
-
-- **Auto-generated API reference** — a docstring-driven reference site built in CI from the public
-  surface, with a docstring-coverage gate so no public symbol ships undocumented.
-- **Strict typing end to end** — graduate the package to `mypy --strict` with shipped type stubs, so
-  downstream type-checkers see the full contract.
-- **Config schema migrations** — versioned, automatic `vincio.yaml` migrations with a
-  `vincio config migrate` command, so a config never silently drifts from the schema.
-- **Deprecation tooling** — `vincio doctor` reports any deprecated API a project still uses, its
-  replacement, and its removal version, driven by the same `stability_of` metadata the library uses.
-- **Internationalized, actionable errors** — every `VincioError` carries a stable code, a remediation
-  hint, and a docs link, with a catalog gated for completeness.
-- *Definition of done:* the docs-completeness gate extends to docstring coverage and error-catalog
-  completeness, the strict-typing gate is green in CI, and the migration/doctor commands are covered
-  by the CLI test suite.
 
 ### 🚧 Evaluation & quality frontier
 

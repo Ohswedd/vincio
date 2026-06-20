@@ -137,15 +137,21 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.core.concurrency` | `gather_bounded`, `map_bounded` (bounded, cancellation-correct fan-out) |
 | `vincio.storage` | `create_metadata_store`, `SQLiteMetadataStore`, `build_vector_index` (memory/qdrant/pgvector/chroma/pinecone/lancedb and weaviate/milvus/elasticsearch/opensearch/vespa), Neo4j/Redis/DuckDB adapters, and an async store contract `asave` / `aquery` (native or `to_thread`) plus `vincio.stores` entry-point discovery; the canonical `AsyncMetadataStore` protocol with `aget` / `adelete` / `acount` helpers and a psycopg3 `AsyncConnectionPool` Postgres fast path; `IndexRegressionStore` / `IndexRegressionArtifact` / `config_key` (`vincio.storage.index_regression`) — versioned retrieval-regression artifacts keyed on `(embedder, chunker, corpus hash)`, persisted through the `MetadataStore` |
 | `vincio.realtime` *(optional module)* | `RealtimeSession`, `connect_realtime`, `RealtimeConfig`, `VADConfig`, `RealtimeEvent`, `RealtimeToolCall`, `InProcessRealtimeBackend`, `OpenAIRealtimeBackend`, `GeminiLiveBackend` — bidirectional voice/realtime over OpenAI Realtime / Gemini Live / in-process, with VAD, interruption, and in-session tool calls through the permissioned runtime (`app.realtime_session(...)`; `vincio[realtime]`); and the end-to-end `VoiceAgent` (`app.voice_agent(...)`) — a session wired to the deep-research agent (in-session cited `research` tool), the self-editing memory OS, and the app's deterministic input/output rails over every spoken transcript and reply |
-| `vincio.core.config` | `VincioConfig`, `load_config`, `config_json_schema` |
+| `vincio.core.config` | `VincioConfig`, `load_config`, `config_json_schema`; versioned schema migrations `vincio.core.config_migrations` (`CONFIG_SCHEMA_VERSION`, `migrate`, `needs_migration`, `detect_version`) — `VincioConfig.schema_version`, auto-migrated in memory on load and persisted by `vincio config migrate` |
+| `vincio.core.errors` | `VincioError` (the base of the whole family) and its subsystem subclasses; every error carries a stable `.code`, a `.remediation` hint, and a `.docs_url` resolved from `vincio.core.error_catalog` (`ERROR_CATALOG`, `catalog_entry`, `remediation_for`, `docs_url_for`, `render_error_reference`, plus i18n `register_error_locale` / `set_default_error_locale`). See the [error catalog](errors.md) |
 | `vincio.server` | `create_app` (FastAPI); launched by `vincio serve --app app.py` with `/v1/health/ready`, Prometheus `/v1/metrics`, graceful shutdown, and an optional shared rate-limit middleware (`server.redis_url` / `server.rate_limit_per_min`); the AG-UI generative-UI protocol `AGUIEvent` / `AGUIEventType` / `run_stream_to_agui` / `agent_stream_to_agui` / `agui_sse` (dependency-free; translate a run's `astream` into AG-UI events) plus the SSE endpoint `POST /v1/apps/{app_id}/agui` — the interactive UI inherits the run's provenance, budget metering, and audit |
 | `vincio.storage` | `InMemoryRateLimiter` / `RateLimiter`, `InMemoryIdempotencyStore` / `IdempotencyStore`, `TenantQuotaManager` (shared server state; `RedisRateLimiter` / `RedisIdempotencyStore` in `storage.redis` make it coherent across workers) |
 | `vincio.providers` | `FineTuneBackend`, `OpenAIFineTuneBackend` / `GoogleFineTuneBackend` / `AnthropicFineTuneBackend`, `make_finetune_backend`, `run_finetune`, `FineTuneJob` / `FineTuneStatus`, and `GGUFProvider` (in-process llama.cpp chat + on-device embedding) |
-| `vincio.cli` | `main`, `build_parser` — the `vincio` command (see [CLI reference](cli.md)) |
+| `vincio.cli` | `main`, `build_parser` — the `vincio` command (see [CLI reference](cli.md)); `vincio config migrate` (versioned config upgrades) and `vincio doctor` (deprecated-API + config-drift report, engine in `vincio.cli.doctor`: `run_doctor` / `collect_deprecations` / `scan_source` / `scan_config`) |
 | `vincio.stability` | `deprecated`, `experimental`, `deprecated_alias`, `stability_of`, `public_api`, `StabilityLevel`, `VincioDeprecationWarning`, `VincioExperimentalWarning`, `API_VERSION` |
 
 All public data contracts are Pydantic models; all engines are async-first
 with sync wrappers (`run` / `arun`).
+
+For the exhaustive, docstring-driven index of every public symbol (gated for
+docstring coverage) see [api-generated.md](api-generated.md); for the error
+contract see the [error catalog](errors.md); for the typing guarantees
+(`py.typed`, the `mypy --strict` ladder) see the [typing reference](typing.md).
 
 ## Stability & versioning
 
