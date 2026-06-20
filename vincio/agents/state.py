@@ -9,9 +9,21 @@ from pydantic import BaseModel, Field
 from ..core.types import Budget, BudgetUsage, EvidenceItem, Objective, ToolResult
 from ..core.utils import new_id
 
-__all__ = ["AgentStepType", "AgentStep", "AgentError", "AgentState", "TerminationReason"]
+__all__ = [
+    "AgentStepType",
+    "AgentStep",
+    "AgentError",
+    "AgentState",
+    "TerminationReason",
+    "RepairTrigger",
+    "RepairAction",
+    "PlanRepair",
+]
 
 AgentStepType = Literal["retrieve", "think", "tool", "validate", "ask_human", "finalize"]
+
+RepairTrigger = Literal["tool_failure", "contradiction", "budget_shock"]
+RepairAction = Literal["rebind", "substitute", "reorder", "drop", "none"]
 
 TerminationReason = Literal[
     "objective_complete",
@@ -47,6 +59,25 @@ class AgentError(BaseModel):
     recoverable: bool = True
 
 
+class PlanRepair(BaseModel):
+    """A recorded in-place repair of a running plan — a trajectory event.
+
+    Produced by :class:`vincio.agents.repair.PlanRepairer` and appended to
+    :attr:`AgentState.repairs`, so a repair is observable alongside the steps it
+    edited rather than a silent retry.
+    """
+
+    action: RepairAction
+    trigger: RepairTrigger
+    step_id: str = ""
+    step_name: str = ""
+    detail: str = ""
+    from_binding: str | None = None
+    to_binding: str | None = None
+    added_steps: list[str] = Field(default_factory=list)
+    dropped_steps: list[str] = Field(default_factory=list)
+
+
 class AgentState(BaseModel):
     """Full execution state of one agent run."""
 
@@ -57,6 +88,7 @@ class AgentState(BaseModel):
     evidence: list[EvidenceItem] = Field(default_factory=list)
     tool_results: list[ToolResult] = Field(default_factory=list)
     errors: list[AgentError] = Field(default_factory=list)
+    repairs: list[PlanRepair] = Field(default_factory=list)
     budget: Budget = Field(default_factory=Budget)
     usage: BudgetUsage = Field(default_factory=BudgetUsage)
     final_answer: Any = None
@@ -91,4 +123,5 @@ class AgentState(BaseModel):
             "input_tokens": self.usage.input_tokens,
             "output_tokens": self.usage.output_tokens,
             "errors": len(self.errors),
+            "repairs": len(self.repairs),
         }

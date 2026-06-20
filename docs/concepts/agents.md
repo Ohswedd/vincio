@@ -8,16 +8,18 @@ with explicit budgets and validation.
 ```python
 agent = app.agent(
     tools=[web_search, database_lookup],
-    planner="dag",          # dag | dynamic | react | direct
+    planner="dag",          # dag | dynamic | react | direct | plan_and_execute | hierarchical
     max_steps=8,
 )
 state = agent.run("Find the latest pricing discrepancy and draft a report")
 state.termination_reason   # objective_complete | validation_passed | max_steps | budget_exhausted | ...
-state.metrics()            # success, steps, tool calls/errors, cost, tokens
+state.metrics()            # success, steps, tool calls/errors, cost, repairs, tokens
 ```
 
 - **Planners** — static task-shaped DAGs, dynamic LLM-generated DAGs
-  (schema-validated, safe fallback), ReAct loops, direct answers.
+  (schema-validated, safe fallback), ReAct loops, direct answers, a
+  `plan_and_execute` replanning loop, and a hierarchical (HTN) planner
+  (see [Orchestrator & planner depth](#orchestrator--planner-depth)).
 - **Steps** — retrieve / think / tool / validate / ask_human / finalize.
 - **Termination** — objective complete, validation passed, max steps,
   budget exhausted, safety violation, approval required, unrecoverable error.
@@ -95,6 +97,113 @@ done = review.resume(paused.thread_id, value=True)          # …and resume
   same way: a gate with no `approval_fn` returns a `paused` result, and
   `workflow.resume(result, approvals={"ship": True})` continues without
   re-running done steps.
+
+## Orchestrator & planner depth
+
+Multi-step execution plans deeper, recovers from failure, and schedules fairly
+at scale — all additive on the same bounded, permissioned, audited runtime.
+
+### Hierarchical (HTN) planning
+
+An HTN domain decomposes a goal into a sub-goal tree and binds each leaf to a
+bounded step (a tool, a retrieval, a reasoning turn, or the finalize). It is just
+another planner mode, so it composes with plan repair and cost-aware selection:
+
+```python
+from vincio.agents import HTNDomain
+
+domain = (
+    HTNDomain()
+    .method("root", ["assess", "respond"])
+    .method("assess", ["classify", "enrich"], ordering="parallel")  # leaves run concurrently
+    .operator("classify", step_type="think", instruction="classify the severity")
+    .operator("enrich", step_type="tool", tool_name="enrich_primary", fallbacks=["enrich_backup"])
+    .operator("respond", step_type="finalize", instruction="recommend a response")
+)
+agent = app.agent(tools=[...], planner="hierarchical", domain=domain)
+```
+
+With a domain the decomposition is deterministic (offline-safe, the first method
+whose `when=` precondition matches is chosen); without one, the model proposes a
+two-level goal → sub-goal → step decomposition, falling back to a static plan
+offline. The resolved tree is on `planner.last_plan_tree` for inspection.
+
+### In-place plan repair
+
+When a step fails the executor edits the *remaining* plan instead of restarting:
+
+- **re-bind** a failed tool to an alternative (an explicit `fallback_tools` set,
+  then a name-overlap sibling in the toolset);
+- **substitute** a failed tool with no alternative to a reasoning step;
+- **reorder** a validation contradiction into a corrective re-analysis before the
+  finalize; and
+- **drop** the optional tail under a budget shock, finalizing on what is done.
+
+Repair is on by default (`app.agent(...)`; disable with
+`AgentExecutor(repair=False)`). Each repair is recorded as an `AgentState.repairs`
+entry, a `plan.repaired` event, and a `plan_repair` trajectory step — auditable,
+not a silent retry. Repairs are bounded (`PlanRepairer(max_repairs=3)`).
+
+### Cost-aware action selection
+
+`cost_aware_models=[cheap, …, strong]` makes the executor read `ModelRegistry`
+pricing and capabilities and the live budget to spend the **cheapest capable
+model per step**, escalating one tier only when the prior step's confidence was
+low:
+
+```python
+agent = app.agent(cost_aware_models=["gpt-5.2-mini", "gpt-5.2"])
+```
+
+A model that cannot serve the call (missing tools, structured output, reasoning,
+or context) is never chosen — cost never overrides capability. Each pick is a
+`SelectionDecision` recorded in working memory.
+
+### Parallel sub-graph scheduling
+
+`SubgraphScheduler` runs independent durable sub-graphs concurrently across a
+worker pool under one fair-share budget, with an SLA deadline that returns a
+partial result rather than blowing the deadline:
+
+```python
+from vincio import SubgraphScheduler, SubgraphTask, Budget
+
+tasks = [SubgraphTask(build_branch(r), {"region": r}, weight=1.0) for r in regions]
+result = SubgraphScheduler(workers=4, budget=Budget(max_cost_usd=1.0), deadline_s=30).run(tasks)
+result.completed        # finished sub-graphs (each a GraphResult)
+result.partial          # deadline / unfinished — durable latest checkpoint, resumable
+result.shares_usd       # the fair-share split (sums to the budget)
+result.peak_concurrency # genuine parallelism achieved
+```
+
+Each sub-graph is a lease-guarded, CAS-committed durable thread on the
+[distributed backend](#runtime-backends), so a sub-graph that misses the deadline
+is not lost — its latest checkpoint is the partial result.
+
+### Durable timers & scheduled steps
+
+A graph can pause for a wall-clock delay, a webhook, or an approval **without
+holding a worker** — the wake condition rides the checkpoint, so it survives a
+restart:
+
+```python
+from vincio.agents import sleep_for, wait_for_event, TimerService
+
+def cool_off(state):
+    sleep_for(state, 86_400)          # pause ~1 day, durably
+    return {"stage": "cooled_off"}
+
+def gate(state):
+    return {"approval": wait_for_event(state, "approved")}
+
+# elsewhere, possibly after a restart — a fresh process resumes due work:
+TimerService(compiled_graph).tick()                       # wake due sleep timers
+TimerService(compiled_graph).deliver(thread_id, "approved", payload={...})  # wake an event wait
+```
+
+`pending_timers` / `due_timers` / `resume_due_timers` / `deliver_event` are the
+module-level forms. See
+[`examples/40_orchestrator_planner_depth.py`](../../examples/40_orchestrator_planner_depth.py).
 
 ## Declarative composition
 

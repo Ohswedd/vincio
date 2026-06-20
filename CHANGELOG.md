@@ -4,6 +4,66 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.2.0] - 2026-06-20
+
+Orchestrator & planner depth: make multi-step execution plan better, recover
+from failure, and schedule fairly at scale. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path
+is the default, and every existing planner / graph / agent path is unchanged.
+The event-catalog schema bumps to `3.1` for the new `plan.repaired` payload.
+
+### Added
+
+- **Hierarchical (HTN) planning.** A new `hierarchical` planner mode decomposes a
+  goal into a sub-goal tree and binds each leaf to a bounded step, composable with
+  the existing planners. `vincio.agents.HTNDomain` (`.method(task, subtasks,
+  ordering="sequence|parallel", when=)` / `.operator(name, step_type=, tool_name=,
+  fallbacks=)`) decomposes deterministically into an `HTNPlanNode` tree that
+  `dag_from_plan_node` flattens into an executable `StepDAG`; without a domain the
+  model proposes a two-level decomposition, with a static fallback offline.
+  `app.agent(planner="hierarchical", domain=...)`. VincioBench gates
+  `families.agent.planner_depth.hierarchical_parallel`.
+- **In-place plan repair.** On a tool failure, a validation contradiction, or a
+  budget shock the executor edits the *remaining* plan instead of restarting —
+  `vincio.agents.PlanRepairer` re-binds a failed tool to a `fallback_tools` /
+  name-overlap alternative, substitutes a reasoning step when none exists,
+  reorders a corrective re-analysis before the finalize, or drops the optional
+  tail to finalize inside the budget. On by default (`AgentExecutor(repair=False)`
+  to disable). Each repair is an `AgentState.repairs` entry, a typed
+  `plan.repaired` event, and a `plan_repair` trajectory step. VincioBench gates
+  `families.agent.planner_depth.repair_{rebind,substitute,budget_shock}`.
+- **Cost-aware action selection.** `app.agent(cost_aware_models=[cheap, …,
+  strong])` (or `vincio.agents.CostAwareSelector`) reads the data-driven
+  `ModelRegistry` pricing and capabilities and the live budget to spend the
+  cheapest capable model per step, escalating one tier only when the prior step's
+  confidence is low; capability never traded for price. Each pick is a
+  `SelectionDecision`. VincioBench gates
+  `families.agent.planner_depth.cost_aware_savings` (≈ −57% vs always-strong).
+- **Parallel sub-graph scheduling.** `vincio.agents.SubgraphScheduler` work-steals
+  independent durable sub-graphs across the worker pool under one weighted
+  fair-share budget (the shares sum to the cap), with a graph-level SLA deadline
+  that returns the completed results plus the durable partial state of the rest
+  rather than blowing the deadline. `.run([SubgraphTask(graph, input, weight=)])`
+  → `ScheduleResult`. VincioBench gates `families.scale.subgraph.{speedup,
+  fair_share_within_budget,deadline_returns_partial}`.
+- **Durable timers & scheduled steps.** First-class `sleep_until` / `sleep_for` /
+  `wait_for_event` node helpers pause a graph for a wall-clock delay, a webhook,
+  or an approval without holding a worker; the wake condition rides the
+  checkpoint, so it survives a restart. `TimerService(compiled).tick()` resumes
+  due sleep timers and `.deliver(thread_id, event_name, payload=)` wakes an event
+  wait (module-level `pending_timers` / `due_timers` / `resume_due_timers` /
+  `deliver_event`). VincioBench gates
+  `families.agent.planner_depth.durable_timer_restart_safe`.
+
+### Reliability
+
+- New SLOs: planner-repair recovery on a tool failure and a budget shock,
+  cost-aware-selection savings (≥ 25%), parallel-sub-graph speedup (≥ 1.5×), and
+  durable-timer restart safety — each backed by an at-least-as-strict VincioBench
+  budget. Example [`40_orchestrator_planner_depth.py`](examples/40_orchestrator_planner_depth.py).
+
+**1705 tests passing offline; ruff + mypy clean; VincioBench 301 budgets / 101 SLOs.**
+
 ## [3.1.0] - 2026-06-20
 
 Runtime performance & efficiency: make the compile spine fast enough that

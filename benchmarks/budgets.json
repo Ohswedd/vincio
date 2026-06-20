@@ -805,6 +805,48 @@
     "families.agent.streaming.provider_deltas": {
       "gte": 2
     },
+    "families.agent.planner_depth.hierarchical_parallel": {
+      "eq": true
+    },
+    "families.agent.planner_depth.hierarchical_finalized": {
+      "eq": true
+    },
+    "families.agent.planner_depth.repair_rebind": {
+      "eq": true
+    },
+    "families.agent.planner_depth.repair_substitute": {
+      "eq": true
+    },
+    "families.agent.planner_depth.repair_budget_shock": {
+      "eq": true
+    },
+    "families.agent.planner_depth.cost_aware_savings": {
+      "gte": 0.3
+    },
+    "families.agent.planner_depth.cost_aware_escalates": {
+      "eq": true
+    },
+    "families.agent.planner_depth.durable_timer_restart_safe": {
+      "eq": true
+    },
+    "families.agent.planner_depth.durable_event_resumes": {
+      "eq": true
+    },
+    "families.scale.subgraph.parallel_concurrency": {
+      "gte": 2
+    },
+    "families.scale.subgraph.speedup": {
+      "gte": 1.5
+    },
+    "families.scale.subgraph.equivalent_to_serial": {
+      "eq": true
+    },
+    "families.scale.subgraph.fair_share_within_budget": {
+      "eq": true
+    },
+    "families.scale.subgraph.deadline_returns_partial": {
+      "eq": true
+    },
     "families.memory.bitemporal.current_is_latest": {
       "eq": true
     },

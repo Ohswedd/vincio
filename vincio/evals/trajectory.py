@@ -132,6 +132,17 @@ def trajectory_from_agent_state(state: AgentState) -> Trajectory:
         ]
         if state.terminated and (state.final_answer is not None or state.raw_answer_text):
             steps.append(TrajectoryStep(type="finalize", name="finalize", status="done"))
+    # In-place plan repairs are first-class trajectory events: surface each as a
+    # step so trajectory metrics and human review see how the plan recovered.
+    for repair in state.repairs:
+        steps.append(
+            TrajectoryStep(
+                type="plan_repair",
+                name=repair.step_name or repair.action,
+                instruction=repair.detail,
+                status=repair.action,
+            )
+        )
     reason = state.termination_reason
     usage = state.usage
     return Trajectory(

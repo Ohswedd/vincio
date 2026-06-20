@@ -186,10 +186,27 @@ app.run("export button 500s").output.label
 - **Tools.** Permissioned registry (RBAC scopes + ABAC rules), schema from type
   hints, resource-limited sandbox, reliability scoring, idempotent approval-gated
   writes. Computer-use & provider-native hosted tools register on the same path.
-- **Agents.** `app.agent(tools=, planner="dag|dynamic|react|direct",
-  max_steps=)` → bounded `AgentState` with `metrics()`; level-parallel DAG over
+- **Agents.** `app.agent(tools=, planner="dag|dynamic|react|direct|
+  plan_and_execute|hierarchical", max_steps=, domain=, cost_aware_models=)` →
+  bounded `AgentState` with `metrics()`; level-parallel DAG over
   `topological_levels`, a real `plan_and_execute` replanning loop
   (`Planner.replan`), in-loop compaction (`ContextCompactor`).
+- **Hierarchical (HTN) planning.** `HTNDomain().method(task, [subtasks],
+  ordering="sequence|parallel", when=)` + `.operator(name, step_type=,
+  tool_name=, fallbacks=)`; `domain.decompose(task, context=)` → `HTNPlanNode`
+  sub-goal tree; `dag_from_plan_node(node, available_tools=)` → executable
+  `StepDAG`. `planner="hierarchical"` runs it (offline-deterministic with a
+  domain, model-driven without; static fallback).
+- **Plan repair.** On a tool failure / validation contradiction / budget shock
+  the executor edits the *remaining* plan in place (`PlanRepairer`: re-bind to a
+  `fallback_tools` / name-overlap tool, substitute to reasoning, reorder a
+  corrective step, or drop the optional tail) instead of restarting; each repair
+  is an `AgentState.repairs` entry, a `plan.repaired` event, and a trajectory
+  step. On by default (`AgentExecutor(repair=False)` to disable).
+- **Cost-aware action selection.** `cost_aware_models=[cheap, …, strong]` (or
+  `CostAwareSelector(models, registry=)`) picks the cheapest *capable* model per
+  step from `ModelRegistry` pricing + capabilities, escalating one tier only when
+  the prior step's confidence is low; `SelectionDecision` records the pick.
 - **Crews.** `app.crew(members=[{"name","description","goal","keywords",
   "budget_fraction"}], process="sequential|parallel|hierarchical", max_rounds=)`
   → `CrewResult` (output, reports, delegations, blackboard snapshot) — members
@@ -217,6 +234,19 @@ app.run("export button 500s").output.label
   `StateGraph.compile(parallel=True)` runs BSP super-steps; a node returning
   `[Send("node", {...})]` fans out map-reduce. `LangGraphBackend().compile(graph)`
   / `OpenAIAgentsBackend().export_crew(crew)` export (lazy, no lock-in).
+- **Parallel sub-graph scheduling.** `SubgraphScheduler(workers=N,
+  budget=Budget(...), deadline_s=)` work-steals independent sub-graphs across the
+  worker pool; `.run([SubgraphTask(graph, input, weight=)])` → `ScheduleResult`
+  (`completed`, `partial`, `peak_concurrency`, `speedup`, `shares_usd` summing to
+  the budget, `deadline_hit`). The SLA deadline returns completed + durable
+  partial results (latest checkpoint) rather than blowing the deadline.
+- **Durable timers / scheduled steps.** Inside a graph node: `sleep_until(state,
+  when)` / `sleep_for(state, seconds, clock=)` / `wait_for_event(state, name)`
+  pause the graph (the wake condition rides the checkpoint, so it survives a
+  restart without holding a worker). `TimerService(compiled, clock=)` →
+  `.tick(now=)` resumes due sleep timers, `.deliver(thread_id, event_name,
+  payload=)` wakes an event wait; `pending_timers` / `due_timers` /
+  `resume_due_timers` / `deliver_event` are the module-level forms.
 - **Deep research.** `app.research(question, *, budget=ResearchBudget(breadth=,
   depth=, max_sources=, top_k=))` → `ResearchAgent` / `ResearchReport` loops
   search→read→reflect→verify→synthesize, dedups sources, emits a cited report;

@@ -40,7 +40,7 @@ and a runnable example.
 | **Retrieval (RAG)** | BM25 + dense + learned-sparse + late-interaction fused in one RRF; query understanding (HyDE / multi-query / decompose / step-back); sentence-window / parent-document / auto-merging / contextual chunking; GraphRAG; live indexes; entity-graph, multi-hop, and reasoning retrieval; Matryoshka, contextual, and multimodal embedders; a structured `FilterSpec` pushed down to each backend with tenant scope enforced in the engine. |
 | **Memory** | Layered, guarded, decaying, conflict-resolving, privacy-scoped memory; hybrid vector+graph recall; consolidation with provenance; audited GDPR hygiene; a CI-gated memory eval harness; bi-temporal records with as-of recall, `correct()`, per-memory ACLs, and a `TEAM` scope. |
 | **Tools** | Permissioned registry (RBAC/ABAC), schema derivation, a resource-limited sandbox, reliability scoring, approval-gated writes; computer-use and provider-native hosted tools behind a pluggable `IsolationBackend`. |
-| **Agents & orchestration** | Bounded DAG agents with planners, critics, validators, and human gates; a deep-research agent and a self-editing memory OS; multi-agent crews with a shared blackboard; durable graphs with checkpoint / resume / time-travel; distributed durable execution across a worker pool with lease + CAS, BSP super-steps, and `Send` map-reduce. |
+| **Agents & orchestration** | Bounded DAG agents with planners (direct / static / dynamic / ReAct / plan-and-execute / hierarchical HTN), critics, validators, and human gates; in-place plan repair (re-bind / substitute / reorder / drop on a tool failure, contradiction, or budget shock) and cost-aware action selection over `ModelRegistry` pricing and the live budget; a deep-research agent and a self-editing memory OS; multi-agent crews with a shared blackboard; durable graphs with checkpoint / resume / time-travel and durable timers (`sleep_until` / `wait_for_event`); distributed durable execution across a worker pool with lease + CAS, BSP super-steps, `Send` map-reduce, and a work-stealing sub-graph scheduler under a fair-share budget with SLA deadlines. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and resumable approval gates. |
 | **Structured output** | Pydantic contracts, provider-native constrained decoding, streaming validation with early abort, typed signatures, bounded self-correction, multi-schema routing, and structure-only repair. |
 | **Evaluation** | Golden datasets, 30+ metrics, judges with calibration, synthetic data, red-teaming, experiments with significance, regression gates, a pytest plugin, a stateful-environment harness with a task-success oracle, five agentic benchmark adapters, and retrieval-eval with index-version regression. |
@@ -63,29 +63,6 @@ Forward phases are scoped by theme and gated the same way everything else is —
 by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is additive on the
 frozen public surface; breaking changes are reserved for an announced major window and never shipped
 for their own sake.
-
-### 🚧 Orchestrator & planner depth
-
-*Make multi-step execution plan better, recover from failure, and schedule fairly at scale.*
-
-- **Hierarchical planning** — an HTN-style planner that decomposes a goal into a sub-goal tree and
-  binds each leaf to a bounded agent or tool, composable with the existing direct / ReAct /
-  plan-and-execute planners.
-- **Plan repair & replanning** — on a tool failure, contradiction, or budget shock, repair the
-  remaining plan in place (re-bind, re-order, or substitute) instead of restarting, with the repair
-  recorded as a trajectory event.
-- **Cost-aware action selection** — the planner consults the `ModelRegistry` pricing and the live
-  budget to choose the cheapest capable action that still clears the quality bar, escalating only
-  when confidence is low.
-- **Parallel sub-graph scheduling** — a work-stealing scheduler over the distributed backend so
-  independent sub-graphs run concurrently across workers under one fair-share budget, with graph-level
-  SLA deadlines that return a partial result rather than blow the deadline.
-- **Durable timers & scheduled steps** — first-class `sleep_until` / `wait_for_event` nodes that
-  survive a restart, so a graph can pause for an approval, a webhook, or a wall-clock delay without
-  holding a worker.
-- *Definition of done:* the `agent` and `orchestration` VincioBench families gain planner-repair
-  correctness, cost-aware-selection savings, parallel-subgraph speedup, and durable-timer
-  restart-safety cases, with a runnable example and new SLOs.
 
 ### 🚧 Ecosystem & integration breadth
 

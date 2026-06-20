@@ -2400,6 +2400,8 @@ class ContextApp:
         model: str | None = None,
         system_prompt_extra: str = "",
         restrict_tools: bool = False,
+        domain: Any | None = None,
+        cost_aware_models: list[str] | None = None,
     ) -> AgentExecutor:
         tool_names: list[str] = []
         for tool in tools or []:
@@ -2408,16 +2410,25 @@ class ContextApp:
         planner_mode = {
             "dag": "static", "static": "static", "dynamic": "dynamic", "react": "react",
             "direct": "direct", "plan_and_execute": "plan_and_execute",
+            "hierarchical": "hierarchical", "htn": "hierarchical",
         }.get(planner, "static")
         provider = self.resolve_provider()
         agent_model = model or self.model
-        llm_planning = planner_mode in ("dynamic", "plan_and_execute")
+        llm_planning = planner_mode in ("dynamic", "plan_and_execute", "hierarchical")
         planner_obj = Planner(
             mode=planner_mode,  # type: ignore[arg-type]
             provider=provider if llm_planning else None,
             model=agent_model if llm_planning else None,
             max_steps=max_steps,
+            domain=domain,
         )
+        # Cost-aware action selection over the candidate models, reading the
+        # data-driven model registry's pricing and the live budget.
+        selector = None
+        if cost_aware_models:
+            from ..agents.selection import CostAwareSelector
+
+            selector = CostAwareSelector(cost_aware_models, events=self.events)
         retrieve_fn = None
         if self.retrieval is not None:
             engine = self.retrieval
@@ -2457,6 +2468,8 @@ class ContextApp:
             tracer=self.tracer,
             cost_tracker=self.cost_tracker,
             cost_ledger=self.cost_ledger,
+            events=self.events,
+            selector=selector,
             system_prompt=system_prompt,
         )
 
@@ -2469,11 +2482,28 @@ class ContextApp:
         max_steps: int = 8,
         evaluator: str | None = None,
         model: str | None = None,
+        domain: Any | None = None,
+        cost_aware_models: list[str] | None = None,
     ) -> _AgentHandle:
+        """Build a bounded agent over the app's tools, memory, and retrieval.
+
+        ``planner`` selects the planning shape (``dag`` / ``dynamic`` / ``react``
+        / ``direct`` / ``plan_and_execute`` / ``hierarchical``). Pass an
+        :class:`~vincio.agents.HTNDomain` as ``domain`` to drive deterministic
+        hierarchical decomposition, and ``cost_aware_models`` (cheapest→strongest)
+        to enable cost-aware action selection. In-place plan repair is on by
+        default. Tool failures, validation contradictions, and budget shocks are
+        repaired in place rather than restarting the run.
+        """
         if evaluator is not None:
             self.add_evaluator(evaluator)
         executor = self._build_executor(
-            tools=tools, planner=planner, max_steps=max_steps, model=model
+            tools=tools,
+            planner=planner,
+            max_steps=max_steps,
+            model=model,
+            domain=domain,
+            cost_aware_models=cost_aware_models,
         )
         return _AgentHandle(self, executor, max_steps)
 

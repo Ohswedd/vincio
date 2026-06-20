@@ -961,6 +961,56 @@
       "threshold": true,
       "enforced_by": "families.scale.async_canonical.run_path_persists_async",
       "rationale": "Async is the canonical contract; a blocking store write on any run path would stall the event loop under load."
+    },
+    {
+      "id": "planner_repair_recovers_tool_failure",
+      "category": "reliability",
+      "statement": "On a tool failure an agent repairs the remaining plan in place (re-binds to an alternative tool) and still finishes, rather than restarting or dead-ending.",
+      "metric": "families.agent.planner_depth.repair_rebind",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agent.planner_depth.repair_rebind",
+      "rationale": "Resilience to a failing dependency is the point of in-place repair; a tool outage must not abort a run that can still succeed."
+    },
+    {
+      "id": "planner_repair_budget_shock",
+      "category": "reliability",
+      "statement": "Under a budget shock an agent drops the optional tail of its plan and finalizes directly, returning the best answer reachable inside the budget instead of exhausting it.",
+      "metric": "families.agent.planner_depth.repair_budget_shock",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agent.planner_depth.repair_budget_shock",
+      "rationale": "A budget is a hard cap; the planner must converge toward an answer under pressure, never blow the cap chasing optional work."
+    },
+    {
+      "id": "cost_aware_selection_savings",
+      "category": "cost",
+      "statement": "Cost-aware action selection cuts model spend by at least 25% versus always using the strongest model, by spending a cheaper capable model on the easy steps.",
+      "metric": "families.agent.planner_depth.cost_aware_savings",
+      "direction": "gte",
+      "threshold": 0.25,
+      "enforced_by": "families.agent.planner_depth.cost_aware_savings",
+      "rationale": "Reaching for the strongest model on every step overpays; the floor protects the savings the registry-priced selector exists to deliver."
+    },
+    {
+      "id": "parallel_subgraph_speedup",
+      "category": "performance",
+      "statement": "Independent sub-graphs scheduled across a worker pool achieve at least a 1.5x logical speedup over serial execution, with identical results.",
+      "metric": "families.scale.subgraph.speedup",
+      "direction": "gte",
+      "threshold": 1.5,
+      "enforced_by": "families.scale.subgraph.speedup",
+      "rationale": "Independent work should run concurrently; the floor protects the speedup the work-stealing scheduler exists to deliver."
+    },
+    {
+      "id": "durable_timer_restart_safety",
+      "category": "reliability",
+      "statement": "A graph paused on a durable timer survives a process restart and resumes when the timer comes due, without holding a worker while paused.",
+      "metric": "families.agent.planner_depth.durable_timer_restart_safe",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.agent.planner_depth.durable_timer_restart_safe",
+      "rationale": "A timer that did not survive a restart would silently never fire; durability of the wake condition is the whole guarantee."
     }
   ]
 }

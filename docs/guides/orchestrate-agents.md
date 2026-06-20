@@ -105,12 +105,56 @@ triage_agent = oa.export_crew(crew)        # manager + handoffs
 answer = await oa.run(triage_agent, "Customer disputes INV-77")
 ```
 
+## 5. Plan deeper, recover, and schedule at scale
+
+Decompose a goal hierarchically, repair the plan when a step fails, spend the
+cheapest capable model per step, and schedule independent sub-graphs concurrently.
+
+```python
+from vincio import SubgraphScheduler, SubgraphTask, Budget
+from vincio.agents import HTNDomain, sleep_for, wait_for_event, TimerService
+
+# Hierarchical (HTN) plan + in-place repair + cost-aware selection in one agent.
+domain = (
+    HTNDomain()
+    .method("root", ["assess", "respond"])
+    .method("assess", ["classify", "enrich"], ordering="parallel")
+    .operator("classify", step_type="think", instruction="classify severity")
+    .operator("enrich", step_type="tool", tool_name="enrich_primary", fallbacks=["enrich_backup"])
+    .operator("respond", step_type="finalize", instruction="recommend a response")
+)
+agent = app.agent(
+    tools=["enrich_primary", "enrich_backup"],
+    planner="hierarchical", domain=domain,
+    cost_aware_models=["gpt-5.2-mini", "gpt-5.2"],   # cheapest capable per step
+)
+state = agent.run("Triage the alert")    # a failed enrich re-binds to its backup, recorded in
+state.repairs                            #   state.repairs — the run finishes instead of restarting
+
+# Run independent sub-graphs across a worker pool under one fair-share budget.
+result = SubgraphScheduler(workers=4, budget=Budget(max_cost_usd=1.0), deadline_s=30).run(
+    [SubgraphTask(build_branch(r), {"region": r}) for r in regions]
+)
+result.completed, result.partial, result.shares_usd
+
+# Pause a graph durably — for a delay or an approval — without holding a worker.
+def gate(s):
+    return {"approval": wait_for_event(s, "approved")}
+TimerService(flow).tick()                            # wake due sleep timers (restart-safe)
+TimerService(flow).deliver(thread_id, "approved")    # wake an event wait
+```
+
+See [`examples/40_orchestrator_planner_depth.py`](../../examples/40_orchestrator_planner_depth.py)
+and the [agents concept guide](../concepts/agents.md#orchestrator--planner-depth).
+
 ## Choosing a shape
 
 | Shape | Use when |
 |---|---|
 | `app.agent` | one uncertain task, bounded exploration |
+| `app.agent(planner="hierarchical", domain=...)` | a goal that decomposes into bounded sub-tasks |
 | `app.crew` | several specialties, shared findings, delegation |
 | `app.graph` | long-running, interruptible, auditable processes |
+| `SubgraphScheduler` | many independent sub-graphs under one budget + deadline |
 | `app.workflow` | fixed business steps with retries/compensation |
 | `compose` | gluing any of the above into one observable pipeline |

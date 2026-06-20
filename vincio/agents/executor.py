@@ -15,6 +15,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from ..core.errors import ToolApprovalRequiredError, VincioError
+from ..core.events import EventBus, PlanRepaired
 from ..core.types import (
     Budget,
     EvidenceItem,
@@ -32,7 +33,8 @@ from ..providers.base import ModelProvider
 from ..security.access import Principal
 from ..tools.runtime import ToolRuntime
 from .planner import Planner
-from .state import AgentError, AgentState, AgentStep
+from .repair import PlanRepairer
+from .state import AgentError, AgentState, AgentStep, PlanRepair
 
 __all__ = ["AgentExecutor", "AgentEvent"]
 
@@ -49,7 +51,8 @@ class AgentEvent(BaseModel):
     """
 
     type: Literal[
-        "run_start", "step_start", "step_end", "text_delta", "tool_call", "tool_result", "done", "error"
+        "run_start", "step_start", "step_end", "text_delta", "tool_call", "tool_result",
+        "plan_repair", "done", "error",
     ]
     step: str = ""
     step_type: str = ""
@@ -111,11 +114,15 @@ class AgentExecutor:
         cost_tracker: CostTracker | None = None,
         cost_ledger: CostLedger | None = None,
         human_gate: HumanGate | None = None,
+        events: EventBus | None = None,
         system_prompt: str = "",
         max_validation_rounds: int = 2,
         max_context_tokens: int = 6000,
         max_parallel_steps: int = 8,
         max_replans: int = 2,
+        repair: bool = True,
+        repairer: PlanRepairer | None = None,
+        selector: Any | None = None,
     ) -> None:
         self.provider = provider
         self.model = model
@@ -133,6 +140,17 @@ class AgentExecutor:
         self.cost_ledger = cost_ledger
         self.attribution: dict[str, Any] = {}
         self.human_gate = human_gate
+        self.events = events
+        # In-place plan repair: on a tool failure / validation contradiction /
+        # budget shock the executor edits the remaining plan instead of restarting
+        # or dead-ending. Disabled by passing ``repair=False``.
+        self.repairer: PlanRepairer | None = (
+            repairer if repairer is not None else (PlanRepairer() if repair else None)
+        )
+        # Cost-aware action selection: when set, free-text (think / finalize) model
+        # calls pick the cheapest capable model and escalate only on low
+        # confidence. ``None`` keeps the fixed ``model``.
+        self.selector = selector
         self.system_prompt = system_prompt
         self.max_validation_rounds = max_validation_rounds
         # In-loop compaction: old tool/observation turns are folded into a
@@ -186,16 +204,26 @@ class AgentExecutor:
         return response
 
     async def _model_call(
-        self, state: AgentState, messages: list[Message], *, stream_text: bool = False, **kwargs: Any
+        self,
+        state: AgentState,
+        messages: list[Message],
+        *,
+        stream_text: bool = False,
+        model: str | None = None,
+        **kwargs: Any,
     ):
-        request = ModelRequest(model=self.model, messages=messages, **kwargs)
+        # ``model`` overrides the default for this single call — the hook
+        # cost-aware action selection uses to spend a cheaper model on an easy
+        # step and a stronger one only when it escalates.
+        call_model = model or self.model
+        request = ModelRequest(model=call_model, messages=messages, **kwargs)
         # When streaming a run, route answer-producing free-text calls through the
         # provider's real token stream; structured (schema) calls stay on generate.
         if stream_text and self._event_sink is not None and "output_schema" not in kwargs:
             response = await self._stream_model(request)
         else:
             response = await self.provider.generate(request)
-        cost = self.costs.record_model_call(self.model, response.usage)
+        cost = self.costs.record_model_call(call_model, response.usage)
         spent = cost if cost else response.cost_usd
         state.usage.input_tokens += response.usage.input_tokens
         state.usage.output_tokens += response.usage.output_tokens
@@ -203,7 +231,7 @@ class AgentExecutor:
         state.usage.latency_ms += response.latency_ms
         if self.cost_ledger is not None:
             self.cost_ledger.record_model_call(
-                model=self.model,
+                model=call_model,
                 usage=response.usage,
                 cost_usd=spent,
                 provider=response.provider or "",
@@ -213,6 +241,39 @@ class AgentExecutor:
                 run_id=self.attribution.get("run_id"),
             )
         return response
+
+    def _select_model(
+        self,
+        state: AgentState,
+        messages: list[Message],
+        *,
+        needs_structured: bool,
+        output_hint: int = 256,
+    ) -> str | None:
+        """Pick the model for an answer-producing call via cost-aware selection.
+
+        Returns ``None`` (use the fixed model) when no selector is wired. The
+        confidence that drives escalation is the prior validation outcome carried
+        in working memory, so a draft that failed its critique is finalized on a
+        stronger model, while an easy step stays cheap."""
+        if self.selector is None:
+            return None
+        from ..core.tokens import count_tokens
+        from ..providers.capabilities import RequestNeeds
+
+        text = "\n".join(m.text for m in messages)
+        confidence = state.working_memory.get("_confidence")
+        decision = self.selector.select(
+            needs=RequestNeeds(structured_output=needs_structured),
+            input_tokens=count_tokens(text),
+            output_tokens=output_hint,
+            remaining_budget_usd=max(0.0, state.budget.max_cost_usd - state.usage.cost_usd),
+            confidence=confidence if isinstance(confidence, (int, float)) else None,
+        )
+        state.working_memory.setdefault("_selections", []).append(
+            decision.model_dump(mode="json", include={"model", "tier", "escalated", "reason"})
+        )
+        return decision.model
 
     # -- context rendering ----------------------------------------------------------------
 
@@ -323,9 +384,9 @@ class AgentExecutor:
         if step.name == "plan_tools" and self.tools is not None and self.tool_specs:
             await self._plan_and_call_tools(state, step)
             return
-        response = await self._model_call(
-            state, self._context_messages(state, step.instruction), stream_text=True
-        )
+        messages = self._context_messages(state, step.instruction)
+        model = self._select_model(state, messages, needs_structured=False)
+        response = await self._model_call(state, messages, stream_text=True, model=model)
         step.result = response.text
         state.working_memory[step.name or step.id] = response.text
 
@@ -420,8 +481,13 @@ class AgentExecutor:
             )
         )
         step.result = result.output if result.status == "ok" else {"status": result.status, "error": result.error}
-        if result.status not in ("ok",):
+        if result.status != "ok":
+            # A tool error is a step failure, so the plan-repair pass (or the
+            # upstream-skip cascade when repair is off) treats it as one rather
+            # than letting a downstream step build on an errored result.
             step.metadata["tool_status"] = result.status
+            step.status = "failed"
+            step.error = result.error or f"tool returned status {result.status!r}"
 
     async def _step_validate(self, state: AgentState, step: AgentStep) -> None:
         draft = state.working_memory.get("analyze") or state.raw_answer_text or ""
@@ -445,6 +511,11 @@ class AgentExecutor:
         if not payload.get("passed", True) and payload.get("revised_answer"):
             state.working_memory["analyze"] = payload["revised_answer"]
         state.working_memory["validation"] = payload
+        # Confidence signal that drives cost-aware escalation: a passed critique
+        # keeps the cheap model; a failed one escalates the finalize.
+        passed = bool(payload.get("passed", True))
+        issues = payload.get("issues", []) or []
+        state.working_memory["_confidence"] = 1.0 if passed else max(0.0, 1.0 - 0.34 * len(issues))
 
     async def _step_ask_human(self, state: AgentState, step: AgentStep) -> None:
         if self.human_gate is None:
@@ -469,8 +540,12 @@ class AgentExecutor:
         if contract is not None and contract.schema_def is not None:
             kwargs["output_schema"] = contract.schema_def
             kwargs["output_schema_name"] = contract.schema_name
+        messages = self._context_messages(state, instruction)
+        model = self._select_model(
+            state, messages, needs_structured="output_schema" in kwargs
+        )
         response = await self._model_call(
-            state, self._context_messages(state, instruction), stream_text=True, **kwargs
+            state, messages, stream_text=True, model=model, **kwargs
         )
         state.raw_answer_text = response.text
         if self.output_validator is not None:
@@ -606,10 +681,16 @@ class AgentExecutor:
 
     async def _execute_dag(self, state: AgentState, dag: Any) -> None:
         """Run the DAG level by level, executing each level's independent steps
-        concurrently — bounded by ``max_parallel_steps`` and the budget."""
+        concurrently — bounded by ``max_parallel_steps`` and the budget.
+
+        Between levels the plan-repair pass edits the remaining plan in place:
+        a budget shock prunes the optional tail toward the answer, and any
+        step that just failed is re-bound / substituted / reordered before its
+        dependents would otherwise be skipped."""
         while not dag.complete and not state.terminated:
             if self._check_termination(state):
                 break
+            self._maybe_repair_budget_shock(state, dag)
             ready = dag.ready_steps()
             if not ready:
                 break
@@ -618,6 +699,52 @@ class AgentExecutor:
             semaphore = asyncio.Semaphore(self.max_parallel_steps)
             await asyncio.gather(
                 *[self._run_step_bounded(state, step, semaphore) for step in ready]
+            )
+            self._maybe_repair_failures(state, dag, ready)
+
+    def _maybe_repair_budget_shock(self, state: AgentState, dag: Any) -> None:
+        if self.repairer is None:
+            return
+        repair = self.repairer.repair_budget_shock(state, dag, state.budget)
+        if repair is not None:
+            self._record_repair(state, repair)
+
+    def _maybe_repair_failures(
+        self, state: AgentState, dag: Any, ran: list[AgentStep]
+    ) -> None:
+        if self.repairer is None:
+            return
+        for step in ran:
+            if step.status != "failed":
+                continue
+            repair = self.repairer.repair_failure(state, dag, step, tools=self.tool_specs)
+            if repair is not None:
+                self._record_repair(state, repair)
+
+    def _record_repair(self, state: AgentState, repair: PlanRepair) -> None:
+        """Surface a repair on every observability surface: stream event, trace
+        span, and the typed event bus. (The repairer already appended it to
+        ``state.repairs`` — the trajectory record.)"""
+        self._emit(
+            AgentEvent(
+                type="plan_repair",
+                step=repair.step_name,
+                status=repair.action,
+                error=repair.trigger,
+                result=repair.detail,
+            )
+        )
+        with self.tracer.span("plan_repair", type="agent_step") as span:
+            span.set(action=repair.action, trigger=repair.trigger, step=repair.step_name)
+        if self.events is not None:
+            self.events.publish(
+                PlanRepaired(
+                    action=repair.action,
+                    trigger=repair.trigger,
+                    step_name=repair.step_name,
+                    detail=repair.detail,
+                ),
+                trace_id=self.attribution.get("run_id"),
             )
 
     async def _run_step_bounded(
