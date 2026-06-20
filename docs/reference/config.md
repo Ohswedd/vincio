@@ -12,6 +12,7 @@ config with `vincio config validate` and print the effective merged result with
 ## vincio.yaml
 
 ```yaml
+schema_version: 1            # config schema version; `vincio config migrate` upgrades older files
 project: contract_ai
 
 provider:
@@ -135,6 +136,31 @@ policies:
   allow_external_tools: true
   redact_pii_in_context: false
   block_untrusted_instructions: true
+```
+
+## Schema versioning & migrations
+
+A config carries a `schema_version`. When the schema evolves, Vincio migrates
+older files mechanically instead of letting them silently drift:
+
+- **On load**, `load_config` applies all pending migrations *in memory*, so a
+  stale file always validates against the current schema (the file on disk is
+  untouched).
+- **`vincio config migrate [path]`** persists the upgrade, reporting each
+  applied step and the concrete changes it made. Use `--check` in CI to fail if
+  a file is behind (it exits non-zero without writing), `--dry-run` to preview,
+  or `--output` to write elsewhere. A leading `# yaml-language-server` schema
+  hint is preserved.
+- **`vincio doctor`** flags a project whose `vincio.yaml` is behind the current
+  schema and points at `config migrate`.
+
+Files written before versioning have no `schema_version` and load as version 0,
+then migrate forward. Migrations are idempotent — re-running is a no-op.
+
+```bash
+vincio config migrate                 # upgrade ./vincio.yaml in place
+vincio config migrate --check         # CI gate: non-zero if a migration is pending
+vincio config migrate old.yaml --dry-run
 ```
 
 ## Environment variables

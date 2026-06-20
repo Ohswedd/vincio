@@ -34,6 +34,8 @@ __all__ = [
 class SkillError(VincioError):
     """Raised when a SKILL.md file is missing or malformed."""
 
+    code = "SKILL_ERROR"
+
 
 _WORD = re.compile(r"[a-z0-9]+")
 

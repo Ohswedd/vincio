@@ -248,6 +248,7 @@ for any engine directly. Everything below is implemented, tested offline, and do
 | **Use-case coverage & verticals** | Go from primitives to a working app in one file. **Vertical packs** (`healthcare` / `ediscovery` / `kyc` / `customer_support` / `code_review`) preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set in one `use_pack`, on top of the existing pack contract. A higher-level **`Assistant`** layer over `ContextApp` threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval — a chat product in a few lines. An end-to-end **`VoiceAgent`** wires a realtime session to the deep-research agent, the memory OS, and the rails, so a spoken assistant inherits the same grounding, budget, and audit guarantees. A **cookbook** of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) ships as runnable, offline-gated examples. |
 | **Integrations & DX** | LangChain + LlamaIndex + **Haystack + DSPy** interop (`vincio.interop`) for tools, retrievers, loaders, embedders, components, and compiled DSPy modules — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
 | **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a frozen public surface (`vincio.__all__`) with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
+| **A trustworthy surface** | The public API is held to the same bar as the internals. Every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url` from a completeness-gated, internationalizable [error catalog](docs/reference/errors.md). The package ships [`py.typed`](docs/reference/typing.md) with a CI-enforced `mypy --strict` ladder, and a docstring-coverage gate keeps every public symbol documented. `vincio.yaml` files migrate forward automatically (`vincio config migrate`, in-memory upgrade on load), and `vincio doctor` reports any deprecated API a project still uses — its replacement and removal version straight from `stability_of`. |
 
 Every extension point — providers, metrics, chunkers, rerankers, judges, validators, tools — accepts
 your own implementation via a registry.
@@ -400,6 +401,8 @@ cd examples && python 02_document_qa.py
 ```bash
 vincio init my-project --template rag  # scaffold config + app + golden set (minimal|rag|agent|eval)
 vincio config schema --output vincio.schema.json  # typed JSON Schema for editor completion
+vincio config migrate            # upgrade vincio.yaml to the current schema (--check for CI)
+vincio doctor                    # report deprecated-API usage and config schema drift
 vincio packs list                # opt-in domain packs (support/engineering/finance/legal)
 vincio tui                       # interactive inspector for runs, traces, and memory
 vincio run app.py --input "..."  # run an app
@@ -509,8 +512,10 @@ infrastructure. Hosted services and managed control planes are not part of this 
 - **Migrating** — coming from [LangChain](docs/guides/migrate-from-langchain.md) ·
   [LlamaIndex](docs/guides/migrate-from-llamaindex.md) ·
   [Ragas](docs/guides/migrate-from-ragas.md) · [Mem0](docs/guides/migrate-from-mem0.md)
-- **Reference** — [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
-  [config](docs/reference/config.md) · [API stability & deprecation policy](docs/reference/stability.md) ·
+- **Reference** — [API](docs/reference/api.md) · [API index](docs/reference/api-generated.md) ·
+  [CLI](docs/reference/cli.md) · [config](docs/reference/config.md) ·
+  [errors](docs/reference/errors.md) · [typing](docs/reference/typing.md) ·
+  [API stability & deprecation policy](docs/reference/stability.md) ·
   [performance & quality SLOs](docs/reference/slo.md)
 - **Security & governance** — [threat model](docs/security/threat-model.md) ·
   [security policy](SECURITY.md) · [governance & compliance](docs/guides/governance.md)

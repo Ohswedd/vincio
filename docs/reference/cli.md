@@ -17,6 +17,19 @@ vincio config validate [PATH]
 vincio config show [PATH]
     Print the effective merged configuration as YAML.
 
+vincio config migrate [PATH] [--output FILE] [--dry-run] [--check]
+    Upgrade a vincio.yaml to the current schema version, reporting each applied
+    migration step. --check exits non-zero if a migration is pending (CI gate)
+    without writing; --dry-run previews; --output writes elsewhere. A leading
+    # yaml-language-server schema hint is preserved. (Stale files also migrate
+    in memory automatically on load.)
+
+vincio doctor [PATH] [--json]
+    Scan a project for deprecated-API usage (driven by the same stability_of
+    metadata the library marks its surface with — each finding names the
+    replacement and removal version) and for a vincio.yaml behind the current
+    schema. Exits non-zero if any actionable issue is found.
+
 vincio packs list
     List the available domain packs (support, engineering, finance, legal).
 

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .error_catalog import docs_url_for, remediation_for
+
 __all__ = [
     "VincioError",
     "ConfigError",
@@ -81,17 +83,56 @@ __all__ = [
 
 
 class VincioError(Exception):
-    """Base class for all Vincio errors."""
+    """Base class for all Vincio errors.
+
+    Every error carries a stable :attr:`code`, plus an actionable
+    :attr:`remediation` hint and a :attr:`docs_url` deep link resolved from the
+    :mod:`~vincio.core.error_catalog`. Catch the whole family with one
+    ``except VincioError``, branch on ``.code`` for programmatic handling, and
+    surface ``.remediation`` to users. Message *strings* are not part of the
+    stable API; the ``.code`` values and the catalog are.
+    """
 
     code: str = "VINCIO_ERROR"
 
-    def __init__(self, message: str, *, details: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+        hint: str | None = None,
+        docs_url: str | None = None,
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.details: dict[str, Any] = details or {}
+        self._hint = hint
+        self._docs_url = docs_url
+
+    @property
+    def remediation(self) -> str | None:
+        """Actionable next step: the instance override, else the catalog hint."""
+        if self._hint is not None:
+            return self._hint
+        code = self.code
+        return remediation_for(code) if isinstance(code, str) else None
+
+    @property
+    def docs_url(self) -> str | None:
+        """Deep link to this error's reference entry (override or catalog)."""
+        if self._docs_url is not None:
+            return self._docs_url
+        code = self.code
+        return docs_url_for(code) if isinstance(code, str) else None
 
     def to_dict(self) -> dict[str, Any]:
-        return {"code": self.code, "message": self.message, "details": self.details}
+        return {
+            "code": self.code,
+            "message": self.message,
+            "details": self.details,
+            "remediation": self.remediation,
+            "docs_url": self.docs_url,
+        }
 
     def __repr__(self) -> str:  # pragma: no cover - cosmetic
         return f"{type(self).__name__}({self.message!r})"

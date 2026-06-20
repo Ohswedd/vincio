@@ -41,6 +41,16 @@ jobs:
       - run: pip install -e ".[dev]"
       - name: mypy
         run: mypy vincio
+      - name: mypy --strict (graduated modules)
+        run: >
+          mypy --strict
+          vincio/stability.py
+          vincio/core/errors.py
+          vincio/core/error_catalog.py
+          vincio/core/config.py
+          vincio/core/config_migrations.py
+          vincio/_apiref.py
+          vincio/cli/doctor.py
 
   test:
     name: Test (py${{ matrix.python-version }})

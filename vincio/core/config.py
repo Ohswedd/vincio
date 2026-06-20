@@ -13,6 +13,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, Field
 
+from .config_migrations import CONFIG_SCHEMA_VERSION, migrate
 from .errors import ConfigError
 from .types import Budget, PolicySet
 
@@ -238,6 +239,10 @@ class ServerConfig(BaseModel):
 class VincioConfig(BaseModel):
     """Top-level project configuration."""
 
+    # Config schema version, for automatic migrations (``vincio config migrate``).
+    # Files written before versioning have no value and load as version 0, then
+    # migrate in memory. See :mod:`vincio.core.config_migrations`.
+    schema_version: int = CONFIG_SCHEMA_VERSION
     project: str = "vincio_app"
     provider: ProviderConfig = Field(default_factory=ProviderConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
@@ -261,7 +266,8 @@ class VincioConfig(BaseModel):
             raise ConfigError(f"invalid configuration: {exc}") from exc
 
     def to_yaml(self) -> str:
-        return yaml.safe_dump(self.model_dump(mode="json"), sort_keys=False)
+        rendered: str = yaml.safe_dump(self.model_dump(mode="json"), sort_keys=False)
+        return rendered
 
 
 def config_json_schema() -> dict[str, Any]:
@@ -334,6 +340,10 @@ def load_config(
             if not isinstance(loaded, dict):
                 raise ConfigError(f"config root must be a mapping: {config_path}")
             data = loaded
+    # Auto-migrate the on-disk shape in memory so a stale file never silently
+    # drifts from the current schema. Persist the upgrade with `vincio config
+    # migrate`.
+    data = migrate(data).data
     data = _apply_env_overrides(data)
     if overrides:
         _deep_merge(data, overrides)

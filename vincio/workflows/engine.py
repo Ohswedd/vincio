@@ -99,6 +99,14 @@ class _StepDef(BaseModel):
 
 
 class Workflow:
+    """A deterministic, resumable DAG of steps.
+
+    Steps run with retries, branching, parallelism, and compensation; approval
+    gates pause execution and ``resume(result, approvals=)`` continues from the
+    last checkpoint. Unlike an agent, control flow is fixed and reproducible —
+    the engine never lets the model decide the next step.
+    """
+
     def __init__(
         self,
         name: str,

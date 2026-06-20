@@ -691,10 +691,27 @@ app.run("export button 500s").output.label
 ## Stability
 
 - SemVer on the frozen public surface (`vincio.__all__` /
-  `vincio.stability.public_api()`); `from vincio import deprecated, experimental,
-  stability_of` (`@deprecated(since=, removed_in=, alternative=)` /
-  `@experimental(since=)` emit warnings, escalatable to errors). Nothing public is
-  removed in a minor/patch — only deprecated then removed at the next major.
+  `vincio.stability.public_api()`, `API_VERSION == "3.0"`); `from vincio import
+  deprecated, experimental, stability_of` (`@deprecated(since=, removed_in=,
+  alternative=)` / `@experimental(since=)` emit warnings, escalatable to errors).
+  Nothing public is removed in a minor/patch — only deprecated then removed at the
+  next major. `vincio doctor [path]` reports a project's deprecated-API usage
+  (replacement + removal version from `stability_of`) and config schema drift.
+- Typing: the package ships `py.typed` (PEP 561) and is type-checked end to end; a
+  graduated, CI-enforced `mypy --strict` set (`stability`, `core.errors`,
+  `core.error_catalog`, `core.config`, `core.config_migrations`, `_apiref`,
+  `cli.doctor`) grows over time (`docs/reference/typing.md`).
+- Errors: every `VincioError` carries a stable `.code`, a `.remediation` hint, and
+  a `.docs_url` from a completeness-gated, internationalizable catalog
+  (`vincio.core.error_catalog`: `ERROR_CATALOG`, `remediation_for`, `docs_url_for`,
+  `register_error_locale`; `docs/reference/errors.md`). Catch the family with one
+  `except VincioError`; branch on `.code`; surface `.remediation`. Message strings
+  are not stable; codes and the catalog are.
+- Config migrations: `VincioConfig.schema_version` + `vincio.core.config_migrations`
+  (`CONFIG_SCHEMA_VERSION`, `migrate`, `needs_migration`); `load_config` upgrades
+  stale files in memory, `vincio config migrate` persists the upgrade.
+- Docstring coverage is gated (`vincio._apiref.undocumented_symbols()` is empty);
+  the exhaustive API index is generated (`docs/reference/api-generated.md`).
 - Published SLOs (`benchmarks/slos.json`, `docs/reference/slo.md`) each enforced
   by an at-least-as-strict VincioBench budget (`tests/test_slos.py`). Tool sandbox
   `setrlimit` CPU/memory/fd limits (`run_subprocess_sandboxed` /
@@ -705,7 +722,8 @@ app.run("export button 500s").output.label
 ## CLI & server
 
 - `vincio init (--template minimal|rag|agent|eval, --provider) · run · config
-  schema/validate/show · packs list/show · tui · eval run/report/dataset
+  schema/validate/show/migrate (--check/--dry-run/--output) · doctor (--json) ·
+  packs list/show · tui · eval run/report/dataset
   (--group-by-session)/drift/annotate/regress (--baseline-model X
   --candidate-model Y) · prompt lint/compile/push/versions/diff/rollback · trace
   show/view/replay/diff/export/sessions/feedback · optimize run/reflective · loop

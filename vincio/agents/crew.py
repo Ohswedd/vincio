@@ -159,6 +159,14 @@ class _Member(BaseModel):
 
 
 class Crew:
+    """A multi-agent team that collaborates over a shared blackboard.
+
+    Members run under a configurable process — ``sequential``, ``parallel``, or
+    ``hierarchical`` (a manager delegates) — passing intermediate findings
+    through the blackboard. ``run`` / ``arun`` execute the crew; ``astream``
+    yields a flat event stream of each member's step, tool, and text activity.
+    """
+
     def __init__(
         self,
         name: str = "crew",
