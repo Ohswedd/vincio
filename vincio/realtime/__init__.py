@@ -35,6 +35,7 @@ from .session import (
     VADConfig,
     connect_realtime,
 )
+from .voice_agent import VoiceAgent
 
 __all__ = [
     "RealtimeBackend",
@@ -44,6 +45,7 @@ __all__ = [
     "RealtimeToolCall",
     "VADConfig",
     "connect_realtime",
+    "VoiceAgent",
     "InProcessRealtimeBackend",
     "OpenAIRealtimeBackend",
     "GeminiLiveBackend",

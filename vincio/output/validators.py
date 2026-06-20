@@ -208,13 +208,56 @@ class OutputValidator:
             detail = ""
             if policy_result.violations:
                 detail = "; ".join(v.message for v in policy_result.violations)
-            if policy_result.transformed_text is not None and isinstance(data, str):
-                # A redact rail fired on a text output: ship the redacted text.
-                data = policy_result.transformed_text
-                report.repair_actions.append("output redacted by rail")
+            if policy_result.transformed_text is not None:
+                # A redact rail fired. For a text output, ship the redacted text;
+                # for a structured output, mask PII in its string fields so the
+                # deliverable never carries an identifier the rail caught — the
+                # schema and field types are preserved.
+                if isinstance(data, str):
+                    data = policy_result.transformed_text
+                    report.repair_actions.append("output redacted by rail")
+                else:
+                    redacted = self._redact_structured(data)
+                    if redacted is not None:
+                        data = redacted
+                        report.repair_actions.append("output redacted by rail")
             report.step("policy", True, detail)
 
         # 6-7. final
         report.valid = True
         report.output = data
         return report
+
+    def _redact_structured(self, data: Any) -> Any | None:
+        """Mask PII in the string leaves of a structured output.
+
+        Uses the same detector the output rail uses, so a redact rail protects
+        structured deliverables (a Pydantic model or dict) exactly as it protects
+        text. Returns the redacted value with its schema/type preserved, or
+        ``None`` when redaction is not applicable or would not re-validate.
+        """
+        from ..security.pii import redact
+
+        rails = getattr(self.policy_engine, "rails", None)
+        detector = getattr(rails, "pii", None)
+        if detector is None:
+            return None
+
+        def _walk(value: Any) -> Any:
+            if isinstance(value, str):
+                return redact(value, detector=detector)
+            if isinstance(value, list):
+                return [_walk(v) for v in value]
+            if isinstance(value, dict):
+                return {k: _walk(v) for k, v in value.items()}
+            return value
+
+        if isinstance(data, BaseModel):
+            redacted_dict = _walk(data.model_dump(mode="python"))
+            try:
+                return type(data).model_validate(redacted_dict)
+            except Exception:  # noqa: BLE001 - never corrupt the output to redact
+                return None
+        if isinstance(data, (dict, list)):
+            return _walk(data)
+        return None

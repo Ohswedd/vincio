@@ -27,6 +27,7 @@ from .agents import (
     sleep_until,
     wait_for_event,
 )
+from .assistant import ApprovalRecord, Assistant, AssistantTurn
 from .context.llmlingua import LLMLinguaCompressor
 from .core.app import ContextApp, RunHandle
 from .core.config import VincioConfig, load_config
@@ -131,7 +132,7 @@ from .providers import (
     default_model_registry,
     make_finetune_backend,
 )
-from .realtime import RealtimeSession
+from .realtime import RealtimeSession, VoiceAgent
 from .registry import AgentDirectory, BundleRecord, CommunityRegistry
 from .retrieval import FastEmbedEmbedder, MatryoshkaEmbedder, ShardedIndex, TwoStageIndex
 from .security.access import AllowListGate
@@ -148,11 +149,14 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.3.0"
+__version__ = "3.4.0"
 
 __all__ = [
     "ContextApp",
     "RunHandle",
+    "Assistant",
+    "AssistantTurn",
+    "ApprovalRecord",
     "AgentRole",
     "Blackboard",
     "Crew",
@@ -238,6 +242,7 @@ __all__ = [
     "ShardedIndex",
     "MatryoshkaEmbedder",
     "RealtimeSession",
+    "VoiceAgent",
     "ModelCard",
     "SystemCard",
     "ComplianceReport",

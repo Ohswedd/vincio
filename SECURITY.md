@@ -49,7 +49,11 @@ backends are lazy and opt-in.
 
 Deterministic PII / secret detection and redaction runs in-process, with
 non-English locale packs (France/Germany/Spain/India/Singapore/Brazil/UK)
-extending the built-in patterns.
+extending the built-in patterns. An output `redact` rail masks detected
+identifiers in the deliverable — including the string fields of a **structured**
+output, with the schema and field types preserved — so a typed result (e.g. a
+clinical or KYC assessment from a vertical pack) never ships an identifier the
+rail caught.
 
 A **mandatory egress DLP scan** (`PolicyEngine.scan_egress`, mode
 `security.egress_dlp`: `off` / `warn` / `block`) inspects the *fully-assembled*

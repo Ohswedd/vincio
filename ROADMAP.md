@@ -51,6 +51,7 @@ and a runnable example.
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
 | **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. |
 | **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
+| **Use-case coverage & verticals** | Full-stack vertical packs (healthcare/PHI, legal e-discovery, financial KYC/AML, customer support, code review) that preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set on top of the pack contract; a higher-level `Assistant` over `ContextApp` that threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval; an end-to-end `VoiceAgent` wiring the realtime session to the deep-research agent, the memory OS, and the rails; and a cookbook of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) as offline-gated runnable examples. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
 | **Runtime performance** | A single-pass vectorized scorer (NumPy-optional, pure-Python fallback); a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and the prepared candidate set so a warm compile is dominated by scoring, not allocation; streaming-first compilation that emits the prefix before scoring; speculative retrieval prefetch that warms the query embedding from the task classification; and a per-app resident-memory budget held by slim packets and evidence eviction, surfaced in the cost report and gated by an SLO. |
 
@@ -64,24 +65,6 @@ Forward phases are scoped by theme and gated the same way everything else is —
 by VincioBench budgets and SLOs, and demonstrated by a runnable example. Each is additive on the
 frozen public surface; breaking changes are reserved for an announced major window and never shipped
 for their own sake.
-
-### 🚧 Use-case coverage & verticals
-
-*Go from primitives to a working app in one file, in more domains.*
-
-- **Vertical packs** — healthcare/PHI, legal e-discovery, financial KYC/AML, customer support, and
-  code review packs that preconfigure retrieval, memory, rails, metrics, residency, and a golden set
-  for the domain, on top of the existing pack contract.
-- **A higher-level Assistant abstraction** — a conversational, session-aware layer over `ContextApp`
-  that manages multi-turn state, tool approvals, and memory write-back, so a chat product is a few
-  lines rather than a hand-wired loop.
-- **End-to-end voice agents** — the realtime session wired to the deep-research agent, memory OS, and
-  rails so a spoken assistant inherits the full grounding, budget, and audit guarantees.
-- **A recipe cookbook** — a curated set of task-shaped recipes (multimodal RAG over slides/PDFs,
-  contract redlining, incident triage, data-room Q&A) as runnable, tested examples.
-- *Definition of done:* each vertical pack ships with a golden eval set and a runnable example, the
-  Assistant layer is covered by a multi-turn simulator suite, and the cookbook recipes are part of the
-  offline example gate.
 
 ### 🚧 Professionalism & API ergonomics
 

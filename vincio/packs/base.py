@@ -1,17 +1,28 @@
 """Domain packs: opt-in prompt + schema + policy + eval bundles.
 
-A :class:`Pack` is a ready-made starting point for a domain (support,
-engineering, finance, legal): a role/objective/rules prompt configuration, a
-structured output schema, recommended policies and evaluators, and a small
-golden eval set so you can measure quality from day one. Packs ship inside the
-package (no extra dependencies) and are applied on demand::
+A :class:`Pack` is a ready-made starting point for a domain: a role / objective
+/ rules prompt configuration, a structured output schema, recommended policies
+and evaluators, and a small golden eval set so you can measure quality from day
+one. Packs ship inside the package (no extra dependencies) and are applied on
+demand::
 
     app = ContextApp(name="helpdesk")
     app.use_pack("support")          # or: load_pack("support").apply(app)
 
+Two tiers ship in the box:
+
+- **Domain packs** (``support`` / ``engineering`` / ``finance`` / ``legal``) — a
+  light prompt + schema + policy starting point for a domain.
+- **Vertical packs** (``healthcare`` / ``ediscovery`` / ``kyc`` /
+  ``customer_support`` / ``code_review``) — a full-stack configuration that also
+  preconfigures retrieval, scoped memory, deterministic rails, domain metrics, a
+  data-residency posture, and a larger golden eval set for a regulated or
+  high-stakes use case.
+
 Applying a pack is deterministic and uses only the public ``ContextApp`` API
-(``configure`` / ``set_policy`` / ``add_evaluator`` / ``add_rail``), so you can
-layer your own configuration on top afterwards.
+(``configure`` / ``set_policy`` / ``add_evaluator`` / ``add_rail`` /
+``add_memory`` / ``set_residency``), so you can layer your own configuration on
+top afterwards.
 """
 
 from __future__ import annotations
@@ -46,6 +57,22 @@ class Pack(BaseModel):
     rails: list[dict[str, Any]] = Field(default_factory=list)
     eval_cases: list[EvalCase] = Field(default_factory=list)
     tags: list[str] = Field(default_factory=list)
+    # -- vertical-pack configuration (all optional / additive) ----------------
+    # Retrieval knobs merged into ``app.config.retrieval`` on apply (e.g.
+    # ``{"chunking": "sentence_window", "top_k": 10, "query_strategies": [...]}``);
+    # ``mode`` is the default retrieval mode a domain source should use and is
+    # surfaced via :meth:`retrieval_mode` for ``app.add_source(retrieval=...)``.
+    retrieval: dict[str, Any] = Field(default_factory=dict)
+    # When set, scoped memory is enabled on apply via ``app.add_memory(**memory)``
+    # (e.g. ``{"scope": "user", "strategy": "semantic"}``), so the domain inherits
+    # personalization / write-back from day one.
+    memory: dict[str, Any] | None = None
+    # Allowed provider regions for an in-jurisdiction posture; applied via
+    # ``app.set_residency(...)``. Self-hosted/in-process processing is in
+    # jurisdiction by construction, so ``"on_prem"`` is always admitted.
+    residency: list[str] = Field(default_factory=list)
+    # GDPR processing purpose this domain operates under (advisory metadata).
+    purpose: str = ""
 
     def prompt_spec(self) -> PromptSpec:
         """Build the pack's prompt spec (handy for inspection or compilation)."""
@@ -63,6 +90,15 @@ class Pack(BaseModel):
     def dataset(self) -> Dataset:
         """The pack's golden eval set as a :class:`Dataset`."""
         return Dataset(name=f"{self.name}_pack", cases=list(self.eval_cases))
+
+    def retrieval_mode(self, default: str = "hybrid") -> str:
+        """The retrieval mode this pack recommends for ``app.add_source``."""
+        return str(self.retrieval.get("mode", default))
+
+    @property
+    def is_vertical(self) -> bool:
+        """True when the pack preconfigures retrieval, memory, or residency."""
+        return bool(self.retrieval or self.memory is not None or self.residency)
 
     def apply(self, app: Any, *, set_schema: bool = True, merge_rules: bool = False) -> Any:
         """Apply this pack to a :class:`ContextApp` and return the app.
@@ -107,14 +143,41 @@ class Pack(BaseModel):
                 schema, require_citations=app.policies.require_citations
             )
             app.repairer = Repairer(app.output_contract.repair_policy)
+        # -- vertical configuration: retrieval / memory / residency -----------
+        # Each goes through the public app API so a pack never reaches past the
+        # contract it documents, and re-applying stays idempotent.
+        for key, value in self.retrieval.items():
+            if key == "mode":  # consumed by add_source, not a config field
+                continue
+            if hasattr(app.config.retrieval, key):
+                setattr(app.config.retrieval, key, value)
+        if self.memory is not None and app.memory is None:
+            app.add_memory(**self.memory)
+        if self.residency:
+            # Self-hosted / in-process processing is in jurisdiction by
+            # construction, so admit it alongside the declared regions. The pack
+            # fails *open* on an unknown region so the dependency-free offline
+            # path still runs; the strict in-jurisdiction posture comes from
+            # pinning a region-bearing endpoint (then the region is always
+            # known) and is tightened with ``app.set_residency(..., deny_on_unknown=True)``.
+            regions = list(dict.fromkeys([*self.residency, "on_prem"]))
+            app.set_residency(regions, deny_on_unknown=False)
         return app
 
 
 _BUILTIN_MODULES = {
+    # Domain packs — a light prompt + schema + policy starting point.
     "support": "vincio.packs.support",
     "engineering": "vincio.packs.engineering",
     "finance": "vincio.packs.finance",
     "legal": "vincio.packs.legal",
+    # Vertical packs — full-stack (retrieval + memory + rails + metrics +
+    # residency + golden set) for a regulated or high-stakes use case.
+    "healthcare": "vincio.packs.healthcare",
+    "ediscovery": "vincio.packs.ediscovery",
+    "kyc": "vincio.packs.kyc",
+    "customer_support": "vincio.packs.customer_support",
+    "code_review": "vincio.packs.code_review",
 }
 _CACHE: dict[str, Pack] = {}
 

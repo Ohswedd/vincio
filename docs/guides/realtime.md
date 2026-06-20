@@ -101,11 +101,56 @@ session = RealtimeSession(tool_dispatcher=dispatch)
 pure function, so realtime flows — turns, VAD, interruption, tool round-trips —
 are reproducible and fully testable offline with no network.
 
+## End-to-end voice agent
+
+A raw session gives you the wire. A spoken assistant usually wants the rest of
+the stack behind it: the ability to *look things up* (grounded, cited,
+budget-bounded), to *remember* across the conversation, and to be *guarded* on
+both the spoken-in and spoken-out boundary exactly like the text path.
+`app.voice_agent(...)` assembles that from parts that already exist, returning a
+`VoiceAgent`:
+
+```python
+app.add_source("kb", path="./help-center")
+agent = app.voice_agent()                       # research + memory OS + rails, all on
+async with agent:
+    await agent.send_text("What is the refund window?")
+    await agent.commit()
+    async for event in agent.events():          # the event stream is rail-screened
+        if event.type == "tool_result":
+            print(event.data["result"])         # the cited research answer
+        elif event.type == "response.text":
+            print(event.text)                   # redacted/blocked per the app's output rails
+        elif event.type == "turn.end":
+            break
+```
+
+It wires three things onto the session:
+
+- **Deep research** — registers [`app.research`](../concepts/agents.md) as an
+  in-session `research` tool, so a spoken question runs the cited search → read →
+  verify → synthesize loop and answers from sources, not the model's memory.
+- **Memory OS** — enables the self-editing memory tools
+  ([`enable_memory_os`](../concepts/memory.md)), so the agent can recall and
+  update its own memory mid-conversation on the audited, permissioned path.
+- **Rails** — runs the app's deterministic input/output
+  [rails](reliability-guardrails.md) over every spoken transcript and reply,
+  redacting or blocking before audio is produced, recorded on the audit chain.
+
+Pass `research=False`, `memory_os=False`, or `rails=False` to opt out of any one;
+`backend="openai"` / `"gemini"` switch to the hosted wire. Tool calls (including
+`research` and the memory ops) route through the app's permissioned, sandboxed,
+budgeted, audited runtime — a voice turn cannot do anything a text turn could
+not. See [`examples/44_voice_agent.py`](../../examples/44_voice_agent.py) for a
+runnable, offline end-to-end version.
+
 ## Scope
 
-This module is deliberately small and opt-in. It is **not** wired into the
-context compiler, evals, or the closed loop — a realtime audio session is a
-different shape of computation from a compiled context packet. What it *does*
-share is the tool runtime: realtime tool calls are permissioned, sandboxed, and
-audited like everything else. See the [security threat model](../security/threat-model.md)
-for how tool calls (including realtime ones) are governed.
+This module is deliberately small and opt-in. The base session is **not** wired
+into the context compiler, evals, or the closed loop — a realtime audio session
+is a different shape of computation from a compiled context packet. The
+`VoiceAgent` is the bridge for the cases that *do* want grounding, memory, and
+rails. What both share is the tool runtime: realtime tool calls are permissioned,
+sandboxed, and audited like everything else. See the
+[security threat model](../security/threat-model.md) for how tool calls
+(including realtime ones) are governed.
