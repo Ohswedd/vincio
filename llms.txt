@@ -275,8 +275,10 @@ app.run("export button 500s").output.label
   posture (`set_residency`, fail-open on unknown so the offline path runs), and a
   golden eval set, on top of the domain-pack contract. The `Pack` model gains
   `retrieval`/`memory`/`residency`/`purpose`; `Pack.is_vertical`,
-  `Pack.retrieval_mode()`, `pack.dataset()` (golden set). A `redact` rail masks
-  PII/PHI in *structured* output fields, not just free text.
+  `Pack.retrieval_mode()`, `pack.dataset()` (golden set). Residency is
+  fail-closed (`deny_on_unknown=True`); the offline path still runs because a
+  passed provider instance reports its real name (mock/local → `on_prem`). A
+  `redact` rail masks PII/PHI in *structured* output fields, not just free text.
 - **Assistant.** `chat = app.assistant(user_id=, session_id=, memory_writeback=True,
   auto_approve=[...], on_approval=fn)` — a session-aware multi-turn layer; each
   `chat.send(text)`/`asend` is a full `run` threaded under one session, returns an

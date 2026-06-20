@@ -74,16 +74,36 @@ def test_vertical_pack_runs_offline(name):
     assert result.error is None
 
 
-def test_residency_pack_still_refuses_out_of_region_endpoint():
-    """deny_on_unknown is off for offline safety, but an *identifiable*
-    out-of-jurisdiction endpoint is still refused."""
+def test_residency_pack_is_fail_closed():
+    """A residency-pinned vertical applies a fail-closed posture: an
+    unresolvable region is refused. The offline mock still runs because it
+    resolves to the known ``on_prem`` region (admitted alongside the declared
+    region), and an identifiable out-of-jurisdiction endpoint is still refused."""
     app = ContextApp(name="t", provider=MockProvider(), model="mock-1").use_pack("healthcare")
     assert app.residency.enforced
+    assert app.residency.deny_on_unknown is True  # fail-closed, not lenient
+    assert "on_prem" in app.residency.allowed_regions
+    # The deterministic mock identifies as on-prem, so the offline path passes.
+    assert app._provider_name == "mock"
+    assert app.residency.check(provider="mock", model="mock-1") is None
     # A us-only posture refuses an EU-region endpoint.
     violation = app.residency.check(
         provider="vertex", model="m", base_url="https://europe-west4-aiplatform.googleapis.com"
     )
     assert violation is not None
+    # An undeclared real provider (region unknown) is refused, fail-closed.
+    assert app.residency.check(provider="openai", model="gpt-5.2") is not None
+
+
+def test_app_derives_provider_name_from_instance():
+    """A passed provider instance carries its own registry name, so residency,
+    provenance, and lookups reflect the real provider — not the config default."""
+    from vincio.providers import LocalProvider
+
+    assert ContextApp(name="a", provider=MockProvider(), model="m")._provider_name == "mock"
+    assert ContextApp(name="b", provider=LocalProvider(), model="m")._provider_name == "local"
+    # The string path and the default are unchanged.
+    assert ContextApp(name="c", provider="openai", model="m")._provider_name == "openai"
 
 
 def test_healthcare_redacts_pii_on_output():

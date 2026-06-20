@@ -43,7 +43,11 @@ if __name__ == "__main__":
     print("\nApplied 'kyc' vertical:")
     print("  metrics  :", app.evaluators)
     print("  memory   :", app.memory is not None)
-    print("  residency:", app.residency.enforced, app.residency.allowed_regions)
+    # Residency is fail-closed: an unresolvable provider region is refused. The
+    # offline mock resolves to on-prem, so this runs; a live deployment pins a
+    # region-bearing endpoint or declares set_residency(provider_regions={...}).
+    print("  residency:", app.residency.allowed_regions, "(fail-closed:",
+          app.residency.deny_on_unknown, ")")
 
     result = app.run("Screen this customer against sanctions and adverse media.")
     output = result.output

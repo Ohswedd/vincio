@@ -290,9 +290,17 @@ class ContextApp:
         self.input_router = InputRouter()
 
         # provider
-        self._provider_name = (
-            provider if isinstance(provider, str) else None
-        ) or self.config.provider.default
+        # A passed provider *instance* carries its own registry name (mock /
+        # local / openai / …); use it so residency, provenance marking, and
+        # provider lookups reflect the real provider rather than the config
+        # default. This is what lets the deterministic mock identify as on-prem
+        # (region known) so fail-closed residency still admits the offline path.
+        if isinstance(provider, str):
+            self._provider_name = provider
+        elif isinstance(provider, ModelProvider):
+            self._provider_name = getattr(provider, "name", None) or self.config.provider.default
+        else:
+            self._provider_name = self.config.provider.default
         self._provider_instance = provider if isinstance(provider, ModelProvider) else None
         self.model = model or self.config.provider.model
         self._built_providers: dict[str, ModelProvider] = {}

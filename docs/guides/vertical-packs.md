@@ -57,16 +57,22 @@ rail caught. The schema and field types are preserved; the raw model emission is
 left intact on the trace (trace content capture is
 [off by default](../guides/cost-and-reliability.md)).
 
-## Residency, offline-first
+## Residency: fail-closed, offline-first
 
 A residency-pinned vertical (`healthcare`, `ediscovery`, `kyc`) applies
-`set_residency([...region, "on_prem"], deny_on_unknown=False)`. Self-hosted /
-in-process processing is in jurisdiction by construction, so `on_prem` is always
-admitted and the dependency-free offline path still runs. The pack fails *open*
-on an unknown region rather than hard-blocking; the strict in-jurisdiction
-posture comes from pinning a region-bearing endpoint (then the region is always
-known) and tightening with `app.set_residency(..., deny_on_unknown=True)`. Even
-fail-open, an *identifiable* out-of-jurisdiction endpoint is still refused egress.
+`set_residency([...region, "on_prem"])` — **fail-closed** (`deny_on_unknown=True`):
+a provider whose region cannot be resolved is refused egress, the correct posture
+for a regulated domain. Self-hosted / in-process processing is in jurisdiction by
+construction, so `on_prem` is always admitted.
+
+This stays offline-first because a passed provider instance reports its own
+identity: the deterministic mock and the local provider resolve to the known
+`on_prem` region, so the dependency-free path runs unchanged even under
+fail-closed residency. A **live** deployment must make its region known too —
+pin a region-bearing endpoint (an Azure/Bedrock/Vertex regional resource or a
+sovereign gateway, from which the region is inferred) or declare it via
+`app.set_residency([...], provider_regions={"openai": "us"})`. Pointing a
+residency-pinned pack at an undeclared global provider is *refused*, by design.
 
 The `purpose` field on a vertical (e.g. `treatment`, `legal_obligation`) is
 advisory metadata — pair it with a [`ConsentLedger`](governance.md) to enforce a
