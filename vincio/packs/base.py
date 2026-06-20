@@ -67,9 +67,11 @@ class Pack(BaseModel):
     # (e.g. ``{"scope": "user", "strategy": "semantic"}``), so the domain inherits
     # personalization / write-back from day one.
     memory: dict[str, Any] | None = None
-    # Allowed provider regions for an in-jurisdiction posture; applied via
-    # ``app.set_residency(...)``. Self-hosted/in-process processing is in
-    # jurisdiction by construction, so ``"on_prem"`` is always admitted.
+    # Allowed provider regions for an in-jurisdiction posture; applied
+    # fail-closed via ``app.set_residency(...)`` (an unresolvable region is
+    # refused egress). Self-hosted/in-process processing is in jurisdiction by
+    # construction, so ``"on_prem"`` is always admitted — which is why the
+    # offline mock / local provider (region ``on_prem``) still run.
     residency: list[str] = Field(default_factory=list)
     # GDPR processing purpose this domain operates under (advisory metadata).
     purpose: str = ""
@@ -155,13 +157,15 @@ class Pack(BaseModel):
             app.add_memory(**self.memory)
         if self.residency:
             # Self-hosted / in-process processing is in jurisdiction by
-            # construction, so admit it alongside the declared regions. The pack
-            # fails *open* on an unknown region so the dependency-free offline
-            # path still runs; the strict in-jurisdiction posture comes from
-            # pinning a region-bearing endpoint (then the region is always
-            # known) and is tightened with ``app.set_residency(..., deny_on_unknown=True)``.
+            # construction, so admit it alongside the declared regions. The
+            # posture is fail-*closed* (``deny_on_unknown=True``): a provider
+            # whose region cannot be resolved is refused egress. The
+            # dependency-free offline path still runs because the deterministic
+            # mock (and the local provider) resolve to the known ``on_prem``
+            # region; a live deployment must pin a region-bearing endpoint or
+            # declare ``provider_regions`` so its region is known too.
             regions = list(dict.fromkeys([*self.residency, "on_prem"]))
-            app.set_residency(regions, deny_on_unknown=False)
+            app.set_residency(regions)
         return app
 
 

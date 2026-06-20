@@ -55,6 +55,34 @@ untouched; the new capabilities sit behind new entry points or new pack names.
   emission on the trace is unchanged (trace content capture remains off by
   default).
 
+## [3.4.1] - 2026-06-20
+
+A correctness follow-up to 3.4.0's vertical packs: a regulated domain should fail
+*closed* on an unresolvable region, not fail open. Fixing the root cause — the
+provider name of a passed instance — makes that posture compatible with the
+offline-first default. Backward-compatible; `API_VERSION` stays `3.0`.
+
+### Fixed
+
+- **Provider name from a passed instance.** When a `ModelProvider` *instance* was
+  passed to `ContextApp(provider=...)`, the app recorded the provider name as the
+  config default (`"openai"`) instead of the instance's real name. The name is now
+  read from the instance (`provider.name`), so data-residency checks, C2PA
+  provenance marking, and provider lookups reflect the actual provider — e.g. the
+  deterministic mock and the local provider correctly resolve to the `on_prem`
+  region. The string and default constructor paths are unchanged.
+
+### Changed
+
+- **Vertical-pack residency is now fail-closed.** Residency-pinned vertical packs
+  (`healthcare`, `ediscovery`, `kyc`) apply `set_residency([...region, "on_prem"])`
+  with `deny_on_unknown=True` (was `False`): a provider whose region cannot be
+  resolved is refused egress — the correct posture for a regulated domain. The
+  dependency-free offline path still runs because the mock / local providers now
+  resolve to the known `on_prem` region (see the provider-name fix above); a live
+  deployment makes its region known by pinning a region-bearing endpoint or
+  declaring `provider_regions`.
+
 ## [3.3.0] - 2026-06-20
 
 Ecosystem & integration breadth: meet teams where their data and tools already
