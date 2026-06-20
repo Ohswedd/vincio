@@ -7,11 +7,11 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-3.1.0-B98B2E" alt="Vincio 3.1.0"></a>
+  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-3.2.0-B98B2E" alt="Vincio 3.2.0"></a>
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-1628%20passing-2ea44f" alt="1628 tests passing">
+  <img src="https://img.shields.io/badge/tests-1705%20passing-2ea44f" alt="1705 tests passing">
   <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
   <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
@@ -223,8 +223,8 @@ for any engine directly. Everything below is implemented, tested offline, and do
 | **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; Matryoshka (MRL) dimension truncation, contextual (Voyage context-3) and unified text+image multimodal (Cohere v4 / Voyage) embedders behind one `build_embedder`; a structured **`FilterSpec`** (`eq`/`in`/`range`/`and`/`or`) that pushes down to each backend's native filter with tenant scope enforced in the engine. |
 | **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session/team scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. Memory is **bi-temporal** (`valid_from`/`valid_to` + as-of recall, `correct()` that preserves history) with **per-memory ACLs** and a `TEAM` scope. |
 | **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, a resource-limited sandbox (timeout, output caps, scrubbed env, POSIX CPU/memory/fd `setrlimit`), reliability scoring, idempotent write-action guardrails with approval callbacks; **computer-use** and provider-native **hosted tools** behind a pluggable `IsolationBackend` (container / microVM / gVisor / WASM). |
-| **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute), critics, validators, human gates, and hard budget enforcement; a budgeted, citation-gated **deep-research agent** (`app.research`) that loops search → read → reflect → verify → synthesize into a cited report; a self-editing **memory OS** (`app.enable_memory_os`) exposing memory ops as audited tools with a context-pressure pager. |
-| **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events. A **distributed durable-execution backend** runs the same graph/workflow across a worker pool with a TTL lease + checkpoint-version CAS so two workers never double-execute a step, with BSP parallel super-steps, a `Send` map-reduce primitive, and LangGraph / OpenAI Agents SDK / Ray / Temporal export adapters. |
+| **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute / **hierarchical HTN**), critics, validators, human gates, and hard budget enforcement; **in-place plan repair** (re-bind / substitute / reorder / drop on a tool failure, contradiction, or budget shock — recorded as a trajectory event, not a restart); **cost-aware action selection** that reads `ModelRegistry` pricing and the live budget to spend the cheapest capable model per step, escalating only on low confidence; a budgeted, citation-gated **deep-research agent** (`app.research`) that loops search → read → reflect → verify → synthesize into a cited report; a self-editing **memory OS** (`app.enable_memory_os`) exposing memory ops as audited tools with a context-pressure pager. |
+| **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events. A **distributed durable-execution backend** runs the same graph/workflow across a worker pool with a TTL lease + checkpoint-version CAS so two workers never double-execute a step, with BSP parallel super-steps, a `Send` map-reduce primitive, and LangGraph / OpenAI Agents SDK / Ray / Temporal export adapters. A **work-stealing sub-graph scheduler** runs independent sub-graphs concurrently across the pool under one fair-share budget with an SLA deadline that returns a partial result, and **durable timers** (`sleep_until` / `wait_for_event`) pause a graph for a delay, a webhook, or an approval — surviving a restart without holding a worker. |
 | **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates that pause the run and resume without re-executing finished steps. |
 | **Structured output** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
 | **Evaluation** | Golden JSONL datasets, 30+ task / grounding / quality / safety / conversational / trajectory & tool-use / retrieval / operational metrics, deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). A **stateful-environment harness** (`Environment` reset/step/observe/verify with a task-success oracle) scores the verifiable end state of a mutable world, and five **agentic benchmark adapters** (SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL) run inside VincioBench behind one contract — replayed offline or solved live, scored either way by the benchmark's own scorer. A **retrieval-eval harness** (recall@k / nDCG / MRR / context-precision) records versioned index-regression artifacts keyed on `(embedder, chunker, corpus hash)` and gates a regression on the same significance test as a model swap. |
@@ -270,6 +270,10 @@ baseline. Representative results on the bundled reference corpus:
 | **Agents** | adversarial infinite-loop model | **bounded** (budget) | unbounded |
 | **Orchestration** | crew over-budget termination · delegation recorded | **pass** | — |
 | | graph interrupt→resume and fork-replay vs straight run | **identical state** | — |
+| | plan repair recovers a tool failure / contradiction / budget shock | **pass** | restart / dead-end |
+| | cost-aware action selection vs always-strong | **−57%** | always-strong |
+| | parallel sub-graph speedup over serial (4 workers) | **4.0×** | 1× (serial) |
+| | durable timer survives restart → resumes when due | **pass** | timer lost |
 | **Evals** | metric agreement on labeled examples | **100%** | — |
 | | red-team detector coverage · guarded attack success | **100% · 0%** | naive target: 85% attacks succeed |
 | | A/B significance (real shift detected / null ignored) | **pass** | — |
@@ -372,6 +376,7 @@ already run. See the [migration guides](docs/guides/migrate-from-langchain.md), 
 | Scale out across workers, train a cheaper model, and serve a dashboard | distributed durable execution (lease/CAS + worker pool + `Send` map-reduce), swap-gated distillation, served observability + burn-rate alerting, quantized two-stage retrieval, in-process GGUF | [`36_distributed_scale_and_finetune.py`](examples/36_distributed_scale_and_finetune.py) |
 | Score on the leaderboards, govern a fabric, and stream a UI | stateful-environment eval with a task-success oracle, the five benchmark adapters, retrieval-eval + index regression, the `AgentDirectory` under an `AllowListGate`, AG-UI streaming | [`37_benchmarks_and_agent_fabric.py`](examples/37_benchmarks_and_agent_fabric.py) |
 | Run continual self-improvement and prove a data-erasure request | one `SelfImprovementPolicy` (streaming proposal→meta→canary→promote/rollback), canary-gated `app.deploy`, signed & verifiable `ErasureProof`, a GDPR `ConsentLedger`, bi-temporal memory | [`38_self_improvement_and_erasure.py`](examples/38_self_improvement_and_erasure.py) |
+| Plan deeper, recover from failure, and schedule fairly at scale | HTN hierarchical planning, in-place plan repair, cost-aware action selection, parallel sub-graph scheduling, durable timers | [`40_orchestrator_planner_depth.py`](examples/40_orchestrator_planner_depth.py) |
 
 All examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at a real
 model with environment variables:
@@ -511,7 +516,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 1628 tests, no network or API keys required
+python -m pytest tests/ -q     # 1705 tests, no network or API keys required
 ruff check vincio/ tests/
 mypy vincio
 ```

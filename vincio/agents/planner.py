@@ -1,8 +1,13 @@
-"""Agent planners: direct, static DAG, dynamic (LLM) DAG, ReAct.
+"""Agent planners: direct, static DAG, dynamic (LLM) DAG, hierarchical, ReAct.
 
 Planners produce a :class:`StepDAG`; the executor runs it bounded by budget
 and validation. ReAct is plan-free (the executor loops); the planner still
 declares it so the mode is explicit and traceable.
+
+The ``hierarchical`` mode runs an HTN decomposition (see
+:mod:`vincio.agents.hierarchical`): a goal is decomposed into a sub-goal tree and
+each leaf is bound to a bounded tool / retrieval / reasoning / finalize step. It
+is just another mode, so it composes with plan repair and cost-aware selection.
 """
 
 from __future__ import annotations
@@ -13,11 +18,57 @@ from typing import Any, Literal
 from ..core.types import Message, ModelRequest, Objective, TaskType, ToolSpec
 from ..providers.base import ModelProvider
 from .dag import StepDAG
+from .hierarchical import (
+    HTNDomain,
+    HTNOperator,
+    HTNPlanNode,
+    MethodOrdering,
+    dag_from_plan_node,
+)
 from .state import AgentStep
 
 __all__ = ["PlanningMode", "Planner"]
 
-PlanningMode = Literal["direct", "static", "dynamic", "react", "plan_and_execute"]
+PlanningMode = Literal[
+    "direct", "static", "dynamic", "react", "plan_and_execute", "hierarchical"
+]
+
+_HTN_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "subgoals": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "method": {"type": "string", "enum": ["sequence", "parallel"]},
+                    "steps": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "name": {"type": "string"},
+                                "type": {
+                                    "type": "string",
+                                    "enum": ["retrieve", "think", "tool", "validate", "finalize"],
+                                },
+                                "instruction": {"type": "string"},
+                                "tool_name": {"type": "string"},
+                            },
+                            "required": ["name", "type", "instruction", "tool_name"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["name", "method", "steps"],
+                "additionalProperties": False,
+            },
+        }
+    },
+    "required": ["subgoals"],
+    "additionalProperties": False,
+}
 
 _PLAN_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -54,11 +105,21 @@ class Planner:
         provider: ModelProvider | None = None,
         model: str | None = None,
         max_steps: int = 12,
+        domain: HTNDomain | None = None,
+        root_task: str = "root",
     ) -> None:
         self.mode = mode
         self.provider = provider
         self.model = model
         self.max_steps = max_steps
+        # HTN knowledge for the ``hierarchical`` mode. When set, decomposition is
+        # deterministic; otherwise the planner asks the model (or, offline,
+        # degrades to a static plan). ``root_task`` names the domain's entry task.
+        self.domain = domain
+        self.root_task = root_task
+        # The most recent resolved sub-goal tree (``hierarchical`` mode only),
+        # exposed for tracing / inspection; ``None`` until the first plan.
+        self.last_plan_tree: HTNPlanNode | None = None
 
     # -- static plans by task shape -------------------------------------------------
 
@@ -186,6 +247,123 @@ class Planner:
             )
         return dag
 
+    # -- hierarchical (HTN) plans --------------------------------------------------------
+
+    async def _hierarchical_plan(
+        self,
+        objective: Objective,
+        *,
+        has_retrieval: bool,
+        tools: list[ToolSpec],
+    ) -> StepDAG:
+        """Decompose the goal into a sub-goal tree and bind each leaf to a step.
+
+        A supplied :class:`HTNDomain` decomposes deterministically; otherwise the
+        model proposes a two-level decomposition; offline with no domain the
+        planner degrades to a safe static plan. The resolved tree is stashed on
+        :attr:`last_plan_tree` for tracing.
+        """
+        tool_names = {t.name for t in tools}
+        if self.domain is not None:
+            context = {
+                "task_type": objective.task_type.value,
+                "has_retrieval": has_retrieval,
+                "has_tools": bool(tools),
+            }
+            root_task = str(objective.metadata.get("root_task") or self.root_task)
+            root = self.domain.decompose(root_task, context=context)
+            self.last_plan_tree = root
+            return dag_from_plan_node(root, available_tools=tool_names)
+        if self.provider is not None and self.model is not None:
+            dag = await self._llm_hierarchical_plan(objective, has_retrieval, tools)
+            if dag is not None:
+                return dag
+        self.last_plan_tree = None
+        return self._static_plan(objective, has_retrieval=has_retrieval, tools=tools)
+
+    async def _llm_hierarchical_plan(
+        self, objective: Objective, has_retrieval: bool, tools: list[ToolSpec]
+    ) -> StepDAG | None:
+        tool_lines = "\n".join(f"- {t.name}: {t.description}" for t in tools) or "(none)"
+        request = ModelRequest(
+            model=self.model or "",
+            messages=[
+                Message(
+                    role="system",
+                    content=(
+                        "You are a hierarchical (HTN) agent planner. Decompose the goal "
+                        "into a small ordered list of sub-goals; for each sub-goal emit the "
+                        "concrete steps that accomplish it. Sub-goals run in order; a "
+                        "sub-goal's steps run in 'sequence' or in 'parallel'. Step types: "
+                        "retrieve, think, tool (set tool_name to an available tool), "
+                        "validate, finalize. For non-tool steps set tool_name to ''. Keep "
+                        f"the whole plan to at most {self.max_steps} steps."
+                    ),
+                ),
+                Message(
+                    role="user",
+                    content=(
+                        f"Goal: {objective.text}\nTask type: {objective.task_type.value}\n"
+                        f"Retrieval available: {has_retrieval}\nAvailable tools:\n{tool_lines}"
+                    ),
+                ),
+            ],
+            output_schema=_HTN_SCHEMA,
+            output_schema_name="htn_plan",
+            temperature=0.0,
+        )
+        if self.provider is None:  # pragma: no cover - guarded by the caller
+            return None
+        try:
+            response = await self.provider.generate(request)
+            payload = response.structured or json.loads(response.text)
+        except Exception:  # noqa: BLE001 - fall back to the static plan
+            return None
+        return self._dag_from_htn_payload(payload, tools)
+
+    def _dag_from_htn_payload(
+        self, payload: dict[str, Any], tools: list[ToolSpec]
+    ) -> StepDAG | None:
+        subgoals = payload.get("subgoals") or []
+        if not subgoals:
+            return None
+        tool_names = {t.name for t in tools}
+        children: list[HTNPlanNode] = []
+        total_steps = 0
+        for raw_goal in subgoals:
+            ordering: MethodOrdering = (
+                "parallel" if raw_goal.get("method") == "parallel" else "sequence"
+            )
+            leaves: list[HTNPlanNode] = []
+            for raw_step in raw_goal.get("steps", []):
+                if total_steps >= self.max_steps:
+                    break
+                step_type = raw_step.get("type", "think")
+                tool_name = (raw_step.get("tool_name") or "").strip() or None
+                if step_type == "tool" and tool_name not in tool_names:
+                    step_type, tool_name = "think", None
+                leaves.append(
+                    HTNPlanNode(
+                        task=raw_step.get("name", step_type),
+                        operator=HTNOperator(
+                            name=raw_step.get("name", step_type),
+                            step_type=step_type,
+                            tool_name=tool_name,
+                            instruction=raw_step.get("instruction", ""),
+                        ),
+                    )
+                )
+                total_steps += 1
+            if leaves:
+                children.append(
+                    HTNPlanNode(task=raw_goal.get("name", "subgoal"), ordering=ordering, children=leaves)
+                )
+        if not children:
+            return None
+        root = HTNPlanNode(task="root", ordering="sequence", children=children)
+        self.last_plan_tree = root
+        return dag_from_plan_node(root, available_tools=tool_names)
+
     # -- replanning (plan-and-execute) ----------------------------------------------------
 
     async def replan(
@@ -278,6 +456,10 @@ class Planner:
         tools = tools or []
         if self.mode == "direct":
             return self._direct_plan(objective)
+        if self.mode == "hierarchical":
+            return await self._hierarchical_plan(
+                objective, has_retrieval=has_retrieval, tools=tools
+            )
         if self.mode in ("dynamic", "plan_and_execute"):
             return await self._dynamic_plan(objective, has_retrieval=has_retrieval, tools=tools)
         if self.mode == "react":

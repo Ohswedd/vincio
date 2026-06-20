@@ -486,6 +486,223 @@ async def _agent_streaming_2_2() -> dict[str, Any]:
     }
 
 
+async def _planner_depth() -> dict[str, Any]:
+    """Orchestrator & planner depth: hierarchical decomposition, in-place plan
+    repair, cost-aware action-selection savings, and durable-timer restart safety —
+    all measured offline and deterministically."""
+    from datetime import UTC, datetime, timedelta
+
+    from vincio.agents import (
+        AgentExecutor,
+        CostAwareSelector,
+        HTNDomain,
+        Planner,
+        PlanRepairer,
+        StateGraph,
+        TimerService,
+        dag_from_plan_node,
+        deliver_event,
+        sleep_for,
+        wait_for_event,
+    )
+    from vincio.agents.dag import StepDAG
+    from vincio.agents.graph import Checkpointer
+    from vincio.agents.state import AgentState, AgentStep
+    from vincio.core.types import Budget, ModelCapabilities, ModelProfile, Objective
+    from vincio.observability.costs import CostTracker, ModelPrice, PriceTable
+    from vincio.providers.capabilities import RequestNeeds
+    from vincio.providers.registry import ModelRegistry
+    from vincio.storage.base import InMemoryMetadataStore
+    from vincio.tools.registry import ToolRegistry
+    from vincio.tools.runtime import ToolRuntime
+
+    # -- hierarchical (HTN) decomposition: a parallel sub-goal lands its leaves on
+    #    one level and the plan ends in exactly one finalize.
+    domain = (
+        HTNDomain()
+        .method("root", ["gather", "answer"])
+        .method("gather", ["search", "lookup"], ordering="parallel")
+        .operator("search", step_type="think", instruction="search")
+        .operator("lookup", step_type="think", instruction="look up")
+        .operator("answer", step_type="finalize", instruction="answer")
+    )
+    htn_dag = dag_from_plan_node(domain.decompose("root"))
+    htn_levels = htn_dag.topological_levels()
+    hierarchical_parallel = len(htn_levels[0]) == 2
+    hierarchical_finalized = sum(1 for s in htn_dag.steps.values() if s.type == "finalize") == 1
+
+    # -- plan repair: a flaky tool re-binds to its backup; a lone failing tool
+    #    substitutes to reasoning; and the run still finalizes.
+    registry = ToolRegistry()
+
+    @registry.register()
+    def billing_lookup_primary(invoice: str = "x") -> dict:
+        """Primary (flaky)."""
+        raise RuntimeError("upstream 503")
+
+    @registry.register()
+    def billing_lookup_backup(invoice: str = "x") -> dict:
+        """Backup."""
+        return {"invoice": invoice, "amount": 42}
+
+    def _repair_executor() -> AgentExecutor:
+        return AgentExecutor(
+            MockProvider(), model="mock-1", planner=Planner(mode="static"),
+            tool_runtime=ToolRuntime(registry, cache_enabled=False), tool_specs=registry.specs(),
+        )
+
+    def _tool_dag(tool_name: str, metadata: dict | None = None):
+        dag = StepDAG()
+        tool_step = AgentStep(type="tool", name="lookup", instruction="look up",
+                              tool_name=tool_name, metadata=metadata or {})
+        dag.add(tool_step)
+        finalize = AgentStep(type="finalize", name="finalize", instruction="answer")
+        dag.add(finalize, depends_on=[tool_step.id])
+        return dag, tool_step, finalize
+
+    dag_r, tool_r, fin_r = _tool_dag(
+        "billing_lookup_primary", {"fallback_tools": ["billing_lookup_backup"]}
+    )
+    state_r = AgentState(objective=Objective("refund"), budget=Budget(max_steps=12))
+    state_r.steps = list(dag_r.steps.values())
+    await _repair_executor()._execute_dag(state_r, dag_r)
+    repair_rebind = (
+        any(r.action == "rebind" for r in state_r.repairs)
+        and tool_r.tool_name == "billing_lookup_backup"
+        and fin_r.status == "done"
+    )
+
+    dag_s, tool_s, fin_s = _tool_dag("billing_lookup_primary")  # no fallback declared
+    state_s = AgentState(objective=Objective("x"), budget=Budget(max_steps=12))
+    state_s.steps = list(dag_s.steps.values())
+    # only the flaky tool is available -> substitute to reasoning
+    lone = ToolRegistry()
+
+    @lone.register()
+    def billing_lookup_primary2(invoice: str = "x") -> dict:
+        """Lone flaky tool."""
+        raise RuntimeError("boom")
+
+    lone_exec = AgentExecutor(
+        MockProvider(), model="mock-1", planner=Planner(mode="static"),
+        tool_runtime=ToolRuntime(lone, cache_enabled=False), tool_specs=lone.specs(),
+    )
+    dag_sub, tool_sub, fin_sub = _tool_dag("billing_lookup_primary2")
+    state_sub = AgentState(objective=Objective("x"), budget=Budget(max_steps=12))
+    state_sub.steps = list(dag_sub.steps.values())
+    await lone_exec._execute_dag(state_sub, dag_sub)
+    repair_substitute = (
+        any(r.action == "substitute" for r in state_sub.repairs)
+        and tool_sub.type == "think" and fin_sub.status == "done"
+    )
+
+    # budget shock: the optional tail is dropped to finalize directly.
+    dag_b = StepDAG()
+    done_step = AgentStep(type="think", name="a")
+    dag_b.add(done_step)
+    done_step.status = "done"
+    opt = AgentStep(type="retrieve", name="b")
+    dag_b.add(opt, depends_on=[done_step.id])
+    fin_b = AgentStep(type="finalize", name="finalize")
+    dag_b.add(fin_b, depends_on=[opt.id])
+    state_b = AgentState(objective=Objective("x"), budget=Budget(max_cost_usd=1.0))
+    state_b.usage.cost_usd = 0.9
+    state_b.steps = list(dag_b.steps.values())
+    shock = PlanRepairer().repair_budget_shock(state_b, dag_b, state_b.budget)
+    repair_budget_shock = (
+        shock is not None and shock.action == "drop"
+        and opt.status == "skipped" and fin_b.input_refs == [done_step.id]
+    )
+
+    # -- cost-aware action selection: a cheap+strong pair drives genuine savings
+    #    versus always-strong, with capabilities and pricing read from the registry.
+    caps = ModelCapabilities(structured_output=True, tool_calling=True, reasoning=True)
+    cost_registry = ModelRegistry([
+        ModelProfile(name="Fast", provider="mock", model="fast-x", tier="fast",
+                     capabilities=caps, input_cost_per_mtok=0.15, output_cost_per_mtok=0.60),
+        ModelProfile(name="Strong", provider="mock", model="strong-x", tier="strong",
+                     capabilities=caps, input_cost_per_mtok=3.0, output_cost_per_mtok=15.0),
+    ])
+    price_table = PriceTable()
+    price_table.set("fast-x", ModelPrice(input_per_mtok=0.15, output_per_mtok=0.60))
+    price_table.set("strong-x", ModelPrice(input_per_mtok=3.0, output_per_mtok=15.0))
+
+    def _cost_executor(selector):
+        return AgentExecutor(
+            MockProvider(), model="strong-x", planner=Planner(mode="static"),
+            cost_tracker=CostTracker(price_table), selector=selector,
+        )
+
+    strong_run = await _cost_executor(None).run("Summarize", budget=Budget(max_cost_usd=1.0))
+    selector = CostAwareSelector(["fast-x", "strong-x"], registry=cost_registry)
+    cheap_run = await _cost_executor(selector).run("Summarize", budget=Budget(max_cost_usd=1.0))
+    cost_aware_savings = (
+        round(1 - (cheap_run.usage.cost_usd / strong_run.usage.cost_usd), 4)
+        if strong_run.usage.cost_usd else 0.0
+    )
+    # escalation: a low-confidence signal selects the stronger tier.
+    escalated = selector.select(
+        needs=RequestNeeds(), input_tokens=500, output_tokens=256, confidence=0.2
+    ).escalated
+
+    # -- durable timers: a paused sleep survives a "restart" (fresh checkpointer
+    #    over the same store) and resumes when due; an event-wait resumes on
+    #    delivery of its named event.
+    base = datetime(2026, 6, 20, 12, 0, 0, tzinfo=UTC)
+    store = InMemoryMetadataStore()
+
+    def _sleep_graph() -> StateGraph:
+        g = StateGraph("timed")
+        g.add_node("start", lambda s: {"stage": "started"})
+
+        def wait(s):
+            sleep_for(s, 3600, clock=lambda: base)
+            return {"stage": "woke"}
+
+        g.add_node("wait", wait)
+        g.add_node("done", lambda s: {"stage": "done"})
+        g.add_edge("start", "wait")
+        g.add_edge("wait", "done")
+        return g
+
+    paused = _sleep_graph().compile(checkpointer=Checkpointer(store)).invoke({}, thread_id="t1")
+    not_due = len(TimerService(
+        _sleep_graph().compile(checkpointer=Checkpointer(store)),
+        clock=lambda: base + timedelta(minutes=30),
+    ).tick()) == 0
+    restarted = _sleep_graph().compile(checkpointer=Checkpointer(store))
+    resumed = TimerService(restarted, clock=lambda: base + timedelta(hours=2)).tick()
+    durable_timer_restart_safe = (
+        paused.status == "interrupted" and not_due
+        and len(resumed) == 1 and resumed[0].status == "done"
+    )
+
+    eg = StateGraph("evt")
+    eg.add_node("a", lambda s: {"x": 1})
+    eg.add_node("w", lambda s: {"approval": wait_for_event(s, "approved")})
+    eg.add_edge("a", "w")
+    compiled_evt = eg.compile(checkpointer=Checkpointer(store))
+    evt_paused = compiled_evt.invoke({}, thread_id="t2")
+    wrong_ignored = deliver_event(compiled_evt, "t2", "rejected") is None
+    delivered = deliver_event(compiled_evt, "t2", "approved", payload={"by": "alice"})
+    durable_event_resumes = (
+        evt_paused.status == "interrupted" and wrong_ignored
+        and delivered.status == "done" and delivered.state["approval"] == {"by": "alice"}
+    )
+
+    return {
+        "hierarchical_parallel": hierarchical_parallel,
+        "hierarchical_finalized": hierarchical_finalized,
+        "repair_rebind": repair_rebind,
+        "repair_substitute": repair_substitute,
+        "repair_budget_shock": repair_budget_shock,
+        "cost_aware_savings": cost_aware_savings,
+        "cost_aware_escalates": escalated,
+        "durable_timer_restart_safe": durable_timer_restart_safe,
+        "durable_event_resumes": durable_event_resumes,
+    }
+
+
 async def bench_rag() -> dict[str, Any]:
     """RAGBench: retrieval quality (recall@k/MRR) across retrieval modes —
     BM25 baseline, hybrid RRF, learned sparse, late interaction (exact and
@@ -1320,6 +1537,9 @@ async def bench_agent() -> dict[str, Any]:
         },
         # 2.2 — token/tool-event streaming (executor & crew) + AG-UI generative UI
         "streaming": await _agent_streaming_2_2(),
+        # orchestrator & planner depth: HTN decomposition, in-place plan repair,
+        # cost-aware action-selection savings, durable-timer restart safety.
+        "planner_depth": await _planner_depth(),
     }
 
 
@@ -2834,6 +3054,7 @@ async def bench_scale() -> dict[str, Any]:
     post_rollback_served = (await canary.generate(canary_req)).text == "ok"
 
     distributed_2_1 = await _scale_distributed_2_1()
+    subgraph_scheduling = await _subgraph_scheduling()
     shared_state_2_1 = _scale_shared_state_2_1()
 
     # -- 3.0: async-canonical store throughput --------------------------------
@@ -2880,6 +3101,9 @@ async def bench_scale() -> dict[str, Any]:
         "async_canonical": async_canonical,
         # 2.1 — distributed durable execution + multi-worker shared state
         "distributed": distributed_2_1,
+        # parallel sub-graph scheduling: work-stealing concurrency + fair-share
+        # budget + SLA deadline returning partial results.
+        "subgraph": subgraph_scheduling,
         "shared_state": shared_state_2_1,
         "circuit": {
             "opens_on_systemic": opens_on_systemic,
@@ -3428,6 +3652,61 @@ async def _scale_distributed_2_1() -> dict[str, Any]:
         "worker_pool_fanout_ok": fanout_ok,
         "backend_conformant": backend_conformant,
         "map_reduce_no_seed_ok": map_reduce_no_seed_ok,
+    }
+
+
+async def _subgraph_scheduling() -> dict[str, Any]:
+    """Parallel sub-graph scheduling: independent sub-graphs run concurrently
+    across workers (genuine speedup, identical results to serial), under a
+    fair-share budget that sums to the cap, with an SLA deadline that returns
+    completed + durable partial results rather than blowing the deadline."""
+    from vincio.agents import StateGraph, SubgraphScheduler, SubgraphTask
+    from vincio.core.types import Budget
+
+    def make_graph(name: str) -> StateGraph:
+        g = StateGraph(name)
+        g.add_node("a", lambda s: {"n": s.get("n", 0) + 1})
+        g.add_node("b", lambda s: {"n": s["n"] * 10})
+        g.add_edge("a", "b")
+        return g
+
+    parallel = await SubgraphScheduler(workers=4, budget=Budget(max_cost_usd=1.0)).run(
+        [SubgraphTask(make_graph(f"p{i}"), {"n": i}) for i in range(4)]
+    )
+    serial = await SubgraphScheduler(workers=1).run(
+        [SubgraphTask(make_graph(f"s{i}"), {"n": i}) for i in range(4)]
+    )
+    equivalent_to_serial = serial.peak_concurrency == 1 and sorted(
+        o.result.state["n"] for o in serial.completed
+    ) == sorted(o.result.state["n"] for o in parallel.completed)
+    fair_share_within_budget = abs(sum(parallel.shares_usd) - 1.0) < 1e-9 and all(
+        abs(s - 0.25) < 1e-9 for s in parallel.shares_usd
+    )
+
+    class _FakeClock:
+        def __init__(self) -> None:
+            self.t = 0
+
+        def __call__(self) -> int:
+            self.t += 1
+            return self.t
+
+    deadline = await SubgraphScheduler(workers=1, deadline_s=2, clock=_FakeClock()).run(
+        [SubgraphTask(make_graph(f"d{i}"), {"n": i}) for i in range(4)]
+    )
+    deadline_returns_partial = (
+        deadline.deadline_hit
+        and len(deadline.completed) >= 1
+        and len(deadline.partial) >= 1
+        and all(o.status == "deadline" for o in deadline.partial)
+    )
+
+    return {
+        "parallel_concurrency": parallel.peak_concurrency,
+        "speedup": parallel.speedup,
+        "equivalent_to_serial": equivalent_to_serial,
+        "fair_share_within_budget": fair_share_within_budget,
+        "deadline_returns_partial": deadline_returns_partial,
     }
 
 

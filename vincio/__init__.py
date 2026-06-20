@@ -7,15 +7,25 @@ optimized, validated, observable, provider-neutral context packets.
 from .agents import (
     AgentRole,
     Blackboard,
+    CostAwareSelector,
     Crew,
     DistributedCheckpointer,
+    HTNDomain,
+    PlanRepairer,
     ResearchAgent,
     ResearchBudget,
     ResearchReport,
+    ScheduleResult,
     Send,
     StateGraph,
+    SubgraphScheduler,
+    SubgraphTask,
+    TimerService,
     WorkerPoolBackend,
     compose,
+    sleep_for,
+    sleep_until,
+    wait_for_event,
 )
 from .context.llmlingua import LLMLinguaCompressor
 from .core.app import ContextApp, RunHandle
@@ -137,7 +147,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"
 
 __all__ = [
     "ContextApp",
@@ -255,6 +265,17 @@ __all__ = [
     "RiskTierClassifier",
     "AnnexIVBuilder",
     "FRIAGenerator",
+    # orchestrator & planner depth
+    "HTNDomain",
+    "PlanRepairer",
+    "CostAwareSelector",
+    "SubgraphScheduler",
+    "SubgraphTask",
+    "ScheduleResult",
+    "TimerService",
+    "sleep_until",
+    "sleep_for",
+    "wait_for_event",
     # scale out & train for real
     "WorkerPoolBackend",
     "DistributedCheckpointer",
