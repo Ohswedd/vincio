@@ -89,6 +89,17 @@ structural telemetry (model, tokens, cost, latency, scores) exports while raw
 prompt/completion text is dropped unless you explicitly opt in, and when you do it
 is PII-redacted and truncated first.
 
+A causal **`Recording`** (`Recorder` / `Replayer` in `vincio.observability`) is a
+deliberate exception: to replay a run byte-for-byte it captures the *full* model
+responses, tool outputs, and retrieval hits — not the truncated previews trace
+spans keep — so a recording is a complete record of a run's inputs and outputs.
+Treat it like any export of model inputs/outputs: it may contain business data and
+secrets, so store it where you would store the underlying data, not in a shared
+artifact bucket. Recording is never on the live path unless you wrap a run with
+the recorder, recordings are content-addressed and carry a verifiable fidelity
+digest (`recording.verify()`) so tampering is detectable, and replaying one runs
+entirely in-process against the recorded edges (no new egress).
+
 ### Multi-tenant isolation & access control
 
 Access is governed by RBAC scopes and ABAC rules through one `AccessController`.

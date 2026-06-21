@@ -1134,6 +1134,27 @@
     },
     "families.world_model.calibration_gate_enforced": {
       "eq": true
+    },
+    "families.record_replay.replay_faithful": {
+      "gte": 1.0
+    },
+    "families.record_replay.output_identical": {
+      "eq": true
+    },
+    "families.record_replay.fidelity_verified": {
+      "eq": true
+    },
+    "families.record_replay.divergence_detected": {
+      "gte": 1.0
+    },
+    "families.record_replay.store_roundtrip_ok": {
+      "eq": true
+    },
+    "families.record_replay.branch_prefix_served": {
+      "eq": true
+    },
+    "families.record_replay.branch_suffix_reexecuted": {
+      "eq": true
     }
   }
 }

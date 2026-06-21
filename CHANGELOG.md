@@ -4,6 +4,56 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.12.0] - 2026-06-21
+
+Causal record-replay debugger. The eval-replay runner and durable-graph
+time-travel already let a run be re-executed from a checkpoint or a recorded
+case; this release adds the rung the platform had not yet made first-class —
+**byte-faithful, deterministic replay of a *whole* agent run from its trace**, so
+a past run becomes something you can step, inspect, and branch instead of a
+bespoke script. Entirely additive and backward-compatible — `API_VERSION` stays
+`3.0`, the dependency-free offline path is the default, and nothing below runs
+unless you opt in.
+
+### Added
+
+- **`Recorder` (`vincio.observability`).** `Recorder(app).record(input)` runs an
+  app while capturing every non-deterministic edge of the run — model responses
+  (keyed by `ModelRequest.hash`), tool outputs (by name + canonical arguments),
+  retrieval hits (by query + params), the `ModelCapabilities` each request was
+  negotiated against, and the clock/seed — into a portable `Recording`. The run
+  executes normally against the real provider/tools/retrieval; capture is done by
+  shadowing `resolve_provider`, `tool_runtime.execute`, and `retrieval.retrieve`
+  for the run and restoring them after.
+- **`Recording` (`vincio.observability`).** A self-contained, JSON-serializable
+  artifact carrying the recorded edges, the full trace span tree, and a
+  `fidelity_digest`. It is content-addressed and verifiable —
+  `recording.put(store)` / `Recording.from_store(store, address)` write to / load
+  from any `EvidenceStore`, `recording.save(path)` / `Recording.load(path)` use a
+  file, and `recording.verify()` recomputes the digest and every edge's content
+  address so a tampered or truncated recording is caught before replay. Rich
+  inspection surface: `model_calls` / `tool_calls` / `retrievals`, `steps()` over
+  the span tree, and `render_text()`.
+- **`Replayer` (`vincio.observability`).** `Replayer(app).replay(recording)`
+  re-executes a recording against an app, serving every edge from the recording
+  so the run reproduces **byte-for-byte** — the recording, not the live provider,
+  drives the run. The `ReplayResult` is `faithful` only when no edge diverged and
+  the output is byte-identical, and lists every `Divergence` (the edge live code
+  asked for that was not in the recording) — so changed code is detected and
+  reported, never silently re-executed. The underlying `ReplayProvider` serves
+  recorded model responses by request identity.
+- **Branch-and-edit.** `Replayer(app).branch(recording, edits=[BranchEdit(...)],
+  input=, fallback=)` forks a recording, changes a recorded edge or the input,
+  and re-executes **only the affected suffix** while the unchanged prefix is
+  still served from the recording (`served_from_recording` vs `reexecuted`), so a
+  fix is validated against the exact failing run.
+- **`record_replay` VincioBench family + SLOs.** Measures byte-identical replay
+  against a live provider that would answer differently, divergence detection
+  when the prompt changes, the content-addressed store round-trip and fidelity
+  verification, and branch-and-edit prefix-reuse / suffix-re-execution. Three new
+  published SLOs gate it. CLI: `vincio trace verify-recording <file>`. Runnable
+  example `56_record_replay_debugger.py`.
+
 ## [3.11.0] - 2026-06-21
 
 World-model / simulation-based planning. The stateful-environment harness and the

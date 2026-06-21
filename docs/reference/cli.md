@@ -121,6 +121,13 @@ vincio trace sessions [--traces-dir DIR]
 vincio trace feedback TRACE_ID [--key K] [--score X] [--comment "..."] [--user U]
     Attach feedback to a stored trace (persisted as an update).
 
+vincio trace verify-recording PATH
+    Verify a causal recording's replay fidelity offline (no app needed): check
+    every recorded edge against its content address, confirm the fidelity
+    digest, and print the inspection summary. Exits non-zero on failure. A
+    recording is produced by `Recorder(app).record(...).save(path)` and replayed
+    byte-for-byte with `Replayer(app).replay(recording)`.
+
 vincio optimize run --app APP.py --dataset DATASET.jsonl
         [--target quality|groundedness|cost|latency]
         [--budget N] [--subset N] [--output winning.yaml]

@@ -28,6 +28,18 @@ from .finops import (
     CostReport,
     CostRow,
 )
+from .record_replay import (
+    BranchEdit,
+    BranchResult,
+    Divergence,
+    EdgeKind,
+    RecordedEdge,
+    Recorder,
+    Recording,
+    Replayer,
+    ReplayProvider,
+    ReplayResult,
+)
 from .redaction import ContentCapturePolicy
 from .sessions import Session, record_feedback, sessions_from_traces
 from .spans import Feedback, Span, SpanType, Trace, TraceEvent
@@ -93,6 +105,17 @@ __all__ = [
     "ContentCapturePolicy",
     "ViewerApp",
     "serve_viewer",
+    # causal record-replay debugger
+    "Recorder",
+    "Recording",
+    "RecordedEdge",
+    "EdgeKind",
+    "ReplayProvider",
+    "Replayer",
+    "ReplayResult",
+    "Divergence",
+    "BranchEdit",
+    "BranchResult",
 ]
 
 

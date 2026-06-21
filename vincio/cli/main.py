@@ -863,6 +863,26 @@ def cmd_trace_replay(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_trace_verify_recording(args: argparse.Namespace) -> int:
+    """Load a causal recording from a file and verify its replay fidelity.
+
+    Offline and app-free: it checks every recorded edge against its content
+    address and confirms the fidelity digest, then prints the inspection
+    summary. Exits non-zero when the recording fails verification.
+    """
+    from ..observability.record_replay import Recording
+
+    recording = Recording.load(args.path)
+    report = recording.fidelity_report()
+    print(recording.render_text())
+    print(f"\nfidelity: {json_dumps(report)}")
+    if not report["ok"]:
+        print("recording FAILED verification", file=sys.stderr)
+        return 1
+    print("recording verified")
+    return 0
+
+
 def cmd_trace_diff(args: argparse.Namespace) -> int:
     from ..observability.traces import trace_diff
 
@@ -1730,6 +1750,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_trace_feedback.add_argument("--user", default=None)
     p_trace_feedback.add_argument("--traces-dir", default=".vincio/traces")
     p_trace_feedback.set_defaults(fn=cmd_trace_feedback)
+    p_trace_verify_rec = trace_sub.add_parser(
+        "verify-recording", help="verify a causal recording's replay fidelity (offline)"
+    )
+    p_trace_verify_rec.add_argument("path", help="path to a recording JSON file")
+    p_trace_verify_rec.set_defaults(fn=cmd_trace_verify_recording)
 
     p_optimize = sub.add_parser("optimize", help="optimization commands")
     optimize_sub = p_optimize.add_subparsers(dest="optimize_command", required=True)
