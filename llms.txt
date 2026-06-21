@@ -111,6 +111,22 @@ app.run("export button 500s").output.label
   (`recall(query)` pages a compacted needle back). Held by a horizon-scaling SLO:
   at 10× horizon the governed footprint stays flat (vs ~linear naïve growth) and
   recall is preserved (`families.long_horizon`).
+- **World-model / simulation-based planning.** `WorldModel(transitions)`
+  (`vincio.agents`) is a deterministic dynamics model fit offline from recorded
+  reset/step `Transition`s (`record_transitions(env, action_sequences)`). It learns
+  each tool's *parameterized* effect (constant / argument / numeric-step value)
+  under a learned *precondition* (the discriminative state field), so
+  `model.predict(obs, action)` returns a `PredictedStep` that fails a refund on a
+  processing order and succeeds on a cancelled one — and generalizes a cancel seen
+  on one order to another; `model.imagine(obs, actions)` rolls a plan forward
+  without touching a tool. `model.calibrate(holdout)` returns a `CalibrationReport`
+  (`state_accuracy`, `reward_mae`, `trusted`, `weight`) that earns planning weight
+  only within tolerance. `ModelPredictivePlanner(model, horizon=, beam_width=).plan(env)`
+  searches imagined rollouts with the test-time-search beam, commits the best first
+  action, observes, and re-plans, returning an `MPCResult`; it refuses an
+  uncalibrated model unless `require_calibrated=False`. At a fixed action budget it
+  matches or beats reactive (one-step) planning (`families.world_model`). Reference
+  worlds: `make_retail_environment`, `make_vault_environment` (a shortcut trap).
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`

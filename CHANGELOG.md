@@ -4,6 +4,52 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.11.0] - 2026-06-21
+
+World-model / simulation-based planning. The stateful-environment harness and the
+test-time-search verifiers already let an agent *evaluate* a trajectory against the
+live world; this release adds the rung above it — letting an agent **learn a model
+of its tools and plan against it**, searching imagined rollouts before acting so a
+wrong move costs a simulated step, not a live one. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path is
+the default, and nothing below runs unless you opt in.
+
+### Added
+
+- **`WorldModel` (`vincio.agents`).** A deterministic, offline dynamics model fit
+  from recorded reset/step `Transition`s (`record_transitions(env, sequences)`). For
+  each tool it learns the *parameterized* state effect — whether a changed value is
+  a constant, an argument, or a numeric step — under a *learned precondition* (the
+  discriminative state field that decides which effect fires), so it predicts a
+  refund will *fail* on a processing order and *succeed* on a cancelled one, and
+  generalizes a cancel it only ever saw on one order to another. `predict(obs,
+  action)` returns a `PredictedStep` (predicted next observation, reward, ok,
+  confidence); an unseen action signature predicts the identity with zero
+  confidence. `imagine(obs, actions)` rolls a whole plan forward without touching a
+  tool.
+- **`CalibrationReport` (`WorldModel.calibrate`).** The world model earns planning
+  weight only after its predicted next states and rewards track the real environment
+  within a tolerance, the way a judge ensemble earns gating weight — reporting
+  next-state accuracy, reward MAE, and a `trusted` verdict the planner checks.
+- **`ModelPredictivePlanner` (`vincio.agents`).** A receding-horizon (MPC) planner
+  that searches imagined rollouts under the world model with the test-time-search
+  beam, commits the best **first** action to the real environment, observes, and
+  re-plans — so model error is corrected every step. The beam score prefers the
+  shortest, cheapest plan that reaches the goal (cost-aware action selection); by
+  default it refuses an uncalibrated model. Returns an `MPCResult` (`MPCStep`s, the
+  committed actions, the oracle verification, the earned planning weight).
+- **`make_vault_environment` (`vincio.evals.environment`).** A planning-favoring
+  reference world: a locally-attractive `shortcut` raises the task score immediately
+  but seals the vault shut, so only a planner that rolls the model forward avoids
+  the dead end. The `task_goal_value` helper scores an observation by the fraction
+  of a task's checks it satisfies.
+- **`world_model` VincioBench family + SLOs.** Measures the learned dynamics
+  (next-state accuracy, learned precondition, argument generalization), the
+  calibration gate, and the planning-accuracy guarantee: on the vault world the
+  imagined-rollout planner opens the vault while a reactive (one-step) planner is
+  trapped at a fixed action budget. Three new published SLOs gate it. Runnable
+  example `55_world_model_planning.py`.
+
 ## [3.10.0] - 2026-06-21
 
 Long-horizon context engineering. Vincio's namesake is context engineering, and

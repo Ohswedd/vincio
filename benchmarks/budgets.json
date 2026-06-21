@@ -1110,6 +1110,30 @@
     },
     "families.long_horizon.intra_run_decay_demotes_stale": {
       "eq": true
+    },
+    "families.world_model.model_state_accuracy": {
+      "gte": 1.0
+    },
+    "families.world_model.model_reward_mae": {
+      "lte": 0.05
+    },
+    "families.world_model.precondition_learned": {
+      "eq": true
+    },
+    "families.world_model.arg_generalization": {
+      "eq": true
+    },
+    "families.world_model.planning_advantage": {
+      "gte": 1.0
+    },
+    "families.world_model.planning_success": {
+      "gte": 1.0
+    },
+    "families.world_model.within_action_budget": {
+      "eq": true
+    },
+    "families.world_model.calibration_gate_enforced": {
+      "eq": true
     }
   }
 }

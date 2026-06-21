@@ -7,11 +7,16 @@ optimized, validated, observable, provider-neutral context packets.
 from .agents import (
     AgentRole,
     Blackboard,
+    CalibrationReport,
     CostAwareSelector,
     Crew,
     DistributedCheckpointer,
     HTNDomain,
+    ModelPredictivePlanner,
+    MPCResult,
+    MPCStep,
     PlanRepairer,
+    PredictedStep,
     ReasoningController,
     ReasoningDecision,
     ReasoningPolicy,
@@ -24,10 +29,14 @@ from .agents import (
     SubgraphScheduler,
     SubgraphTask,
     TimerService,
+    Transition,
     WorkerPoolBackend,
+    WorldModel,
     compose,
+    record_transitions,
     sleep_for,
     sleep_until,
+    task_goal_value,
     wait_for_event,
 )
 from .assistant import ApprovalRecord, Assistant, AssistantTurn
@@ -187,7 +196,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.10.0"
+__version__ = "3.11.0"
 
 __all__ = [
     "ContextApp",
@@ -255,6 +264,16 @@ __all__ = [
     "ReasoningPolicy",
     "ReasoningTrace",
     "ReasoningTraceCache",
+    # world-model / simulation-based planning
+    "WorldModel",
+    "Transition",
+    "PredictedStep",
+    "CalibrationReport",
+    "ModelPredictivePlanner",
+    "MPCStep",
+    "MPCResult",
+    "record_transitions",
+    "task_goal_value",
     "LLMLinguaCompressor",
     # long-horizon context engineering
     "ContextGovernor",

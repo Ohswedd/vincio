@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**200** public symbols.
+**209** public symbols.
 
 ## Classes
 
@@ -85,6 +85,10 @@ Enforces :class:`CostBudget`\ s and detects spend anomalies.
 ### `BundleRecord(**data)`
 
 One governed, content-bound entry in the community index.
+
+### `CalibrationReport(**data)`
+
+The verdict of :meth:`WorldModel.calibrate` — the model's planning weight.
 
 ### `CanaryRouter(primary, candidate, percent=…, candidate_model=…, score_fn=…, min_samples=…, window=…, regression_threshold=…, on_rollback=…, prompt_registry=…, prompt_name=…, events=…)`
 
@@ -338,6 +342,14 @@ The full provenance chain for one source.
 
 Outcome of one improvement-loop cycle, with full provenance.
 
+### `MPCResult(**data)`
+
+The outcome of driving a :class:`ModelPredictivePlanner` to a verified end.
+
+### `MPCStep(**data)`
+
+The record of one real, committed step of a model-predictive plan.
+
 ### `MatryoshkaEmbedder(inner, dimensions)`
 
 Matryoshka (MRL) dimension truncation over any embedder.
@@ -373,6 +385,10 @@ Machine-readable documentation for a single model.
 ### `ModelCascade(**data)`
 
 An ordered cheap→strong model ladder for confidence-based escalation.
+
+### `ModelPredictivePlanner(model, actions=…, goal_value=…, horizon=…, beam_width=…, max_real_steps=…, goal_bar=…, length_penalty=…, reward_weight=…, action_cost=…, cost_weight=…, require_calibrated=…)`
+
+Plan by searching imagined rollouts under a :class:`WorldModel` (MPC).
 
 ### `ModelRegistry(profiles=…, version=…)`
 
@@ -417,6 +433,10 @@ Deterministic per-run policies (policies).
 ### `Predict(sig, provider, model, temperature=…, prompt_spec=…, max_output_tokens=…)`
 
 Execute a signature against a provider with full output validation.
+
+### `PredictedStep(**data)`
+
+The world model's prediction for one ``(observation, action)``.
 
 ### `PrometheusExporter(namespace=…)`
 
@@ -638,6 +658,10 @@ Attribute a trajectory's outcome reward to the steps that earned it.
 
 GRPO-style on-policy update over a deterministic policy, safety-gated.
 
+### `Transition(**data)`
+
+One recorded ``(observation, action) → next_observation`` step.
+
 ### `TrustLabel(*args, **kwds)`
 
 A typed information-flow label on a value or context candidate.
@@ -689,6 +713,10 @@ In-process reference distributed executor — lock-free, durable, fan-out.
 ### `Workflow(name, tracer=…, approval_fn=…)`
 
 A deterministic, resumable DAG of steps.
+
+### `WorldModel(transitions=…)`
+
+A deterministic, offline-learned dynamics model of a tool environment.
 
 ## Functions
 
@@ -772,6 +800,10 @@ Swap only the model on a fixed dataset and report a statistically grounded regre
 
 Build an *executed* :data:`StudentTrainer` over a fine-tune backend.
 
+### `record_transitions(env, action_sequences, include_failures=…)`
+
+Drive ``env`` through each action sequence, recording every tool step.
+
 ### `retrieval_regression(search_fn, golden, config, store=…, metrics=…, gates=…, top_k=…, alpha=…, min_delta=…, k_values=…)`
 
 Evaluate ``config`` on ``golden``, record an artifact, and gate vs. baseline.
@@ -795,6 +827,10 @@ Pause the graph until ``when`` (a datetime or ISO string), durably.
 ### `stability_of(obj)`
 
 Return the stability record for ``obj``.
+
+### `task_goal_value(checks)`
+
+A goal-value function: the fraction of an environment task's checks an observation's state satisfies (the planner's default verifier).
 
 ### `verify_containment(events)`
 
