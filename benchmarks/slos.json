@@ -1171,6 +1171,36 @@
       "threshold": true,
       "enforced_by": "families.world_model.calibration_gate_enforced",
       "rationale": "Planning against a world the model has not been shown to predict would amplify model error into real actions; the gate blocks it until calibration passes."
+    },
+    {
+      "id": "record_replay_byte_identical",
+      "category": "reliability",
+      "statement": "A recorded run replays byte-identically: every model response, tool output, and retrieval is served from the recording, reproducing the recorded output exactly even against a live provider that would answer differently.",
+      "metric": "families.record_replay.replay_faithful",
+      "direction": "gte",
+      "threshold": 1.0,
+      "enforced_by": "families.record_replay.replay_faithful",
+      "rationale": "Replay is only a debugger if it reproduces the past run exactly; the budget gates byte-identical output, proving the recording — not the provider — drives the run."
+    },
+    {
+      "id": "record_replay_divergence_detected",
+      "category": "reliability",
+      "statement": "When the code under replay changes, the recording no longer matches and the divergence is detected and reported rather than silently re-executed.",
+      "metric": "families.record_replay.divergence_detected",
+      "direction": "gte",
+      "threshold": 1.0,
+      "enforced_by": "families.record_replay.divergence_detected",
+      "rationale": "A faithful replay must also fail loudly when it cannot be faithful; detecting the drift is what makes replay trustworthy for regression triage."
+    },
+    {
+      "id": "record_replay_fidelity_verifiable",
+      "category": "reliability",
+      "statement": "A recording is portable and verifiable: it round-trips through a content-addressed store and its fidelity digest and per-edge content addresses verify before it is trusted for replay.",
+      "metric": "families.record_replay.fidelity_verified",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.record_replay.fidelity_verified",
+      "rationale": "A recording shared across processes must be tamper-evident; verifying the digest and every edge's content address before replay prevents a corrupted recording from producing a misleading run."
     }
   ]
 }

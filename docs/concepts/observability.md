@@ -118,3 +118,46 @@ render them natively.
 
 `CostTracker` prices model calls from a configurable price table; costs ride
 on model spans and aggregate per run (`result.cost_usd`) and per report.
+
+## Causal record-replay
+
+A trace tells you *what* a run did; a **recording** lets you re-run it. A run is
+deterministic except at its edges — every place it reads the outside world — so
+the recorder captures exactly those: model responses, tool outputs, retrieval
+hits, the capabilities a request was negotiated against, and the clock/seed,
+each keyed to its trace span.
+
+```python
+from vincio.observability import Recorder, Replayer, BranchEdit
+
+# Record: run normally while every non-deterministic edge is captured.
+result, recording = await Recorder(app).record("What is the refund policy?")
+recording.save(".vincio/recordings/refund.json")   # portable + content-addressed
+assert recording.verify()                            # fidelity digest checks out
+
+# Replay: serve every edge back so the run reproduces byte-for-byte.
+replay = await Replayer(app).replay(recording)
+assert replay.faithful and replay.output_identical
+
+# Divergence: when the code changes, the recorded edge no longer matches.
+report = await Replayer(changed_app).replay(recording)
+for d in report.divergences:
+    print(d.kind, d.detail)   # exactly where the run drifted
+
+# Branch-and-edit: change one edge and re-execute only the affected suffix.
+branch = await Replayer(app).branch(
+    recording,
+    edits=[BranchEdit(kind="tool_call", key=recording.tool_calls[0].key,
+                      value={"call_id": "x", "tool_name": "lookup",
+                             "status": "ok", "output": "EDITED"})],
+)
+```
+
+Each edge is keyed by the same identity the live code computes (a model call by
+its `ModelRequest.hash`, a tool call by its name + arguments), so a changed edge
+is a cache miss — and a miss is a **divergence**, reported with the edge that
+drifted instead of silently re-executed. In branch mode the unchanged prefix is
+still served from the recording while only the affected suffix re-executes, so a
+fix is validated against the exact failing run. Recordings are content-addressed
+and verifiable (`recording.put(store)` / `Recording.from_store`,
+`recording.verify()`); `vincio trace verify-recording <file>` checks one offline.

@@ -170,5 +170,23 @@ weight once its predictions are calibrated against the real environment, the way
 judge ensemble must earn its gating weight; the budget gates a strict planning win
 and full prediction accuracy, above the published promises.
 
+## Causal record-replay debugger
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| A recorded run replays byte-identically — the recording, not the live provider, serves the answer. | byte-identical | `families.record_replay.replay_faithful` |
+| When the code under replay changes, the divergence is detected and reported. | true | `families.record_replay.divergence_detected` |
+| A recording round-trips through a content-addressed store and verifies before replay. | true | `families.record_replay.fidelity_verified` |
+
+A run is deterministic except at its edges — every place it reads the outside
+world. The recorder captures those edges (model responses, tool outputs,
+retrieval hits, the negotiated capabilities, clock/seed) keyed to the trace; the
+replayer serves them back, so replay reproduces the run byte-for-byte against a
+live provider that would answer differently. Because each edge is keyed by the
+same identity the live code computes, a changed edge is a cache miss — and a miss
+is a divergence, reported with the edge that drifted rather than silently
+re-executed. Recordings are content-addressed and carry a fidelity digest, so a
+recording shared across processes is verified before it is trusted for replay.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

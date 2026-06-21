@@ -80,6 +80,8 @@ __all__ = [
     "GovernanceError",
     "ResidencyViolationError",
     "ErasureError",
+    "ObservabilityError",
+    "ReplayDivergenceError",
 ]
 
 
@@ -643,3 +645,18 @@ class ServerError(VincioError):
 
 class AuthenticationError(ServerError):
     code = "AUTHENTICATION_ERROR"
+
+
+# --- observability -----------------------------------------------------------
+
+
+class ObservabilityError(VincioError):
+    code = "OBSERVABILITY_ERROR"
+
+
+class ReplayDivergenceError(ObservabilityError):
+    """A recorded run no longer replays: live code asked for an edge (a model
+    call, tool output, or retrieval) that is not in the recording, or a recording
+    could not be loaded/verified."""
+
+    code = "REPLAY_DIVERGENCE"

@@ -4834,6 +4834,86 @@ async def bench_world_model() -> dict[str, Any]:
     }
 
 
+async def bench_record_replay() -> dict[str, Any]:
+    """RecordReplayBench: byte-faithful, deterministic replay of a whole run.
+
+    A run is recorded edge-by-edge (model responses, tool outputs, the negotiated
+    capabilities, the clock/seed) keyed to its trace, then replayed. The headline
+    measure is the replay-fidelity SLO: a recorded run replays byte-identically
+    (the recording, not the live provider, serves the answer) and a divergence is
+    detected when the code under replay changes. Also exercises the
+    content-addressed store round-trip and branch-and-edit (the unchanged prefix
+    is served from the recording while only the affected suffix re-executes). All
+    deterministic and offline."""
+    from vincio import VincioConfig
+    from vincio.context.evidence_store import InMemoryEvidenceStore
+    from vincio.observability import BranchEdit, Recorder, Recording, Replayer
+
+    def _cfg() -> VincioConfig:
+        c = VincioConfig()
+        c.observability.exporter = "memory"
+        return c
+
+    def _tool_app(final: str) -> ContextApp:
+        script: list[Any] = [
+            {"tool_call": {"name": "lookup", "arguments": {"q": "policy"}}},
+            final,
+        ]
+        app = ContextApp(name="rrbench", provider=MockProvider(script=list(script)), config=_cfg())
+
+        @app.tool_registry.register(name="lookup")
+        def lookup(q: str) -> str:
+            return "LIVE TOOL OUTPUT"
+
+        app.enabled_tools.append("lookup")
+        return app
+
+    # 1. Record a tool-using run, then replay it byte-for-byte against an app
+    #    whose live provider/tool would answer differently — faithful replay must
+    #    still reproduce the recorded answer.
+    _, recording = await Recorder(_tool_app("FINAL ANSWER")).record("refund policy?")
+    fidelity_verified = recording.verify()
+    replay = await Replayer(_tool_app("DIFFERENT")).replay(recording)
+
+    # 2. Divergence detection: changing the prompt rewrites the model request,
+    #    so the recorded edge no longer matches.
+    diverged_app = _tool_app("DIFFERENT")
+    diverged_app.configure(objective="A different objective that rewrites the prompt")
+    diverged = await Replayer(diverged_app).replay(recording)
+
+    # 3. Portability: the recording round-trips through a content-addressed store
+    #    and still replays faithfully.
+    store = InMemoryEvidenceStore()
+    loaded = Recording.from_store(store, recording.put(store))
+    store_roundtrip_ok = loaded.verify() and loaded.fidelity_digest == recording.fidelity_digest
+
+    # 4. Branch-and-edit: edit the recorded tool output; the decide-to-call-tool
+    #    model step is served from the recording, only the suffix re-executes.
+    branch = await Replayer(_tool_app("FINAL ANSWER")).branch(
+        recording,
+        edits=[
+            BranchEdit(
+                kind="tool_call",
+                key=recording.tool_calls[0].key,
+                value={"call_id": "x", "tool_name": "lookup", "status": "ok", "output": "EDITED"},
+            )
+        ],
+        fallback=MockProvider(default_text="BRANCHED ANSWER"),
+    )
+
+    return {
+        "replay_faithful": 1.0 if replay.faithful else 0.0,
+        "output_identical": bool(replay.output_identical),
+        "served_from_recording": replay.served_from_recording,
+        "fidelity_verified": bool(fidelity_verified),
+        "divergence_detected": 1.0 if (not diverged.faithful and diverged.divergences) else 0.0,
+        "store_roundtrip_ok": bool(store_roundtrip_ok),
+        "branch_prefix_served": bool(branch.served_from_recording >= 2),
+        "branch_suffix_reexecuted": bool(branch.reexecuted >= 1),
+        "branch_output_changed": bool(branch.output == "BRANCHED ANSWER"),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -4859,6 +4939,7 @@ FAMILIES = {
     "test_time_compute": bench_test_time_compute,
     "long_horizon": bench_long_horizon,
     "world_model": bench_world_model,
+    "record_replay": bench_record_replay,
     "breaking_2_0": bench_breaking_2_0,
 }
 

@@ -306,3 +306,11 @@ without an entry here.
 ### SKILL_ERROR
 
 **Agent Skill error.** A SKILL.md bundle could not be parsed or loaded. Validate the front matter and that referenced scripts exist.
+
+### OBSERVABILITY_ERROR
+
+**Observability error.** A tracing, recording, or replay operation failed. Inspect `.details` and confirm the trace/recording exists and is readable.
+
+### REPLAY_DIVERGENCE
+
+**Recording no longer replays.** Live code asked for an edge (a model call, tool output, or retrieval) absent from the recording, or the recording failed to load/verify. Re-record against the current code, or use `Replayer.branch(...)` to re-execute the changed suffix against the recorded prefix.

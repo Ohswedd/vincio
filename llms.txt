@@ -127,6 +127,23 @@ app.run("export button 500s").output.label
   uncalibrated model unless `require_calibrated=False`. At a fixed action budget it
   matches or beats reactive (one-step) planning (`families.world_model`). Reference
   worlds: `make_retail_environment`, `make_vault_environment` (a shortcut trap).
+- **Causal record-replay debugger.** `Recorder(app).record(input)`
+  (`vincio.observability`) runs an app while capturing every non-deterministic edge
+  — model responses (by `ModelRequest.hash`), tool outputs (by name+args), retrieval
+  hits, the negotiated `ModelCapabilities`, and clock/seed — into a portable,
+  content-addressed `Recording` (`recording.put(store)` / `Recording.from_store`,
+  `recording.save`/`load`, `recording.verify()` over a `fidelity_digest`).
+  `Replayer(app).replay(recording)` serves each edge back so the run replays
+  byte-for-byte (the recording, not the live provider, drives it); the
+  `ReplayResult` is `faithful` only when no edge diverged and the output is
+  byte-identical, and lists every `Divergence` (the edge live code asked for that
+  was not recorded). `Replayer(app).branch(recording, edits=[BranchEdit(...)], input=,
+  fallback=)` forks a recording and re-executes only the affected suffix while the
+  unchanged prefix is still served from the recording (`served_from_recording` vs
+  `reexecuted`). `ReplayProvider` is the underlying replay provider. Held by
+  `families.record_replay` (replay byte-identical + divergence detected + verifiable).
+  CLI: `vincio trace verify-recording <file>`. Distinct from `ReplayRunner` (which
+  re-runs a recorded *input* to diff a candidate app, not byte-faithful replay).
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
@@ -552,6 +569,10 @@ app.run("export button 500s").output.label
 - **Prompt registry.** `PromptRegistry(dir).push(spec, tags=)` — content-hash
   versions, moving tags, `diff(name, a, b, rendered=True)`, `rollback(name)`,
   `link_eval(name, version, report)`.
+- **Causal record-replay.** `Recorder`/`Replayer`/`Recording`/`ReplayProvider`/
+  `ReplayResult`/`Divergence`/`BranchEdit`/`BranchResult` (`from vincio.observability
+  import ...`) record a whole run's non-deterministic edges and replay it
+  byte-for-byte; see the dedicated bullet above and `vincio trace verify-recording`.
 - **Served plane (opt-in, self-hosted).** `from vincio.observability import
   IndexedTraceStore, ViewerApp, serve_viewer, AlertManager,
   AlertRule(kind="threshold"|"ewma"|"burn_rate"), TailSamplingExporter,
