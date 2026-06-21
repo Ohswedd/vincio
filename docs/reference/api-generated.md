@@ -6,13 +6,29 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**216** public symbols.
+**224** public symbols.
 
 ## Classes
 
 ### `AIBOM(**data)`
 
 An AI bill of materials, serializable as CycloneDX 1.6 JSON.
+
+### `AdaptationResult(**data)`
+
+The outcome of one gated on-device adaptation cycle.
+
+### `AdaptedProvider(base, adapter, embedder=…)`
+
+Apply a :class:`LocalAdapter` to any base provider at generation time.
+
+### `AdapterGate(metric=…, regression_threshold=…, require_significance=…, min_samples=…, alpha=…)`
+
+No-regression gate for an on-device adapter — the model-swap gate's analog.
+
+### `AdapterRegistry(directory=…)`
+
+A versioned, reversible store of on-device adapters.
 
 ### `AdaptiveSampler(cases, sample, gate, metric=…, budget, seed_samples=…, confidence=…, weights=…)`
 
@@ -174,6 +190,10 @@ Hierarchical, provenance-preserving compaction of cold run spans.
 
 Per-run controller that holds a context budget across a long horizon.
 
+### `ContinualAdaptation(app, policy=…, dataset=…, registry=…, embedder=…, base_model=…, trainer=…)`
+
+Drive continual on-device adaptation as a streaming, gated loop.
+
 ### `ContinuousImprovementController(app, metrics=…, golden=…, registry=…, prompt_name=…, monitor=…, sustain=…, cooldown_s=…, eval_budget=…, quality_floor=…, reoptimize=…, gates=…, clock=…)`
 
 Drive gated re-optimization / re-eval / rollback from live signals.
@@ -266,7 +286,7 @@ Local ONNX dense embedder via ``fastembed``.
 
 Track tokens-per-word per language to surface the non-English token tax.
 
-### `GGUFProvider(model_path=…, llama=…, n_ctx=…, embedding=…, **kwargs)`
+### `GGUFProvider(model_path=…, llama=…, n_ctx=…, embedding=…, lora_path=…, lora_scale=…, **kwargs)`
 
 Native in-process GGUF / llama.cpp provider with on-device embedding.
 
@@ -349,6 +369,18 @@ Watch pinned models for sunset and propose migrations off them.
 ### `LineageRecord(**data)`
 
 The full provenance chain for one source.
+
+### `LocalAdaptationPolicy(**data)`
+
+The opt-in contract for continual on-device adaptation.
+
+### `LocalAdapter(**data)`
+
+A versioned, content-addressed, portable LoRA-class adapter.
+
+### `LocalLoRATrainer(embedder=…, rank=…, gate=…, scale=…, backend=…)`
+
+Fit a :class:`LocalAdapter` on-device from a grounded training set.
 
 ### `LoopResult(**data)`
 

@@ -1231,6 +1231,36 @@
       "threshold": true,
       "enforced_by": "families.semantic_cache.gate_blocks_drift",
       "rationale": "A cache that drifts must be caught before it ships, the same way a regressing model swap is; the budget gates that the gate passes a good cache and fails a drifted one."
+    },
+    {
+      "id": "local_adaptation_no_regression",
+      "category": "quality",
+      "statement": "A LoRA-class adapter fit on-device from the flywheel's promoted dataset is at-least-as-good as its base model on the held-out eval set; it is promoted only behind the same no-regression gate a hosted fine-tune job clears.",
+      "metric": "families.local_adaptation.at_least_as_good",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.local_adaptation.at_least_as_good",
+      "rationale": "On-device adaptation must never trade quality for locality; the gate is the at-least-as-good guarantee. The budget gates that the adapted model does not regress the base on the eval set."
+    },
+    {
+      "id": "local_adaptation_bounded_off_distribution",
+      "category": "quality",
+      "statement": "An on-device adapter reshapes only the traffic it was trained on: an off-distribution request stays inert and falls through to the base model unchanged.",
+      "metric": "families.local_adaptation.off_distribution_inert",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.local_adaptation.off_distribution_inert",
+      "rationale": "An adapter that reshaped unseen traffic could silently degrade it; the bound is the safety guarantee. The budget gates that an off-distribution request is answered by the base model, not the adapter."
+    },
+    {
+      "id": "local_adaptation_regression_reversible",
+      "category": "quality",
+      "statement": "A regressing on-device adapter is refused — never promoted, never applied, the registry head left on the last known-good version — so adaptation is bounded and reversible.",
+      "metric": "families.local_adaptation.regression_refused",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.local_adaptation.regression_refused",
+      "rationale": "Continual adaptation is only safe if a bad version cannot ship; the budget gates that an adapter which regresses the base is refused and the active version is unchanged."
     }
   ]
 }

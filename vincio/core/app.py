@@ -467,6 +467,12 @@ class ContextApp:
         # via intra-run decay and provenance-preserving compaction. ``None`` keeps
         # context unbounded by default (see ``use_context_governor``).
         self.context_governor: Any | None = None
+        # Opt-in on-device adapter. When set via ``app.use_local_adapter(...)`` the
+        # base provider is wrapped in an ``AdaptedProvider`` so in-distribution
+        # requests are answered the way a locally-fit LoRA-class adapter learned,
+        # without the run leaving the process. ``None`` keeps the base model
+        # unchanged by default.
+        self.local_adapter: Any | None = None
         self.cost_ledger: CostLedger = CostLedger(
             price_table=self.cost_tracker.price_table, store=self.store
         )
@@ -3712,6 +3718,87 @@ class ContextApp:
                 {"student": result.trained_student, "cost_savings": result.cost_savings},
             )
         return result
+
+    def use_local_adapter(self, adapter: Any | None) -> ContextApp:
+        """Apply (or remove) an on-device LoRA-class adapter on the base provider.
+
+        Wraps the app's base provider in an
+        :class:`~vincio.optimize.local_adaptation.AdaptedProvider` so an
+        in-distribution request is answered the way the locally-fit
+        :class:`~vincio.optimize.local_adaptation.LocalAdapter` learned, while
+        everything else falls through to the base model unchanged — the run never
+        leaves the process. The wrapper reports the base provider's name and
+        capabilities, so residency, provenance, and the rotation stack are
+        unaffected. Pass ``None`` to unload the adapter and restore the base model
+        (the one-call reversibility path). Returns ``self`` for chaining::
+
+            adapter = app.adapt_locally(golden, runs=results).verdict  # gated fit
+            app.use_local_adapter(registry.active("local-adapter"))
+        """
+        from ..optimize.local_adaptation import AdaptedProvider
+
+        base = self._base_provider()
+        if isinstance(base, AdaptedProvider):
+            base = base.base
+        if adapter is None:
+            self._provider_instance = base
+            self.local_adapter = None
+            return self
+        self._provider_instance = AdaptedProvider(base, adapter, embedder=self.embedder)
+        self.local_adapter = adapter
+        return self
+
+    def local_adaptation(self, policy: Any | None = None, **kwargs: Any):
+        """The continual on-device adaptation loop, as a streaming controller.
+
+        Returns a
+        :class:`~vincio.optimize.local_adaptation.ContinualAdaptation` driven by a
+        :class:`~vincio.optimize.local_adaptation.LocalAdaptationPolicy`: gather
+        the flywheel's promoted grounded dataset, fit a new
+        :class:`~vincio.optimize.local_adaptation.LocalAdapter` version on-device,
+        gate it against the current base on a held-out set, and promote or roll
+        back — every version registered and reversible, every decision on the
+        shared audit chain and event bus, all in-process::
+
+            ctl = app.local_adaptation(dataset=golden)
+            async for ev in ctl.astream(runs=results):
+                print(ev.phase, ev.reason)
+
+        Promotion clears the same no-regression discipline a hosted fine-tune job
+        does (:class:`~vincio.optimize.local_adaptation.AdapterGate`)."""
+        from ..optimize.local_adaptation import ContinualAdaptation
+
+        return ContinualAdaptation(self, policy, **kwargs)
+
+    def adapt_locally(
+        self,
+        dataset: Any,
+        *,
+        runs: list[Any] | None = None,
+        training_set: Any | None = None,
+        policy: Any | None = None,
+        registry: Any | None = None,
+        base_model: str | None = None,
+        apply: bool = True,
+    ):
+        """Fit, gate, and (on a pass) install an on-device adapter — one call.
+
+        The one-shot form of :meth:`local_adaptation`. Curates a grounded training
+        set (from ``runs``, a prebuilt ``training_set``, or the app's captured
+        traces), fits a LoRA-class adapter on-device, gates it against the base on
+        the held-out ``dataset`` (no-regression — the adapted model must be
+        at-least-as-good), and on a pass registers it, makes it the active head,
+        and (with ``apply``) applies it via :meth:`use_local_adapter`. Returns an
+        :class:`~vincio.optimize.local_adaptation.AdaptationResult`::
+
+            results = [app.run(q) for q in prompts]
+            result = app.adapt_locally(golden, runs=results)
+            result.promoted, result.verdict.delta
+        """
+        controller = self.local_adaptation(
+            policy, dataset=dataset, registry=registry, base_model=base_model
+        )
+        return controller.adapt(runs=runs, training_set=training_set, apply=apply)
 
     def use_semantic_context_scoring(
         self, enabled: bool = True, *, mmr_lambda: float | None = None
