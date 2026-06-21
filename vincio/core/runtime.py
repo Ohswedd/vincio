@@ -92,7 +92,9 @@ class VincioRuntime:
     # public entry points
     # ------------------------------------------------------------------
 
-    async def execute(self, user_input: UserInput, run_config: RunConfig | None = None) -> RunResult:
+    async def execute(
+        self, user_input: UserInput, run_config: RunConfig | None = None
+    ) -> RunResult:
         app = self.app
         run_config = run_config or RunConfig()
         run_id = new_id("run")
@@ -163,7 +165,9 @@ class VincioRuntime:
                 from ..governance.transparency import ai_disclosure, mark_synthetic_content
 
                 manifest = mark_synthetic_content(
-                    result.raw_text, model_id=app.model, provider=app._provider_name,
+                    result.raw_text,
+                    model_id=app.model,
+                    provider=app._provider_name,
                     signer=app.content_signer,
                 )
                 result.metadata["content_credentials"] = manifest.to_dict()
@@ -220,7 +224,11 @@ class VincioRuntime:
                         )
                         response: ModelResponse | None = None
                         async for item in self._model_tool_loop_stream(
-                            prepared, budget, result, user_input, run_id,
+                            prepared,
+                            budget,
+                            result,
+                            user_input,
+                            run_id,
                             enforce_caps=run_config.enforce_budget_caps,
                         ):
                             if isinstance(item, RunStreamEvent):
@@ -234,7 +242,9 @@ class VincioRuntime:
                         yield RunStreamEvent(
                             type="stage",
                             stage="validated",
-                            data={"valid": result.validation.get("valid")} if result.validation else {},
+                            data={"valid": result.validation.get("valid")}
+                            if result.validation
+                            else {},
                         )
             except VincioError as exc:
                 result.status = RunStatus.FAILED
@@ -418,8 +428,11 @@ class VincioRuntime:
                 result.status = RunStatus.DENIED
                 result.error = "; ".join(v.message for v in check.blocking)
                 app.audit.record(
-                    "run", run_id=run_id, user_id=user_input.user_id,
-                    tenant_id=user_input.tenant_id, decision="deny",
+                    "run",
+                    run_id=run_id,
+                    user_id=user_input.user_id,
+                    tenant_id=user_input.tenant_id,
+                    decision="deny",
                     details={"violations": [v.policy for v in check.violations]},
                 )
                 return None
@@ -573,9 +586,7 @@ class VincioRuntime:
         # budgets and cites them like any other context.
         if app.skill_library is not None and len(app.skill_library):
             evidence.extend(
-                app.skill_library.evidence_for(
-                    f"{routed.objective.text} {routed.input.text or ''}"
-                )
+                app.skill_library.evidence_for(f"{routed.objective.text} {routed.input.text or ''}")
             )
 
         # 9/12a. tool loop happens with the model below; collect tool specs.
@@ -636,9 +647,7 @@ class VincioRuntime:
         # baseline so streaming and non-streaming runs start on the same model
         # (escalation itself happens in the non-streaming model loop).
         cascade_active = (
-            app.cascade is not None
-            and budget_model_override is None
-            and run_config.model is None
+            app.cascade is not None and budget_model_override is None and run_config.model is None
         )
         if cascade_active and app.cascade is not None:
             model = app.cascade.first().model
@@ -708,10 +717,15 @@ class VincioRuntime:
             and compiled_prompt.token_count > budget.max_input_tokens
         ):
             app.audit.record(
-                "budget", run_id=run_id, user_id=user_input.user_id,
-                tenant_id=user_input.tenant_id, trace_id=result.trace_id, decision="deny",
+                "budget",
+                run_id=run_id,
+                user_id=user_input.user_id,
+                tenant_id=user_input.tenant_id,
+                trace_id=result.trace_id,
+                decision="deny",
                 details={
-                    "breaches": ["input_tokens"], "stage": "preflight",
+                    "breaches": ["input_tokens"],
+                    "stage": "preflight",
                     "estimated_input_tokens": compiled_prompt.token_count,
                     "max_input_tokens": budget.max_input_tokens,
                 },
@@ -724,7 +738,8 @@ class VincioRuntime:
             raise BudgetExceededError(
                 f"estimated input ({compiled_prompt.token_count} tokens) exceeds "
                 f"max_input_tokens ({budget.max_input_tokens})",
-                used=compiled_prompt.token_count, limit=budget.max_input_tokens,
+                used=compiled_prompt.token_count,
+                limit=budget.max_input_tokens,
             )
 
         messages = list(compiled_prompt.messages)
@@ -803,7 +818,10 @@ class VincioRuntime:
                 )
             except VincioError as exc:
                 return ToolResult(
-                    call_id=tool_call.id, tool_name=tool_call.name, status="error", error=exc.message
+                    call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                    status="error",
+                    error=exc.message,
                 )
 
         tool_results = await gather_bounded(
@@ -814,8 +832,11 @@ class VincioRuntime:
         for tool_call, tool_result in zip(allowed_calls, tool_results, strict=True):
             result.tool_results.append(tool_result)
             app.audit.record(
-                "tool_call", run_id=run_id, user_id=user_input.user_id,
-                tenant_id=user_input.tenant_id, resource=tool_call.name,
+                "tool_call",
+                run_id=run_id,
+                user_id=user_input.user_id,
+                tenant_id=user_input.tenant_id,
+                resource=tool_call.name,
                 decision=tool_result.status,
             )
             rounds.append((tool_call, tool_result))
@@ -961,18 +982,24 @@ class VincioRuntime:
             "tool_calls": budget.max_tool_calls,
         }
         app.audit.record(
-            "budget", run_id=run_id, user_id=user_input.user_id,
-            tenant_id=user_input.tenant_id, trace_id=result.trace_id, decision="deny",
+            "budget",
+            run_id=run_id,
+            user_id=user_input.user_id,
+            tenant_id=user_input.tenant_id,
+            trace_id=result.trace_id,
+            decision="deny",
             details={"breaches": breaches, "stage": stage, "used": used, "limits": limits},
         )
         app.events.emit(
             "budget.exceeded",
-            {"breaches": breaches, "stage": stage}, trace_id=result.trace_id,
+            {"breaches": breaches, "stage": stage},
+            trace_id=result.trace_id,
         )
         primary = breaches[0]
         raise BudgetExceededError(
             f"run exceeded budget ({', '.join(breaches)})",
-            used=used.get(primary, 0), limit=limits.get(primary, 0),
+            used=used.get(primary, 0),
+            limit=limits.get(primary, 0),
         )
 
     def _egress_guard(
@@ -1027,33 +1054,50 @@ class VincioRuntime:
             model=model, messages=messages, tools=prepared.tool_specs, **prepared.request_kwargs
         )
         cached = app.response_cache.get(request) if app.response_cache else None
+        semantic = False
+        served = cached
+        if served is None:
+            near_miss = await self._serve_semantic(prepared, request, user_input, model)
+            if near_miss is not None:
+                served, semantic = near_miss, True
         with app.tracer.span("model", type="model_call") as span:
-            span.set(model=model, request_hash=request.hash, cached=cached is not None)
+            span.set(model=model, request_hash=request.hash, cached=served is not None)
+            if semantic:
+                span.set(semantic_cached=True)
             if prepared.cache_info.get("applied"):
                 span.set(
                     cache_strategy_ttl=prepared.cache_info.get("ttl"),
                     cache_breakpoints=prepared.cache_info.get("breakpoints"),
                 )
-            if cached is not None:
-                # A response-cache hit served the answer without an API call, so
-                # it is free; track the tokens but bill nothing.
-                response = cached
+            if served is not None:
+                # An exact or near-miss cache hit served the answer without an API
+                # call, so it is free; track the tokens but bill nothing.
+                response = served
                 app.cost_tracker.usage.add(response.usage)
                 spent = 0.0
             else:
+                # A real provider call: the serving engine computes (or reuses) the
+                # stable head's KV here, so account the cross-request reuse now.
+                self._observe_kv_prefix(prepared, model, span)
                 self._egress_guard(request, result, run_id, span)
                 response = await provider.generate(request)
                 if app.response_cache is not None and not response.tool_calls:
                     app.response_cache.set(
                         request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
                     )
+                await self._store_semantic(prepared, request, response, user_input, model)
                 cost = app.cost_tracker.record_model_call(model, response.usage)
                 spent = cost if cost else response.cost_usd
             result.usage.add(response.usage)
             result.cost_usd += spent
             self._attribute_cost(
-                model=model, response=response, cost=spent, result=result,
-                user_input=user_input, run_id=run_id, span=span,
+                model=model,
+                response=response,
+                cost=spent,
+                result=result,
+                user_input=user_input,
+                run_id=run_id,
+                span=span,
             )
             self._note_unknown_model(model, result, span)
             span.set(
@@ -1063,12 +1107,13 @@ class VincioRuntime:
                 reasoning_tokens=response.usage.reasoning_tokens,
                 cached_input_tokens=response.usage.cached_input_tokens,
                 cache_hit_rate=round(
-                    cache_hit_rate(response.usage.input_tokens, response.usage.cached_input_tokens), 4
+                    cache_hit_rate(response.usage.input_tokens, response.usage.cached_input_tokens),
+                    4,
                 ),
                 cost_usd=round(result.cost_usd, 8),
                 response_text=response.text[:500],
             )
-        self._record_reasoning_trace(prepared, model, response, cached is not None)
+        self._record_reasoning_trace(prepared, model, response, served is not None)
         return response
 
     def _record_reasoning_trace(
@@ -1098,6 +1143,80 @@ class VincioRuntime:
             reasoning_tokens=response.usage.reasoning_tokens,
             response_id=response_id,
         )
+
+    # -- learned semantic cache & KV-prefix reuse (opt-in) ---------------------
+
+    @staticmethod
+    def _semantic_scope(prepared: _PreparedRun, model: str) -> str:
+        """The cache partition two requests must share to be near-miss-eligible.
+
+        A cached answer may only substitute for another request that runs on the
+        same model behind the same compiled stable prompt head — so the scope is
+        ``model:prompt_spec_hash``. ``model`` is the rung actually being called
+        (which differs from ``prepared.model`` when a cascade escalates), so a
+        cheap-rung answer never substitutes for a strong-rung request. The output
+        schema is matched separately.
+        """
+        return f"{model}:{prepared.compiled_prompt.prompt_spec_hash}"
+
+    async def _serve_semantic(
+        self, prepared: _PreparedRun, request: ModelRequest, user_input: UserInput, model: str
+    ) -> ModelResponse | None:
+        """Serve a calibrated near-miss for this request, or ``None``.
+
+        Consulted only when a learned semantic cache is installed and the
+        exact-match response cache missed. Returns the cached response when an
+        in-scope, in-schema near-miss clears the calibrated threshold.
+        """
+        cache = getattr(self.app, "semantic_cache", None)
+        if cache is None:
+            return None
+        query = (user_input.text or "").strip()
+        if not query:
+            return None
+        hit = await cache.lookup(
+            query,
+            policy_scope=self._semantic_scope(prepared, model),
+            schema_ref=request.output_schema_name,
+        )
+        if hit is None or not hit.accepted:
+            return None
+        return ModelResponse.model_validate(hit.value)
+
+    async def _store_semantic(
+        self,
+        prepared: _PreparedRun,
+        request: ModelRequest,
+        response: ModelResponse,
+        user_input: UserInput,
+        model: str,
+    ) -> None:
+        """Populate the learned semantic cache from a completed live answer."""
+        cache = getattr(self.app, "semantic_cache", None)
+        if cache is None or response.tool_calls:
+            return
+        query = (user_input.text or "").strip()
+        if not query:
+            return
+        await cache.store(
+            query,
+            response.model_dump(mode="json", exclude={"raw"}),
+            policy_scope=self._semantic_scope(prepared, model),
+            schema_ref=request.output_schema_name,
+            response_tokens=response.usage.output_tokens,
+        )
+
+    def _observe_kv_prefix(self, prepared: _PreparedRun, model: str, span: Any) -> None:
+        """Record this request's stable prefix for cross-request KV reuse."""
+        pool = getattr(self.app, "kv_prefix_pool", None)
+        if pool is None:
+            return
+        obs = pool.observe(
+            prefix_hash=prepared.compiled_prompt.prompt_spec_hash,
+            model=model,
+            prefix_tokens=prepared.compiled_prompt.stable_prefix_tokens,
+        )
+        span.set(kv_prefix_reused=obs.reused, kv_bytes_reused=obs.kv_bytes_reused)
 
     async def _model_tool_loop(
         self,
@@ -1148,13 +1267,22 @@ class VincioRuntime:
             usage.output_tokens += response.usage.output_tokens
             usage.cost_usd = result.cost_usd
             self._enforce_budget(
-                usage, budget, result, run_id, user_input,
-                enforce=enforce_caps, stage="model_call",
+                usage,
+                budget,
+                result,
+                run_id,
+                user_input,
+                enforce=enforce_caps,
+                stage="model_call",
             )
             if response.tool_calls and prepared.tool_specs and tool_rounds < budget.max_tool_calls:
                 tool_rounds += 1
                 prepared.messages.append(
-                    Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
+                    Message(
+                        role="assistant",
+                        content=response.text or "",
+                        tool_calls=response.tool_calls,
+                    )
                 )
                 executed = await self._run_tool_round(
                     response.tool_calls, prepared, budget, result, user_input, run_id
@@ -1163,8 +1291,13 @@ class VincioRuntime:
                     prepared.messages.append(self._tool_message(tool_call, tool_result))
                 usage.tool_calls = len(result.tool_results)
                 self._enforce_budget(
-                    usage, budget, result, run_id, user_input,
-                    enforce=enforce_caps, stage="tool_round",
+                    usage,
+                    budget,
+                    result,
+                    run_id,
+                    user_input,
+                    enforce=enforce_caps,
+                    stage="tool_round",
                 )
                 continue
             # Terminal answer: consider a cascade escalation.
@@ -1248,18 +1381,29 @@ class VincioRuntime:
                 **prepared.request_kwargs,
             )
             cached = app.response_cache.get(request) if app.response_cache else None
+            semantic = False
+            served = cached
+            if served is None:
+                near_miss = await self._serve_semantic(
+                    prepared, request, user_input, prepared.model
+                )
+                if near_miss is not None:
+                    served, semantic = near_miss, True
             with app.tracer.span("model", type="model_call") as span:
                 span.set(
                     model=prepared.model,
                     request_hash=request.hash,
-                    cached=cached is not None,
+                    cached=served is not None,
                     stream=True,
                 )
-                if cached is not None:
-                    response = cached
+                if semantic:
+                    span.set(semantic_cached=True)
+                if served is not None:
+                    response = served
                     if response.text:
                         yield RunStreamEvent(type="text_delta", text=response.text)
                 else:
+                    self._observe_kv_prefix(prepared, prepared.model, span)
                     self._egress_guard(request, result, run_id, span)
                     started = time.monotonic()
                     first_token_ms: int | None = None
@@ -1297,15 +1441,18 @@ class VincioRuntime:
                         elif event.type == "done" and event.response is not None:
                             response = event.response
                     if response is None:
-                        response = ModelResponse(
-                            model=prepared.model, text="".join(accumulated)
-                        )
+                        response = ModelResponse(model=prepared.model, text="".join(accumulated))
                     if app.response_cache is not None and not response.tool_calls:
                         app.response_cache.set(
-                            request, response, prompt_version=prepared.compiled_prompt.prompt_spec_hash
+                            request,
+                            response,
+                            prompt_version=prepared.compiled_prompt.prompt_spec_hash,
                         )
-                if cached is not None:
-                    # A response-cache hit is free; track tokens, bill nothing.
+                    await self._store_semantic(
+                        prepared, request, response, user_input, prepared.model
+                    )
+                if served is not None:
+                    # An exact or near-miss cache hit is free; track tokens, bill nothing.
                     app.cost_tracker.usage.add(response.usage)
                     spent = 0.0
                 else:
@@ -1314,8 +1461,13 @@ class VincioRuntime:
                 result.usage.add(response.usage)
                 result.cost_usd += spent
                 self._attribute_cost(
-                    model=prepared.model, response=response, cost=spent, result=result,
-                    user_input=user_input, run_id=run_id, span=span,
+                    model=prepared.model,
+                    response=response,
+                    cost=spent,
+                    result=result,
+                    user_input=user_input,
+                    run_id=run_id,
+                    span=span,
                 )
                 self._note_unknown_model(prepared.model, result, span)
                 span.set(
@@ -1341,13 +1493,20 @@ class VincioRuntime:
             usage.output_tokens += response.usage.output_tokens
             usage.cost_usd = result.cost_usd
             self._enforce_budget(
-                usage, budget, result, run_id, user_input,
-                enforce=enforce_caps, stage="model_call",
+                usage,
+                budget,
+                result,
+                run_id,
+                user_input,
+                enforce=enforce_caps,
+                stage="model_call",
             )
             if not response.tool_calls or not prepared.tool_specs:
                 break
             messages.append(
-                Message(role="assistant", content=response.text or "", tool_calls=response.tool_calls)
+                Message(
+                    role="assistant", content=response.text or "", tool_calls=response.tool_calls
+                )
             )
             for tool_call in response.tool_calls:
                 yield RunStreamEvent(type="tool_call", tool_name=tool_call.name)
@@ -1361,8 +1520,13 @@ class VincioRuntime:
                 )
             usage.tool_calls = len(result.tool_results)
             self._enforce_budget(
-                usage, budget, result, run_id, user_input,
-                enforce=enforce_caps, stage="tool_round",
+                usage,
+                budget,
+                result,
+                run_id,
+                user_input,
+                enforce=enforce_caps,
+                stage="tool_round",
             )
         assert response is not None
         yield response
@@ -1387,9 +1551,11 @@ class VincioRuntime:
 
         # 13. parse and validate output.
         contract = prepared.contract
-        evidence_ids: set[str] = {e.id for e in compiled_context.ir.evidence} | {
-            e.citation_ref for e in compiled_context.ir.evidence
-        } | {str(entry["id"]) for entry in compiled_context.ir.evidence_ledger if entry.get("id")}
+        evidence_ids: set[str] = (
+            {e.id for e in compiled_context.ir.evidence}
+            | {e.citation_ref for e in compiled_context.ir.evidence}
+            | {str(entry["id"]) for entry in compiled_context.ir.evidence_ledger if entry.get("id")}
+        )
         with app.tracer.span("output_validation", type="output_validation") as span:
             validator = OutputValidator(
                 contract,
@@ -1580,7 +1746,9 @@ class VincioRuntime:
                 span.set(written=len(written))
                 if written:
                     app.audit.record(
-                        "memory_write", run_id=run_id, user_id=user_input.user_id,
+                        "memory_write",
+                        run_id=run_id,
+                        user_id=user_input.user_id,
                         tenant_id=user_input.tenant_id,
                         details={
                             "count": len(written),
@@ -1591,7 +1759,10 @@ class VincioRuntime:
                     )
 
         app.audit.record(
-            "run", run_id=run_id, user_id=user_input.user_id, tenant_id=user_input.tenant_id,
+            "run",
+            run_id=run_id,
+            user_id=user_input.user_id,
+            tenant_id=user_input.tenant_id,
             decision="allow",
             details={
                 "sources": [e.source_id for e in result.evidence][:32],
@@ -1622,7 +1793,11 @@ class VincioRuntime:
         if prepared is None:
             return
         response = await self._model_tool_loop(
-            prepared, budget, result, user_input, run_id,
+            prepared,
+            budget,
+            result,
+            user_input,
+            run_id,
             enforce_caps=run_config.enforce_budget_caps,
         )
         await self._finalize(prepared, response, result, run_id, user_input, policies)
@@ -1651,15 +1826,21 @@ class VincioRuntime:
             for item in result.evidence
             if not cited or item.id in cited or item.citation_ref in cited
         ] or [
-            {"id": item.id, "source_id": item.source_id, "text": item.text,
-             "citation_ref": item.citation_ref}
+            {
+                "id": item.id,
+                "source_id": item.source_id,
+                "text": item.text,
+                "citation_ref": item.citation_ref,
+            }
             for item in result.evidence
         ]
         if evidence:
             trace.attributes["evidence"] = evidence
 
     @staticmethod
-    def _run_record(result: RunResult, run_id: str, user_input: UserInput, app_id: str) -> dict[str, Any]:
+    def _run_record(
+        result: RunResult, run_id: str, user_input: UserInput, app_id: str
+    ) -> dict[str, Any]:
         return {
             "id": run_id,
             "app_id": app_id,
@@ -1705,8 +1886,11 @@ class VincioRuntime:
         # audit chain has exactly one terminal entry per run.
         if not result.metadata.get("_run_audited"):
             app.audit.record(
-                "run", run_id=run_id, user_id=user_input.user_id,
-                tenant_id=user_input.tenant_id, trace_id=result.trace_id,
+                "run",
+                run_id=run_id,
+                user_id=user_input.user_id,
+                tenant_id=user_input.tenant_id,
+                trace_id=result.trace_id,
                 decision=self._TERMINAL_DECISION.get(result.status, "deny"),
                 details={
                     "status": result.status.value,
@@ -1717,6 +1901,7 @@ class VincioRuntime:
             result.metadata["_run_audited"] = True
         await asave(app.store, "runs", self._run_record(result, run_id, user_input, app.name))
         app.events.emit(
-            "run.completed", {"run_id": run_id, "status": result.status.value},
+            "run.completed",
+            {"run_id": run_id, "status": result.status.value},
             trace_id=result.trace_id,
         )

@@ -4914,6 +4914,115 @@ async def bench_record_replay() -> dict[str, Any]:
     }
 
 
+async def bench_semantic_cache() -> dict[str, Any]:
+    """SemanticCacheBench: calibrated near-miss reuse and cross-request KV reuse.
+
+    Exact-match caching serves a byte-identical request for free; this family
+    holds the rung above it — answering a semantically-equivalent request from
+    cache, and reusing a shared stable-prefix KV footprint across a request
+    family. The headline measure is the hit-quality SLO: an accepted near-miss
+    is at-least-as-good as a live answer at a fixed (near-zero) budget, the
+    acceptance threshold is calibrated from traces (never serving below the bar),
+    a below-bar near-miss is never served, the eval-replay gate catches a drifted
+    cache before it ships, and the cache stays inside the resident-memory budget.
+    All deterministic and offline."""
+    from vincio import (
+        ContextApp,
+        LearnedSemanticCache,
+        SemanticCacheGate,
+        SemanticCachePolicy,
+        SemanticGateCase,
+        VincioConfig,
+    )
+    from vincio.caching import lexical_quality
+    from vincio.retrieval.embeddings import LocalHashEmbedder
+
+    scope = "demo"
+    refund_a = "what is the refund policy for orders"
+    refund_b = "what is the refund policy for returns"
+    unrelated = "how do I reset my account password"
+
+    # 1. Calibrate the acceptance threshold from labelled trace pairs: the two
+    #    refund phrasings are equivalent, the password query is not. The fitted
+    #    bar sits above the unrelated pair and at/below the near-miss pairs.
+    cache = LearnedSemanticCache(
+        LocalHashEmbedder(),
+        policy=SemanticCachePolicy(target_precision=0.95, min_floor=0.5, ttl_s=None),
+    )
+    calib = await cache.calibrate_from_pairs(
+        [(refund_a, refund_b, True), (refund_a, unrelated, False)]
+    )
+
+    # 2. A near-miss above the bar is served; a below-bar one is never served.
+    await cache.store(
+        refund_a, {"text": "Refunds within 30 days."}, policy_scope=scope, schema_ref=None, response_tokens=8
+    )
+    served_hit = await cache.lookup(refund_b, policy_scope=scope, schema_ref=None)
+    below_bar = await cache.lookup(unrelated, policy_scope=scope, schema_ref=None)
+    near_miss_served = served_hit is not None and served_hit.accepted
+    below_bar_never_served = below_bar is None
+
+    # 3. Hit quality: a near-miss served through the run path is at-least-as-good
+    #    as the live answer the same query would have produced, at ~zero budget.
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="scbench", provider=MockProvider(default_text="ANSWER"), config=cfg)
+    app.use_semantic_cache(SemanticCachePolicy(enabled=True, threshold=calib.threshold, ttl_s=None))
+    app.use_kv_prefix_reuse()
+    first = app.run(refund_a)
+    second = app.run(refund_b)  # near-miss: served from cache, billed $0
+    live_answer = "ANSWER"  # what a live call for refund_b would have produced
+    hit_quality = lexical_quality(second.raw_text, live_answer)
+    sc_stats = app.semantic_cache_report()
+    served_free = sc_stats.served >= 1 and second.cost_usd == 0.0
+
+    # 4. The eval-replay gate passes a faithful cache and blocks a drifted one.
+    gate = SemanticCacheGate(quality_floor=0.9)
+    good = await gate.evaluate(
+        cache,
+        [SemanticGateCase(query=refund_b, reference_answer="Refunds within 30 days.", policy_scope=scope)],
+    )
+    drifted = LearnedSemanticCache(
+        LocalHashEmbedder(), policy=SemanticCachePolicy(threshold=calib.threshold, ttl_s=None)
+    )
+    await drifted.store(refund_a, "completely unrelated nonsense", policy_scope=scope, schema_ref=None)
+    bad = await gate.evaluate(
+        drifted,
+        [SemanticGateCase(query=refund_b, reference_answer="Refunds within 30 days.", policy_scope=scope)],
+    )
+    gate_blocks_drift = good.passed and not bad.passed
+
+    # 5. Cross-request KV-prefix reuse: a distinct question that is *not* a
+    #    near-miss still hits the provider, and — sharing the same stable prompt
+    #    head as the first run — reuses the head's KV instead of recomputing it.
+    app.run("what are the international shipping options for large parcels")
+    kv = app.kv_prefix_report()
+
+    # 6. Resident budget: a tiny ceiling forces eviction, keeping the cache bounded.
+    bounded = LearnedSemanticCache(
+        LocalHashEmbedder(), policy=SemanticCachePolicy(threshold=0.5, ttl_s=None, max_resident_bytes=1)
+    )
+    await bounded.store("query alpha one", "A" * 200, policy_scope=scope, schema_ref=None)
+    await bounded.store("query beta two", "B" * 200, policy_scope=scope, schema_ref=None)
+    bounded_resident = len(bounded) == 1 and bounded.resident_bytes > 0
+
+    return {
+        "calibrated": bool(calib.calibrated),
+        "calibration_precision": round(calib.achieved_precision, 4),
+        "near_miss_served": bool(near_miss_served),
+        "below_bar_never_served": bool(below_bar_never_served),
+        "served_free_through_run": bool(served_free),
+        "accepted_near_miss_quality": round(hit_quality, 4),
+        "at_least_as_good": bool(hit_quality >= 0.9),
+        "tokens_saved": int(sc_stats.tokens_saved),
+        "gate_blocks_drift": bool(gate_blocks_drift),
+        "kv_prefix_reused": bool(kv.reuses >= 1),
+        "kv_bytes_reused": int(kv.kv_bytes_reused),
+        "resident_bounded": bool(bounded_resident),
+        "first_run_ok": bool(first.raw_text == "ANSWER"),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -4940,6 +5049,7 @@ FAMILIES = {
     "long_horizon": bench_long_horizon,
     "world_model": bench_world_model,
     "record_replay": bench_record_replay,
+    "semantic_cache": bench_semantic_cache,
     "breaking_2_0": bench_breaking_2_0,
 }
 

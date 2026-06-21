@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**209** public symbols.
+**216** public symbols.
 
 ## Classes
 
@@ -85,6 +85,10 @@ Enforces :class:`CostBudget`\ s and detects spend anomalies.
 ### `BundleRecord(**data)`
 
 One governed, content-bound entry in the community index.
+
+### `CalibrationExample(**data)`
+
+One labelled near-miss observation used to calibrate the threshold.
 
 ### `CalibrationReport(**data)`
 
@@ -314,6 +318,10 @@ A panel of judges scored together, with disagreement surfaced as uncertainty and
 
 Score candidates with any :class:`~vincio.evals.judges.Judge` or :class:`~vincio.evals.ensemble.JudgeEnsemble`.
 
+### `KVPrefixPool(kv_bytes_per_token=…, max_entries=…, max_resident_bytes=…)`
+
+Bounded tracker of cross-request shared stable-prefix KV reuse.
+
 ### `KeyPool(providers, rpm=…, tpm=…, breaker=…, labels=…, max_attempts=…, base_backoff_s=…, max_backoff_s=…, seed=…, events=…, clock=…)`
 
 Round-robin pool over multiple keys/regions of one logical provider.
@@ -325,6 +333,10 @@ Token-importance compressor (callable, drop-in for ``extractive_compress``).
 ### `LawfulBasis(*args, **kwds)`
 
 GDPR Article 6(1) lawful bases for processing.
+
+### `LearnedSemanticCache(embedder, policy=…, calibration=…, clock=…)`
+
+Bounded, calibrated, auditable near-miss response cache.
 
 ### `LearningResult(**data)`
 
@@ -574,6 +586,18 @@ Drive a :class:`SelfImprovementPolicy` as one streaming controller.
 
 One declarative, governed contract for continual self-improvement.
 
+### `SemanticCacheGate(quality_floor=…, scorer=…)`
+
+Gate a learned semantic cache on replayed cases before it ships.
+
+### `SemanticCachePolicy(**data)`
+
+Opt-in policy for the learned semantic cache.
+
+### `SemanticGateCase(**data)`
+
+One probe for the cache gate: a query and its live (reference) answer.
+
 ### `Send(node, state=…, **data)`
 
 Dynamic fan-out instruction for map-reduce super-steps.
@@ -637,6 +661,10 @@ Task taxonomy used by the input router.
 ### `TestTimeSearch(generate, verifier=…, budget=…)`
 
 Verifier-guided test-time search bounded by a :class:`SearchBudget`.
+
+### `ThresholdCalibrator(target_precision=…, min_floor=…)`
+
+Fit a calibrated acceptance threshold from labelled near-miss examples.
 
 ### `TimerService(graph, clock=…)`
 

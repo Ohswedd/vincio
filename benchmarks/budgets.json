@@ -1155,6 +1155,42 @@
     },
     "families.record_replay.branch_suffix_reexecuted": {
       "eq": true
+    },
+    "families.semantic_cache.calibrated": {
+      "eq": true
+    },
+    "families.semantic_cache.calibration_precision": {
+      "gte": 1.0
+    },
+    "families.semantic_cache.near_miss_served": {
+      "eq": true
+    },
+    "families.semantic_cache.below_bar_never_served": {
+      "eq": true
+    },
+    "families.semantic_cache.served_free_through_run": {
+      "eq": true
+    },
+    "families.semantic_cache.accepted_near_miss_quality": {
+      "gte": 1.0
+    },
+    "families.semantic_cache.at_least_as_good": {
+      "eq": true
+    },
+    "families.semantic_cache.tokens_saved": {
+      "gte": 1
+    },
+    "families.semantic_cache.gate_blocks_drift": {
+      "eq": true
+    },
+    "families.semantic_cache.kv_prefix_reused": {
+      "eq": true
+    },
+    "families.semantic_cache.kv_bytes_reused": {
+      "gte": 1
+    },
+    "families.semantic_cache.resident_bounded": {
+      "eq": true
     }
   }
 }

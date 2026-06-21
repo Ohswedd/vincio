@@ -143,6 +143,7 @@ class RunHandle:
     def __await__(self):  # type: ignore[no-untyped-def]
         return self._task.__await__()
 
+
 logger = logging.getLogger("vincio.app")
 
 
@@ -191,7 +192,9 @@ class _AgentHandle:
         feature: str | None = None,
     ):
         return run_sync(
-            self.arun(objective, budget=budget, tenant_id=tenant_id, user_id=user_id, feature=feature)
+            self.arun(
+                objective, budget=budget, tenant_id=tenant_id, user_id=user_id, feature=feature
+            )
         )
 
 
@@ -249,7 +252,9 @@ class ContextApp:
         self.events = EventBus()
         self.tracer = Tracer(
             name,
-            build_exporter(self.config.observability.exporter, self.config.observability.traces_dir),
+            build_exporter(
+                self.config.observability.exporter, self.config.observability.traces_dir
+            ),
             sample_rate=self.config.observability.sample_rate,
         )
         self.cost_tracker = CostTracker()
@@ -279,7 +284,9 @@ class ContextApp:
         # fertility telemetry. All opt-in / empty by default.
         self._pii_detector = self._build_pii_detector()
         self.policy_engine = PolicyEngine(
-            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine,
+            self.policies,
+            pii_detector=self._pii_detector,
+            rails=self.rail_engine,
             egress_dlp=self.config.security.egress_dlp,
         )
         self.residency = ResidencyPolicy(
@@ -392,6 +399,16 @@ class ContextApp:
             if self.config.performance.speculative_prefetch
             else None
         )
+        # Learned semantic cache (near-miss reuse) and cross-request KV-prefix
+        # reuse: both opt-in, consulted by the runtime only when installed, and
+        # held under the resident-memory budget. The semantic cache needs the
+        # app embedder, so it is built here after the embedder.
+        self.semantic_cache: Any | None = None
+        if self.config.cache.semantic_cache:
+            self.use_semantic_cache()
+        self.kv_prefix_pool: Any | None = None
+        if self.config.cache.kv_prefix_reuse:
+            self.use_kv_prefix_reuse()
         self.sources: dict[str, _SourceConfig] = {}
         self.retrieval: RetrievalEngine | None = None
         self._bm25: BM25Index | None = None
@@ -410,7 +427,9 @@ class ContextApp:
         self.tool_registry = ToolRegistry()
         self.tool_runtime = ToolRuntime(
             self.tool_registry,
-            permission_checker=ToolPermissionChecker(self.access, allow_external=self.policies.allow_external_tools),
+            permission_checker=ToolPermissionChecker(
+                self.access, allow_external=self.policies.allow_external_tools
+            ),
             tracer=self.tracer,
             cache_enabled=self.config.cache.tool_cache,
         )
@@ -470,7 +489,12 @@ class ContextApp:
             schema = OutputSchema.from_pydantic(output_schema)
         else:
             raise ConfigError(f"unsupported output_schema type: {type(output_schema).__name__}")
-        return OutputContract.from_schema(schema, require_citations=self.policies.require_citations if hasattr(self, "policies") else False)
+        return OutputContract.from_schema(
+            schema,
+            require_citations=self.policies.require_citations
+            if hasattr(self, "policies")
+            else False,
+        )
 
     def _build_pii_detector(self) -> PIIDetector:
         """PII detector with the configured non-English locale packs."""
@@ -546,8 +570,10 @@ class ContextApp:
                 for provider, model in instance.entries:
                     add(model, getattr(provider, "name", None) or name)
             elif isinstance(instance, (ShadowProvider, CanaryRouter)):
-                add(instance.candidate_model or primary,
-                    getattr(instance.candidate, "name", None) or name)
+                add(
+                    instance.candidate_model or primary,
+                    getattr(instance.candidate, "name", None) or name,
+                )
         return reachable
 
     def _enforce_model_residency(self, model: str, *, provider: str | None = None) -> None:
@@ -672,7 +698,10 @@ class ContextApp:
             if not self.prompt_spec.citation_policy:
                 self.prompt_spec = self.prompt_spec.model_copy(
                     update={
-                        "rules": [*self.prompt_spec.rules, "Use only the provided sources to answer."],
+                        "rules": [
+                            *self.prompt_spec.rules,
+                            "Use only the provided sources to answer.",
+                        ],
                         "citation_policy": "Cite evidence IDs in square brackets for every claim.",
                         "insufficient_evidence_behavior": "If the sources do not contain the answer, say so explicitly.",
                     }
@@ -680,7 +709,9 @@ class ContextApp:
         if name == "require_citations":
             self.output_contract.require_citations = bool(value)
         self.policy_engine = PolicyEngine(
-            self.policies, pii_detector=self._pii_detector, rails=self.rail_engine,
+            self.policies,
+            pii_detector=self._pii_detector,
+            rails=self.rail_engine,
             egress_dlp=self.config.security.egress_dlp,
         )
         self.events.emit("policy.changed", {"policy": name})
@@ -701,7 +732,9 @@ class ContextApp:
         self.rail_engine.add(rail if rail is not None else Rail(**kwargs))
         return self
 
-    def register_rail_predicate(self, name: str, predicate: Callable[[str, dict[str, Any]], Any]) -> ContextApp:
+    def register_rail_predicate(
+        self, name: str, predicate: Callable[[str, dict[str, Any]], Any]
+    ) -> ContextApp:
         """Register a custom rail predicate: ``(text, params) -> falsy | message``."""
         self.rail_engine.register(name, predicate)
         return self
@@ -723,7 +756,9 @@ class ContextApp:
             app.enable_prompt_caching(ttl="1h")  # long-lived stable context
         """
         self.prompt_cache = PromptCacheStrategy(
-            enabled=True, ttl=ttl, min_prefix_tokens=min_prefix_tokens  # type: ignore[arg-type]
+            enabled=True,
+            ttl=ttl,  # type: ignore[arg-type]
+            min_prefix_tokens=min_prefix_tokens,
         )
         return self
 
@@ -853,8 +888,12 @@ class ContextApp:
         primary = self._base_provider()
         candidate = candidate_provider or primary
         shadow = ShadowProvider(
-            primary, candidate, candidate_model=candidate_model, block=block,
-            price_table=self.cost_tracker.price_table, events=self.events,
+            primary,
+            candidate,
+            candidate_model=candidate_model,
+            block=block,
+            price_table=self.cost_tracker.price_table,
+            events=self.events,
         )
         self._provider_instance = shadow
         return shadow
@@ -883,10 +922,15 @@ class ContextApp:
         primary = self._base_provider()
         candidate = candidate_provider or primary
         canary = CanaryRouter(
-            primary, candidate, percent=percent, candidate_model=candidate_model,
-            score_fn=score_fn, min_samples=min_samples,
+            primary,
+            candidate,
+            percent=percent,
+            candidate_model=candidate_model,
+            score_fn=score_fn,
+            min_samples=min_samples,
             regression_threshold=regression_threshold,
-            prompt_registry=getattr(self, "prompt_registry", None), prompt_name=prompt_name,
+            prompt_registry=getattr(self, "prompt_registry", None),
+            prompt_name=prompt_name,
             events=self.events,
         )
         self._provider_instance = canary
@@ -913,12 +957,20 @@ class ContextApp:
         from ..evals.swap import SwapGate
 
         gate = SwapGate(
-            self, metrics=metrics, quality_metric=quality_metric, gates=gates, alpha=alpha,
-            repeats=repeats, flake_quarantine=flake_quarantine,
+            self,
+            metrics=metrics,
+            quality_metric=quality_metric,
+            gates=gates,
+            alpha=alpha,
+            repeats=repeats,
+            flake_quarantine=flake_quarantine,
         )
         return await gate.evaluate(
-            candidate_model=candidate_model, baseline_model=baseline_model,
-            dataset=dataset, traces=traces, pin_tools=pin_tools,
+            candidate_model=candidate_model,
+            baseline_model=baseline_model,
+            dataset=dataset,
+            traces=traces,
+            pin_tools=pin_tools,
         )
 
     def gate_swap(self, candidate_model: str, **kwargs: Any) -> Any:
@@ -944,8 +996,14 @@ class ContextApp:
         from ..evals.swap import model_swap_regression
 
         return await model_swap_regression(
-            self, dataset, baseline_model=baseline_model, candidate_model=candidate_model,
-            metrics=metrics, quality_metric=quality_metric, alpha=alpha, repeats=repeats,
+            self,
+            dataset,
+            baseline_model=baseline_model,
+            candidate_model=candidate_model,
+            metrics=metrics,
+            quality_metric=quality_metric,
+            alpha=alpha,
+            repeats=repeats,
             flake_quarantine=flake_quarantine,
         )
 
@@ -1036,7 +1094,9 @@ class ContextApp:
             results = app.batch(["summarize doc A", "summarize doc B"])
         """
         return run_sync(
-            self.abatch(inputs, backend=backend, config=config, discount=discount, timeout_s=timeout_s)
+            self.abatch(
+                inputs, backend=backend, config=config, discount=discount, timeout_s=timeout_s
+            )
         )
 
     async def abatch(
@@ -1137,7 +1197,10 @@ class ContextApp:
 
         builder = DocumentBuilder(audit_log=self.audit)
         return builder.build(
-            source, format=cast("Any", format), contract=contract, title=title,
+            source,
+            format=cast("Any", format),
+            contract=contract,
+            title=title,
             evidence_ids=evidence_ids,
         )
 
@@ -1159,7 +1222,12 @@ class ContextApp:
         to nothing and are reported as unresolved)."""
         return run_sync(
             self.acited_report(
-                answer, evidence, format=format, title=title, contract=contract, entailment=entailment
+                answer,
+                evidence,
+                format=format,
+                title=title,
+                contract=contract,
+                entailment=entailment,
             )
         )
 
@@ -1196,15 +1264,21 @@ class ContextApp:
         from ..generation.image import ImageGenRequest
         from ..generation.media import meter_media_cost
 
-        request = prompt if isinstance(prompt, ImageGenRequest) else ImageGenRequest(
-            prompt=str(prompt), n=n, size=size
+        request = (
+            prompt
+            if isinstance(prompt, ImageGenRequest)
+            else ImageGenRequest(prompt=str(prompt), n=n, size=size)
         )
         kwargs = {"model": model} if model else {}
         response = await provider.generate_image(request, **kwargs)
-        self._meter_and_audit_media("image_generate", response, request.prompt, budget, meter_media_cost)
+        self._meter_and_audit_media(
+            "image_generate", response, request.prompt, budget, meter_media_cost
+        )
         return response
 
-    def generate_image(self, prompt: Any, *, provider: Any, model: str | None = None, **kwargs: Any):
+    def generate_image(
+        self, prompt: Any, *, provider: Any, model: str | None = None, **kwargs: Any
+    ):
         """Synchronous :meth:`agenerate_image`."""
         return run_sync(self.agenerate_image(prompt, provider=provider, model=model, **kwargs))
 
@@ -1230,7 +1304,9 @@ class ContextApp:
         self._meter_and_audit_media("speech_synthesize", response, text, budget, meter_media_cost)
         return response
 
-    def synthesize_speech(self, text: str, *, provider: Any, model: str | None = None, **kwargs: Any):
+    def synthesize_speech(
+        self, text: str, *, provider: Any, model: str | None = None, **kwargs: Any
+    ):
         """Synchronous :meth:`asynthesize_speech`."""
         return run_sync(self.asynthesize_speech(text, provider=provider, model=model, **kwargs))
 
@@ -1308,7 +1384,10 @@ class ContextApp:
 
         classifier = RiskTierClassifier(purpose=purpose, domains=domains)
         return FRIAGenerator(classifier=classifier).generate(
-            self, format=cast("Any", format), affected_groups=affected_groups, eval_report=eval_report
+            self,
+            format=cast("Any", format),
+            affected_groups=affected_groups,
+            eval_report=eval_report,
         )
 
     def set_residency(
@@ -1337,9 +1416,7 @@ class ContextApp:
         from ..governance.consent import ConsentLedger
 
         if ledger is None:
-            ledger = ConsentLedger(
-                store=self.store, audit=self.audit, default_allow=default_allow
-            )
+            ledger = ConsentLedger(store=self.store, audit=self.audit, default_allow=default_allow)
         self.consent_ledger = ledger
         self.access.consent_ledger = ledger
         if self.memory is not None:
@@ -1583,7 +1660,15 @@ class ContextApp:
                 cache=self.chunk_cache,
             )
             all_chunks.extend(chunks)
-            self.store.save("documents", {"id": document.id, "title": document.title, "source": name, "uri": document.source_uri})
+            self.store.save(
+                "documents",
+                {
+                    "id": document.id,
+                    "title": document.title,
+                    "source": name,
+                    "uri": document.source_uri,
+                },
+            )
         if all_chunks:
             run_sync(self._index_chunks(all_chunks))
             if self.entity_graph is not None:
@@ -1724,9 +1809,15 @@ class ContextApp:
         os = MemoryOS(self.memory, scope=scope, owner_id=owner_id, max_core_tokens=max_core_tokens)
         if register_tools:
             append, replace, search, archive = os.tools()
-            self.add_tool(append, name="memory_append", permissions=[permission], side_effects="write")
-            self.add_tool(replace, name="memory_replace", permissions=[permission], side_effects="write")
-            self.add_tool(archive, name="memory_archive", permissions=[permission], side_effects="write")
+            self.add_tool(
+                append, name="memory_append", permissions=[permission], side_effects="write"
+            )
+            self.add_tool(
+                replace, name="memory_replace", permissions=[permission], side_effects="write"
+            )
+            self.add_tool(
+                archive, name="memory_archive", permissions=[permission], side_effects="write"
+            )
             self.add_tool(search, name="memory_search", side_effects="read")
         return os
 
@@ -1771,12 +1862,19 @@ class ContextApp:
             impl = MockComputerUse()
         for tool in computer_use_tools(impl):
             self.add_tool(
-                tool, permissions=[permission], side_effects="external",
+                tool,
+                permissions=[permission],
+                side_effects="external",
                 approval_required=approval_required,
             )
         self.audit.record(
-            "computer_use_enabled", decision="allow",
-            details={"backend": backend, "isolation": isolation, "require_isolation": require_isolation},
+            "computer_use_enabled",
+            decision="allow",
+            details={
+                "backend": backend,
+                "isolation": isolation,
+                "require_isolation": require_isolation,
+            },
         )
         return impl
 
@@ -1799,8 +1897,12 @@ class ContextApp:
             if spec.name not in self.enabled_tools:
                 self.enabled_tools.append(spec.name)
         self.audit.record(
-            "hosted_tools_enabled", decision="allow",
-            details={"namespace": namespace, "tools": [s.name for s in hosted_tool_specs(names, namespace=namespace)]},
+            "hosted_tools_enabled",
+            decision="allow",
+            details={
+                "namespace": namespace,
+                "tools": [s.name for s in hosted_tool_specs(names, namespace=namespace)],
+            },
         )
         return self
 
@@ -1855,9 +1957,7 @@ class ContextApp:
 
     # -- skills ---------------------------------------------------------------------------------
 
-    def add_skill(
-        self, skill: str | Any, *, register_scripts: bool = False
-    ) -> ContextApp:
+    def add_skill(self, skill: str | Any, *, register_scripts: bool = False) -> ContextApp:
         """Load an Agent Skill (``SKILL.md`` path or a :class:`Skill`) and inject
         it through the compiler with progressive disclosure: a one-line summary
         is always available; the full body is included only when a run's task is
@@ -2220,7 +2320,9 @@ class ContextApp:
         self.evaluators.append(name)
         return self
 
-    def add_validator(self, name: str, validator: SemanticValidator, *, blocking: bool = True) -> ContextApp:
+    def add_validator(
+        self, name: str, validator: SemanticValidator, *, blocking: bool = True
+    ) -> ContextApp:
         from ..output.schemas import ValidatorSpec
 
         self.semantic_validators[name] = validator
@@ -2248,7 +2350,9 @@ class ContextApp:
             app.add_online_evaluator("goal_accuracy", sample_rate=0.2)
         """
         self.online_evaluators.append(
-            OnlineEvaluator(metric, name=name, sample_rate=sample_rate, store=self.store, app_name=self.name)
+            OnlineEvaluator(
+                metric, name=name, sample_rate=sample_rate, store=self.store, app_name=self.name
+            )
         )
         return self
 
@@ -2272,10 +2376,16 @@ class ContextApp:
 
         metric_name = metric if isinstance(metric, str) else getattr(metric, "__name__", "metric")
         predicate_name = name or f"{metric_name}_guard"
-        self.register_rail_predicate(predicate_name, metric_guardrail(metric, threshold=threshold, name=predicate_name))
+        self.register_rail_predicate(
+            predicate_name, metric_guardrail(metric, threshold=threshold, name=predicate_name)
+        )
         self.add_rail(
-            name=predicate_name, kind="custom", direction=direction, action=action,
-            predicate=predicate_name, params=params,
+            name=predicate_name,
+            kind="custom",
+            direction=direction,
+            action=action,
+            predicate=predicate_name,
+            params=params,
         )
         return self
 
@@ -2306,8 +2416,12 @@ class ContextApp:
             for variant, config in variants.items():
                 config = config or {}
                 handle.run_variant(
-                    variant, dataset, model=config.get("model"), prompt=config.get("prompt"),
-                    apply=config.get("apply"), params=config.get("params"),
+                    variant,
+                    dataset,
+                    model=config.get("model"),
+                    prompt=config.get("prompt"),
+                    apply=config.get("apply"),
+                    params=config.get("params"),
                 )
         return handle
 
@@ -2334,7 +2448,11 @@ class ContextApp:
         if self.schema_router is None:
             self.schema_router = SchemaRouter(default=self.output_contract.output_schema())
         self.schema_router.add(
-            schema, name=name, task_types=task_types, keywords=keywords, when=when,
+            schema,
+            name=name,
+            task_types=task_types,
+            keywords=keywords,
+            when=when,
             priority=priority,
         )
         return self
@@ -2375,20 +2493,25 @@ class ContextApp:
     def task(self, cls: type) -> type:
         """Configure the app from a task class::
 
-            @app.task
-            class Triage:
-                objective = "Classify support tickets"
-                labels = ["bug", "billing", "feature", "other"]
+        @app.task
+        class Triage:
+            objective = "Classify support tickets"
+            labels = ["bug", "billing", "feature", "other"]
         """
         objective = getattr(cls, "objective", None)
         labels = getattr(cls, "labels", None)
         rules = list(getattr(cls, "rules", []))
         update: dict[str, Any] = {}
         if objective:
-            self.objective = Objective(text=objective, task_type=TaskType.CLASSIFICATION if labels else TaskType.GENERAL)
+            self.objective = Objective(
+                text=objective, task_type=TaskType.CLASSIFICATION if labels else TaskType.GENERAL
+            )
             update["objective"] = objective
         if labels:
-            update["rules"] = [*rules, f"Answer with exactly one of these labels: {', '.join(labels)}."]
+            update["rules"] = [
+                *rules,
+                f"Answer with exactly one of these labels: {', '.join(labels)}.",
+            ]
             if self.output_contract.schema_def is None:
                 schema = OutputSchema.from_json_schema(
                     {
@@ -2450,8 +2573,12 @@ class ContextApp:
         config: RunConfig | None = None,
     ) -> RunResult:
         user_input = self._coerce_input(
-            user_input, files=files, tenant_id=tenant_id, user_id=user_id,
-            session_id=session_id, feature=feature,
+            user_input,
+            files=files,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            session_id=session_id,
+            feature=feature,
         )
         result = await self._runtime.execute(user_input, config)
         if self.online_evaluators:
@@ -2482,8 +2609,12 @@ class ContextApp:
             handle.cancel()  # cooperative — the partial run is still recorded
         """
         normalized = self._coerce_input(
-            user_input, files=files, tenant_id=tenant_id, user_id=user_id,
-            session_id=session_id, feature=feature,
+            user_input,
+            files=files,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            session_id=session_id,
+            feature=feature,
         )
 
         async def _run() -> RunResult:
@@ -2527,8 +2658,12 @@ class ContextApp:
                     result = event.result
         """
         user_input = self._coerce_input(
-            user_input, files=files, tenant_id=tenant_id, user_id=user_id,
-            session_id=session_id, feature=feature,
+            user_input,
+            files=files,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            session_id=session_id,
+            feature=feature,
         )
         config = config or RunConfig()
         config = config.model_copy(update={"stream": True})
@@ -2561,11 +2696,18 @@ class ContextApp:
         tool_names: list[str] = []
         for tool in tools or []:
             self.add_tool(tool)
-            tool_names.append(tool if isinstance(tool, str) else getattr(tool, "__name__", str(tool)))
+            tool_names.append(
+                tool if isinstance(tool, str) else getattr(tool, "__name__", str(tool))
+            )
         planner_mode = {
-            "dag": "static", "static": "static", "dynamic": "dynamic", "react": "react",
-            "direct": "direct", "plan_and_execute": "plan_and_execute",
-            "hierarchical": "hierarchical", "htn": "hierarchical",
+            "dag": "static",
+            "static": "static",
+            "dynamic": "dynamic",
+            "react": "react",
+            "direct": "direct",
+            "plan_and_execute": "plan_and_execute",
+            "hierarchical": "hierarchical",
+            "htn": "hierarchical",
         }.get(planner, "static")
         provider = self.resolve_provider()
         agent_model = model or self.model
@@ -2607,7 +2749,9 @@ class ContextApp:
         ).system_text
         if system_prompt_extra:
             system_prompt = (
-                f"{system_prompt}\n\n{system_prompt_extra}" if system_prompt else system_prompt_extra
+                f"{system_prompt}\n\n{system_prompt_extra}"
+                if system_prompt
+                else system_prompt_extra
             )
         # restrict_tools (crew members): least privilege — only the tools named
         # for this executor, never the app-wide enabled set.
@@ -2823,6 +2967,98 @@ class ContextApp:
             return None
         return self.context_governor.report()
 
+    def use_semantic_cache(self, cache: Any | None = None, **kwargs: Any) -> ContextApp:
+        """Install a learned semantic cache so near-misses are served from cache.
+
+        With a cache installed, a run whose request misses the exact-match
+        response cache is checked against recent answers in the same scope (model
+        + stable prompt head) and schema; a semantically-equivalent one is served
+        for free **only above the calibrated acceptance threshold** — never below
+        the floor. ``cache`` may be a
+        :class:`~vincio.caching.LearnedSemanticCache`, a
+        :class:`~vincio.caching.SemanticCachePolicy`, or ``None`` (a policy built
+        from this app's ``cache`` config). The cache shares the app embedder.
+        Calibrate it from traces before trusting near-misses, and gate it with a
+        :class:`~vincio.caching.SemanticCacheGate`. Returns ``self`` for
+        chaining::
+
+            app.use_semantic_cache()
+            app.semantic_cache.calibrate(examples)   # fit the threshold
+            report = app.semantic_cache_report()
+        """
+        from ..caching import LearnedSemanticCache, SemanticCachePolicy
+
+        if isinstance(cache, LearnedSemanticCache):
+            self.semantic_cache = cache
+        else:
+            if isinstance(cache, SemanticCachePolicy):
+                policy = cache
+            else:
+                cfg = self.config.cache
+                policy = SemanticCachePolicy(
+                    enabled=True,
+                    threshold=cfg.semantic_threshold,
+                    target_precision=cfg.semantic_cache_target_precision,
+                    min_floor=cfg.semantic_cache_min_floor,
+                    ttl_s=float(cfg.ttl_s),
+                    max_entries=cfg.semantic_cache_max_entries,
+                    max_resident_bytes=cfg.semantic_cache_max_resident_bytes,
+                    **kwargs,
+                )
+            self.semantic_cache = LearnedSemanticCache(self.embedder, policy=policy)
+        self.cache_invalidation.register_semantic(self.semantic_cache)
+        return self
+
+    def semantic_cache_report(self) -> Any:
+        """The installed semantic cache's stats (or ``None``).
+
+        Hit-rate, near-misses rejected, output tokens saved, the calibrated
+        threshold in force, and the cache's resident footprint — the savings the
+        cache realized, alongside the $0-billed calls it produced in the cost
+        report."""
+        if self.semantic_cache is None:
+            return None
+        return self.semantic_cache.stats()
+
+    def use_kv_prefix_reuse(self, pool: Any | None = None, **kwargs: Any) -> ContextApp:
+        """Install a KV-prefix pool so cross-request stable-prefix reuse is tracked.
+
+        With a pool installed, each run's compiled stable prefix is recorded; a
+        later request that shares the same head (same ``prompt_spec_hash`` on the
+        same model) is reported as a reuse, with the serving-engine KV bytes the
+        shared head avoids recomputing. ``pool`` may be a
+        :class:`~vincio.caching.KVPrefixPool` or ``None`` (one built from this
+        app's ``cache`` config). Returns ``self`` for chaining::
+
+            app.use_kv_prefix_reuse()
+            for q in questions:
+                app.run(q)
+            report = app.kv_prefix_report()
+        """
+        from ..caching import KVPrefixPool
+
+        if isinstance(pool, KVPrefixPool):
+            self.kv_prefix_pool = pool
+        else:
+            cfg = self.config.cache
+            self.kv_prefix_pool = KVPrefixPool(
+                kv_bytes_per_token=cfg.kv_bytes_per_token,
+                max_entries=cfg.kv_prefix_max_entries,
+                max_resident_bytes=cfg.kv_prefix_max_resident_bytes,
+                **kwargs,
+            )
+        return self
+
+    def kv_prefix_report(self) -> Any:
+        """The installed KV-prefix pool's reuse report (or ``None``).
+
+        Distinct stable heads tracked, total requests seen, how many reused a
+        warm head, and the cumulative serving-engine KV those reuses avoided
+        recomputing — the cross-request analogue of the prompt-cache hit rate."""
+        if self.kv_prefix_pool is None:
+            return None
+        return self.kv_prefix_pool.report()
+
     async def atest_time_search(
         self,
         user_input: str | UserInput,
@@ -2861,7 +3097,7 @@ class ContextApp:
                 update: dict[str, Any] = {"seed": index}
                 if vary == "temperature":
                     update = {"temperature": round(0.2 * index, 4)}
-                cfg = (base.model_copy(update=update) if base is not None else RunConfig(**update))
+                cfg = base.model_copy(update=update) if base is not None else RunConfig(**update)
                 return self.arun(user_input, config=cfg)
 
         if budget is None:
@@ -2955,9 +3191,7 @@ class ContextApp:
         """A durable :class:`StateGraph` bound to the app's tracer and
         metadata store: checkpoints persist wherever the app's runs do, so
         threads survive restarts when the store is SQLite/Postgres."""
-        graph = StateGraph(
-            name, state_schema=state_schema, reducers=reducers, defaults=defaults
-        )
+        graph = StateGraph(name, state_schema=state_schema, reducers=reducers, defaults=defaults)
         graph.default_tracer = self.tracer
         graph.default_checkpointer = Checkpointer(self.store)
         return graph
@@ -2981,9 +3215,7 @@ class ContextApp:
         from ..evals.trajectory import Trajectory, TrajectoryStep
 
         steps = [
-            TrajectoryStep(
-                type="tool", name=tr.tool_name, tool_name=tr.tool_name, status=tr.status
-            )
+            TrajectoryStep(type="tool", name=tr.tool_name, tool_name=tr.tool_name, status=tr.status)
             for tr in result.tool_results
         ]
         trajectory = Trajectory(
@@ -2991,11 +3223,16 @@ class ContextApp:
             final_answer=result.output,
             raw_text=result.raw_text,
             terminated=True,
-            termination_reason=result.status.value if hasattr(result.status, "value") else str(result.status),
+            termination_reason=result.status.value
+            if hasattr(result.status, "value")
+            else str(result.status),
             success=result.error is None,
             source="run",
-            usage={"steps": float(len(steps)), "tool_calls": float(len(steps)),
-                   "cost_usd": float(result.cost_usd)},
+            usage={
+                "steps": float(len(steps)),
+                "tool_calls": float(len(steps)),
+                "cost_usd": float(result.cost_usd),
+            },
         )
         return RunOutput(
             output=result.output,
@@ -3032,14 +3269,20 @@ class ContextApp:
         case = EvalCase(id=result.trace_id or result.run_id, input=user_input.text or "")
         for evaluator in self.online_evaluators:
             try:
-                metric_result = evaluator.observe(run_output, case=case, run_id=result.trace_id or result.run_id)
+                metric_result = evaluator.observe(
+                    run_output, case=case, run_id=result.trace_id or result.run_id
+                )
             except Exception:  # noqa: BLE001 - online eval must never break a run
                 logger.exception("online evaluator %s failed", evaluator.name)
                 continue
             if metric_result is not None:
                 self.events.emit(
                     "eval.online",
-                    {"metric": evaluator.name, "value": metric_result.value, "run_id": result.trace_id},
+                    {
+                        "metric": evaluator.name,
+                        "value": metric_result.value,
+                        "run_id": result.trace_id,
+                    },
                 )
 
     async def aflush_online(self) -> None:
@@ -3315,8 +3558,12 @@ class ContextApp:
         base = self._base_provider()
         entries = [(base, m) for m in models]
         self._provider_instance = GuardedBanditRouter(
-            entries, bandit=bandit, store=self.store, app_name=self.name,
-            events=self.events, **kwargs,
+            entries,
+            bandit=bandit,
+            store=self.store,
+            app_name=self.name,
+            events=self.events,
+            **kwargs,
         )
         if models:
             self.model = models[0]
@@ -3441,7 +3688,8 @@ class ContextApp:
             self.config.memory.write_back = []
             try:
                 runner = EvalRunner(
-                    self, metrics=[quality_metric, "cost", "safety", "schema_validity"],
+                    self,
+                    metrics=[quality_metric, "cost", "safety", "schema_validity"],
                     concurrency=concurrency,
                 )
                 return await runner.arun(ds, name=f"distill:{model}")
@@ -3585,7 +3833,9 @@ class ContextApp:
         self.context_compiler.allocator = BudgetAllocator(learned=learned)
         return self
 
-    def use_pack(self, pack: Any, *, set_schema: bool = True, merge_rules: bool = False) -> ContextApp:
+    def use_pack(
+        self, pack: Any, *, set_schema: bool = True, merge_rules: bool = False
+    ) -> ContextApp:
         """Apply a domain pack: prompt config + schema + policies +
         evaluators + rails.
 

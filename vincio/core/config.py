@@ -176,6 +176,22 @@ class CacheConfig(BaseModel):
     retrieval_cache: bool = False
     semantic_cache: bool = False
     semantic_threshold: float = 0.97
+    # Learned semantic cache (near-miss reuse). When ``semantic_cache`` is on,
+    # the app builds a LearnedSemanticCache the runtime consults before a live
+    # call, serving a semantically-equivalent recent answer only above a
+    # calibrated acceptance threshold (never below ``semantic_cache_min_floor``).
+    # ``semantic_threshold`` is the initial bar until calibration fits one.
+    semantic_cache_target_precision: float = 0.95
+    semantic_cache_min_floor: float = 0.80
+    semantic_cache_max_entries: int = 2048
+    semantic_cache_max_resident_bytes: int | None = None
+    # Cross-request KV-prefix reuse accounting: track the shared stable-prefix KV
+    # footprint across a family of requests that share a head and report the KV
+    # bytes the shared head avoids recomputing. Held under the resident budget.
+    kv_prefix_reuse: bool = False
+    kv_bytes_per_token: int = 2048
+    kv_prefix_max_entries: int = 256
+    kv_prefix_max_resident_bytes: int | None = None
     ttl_s: int = 3600
     max_entries: int = 10_000
     # Content-addressed compilation caches: unchanged inputs are never

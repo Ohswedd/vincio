@@ -1201,6 +1201,36 @@
       "threshold": true,
       "enforced_by": "families.record_replay.fidelity_verified",
       "rationale": "A recording shared across processes must be tamper-evident; verifying the digest and every edge's content address before replay prevents a corrupted recording from producing a misleading run."
+    },
+    {
+      "id": "semantic_cache_hit_quality",
+      "category": "quality",
+      "statement": "An accepted near-miss served from the learned semantic cache is at-least-as-good as the live answer the same request would have produced, at a fixed (near-zero) budget.",
+      "metric": "families.semantic_cache.accepted_near_miss_quality",
+      "direction": "gte",
+      "threshold": 0.9,
+      "enforced_by": "families.semantic_cache.accepted_near_miss_quality",
+      "rationale": "Near-miss reuse is only safe if a served answer is as good as a live one; the acceptance threshold is calibrated from traces so accepted hits clear a precision target. The budget gates 1.0, above the published 0.90 floor."
+    },
+    {
+      "id": "semantic_cache_below_bar_never_served",
+      "category": "quality",
+      "statement": "A near-miss whose similarity is below the calibrated acceptance threshold is never served — the cache falls back to a live call rather than risk a wrong answer.",
+      "metric": "families.semantic_cache.below_bar_never_served",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.semantic_cache.below_bar_never_served",
+      "rationale": "The calibrated bar is the safety guarantee; if a below-threshold match could still be served the calibration would be meaningless. The budget gates that no below-bar match is ever served."
+    },
+    {
+      "id": "semantic_cache_gate_blocks_drift",
+      "category": "quality",
+      "statement": "The eval-replay regression gate — the cache analogue of the model-swap gate — passes a faithful cache and blocks a drifted one whose near-misses no longer match the live answer.",
+      "metric": "families.semantic_cache.gate_blocks_drift",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.semantic_cache.gate_blocks_drift",
+      "rationale": "A cache that drifts must be caught before it ships, the same way a regressing model swap is; the budget gates that the gate passes a good cache and fails a drifted one."
     }
   ]
 }
