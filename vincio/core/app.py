@@ -442,6 +442,12 @@ class ContextApp:
         # budget (see ``use_reasoning_controller``). ``None`` keeps reasoning a
         # per-call knob, so behavior is unchanged by default.
         self.reasoning_controller: Any | None = None
+        # Opt-in long-horizon context governor. When set, a multi-session run can
+        # feed each result's packet to the governor (``app.govern_packet``) and
+        # the live context footprint stays bounded across the whole conversation
+        # via intra-run decay and provenance-preserving compaction. ``None`` keeps
+        # context unbounded by default (see ``use_context_governor``).
+        self.context_governor: Any | None = None
         self.cost_ledger: CostLedger = CostLedger(
             price_table=self.cost_tracker.price_table, store=self.store
         )
@@ -2756,6 +2762,66 @@ class ContextApp:
             controller = self.reasoning(controller, **kwargs)
         self.reasoning_controller = controller
         return self
+
+    def use_context_governor(self, governor: Any | None = None, **kwargs: Any) -> ContextApp:
+        """Install a long-horizon :class:`~vincio.context.ContextGovernor`.
+
+        For million-token, multi-day, multi-session runs: the governor holds a
+        :class:`~vincio.context.ContextBudget` (live tokens, resident bytes,
+        KV-cache footprint), decays stale spans within the run, and compacts the
+        coldest ones into the memory OS — paging the full text back on demand —
+        so the live context stays bounded as the horizon grows. ``governor`` may
+        be a :class:`~vincio.context.ContextGovernor`, a
+        :class:`~vincio.context.ContextBudget` (wrapped in a default governor that
+        writes compaction summaries into this app's memory engine), or ``None``
+        (an unbounded-budget governor). Feed each run's packet with
+        :meth:`govern_packet`. Returns ``self`` for chaining::
+
+            app.use_context_governor(ContextBudget(max_tokens=8000))
+            for turn in conversation:
+                result = app.run(turn)
+                app.govern_packet(result)          # admits result.evidence
+            report = app.context_budget_report()
+        """
+        from ..context.longhorizon import (
+            ContextBudget,
+            ContextCompactor,
+            ContextGovernor,
+        )
+
+        if not isinstance(governor, ContextGovernor):
+            budget = governor if isinstance(governor, ContextBudget) else ContextBudget(**kwargs)
+            compactor = ContextCompactor(memory=getattr(self, "memory", None), owner_id=self.name)
+            governor = ContextGovernor(budget, compactor=compactor)
+        self.context_governor = governor
+        return self
+
+    def govern_packet(self, source: Any) -> Any:
+        """Admit a run's evidence into the installed long-horizon governor.
+
+        The multi-session hook: after each :meth:`run`, pass the
+        :class:`~vincio.core.types.RunResult` (or a
+        :class:`~vincio.context.ContextPacket` from :meth:`compile`) here so the
+        long-horizon footprint stays bounded across the conversation. Returns the
+        governor's :class:`~vincio.context.ContextBudgetReport`, or ``None`` if no
+        governor is installed."""
+        if self.context_governor is None or source is None:
+            return None
+        if hasattr(source, "evidence_items"):  # a ContextPacket
+            self.context_governor.admit_packet(source)
+        elif hasattr(source, "evidence"):  # a RunResult
+            self.context_governor.admit_evidence(source.evidence)
+        return self.context_governor.report()
+
+    def context_budget_report(self) -> Any:
+        """The installed governor's live context-budget report (or ``None``).
+
+        The residency analogue of :meth:`cost_report`: live tokens, resident
+        bytes, KV-cache footprint, compactions, and intra-run decay for the
+        long-horizon run."""
+        if self.context_governor is None:
+            return None
+        return self.context_governor.report()
 
     async def atest_time_search(
         self,

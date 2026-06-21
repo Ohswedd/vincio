@@ -265,7 +265,7 @@ audited runtime:
   `max_parallel_steps`), and `planner="plan_and_execute"` drives a real
   plan → execute → observe → replan loop (`Planner.replan`) bounded by
   `max_replans` and the budget.
-- **In-loop context compaction** — `agents/compaction.py` `ContextCompactor`
+- **In-loop context compaction** — `agents/compaction.py` `LoopCompactor`
   folds older tool/observation turns into a rolling extractive summary once the
   working context exceeds a token budget, replacing fixed slicing (tool-call
   pairs stay intact).

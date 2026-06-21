@@ -243,6 +243,48 @@ The estimated footprint is surfaced on every run as `result.memory_bytes` and
 rolled up as `peak_resident_bytes` in the cost summary, and a footprint
 regression gate in VincioBench holds the reference packet under its ceiling.
 
+## Long-horizon runs: the context governor
+
+The per-packet footprint budget bounds *one* compile. Million-token, multi-day,
+multi-session runs need more: across many turns, naïve accumulation rots quality
+("context rot") and grows the footprint without bound. The `ContextGovernor`
+holds a **context budget** across the whole run the way the cost report holds a
+dollar budget:
+
+```python
+from vincio import ContextApp, ContextBudget
+
+app = ContextApp(name="assistant")
+app.use_context_governor(ContextBudget(max_tokens=8000, max_resident_bytes=2_000_000))
+
+for turn in conversation:
+    result = app.run(turn)
+    app.govern_packet(result)          # admit this turn's evidence into the governor
+
+report = app.context_budget_report()   # live tokens / residency / KV-cache footprint
+```
+
+Three mechanisms keep the live context bounded as the horizon grows:
+
+- **Intra-run relevance decay** (`RelevanceDecay`) applies the memory
+  subsystem's exponential decay *within a single run*, so a span admitted many
+  steps ago loses weight before it crowds out fresh signal. Demotions are
+  surfaced in the governor's excluded-context report.
+- **Provenance-preserving compaction** (`ContextCompactor`) folds the coldest
+  cold spans into a hierarchical extractive summary, writes the summary into the
+  memory OS (audited), and pages the originals' full text to a content-addressed
+  store — recoverable on demand via the same cross-process path slim packets
+  use, so `governor.recall(query)` pages a compacted fact back when it is needed.
+- **The budget itself** (`ContextBudget`) caps live tokens, resident bytes, and
+  the estimated decode KV-cache footprint; the governor compacts (or evicts, when
+  no compactor is configured) until the live footprint fits.
+
+A horizon-scaling SLO holds the guarantee: at 10× horizon the governed footprint
+stays within a bounded multiple of the 1× footprint (flat, not the ~linear growth
+of naïve accumulation) and a compacted fact is still recalled — see the
+`families.long_horizon` VincioBench family and example
+[`54_long_horizon_context.py`](https://github.com/Ohswedd/vincio/blob/main/examples/54_long_horizon_context.py).
+
 ## Zero-copy context packets
 
 Large packets no longer have to duplicate every evidence text:

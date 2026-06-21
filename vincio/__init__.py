@@ -33,6 +33,12 @@ from .agents import (
 from .assistant import ApprovalRecord, Assistant, AssistantTurn
 from .caching import ReasoningTrace, ReasoningTraceCache
 from .context.llmlingua import LLMLinguaCompressor
+from .context.longhorizon import (
+    ContextBudget,
+    ContextCompactor,
+    ContextGovernor,
+    RelevanceDecay,
+)
 from .core.app import ContextApp, RunHandle
 from .core.config import VincioConfig, load_config
 from .core.errors import VincioError
@@ -181,7 +187,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.9.0"
+__version__ = "3.10.0"
 
 __all__ = [
     "ContextApp",
@@ -250,6 +256,11 @@ __all__ = [
     "ReasoningTrace",
     "ReasoningTraceCache",
     "LLMLinguaCompressor",
+    # long-horizon context engineering
+    "ContextGovernor",
+    "ContextCompactor",
+    "ContextBudget",
+    "RelevanceDecay",
     "JudgeCalibrator",
     "OutputContract",
     "OutputSchema",

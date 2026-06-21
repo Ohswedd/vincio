@@ -156,9 +156,9 @@ class AgentExecutor:
         # In-loop compaction: old tool/observation turns are folded into a
         # rolling summary once the working context exceeds this token budget,
         # replacing fixed slicing. Level-parallelism and plan-and-execute bounds.
-        from .compaction import ContextCompactor
+        from .compaction import LoopCompactor
 
-        self.compactor = ContextCompactor(max_tokens=max_context_tokens)
+        self.compactor = LoopCompactor(max_tokens=max_context_tokens)
         self.max_context_tokens = max_context_tokens
         self.max_parallel_steps = max(1, max_parallel_steps)
         self.max_replans = max_replans

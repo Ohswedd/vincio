@@ -1485,7 +1485,7 @@ async def bench_agent() -> dict[str, Any]:
 
     # 1.10 — level-parallel DAG execution, plan-and-execute replanning, and
     # in-loop context compaction.
-    from vincio.agents.compaction import ContextCompactor
+    from vincio.agents.compaction import LoopCompactor
     from vincio.agents.dag import StepDAG
     from vincio.agents.state import AgentState, AgentStep
     from vincio.core.types import Message, Objective
@@ -1504,11 +1504,11 @@ async def bench_agent() -> dict[str, Any]:
     pe_state = await pe_executor.run("Answer the question.", budget=Budget(max_steps=12))
     plan_and_execute_ran = "_replans" in pe_state.working_memory and pe_state.terminated
 
-    compactor = ContextCompactor(max_tokens=40, keep_recent=2, summary_tokens=30)
+    compactor = LoopCompactor(max_tokens=40, keep_recent=2, summary_tokens=30)
     long_blocks = [f"Observation {i} with descriptive content to exceed the budget." for i in range(12)]
     summary, kept = compactor.compact_blocks(long_blocks)
     compaction_summarizes = summary is not None and len(kept) < len(long_blocks)
-    short_summary, short_kept = ContextCompactor(max_tokens=10_000).compact_blocks(["a", "b"])
+    short_summary, short_kept = LoopCompactor(max_tokens=10_000).compact_blocks(["a", "b"])
     compaction_under_budget_intact = short_summary is None and short_kept == ["a", "b"]
     msgs = [Message(role="system", content="sys"),
             Message(role="user", content="solve with much detail and length here please now"),
@@ -4355,6 +4355,7 @@ async def bench_professionalism() -> dict[str, Any]:
         "vincio.core.config_migrations",
         "vincio._apiref",
         "vincio.cli.doctor",
+        "vincio.context.longhorizon",
     )
 
     # Config migrations: a legacy file upgrades and re-migration is a no-op.
@@ -4630,6 +4631,101 @@ async def bench_test_time_compute() -> dict[str, Any]:
     }
 
 
+async def bench_long_horizon() -> dict[str, Any]:
+    """LongHorizonBench: million-token, multi-session runs stay bounded.
+
+    The governor holds a context budget (tokens, residency, KV-cache footprint)
+    across a long run: stale spans decay, the coldest cold spans compact into
+    provenance-keyed summaries paged to a content-addressed store, and a fact
+    compacted out of the live packet still recalls by paging back. Measures the
+    horizon-scaling SLO — at 10× horizon the governed footprint stays within a
+    bounded multiple of the 1× footprint and recall is preserved, while naïve
+    accumulation grows ~linearly. All deterministic and offline (no model)."""
+    from vincio.context.footprint import ENTRY_OVERHEAD_BYTES
+    from vincio.context.longhorizon import (
+        ContextBudget,
+        ContextCompactor,
+        ContextGovernor,
+        RelevanceDecay,
+    )
+
+    needle = "The Pro plan refund window is exactly 30 days from the purchase date."
+    needle_query = "Pro plan refund window days purchase"
+
+    def filler(i: int) -> str:
+        return f"Filler observation {i}: telemetry, logs, metrics, traces, spans, and counters."
+
+    def governed(horizon: int) -> ContextGovernor:
+        gov = ContextGovernor(
+            ContextBudget(max_tokens=400, max_resident_bytes=6000),
+            compactor=ContextCompactor(summary_tokens=48),
+            decay=RelevanceDecay(half_life_steps=8),
+            keep_recent_spans=3,
+        )
+        gov.admit(needle, relevance=0.95, source_ids=["needle"])
+        for i in range(horizon):
+            gov.admit(filler(i), relevance=0.5)
+        return gov
+
+    def naive_resident(horizon: int) -> int:
+        texts = [needle] + [filler(i) for i in range(horizon)]
+        return ENTRY_OVERHEAD_BYTES * len(texts) + sum(len(t.encode("utf-8")) for t in texts)
+
+    base, scaled = 20, 200  # a 10× horizon
+
+    gov_1x = governed(base)
+    gov_10x = governed(scaled)
+    r1, r10 = gov_1x.report(), gov_10x.report()
+
+    # 1. Footprint and token growth bounded as the horizon grows 10×.
+    footprint_growth_ratio = round(r10.resident_bytes / max(1, r1.resident_bytes), 4)
+    token_growth_ratio = round(r10.live_tokens / max(1, r1.live_tokens), 4)
+    naive_growth_ratio = round(naive_resident(scaled) / max(1, naive_resident(base)), 4)
+
+    # 2. Recall preserved at horizon: the needle, long since compacted, pages back.
+    hits = gov_10x.recall(needle_query, top_k=3)
+    recall_at_horizon = 1.0 if any("30 days" in h for h in hits) else 0.0
+
+    # 3. Provenance preserved: every compaction carries source ids + covered hashes
+    #    and the needle's hash survives in the compaction trail.
+    needle_hash = gov_10x.compactions[0].covered_hashes  # type: ignore[index]
+    provenance_preserved = all(
+        rec.source_ids and rec.covered_hashes for rec in gov_10x.compactions
+    )
+    # 4. Paged back on demand: the content-addressed store returns the exact text.
+    from vincio.context.evidence_store import content_hash
+
+    recovered = gov_10x.compactor.page_in([content_hash(needle)])  # type: ignore[union-attr]
+    paged_back_on_demand = recovered.get(content_hash(needle)) == needle
+
+    # 5. Intra-run decay demotes stale signal below fresh signal of equal base
+    #    relevance, and the demotion is surfaced in the excluded-context report.
+    decay = RelevanceDecay(half_life_steps=8)
+    stale_w = decay.decayed(0.5, age_steps=40)
+    fresh_w = decay.decayed(0.5, age_steps=0)
+    decay_demotes_stale = stale_w < fresh_w
+    decay_surfaced = any(
+        e["reason"] == "intra_run_decay" for e in gov_10x.excluded_report()
+    )
+
+    return {
+        "base_horizon": base,
+        "scaled_horizon": scaled,
+        "governed_resident_1x": r1.resident_bytes,
+        "governed_resident_10x": r10.resident_bytes,
+        "footprint_growth_ratio": footprint_growth_ratio,
+        "token_growth_ratio": token_growth_ratio,
+        "naive_growth_ratio": naive_growth_ratio,
+        "within_budget_at_horizon": r10.within_budget,
+        "compactions": r10.compaction_count,
+        "compacted_tokens_saved": r10.compacted_tokens_saved,
+        "recall_at_horizon": recall_at_horizon,
+        "provenance_preserved": bool(provenance_preserved and needle_hash),
+        "paged_back_on_demand": paged_back_on_demand,
+        "intra_run_decay_demotes_stale": bool(decay_demotes_stale and decay_surfaced),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -4653,6 +4749,7 @@ FAMILIES = {
     "integrations": bench_integrations,
     "professionalism": bench_professionalism,
     "test_time_compute": bench_test_time_compute,
+    "long_horizon": bench_long_horizon,
     "breaking_2_0": bench_breaking_2_0,
 }
 
