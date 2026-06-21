@@ -127,5 +127,18 @@ strongest model on every step overpays, so the cheapest capable model earns the
 easy steps; independent work should run concurrently, not serially; and a timer
 whose wake condition did not survive a restart would silently never fire.
 
+## Test-time compute & reasoning
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| At a fixed candidate budget, verifier-guided best-of-N beats the single-shot draw — a quality-per-dollar Pareto improvement. | ≥ +0.1 quality | `families.test_time_compute.pareto_quality_gain` |
+| The best-of-N path returns quality per cent of inference spend above a floor. | ≥ 20 points/¢ | `families.test_time_compute.quality_per_cost_point` |
+| A reasoning step's thinking budget never exceeds the controller's hard token ceiling at any difficulty. | ≤ 8192 tokens | `families.test_time_compute.max_thinking_budget` |
+
+Test-time compute is only worth its spend if it lifts quality at the same budget;
+early-exit returns the saved draws the moment the verifier clears the bar, and the
+reasoning controller scales effort with difficulty but holds a hard token ceiling
+so a hard task can never silently exhaust the run.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

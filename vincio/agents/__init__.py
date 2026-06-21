@@ -42,6 +42,7 @@ from .hierarchical import (
     dag_from_plan_node,
 )
 from .planner import Planner, PlanningMode
+from .reasoning import ReasoningController, ReasoningDecision, ReasoningPolicy
 from .repair import PlanRepairer
 from .research import ResearchAgent, ResearchBudget, ResearchReport
 from .scheduling import ScheduleResult, SubgraphOutcome, SubgraphScheduler, SubgraphTask
@@ -99,6 +100,10 @@ __all__ = [
     "CostAwareSelector",
     "SelectionDecision",
     "ActionCandidate",
+    # reasoning-effort control
+    "ReasoningController",
+    "ReasoningDecision",
+    "ReasoningPolicy",
     # parallel sub-graph scheduling
     "SubgraphScheduler",
     "SubgraphTask",

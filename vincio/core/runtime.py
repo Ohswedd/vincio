@@ -78,6 +78,10 @@ class _PreparedRun:
     request_kwargs: dict[str, Any] = field(default_factory=dict)
     cache_info: dict[str, Any] = field(default_factory=dict)
     cascade_active: bool = False  # this run routes through app.cascade (cheap→strong)
+    # Thinking-prefix identity for reasoning-trace caching (set when reasoning
+    # is active); the runtime records the paid trace so a re-ask can reuse it.
+    reasoning_prefix_hash: str | None = None
+    reasoning_effort: str | None = None
 
 
 class VincioRuntime:
@@ -651,6 +655,26 @@ class VincioRuntime:
                 evidence_items=compiled_context.ir.evidence_as_items(),
                 provider_enforces_schema=decoding == DecodingMode.NATIVE,
             )
+            # Reasoning-effort control: an explicit RunConfig effort always wins;
+            # otherwise an installed controller derives one from the task
+            # classification and the live budget, holding a hard token ceiling.
+            reasoning_effort = run_config.reasoning_effort
+            reasoning_budget_tokens = run_config.thinking_budget_tokens
+            reasoning_decision = None
+            controller = getattr(app, "reasoning_controller", None)
+            if controller is not None and capabilities.reasoning:
+                reasoning_decision = controller.decide(
+                    task=routed.task,
+                    text=routed.input.text or routed.objective.text,
+                    remaining_output_tokens=budget.max_output_tokens,
+                    evidence_count=len(getattr(compiled_context.ir, "evidence", []) or []),
+                    prefix_hash=compiled_prompt.prompt_spec_hash,
+                    model=model,
+                )
+                if reasoning_effort is None:
+                    reasoning_effort = reasoning_decision.effort
+                if reasoning_budget_tokens is None:
+                    reasoning_budget_tokens = reasoning_decision.thinking_budget_tokens
             span.set(
                 prompt_id=compiled_prompt.prompt_id,
                 rendered_hash=compiled_prompt.rendered_hash,
@@ -659,16 +683,20 @@ class VincioRuntime:
                 lint=[f.code for f in compiled_prompt.lint_findings],
                 decoding=decoding.value,
                 reasoning=(
-                    (run_config.reasoning_effort or "default")
-                    if (
-                        run_config.reasoning_effort is not None
-                        or run_config.thinking_budget_tokens is not None
-                    )
+                    (reasoning_effort or "default")
+                    if (reasoning_effort is not None or reasoning_budget_tokens is not None)
                     and capabilities.reasoning
                     else "off"
                 ),
+                reasoning_source=(
+                    "controller"
+                    if reasoning_decision is not None and run_config.reasoning_effort is None
+                    else "config"
+                ),
                 schema=contract.schema_name if contract.schema_def else None,
             )
+            if reasoning_decision is not None:
+                span.set(reasoning_reason=reasoning_decision.reason)
 
         # Pre-flight input-token cap: estimate the full first-call input
         # against ``max_input_tokens`` before spending a single token, at the
@@ -717,12 +745,13 @@ class VincioRuntime:
             request_kwargs["temperature"] = run_config.temperature
         if run_config.seed is not None:
             request_kwargs["seed"] = run_config.seed
-        # Unified reasoning control: provider-neutral effort / thinking budget.
-        # Providers that don't expose reasoning ignore these fields.
-        if run_config.reasoning_effort is not None:
-            request_kwargs["reasoning_effort"] = run_config.reasoning_effort
-        if run_config.thinking_budget_tokens is not None:
-            request_kwargs["thinking_budget_tokens"] = run_config.thinking_budget_tokens
+        # Unified reasoning control: provider-neutral effort / thinking budget,
+        # either pinned on the RunConfig or chosen by the reasoning controller
+        # above. Providers that don't expose reasoning ignore these fields.
+        if reasoning_effort is not None:
+            request_kwargs["reasoning_effort"] = reasoning_effort
+        if reasoning_budget_tokens is not None:
+            request_kwargs["thinking_budget_tokens"] = reasoning_budget_tokens
         request_kwargs["max_output_tokens"] = budget.max_output_tokens
 
         return _PreparedRun(
@@ -738,6 +767,8 @@ class VincioRuntime:
             request_kwargs=request_kwargs,
             cache_info=cache_info,
             cascade_active=cascade_active,
+            reasoning_prefix_hash=compiled_prompt.prompt_spec_hash,
+            reasoning_effort=reasoning_effort,
         )
 
     # ------------------------------------------------------------------
@@ -1037,7 +1068,36 @@ class VincioRuntime:
                 cost_usd=round(result.cost_usd, 8),
                 response_text=response.text[:500],
             )
+        self._record_reasoning_trace(prepared, model, response, cached is not None)
         return response
+
+    def _record_reasoning_trace(
+        self, prepared: _PreparedRun, model: str, response: Any, cached: bool
+    ) -> None:
+        """Record a paid thinking prefix so a re-ask can reuse it.
+
+        Skips cache hits (no thinking was paid for) and runs with no reasoning
+        controller installed. Keyed by the compiled stable-prefix hash + model +
+        effort, so the controller can later step effort down on a warm prefix.
+        """
+        controller = getattr(self.app, "reasoning_controller", None)
+        if (
+            controller is None
+            or cached
+            or prepared.reasoning_prefix_hash is None
+            or not response.usage.reasoning_tokens
+        ):
+            return
+        response_id = None
+        if isinstance(response.raw, dict):
+            response_id = response.raw.get("id")
+        controller.record_trace(
+            prefix_hash=prepared.reasoning_prefix_hash,
+            model=model,
+            effort=prepared.reasoning_effort,
+            reasoning_tokens=response.usage.reasoning_tokens,
+            response_id=response_id,
+        )
 
     async def _model_tool_loop(
         self,
@@ -1273,6 +1333,7 @@ class VincioRuntime:
                     cost_usd=round(result.cost_usd, 8),
                     response_text=response.text[:500],
                 )
+            self._record_reasoning_trace(prepared, prepared.model, response, cached is not None)
             usage.steps += 1
             # Peak single-call input (per-call window), not a cumulative sum —
             # see _model_tool_loop.

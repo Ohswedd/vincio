@@ -77,6 +77,27 @@ app.run("export button 500s").output.label
   `thinking_budget_tokens` map across OpenAI/Anthropic/Gemini; thinking tokens
   are billed. Optional `OpenAIResponsesProvider` via
   `build_provider("openai_responses")`.
+- **Reasoning controller (auto effort).** `app.use_reasoning_controller(policy=ReasoningPolicy(...))`
+  installs a `ReasoningController` (`vincio.agents`): a run that does not pin
+  `reasoning_effort` gets effort + a thinking-token budget chosen per step from
+  the task classification and the live budget, clamped to a hard
+  `max_reasoning_tokens` ceiling and a `budget_fraction` of the remaining output
+  budget. Low prior confidence escalates one level; a warm thinking prefix in the
+  `ReasoningTraceCache` steps it down. `app.reasoning()` builds one to call
+  `.decide(...)` directly; the decision is recorded on the trace
+  (`reasoning_source`, `reasoning_reason`).
+- **Reasoning-trace caching.** `ReasoningTraceCache` (`vincio.caching`) is a
+  byte-budgeted LRU of paid thinking prefixes keyed by stable-prefix hash + model
+  + effort, so a re-ask that shares a thinking prefix reuses it under the
+  resident-memory budget — the reasoning analogue of the prompt render program.
+- **Test-time search.** `app.test_time_search(input, *, verifier=, strategy="best_of_n"|"self_consistency", n=)`
+  or `TestTimeSearch(generate, verifier=, budget=SearchBudget(...))` in
+  `vincio.optimize`: verifier-guided best-of-N, self-consistency, and beam search
+  over tool-use trajectories, scored by the existing critics via a `Verifier`
+  protocol — `JudgeVerifier` (any `Judge`/`JudgeEnsemble`; disagreement → low
+  confidence), `RewardVerifier` (any `VerifiableReward`/`RewardModel`), or a
+  callable. Early-exits the moment the verifier clears the bar (best-of-N) or the
+  majority is locked (self-consistency); bounded by candidate / cost / deadline.
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
