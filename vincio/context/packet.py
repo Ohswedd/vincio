@@ -89,6 +89,9 @@ class ContextPacket(BaseModel):
                 "citation_ref": e.citation_ref,
                 "source_id": e.source_id,
                 "source_type": e.source_type,
+                # Provenance carried onto the packet so a typed information-flow
+                # label can be derived end-to-end (taint-propagating materialize).
+                "trust_level": e.trust_level.value,
                 "page": e.page,
                 "relevance": e.relevance,
                 # multimodal evidence is first-class in the packet, so a
@@ -168,14 +171,56 @@ class ContextPacket(BaseModel):
                 return item.text
         return None
 
-    def materialize(self, store: EvidenceStore | None = None) -> ContextPacket:
-        """Fill evidence text in place (slim → full).
+    def trust_label(self, item_id: str) -> str:
+        """The information-flow label (``trusted`` / ``untrusted`` /
+        ``quarantined``) of an evidence entry, derived from its provenance."""
+        from ..security.capability import TrustLabel
 
-        Resolves from the held IR when present (same process), otherwise from a
-        content-addressed :class:`EvidenceStore` keyed by each entry's
-        ``text_hash`` — so a packet deserialized in another worker still
-        materializes without the original IR.
+        for entry in self.evidence_items:
+            if entry.get("id") == item_id or entry.get("citation_ref") == item_id:
+                level = entry.get("trust_level", "untrusted_document")
+                return TrustLabel.from_trust_level(level).value
+        return TrustLabel.UNTRUSTED.value
+
+    def tainted_evidence(self, store: EvidenceStore | None = None) -> list[Any]:
+        """Return each evidence text as a taint-labeled value.
+
+        Materializes the packet, then wraps every entry's text in a
+        :class:`~vincio.security.TaintedValue` carrying the entry's
+        :class:`~vincio.security.TrustLabel`, so a value derived from a retrieved
+        document or tool result stays tainted as it flows into a planner or tool.
         """
+        from ..security.capability import TaintedValue, TrustLabel
+
+        self.materialize(store)
+        tainted: list[Any] = []
+        for entry in self.evidence_items:
+            label = TrustLabel.from_trust_level(entry.get("trust_level", "untrusted_document"))
+            tainted.append(
+                TaintedValue(
+                    value=entry.get("text", ""),
+                    label=label,
+                    sources=(str(entry.get("source_id") or entry.get("id") or "evidence"),),
+                )
+            )
+        return tainted
+
+    def materialize(self, store: EvidenceStore | None = None) -> ContextPacket:
+        """Fill evidence text in place (slim → full), propagating trust labels.
+
+        Resolves text from the held IR when present (same process), otherwise
+        from a content-addressed :class:`EvidenceStore` keyed by each entry's
+        ``text_hash`` — so a packet deserialized in another worker still
+        materializes without the original IR. Every entry is also stamped with
+        its derived ``trust_label``, so the materialized bytes carry their
+        information-flow label and a downstream consumer knows what is untrusted.
+        """
+        from ..security.capability import TrustLabel
+
+        for entry in self.evidence_items:
+            entry["trust_label"] = TrustLabel.from_trust_level(
+                entry.get("trust_level", "untrusted_document")
+            ).value
         if not self.slim:
             return self
         by_id = (

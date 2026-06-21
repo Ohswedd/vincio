@@ -464,6 +464,14 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "the injection finding in `.details`.",
         ),
         _entry(
+            "CONTAINMENT_BLOCKED",
+            "Containment blocked an untrusted capability",
+            "An argument derived from untrusted data reached a write/external tool "
+            "without authority. Mint a CapabilityToken from the user's request via "
+            "CapabilityBroker (or route the call through the approval gate) before "
+            "the side effect; the DualPlaneExecutor enforces this automatically.",
+        ),
+        _entry(
             "PII_POLICY",
             "PII policy violation",
             "Detected PII violates the active policy. Enable redaction "

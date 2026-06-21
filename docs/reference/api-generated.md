@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**176** public symbols.
+**184** public symbols.
 
 ## Classes
 
@@ -94,6 +94,14 @@ Ramp a percentage of live traffic onto a candidate, with auto-rollback.
 
 How a candidate is qualified before it is deployed live.
 
+### `CapabilityBroker(secret=…, default_ttl_s=…)`
+
+Mints and verifies :class:`CapabilityToken`\ s from the user's authority.
+
+### `CapabilityToken(**data)`
+
+An unforgeable, capability-scoped grant minted from the user's request.
+
 ### `CausalAttributor(app, dataset, factors, metric=…, aggregate=…, repeats=…, concurrency=…)`
 
 Attribute a metric delta to the components a release changed, by Shapley counterfactual replay over the dataset.
@@ -129,6 +137,14 @@ Records and checks consent, binding data to a purpose + lawful basis.
 ### `Constraint(text=…, **data)`
 
 !!! abstract "Usage Documentation" [Models](../concepts/models.md)
+
+### `ContainmentMonitor()`
+
+Records capability exercises so containment can be proven after a run.
+
+### `ContainmentReport(**data)`
+
+The verdict of checking the containment invariant over a run.
 
 ### `ContentCapturePolicy(**data)`
 
@@ -185,6 +201,10 @@ Render validated results into cited, contract-checked, audited documents.
 ### `DocumentContract(**data)`
 
 The structural contract a generated document must satisfy.
+
+### `DualPlaneExecutor(tool_runtime, broker=…, monitor=…, principal=…, approval=…, provider=…, model=…)`
+
+Capability-secure executor separating the control and data planes.
 
 ### `Environment(*args, **kwargs)`
 
@@ -534,6 +554,10 @@ PASS / FAIL verdict for promoting a model into the live path.
 
 Documentation for the whole system: model + retrieval + memory + safety.
 
+### `TaintedValue(value, label=…, sources=…)`
+
+A value carried together with its :class:`TrustLabel` and provenance.
+
 ### `TaskType(*args, **kwds)`
 
 Task taxonomy used by the input router.
@@ -557,6 +581,10 @@ Attribute a trajectory's outcome reward to the steps that earned it.
 ### `TrajectoryOptimizer(reward_model, policy=…, learning_rate=…, kl_max=…, iterations=…, group_normalize=…, min_reward_improvement=…)`
 
 GRPO-style on-policy update over a deterministic policy, safety-gated.
+
+### `TrustLabel(*args, **kwds)`
+
+A typed information-flow label on a value or context candidate.
 
 ### `TwoStageIndex(embedder=…, coarse_dims=…, quantization=…, rerank_factor=…)`
 
@@ -703,6 +731,10 @@ Pause the graph until ``when`` (a datetime or ISO string), durably.
 ### `stability_of(obj)`
 
 Return the stability record for ``obj``.
+
+### `verify_containment(events)`
+
+Check ``untrusted ⇒ no unapproved capability`` over recorded events.
 
 ### `verify_erasure_proof(proof, signer=…)`
 

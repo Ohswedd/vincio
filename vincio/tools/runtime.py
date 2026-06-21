@@ -172,6 +172,7 @@ class ToolRuntime:
         principal: Principal | None = None,
         resource_tenant_id: str | None = None,
         approved: bool = False,
+        capability: Any = None,
     ) -> ToolResult:
         principal = principal or Principal()
         tool: RegisteredTool = self.registry.get(call.tool_name)
@@ -190,7 +191,8 @@ class ToolRuntime:
 
             # 2. permissions
             decision = self.permissions.check(
-                spec, call.arguments, principal, resource_tenant_id=resource_tenant_id
+                spec, call.arguments, principal, resource_tenant_id=resource_tenant_id,
+                capability=capability,
             )
             span.set(permission_checks=decision.checks)
             if not decision.allowed:

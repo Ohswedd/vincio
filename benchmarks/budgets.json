@@ -175,6 +175,27 @@
     "families.security.pii_coverage": {
       "gte": 0.8
     },
+    "families.containment.escalation_rate": {
+      "lte": 0
+    },
+    "families.containment.attacks_contained": {
+      "eq": true
+    },
+    "families.containment.containment_holds": {
+      "eq": true
+    },
+    "families.containment.planner_isolated": {
+      "eq": true
+    },
+    "families.containment.legitimate_allowed": {
+      "eq": true
+    },
+    "families.containment.taint_propagates": {
+      "eq": true
+    },
+    "families.containment.forged_capability_rejected": {
+      "eq": true
+    },
     "families.evals.metric_agreement": {
       "gte": 0.9
     },
