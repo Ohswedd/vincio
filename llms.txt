@@ -144,6 +144,30 @@ app.run("export button 500s").output.label
   `families.record_replay` (replay byte-identical + divergence detected + verifiable).
   CLI: `vincio trace verify-recording <file>`. Distinct from `ReplayRunner` (which
   re-runs a recorded *input* to diff a candidate app, not byte-faithful replay).
+- **Learned semantic cache & near-miss KV reuse.** `LearnedSemanticCache`
+  (`vincio.caching`, `app.use_semantic_cache(policy_or_cache=None)`) answers a
+  *semantically-equivalent* (not byte-identical) request from cache. A
+  `lookup(query, policy_scope=, schema_ref=)` embeds the query, finds the best
+  in-scope/in-schema, unexpired entry, and serves it (`SemanticCacheHit.value`,
+  `.accepted`) **only at/above a calibrated acceptance threshold** — below the bar
+  is a recorded-but-never-served near-miss. The threshold is *learned*:
+  `ThresholdCalibrator`/`cache.calibrate(examples)` / `await
+  cache.calibrate_from_pairs([(q, q2, equivalent), ...])` fits the lowest bar
+  (≥ `min_floor`) whose accepted set clears `target_precision`, returning a
+  `CalibrationReport` (`calibrated=False` ⇒ threshold `1.0`, i.e. off, rather than
+  guess). Every accepted hit is auditable (`cache.audit()`) and reversible
+  (`cache.revoke(key)`); the cache is a bounded LRU under the resident-memory budget
+  (`SemanticCachePolicy.max_entries` / `max_resident_bytes`), surfaced by
+  `cache.stats()` / `app.semantic_cache_report()` (a served near-miss is a $0-billed
+  call in the cost report). `SemanticCacheGate(quality_floor=).evaluate(cache,
+  [SemanticGateCase(...)])` is the eval-replay no-regression check (the cache
+  analogue of the model-swap `SwapGate`): it passes a faithful cache and blocks a
+  drifted one. `KVPrefixPool` (`app.use_kv_prefix_reuse()`) accounts cross-request
+  reuse of a shared stable-prefix KV footprint — `observe(prefix_hash=, model=,
+  prefix_tokens=)` reports the serving-engine KV a shared head avoids recomputing
+  (`app.kv_prefix_report()`), bounded under the resident budget. The runtime
+  consults both, opt-in, only when installed. Held by `families.semantic_cache`
+  (accepted near-miss at-least-as-good + below-bar never served + gate blocks drift).
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
@@ -663,6 +687,15 @@ app.run("export button 500s").output.label
   min_prefix_tokens=1024)` (on by default via `provider_cache` /
   `provider_cache_ttl` / `provider_cache_min_prefix_tokens` config;
   `Message.cache_ttl`; model spans gain `cache_hit_rate`/`cached_input_tokens`).
+- **Learned semantic cache & KV reuse.** `app.use_semantic_cache()` installs a
+  `LearnedSemanticCache` the runtime consults before a live call, serving a
+  near-miss above a trace-calibrated threshold (`cache.calibrate_from_pairs(...)`,
+  `SemanticCacheGate`); `app.use_kv_prefix_reuse()` installs a `KVPrefixPool` for
+  cross-request stable-prefix KV reuse. Config: `cache.semantic_cache` /
+  `cache.semantic_threshold` / `cache.kv_prefix_reuse`; reports via
+  `app.semantic_cache_report()` / `app.kv_prefix_report()`; model spans gain
+  `semantic_cached` / `kv_prefix_reused` / `kv_bytes_reused`. See the full entry
+  above (`families.semantic_cache`).
 
 ## Security & governance
 

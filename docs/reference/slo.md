@@ -188,5 +188,26 @@ is a divergence, reported with the edge that drifted rather than silently
 re-executed. Recordings are content-addressed and carry a fidelity digest, so a
 recording shared across processes is verified before it is trusted for replay.
 
+## Learned semantic cache & near-miss KV reuse
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| An accepted near-miss served from the learned semantic cache is at-least-as-good as the live answer the same request would have produced, at a fixed budget. | ≥ 0.90 quality | `families.semantic_cache.accepted_near_miss_quality` |
+| A near-miss below the calibrated acceptance threshold is never served. | true | `families.semantic_cache.below_bar_never_served` |
+| The eval-replay regression gate passes a faithful cache and blocks a drifted one. | true | `families.semantic_cache.gate_blocks_drift` |
+
+Exact-match caching serves a byte-identical request for free; the rung above it is
+near-miss reuse — answering a request that is *semantically equivalent* to a recent
+one straight from cache. The risk is serving a near-miss that is not actually
+equivalent, so the cache never serves below a **calibrated** acceptance threshold:
+the bar is fit from labelled trace pairs so accepted near-misses clear a precision
+target, falling back to off rather than guessing when the target is unreachable.
+Every accepted hit is auditable and reversible, and a cache whose calibration has
+drifted is caught by the same eval-replay no-regression check that gates a model
+swap. Cross-request KV-prefix reuse extends the warm-prefix layout from one request
+to a family that shares a stable head, reporting the serving-engine KV the shared
+head avoids recomputing — all held under the resident-memory budget. The budgets
+gate full hit-quality and full precision, above the published floors.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

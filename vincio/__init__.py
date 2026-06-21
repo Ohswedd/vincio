@@ -40,7 +40,17 @@ from .agents import (
     wait_for_event,
 )
 from .assistant import ApprovalRecord, Assistant, AssistantTurn
-from .caching import ReasoningTrace, ReasoningTraceCache
+from .caching import (
+    CalibrationExample,
+    KVPrefixPool,
+    LearnedSemanticCache,
+    ReasoningTrace,
+    ReasoningTraceCache,
+    SemanticCacheGate,
+    SemanticCachePolicy,
+    SemanticGateCase,
+    ThresholdCalibrator,
+)
 from .context.llmlingua import LLMLinguaCompressor
 from .context.longhorizon import (
     ContextBudget,
@@ -196,7 +206,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.12.0"
+__version__ = "3.13.0"
 
 __all__ = [
     "ContextApp",
@@ -264,6 +274,14 @@ __all__ = [
     "ReasoningPolicy",
     "ReasoningTrace",
     "ReasoningTraceCache",
+    # learned semantic cache & near-miss KV reuse
+    "LearnedSemanticCache",
+    "SemanticCachePolicy",
+    "SemanticCacheGate",
+    "SemanticGateCase",
+    "ThresholdCalibrator",
+    "CalibrationExample",
+    "KVPrefixPool",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

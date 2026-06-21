@@ -100,6 +100,23 @@ the recorder, recordings are content-addressed and carry a verifiable fidelity
 digest (`recording.verify()`) so tampering is detectable, and replaying one runs
 entirely in-process against the recorded edges (no new egress).
 
+The **learned semantic cache** (`LearnedSemanticCache`, `app.use_semantic_cache`)
+serves a *near-miss* — a recent answer to a semantically-equivalent, not
+byte-identical, request — so it carries two risks the design contains explicitly.
+**Correctness:** a near-miss is served only at or above an acceptance threshold
+*calibrated from labelled traces* to clear a precision target, and when the target
+is unreachable the threshold falls back to `1.0` (off) rather than guess — so the
+cache never serves below the bar. Every accepted hit is auditable (`cache.audit()`)
+and reversible (`cache.revoke(key)`), and a cache whose calibration has drifted is
+caught by `SemanticCacheGate` — the same eval-replay no-regression check that gates
+a model swap — before it ships. **Isolation:** entries are partitioned by
+`policy_scope` (model + stable prompt head) and output schema, so a cached answer
+is never served across a tenant or policy boundary; a policy / schema / scope
+change clears the cache through the same `InvalidationManager` that clears the
+exact-match caches. The cache holds the response payload and the query embedding
+only, bounded under the resident-memory budget, and is consulted on the live path
+only when you opt in.
+
 ### Multi-tenant isolation & access control
 
 Access is governed by RBAC scopes and ABAC rules through one `AccessController`.

@@ -58,6 +58,7 @@ and a runnable example.
 | **Long-horizon context engineering** | A per-run `ContextGovernor` (`app.use_context_governor`) holding a `ContextBudget` (live tokens, residency, KV-cache footprint) the way the cost report holds a dollar budget; intra-run `RelevanceDecay` that demotes stale spans before they crowd out fresh signal, surfaced in the excluded-context report; and a provenance-preserving `ContextCompactor` that folds cold spans into hierarchical summaries in the memory OS and pages their full text back on demand from the content-addressed store — so a million-token, multi-day, multi-session run stays inside a bounded quality and cost envelope as the horizon grows 10×, held by a horizon-scaling SLO. |
 | **World-model / simulation-based planning** | A deterministic, offline `WorldModel` fit from recorded reset/step transitions that learns each tool's parameterized effect under a learned precondition (predicting the next observation and a verifier-scored reward, generalizing over arguments) and earns planning weight only once a `CalibrationReport` shows its predictions track the real environment; and a `ModelPredictivePlanner` that searches imagined rollouts with the test-time-search beam, commits the best first action, and re-plans on the real observation — bounded by the same budgets the orchestrator enforces and held by a planning-accuracy SLO (an imagined-rollout planner matches or beats reactive planning at a fixed action budget on the environment harness). |
 | **Causal record-replay debugger** | A `Recorder` (`vincio.observability`) that captures every non-deterministic edge of a run — model responses, tool outputs, retrieval hits, the negotiated capabilities, and the clock/seed — keyed to its trace spans into a portable, content-addressed, verifiable `Recording`; a deterministic `Replayer` that serves each edge back so a recorded run replays byte-for-byte (the recording, not the live provider, drives the run) with a step/inspect surface over the span tree and a `Divergence` report the moment live code no longer matches; and branch-and-edit that forks a recording, changes an edge or the input, and re-executes only the affected suffix while the unchanged prefix is still served from the recording — held by a replay-fidelity SLO (a recorded run replays byte-identically and a divergence is detected). |
+| **Learned semantic cache & near-miss KV reuse** | A `LearnedSemanticCache` (`app.use_semantic_cache`) that answers a *semantically-equivalent* (not byte-identical) request from cache, serving a near-miss only above a `ThresholdCalibrator` acceptance bar *learned from the platform's own traces* so an accepted hit clears a precision target (never serving below the floor); a `KVPrefixPool` (`app.use_kv_prefix_reuse`) that reuses a shared stable-prefix KV footprint across a family of requests that share a head, reporting the serving-engine KV the shared head avoids recomputing; and a `SemanticCacheGate` that catches a drifted cache with the same eval-replay no-regression check that gates a model swap — every near-miss auditable and reversible, all held under the resident-memory budget and a hit-quality SLO (an accepted near-miss is at-least-as-good as a live answer at a fixed budget). |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
@@ -73,35 +74,35 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **causal record-replay debugger** (a `Recorder` that captures every
-non-deterministic edge of a run into a portable, content-addressed `Recording`, a deterministic
-`Replayer` that serves each edge back so a recorded run replays byte-for-byte and reports a divergence
-when live code no longer matches, and branch-and-edit that re-executes only the affected suffix) — has
-shipped and folded into the **Causal record-replay debugger** row above. The next theme is scheduled
-below. It closes a specific gap in the platform's *own* frontier — a rung that exists in the literature
-and in buyer demand but not yet in the package — rather than a gap measured against any one competitor.
-An indicative minor-version target is given; cadence holds one coherent theme per minor.
+The most recent scheduled theme — **learned semantic cache & near-miss KV reuse** (a
+`LearnedSemanticCache` that answers a semantically-equivalent request from cache only above a
+trace-calibrated acceptance bar, a `KVPrefixPool` that reuses a shared stable-prefix KV footprint
+across a request family, and a `SemanticCacheGate` that catches a drifted cache with the same
+eval-replay check that gates a model swap) — has shipped and folded into the **Learned semantic cache
+& near-miss KV reuse** row above. The next theme is scheduled below. It closes a specific gap in the
+platform's *own* frontier — a rung that exists in the literature and in buyer demand but not yet in the
+package — rather than a gap measured against any one competitor. An indicative minor-version target is
+given; cadence holds one coherent theme per minor.
 
-### 1 · Learned semantic cache & near-miss KV reuse *(target 3.13)*
+### 1 · On-device fine-tuning & continual local adaptation *(target 3.14)*
 
-Exact-match prompt caching already serves an identical request for free and a provider-aware TTL keeps
-the stable prefix warm; the rung the platform has not yet made first-class is **near-miss reuse** —
-answering a request that is *semantically equivalent* (not byte-identical) to a recent one from cache,
-and reusing a shared KV prefix across requests that share a stable head, trained on the platform's own
-traces and bounded by the resident-memory budget. The primitives are in place: the deterministic
-embedder, the response cache, the trace store, and the resident-memory SLO.
+The shipped flywheel already turns traces into executed *hosted* fine-tune jobs, and the in-process
+GGUF provider already runs a local model air-gapped; the rung the platform has not yet made first-class
+is **local adaptation** — LoRA-class continual fine-tuning of the in-process model from the same
+flywheel, so an air-gapped or edge deployment improves on its own traffic without a hosted training
+round-trip. The primitives are in place: the GRPO `TrajectoryOptimizer`, the distillation flywheel, the
+`RewardModel`, and canary-gated promotion.
 
-- **Semantic cache** — a similarity-keyed cache over recent responses with a calibrated acceptance
-  threshold (learned from traces, never serving a near-miss below the bar), surfaced in the cost
-  report and held under the resident-memory budget.
-- **KV-prefix reuse** — cross-request reuse of a shared stable-prefix KV footprint, extending the
-  warm-prefix layout from one request to a family of requests that share a head.
-- **Safety gates** — every near-miss hit is auditable and reversible, gated by the same eval-replay
-  regression check that gates a model swap, so a cache that drifts is caught before it ships.
+- **Local adapter training** — a LoRA-class adapter fit on-device from the flywheel's promoted dataset
+  and applied to the GGUF provider without the run leaving the process.
+- **Continual adaptation loop** — the streaming `SelfImprovementPolicy` driving local adapter refreshes
+  under the same no-regression and canary gates that gate a hosted fine-tune job.
+- **Bounded & reversible** — each adapter is versioned, eval-gated, and rolled back on regression,
+  held by the existing promotion safety gates.
 
-*Ships as:* `vincio.caching` gains a learned semantic cache and a KV-prefix reuse layer behind an
-opt-in policy; a `semantic_cache` VincioBench family with a hit-quality SLO (an accepted near-miss is
-at-least-as-good as a live answer at a fixed budget); a runnable example.
+*Ships as:* the optimize subsystem gains an on-device LoRA trainer and an adapter registry behind an
+opt-in policy; a `local_adaptation` VincioBench family with a no-regression SLO (a locally-adapted
+model is at-least-as-good as its base on the eval set); a runnable example.
 
 ---
 
@@ -115,8 +116,6 @@ Grouped by where they would land.
 - 🔭 **Federated / cross-org self-improvement** — sharing gated optimizations and learned routing
   across trust boundaries without sharing raw traffic, once privacy-preserving aggregation standards
   settle. Builds on the shipped on-policy learning loop and the existing canary-promoted release.
-- 🔭 **On-device fine-tuning / continual local adaptation** — LoRA-class local adaptation of the
-  in-process GGUF provider from the same flywheel, beyond executed hosted fine-tune jobs.
 - 🔭 **Differential-privacy memory & training** — a DP accountant over memory consolidation and the
   learning loop so a per-user privacy budget is provable, beyond the consent ledger and provable
   erasure.

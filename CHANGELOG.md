@@ -4,6 +4,63 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.13.0] - 2026-06-22
+
+Learned semantic cache & near-miss KV reuse. Exact-match prompt caching already
+serves a byte-identical request for free; this release adds the rung above it —
+**near-miss reuse**, answering a request that is *semantically equivalent* (not
+byte-identical) to a recent one straight from cache, with the acceptance threshold
+*learned from the platform's own traces* so a near-miss is served only when it is
+safe — never below the bar. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the dependency-free offline path is the default, and
+nothing below runs unless you opt in.
+
+### Added
+
+- **`LearnedSemanticCache` (`vincio.caching`).** A bounded, calibrated, auditable
+  near-miss response cache. `await cache.lookup(query, policy_scope=, schema_ref=)`
+  embeds the query, scans the entries that share its scope (model + stable prompt
+  head) and output schema, and serves the most-similar unexpired entry **only when
+  its similarity clears the calibrated acceptance threshold** — a below-bar best
+  match is a recorded-but-never-served near-miss. `await cache.store(query, value,
+  policy_scope=, schema_ref=, response_tokens=)` populates it. Bounded LRU under the
+  resident-memory budget (`SemanticCachePolicy.max_entries` / `max_resident_bytes`),
+  surfaced by `cache.stats()` (a `SemanticCacheStats`). Deterministic insertion
+  order; freshness reads an injectable clock.
+- **Trace-calibrated acceptance threshold.** `ThresholdCalibrator` /
+  `cache.calibrate(examples)` / `await cache.calibrate_from_pairs([(q, q2,
+  equivalent), ...])` fit the **lowest** threshold (at or above `min_floor`) whose
+  accepted set clears `target_precision`, returning a `CalibrationReport`. When the
+  target is unreachable the threshold falls back to `1.0` (near-miss serving
+  effectively off) with `calibrated=False`, rather than guess — the "never serve
+  below the bar" guarantee.
+- **Auditability & reversibility.** Every accepted near-miss is recorded as a
+  `SemanticCacheHit` (`cache.audit()`), and any entry can be rolled back with
+  `cache.revoke(key)`; `cache.clear()` participates in the `InvalidationManager` so
+  a policy / schema / scope change clears the cache like the exact-match caches.
+- **`SemanticCacheGate`.** The cache analogue of the model-swap `SwapGate`:
+  `await gate.evaluate(cache, [SemanticGateCase(...)])` replays probe cases through
+  the cache and checks every served near-miss is at-least-as-good as the live answer
+  at a fixed budget (a pluggable scorer; dependency-free `lexical_quality` default),
+  so a drifted cache is caught before it ships.
+- **`KVPrefixPool` (`vincio.caching`).** Cross-request reuse of a shared
+  stable-prefix KV footprint: `pool.observe(prefix_hash=, model=, prefix_tokens=)`
+  reports whether a request reused a warm head and the serving-engine KV the shared
+  head avoids recomputing (`pool.report()` → `KVReuseReport`), bounded LRU under the
+  resident budget.
+- **App integration.** `app.use_semantic_cache(policy_or_cache=None)` and
+  `app.use_kv_prefix_reuse(pool=None)` install both layers (also enabled from
+  `cache.semantic_cache` / `cache.kv_prefix_reuse` config); the runtime consults
+  them on the live path only when installed (model spans gain `semantic_cached` /
+  `kv_prefix_reused` / `kv_bytes_reused`). Reports via `app.semantic_cache_report()`
+  / `app.kv_prefix_report()`; a served near-miss is a $0-billed call in the cost
+  report.
+- **`semantic_cache` VincioBench family + SLOs.** Measures trace calibration,
+  near-miss serving above the bar, below-bar refusal, at-least-as-good hit quality
+  served through the run path, the eval-replay gate blocking a drifted cache,
+  cross-request KV reuse, and resident-budget bounding. Three new published SLOs
+  gate it. Runnable example `57_learned_semantic_cache.py`.
+
 ## [3.12.0] - 2026-06-21
 
 Causal record-replay debugger. The eval-replay runner and durable-graph

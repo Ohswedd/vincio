@@ -3,6 +3,13 @@
 from .base import CacheBackend, InMemoryCache, SQLiteCache
 from .compilation import ChunkCache, ContextCompileCache, PromptCompileCache
 from .invalidation import InvalidationManager
+from .kvreuse import (
+    KVPrefixEntry,
+    KVPrefixObservation,
+    KVPrefixPool,
+    KVReuseReport,
+    kv_prefix_key,
+)
 from .layers import (
     ContextPacketCache,
     EvalResultCache,
@@ -11,6 +18,20 @@ from .layers import (
     SemanticCache,
 )
 from .reasoning import ReasoningTrace, ReasoningTraceCache, reasoning_prefix_key
+from .semantic import (
+    CalibrationExample,
+    CalibrationReport,
+    LearnedSemanticCache,
+    SemanticCacheEntry,
+    SemanticCacheGate,
+    SemanticCacheHit,
+    SemanticCachePolicy,
+    SemanticCacheStats,
+    SemanticGateCase,
+    SemanticGateReport,
+    ThresholdCalibrator,
+    lexical_quality,
+)
 
 __all__ = [
     "CacheBackend",
@@ -28,4 +49,22 @@ __all__ = [
     "ReasoningTrace",
     "ReasoningTraceCache",
     "reasoning_prefix_key",
+    # learned semantic cache & near-miss KV reuse
+    "SemanticCachePolicy",
+    "CalibrationExample",
+    "CalibrationReport",
+    "ThresholdCalibrator",
+    "SemanticCacheEntry",
+    "SemanticCacheHit",
+    "SemanticCacheStats",
+    "LearnedSemanticCache",
+    "SemanticGateCase",
+    "SemanticGateReport",
+    "SemanticCacheGate",
+    "lexical_quality",
+    "kv_prefix_key",
+    "KVPrefixEntry",
+    "KVPrefixObservation",
+    "KVReuseReport",
+    "KVPrefixPool",
 ]
