@@ -10,6 +10,7 @@ from .layers import (
     RetrievalCache,
     SemanticCache,
 )
+from .reasoning import ReasoningTrace, ReasoningTraceCache, reasoning_prefix_key
 
 __all__ = [
     "CacheBackend",
@@ -24,4 +25,7 @@ __all__ = [
     "ResponseCache",
     "RetrievalCache",
     "SemanticCache",
+    "ReasoningTrace",
+    "ReasoningTraceCache",
+    "reasoning_prefix_key",
 ]

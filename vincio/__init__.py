@@ -12,6 +12,9 @@ from .agents import (
     DistributedCheckpointer,
     HTNDomain,
     PlanRepairer,
+    ReasoningController,
+    ReasoningDecision,
+    ReasoningPolicy,
     ResearchAgent,
     ResearchBudget,
     ResearchReport,
@@ -28,6 +31,7 @@ from .agents import (
     wait_for_event,
 )
 from .assistant import ApprovalRecord, Assistant, AssistantTurn
+from .caching import ReasoningTrace, ReasoningTraceCache
 from .context.llmlingua import LLMLinguaCompressor
 from .core.app import ContextApp, RunHandle
 from .core.config import VincioConfig, load_config
@@ -116,6 +120,15 @@ from .optimize.self_improvement import (
     SelfImprovementController,
     SelfImprovementPolicy,
 )
+from .optimize.test_time import (
+    JudgeVerifier,
+    RewardVerifier,
+    SearchBudget,
+    SearchResult,
+    TestTimeSearch,
+    Verifier,
+    VerifierScore,
+)
 from .optimize.trajectory_opt import (
     LearningResult,
     TrajectoryAdvantage,
@@ -168,7 +181,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.8.0"
+__version__ = "3.9.0"
 
 __all__ = [
     "ContextApp",
@@ -224,6 +237,18 @@ __all__ = [
     "TrajectoryAdvantage",
     "TrajectoryOptimizer",
     "LearningResult",
+    "TestTimeSearch",
+    "Verifier",
+    "VerifierScore",
+    "JudgeVerifier",
+    "RewardVerifier",
+    "SearchBudget",
+    "SearchResult",
+    "ReasoningController",
+    "ReasoningDecision",
+    "ReasoningPolicy",
+    "ReasoningTrace",
+    "ReasoningTraceCache",
     "LLMLinguaCompressor",
     "JudgeCalibrator",
     "OutputContract",

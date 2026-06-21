@@ -1081,6 +1081,36 @@
       "threshold": true,
       "enforced_by": "families.learning.gate.blocks_regression",
       "rationale": "On-policy learning must never silently trade away verifiable success; a regressing candidate is refused and the reference is served instead."
+    },
+    {
+      "id": "test_time_compute_quality_per_budget",
+      "category": "quality",
+      "statement": "At a fixed candidate budget, verifier-guided best-of-N delivers at least +0.1 quality over the single-shot draw — a Pareto improvement in quality per dollar.",
+      "metric": "families.test_time_compute.pareto_quality_gain",
+      "direction": "gte",
+      "threshold": 0.1,
+      "enforced_by": "families.test_time_compute.pareto_quality_gain",
+      "rationale": "Test-time compute only earns its spend if it lifts quality at the same budget; the floor protects the cost-quality trade that justifies the feature."
+    },
+    {
+      "id": "test_time_compute_quality_per_cost",
+      "category": "cost",
+      "statement": "The verifier-guided best-of-N path returns at least 20 quality points per cent of inference spend.",
+      "metric": "families.test_time_compute.quality_per_cost_point",
+      "direction": "gte",
+      "threshold": 20.0,
+      "enforced_by": "families.test_time_compute.quality_per_cost_point",
+      "rationale": "A quality-per-dollar floor keeps search from spending unboundedly for a marginal gain; early-exit returns the saved budget the moment the verifier clears the bar."
+    },
+    {
+      "id": "test_time_compute_reasoning_token_ceiling",
+      "category": "cost",
+      "statement": "A reasoning step's thinking budget never exceeds the controller's hard token ceiling at any difficulty, so a hard task cannot silently exhaust the run.",
+      "metric": "families.test_time_compute.max_thinking_budget",
+      "direction": "lte",
+      "threshold": 8192,
+      "enforced_by": "families.test_time_compute.max_thinking_budget",
+      "rationale": "The reasoning controller scales effort with difficulty but holds a hard ceiling; without it a hard task could spend the whole run thinking."
     }
   ]
 }

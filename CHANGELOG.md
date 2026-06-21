@@ -4,6 +4,56 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.9.0] - 2026-06-21
+
+Test-time compute & reasoning orchestration. Reasoning-model thinking budgets and
+parallel test-time search are the cheapest quality lever left, and the platform
+already owned the pieces to orchestrate them — cost-aware action selection,
+critics and judge ensembles that act as verifiers, and a provider-neutral
+reasoning-effort knob. This release makes test-time compute a first-class,
+budgeted, cache-aware dimension of the run. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path
+is the default, and every existing entry point is unchanged (a run with no
+reasoning controller installed and no `reasoning_effort` pinned behaves exactly as
+before).
+
+### Added
+
+- **`ReasoningController` (`vincio.agents`).** A deterministic policy that sets
+  the thinking effort and a thinking-token budget per step from the task
+  classification and the live budget (reusing the same difficulty estimator that
+  drives the capability-aware router). A `ReasoningPolicy` configures the
+  difficulty→effort bands and the guardrails: a **hard `max_reasoning_tokens`
+  ceiling** and a `budget_fraction` cap on a share of the remaining output budget,
+  so a hard task can never silently exhaust the run. Low prior confidence
+  escalates one level; a warm thinking prefix steps it down. `decide(...)` returns
+  an explainable `ReasoningDecision`. `app.use_reasoning_controller(...)` installs
+  one so the runtime fills an unset `reasoning_effort` per run and records the
+  choice on the trace (`reasoning_source`, `reasoning_reason`); `app.reasoning()`
+  builds one to call directly.
+- **Reasoning-trace-aware caching (`vincio.caching`).** `ReasoningTraceCache` is a
+  byte-budgeted LRU of paid thinking prefixes keyed by stable-prefix hash + model
+  + effort (`reasoning_prefix_key`), evicting LRU-first under both an entry count
+  and a resident-byte ceiling. The runtime records each paid reasoning trace, so a
+  re-ask that shares a thinking prefix is recognized as warm and its effort stepped
+  down — the reasoning analogue of the compiled-prompt render program.
+- **`TestTimeSearch` & the `Verifier` protocol (`vincio.optimize`).**
+  Verifier-guided **best-of-N**, **self-consistency**, and **beam search** over
+  tool-use trajectories. Candidates are scored by the platform's *existing*
+  critics through one `Verifier` protocol: `JudgeVerifier` wraps any `Judge` /
+  `JudgeEnsemble` (a split panel's disagreement lowers its confidence),
+  `RewardVerifier` wraps any `VerifiableReward` / `RewardModel`, and
+  `CallableVerifier` wraps a plain function. Best-of-N early-exits the moment the
+  verifier clears the bar; self-consistency early-exits the moment the majority is
+  mathematically locked. Bounded by a `SearchBudget` (candidate / cost / deadline).
+  `app.test_time_search(input, *, verifier=, strategy=, n=)` runs it over a varied
+  re-run of the app.
+- **`test_time_compute` VincioBench family + SLOs.** Measures the quality-per-dollar
+  trade: a Pareto quality gain over single-shot at a fixed budget, quality per cent
+  of spend, early-exit savings, self-consistency accuracy lift, and that the
+  reasoning controller's hard token ceiling holds across every difficulty. Three
+  new published SLOs gate it. Runnable example `53_test_time_compute.py`.
+
 ## [3.8.0] - 2026-06-21
 
 Provable prompt-injection containment & capability-secure agents. The security

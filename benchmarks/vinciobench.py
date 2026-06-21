@@ -4548,6 +4548,88 @@ async def bench_learning() -> dict[str, Any]:
     }
 
 
+async def bench_test_time_compute() -> dict[str, Any]:
+    """TestTimeComputeBench: budgeted, verifier-guided test-time search.
+
+    Measures the quality-per-dollar trade test-time compute buys: best-of-N
+    scored by an existing critic lifts quality at a fixed budget (a Pareto win
+    over single-shot), self-consistency turns a noisy single draw into a correct
+    majority, early-exit returns the saved budget the moment the verifier clears
+    the bar, and the reasoning controller's hard token ceiling holds across every
+    difficulty. All deterministic and offline (no model, fixed candidate qualities)."""
+    from vincio.agents.reasoning import ReasoningController, ReasoningPolicy
+    from vincio.optimize import CallableVerifier, SearchBudget, TestTimeSearch
+    from vincio.optimize.test_time import SearchCandidate
+
+    cost_per_draw = 0.0002  # USD per candidate draw (fixed across strategies)
+
+    # Deterministic, verifier-observable candidate qualities in [0, 1].
+    qualities = [0.55, 0.62, 0.71, 0.68, 0.93]
+
+    def generate(i: int) -> SearchCandidate:
+        return SearchCandidate(index=i, output=f"c{i}", text=f"c{i}", cost_usd=cost_per_draw)
+
+    quality_of = CallableVerifier(lambda c: qualities[c.index])
+
+    # 1. Best-of-N at a fixed budget vs the single best draw — a Pareto gain.
+    n = len(qualities)
+    bo_n = TestTimeSearch(
+        generate, verifier=quality_of, budget=SearchBudget(max_candidates=n, confidence_target=1.1)
+    )
+    bo = await bo_n.best_of_n()  # target unreachable → spends the full budget
+    single_shot_quality = qualities[0]
+    best_of_n_quality = bo.best.score
+    pareto_quality_gain = round(best_of_n_quality - single_shot_quality, 6)
+
+    # Quality points (×100) per cent of spend on the best-of-N path.
+    best_of_n_cost = bo.cost_usd or cost_per_draw * n
+    quality_per_cost_point = round((best_of_n_quality * 100.0) / (best_of_n_cost * 100.0), 4)
+
+    # 2. Early-exit returns budget on an easy ask (a strong draw clears the bar).
+    easy_qualities = [0.4, 0.95, 0.3, 0.5, 0.6]
+    easy_gen = lambda i: SearchCandidate(  # noqa: E731
+        index=i, output=f"e{i}", text=f"e{i}", cost_usd=cost_per_draw
+    )
+    easy = TestTimeSearch(
+        easy_gen,
+        verifier=CallableVerifier(lambda c: easy_qualities[c.index]),
+        budget=SearchBudget(max_candidates=5, confidence_target=0.9),
+    )
+    easy_result = await easy.best_of_n()
+    early_exit_savings = round(1.0 - easy_result.n_generated / 5, 4)
+
+    # 3. Self-consistency: a noisy single draw is wrong; the majority is right.
+    votes = ["B", "A", "A", "A", "A"]  # correct answer is "A"; draw 0 is wrong
+    sc = TestTimeSearch(lambda i: votes[i], budget=SearchBudget(max_candidates=5))
+    sc_result = await sc.self_consistency()
+    single_shot_accuracy = 1.0 if votes[0] == "A" else 0.0
+    self_consistency_accuracy = 1.0 if sc_result.best.answer_text.strip().upper() == "A" else 0.0
+
+    # 4. Reasoning controller: effort scales with difficulty and the hard token
+    # ceiling is never exceeded at any difficulty.
+    ceiling = 8192
+    ctl = ReasoningController(ReasoningPolicy(max_reasoning_tokens=ceiling))
+    budgets = [ctl.decide(difficulty=d / 10).thinking_budget_tokens for d in range(11)]
+    reasoning_ceiling_adherence = 1.0 if all(b <= ceiling for b in budgets) else 0.0
+    effort_monotone = 1.0 if budgets == sorted(budgets) else 0.0
+
+    return {
+        "single_shot_quality": round(single_shot_quality, 4),
+        "best_of_n_quality": round(best_of_n_quality, 4),
+        "pareto_quality_gain": pareto_quality_gain,
+        "best_of_n_draws": bo.n_generated,
+        "quality_per_cost_point": quality_per_cost_point,
+        "early_exit_savings": early_exit_savings,
+        "early_exit_draws": easy_result.n_generated,
+        "single_shot_accuracy": single_shot_accuracy,
+        "self_consistency_accuracy": self_consistency_accuracy,
+        "self_consistency_draws": sc_result.n_generated,
+        "reasoning_ceiling_adherence": reasoning_ceiling_adherence,
+        "effort_monotone_in_difficulty": effort_monotone,
+        "max_thinking_budget": max(budgets),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -4570,6 +4652,7 @@ FAMILIES = {
     "perf": bench_perf,
     "integrations": bench_integrations,
     "professionalism": bench_professionalism,
+    "test_time_compute": bench_test_time_compute,
     "breaking_2_0": bench_breaking_2_0,
 }
 

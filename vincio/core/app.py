@@ -437,6 +437,11 @@ class ContextApp:
 
         self.cascade: ModelCascade | None = None
         self._cascade_confidence: Callable[[Any], float] | None = None
+        # Opt-in per-step reasoning-effort control. When set, the runtime fills
+        # an unset ``reasoning_effort`` from the task classification and the live
+        # budget (see ``use_reasoning_controller``). ``None`` keeps reasoning a
+        # per-call knob, so behavior is unchanged by default.
+        self.reasoning_controller: Any | None = None
         self.cost_ledger: CostLedger = CostLedger(
             price_table=self.cost_tracker.price_table, store=self.store
         )
@@ -2711,6 +2716,103 @@ class ContextApp:
         from ..agents.research import ResearchAgent
 
         return await ResearchAgent(self, **kwargs).arun(question, objective=objective)
+
+    def reasoning(self, policy: Any | None = None, **kwargs: Any):
+        """Build a :class:`~vincio.agents.reasoning.ReasoningController`.
+
+        The controller sets the thinking effort and a hard-ceilinged thinking
+        budget per step from the task classification and the live budget, and
+        steps effort down when a thinking prefix is already warm in its
+        :class:`~vincio.caching.ReasoningTraceCache` (created here unless one is
+        passed as ``trace_cache=``). Pass it to :meth:`use_reasoning_controller`
+        to have the runtime apply it on every run, or call ``.decide(...)``
+        directly::
+
+            ctl = app.reasoning()
+            d = ctl.decide(task=routed.task, text=question, remaining_output_tokens=4096)
+            app.run(question, config=RunConfig(reasoning_effort=d.effort))
+        """
+        from ..agents.reasoning import ReasoningController, ReasoningPolicy
+        from ..caching import ReasoningTraceCache
+
+        if policy is None:
+            policy = ReasoningPolicy()
+        trace_cache = kwargs.pop("trace_cache", None) or ReasoningTraceCache()
+        return ReasoningController(policy, trace_cache=trace_cache, **kwargs)
+
+    def use_reasoning_controller(self, controller: Any | None = None, **kwargs: Any) -> ContextApp:
+        """Install a reasoning controller so the runtime sets effort per run.
+
+        With a controller installed, a run that does not pin ``reasoning_effort``
+        on its :class:`~vincio.core.types.RunConfig` has the effort and thinking
+        budget chosen by the controller (only for reasoning-capable models), and
+        each paid thinking prefix is recorded so a re-ask reuses it. ``controller``
+        may be a :class:`~vincio.agents.reasoning.ReasoningController`, a
+        :class:`~vincio.agents.reasoning.ReasoningPolicy`, or ``None`` (default
+        policy). Returns ``self`` for chaining."""
+        from ..agents.reasoning import ReasoningController
+
+        if not isinstance(controller, ReasoningController):
+            controller = self.reasoning(controller, **kwargs)
+        self.reasoning_controller = controller
+        return self
+
+    async def atest_time_search(
+        self,
+        user_input: str | UserInput,
+        *,
+        verifier: Any = None,
+        strategy: str = "best_of_n",
+        n: int = 4,
+        config: RunConfig | None = None,
+        vary: str = "seed",
+        generate: Any | None = None,
+        budget: Any | None = None,
+        **budget_kwargs: Any,
+    ):
+        """Run verifier-guided test-time search over this app.
+
+        Draws ``n`` candidates by re-running the app with a varied ``seed`` (or
+        ``temperature``), scores them with ``verifier`` (any
+        :class:`~vincio.evals.judges.Judge` / ensemble, any
+        :class:`~vincio.optimize.rewards.VerifiableReward` / ``RewardModel``, or a
+        callable), and returns a
+        :class:`~vincio.optimize.test_time.SearchResult`. ``strategy`` is
+        ``"best_of_n"`` (verifier required) or ``"self_consistency"`` (verifier
+        optional). Pass a custom ``generate(index)`` to search over something
+        other than a plain re-run::
+
+            from vincio.optimize import RewardVerifier
+            res = await app.atest_time_search(q, verifier=reward, n=8)
+            res.output, res.confidence, res.stop_reason
+        """
+        from ..optimize.test_time import SearchBudget, TestTimeSearch
+
+        if generate is None:
+            base = config
+
+            def generate(index: int):  # noqa: ANN202 — local closure
+                update: dict[str, Any] = {"seed": index}
+                if vary == "temperature":
+                    update = {"temperature": round(0.2 * index, 4)}
+                cfg = (base.model_copy(update=update) if base is not None else RunConfig(**update))
+                return self.arun(user_input, config=cfg)
+
+        if budget is None:
+            budget = SearchBudget(max_candidates=n, **budget_kwargs)
+        search = TestTimeSearch(generate, verifier=verifier, budget=budget)
+        if strategy == "best_of_n":
+            return await search.best_of_n(n)
+        if strategy == "self_consistency":
+            return await search.self_consistency(n)
+        raise ValueError(
+            f"unknown test-time search strategy {strategy!r}; "
+            f"expected 'best_of_n' or 'self_consistency'"
+        )
+
+    def test_time_search(self, user_input: str | UserInput, **kwargs: Any):
+        """Synchronous :meth:`atest_time_search`."""
+        return run_sync(self.atest_time_search(user_input, **kwargs))
 
     def crew(
         self,

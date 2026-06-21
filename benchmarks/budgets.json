@@ -1065,6 +1065,27 @@
     },
     "families.learning.flywheel.on_policy_distill_promoted": {
       "eq": true
+    },
+    "families.test_time_compute.pareto_quality_gain": {
+      "gte": 0.1
+    },
+    "families.test_time_compute.quality_per_cost_point": {
+      "gte": 20.0
+    },
+    "families.test_time_compute.early_exit_savings": {
+      "gte": 0.2
+    },
+    "families.test_time_compute.self_consistency_accuracy": {
+      "gte": 1.0
+    },
+    "families.test_time_compute.reasoning_ceiling_adherence": {
+      "gte": 1.0
+    },
+    "families.test_time_compute.effort_monotone_in_difficulty": {
+      "gte": 1.0
+    },
+    "families.test_time_compute.max_thinking_budget": {
+      "lte": 8192
     }
   }
 }

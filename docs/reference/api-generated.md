@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**184** public symbols.
+**196** public symbols.
 
 ## Classes
 
@@ -294,6 +294,10 @@ Tune a :class:`~vincio.evals.judges.GEvalJudge`'s evaluation steps to maximize a
 
 A panel of judges scored together, with disagreement surfaced as uncertainty and the panel as a whole calibrated against human labels.
 
+### `JudgeVerifier(judge, case=…, name=…)`
+
+Score candidates with any :class:`~vincio.evals.judges.Judge` or :class:`~vincio.evals.ensemble.JudgeEnsemble`.
+
 ### `KeyPool(providers, rpm=…, tpm=…, breaker=…, labels=…, max_attempts=…, base_backoff_s=…, max_backoff_s=…, seed=…, events=…, clock=…)`
 
 Round-robin pool over multiple keys/regions of one logical provider.
@@ -426,6 +430,26 @@ One programmable rail.
 
 A bidirectional realtime session.
 
+### `ReasoningController(policy=…, trace_cache=…)`
+
+Pick a thinking effort + token budget per step from task + budget signals.
+
+### `ReasoningDecision(**data)`
+
+The record of one reasoning-effort pick — stamped on the trace.
+
+### `ReasoningPolicy(**data)`
+
+The effort policy: difficulty bands, guardrails, and reuse behavior.
+
+### `ReasoningTrace(**data)`
+
+One cached reasoning trace: how much thinking a warm prefix already cost.
+
+### `ReasoningTraceCache(max_entries=…, max_resident_bytes=…)`
+
+Bounded LRU of reasoning traces under a resident-memory budget.
+
 ### `ReflectiveOptimizer(evaluate_variant, weights=…, gates=…, max_cost_per_case=…, objectives=…, reflector=…, constraints=…, prefer=…)`
 
 GEPA-style reflective prompt optimizer.
@@ -457,6 +481,10 @@ A fixed query set scored against a fixed corpus.
 ### `RewardModel(rewards, success_threshold=…, name=…)`
 
 Compose verifiable rewards into one dense, confidence-weighted signal.
+
+### `RewardVerifier(reward, name=…)`
+
+Score candidates with any :class:`~vincio.optimize.rewards.VerifiableReward` or :class:`~vincio.optimize.rewards.RewardModel`.
 
 ### `RiskTierClassifier(purpose=…, domains=…, prohibited_practices=…, human_oversight=…, interacts_with_humans=…, generates_content=…)`
 
@@ -493,6 +521,14 @@ Routes a run (or a piece of structured data) to one of several schemas.
 ### `ScopedMemory(engine, scope, owner_id)`
 
 Mem0-style handle bound to one owner: ``engine.for_user("u1")``.
+
+### `SearchBudget(**data)`
+
+Bounds one search: candidate cap, optional cost cap, optional deadline.
+
+### `SearchResult(**data)`
+
+The outcome of a search: the winner, every candidate, and why it stopped.
 
 ### `SelfImprovementController(app, policy=…, dataset=…, golden=…, registry=…, prompt_name=…)`
 
@@ -562,6 +598,10 @@ A value carried together with its :class:`TrustLabel` and provenance.
 
 Task taxonomy used by the input router.
 
+### `TestTimeSearch(generate, verifier=…, budget=…)`
+
+Verifier-guided test-time search bounded by a :class:`SearchBudget`.
+
 ### `TimerService(graph, clock=…)`
 
 Resumes due timers and delivers events for one compiled graph.
@@ -597,6 +637,14 @@ Structured task input.
 ### `VerifiableReward()`
 
 Base contract: map a :class:`RewardSample` to a :class:`RewardSignal`.
+
+### `Verifier(*args, **kwargs)`
+
+Scores a candidate answer or trajectory. Reuse an existing critic via the adapters in this module rather than implementing this directly.
+
+### `VerifierScore(**data)`
+
+A verifier's verdict on one candidate: a value, a confidence, a reason.
 
 ### `VincioConfig(**data)`
 

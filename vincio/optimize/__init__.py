@@ -116,6 +116,17 @@ from .strategies import (
     build_strategy,
     guided_search,
 )
+from .test_time import (
+    CallableVerifier,
+    JudgeVerifier,
+    RewardVerifier,
+    SearchBudget,
+    SearchCandidate,
+    SearchResult,
+    TestTimeSearch,
+    Verifier,
+    VerifierScore,
+)
 from .trajectory_opt import (
     CandidateOutcome,
     LearningResult,
@@ -246,4 +257,14 @@ __all__ = [
     "SearchStrategy",
     "build_strategy",
     "guided_search",
+    # test-time compute search
+    "TestTimeSearch",
+    "Verifier",
+    "VerifierScore",
+    "CallableVerifier",
+    "JudgeVerifier",
+    "RewardVerifier",
+    "SearchCandidate",
+    "SearchBudget",
+    "SearchResult",
 ]
