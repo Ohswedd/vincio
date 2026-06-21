@@ -1191,6 +1191,45 @@
     },
     "families.semantic_cache.resident_bounded": {
       "eq": true
+    },
+    "families.local_adaptation.low_rank_adapter": {
+      "eq": true
+    },
+    "families.local_adaptation.adapter_rank": {
+      "gte": 1
+    },
+    "families.local_adaptation.adapter_size_bytes": {
+      "gte": 1
+    },
+    "families.local_adaptation.in_distribution_adapted": {
+      "eq": true
+    },
+    "families.local_adaptation.off_distribution_inert": {
+      "eq": true
+    },
+    "families.local_adaptation.promoted": {
+      "eq": true
+    },
+    "families.local_adaptation.at_least_as_good": {
+      "eq": true
+    },
+    "families.local_adaptation.adapted_quality": {
+      "gte": 1.0
+    },
+    "families.local_adaptation.live_grounded": {
+      "eq": true
+    },
+    "families.local_adaptation.reversible": {
+      "eq": true
+    },
+    "families.local_adaptation.regression_refused": {
+      "eq": true
+    },
+    "families.local_adaptation.deterministic_digest": {
+      "eq": true
+    },
+    "families.local_adaptation.versioned_rollback": {
+      "eq": true
     }
   }
 }

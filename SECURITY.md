@@ -176,6 +176,18 @@ significance swap gate, so the distillation flywheel cannot silently ship a
 regression. The self-editing memory OS exposes memory mutation only as
 permissioned, audited tools over the guarded write pipeline.
 
+**On-device adaptation** keeps the same discipline without a network round-trip.
+The `LocalLoRATrainer` fits a LoRA-class adapter **in your process** from the
+flywheel's grounded data — no training traffic leaves the machine, so an
+air-gapped or edge deployment can improve on its own traffic without exporting
+it. A new adapter version is promoted only when the `ContinualAdaptation` loop's
+no-regression gate (the on-device analogue of the swap gate) confirms the adapted
+model is at-least-as-good as its base on a held-out set; the adapter is **bounded**
+(it reshapes only in-distribution requests, leaving unseen traffic to the base
+model), every version is **content-addressed and versioned** in the
+`AdapterRegistry`, and a regressing one is refused and rolled back — applied or
+unloaded live via `app.use_local_adapter`, every decision on the audit chain.
+
 ### Audit integrity & tamper-evidence
 
 Every run lands on an append-only, hash-chained audit log, verifiable offline

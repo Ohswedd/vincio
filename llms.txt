@@ -168,6 +168,26 @@ app.run("export button 500s").output.label
   (`app.kv_prefix_report()`), bounded under the resident budget. The runtime
   consults both, opt-in, only when installed. Held by `families.semantic_cache`
   (accepted near-miss at-least-as-good + below-bar never served + gate blocks drift).
+- **On-device fine-tuning & continual local adaptation.** `LocalLoRATrainer`
+  (`vincio.optimize.local_adaptation`) fits a parameter-efficient, low-rank
+  `LocalAdapter` **on-device** from a grounded `TrainingSet` — `await
+  trainer.fit(training_set, base_model)` embeds each example's prompt, builds a
+  rank-`r` orthonormal subspace (the LoRA-class compression: an `r×d` basis plus
+  `n×r` codes), and stores the grounded targets; deterministic and dependency-free,
+  with an optional `NativeLoRABackend` to also emit a real GGUF/LoRA file (loaded
+  via `GGUFProvider(lora_path=)`). `AdaptedProvider(base, adapter, embedder=)`
+  wraps any provider: an in-distribution request (`adapter.apply(query_vec)` clears
+  the learned `gate`) is answered the grounded way it was taught, off-distribution
+  requests fall through to the base model unchanged (bounded; `scale=0.0`
+  neutralizes without unloading). `AdapterRegistry` versions adapters
+  (content-addressed `adapter.digest`, `register`/`rollback`/`active`, optional
+  on-disk persistence). `ContinualAdaptation`/`app.adapt_locally(dataset,
+  runs=|training_set=)` runs the gated loop — fit → gate base-vs-adapted on a
+  held-out set with `AdapterGate` (reuses the canary no-regression verdict; the
+  adapted model must be at-least-as-good) → promote (register + `app.use_local_adapter`)
+  or refuse, every decision on the audit chain and event bus. `app.local_adaptation`
+  returns the streaming controller. Held by `families.local_adaptation`
+  (at-least-as-good + bounded off-distribution + regression refused/reversible).
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
@@ -696,6 +716,13 @@ app.run("export button 500s").output.label
   `app.semantic_cache_report()` / `app.kv_prefix_report()`; model spans gain
   `semantic_cached` / `kv_prefix_reused` / `kv_bytes_reused`. See the full entry
   above (`families.semantic_cache`).
+- **On-device local adaptation.** `app.adapt_locally(dataset, runs=|training_set=,
+  policy=LocalAdaptationPolicy(), registry=)` fits a `LocalAdapter` on-device, gates
+  it against the base on the held-out `dataset` (at-least-as-good), and on a pass
+  registers + applies it (`AdaptationResult`); `app.local_adaptation(...)` returns
+  the streaming `ContinualAdaptation` controller; `app.use_local_adapter(adapter)`
+  applies one live and `app.use_local_adapter(None)` unloads it. See the full entry
+  above (`families.local_adaptation`).
 
 ## Security & governance
 

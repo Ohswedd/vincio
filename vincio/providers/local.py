@@ -81,6 +81,12 @@ class GGUFProvider(ModelProvider):
     (:meth:`embed`) when loaded with ``embedding=True``, so retrieval and
     generation share one on-device model. Inject a ``llama`` object for offline
     tests; otherwise install with ``pip install "vincio[gguf]"``.
+
+    On-device adaptation: pass ``lora_path=`` (with an optional ``lora_scale``)
+    to load a quantized LoRA adapter into the base model — the native side of the
+    on-device fine-tuning loop. For the dependency-free, in-process adapter that
+    works against *any* provider (including this one), see
+    :class:`~vincio.optimize.local_adaptation.AdaptedProvider`.
     """
 
     name = "gguf"
@@ -93,11 +99,15 @@ class GGUFProvider(ModelProvider):
         llama: Any = None,
         n_ctx: int = 4096,
         embedding: bool = True,
+        lora_path: str | None = None,
+        lora_scale: float = 1.0,
         **kwargs: Any,
     ) -> None:
         self.model_path = model_path
         self.n_ctx = n_ctx
         self._embedding = embedding
+        self.lora_path = lora_path
+        self.lora_scale = lora_scale
         self._llama = llama
 
     def _ensure(self) -> Any:
@@ -112,7 +122,15 @@ class GGUFProvider(ModelProvider):
             ) from exc
         if not self.model_path:
             raise ConfigError("GGUFProvider needs model_path=... pointing at a .gguf file")
-        self._llama = Llama(model_path=self.model_path, n_ctx=self.n_ctx, embedding=self._embedding)
+        kwargs: dict[str, Any] = {
+            "model_path": self.model_path,
+            "n_ctx": self.n_ctx,
+            "embedding": self._embedding,
+        }
+        if self.lora_path:
+            kwargs["lora_path"] = self.lora_path
+            kwargs["lora_scale"] = self.lora_scale
+        self._llama = Llama(**kwargs)
         return self._llama
 
     async def generate(self, request: ModelRequest) -> ModelResponse:

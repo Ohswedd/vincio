@@ -4,6 +4,67 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.14.0] - 2026-06-22
+
+On-device fine-tuning & continual local adaptation. The distillation flywheel
+already turns production traces into executed *hosted* fine-tune jobs, and the
+in-process GGUF provider already runs a quantized model air-gapped; this release
+adds the rung between them — **local adaptation**, a LoRA-class adapter fit
+*on-device* from the same grounded data and applied to the in-process model, so an
+air-gapped or edge deployment improves on its own traffic with no hosted training
+round-trip and no traffic leaving the process. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path
+is the default, and nothing below runs unless you opt in.
+
+### Added
+
+- **`LocalAdapter` (`vincio.optimize.local_adaptation`).** A versioned,
+  content-addressed, portable LoRA-class adapter — the on-device analogue of a
+  `.safetensors` LoRA file. Low-rank by construction (an `r×d` orthonormal basis
+  plus an `n×r` code matrix and grounded targets) and bounded by an acceptance
+  `gate` and a `scale` alpha (`scale=0.0` neutralizes it without unloading).
+  `adapter.apply(query_vector)` is the forward pass: it scores a request against
+  the learned subspace and returns the grounded answer only when the match clears
+  the gate, deferring to the base model otherwise. `adapter.digest` is the
+  behaviour-tracking content address; `save()` / `load()` write a portable JSON
+  artifact.
+- **`LocalLoRATrainer`.** Fits a `LocalAdapter` on-device from a grounded
+  `TrainingSet` — `await trainer.fit(training_set, base_model)` embeds each
+  example's prompt, builds a deterministic rank-`r` orthonormal subspace, and
+  stores the projected codes alongside the grounded targets. Pure-Python and
+  dependency-free; inject a `NativeLoRABackend` to additionally produce a real
+  quantized GGUF/LoRA file on-device (loaded via the new `GGUFProvider(lora_path=,
+  lora_scale=)`).
+- **`AdaptedProvider`.** Wraps any `ModelProvider` (the in-process GGUF model, the
+  deterministic mock, a hosted endpoint) so an in-distribution request is answered
+  the grounded way the adapter learned and everything else falls through to the
+  base model unchanged. Transparent: it reports the base provider's name and
+  capabilities, so residency, provenance, and the rotation stack are unaffected.
+- **`AdapterRegistry`.** A versioned, reversible store of on-device adapters —
+  `register` assigns the next version and makes it the active head (storing an
+  independent copy), `rollback` restores an earlier version, and an optional
+  on-disk directory persists every version and the head pointer across restarts.
+- **`AdapterGate`.** The no-regression gate for an on-device adapter — the
+  model-swap gate's analogue — reusing the same `CanaryVerdict` machinery a prompt
+  deploy and a model rotation clear: an adapter promotes only when the adapted
+  model is at-least-as-good as its base on a held-out set, with no significant
+  regression.
+- **`ContinualAdaptation` + app surface.** `app.adapt_locally(dataset, runs=|
+  training_set=, policy=LocalAdaptationPolicy())` runs the gated loop end to end —
+  curate the grounded data, fit an adapter on-device, gate it against the base, and
+  on a pass register + apply it (returning an `AdaptationResult`); a regressing
+  adapter is refused and the registry head left on the last known-good version.
+  `app.local_adaptation(...)` returns the streaming `ContinualAdaptation`
+  controller (`observe → train → gate → promote / rollback`), and
+  `app.use_local_adapter(adapter)` / `app.use_local_adapter(None)` apply or unload
+  one live. Every decision lands on the hash-chained audit log and the event bus.
+- **`local_adaptation` VincioBench family + SLOs.** Measures on-device low-rank
+  fitting, bounded in-/off-distribution application, the at-least-as-good
+  no-regression gate, live grounded answering, reversibility, refusal of a
+  regressing adapter, deterministic content-addressing, and versioned rollback.
+  Three new published SLOs gate it. Runnable example
+  `58_on_device_local_adaptation.py`.
+
 ## [3.13.0] - 2026-06-22
 
 Learned semantic cache & near-miss KV reuse. Exact-match prompt caching already

@@ -5023,6 +5023,153 @@ async def bench_semantic_cache() -> dict[str, Any]:
     }
 
 
+async def bench_local_adaptation() -> dict[str, Any]:
+    """LocalAdaptationBench: on-device LoRA-class adaptation, gated and reversible.
+
+    The distillation flywheel turns traces into *hosted* fine-tune jobs; this
+    family holds the rung above it — adapting the in-process model on its own
+    traffic, without the run ever leaving the process. A LoRA-class adapter is fit
+    on-device from a grounded training set, gated against the base on a held-out
+    set (the locally-adapted model must be at-least-as-good — the no-regression
+    SLO), versioned, applied to the live app, and rolled back. The adapter is
+    bounded: it reshapes in-distribution traffic but stays inert off-distribution.
+    A regressing adapter is refused, never promoted. All deterministic and offline
+    — the in-process adapter shapes generation directly, no real model required."""
+    from vincio import (
+        AdaptedProvider,
+        AdapterRegistry,
+        ContextApp,
+        LocalAdaptationPolicy,
+        LocalAdapter,
+        LocalLoRATrainer,
+        VincioConfig,
+    )
+    from vincio.core.types import Message, ModelRequest
+    from vincio.evals.datasets import Dataset, EvalCase
+    from vincio.optimize.distill import TrainingExample, TrainingSet
+    from vincio.retrieval.embeddings import LocalHashEmbedder
+
+    qa = [
+        ("what is the refund policy", "Refunds are processed within 30 days."),
+        ("how do I reset my password", "Use the reset link on the login page."),
+        ("what are the shipping options", "We ship worldwide via DHL in 5-7 days."),
+        ("how do I contact support", "Email support@example.com any time."),
+    ]
+    corpus = TrainingSet(
+        name="local-adapter",
+        examples=[
+            TrainingExample(
+                messages=[{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+            )
+            for q, a in qa
+        ],
+    )
+    dataset = Dataset(
+        name="golden",
+        cases=[EvalCase(id=f"c{i}", input=q, expected=a) for i, (q, a) in enumerate(qa)],
+    )
+
+    # 1. Fit a low-rank adapter on-device; verify the parameter-efficient shape.
+    emb = LocalHashEmbedder()
+    adapter = await LocalLoRATrainer(embedder=emb, rank=8, gate=0.85).fit(corpus, "gguf-local")
+    low_rank = bool(adapter.rank <= min(8, len(qa)) and adapter.size_bytes > 0)
+
+    # 2. Bounded: in-distribution requests are answered the grounded way; an
+    #    off-distribution request stays inert and falls through to the base model.
+    probe = AdaptedProvider(MockProvider(default_text="GENERIC"), adapter, embedder=emb)
+    in_dist = await probe.generate(
+        ModelRequest(model="m", messages=[Message(role="user", content=qa[0][0])])
+    )
+    off_dist = await probe.generate(
+        ModelRequest(
+            model="m",
+            messages=[Message(role="user", content="tell me a joke about giraffes in space")],
+        )
+    )
+    in_distribution_adapted = bool(in_dist.text == qa[0][1] and "adapter" in (in_dist.raw or {}))
+    off_distribution_inert = bool(off_dist.text == "GENERIC")
+
+    # 3. Gated continual loop: the locally-adapted model is at-least-as-good as
+    #    its base on the held-out set, so the adapter is promoted and applied —
+    #    all in-process, behind the same no-regression gate a hosted job clears.
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(
+        name="edge", provider=MockProvider(default_text="I am not sure about that."), config=cfg
+    )
+    registry = AdapterRegistry()
+    policy = LocalAdaptationPolicy(min_examples=4, min_samples=4, require_significance=False)
+    result = app.adapt_locally(dataset, training_set=corpus, policy=policy, registry=registry)
+    promoted = bool(result.promoted)
+    at_least_as_good = bool(result.verdict is not None and result.verdict.delta >= 0.0)
+    base_quality = round(result.verdict.baseline, 4) if result.verdict else 0.0
+    adapted_quality = round(result.verdict.candidate, 4) if result.verdict else 0.0
+    live_grounded = bool(app.run(qa[0][0]).raw_text == qa[0][1])
+
+    # 4. Reversible: unloading the adapter restores the base model exactly.
+    app.use_local_adapter(None)
+    reverted = bool(app.run(qa[0][0]).raw_text == "I am not sure about that.")
+
+    # 5. A regressing adapter is refused, never promoted, registry head unchanged.
+    def echo(req):
+        return "GOOD answer " + req.messages[-1].text.split()[-1]
+
+    reg_qa = [(f"q item {w}", f"GOOD answer {w}") for w in ("alpha", "beta", "gamma", "delta")]
+    reg_ds = Dataset(
+        name="g",
+        cases=[EvalCase(id=f"r{i}", input=q, expected=a) for i, (q, a) in enumerate(reg_qa)],
+    )
+    bad = TrainingSet(
+        name="local-adapter",
+        examples=[
+            TrainingExample(
+                messages=[{"role": "user", "content": q}, {"role": "assistant", "content": "wrong"}]
+            )
+            for q, _ in reg_qa
+        ],
+    )
+    reg_app = ContextApp(name="edge2", provider=MockProvider(responder=echo), config=cfg)
+    reg_registry = AdapterRegistry()
+    bad_result = reg_app.adapt_locally(
+        reg_ds,
+        training_set=bad,
+        policy=LocalAdaptationPolicy(
+            min_examples=4, gate=0.6, min_samples=4, require_significance=False
+        ),
+        registry=reg_registry,
+    )
+    regression_refused = bool(
+        not bad_result.promoted
+        and reg_registry.versions("local-adapter") == []
+        and reg_app.local_adapter is None
+    )
+
+    # 6. Versioned & content-addressed: a refit is byte-identical, the registry
+    #    rolls a head back to an earlier version.
+    refit = await LocalLoRATrainer(embedder=emb, rank=8, gate=0.85).fit(corpus, "gguf-local")
+    deterministic_digest = bool(refit.digest == adapter.digest)
+    registry.register(LocalAdapter.model_validate(adapter.model_dump()))  # v2
+    registry.rollback("local-adapter", 1)
+    rollback_ok = bool(registry.active("local-adapter").version == 1)
+
+    return {
+        "low_rank_adapter": low_rank,
+        "adapter_rank": int(adapter.rank),
+        "adapter_size_bytes": int(adapter.size_bytes),
+        "in_distribution_adapted": in_distribution_adapted,
+        "off_distribution_inert": off_distribution_inert,
+        "promoted": promoted,
+        "at_least_as_good": at_least_as_good,
+        "base_quality": base_quality,
+        "adapted_quality": adapted_quality,
+        "live_grounded": live_grounded,
+        "reversible": reverted,
+        "regression_refused": regression_refused,
+        "deterministic_digest": deterministic_digest,
+        "versioned_rollback": rollback_ok,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -5050,6 +5197,7 @@ FAMILIES = {
     "world_model": bench_world_model,
     "record_replay": bench_record_replay,
     "semantic_cache": bench_semantic_cache,
+    "local_adaptation": bench_local_adaptation,
     "breaking_2_0": bench_breaking_2_0,
 }
 

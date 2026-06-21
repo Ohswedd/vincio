@@ -135,6 +135,16 @@ from .observability.viewer import serve_viewer
 from .optimize.controller import ContinuousImprovementController, ControllerDecision
 from .optimize.distill import BootstrapFinetune, TrainingSet, provider_trainer
 from .optimize.judge_calibration import JudgeCalibrator
+from .optimize.local_adaptation import (
+    AdaptationResult,
+    AdaptedProvider,
+    AdapterGate,
+    AdapterRegistry,
+    ContinualAdaptation,
+    LocalAdaptationPolicy,
+    LocalAdapter,
+    LocalLoRATrainer,
+)
 from .optimize.loop import ExperimentProposer, ImprovementLoop, LoopResult
 from .optimize.reflective import ReflectiveOptimizer
 from .optimize.rewards import RewardModel, VerifiableReward
@@ -206,7 +216,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.13.0"
+__version__ = "3.14.0"
 
 __all__ = [
     "ContextApp",
@@ -282,6 +292,15 @@ __all__ = [
     "ThresholdCalibrator",
     "CalibrationExample",
     "KVPrefixPool",
+    # on-device fine-tuning & continual local adaptation
+    "LocalAdapter",
+    "LocalLoRATrainer",
+    "AdaptedProvider",
+    "AdapterRegistry",
+    "AdapterGate",
+    "LocalAdaptationPolicy",
+    "AdaptationResult",
+    "ContinualAdaptation",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

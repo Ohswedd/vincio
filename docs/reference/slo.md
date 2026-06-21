@@ -209,5 +209,23 @@ to a family that shares a stable head, reporting the serving-engine KV the share
 head avoids recomputing — all held under the resident-memory budget. The budgets
 gate full hit-quality and full precision, above the published floors.
 
+## On-device fine-tuning & continual local adaptation
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| A LoRA-class adapter fit on-device is at-least-as-good as its base model on the held-out eval set before it is promoted. | true | `families.local_adaptation.at_least_as_good` |
+| An on-device adapter reshapes only in-distribution traffic; an off-distribution request falls through to the base model untouched. | true | `families.local_adaptation.off_distribution_inert` |
+| A regressing adapter is refused — never promoted or applied, the registry head unchanged. | true | `families.local_adaptation.regression_refused` |
+
+The flywheel turns traces into hosted fine-tune jobs and the in-process GGUF
+provider runs a model air-gapped; on-device adaptation closes the loop by fitting a
+LoRA-class adapter **in your process** from the same grounded data, so an edge or
+air-gapped deployment improves on its own traffic with no hosted round-trip. The
+risk is shipping a local change that silently degrades quality, so a new adapter
+version is promoted only behind the same no-regression gate a hosted fine-tune job
+clears — the adapted model must be at-least-as-good as its base on a held-out set.
+The adapter is bounded (inert off-distribution), every version is content-addressed
+and versioned, and a regression is refused and rolled back.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.
