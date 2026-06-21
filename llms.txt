@@ -602,6 +602,20 @@ app.run("export button 500s").output.label
   `from vincio.security import PoisoningDetector` (FP/FN via
   `PoisoningReport.telemetry` + classifier hook). All accept a pluggable
   `DetectorBackend` (an ML model merges with, never replaces, the rules).
+- **Provable injection containment.** Detection is best-effort, so containment
+  separates the control plane from the data plane. `from vincio import TrustLabel,
+  TaintedValue` — provenance becomes a `trusted`/`untrusted`/`quarantined` lattice
+  that propagates through derivations and `ContextPacket.materialize()`, never
+  laundering taint. `DualPlaneExecutor(tool_runtime, broker=CapabilityBroker(...))`
+  ingests untrusted bytes into a quarantine, exposes only typed, schema-validated
+  `extract(...)`ions to the privileged planner (`control_messages` never contain
+  the bytes), and gates every side-effecting `call(...)` on an unforgeable
+  `CapabilityToken` minted from the user's request (`executor.mint(tool,
+  constraints=...)`) — an untrusted-tainted argument is refused without a
+  capability or approval (`ContainmentError`). `verify_containment(monitor.events)`
+  proves `untrusted ⇒ no unapproved capability` over a run (escalation rate 0).
+  Capability-scoped tools are also available at the permission layer via
+  `ToolPermissionChecker(broker=...)`.
 - **Access & egress.** RBAC/ABAC via `AccessController`
   (`require_explicit_tenant=True` fails closed on untagged tenants); mandatory
   egress DLP `PolicyEngine.scan_egress` (`security.egress_dlp`: off/warn/block) on

@@ -4,6 +4,62 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.8.0] - 2026-06-21
+
+Provable prompt-injection containment & capability-secure agents. The security
+subsystem already *detects* injection, RAG-poisoning, secrets, and PII; this
+release adds the containment that holds even when detection misses, by separating
+the control plane from the data plane in the library's own provenance and
+permission model. Entirely additive and backward-compatible — `API_VERSION` stays
+`3.0`, the dependency-free offline path is the default, and every existing entry
+point is unchanged.
+
+### Added
+
+- **Information-flow labels & taint propagation.** `TrustLabel` promotes
+  provenance to a typed `trusted` / `untrusted` / `quarantined` lattice (`join`
+  takes the least-trusted, so taint never decreases). `TaintedValue` carries a
+  value with its label and provenance sources and propagates the label through
+  `map` / `derive`, so a value computed from any untrusted input is itself tainted
+  and cannot be laundered back to trusted. `TrustLabel.from_trust_level` bridges
+  the existing `TrustLevel` provenance.
+- **Unforgeable capability tokens.** `CapabilityToken` is an HMAC-signed,
+  principal- and argument-scoped, TTL-bounded grant minted by a `CapabilityBroker`
+  from the *user's* request — never from model output. `CapabilityBroker.verify`
+  (constant-time signature compare) returns an explainable `CapabilityVerification`;
+  a token minted under a different secret, tampered with, expired, or used outside
+  its pinned argument constraints never verifies.
+- **Dual-plane execution.** `DualPlaneExecutor` wraps the permissioned
+  `ToolRuntime`: untrusted bytes are held in a quarantine (`QuarantineRef`), the
+  privileged planner sees only typed, schema-validated `extract`ions (and
+  `control_messages` never contain the bytes), and every side-effecting `call`
+  whose arguments carry an untrusted taint is refused unless it presents a valid
+  capability or an approval. Tool output is re-quarantined so taint propagates
+  across steps. New `ContainmentError` (`CONTAINMENT_BLOCKED`) with a catalog
+  entry.
+- **Machine-checkable containment invariant.** `ContainmentMonitor` records each
+  capability exercise as a `ContainmentEvent`; `verify_containment` folds the log
+  into a `ContainmentReport` whose `held` is true iff
+  `untrusted ⇒ no unapproved capability` held for every decision, with an
+  `escalation_rate` over untrusted side-effecting attempts.
+- **Capability-scoped tools at the permission layer.** `ToolPermissionChecker`
+  gains an opt-in `broker=` / `require_capability=`; with a broker configured a
+  side-effecting tool whose arguments are untrusted-tainted (or whose taint is
+  unknown) must present a capability, else it is routed to the approval gate.
+  `ToolRuntime.execute(..., capability=)` threads the token through. Without a
+  broker the prior RBAC/ABAC behavior is unchanged.
+- **Taint-propagating materialization.** `ContextPacket` carries each evidence
+  entry's `trust_level`; `materialize()` stamps a derived `trust_label`, and
+  `tainted_evidence()` returns each evidence text as a labeled `TaintedValue`.
+- **VincioBench & SLO.** New `containment` family runs an adversarial
+  injection corpus through the dual-plane executor; a published SLO holds the
+  escalation rate at **0** on the gated corpus, backed by budgets that also gate
+  taint propagation, planner isolation, capability unforgeability, and that
+  legitimate capability-authorized side effects still run.
+- **Runnable example.** `examples/52_injection_containment.py` walks
+  information-flow labels → quarantine + typed extraction → capability-gated
+  execution → the machine-checked containment invariant, fully offline.
+
 ## [3.7.0] - 2026-06-20
 
 The learning loop, closed with on-policy reinforcement. Reinforcement from

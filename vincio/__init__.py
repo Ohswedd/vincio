@@ -145,6 +145,16 @@ from .realtime import RealtimeSession, VoiceAgent
 from .registry import AgentDirectory, BundleRecord, CommunityRegistry
 from .retrieval import FastEmbedEmbedder, MatryoshkaEmbedder, ShardedIndex, TwoStageIndex
 from .security.access import AllowListGate
+from .security.capability import (
+    CapabilityBroker,
+    CapabilityToken,
+    ContainmentMonitor,
+    ContainmentReport,
+    TaintedValue,
+    TrustLabel,
+    verify_containment,
+)
+from .security.dualplane import DualPlaneExecutor
 from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
 from .stability import (
@@ -158,7 +168,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.7.0"
+__version__ = "3.8.0"
 
 __all__ = [
     "ContextApp",
@@ -226,6 +236,15 @@ __all__ = [
     "signature",
     "Predict",
     "Rail",
+    # provable injection containment & capability-secure agents
+    "TrustLabel",
+    "TaintedValue",
+    "CapabilityToken",
+    "CapabilityBroker",
+    "DualPlaneExecutor",
+    "ContainmentMonitor",
+    "ContainmentReport",
+    "verify_containment",
     "Workflow",
     "Pack",
     "load_pack",

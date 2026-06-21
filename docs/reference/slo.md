@@ -63,6 +63,7 @@ portable.
 | Prompt-injection detection rate | ≥ 0.80 | `security.injection_detection_rate` |
 | Injection false-positive rate | ≤ 0.20 | `security.injection_false_positive_rate` |
 | PII coverage | ≥ 0.80 | `security.pii_coverage` |
+| Injection-containment escalation rate (adversarial corpus) | 0 | `containment.escalation_rate` |
 
 ## Protocols & interoperability
 

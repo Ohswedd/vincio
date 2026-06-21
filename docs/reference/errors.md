@@ -267,6 +267,10 @@ without an entry here.
 
 **Prompt injection detected.** Untrusted content carried instruction-like text. Keep `block_untrusted_instructions` on, quarantine the source, and review the injection finding in `.details`.
 
+### CONTAINMENT_BLOCKED
+
+**Containment blocked an untrusted capability.** An argument derived from untrusted data reached a write/external tool without authority. Mint a CapabilityToken from the user's request via CapabilityBroker (or route the call through the approval gate) before the side effect; the DualPlaneExecutor enforces this automatically.
+
 ### PII_POLICY
 
 **PII policy violation.** Detected PII violates the active policy. Enable redaction (`redact_pii_in_context`), or add the locale pack the data requires.

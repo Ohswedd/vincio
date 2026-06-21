@@ -45,6 +45,25 @@ fields all arrive as injection-scanned evidence (with the extractor recorded for
 honesty), exactly like any loaded file. Optional cloud Document-AI / transcription
 backends are lazy and opt-in.
 
+**Containment that holds when detection misses.** Detection is necessary but not
+sufficient — an attacker needs only one missed instruction. The control plane is
+therefore separated from the data plane. Provenance is promoted to a typed
+`TrustLabel` (`trusted` / `untrusted` / `quarantined`) that propagates through
+`TaintedValue` derivations and `ContextPacket.materialize()`, so a value derived
+from untrusted data is tainted end-to-end. A `DualPlaneExecutor` runs a
+privileged planner that never sees untrusted bytes — only typed, schema-validated
+extractions of them — and gates every side-effecting tool call on an unforgeable
+`CapabilityToken` minted by a `CapabilityBroker` from the *user's* request
+(HMAC-signed, principal- and argument-scoped, TTL-bounded). An argument carrying
+an untrusted taint cannot reach a write/external tool without a capability or an
+explicit human approval; the attempt is refused (`ContainmentError`) and recorded.
+A `ContainmentMonitor` lets `verify_containment` prove the invariant
+`untrusted ⇒ no unapproved capability` held across a whole run, and the VincioBench
+`containment` family holds the escalation rate at **0** on an adversarial corpus.
+The guarantee rests on capability-key secrecy, not on detecting the attack;
+capability-scoped tools are also available at the permission layer via
+`ToolPermissionChecker(broker=...)`.
+
 ### Secret & PII leakage, and egress control
 
 Deterministic PII / secret detection and redaction runs in-process, with

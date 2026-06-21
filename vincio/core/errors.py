@@ -71,6 +71,7 @@ __all__ = [
     "AccessDeniedError",
     "TenantIsolationError",
     "InjectionDetectedError",
+    "ContainmentError",
     "PIIPolicyError",
     "EgressBlockedError",
     "StorageError",
@@ -562,6 +563,19 @@ class TenantIsolationError(SecurityError):
 
 class InjectionDetectedError(SecurityError):
     code = "INJECTION_DETECTED"
+
+
+class ContainmentError(SecurityError):
+    """A side-effecting capability was exercised on untrusted authority.
+
+    Raised by the capability-secure execution path when an argument derived from
+    untrusted data (a retrieved document, a tool result) would flow into a
+    write/external tool without a user-minted :class:`~vincio.security.CapabilityToken`
+    or a human approval. Containment refuses the call rather than letting an
+    injected instruction escalate to an unauthorized side effect.
+    """
+
+    code = "CONTAINMENT_BLOCKED"
 
 
 class PIIPolicyError(SecurityError):

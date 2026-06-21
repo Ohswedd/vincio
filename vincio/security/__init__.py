@@ -17,6 +17,18 @@ from .audit import (
     verify_audit_file,
 )
 from .backends import DetectorBackend, DetectorSpan
+from .capability import (
+    CapabilityBroker,
+    CapabilityToken,
+    CapabilityVerification,
+    ContainmentEvent,
+    ContainmentMonitor,
+    ContainmentReport,
+    TaintedValue,
+    TrustLabel,
+    verify_containment,
+)
+from .dualplane import DualPlaneExecutor, PlannedCall, QuarantineRef
 from .injection import InjectionDetector, InjectionVerdict, wrap_untrusted
 from .locales import LocalePack, available_locales, get_locale_pack
 from .pii import PIIDetector, PIIMatch, redact
@@ -41,6 +53,18 @@ __all__ = [
     "InjectionDetector",
     "InjectionVerdict",
     "wrap_untrusted",
+    "TrustLabel",
+    "TaintedValue",
+    "CapabilityToken",
+    "CapabilityVerification",
+    "CapabilityBroker",
+    "ContainmentEvent",
+    "ContainmentReport",
+    "ContainmentMonitor",
+    "verify_containment",
+    "DualPlaneExecutor",
+    "QuarantineRef",
+    "PlannedCall",
     "LocalePack",
     "available_locales",
     "get_locale_pack",

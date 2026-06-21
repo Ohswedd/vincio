@@ -93,6 +93,20 @@ like any other tool.
   scopes, may demand approval, and external tools can be disabled wholesale
   (`allow_external`). Programmable `Rail`s add deterministic topic/format/safety
   gates with no model judgment.
+- **Containment (holds when detection misses):** detection is best-effort, so
+  the control plane is separated from the data plane. Every context candidate's
+  provenance becomes a typed `TrustLabel` (`trusted` / `untrusted` /
+  `quarantined`) that propagates through `TaintedValue` derivations and
+  `ContextPacket.materialize()`, so a value computed from untrusted data stays
+  tainted end-to-end. A `DualPlaneExecutor` runs a privileged planner that never
+  sees untrusted bytes — only typed, schema-validated extractions — and gates
+  every side-effecting tool call on an unforgeable `CapabilityToken` minted by a
+  `CapabilityBroker` from the *user's* request (HMAC-signed, principal- and
+  argument-scoped, TTL-bounded). An untrusted-tainted argument cannot reach a
+  write/external tool without a capability or an explicit approval; the
+  `ContainmentMonitor` records each decision so `verify_containment` proves the
+  invariant `untrusted ⇒ no unapproved capability` held over the whole run. The
+  containment property rests on key secrecy, not on detecting the attack.
 
 ## Out of scope (residual risk)
 
