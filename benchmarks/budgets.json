@@ -1086,6 +1086,30 @@
     },
     "families.test_time_compute.max_thinking_budget": {
       "lte": 8192
+    },
+    "families.long_horizon.footprint_growth_ratio": {
+      "lte": 1.5
+    },
+    "families.long_horizon.token_growth_ratio": {
+      "lte": 1.2
+    },
+    "families.long_horizon.recall_at_horizon": {
+      "gte": 1.0
+    },
+    "families.long_horizon.within_budget_at_horizon": {
+      "eq": true
+    },
+    "families.long_horizon.compactions": {
+      "gte": 1
+    },
+    "families.long_horizon.provenance_preserved": {
+      "eq": true
+    },
+    "families.long_horizon.paged_back_on_demand": {
+      "eq": true
+    },
+    "families.long_horizon.intra_run_decay_demotes_stale": {
+      "eq": true
     }
   }
 }

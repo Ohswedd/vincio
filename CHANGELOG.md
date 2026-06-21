@@ -4,6 +4,60 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.10.0] - 2026-06-21
+
+Long-horizon context engineering. Vincio's namesake is context engineering, and
+the regime where it matters most is the one naïve accumulation breaks:
+million-token, multi-day, multi-session agent runs where stale context crowds out
+fresh signal ("context rot") and the resident footprint grows without bound. This
+release composes the platform's existing primitives — the footprint estimator, the
+memory decay model, and the content-addressed evidence store's cross-process
+`materialize()` — into an explicit per-run context governor. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path
+is the default, and a run with no governor installed behaves exactly as before.
+
+### Added
+
+- **`ContextGovernor` (`vincio.context`).** A per-run controller that holds a
+  `ContextBudget` (live tokens, resident bytes, KV-cache footprint) across a long
+  run the way the cost report holds a dollar budget. On each admission it
+  re-applies intra-run decay, then — while over budget — compacts the coldest
+  non-recent spans into the memory OS (or evicts the lowest-utility span when no
+  compactor is configured) until the live footprint fits. `recall(query)` answers
+  over the live spans and **pages cold detail back** from the summaries that cover
+  it, so recall survives compaction. `report()` returns a `ContextBudgetReport` —
+  the residency analogue of the cost report.
+- **`RelevanceDecay` (`vincio.context`).** The memory subsystem's exponential
+  decay model applied *within a single run*: a span admitted many steps ago keeps
+  `0.5 ** (age / half_life_steps)` of its base relevance, so fresh signal outweighs
+  stale signal of equal base relevance. Demotions are surfaced in the
+  excluded-context report.
+- **`ContextCompactor` (`vincio.context`).** Hierarchical, provenance-preserving
+  compaction: folds a batch of cold spans into one extractive summary span whose
+  full source text is written to a content-addressed `EvidenceStore` (paged back
+  losslessly on demand) and whose gist is written into the memory OS as an audited
+  `SUMMARY` memory carrying the covered content hashes and source ids. Because a
+  summary is itself a span, summaries compact again into higher levels. A
+  `CompactionRecord` captures the provenance of each fold.
+- **App wiring.** `app.use_context_governor(budget_or_governor, ...)` installs a
+  governor (its compactor writes summaries into the app's memory engine);
+  `app.govern_packet(result_or_packet)` admits a run's evidence; and
+  `app.context_budget_report()` returns the live footprint.
+- **`long_horizon` VincioBench family + SLOs.** Measures the horizon-scaling
+  guarantee: at 10× horizon the governed resident/token footprint stays flat (vs
+  the ~linear growth of naïve accumulation), a compacted needle is still recalled
+  by paging it back, provenance is retained through compaction, and intra-run decay
+  demotes stale spans. Three new published SLOs gate it. Runnable example
+  `54_long_horizon_context.py`.
+
+### Changed
+
+- The agent executor's internal in-loop compactor (`vincio.agents.compaction`) is
+  renamed `ContextCompactor` → **`LoopCompactor`** to reserve the `ContextCompactor`
+  name for the new long-horizon context-layer class. It was never part of the
+  public surface (not in `vincio.__all__`); the executor and benchmarks are updated
+  in lockstep. `vincio.context.longhorizon` joins the `mypy --strict` ladder.
+
 ## [3.9.0] - 2026-06-21
 
 Test-time compute & reasoning orchestration. Reasoning-model thinking budgets and

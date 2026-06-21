@@ -4,7 +4,7 @@ execution, and the plan-and-execute replanning loop."""
 import warnings
 
 from vincio import ContextApp, VincioConfig
-from vincio.agents.compaction import ContextCompactor
+from vincio.agents.compaction import LoopCompactor
 from vincio.agents.dag import StepDAG
 from vincio.agents.executor import AgentExecutor
 from vincio.agents.planner import Planner
@@ -29,15 +29,15 @@ def _app(tmp_path, **kw):
 # --------------------------------------------------------------------------- #
 
 
-class TestContextCompactor:
+class TestLoopCompactor:
     def test_under_budget_keeps_everything(self):
-        c = ContextCompactor(max_tokens=10_000, keep_recent=4)
+        c = LoopCompactor(max_tokens=10_000, keep_recent=4)
         blocks = [f"block {i}" for i in range(5)]
         summary, kept = c.compact_blocks(blocks)
         assert summary is None and kept == blocks
 
     def test_over_budget_summarizes_old_blocks(self):
-        c = ContextCompactor(max_tokens=40, keep_recent=2, summary_tokens=30)
+        c = LoopCompactor(max_tokens=40, keep_recent=2, summary_tokens=30)
         blocks = [f"This is observation number {i} with some descriptive content." for i in range(12)]
         summary, kept = c.compact_blocks(blocks)
         assert summary is not None  # older blocks folded into a rolling summary
@@ -45,7 +45,7 @@ class TestContextCompactor:
         assert kept[-1] == blocks[-1]  # most recent kept verbatim
 
     def test_message_compaction_preserves_anchor_and_recent(self):
-        c = ContextCompactor(max_tokens=30, keep_recent=2)
+        c = LoopCompactor(max_tokens=30, keep_recent=2)
         messages = [
             Message(role="system", content="You are an agent."),
             Message(role="user", content="Solve the very long objective with many details here."),
@@ -57,7 +57,7 @@ class TestContextCompactor:
         assert len(out) < len(messages)
 
     def test_message_compaction_keeps_tool_pair_together(self):
-        c = ContextCompactor(max_tokens=20, keep_recent=1)
+        c = LoopCompactor(max_tokens=20, keep_recent=1)
         messages = [
             Message(role="system", content="sys"),
             Message(role="user", content="do it with lots of detail and length to trigger compaction now"),

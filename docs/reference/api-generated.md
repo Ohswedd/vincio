@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**196** public symbols.
+**200** public symbols.
 
 ## Classes
 
@@ -153,6 +153,18 @@ Gate + redact prompt/completion content at the telemetry export boundary.
 ### `ContextApp(name=…, objective=…, output_schema=…, config=…, provider=…, model=…, budget=…, policies=…, prompt_spec=…)`
 
 The top-level Vincio application: one object that compiles prompts, memory, retrieval, tools, schemas, and policies into validated, observable, model-ready context and runs the end-to-end pipeline.
+
+### `ContextBudget(**data)`
+
+A per-run context budget: the residency analogue of a dollar budget.
+
+### `ContextCompactor(store=…, memory=…, owner_id=…, scope=…, summary_tokens=…, summarizer=…)`
+
+Hierarchical, provenance-preserving compaction of cold run spans.
+
+### `ContextGovernor(budget=…, decay=…, compactor=…, keep_recent_spans=…, decay_threshold=…, compact_batch=…)`
+
+Per-run controller that holds a context budget across a long horizon.
 
 ### `ContinuousImprovementController(app, metrics=…, golden=…, registry=…, prompt_name=…, monitor=…, sustain=…, cooldown_s=…, eval_budget=…, quality_floor=…, reoptimize=…, gates=…, clock=…)`
 
@@ -453,6 +465,10 @@ Bounded LRU of reasoning traces under a resident-memory budget.
 ### `ReflectiveOptimizer(evaluate_variant, weights=…, gates=…, max_cost_per_case=…, objectives=…, reflector=…, constraints=…, prefer=…)`
 
 GEPA-style reflective prompt optimizer.
+
+### `RelevanceDecay(**data)`
+
+Exponential intra-run relevance decay (the memory recency model, per run).
 
 ### `ResearchAgent(app, budget=…, strategies=…, judge=…, min_support=…, require_citations=…)`
 

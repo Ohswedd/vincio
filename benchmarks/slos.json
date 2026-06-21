@@ -1111,6 +1111,36 @@
       "threshold": 8192,
       "enforced_by": "families.test_time_compute.max_thinking_budget",
       "rationale": "The reasoning controller scales effort with difficulty but holds a hard ceiling; without it a hard task could spend the whole run thinking."
+    },
+    {
+      "id": "long_horizon_footprint_bounded",
+      "category": "performance",
+      "statement": "At 10× horizon, the governed resident context footprint stays within a bounded multiple (≤ 2×) of the 1× footprint, so a long run does not grow context without bound.",
+      "metric": "families.long_horizon.footprint_growth_ratio",
+      "direction": "lte",
+      "threshold": 2.0,
+      "enforced_by": "families.long_horizon.footprint_growth_ratio",
+      "rationale": "Naïve accumulation grows the footprint ~linearly with horizon (≈10×); the governor's decay + compaction keep it flat. The budget gates 1.5×, below the 2× promise."
+    },
+    {
+      "id": "long_horizon_recall_preserved",
+      "category": "quality",
+      "statement": "A fact compacted out of the live packet on a long run is still recalled at 10× horizon (recall ≥ 0.80) by paging it back from the content-addressed store.",
+      "metric": "families.long_horizon.recall_at_horizon",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.long_horizon.recall_at_horizon",
+      "rationale": "Compaction is only safe if it preserves recall; the budget gates 1.0 so the needle must page back, above the published 0.80 floor."
+    },
+    {
+      "id": "long_horizon_within_envelope",
+      "category": "cost",
+      "statement": "A governed long run stays inside its declared context budget (tokens, residency, KV-cache) at 10× horizon.",
+      "metric": "families.long_horizon.within_budget_at_horizon",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.long_horizon.within_budget_at_horizon",
+      "rationale": "A context budget is only a guarantee if it actually holds as the run grows; the governor compacts/evicts until the live footprint fits."
     }
   ]
 }

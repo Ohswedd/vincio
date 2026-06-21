@@ -98,6 +98,19 @@ app.run("export button 500s").output.label
   confidence), `RewardVerifier` (any `VerifiableReward`/`RewardModel`), or a
   callable. Early-exits the moment the verifier clears the bar (best-of-N) or the
   majority is locked (self-consistency); bounded by candidate / cost / deadline.
+- **Long-horizon context engineering.** `app.use_context_governor(ContextBudget(max_tokens=, max_resident_bytes=, max_kv_cache_bytes=))`
+  installs a per-run `ContextGovernor` (`vincio.context`) that holds a context
+  budget across million-token, multi-day, multi-session runs: feed each result
+  with `app.govern_packet(result)` and read `app.context_budget_report()`
+  (`ContextBudgetReport` — live tokens, residency, KV-cache footprint — the
+  residency analogue of `cost_report`). `RelevanceDecay` applies the memory
+  decay model within one run so stale `RunSpan`s lose weight (surfaced in the
+  excluded-context report); a provenance-preserving `ContextCompactor` folds the
+  coldest cold spans into hierarchical summaries written to the memory OS and
+  pages their full text back on demand from the content-addressed evidence store
+  (`recall(query)` pages a compacted needle back). Held by a horizon-scaling SLO:
+  at 10× horizon the governed footprint stays flat (vs ~linear naïve growth) and
+  recall is preserved (`families.long_horizon`).
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
@@ -216,7 +229,7 @@ app.run("export button 500s").output.label
   plan_and_execute|hierarchical", max_steps=, domain=, cost_aware_models=)` →
   bounded `AgentState` with `metrics()`; level-parallel DAG over
   `topological_levels`, a real `plan_and_execute` replanning loop
-  (`Planner.replan`), in-loop compaction (`ContextCompactor`).
+  (`Planner.replan`), in-loop compaction (`LoopCompactor`).
 - **Hierarchical (HTN) planning.** `HTNDomain().method(task, [subtasks],
   ordering="sequence|parallel", when=)` + `.operator(name, step_type=,
   tool_name=, fallbacks=)`; `domain.decompose(task, context=)` → `HTNPlanNode`

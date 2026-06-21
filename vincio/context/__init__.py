@@ -22,6 +22,15 @@ from .llmlingua import (
     faithfulness_preserved,
     salient_units,
 )
+from .longhorizon import (
+    CompactionRecord,
+    ContextBudget,
+    ContextBudgetReport,
+    ContextCompactor,
+    ContextGovernor,
+    RelevanceDecay,
+    RunSpan,
+)
 from .packet import ContextPacket
 from .scoring import (
     ContextCandidate,
@@ -53,6 +62,14 @@ __all__ = [
     "salient_units",
     "ContextIR",
     "OutputContractRef",
+    # long-horizon context engineering
+    "ContextCompactor",
+    "ContextGovernor",
+    "ContextBudget",
+    "ContextBudgetReport",
+    "RelevanceDecay",
+    "RunSpan",
+    "CompactionRecord",
     "ContextPacket",
     "ContextCandidate",
     "ContextScorer",

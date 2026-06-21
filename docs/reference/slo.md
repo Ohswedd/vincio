@@ -140,5 +140,19 @@ early-exit returns the saved draws the moment the verifier clears the bar, and t
 reasoning controller scales effort with difficulty but holds a hard token ceiling
 so a hard task can never silently exhaust the run.
 
+## Long-horizon context engineering
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| At 10× horizon, the governed resident context footprint stays within a bounded multiple of the 1× footprint. | ≤ 2× | `families.long_horizon.footprint_growth_ratio` |
+| A fact compacted out of the live packet on a long run is still recalled at 10× horizon by paging it back from the content-addressed store. | ≥ 0.80 recall | `families.long_horizon.recall_at_horizon` |
+| A governed long run stays inside its declared context budget (tokens / residency / KV-cache) at 10× horizon. | within budget | `families.long_horizon.within_budget_at_horizon` |
+
+Naïve accumulation grows the context footprint ~linearly with the horizon (≈10×)
+and lets stale spans rot quality; the `ContextGovernor` keeps it flat via intra-run
+decay and provenance-preserving compaction, paging cold detail back on demand so
+recall survives. The budgets gate 1.5× growth and full recall, below the published
+promises.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

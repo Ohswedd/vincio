@@ -48,6 +48,7 @@ where they are, so you can run it yourself and audit the claims.
 | **GenerationBench** | document-contract validity (deficient rejected), cited-report coverage + per-claim entailment, media C2PA provenance binding + tamper rejection + disclosure, redline correctness, new-format ingestion recall, generated-media prompt safety | un-contracted / un-provenanced output |
 | **PerfBench** | compile/retrieval/run latency, cache speedups, concurrent throughput, TTFT | cold paths |
 | **IntegrationsBench** | every first-party connector round-trips offline against a recorded fixture with provenance; the plugin contract loads compatible plugins and gates incompatible majors; the signed community registry resolves under an allow-list (audited), verifies signatures, and detects tampering; Haystack/DSPy bridges adapt in; the MCP-server marketplace bridge discovers→governs→connects in one call | hand-wired loaders / ungoverned, unsigned registries |
+| **LongHorizonBench (3.10)** | does a governed long run stay bounded as the horizon grows 10×? — resident/token growth ratio (flat vs ~linear naïve), recall preserved by paging a compacted needle back from the content-addressed store, provenance retained through compaction, and intra-run decay demoting stale spans | naïve accumulation (linear footprint, context rot) |
 
 ## Corpora and provenance
 

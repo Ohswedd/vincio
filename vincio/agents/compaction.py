@@ -1,13 +1,18 @@
 """In-loop context compaction for the agent executor.
 
 Long agent runs accumulate tool observations and reasoning turns until the
-context overflows. The :class:`ContextCompactor` replaces the executor's old
+context overflows. The :class:`LoopCompactor` replaces the executor's old
 fixed ``[-8]`` / ``[:24]`` slicing with a *token-budgeted* policy: the most
 recent turns are kept verbatim, and everything older is folded into a rolling
 **extractive summary** (deterministic and offline via
 :func:`~vincio.memory.summarizers.extractive_summary`). Under budget it keeps
 everything, so short runs are unchanged; over budget it prunes the oldest
 observations and preserves their gist, so the loop never blows the window.
+
+This is the *intra-loop* compactor bound to one :class:`~vincio.agents.executor.AgentExecutor`
+run. The *cross-run, long-horizon* governor — hierarchical, provenance-preserving
+span compaction with paging back from the content-addressed store — lives in
+:mod:`vincio.context.longhorizon` (:class:`~vincio.context.ContextCompactor`).
 """
 
 from __future__ import annotations
@@ -16,10 +21,10 @@ from ..core.tokens import count_tokens
 from ..core.types import Message
 from ..memory.summarizers import extractive_summary
 
-__all__ = ["ContextCompactor"]
+__all__ = ["LoopCompactor"]
 
 
-class ContextCompactor:
+class LoopCompactor:
     """Token-budgeted compaction of context blocks and ReAct message logs."""
 
     def __init__(self, *, max_tokens: int = 6000, keep_recent: int = 6, summary_tokens: int = 200) -> None:
