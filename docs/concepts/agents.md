@@ -288,3 +288,29 @@ default but not a security boundary; container / microVM / gVisor / WASM are rea
 boundaries, enforced by `require_real_isolation` for code-executing and
 computer-use workloads). See
 [`examples/34_self_improving_loop_and_agents.py`](../../examples/34_self_improving_loop_and_agents.py).
+
+## World-model / simulation-based planning
+
+The bounded planners and the stateful-environment harness let an agent *act on* and
+*evaluate* the live world. `vincio.agents.world_model` adds the rung above: an agent
+that **learns a model of its tools and plans against it**, searching imagined
+rollouts before acting so a wrong move costs a simulated step, not a live one.
+
+- **`WorldModel`** is a deterministic dynamics model fit offline from recorded
+  reset/step `Transition`s (`record_transitions(env, sequences)`). For each tool it
+  learns the *parameterized* state effect (constant / argument / numeric-step value)
+  under a *learned precondition* (the discriminative state field), so
+  `predict(obs, action)` returns a `PredictedStep` that fails a refund on a
+  processing order but succeeds on a cancelled one — and generalizes a cancel seen
+  on one order to another. `imagine(obs, actions)` rolls a plan forward without
+  touching a tool.
+- **`WorldModel.calibrate(holdout)`** returns a `CalibrationReport`; the model earns
+  planning weight only once its predictions track the real environment within
+  tolerance, the way a judge ensemble earns gating weight.
+- **`ModelPredictivePlanner`** searches imagined rollouts with the test-time-search
+  beam, commits the best first action to the real environment, observes, and
+  re-plans — returning an `MPCResult`. By default it refuses an uncalibrated model.
+  At a fixed action budget it matches or beats reactive (one-step) planning: on the
+  `make_vault_environment` trap world it opens the vault a reactive planner is
+  trapped short of. See
+  [`examples/55_world_model_planning.py`](../../examples/55_world_model_planning.py).

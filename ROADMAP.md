@@ -56,6 +56,7 @@ and a runnable example.
 | **Runtime performance** | A single-pass vectorized scorer (NumPy-optional, pure-Python fallback); a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and the prepared candidate set so a warm compile is dominated by scoring, not allocation; streaming-first compilation that emits the prefix before scoring; speculative retrieval prefetch that warms the query embedding from the task classification; and a per-app resident-memory budget held by slim packets and evidence eviction, surfaced in the cost report and gated by an SLO. |
 | **Test-time compute & reasoning** | A `ReasoningController` (`app.use_reasoning_controller`) that sets thinking effort and a thinking-token budget per step from the task classification and the live budget under a hard reasoning-token ceiling held by an SLO; reasoning-trace-aware caching (`ReasoningTraceCache`) that reuses a warm thinking prefix under the resident-memory budget; and a verifier-guided `TestTimeSearch` (`app.test_time_search`) — best-of-N, self-consistency, and beam search over tool-use trajectories scored by the *existing* critics and judge ensembles through one `Verifier` protocol, early-exiting the moment the verifier clears the bar, bounded by the same budgets the orchestrator enforces. |
 | **Long-horizon context engineering** | A per-run `ContextGovernor` (`app.use_context_governor`) holding a `ContextBudget` (live tokens, residency, KV-cache footprint) the way the cost report holds a dollar budget; intra-run `RelevanceDecay` that demotes stale spans before they crowd out fresh signal, surfaced in the excluded-context report; and a provenance-preserving `ContextCompactor` that folds cold spans into hierarchical summaries in the memory OS and pages their full text back on demand from the content-addressed store — so a million-token, multi-day, multi-session run stays inside a bounded quality and cost envelope as the horizon grows 10×, held by a horizon-scaling SLO. |
+| **World-model / simulation-based planning** | A deterministic, offline `WorldModel` fit from recorded reset/step transitions that learns each tool's parameterized effect under a learned precondition (predicting the next observation and a verifier-scored reward, generalizing over arguments) and earns planning weight only once a `CalibrationReport` shows its predictions track the real environment; and a `ModelPredictivePlanner` that searches imagined rollouts with the test-time-search beam, commits the best first action, and re-plans on the real observation — bounded by the same budgets the orchestrator enforces and held by a planning-accuracy SLO (an imagined-rollout planner matches or beats reactive planning at a fixed action budget on the environment harness). |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
@@ -71,36 +72,37 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **long-horizon context engineering** (a per-run `ContextGovernor`
-holding a context budget across million-token, multi-day, multi-session runs, intra-run
-`RelevanceDecay` that demotes stale spans before they crowd out fresh signal, and a
-provenance-preserving `ContextCompactor` that folds cold spans into hierarchical summaries and pages
-their full text back on demand from the content-addressed store) — has shipped and folded into the
-**Long-horizon context engineering** row above. The next theme is scheduled below. It closes a
-specific gap in the platform's *own* frontier — a rung that exists in the literature and in buyer
-demand but not yet in the package — rather than a gap measured against any one competitor. An
+The most recent scheduled theme — **world-model / simulation-based planning** (a deterministic,
+offline `WorldModel` fit from recorded reset/step transitions that learns each tool's parameterized
+effect under a learned precondition, a `CalibrationReport` that earns the model planning weight once
+its predictions track the real environment, and a `ModelPredictivePlanner` that searches imagined
+rollouts with the test-time-search beam and re-plans on the real observation) — has shipped and folded
+into the **World-model / simulation-based planning** row above. The next theme is scheduled below. It
+closes a specific gap in the platform's *own* frontier — a rung that exists in the literature and in
+buyer demand but not yet in the package — rather than a gap measured against any one competitor. An
 indicative minor-version target is given; cadence holds one coherent theme per minor.
 
-### 1 · World-model / simulation-based planning *(target 3.11)*
+### 1 · Causal record-replay debugger *(target 3.12)*
 
-The reset/step/verify environment-eval harness and the test-time-search verifiers already let an
-agent *evaluate* a trajectory; the rung the platform has not yet made first-class is letting an agent
-**learn a model of its tools and environment and plan against it** before acting — searching in an
-imagined rollout, not only against the live world. The primitives are in place: the stateful
-`Environment` contract, the `Verifier` protocol, and the bounded planners.
+The eval-replay runner and durable-graph time-travel already let a run be re-executed from a
+checkpoint or a recorded case; the rung the platform has not yet made first-class is **byte-faithful,
+deterministic replay of a *whole* agent run from its trace** — every model call, tool result, and
+retrieval served from the recording so a developer can step, inspect, and branch a past run as a
+first-class tool, not a bespoke script. The primitives are in place: the full trace span tree, the
+content-addressed evidence store, and the deterministic mock provider.
 
-- **Learned environment model** — a deterministic, offline `WorldModel` fit from recorded
-  reset/step transitions that predicts the next observation and a verifier-scored reward for a
-  candidate action, so a planner can roll out a plan without touching the live tools.
-- **Model-predictive planning** — a planner that searches imagined rollouts under the world model
-  (reusing the test-time-search beam and the cost-aware action selector), commits the best action,
-  and re-plans on the real observation, bounded by the same budgets the orchestrator enforces.
-- **Calibration gate** — the world model earns planning weight only after its predicted rewards
-  track the real environment's within a tolerance, the way a judge ensemble earns gating weight.
+- **Recording boundary** — a capture layer that records every non-deterministic edge of a run
+  (model responses, tool outputs, retrieval hits, clock/seed) keyed to its trace spans, written to
+  the content-addressed store so a recording is portable and verifiable.
+- **Deterministic replay** — a replay provider/runtime that serves each recorded edge back in order,
+  reproducing the run byte-for-byte, with a step/inspect surface over the span tree and a divergence
+  report when live code no longer matches the recording.
+- **Branch-and-edit** — fork a recorded run at any span, change an input or a prompt, and re-execute
+  only the affected suffix against the recording, so a fix is validated against the exact failing run.
 
-*Ships as:* `vincio.agents` gains a `WorldModel` and a model-predictive planner mode; a
-`world_model` VincioBench family with a planning-accuracy SLO (an imagined-rollout planner matches or
-beats reactive planning at a fixed action budget on the environment harness); a runnable example.
+*Ships as:* `vincio.observability` gains a recorder and a deterministic replay runtime; a
+`record_replay` VincioBench family with a replay-fidelity SLO (a recorded run replays byte-identically
+and a divergence is detected); a runnable example.
 
 ---
 
@@ -132,9 +134,6 @@ Grouped by where they would land.
 - 🔭 **Formal verification of governance invariants** — machine-checkable proofs that residency,
   erasure, budget, and the shipped injection-containment invariant hold across the whole
   pipeline, beyond the signed audit chain, provable erasure, and the per-run containment check.
-- 🔭 **Causal record-replay debugger** — deterministic, byte-faithful replay of a full agent run from
-  its trace for time-travel debugging, generalizing the eval-replay and durable-graph time-travel
-  already shipped into a first-class developer tool.
 - 🔭 **Energy & carbon accounting** — per-run energy and estimated carbon reported alongside cost and
   held by an optional SLO, anticipating sustainability-disclosure demand, on the existing cost-report
   surface.

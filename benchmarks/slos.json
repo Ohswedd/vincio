@@ -1141,6 +1141,36 @@
       "threshold": true,
       "enforced_by": "families.long_horizon.within_budget_at_horizon",
       "rationale": "A context budget is only a guarantee if it actually holds as the run grows; the governor compacts/evicts until the live footprint fits."
+    },
+    {
+      "id": "world_model_planning_beats_reactive",
+      "category": "quality",
+      "statement": "On a planning-favoring world, the imagined-rollout planner matches or beats a reactive (one-step) planner at a fixed action budget.",
+      "metric": "families.world_model.planning_advantage",
+      "direction": "gte",
+      "threshold": 0.0,
+      "enforced_by": "families.world_model.planning_advantage",
+      "rationale": "Simulation-based planning only earns its place if rolling out the world model beats reacting; the budget gates a strict win (the planner opens the vault while the reactive planner is trapped), above the matches-or-beats promise."
+    },
+    {
+      "id": "world_model_prediction_accuracy",
+      "category": "quality",
+      "statement": "A calibrated world model's predicted next states track the real environment within tolerance, earning it planning weight.",
+      "metric": "families.world_model.model_state_accuracy",
+      "direction": "gte",
+      "threshold": 0.9,
+      "enforced_by": "families.world_model.model_state_accuracy",
+      "rationale": "A planner may only search against a world the model actually predicts; the budget gates full accuracy on the reference world, above the published 0.90 floor."
+    },
+    {
+      "id": "world_model_calibration_gated",
+      "category": "reliability",
+      "statement": "An uncalibrated world model is refused for planning, the way a judge ensemble must earn its gating weight.",
+      "metric": "families.world_model.calibration_gate_enforced",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.world_model.calibration_gate_enforced",
+      "rationale": "Planning against a world the model has not been shown to predict would amplify model error into real actions; the gate blocks it until calibration passes."
     }
   ]
 }

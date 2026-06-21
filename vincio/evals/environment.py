@@ -45,6 +45,7 @@ __all__ = [
     "task_success",
     "make_retail_environment",
     "make_counter_environment",
+    "make_vault_environment",
 ]
 
 
@@ -537,5 +538,57 @@ def make_counter_environment(target: int = 3) -> ToolEnvironment:
             id=f"count_to_{target}",
             instruction=f"Increment the counter until it reaches {target}.",
             checks=[StateCheck(name="reached_target", path="count", op="eq", value=target)],
+        ),
+    )
+
+
+def make_vault_environment(steps_to_open: int = 3) -> ToolEnvironment:
+    """A planning-favoring world: a locally-attractive shortcut is a dead end.
+
+    The goal is to open a vault, which requires advancing a progress dial to
+    ``steps_to_open`` and *then* opening it. A ``shortcut`` tool jumps the dial
+    straight to the threshold — which raises the task score immediately and so
+    tempts a reactive (one-step) agent — but it *seals* the vault, so opening
+    afterwards always fails. The only path to success is to ``advance`` the dial
+    the long way and then ``open_vault``.
+
+    This is the canonical case where searching imagined rollouts beats reacting:
+    a planner that rolls the world model forward sees that the shortcut dead-ends
+    and that the patient path opens the vault, while a one-step planner takes the
+    immediate score and is trapped. Deterministic and in-process.
+    """
+
+    def advance(state: dict[str, Any], _args: dict[str, Any]) -> EnvToolResult:
+        state["progress"] = int(state.get("progress", 0)) + 1
+        return EnvToolResult(text=f"progress={state['progress']}", data={"progress": state["progress"]})
+
+    def shortcut(state: dict[str, Any], _args: dict[str, Any]) -> EnvToolResult:
+        state["progress"] = steps_to_open
+        state["sealed"] = True
+        return EnvToolResult(text="dial jumped, but the vault sealed", data={"sealed": True})
+
+    def open_vault(state: dict[str, Any], _args: dict[str, Any]) -> EnvToolResult:
+        if state.get("progress", 0) >= steps_to_open and not state.get("sealed", False):
+            state["vault"] = "open"
+            return EnvToolResult(text="vault opened", data={"vault": "open"})
+        return EnvToolResult(
+            ok=False, error="cannot open: need progress at threshold and the vault unsealed"
+        )
+
+    return ToolEnvironment(
+        name="vault",
+        initial_state={"progress": 0, "sealed": False, "vault": "closed"},
+        tools={"advance": advance, "shortcut": shortcut, "open_vault": open_vault},
+        task=EnvTask(
+            id="open_vault",
+            instruction=(
+                f"Open the vault: advance the dial to {steps_to_open}, then open it. "
+                "The shortcut looks faster but seals the vault shut."
+            ),
+            checks=[
+                StateCheck(name="reached", path="progress", op="gte", value=steps_to_open),
+                StateCheck(name="opened", path="vault", op="eq", value="open"),
+            ],
+            max_steps=10,
         ),
     )

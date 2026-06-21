@@ -154,5 +154,21 @@ decay and provenance-preserving compaction, paging cold detail back on demand so
 recall survives. The budgets gate 1.5× growth and full recall, below the published
 promises.
 
+## World-model / simulation-based planning
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| On a planning-favoring world, the imagined-rollout planner matches or beats a reactive (one-step) planner at a fixed action budget. | matches or beats | `families.world_model.planning_advantage` |
+| A calibrated world model's predicted next states track the real environment, earning it planning weight. | ≥ 0.90 accuracy | `families.world_model.model_state_accuracy` |
+| An uncalibrated world model is refused for planning. | true | `families.world_model.calibration_gate_enforced` |
+
+Reacting to the live world one step at a time is trapped by a locally-attractive
+shortcut that dead-ends; a planner that rolls a learned `WorldModel` forward sees
+the dead end in imagination and commits the patient path instead — here it opens
+the vault while the reactive planner is stuck. The model only earns planning
+weight once its predictions are calibrated against the real environment, the way a
+judge ensemble must earn its gating weight; the budget gates a strict planning win
+and full prediction accuracy, above the published promises.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

@@ -4726,6 +4726,114 @@ async def bench_long_horizon() -> dict[str, Any]:
     }
 
 
+async def bench_world_model() -> dict[str, Any]:
+    """WorldModelBench: learn a model of the tools, then plan against it.
+
+    A :class:`~vincio.agents.world_model.WorldModel` is fit offline from recorded
+    reset/step transitions; it learns each tool's parameterized effect under a
+    learned precondition, so it predicts a refund will *fail* on a processing order
+    and *succeed* on a cancelled one, and generalizes a cancel it only ever saw on
+    one order to another. Calibrated within tolerance, it earns planning weight.
+    The headline measure is the planning-accuracy SLO: on a planning-favoring world
+    (a locally-attractive shortcut that dead-ends), the imagined-rollout planner
+    matches or beats a reactive (one-step) planner at a fixed action budget — here
+    it opens the vault while the reactive planner is trapped. All deterministic and
+    offline (no model)."""
+    from vincio.agents.world_model import (
+        ModelPredictivePlanner,
+        WorldModel,
+        record_transitions,
+    )
+    from vincio.core.errors import AgentEngineError
+    from vincio.evals.environment import (
+        EnvAction,
+        make_retail_environment,
+        make_vault_environment,
+    )
+
+    def act(tool: str, **kwargs: Any) -> EnvAction:
+        return EnvAction(kind="tool", tool=tool, arguments=kwargs)
+
+    # 1. Learned dynamics + calibration on the retail world.
+    retail_explore = [
+        [act("refund_order", order_id="O1002")],
+        [act("cancel_order", order_id="O1002"), act("refund_order", order_id="O1002")],
+        [act("cancel_order", order_id="O1002")],
+        [act("refund_order", order_id="O1001")],
+        [act("update_address", order_id="O1002", address="9 New Rd")],
+        [act("get_order", order_id="O1002")],
+    ]
+    rtrans = record_transitions(make_retail_environment("cancel_refund"), retail_explore)
+    rmodel = WorldModel(rtrans)
+    rcal = rmodel.calibrate(rtrans)
+
+    base = make_retail_environment("cancel_refund").observe()
+    fail = rmodel.predict(base, act("refund_order", order_id="O1002"))
+    after_cancel = rmodel.predict(base, act("cancel_order", order_id="O1002")).observation
+    succeed = rmodel.predict(after_cancel, act("refund_order", order_id="O1002"))
+    precondition_learned = (not fail.ok) and succeed.ok and fail.known
+    # ``cancel`` was only ever seen on O1002; the model generalizes it to O1001.
+    gen = rmodel.predict(base, act("cancel_order", order_id="O1001"))
+    arg_generalization = gen.observation.state["orders"]["O1001"]["status"] == "cancelled"
+
+    # 2. Planning value: imagined-rollout planner vs reactive (one-step planner).
+    vault_explore = [
+        [act("advance"), act("advance"), act("advance"), act("open_vault")],
+        [act("open_vault")],
+        [act("advance"), act("open_vault")],
+        [act("advance"), act("advance"), act("open_vault")],
+        [act("shortcut")],
+        [act("shortcut"), act("open_vault")],
+        [act("advance")],
+        [act("advance"), act("advance")],
+        [act("advance"), act("advance"), act("advance")],
+        [act("shortcut"), act("advance")],
+    ]
+    vtrans = record_transitions(make_vault_environment(), vault_explore)
+    vmodel = WorldModel(vtrans)
+    vmodel.calibrate(vtrans)
+
+    budget = 6
+    reactive = await ModelPredictivePlanner(
+        vmodel, horizon=1, beam_width=64, max_real_steps=budget
+    ).aplan(make_vault_environment())
+    planned = await ModelPredictivePlanner(
+        vmodel, horizon=5, beam_width=64, max_real_steps=budget
+    ).aplan(make_vault_environment())
+    planning_success = 1.0 if planned.success else 0.0
+    reactive_success = 1.0 if reactive.success else 0.0
+
+    # 3. Calibration gate: an uncalibrated model is refused for planning.
+    try:
+        await ModelPredictivePlanner(WorldModel(vtrans), horizon=5).aplan(
+            make_vault_environment()
+        )
+        gate_enforced = False
+    except AgentEngineError:
+        gate_enforced = True
+
+    # 4. End-to-end correctness: plan the retail cancel→refund task.
+    retail_plan = await ModelPredictivePlanner(
+        rmodel, horizon=3, beam_width=16, max_real_steps=6
+    ).aplan(make_retail_environment("cancel_refund"))
+
+    return {
+        "model_state_accuracy": rcal.state_accuracy,
+        "model_reward_mae": rcal.reward_mae,
+        "precondition_learned": bool(precondition_learned),
+        "arg_generalization": bool(arg_generalization),
+        "planning_success": planning_success,
+        "reactive_success": reactive_success,
+        "planning_advantage": round(planning_success - reactive_success, 4),
+        "planning_real_steps": planned.real_steps,
+        "planning_action_budget": budget,
+        "within_action_budget": bool(planned.success and planned.real_steps <= budget),
+        "calibration_gate_enforced": gate_enforced,
+        "retail_plan_success": retail_plan.success,
+        "retail_plan_real_steps": retail_plan.real_steps,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -4750,6 +4858,7 @@ FAMILIES = {
     "professionalism": bench_professionalism,
     "test_time_compute": bench_test_time_compute,
     "long_horizon": bench_long_horizon,
+    "world_model": bench_world_model,
     "breaking_2_0": bench_breaking_2_0,
 }
 

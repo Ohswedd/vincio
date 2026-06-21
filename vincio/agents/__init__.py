@@ -69,6 +69,17 @@ from .timers import (
     sleep_until,
     wait_for_event,
 )
+from .world_model import (
+    CalibrationReport,
+    ModelPredictivePlanner,
+    MPCResult,
+    MPCStep,
+    PredictedStep,
+    Transition,
+    WorldModel,
+    record_transitions,
+    task_goal_value,
+)
 
 __all__ = [
     "StepDAG",
@@ -104,6 +115,16 @@ __all__ = [
     "ReasoningController",
     "ReasoningDecision",
     "ReasoningPolicy",
+    # world-model / simulation-based planning
+    "WorldModel",
+    "Transition",
+    "PredictedStep",
+    "CalibrationReport",
+    "ModelPredictivePlanner",
+    "MPCStep",
+    "MPCResult",
+    "record_transitions",
+    "task_goal_value",
     # parallel sub-graph scheduling
     "SubgraphScheduler",
     "SubgraphTask",

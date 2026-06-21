@@ -49,6 +49,7 @@ where they are, so you can run it yourself and audit the claims.
 | **PerfBench** | compile/retrieval/run latency, cache speedups, concurrent throughput, TTFT | cold paths |
 | **IntegrationsBench** | every first-party connector round-trips offline against a recorded fixture with provenance; the plugin contract loads compatible plugins and gates incompatible majors; the signed community registry resolves under an allow-list (audited), verifies signatures, and detects tampering; Haystack/DSPy bridges adapt in; the MCP-server marketplace bridge discovers→governs→connects in one call | hand-wired loaders / ungoverned, unsigned registries |
 | **LongHorizonBench (3.10)** | does a governed long run stay bounded as the horizon grows 10×? — resident/token growth ratio (flat vs ~linear naïve), recall preserved by paging a compacted needle back from the content-addressed store, provenance retained through compaction, and intra-run decay demoting stale spans | naïve accumulation (linear footprint, context rot) |
+| **WorldModelBench (3.11)** | can an agent learn a model of its tools and plan against it? — next-state accuracy of the learned dynamics, the learned precondition (refund fails on a processing order, succeeds on a cancelled one), argument generalization, the calibration gate, and the planning-accuracy SLO (the imagined-rollout planner opens the vault while a reactive one-step planner is trapped at a fixed action budget) | reactive (one-step) planning |
 
 ## Corpora and provenance
 
