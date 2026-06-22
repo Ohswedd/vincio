@@ -5170,6 +5170,211 @@ async def bench_local_adaptation() -> dict[str, Any]:
     }
 
 
+async def bench_federated() -> dict[str, Any]:
+    """FederatedBench: cross-org self-improvement, privacy-preserving and gated.
+
+    On-device local adaptation improves a model on its own traffic *within one
+    trust boundary*; this family holds the rung above it — a fleet improving
+    together **without sharing the raw traffic**. Each member fits a local subspace
+    on its own grounded data and contributes a numeric, raw-text-free, clipped, and
+    masked scatter; a secure aggregation merges the fleet's contributions into a
+    shared subspace (the masks cancel, so no single member's update is ever
+    observed), refusing a round below the k-anonymity floor; the adopting member
+    re-fits its **own** adapter against the shared geometry and adopts it only when
+    it is at-least-as-good as its base on a held-out set — the same no-regression
+    gate a hosted fine-tune job clears — versioned and reversible. All deterministic
+    and offline; nothing but numeric aggregates crosses a trust boundary."""
+    from vincio import (
+        ContextApp,
+        ContributionBuilder,
+        FederatedPolicy,
+        PrivacyConfig,
+        SecureAggregator,
+        VincioConfig,
+    )
+    from vincio.evals.datasets import Dataset, EvalCase
+    from vincio.optimize.distill import TrainingExample, TrainingSet
+    from vincio.optimize.federated import _add_into, _frobenius, _zeros
+    from vincio.retrieval.embeddings import LocalHashEmbedder
+
+    dim = 64
+    qa_a = [
+        ("what is the refund policy", "Refunds are processed within 30 days."),
+        ("how do I reset my password", "Use the reset link on the login page."),
+    ]
+    qa_b = [
+        ("what are the shipping options", "We ship worldwide via DHL in 5-7 days."),
+        ("how do I contact support", "Email support@example.com any time."),
+    ]
+    qa_all = qa_a + qa_b
+    fleet = ["org-a", "org-b"]
+    emb = LocalHashEmbedder(dim=dim)
+
+    def make_ts(qa):
+        return TrainingSet(
+            name="federated-adapter",
+            examples=[
+                TrainingExample(
+                    messages=[{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+                )
+                for q, a in qa
+            ],
+        )
+
+    # 1. Privacy: a member's contribution carries no prompt or response text — only
+    #    the numeric subspace scatter, clipped to a sensitivity bound and masked.
+    privacy = PrivacyConfig(min_contributors=2, secure_aggregation=True, clip_norm=1.0)
+    builder = ContributionBuilder(embedder=emb, privacy=privacy)
+    contribution_a = await builder.build(
+        make_ts(qa_a), "gguf-local", member_id="org-a", participants=fleet
+    )
+    contribution_b = await builder.build(
+        make_ts(qa_b), "gguf-local", member_id="org-b", participants=fleet
+    )
+    blob = contribution_a.model_dump_json()
+    no_raw_traffic = bool(
+        all(q not in blob and a not in blob for q, a in qa_a) and contribution_a.scatter
+    )
+
+    # 2. Secure aggregation: a masked individual update is unrecoverable, yet the
+    #    masked sum equals the true unmasked sum (the masks cancel exactly).
+    off = ContributionBuilder(embedder=emb, privacy=PrivacyConfig(secure_aggregation=False))
+    unmasked_a = await off.build(make_ts(qa_a), "gguf-local", member_id="org-a", participants=fleet)
+    unmasked_b = await off.build(make_ts(qa_b), "gguf-local", member_id="org-b", participants=fleet)
+    # Clipping bounds a member's pre-mask sensitivity (its maximum influence on the
+    # merged result) at clip_norm; masks are added on top and cancel in aggregation.
+    sensitivity_bounded = bool(contribution_a.clipped and _frobenius(unmasked_a.scatter) <= 1.0 + 1e-6)
+    individual_hidden = bool(
+        _frobenius(
+            [
+                [contribution_a.scatter[i][j] - unmasked_a.scatter[i][j] for j in range(dim)]
+                for i in range(dim)
+            ]
+        )
+        > 1e-6
+    )
+    masked_sum = _zeros(dim, dim)
+    _add_into(masked_sum, contribution_a.scatter)
+    _add_into(masked_sum, contribution_b.scatter)
+    unmasked_sum = _zeros(dim, dim)
+    _add_into(unmasked_sum, unmasked_a.scatter)
+    _add_into(unmasked_sum, unmasked_b.scatter)
+    masks_cancel = bool(
+        _frobenius([[masked_sum[i][j] - unmasked_sum[i][j] for j in range(dim)] for i in range(dim)])
+        < 1e-9
+    )
+
+    # 3. k-anonymity: a round below the contributor floor is refused outright.
+    aggregator = SecureAggregator(privacy=privacy, rank=8)
+    try:
+        aggregator.aggregate([contribution_a])
+        k_anonymity_enforced = False
+    except Exception:
+        k_anonymity_enforced = True
+
+    # 4. Aggregation is deterministic and covers more directions than any member.
+    subspace = aggregator.aggregate([contribution_a, contribution_b])
+    again = SecureAggregator(privacy=privacy, rank=8).aggregate(
+        [
+            await builder.build(make_ts(qa_a), "gguf-local", member_id="org-a", participants=fleet),
+            await builder.build(make_ts(qa_b), "gguf-local", member_id="org-b", participants=fleet),
+        ]
+    )
+    deterministic_subspace = bool(subspace.digest == again.digest)
+    fleet_coverage = bool(
+        subspace.rank >= max(contribution_a.local_rank, contribution_b.local_rank)
+    )
+
+    # 5. Gated adoption: the adopting member re-fits its own adapter against the
+    #    shared geometry and adopts it only when at-least-as-good as its base.
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(
+        name="org-a", provider=MockProvider(default_text="I am not sure about that."), config=cfg
+    )
+    app.embedder = emb
+    dataset = Dataset(
+        name="golden",
+        cases=[EvalCase(id=f"c{i}", input=q, expected=a) for i, (q, a) in enumerate(qa_all)],
+    )
+    policy = FederatedPolicy(min_examples=4, min_samples=4, require_significance=False)
+    result = app.adopt_federated(
+        dataset, [contribution_a, contribution_b], training_set=make_ts(qa_all), policy=policy
+    )
+    adopted = bool(result.adopted)
+    at_least_as_good = bool(result.verdict is not None and result.verdict.delta >= 0.0)
+    base_quality = round(result.verdict.baseline, 4) if result.verdict else 0.0
+    adapted_quality = round(result.verdict.candidate, 4) if result.verdict else 0.0
+    privacy_preserved = bool(result.privacy is not None and result.privacy.secure_aggregation)
+    live_grounded = bool(app.run(qa_a[0][0]).raw_text == qa_a[0][1])
+
+    # 6. Reversible: unloading restores the base model exactly.
+    app.use_local_adapter(None)
+    reversible = bool(app.run(qa_a[0][0]).raw_text == "I am not sure about that.")
+
+    # 7. A regressing federated adapter is refused, the registry head left intact.
+    def echo(req):
+        return "GOOD answer " + req.messages[-1].text.split()[-1]
+
+    reg_qa = [(f"q item {w}", f"GOOD answer {w}") for w in ("alpha", "beta", "gamma", "delta")]
+    reg_app = ContextApp(name="org-r", provider=MockProvider(responder=echo), config=cfg)
+    reg_app.embedder = emb
+    reg_ds = Dataset(
+        name="g",
+        cases=[EvalCase(id=f"r{i}", input=q, expected=a) for i, (q, a) in enumerate(reg_qa)],
+    )
+    reg_a = await builder.build(
+        make_ts(reg_qa[:2]), "gguf-local", member_id="org-a", participants=fleet
+    )
+    reg_b = await builder.build(
+        make_ts(reg_qa[2:]), "gguf-local", member_id="org-b", participants=fleet
+    )
+    bad_local = TrainingSet(
+        name="federated-adapter",
+        examples=[
+            TrainingExample(
+                messages=[{"role": "user", "content": q}, {"role": "assistant", "content": "wrong"}]
+            )
+            for q, _ in reg_qa
+        ],
+    )
+    from vincio.optimize import AdapterRegistry
+
+    reg_registry = AdapterRegistry()
+    bad_result = reg_app.adopt_federated(
+        reg_ds,
+        [reg_a, reg_b],
+        training_set=bad_local,
+        policy=FederatedPolicy(min_examples=4, gate=0.6, min_samples=4, require_significance=False),
+        registry=reg_registry,
+    )
+    regression_refused = bool(
+        not bad_result.adopted
+        and reg_registry.versions("federated-adapter") == []
+        and reg_app.local_adapter is None
+    )
+
+    return {
+        "no_raw_traffic": no_raw_traffic,
+        "sensitivity_bounded": sensitivity_bounded,
+        "secure_aggregation_individual_hidden": individual_hidden,
+        "secure_aggregation_masks_cancel": masks_cancel,
+        "k_anonymity_enforced": k_anonymity_enforced,
+        "deterministic_subspace": deterministic_subspace,
+        "fleet_coverage": fleet_coverage,
+        "subspace_rank": int(subspace.rank),
+        "contributor_count": int(subspace.contributor_count),
+        "adopted": adopted,
+        "at_least_as_good": at_least_as_good,
+        "base_quality": base_quality,
+        "adapted_quality": adapted_quality,
+        "privacy_preserved": privacy_preserved,
+        "live_grounded": live_grounded,
+        "reversible": reversible,
+        "regression_refused": regression_refused,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -5198,6 +5403,7 @@ FAMILIES = {
     "record_replay": bench_record_replay,
     "semantic_cache": bench_semantic_cache,
     "local_adaptation": bench_local_adaptation,
+    "federated": bench_federated,
     "breaking_2_0": bench_breaking_2_0,
 }
 

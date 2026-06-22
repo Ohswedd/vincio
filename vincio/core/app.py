@@ -3800,6 +3800,98 @@ class ContextApp:
         )
         return controller.adapt(runs=runs, training_set=training_set, apply=apply)
 
+    def federated_improvement(self, policy: Any | None = None, **kwargs: Any):
+        """The cross-org federated-improvement round, as a streaming controller.
+
+        Returns a
+        :class:`~vincio.optimize.federated.FederatedImprovement` driven by a
+        :class:`~vincio.optimize.federated.FederatedPolicy`: securely aggregate a
+        fleet's privacy-preserving :class:`~vincio.optimize.federated.Contribution`\\ s
+        into a shared :class:`~vincio.optimize.federated.FederatedSubspace`, re-fit
+        *this* member's own on-device adapter against that geometry, gate it against
+        the member's base on a held-out set, and adopt or roll back — every version
+        in the :class:`~vincio.optimize.local_adaptation.AdapterRegistry`, every
+        decision on the shared audit chain and event bus, all in-process::
+
+            ctl = app.federated_improvement(dataset=golden)
+            mine = await ctl.build_contribution(member_id="org-a", participants=fleet)
+            async for ev in ctl.astream(contributions=[mine, *peer_updates]):
+                print(ev.phase, ev.reason)
+
+        Only numeric, masked, bounded-sensitivity aggregates cross a trust
+        boundary; adoption clears the same no-regression discipline a hosted
+        fine-tune job does."""
+        from ..optimize.federated import FederatedImprovement
+
+        return FederatedImprovement(self, policy, **kwargs)
+
+    def contribute_federated(
+        self,
+        *,
+        member_id: str,
+        participants: list[str] | None = None,
+        runs: list[Any] | None = None,
+        training_set: Any | None = None,
+        policy: Any | None = None,
+        consent_subject: str | None = None,
+        residency: str | None = None,
+    ):
+        """Build this member's privacy-preserving contribution to a federated round.
+
+        Curates a grounded training set from this app's own data (``runs``, a
+        prebuilt ``training_set``, or captured traces), then returns a
+        :class:`~vincio.optimize.federated.Contribution` carrying **only** the
+        numeric subspace scatter — clipped, optionally DP-noised, and masked for
+        secure aggregation — never a prompt or a response. Enforces the consent
+        ledger's TRAINING purpose when the policy requires it and stamps the app's
+        residency tag::
+
+            mine = app.contribute_federated(member_id="org-a", participants=fleet)
+        """
+        controller = self.federated_improvement(policy)
+        return run_sync(
+            controller.build_contribution(
+                member_id=member_id,
+                participants=participants,
+                runs=runs,
+                training_set=training_set,
+                consent_subject=consent_subject,
+                residency=residency,
+            )
+        )
+
+    def adopt_federated(
+        self,
+        dataset: Any,
+        contributions: list[Any],
+        *,
+        runs: list[Any] | None = None,
+        training_set: Any | None = None,
+        policy: Any | None = None,
+        registry: Any | None = None,
+        base_model: str | None = None,
+        apply: bool = True,
+    ):
+        """Aggregate a fleet's contributions, refit, gate, and adopt — one call.
+
+        The one-shot form of :meth:`federated_improvement`. Securely merges the
+        fleet's :class:`~vincio.optimize.federated.Contribution`\\ s into a shared
+        subspace, re-fits this member's adapter against it over the member's **own**
+        local data (from ``runs``, a ``training_set``, or captured traces), gates it
+        against the base on the held-out ``dataset`` (no-regression — at-least-as-good),
+        and on a pass registers, makes active, and (with ``apply``) applies it.
+        Returns a :class:`~vincio.optimize.federated.FederatedRoundResult`::
+
+            result = app.adopt_federated(golden, [mine, *peer_updates])
+            result.adopted, result.verdict.delta, result.privacy.secure_aggregation
+        """
+        controller = self.federated_improvement(
+            policy, dataset=dataset, registry=registry, base_model=base_model
+        )
+        return controller.adopt(
+            contributions=contributions, runs=runs, training_set=training_set, apply=apply
+        )
+
     def use_semantic_context_scoring(
         self, enabled: bool = True, *, mmr_lambda: float | None = None
     ) -> ContextApp:

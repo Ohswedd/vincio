@@ -60,6 +60,7 @@ and a runnable example.
 | **Causal record-replay debugger** | A `Recorder` (`vincio.observability`) that captures every non-deterministic edge of a run — model responses, tool outputs, retrieval hits, the negotiated capabilities, and the clock/seed — keyed to its trace spans into a portable, content-addressed, verifiable `Recording`; a deterministic `Replayer` that serves each edge back so a recorded run replays byte-for-byte (the recording, not the live provider, drives the run) with a step/inspect surface over the span tree and a `Divergence` report the moment live code no longer matches; and branch-and-edit that forks a recording, changes an edge or the input, and re-executes only the affected suffix while the unchanged prefix is still served from the recording — held by a replay-fidelity SLO (a recorded run replays byte-identically and a divergence is detected). |
 | **Learned semantic cache & near-miss KV reuse** | A `LearnedSemanticCache` (`app.use_semantic_cache`) that answers a *semantically-equivalent* (not byte-identical) request from cache, serving a near-miss only above a `ThresholdCalibrator` acceptance bar *learned from the platform's own traces* so an accepted hit clears a precision target (never serving below the floor); a `KVPrefixPool` (`app.use_kv_prefix_reuse`) that reuses a shared stable-prefix KV footprint across a family of requests that share a head, reporting the serving-engine KV the shared head avoids recomputing; and a `SemanticCacheGate` that catches a drifted cache with the same eval-replay no-regression check that gates a model swap — every near-miss auditable and reversible, all held under the resident-memory budget and a hit-quality SLO (an accepted near-miss is at-least-as-good as a live answer at a fixed budget). |
 | **On-device fine-tuning & continual local adaptation** | A `LocalLoRATrainer` that fits a parameter-efficient, low-rank `LocalAdapter` on-device from the flywheel's grounded dataset (deterministic and dependency-free, with a `NativeLoRABackend` hook for a real GGUF/LoRA); an `AdaptedProvider` that applies it to any provider so in-distribution traffic is answered the way it was taught while off-distribution traffic falls through to the base model unchanged (bounded); a `ContinualAdaptation` loop (`app.adapt_locally` / `app.local_adaptation`) that promotes a new adapter version only when the locally-adapted model is at-least-as-good as its base on a held-out set — the same no-regression gate a hosted fine-tune job clears — and an `AdapterRegistry` that versions every adapter and rolls it back on regression. Apply or unload one live with `app.use_local_adapter`; the run never leaves the process, held by a no-regression SLO (a locally-adapted model is at-least-as-good as its base on the eval set). |
+| **Federated / cross-org self-improvement** | Sharing what was learned across organizations without sharing the raw traffic. Each member builds a numeric, raw-text-free `Contribution` — the clipped, optionally DP-noised, and secure-aggregation-masked subspace scatter of its local adapter geometry (`app.contribute_federated`) — behind the consent ledger's TRAINING purpose and the residency posture, never a prompt or a response. A `SecureAggregator` merges the fleet's contributions into a shared `FederatedSubspace` by deterministic federated PCA — the pairwise masks cancel exactly, so no single member's update is ever observed — refusing a round below the `PrivacyConfig` k-anonymity contributor floor. The adopting member re-fits its own adapter against the shared geometry (`app.adopt_federated` / `app.federated_improvement`), keeping its own grounded answers local, and adopts it only when at-least-as-good as its base on a held-out set — the same no-regression and canary gates a local promotion clears, versioned in the `AdapterRegistry` and rolled back on regression. Only numeric, masked, bounded-sensitivity aggregates cross a trust boundary; held by a privacy SLO and a no-regression SLO. |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
@@ -75,36 +76,37 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **on-device fine-tuning & continual local adaptation** (a
-`LocalLoRATrainer` that fits a low-rank `LocalAdapter` on-device from the flywheel's grounded dataset,
-an `AdaptedProvider` that applies it to the in-process model so an air-gapped deployment improves on its
-own traffic without a hosted round-trip, and a `ContinualAdaptation` loop that promotes a new adapter
-version only when the adapted model is at-least-as-good as its base, versioned and rolled back on
-regression) — has shipped and folded into the **On-device fine-tuning & continual local adaptation** row
-above. The next theme is scheduled below. It closes a specific gap in the platform's *own* frontier — a
-rung that exists in the literature and in buyer demand but not yet in the package — rather than a gap
-measured against any one competitor. An indicative minor-version target is given; cadence holds one
-coherent theme per minor.
+The most recent scheduled theme — **federated / cross-org self-improvement** (a numeric, raw-text-free
+`Contribution` each member builds from its local adapter geometry behind the consent ledger and residency
+posture, a `SecureAggregator` that merges the fleet's contributions into a shared `FederatedSubspace`
+under secure aggregation, clipping, optional differential privacy, and a k-anonymity floor, and an
+`app.adopt_federated` round that re-fits the adopting member's own adapter against the shared geometry and
+adopts it only behind the same no-regression and canary gates a local promotion clears) — has shipped and
+folded into the **Federated / cross-org self-improvement** row above. The next theme is scheduled below.
+It closes a specific gap in the platform's *own* frontier — a rung that exists in the literature and in
+buyer demand but not yet in the package — rather than a gap measured against any one competitor. An
+indicative minor-version target is given; cadence holds one coherent theme per minor.
 
-### 1 · Federated / cross-org self-improvement *(target 3.15)*
+### 1 · Differential-privacy memory & training *(target 3.16)*
 
-The platform now learns from its own traffic three ways — the on-policy RLVR loop, the distillation
-flywheel, and on-device local adaptation — but always *within one trust boundary*. The rung not yet
-first-class is **sharing what was learned across organizations without sharing the raw traffic**: a
-gated optimization, a learned routing policy, or a local adapter contributed and merged across a trust
-boundary under a privacy-preserving aggregation, so a fleet improves together while each member's data
-stays put. The primitives are in place: the canary-gated promotion path, the versioned adapter registry,
-the consent ledger, and the signed audit chain.
+The federated round already bounds a single member's per-round influence with clipping and an optional
+Gaussian mechanism, but the platform has **no end-to-end privacy accountant**: a per-user, cross-round
+budget that composes every consolidation and learning step a subject's data touches and *refuses* once
+the budget is spent. The rung not yet first-class is **a provable per-subject privacy budget over memory
+consolidation and the whole learning loop** — DP-SGD-style accounting for the flywheel and the federated
+aggregator, a moments/Rényi accountant that composes across rounds, and a budget that gates a write the
+way the cost report gates a dollar. The primitives are in place: the consent ledger, provable erasure,
+the federated `PrivacyConfig` clipping + Gaussian mechanism, and the signed audit chain.
 
-- **Private contribution** — a member contributes a gated optimization or adapter delta, never raw
-  traffic, behind the consent ledger and the residency posture.
-- **Privacy-preserving aggregation** — a secure merge of contributions into a shared candidate, once the
-  aggregation standards settle, so no single member's signal is recoverable.
-- **Gated, reversible adoption** — a merged candidate clears the same no-regression and canary gates a
-  local promotion does before any member adopts it, and rolls back on regression.
+- **A composing accountant** — a Rényi/moments accountant tracks the cumulative ``(ε, δ)`` a subject's
+  data has spent across memory consolidations and learning rounds, on the audit chain.
+- **Budget-gated learning** — a consolidation or a contribution that would exceed a subject's remaining
+  budget is refused or down-weighted, the privacy analogue of a budget SLO.
+- **Provable, reportable privacy** — a per-subject privacy report sits alongside the cost report, so the
+  spent budget is auditable and the guarantee is mechanical, not a policy doc.
 
-*Ships as:* an opt-in federated-improvement surface over the existing registry and promotion gates; a
-`federated` VincioBench family with a privacy and a no-regression SLO; a runnable example.
+*Ships as:* an opt-in DP-accounting surface over the consent ledger and the learning loop; a `privacy`
+VincioBench family with a budget-composition and a refusal SLO; a runnable example.
 
 ---
 
@@ -115,9 +117,9 @@ Grouped by where they would land.
 
 **Learning & adaptation**
 
-- 🔭 **Differential-privacy memory & training** — a DP accountant over memory consolidation and the
-  learning loop so a per-user privacy budget is provable, beyond the consent ledger and provable
-  erasure.
+- 🔭 **Cross-fleet reputation & weighting** — a reliability-weighted federated aggregation that discounts
+  a member whose contributions repeatedly fail the no-regression gate, over the existing reliability
+  scoring and the federated round.
 
 **Modality & interaction**
 

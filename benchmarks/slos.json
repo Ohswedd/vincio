@@ -1261,6 +1261,36 @@
       "threshold": true,
       "enforced_by": "families.local_adaptation.regression_refused",
       "rationale": "Continual adaptation is only safe if a bad version cannot ship; the budget gates that an adapter which regresses the base is refused and the active version is unchanged."
+    },
+    {
+      "id": "federated_no_raw_traffic",
+      "category": "privacy",
+      "statement": "A federated contribution shares what a member learned, never its raw traffic: the wire artifact carries only the numeric subspace scatter — no prompt and no response appears anywhere in it.",
+      "metric": "families.federated.no_raw_traffic",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.federated.no_raw_traffic",
+      "rationale": "Cross-org improvement is only acceptable if no member's traffic leaves its boundary; the budget gates that a serialized contribution contains none of the member's prompt or response text — companion budgets gate that the contribution's sensitivity is clipped to a bound."
+    },
+    {
+      "id": "federated_secure_aggregation",
+      "category": "privacy",
+      "statement": "No single member's contribution is recoverable from a federated round: a masked update is indistinguishable from noise on its own, yet the masks cancel exactly in the aggregate so the merged scatter equals the true fleet sum.",
+      "metric": "families.federated.secure_aggregation_masks_cancel",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.federated.secure_aggregation_masks_cancel",
+      "rationale": "Secure aggregation is the guarantee that the aggregator never sees an individual update; a companion budget gates that a masked individual update differs from the true one (it is hidden), and that a round below the k-anonymity contributor floor is refused."
+    },
+    {
+      "id": "federated_no_regression",
+      "category": "quality",
+      "statement": "A merged federated candidate is adopted only when the member's adapter re-fit against the shared subspace is at-least-as-good as its base on the held-out eval set — the same no-regression gate a local promotion and a hosted fine-tune job clear — and is refused and reversible otherwise.",
+      "metric": "families.federated.at_least_as_good",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.federated.at_least_as_good",
+      "rationale": "Sharing across a trust boundary must never trade quality for breadth; the gate is the at-least-as-good guarantee. Companion budgets gate that a regressing federated adapter is refused with the registry head unchanged, and that adoption is reversible."
     }
   ]
 }

@@ -227,5 +227,25 @@ clears — the adapted model must be at-least-as-good as its base on a held-out 
 The adapter is bounded (inert off-distribution), every version is content-addressed
 and versioned, and a regression is refused and rolled back.
 
+## Federated / cross-org self-improvement
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| A federated contribution shares geometry, never raw traffic: no prompt or response appears in the wire artifact. | true | `families.federated.no_raw_traffic` |
+| No single member's contribution is recoverable: a masked update is hidden on its own, yet the masks cancel exactly so the aggregate equals the true fleet sum. | true | `families.federated.secure_aggregation_masks_cancel` |
+| A merged federated candidate is at-least-as-good as its base on the held-out eval set before any member adopts it, and is refused and reversible otherwise. | true | `families.federated.at_least_as_good` |
+
+On-device adaptation improves a model on its own traffic within one trust boundary;
+federated self-improvement lets a fleet improve **together without sharing the raw
+traffic**. Each member contributes only the numeric, clipped, masked subspace
+scatter of its local adapter geometry — never a prompt or response — and a secure
+aggregation merges the fleet's contributions so no single member's update is ever
+observed, refusing a round below the k-anonymity contributor floor. The risk is two
+sided: leaking a member's data, or shipping a merged change that degrades quality.
+Both are gated — the privacy SLOs hold that nothing but numeric aggregates crosses a
+boundary and that individual updates are unrecoverable, while the no-regression SLO
+holds that the adopting member's re-fit adapter clears the same at-least-as-good gate
+a local promotion does, versioned and reversible.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

@@ -188,6 +188,30 @@ model), every version is **content-addressed and versioned** in the
 `AdapterRegistry`, and a regressing one is refused and rolled back — applied or
 unloaded live via `app.use_local_adapter`, every decision on the audit chain.
 
+**Federated / cross-org self-improvement** extends that discipline *across* trust
+boundaries without weakening it. The only thing that leaves a member is a
+`Contribution`: the `d × d` weighted **scatter** of its local prompt-embedding
+subspace — a second-moment sufficient statistic from which no individual prompt or
+response is recoverable — never the raw traffic. Three layers bound what a member
+exposes, set by `PrivacyConfig`: **clipping** caps each contribution's Frobenius
+norm, bounding one member's sensitivity (its maximum influence on the merged result)
+and braking a poisoned outlier; an optional **differential-privacy** Gaussian
+mechanism (`dp_epsilon`/`dp_delta`) makes the merged scatter `(ε, δ)`-private with
+respect to any single example; and **secure-aggregation** masks make an individual
+update indistinguishable from noise on the wire — the pairwise masks cancel only
+when summed across the exact participant set, so the `SecureAggregator` recovers the
+fleet geometry without ever observing one member's update. A round below the
+`min_contributors` k-anonymity floor, or one mixing base models, embedding
+dimensions, or disallowed residency regions, is **refused**. A contribution is gated
+behind the consent ledger's TRAINING purpose (`require_consent`) and stamped with the
+member's residency tag. Adoption is reversible and gated: the adopting member re-fits
+its **own** adapter against the shared subspace (keeping its grounded answers local)
+and adopts it only when the same no-regression gate confirms it is at-least-as-good
+as the base — versioned in the `AdapterRegistry`, rolled back on regression, every
+decision on the audit chain. The mask seeds and DP noise are deterministic for
+offline testing; a production deployment derives the mask seeds from a key-agreement
+protocol rather than a shared seed.
+
 ### Audit integrity & tamper-evidence
 
 Every run lands on an append-only, hash-chained audit log, verifiable offline

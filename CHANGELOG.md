@@ -4,6 +4,62 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.15.0] - 2026-06-22
+
+Federated / cross-org self-improvement. The platform already learns from its own
+traffic three ways — the on-policy RLVR loop, the distillation flywheel, and
+on-device local adaptation — but always *within one trust boundary*. This release
+adds the rung above them: **sharing what was learned across organizations without
+sharing the raw traffic**, so a fleet of members improves together while each
+member's data stays put. Entirely additive and backward-compatible — `API_VERSION`
+stays `3.0`, the dependency-free offline path is the default, and nothing below runs
+unless you opt in.
+
+### Added
+
+- **`Contribution` + `ContributionBuilder` (`vincio.optimize.federated`).** A
+  member's privacy-preserving federated update: the `d×d` weighted *scatter* of its
+  local prompt-embedding subspace — a second-moment sufficient statistic from which
+  no individual prompt or response is recoverable — and nothing else. The builder
+  embeds the member's prompts, forms the scatter, **clips** it to a sensitivity
+  bound, optionally adds the **differential-privacy** Gaussian mechanism, and folds
+  in **secure-aggregation** masks. The wire object carries no raw traffic, plus a
+  consent attestation and a residency tag.
+- **`PrivacyConfig`.** The opt-in privacy posture: `clip_norm` bounds a member's
+  sensitivity, `dp_epsilon`/`dp_delta` parameterize the Gaussian mechanism
+  (`noise_sigma()`), `secure_aggregation` toggles the cancelling masks, and
+  `min_contributors` is the round-level k-anonymity floor. `seed` keeps noise and
+  masks reproducible offline.
+- **`SecureAggregator` + `FederatedSubspace`.** Sums the masked contributions — the
+  pairwise masks cancel across the exact participant set, so the aggregator recovers
+  the fleet scatter without ever observing an individual update — refuses a round
+  below `min_contributors` or one mixing base models, embedding dimensions, or
+  disallowed residency regions, and extracts the consensus subspace by deterministic
+  federated PCA (top eigenvectors of the aggregate scatter, via power iteration with
+  deflation). `subspace.digest` is the behaviour-tracking content address.
+- **`refit_with_subspace`.** Re-fits a member's **own** `LocalAdapter` against the
+  shared subspace: the geometry is the fleet's consensus, the codes and grounded
+  targets are the member's own local data — so adoption imports the fleet's learned
+  structure without importing anyone's text. The result is an ordinary `LocalAdapter`
+  that applies, gates, and versions through the existing on-device surface unchanged.
+- **`FederatedImprovement` + app surface.** `app.contribute_federated(member_id=,
+  participants=, training_set=|runs=)` builds this member's contribution behind the
+  consent ledger's TRAINING purpose and the residency posture;
+  `app.adopt_federated(dataset, contributions, training_set=|runs=)` runs the gated
+  round end to end — securely aggregate → refit the member's own adapter → gate it
+  against the base on the held-out set (at-least-as-good, the same no-regression and
+  canary discipline a local promotion clears) → adopt + apply or refuse + roll back
+  (returning a `FederatedRoundResult`). `app.federated_improvement(...)` returns the
+  streaming controller (`observe → aggregate → refit → gate → adopt / rollback`).
+  Every decision lands on the hash-chained audit log and the event bus.
+- **`federated` VincioBench family + SLOs.** Measures the no-raw-traffic guarantee,
+  bounded sensitivity, secure-aggregation mask cancellation and individual hiding,
+  k-anonymity refusal, deterministic federated PCA, fleet coverage, the
+  at-least-as-good no-regression gate, live grounded answering, reversibility, and
+  refusal of a regressing federated adapter. Two new published privacy SLOs and a
+  no-regression SLO gate it. Runnable example
+  `59_federated_cross_org_self_improvement.py`.
+
 ## [3.14.0] - 2026-06-22
 
 On-device fine-tuning & continual local adaptation. The distillation flywheel
