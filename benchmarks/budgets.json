@@ -1797,6 +1797,51 @@
     },
     "families.arbitration.rejected_claims": {
       "gte": 1
+    },
+    "families.reputation_portability.portability_attests_earned_standing": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_combines_across_issuers": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_evidence_weighted": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_bounded_weight": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_self_attestation_refused": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_new_counterparty_prior": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_weights_negotiation": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_issuer_cannot_stack": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_attestation_verifies_offline": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_tamper_detected": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_forged_refused": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_importers_agree": {
+      "eq": true
+    },
+    "families.reputation_portability.audit_recorded": {
+      "eq": true
+    },
+    "families.reputation_portability.attestations_combined": {
+      "gte": 2
+    },
+    "families.reputation_portability.refused_attestations": {
+      "gte": 1
     }
   }
 }

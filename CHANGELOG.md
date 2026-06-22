@@ -4,6 +4,70 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.29.0] - 2026-06-22
+
+Cross-org reputation attestation & portability. Settlement, netting, and arbitration all close the
+reputation loop, but the standing they earn lives inside one org's own `ReputationLedger` — a *new*
+counterparty, with no prior history, has no way to trust it without a hosted reputation bureau. This
+release adds the last rung: making earned standing **portable**. An org issues a signed,
+offline-verifiable attestation over a counterparty's standing, a prospective counterparty verifies it
+from the bytes alone, and several issuers' attestations combine into a bounded, evidence-weighted prior
+that weights the next negotiation — reputation that travels the fabric, never a central service.
+Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, the existing settlement and
+negotiation paths are unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **Reputation attestation (`vincio.settlement.attestation`).** `attest_reputation(records, subject,
+  *, issuer="", resolutions=None, config=None, verify_with=None, note="")` issues a
+  `ReputationAttestation` over a counterparty's earned standing, derived only from an org's own signed
+  `SettlementRecord`s (counting the ones where the subject was the **seller** — a fulfilled settlement
+  a success, a breach a failure) and arbitration `Resolution`s (a dissent a failure). It reads only
+  what it can recompute: a record whose reconciliation hash no longer recomputes (or, with a verifier,
+  whose signature is forged) is skipped, and the exact source hashes are bound. Raises `SettlementError`
+  when there is no admissible history to attest.
+- **A content-bound, offline-verifiable `ReputationAttestation`.** An attestation hash binds the issuer,
+  the subject, the evidence counts, the prior, and the source hashes (the id and timestamp excluded; the
+  issuer **is** bound — an attestation is one issuer's signed claim); `attestation.sign(signer,
+  party=None)` co-signs it and `attestation.verify(verifier=, require=None)` → `AttestationVerification`
+  recomputes it offline and **re-derives the attested reputation from the evidence counts**
+  (`evidence_sound`), so a tampered score is caught even after re-sealing and a forged issuer is caught.
+  `.require_valid()`, `.to_wire` / `.from_wire`, `.print_summary()`.
+- **Combining into an evidence-weighted prior.** `combine_attestations(attestations, *, subject=None,
+  config=None, verify_with=None, base=None, allow_self=False)` pools several issuers' attestations into a
+  bounded `PortableReputation` prior. Because a Beta-Bernoulli posterior is conjugate, combining is
+  *pooling the evidence*, never a single self-asserted number: an issuer that vouches for itself is
+  **refused**, an issuer cannot stack its own pull (only its largest attestation for a subject is
+  counted), a tampered or forged attestation is **pinpointed** (`AttestationVerdict`) and excluded, an
+  optional `AttestationConfig.per_issuer_cap` bounds any one issuer's mass, and the importer's own prior
+  anchors the pooled posterior. The prior exposes `weight(member_id)` ∈ `[floor, 1]`, so it drops into
+  the existing negotiation/discovery path unchanged; with a local `ReputationLedger` as the `base`, a
+  counterparty the importer already knows keeps its own earned standing and only an unknown one leans on
+  the imported attestations.
+- **Attestation on the app & book surface.** `app.attest_reputation(subject, *, book=None,
+  resolutions=None, config=None, sign=True, record_audit=True)` issues from this app's settlement book,
+  signs as the app, and records the issuance on the audit chain (action `reputation_attestation`);
+  `app.import_reputation(attestations, *, subject=None, config=None, verify_with=None, allow_self=False,
+  weight=True)` combines a bundle and (by default) attaches the prior so the next `app.negotiate` weights
+  a counterparty with no local history by what its past counterparties attest. `book.attest(subject, ...)`
+  issues signed as the book owner.
+- **A `reputation_portability` VincioBench family** holding an attestation-correctness SLO (an
+  attestation summarizes the issuer's own earned outcomes, several issuers' evidence pools into one
+  bounded prior, a self-attestation and a stacked one are refused, an unknown counterparty falls back to
+  the prior, and the prior weights a negotiation) and an attestation-integrity SLO (an attestation signs
+  and verifies offline, a tampered score is caught even after re-sealing because the reputation
+  re-derives from the evidence, a forged issuer is refused, two importers compute the same standing, and
+  issuance is audited).
+- **Example `73_cross_org_reputation_attestation.py`** and a reputation-portability section in the
+  settlement guide.
+
+### Public surface
+
+- Added to `vincio.__all__`: `ReputationAttestation`, `PortableReputation`, `attest_reputation`,
+  `combine_attestations`. The supporting types (`AttestationConfig`, `AttestationVerification`,
+  `AttestationVerdict`, `SubjectStanding`) are exported from `vincio.settlement`. `API_VERSION` remains
+  `3.0`.
+
 ## [3.28.0] - 2026-06-22
 
 Cross-org dispute resolution & arbitration. With settlements signed, reconciled, netted, and a

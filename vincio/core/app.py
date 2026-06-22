@@ -329,6 +329,11 @@ class ContextApp:
         # of the settlement records that close the books on contracted cross-org
         # work, and surfaces a settlement report alongside the cost report.
         self.settlement_book: Any = None
+        # Imported portable reputation: opt-in, empty by default. When attached via
+        # ``app.import_reputation(...)`` it combines other orgs' signed attestations
+        # into a bounded, evidence-weighted prior that weights a negotiation against a
+        # counterparty this app has no local history with.
+        self.imported_reputation: Any = None
         self.input_router = InputRouter()
 
         # provider
@@ -2769,12 +2774,27 @@ class ContextApp:
                 raise ConfigError(
                     f"negotiate {role}= expects a {role} position; got role={spec.role!r}"
                 )
-            return LocalParty(member_id, spec, reputation=self.reputation_ledger)
+            return LocalParty(member_id, spec, reputation=self._reputation_view())
         if isinstance(spec, Party):
             return spec
         raise ConfigError(
             f"negotiate {role}= must be a NegotiationPosition or a negotiation Party"
         )
+
+    def _reputation_view(self) -> Any:
+        """The reputation an offer is weighted by: imported prior over local ledger.
+
+        Returns the imported :class:`~vincio.settlement.PortableReputation` when one
+        is attached (it already falls back to the local ledger for a counterparty
+        this app knows), else the local
+        :class:`~vincio.optimize.reputation.ReputationLedger`, else ``None`` (offers
+        are weighted at parity). So a negotiation against a brand-new counterparty is
+        weighted by what its past counterparties attest, while one this app has lived
+        through keeps its own earned standing.
+        """
+        if self.imported_reputation is not None:
+            return self.imported_reputation
+        return self.reputation_ledger
 
     def _resolve_contract_signer(self, signer: Any | None, sign: bool) -> Any | None:
         """Pick the signer for a contract: explicit → audit signer → per-app key."""
@@ -3380,6 +3400,100 @@ class ContextApp:
                     },
                 )
         return resolution
+
+    def attest_reputation(
+        self,
+        subject: str,
+        *,
+        book: Any | None = None,
+        resolutions: Any | None = None,
+        config: Any | None = None,
+        sign: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Issue a signed, portable attestation of a counterparty's earned standing.
+
+        Reads this app's own settlement book (``book``, else the attached one) and
+        any arbitration ``resolutions`` for ``subject`` and summarizes how its
+        delivery fared — fulfilled settlements as successes, breaches and arbitration
+        dissents as failures — into a content-bound
+        :class:`~vincio.settlement.ReputationAttestation`, signed as this app (the
+        issuer). A prospective counterparty verifies it from the bytes alone (a
+        tampered score or a forged issuer is caught) and folds several issuers'
+        attestations into a bounded prior with :meth:`import_reputation`. Unless
+        ``record_audit`` is off, the issuance lands on the audit chain. Raises
+        :class:`~vincio.core.errors.SettlementError` when this app has no admissible
+        history with the subject to attest. Returns the attestation::
+
+            att = app.attest_reputation("vendor")
+            att.verify(app.contract_signer).valid  # offline-verifiable
+        """
+        from ..settlement.attestation import ATTESTATION_ACTION
+
+        source = book if book is not None else self._settlement_book()
+        signer = self._resolve_contract_signer(None, sign)
+        attestation = source.attest(
+            subject,
+            resolutions=resolutions,
+            config=config,
+            sign=sign and signer is not None,
+            verify_with=None,
+        )
+        if sign and signer is not None and source.signer is None:
+            # Sign as the issuer (the book's owner), the identity book.attest would
+            # use, so the signature party matches the attestation's issuer and the
+            # attestation verifies against its own default require=[issuer].
+            attestation.sign(signer, party=attestation.issuer)
+        if record_audit and self.audit is not None:
+            entry = self.audit.record(
+                ATTESTATION_ACTION,
+                resource=attestation.subject,
+                decision="issued",
+                details=attestation.audit_details(),
+            )
+            attestation.audit_id = getattr(entry, "id", None)
+        return attestation
+
+    def import_reputation(
+        self,
+        attestations: list[Any],
+        *,
+        subject: str | None = None,
+        config: Any | None = None,
+        verify_with: Any | None = None,
+        allow_self: bool = False,
+        weight: bool = True,
+    ) -> Any:
+        """Combine other orgs' attestations into a prior that weights negotiation.
+
+        Verifies each :class:`~vincio.settlement.ReputationAttestation` offline,
+        refusing and pinpointing a tampered or forged one, and pools the admissible
+        evidence across issuers into a bounded, evidence-weighted
+        :class:`~vincio.settlement.PortableReputation` prior under ``config`` — never
+        a single self-asserted number (an issuer that vouches for itself is refused).
+        With ``weight`` (the default) the prior is attached so the next negotiation
+        weights a counterparty with no local history by what its past counterparties
+        attest, under the same bounded ``[floor, 1]`` rule a local reputation uses;
+        the attached local :class:`~vincio.optimize.reputation.ReputationLedger` stays
+        the source of truth for a counterparty this app already knows. Returns the
+        prior::
+
+            prior = app.import_reputation([att_a, att_b])
+            result = app.negotiate("transcribe calls", buyer=..., seller=...)
+        """
+        from ..settlement.attestation import combine_attestations
+
+        prior = combine_attestations(
+            attestations,
+            subject=subject,
+            config=config,
+            verify_with=verify_with,
+            base=self.reputation_ledger,
+            allow_self=allow_self,
+        )
+        if weight:
+            self.imported_reputation = prior
+        return prior
 
     # -- evaluators / optimizers ----------------------------------------------------------------------
 

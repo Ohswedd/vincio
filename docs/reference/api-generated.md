@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**312** public symbols.
+**316** public symbols.
 
 ## Classes
 
@@ -642,6 +642,10 @@ Flag likely-poisoned retrieved evidence from authority/provenance signals.
 
 Deterministic per-run policies (policies).
 
+### `PortableReputation(standings, verdicts, config, base=…)`
+
+An imported, evidence-weighted prior combined from several issuers' attestations.
+
 ### `Predict(sig, provider, model, temperature=…, prompt_spec=…, max_output_tokens=…)`
 
 Execute a signature against a provider with full output validation.
@@ -741,6 +745,10 @@ Exponential intra-run relevance decay (the memory recency model, per run).
 ### `RemoteParticipant(client, org_id)`
 
 A choreography :class:`Participant` whose steps run in a remote A2A org.
+
+### `ReputationAttestation(**data)`
+
+A signed, offline-verifiable attestation of a counterparty's earned standing.
 
 ### `ReputationConfig(**data)`
 
@@ -1084,6 +1092,10 @@ Declare a signature output field.
 
 Adjudicate a disputed contract from the records its parties submit.
 
+### `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verify_with=…, note=…)`
+
+Issue an attestation of ``subject``'s earned standing from signed records.
+
 ### `attribute_regression(app, dataset, factors, metric=…, aggregate=…, repeats=…)`
 
 Attribute a metric regression to the changed ``factors`` by Shapley counterfactual replay — the convenience entry point behind a failing gate.
@@ -1099,6 +1111,10 @@ Build a buyer position: wants low price, fast SLA, high quality.
 ### `choreography_a2a_server(handlers, org_id=…, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)`
 
 Expose a local org's choreography handlers over A2A.
+
+### `combine_attestations(attestations, subject=…, config=…, verify_with=…, base=…, allow_self=…)`
+
+Combine several issuers' attestations into one bounded, evidence-weighted prior.
 
 ### `compose(*steps, name=…, tracer=…)`
 

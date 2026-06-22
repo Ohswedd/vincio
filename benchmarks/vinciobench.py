@@ -7419,6 +7419,198 @@ async def bench_arbitration() -> dict[str, Any]:
     }
 
 
+async def bench_reputation_portability() -> dict[str, Any]:
+    """PortabilityBench: cross-org reputation attestation & portability.
+
+    With settlement, netting, and arbitration all closing the reputation loop — but
+    the standing they earn living inside one org's own ledger — this family holds the
+    rung that makes it **portable**: a signed, offline-verifiable attestation an org
+    issues over a counterparty's earned standing, that a prospective counterparty
+    verifies from the bytes alone and folds into its negotiation weighting. It gates
+    two guarantees: **attestation correctness** (an attestation summarizes only the
+    issuer's own signed settlement / arbitration outcomes, several issuers' evidence
+    combines into one bounded, evidence-weighted prior, a self-attestation is refused,
+    and the imported prior weights a negotiation against an unknown counterparty under
+    the same ``[floor, 1]`` rule a local reputation does — discounting a regressor
+    without singling it out) and **attestation integrity** (an attestation is
+    content-bound and signs / verifies offline the way a settlement record does, a
+    tampered score is caught even after re-sealing because the reputation re-derives
+    from the evidence, a forged issuer is refused, two importers reading the same
+    attestations compute the same standing, and issuance lands on the audit chain). It
+    is reputation that travels the fabric, never a hosted reputation bureau.
+    Deterministic and offline."""
+    from vincio import (
+        ContextApp,
+        VincioConfig,
+        attest_reputation,
+        combine_attestations,
+        settle_contract,
+    )
+    from vincio.negotiation import (
+        Contract,
+        ContractTerms,
+        buyer_position,
+        select_offer,
+        seller_position,
+    )
+    from vincio.security.audit import HMACSigner
+    from vincio.settlement import AttestationConfig
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+
+    acme = HMACSigner("acme-key", key_id="acme")
+    globex = HMACSigner("globex-key", key_id="globex")
+
+    def contract(seller="vendor", price=0.10):
+        return Contract(
+            buyer="acme", seller=seller, terms=ContractTerms(scope="work", price_usd=price)
+        ).seal()
+
+    def records(seller="vendor", *, settled=0, breached=0):
+        out = [settle_contract(contract(seller), cost_usd=0.05) for _ in range(settled)]
+        out += [settle_contract(contract(seller, 0.04), cost_usd=0.09) for _ in range(breached)]
+        return out
+
+    # 1. Attestation correctness: standing is the issuer's own settled outcomes.
+    att = attest_reputation(records("vendor", settled=3, breached=1), "vendor", issuer="acme")
+    portability_attests_earned_standing = bool(
+        att.settled == 3
+        and att.breached == 1
+        and att.reputation == round(AttestationConfig().reputation_of(3, 1), 9)
+    )
+
+    # 2. Several issuers' evidence pools into one bounded, evidence-weighted prior.
+    a = attest_reputation(records("vendor", settled=2), "vendor", issuer="acme").sign(acme)
+    b = attest_reputation(records("vendor", settled=2), "vendor", issuer="globex").sign(globex)
+    combined = combine_attestations([a, b])
+    standing = combined.standing("vendor")
+    portability_combines_across_issuers = bool(
+        standing is not None
+        and standing.successes == 4
+        and standing.attestations == 2
+        and standing.issuers == ["acme", "globex"]
+    )
+
+    # 3. More corroborating positive evidence raises the weight (evidence-weighted).
+    thin = combine_attestations(
+        [attest_reputation(records("vendor", settled=1), "vendor", issuer="acme").sign(acme)]
+    )
+    thick = combine_attestations(
+        [
+            attest_reputation(records("vendor", settled=8), "vendor", issuer="acme").sign(acme),
+            attest_reputation(records("vendor", settled=8), "vendor", issuer="globex").sign(globex),
+        ]
+    )
+    portability_evidence_weighted = bool(thick.weight("vendor") > thin.weight("vendor"))
+
+    # 4. A regressor is discounted, never zeroed — the floor holds.
+    regressor = combine_attestations(
+        [attest_reputation(records("vendor", breached=6), "vendor", issuer="acme").sign(acme)]
+    )
+    portability_bounded_weight = bool(0.1 <= regressor.weight("vendor") < 1.0)
+
+    # 5. A self-attestation is refused — never a single self-asserted number.
+    self_att = attest_reputation(records("acme", settled=3), "acme", issuer="acme").sign(acme)
+    self_prior = combine_attestations([self_att])
+    portability_self_attestation_refused = bool(
+        self_prior.standing("acme") is None
+        and not self_prior.verdict_for("acme", "acme").counted
+    )
+
+    # 6. An unknown counterparty falls back to the benefit-of-the-doubt prior.
+    empty = combine_attestations([])
+    c0 = AttestationConfig()
+    portability_new_counterparty_prior = bool(
+        empty.weight("stranger") == c0.weight_of(c0.reputation_of(0, 0))
+    )
+
+    # 7. The imported prior weights a negotiation: a reliable seller wins a tie.
+    blend = combine_attestations(
+        [
+            attest_reputation(records("reliable", settled=6), "reliable", issuer="acme").sign(acme),
+            attest_reputation(records("flaky", breached=6), "flaky", issuer="acme").sign(acme),
+        ]
+    )
+    pos = buyer_position(max_price_usd=0.10, max_sla_seconds=5.0)
+    reliable = app.negotiate(
+        "work", buyer=pos, seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.12),
+        buyer_id="buyer", seller_id="reliable",
+    )
+    flaky = app.negotiate(
+        "work", buyer=pos, seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.12),
+        buyer_id="buyer", seller_id="flaky",
+    )
+    chosen = select_offer([reliable, flaky], pos, reputation=blend)
+    portability_weights_negotiation = bool(chosen is not None and chosen.seller == "reliable")
+
+    # 8. An issuer cannot stack its own pull — only its largest attestation counts.
+    small = attest_reputation(records("vendor", settled=2), "vendor", issuer="acme").sign(acme)
+    big = attest_reputation(records("vendor", settled=6), "vendor", issuer="acme").sign(acme)
+    stacked = combine_attestations([small, big])
+    portability_issuer_cannot_stack = bool(
+        stacked.standing("vendor").successes == 6
+        and stacked.standing("vendor").attestations == 1
+    )
+
+    # 9. Attestation integrity: a signed attestation verifies offline.
+    signed = attest_reputation(records("vendor", settled=2), "vendor", issuer="acme").sign(acme)
+    portability_attestation_verifies_offline = bool(signed.verify(acme).valid)
+
+    # 10. A tampered score is caught even after re-sealing (reputation re-derives).
+    tampered = attest_reputation(records("vendor", settled=2), "vendor", issuer="acme")
+    tampered.reputation = 0.99
+    tampered.seal()  # recompute the hash to match the tampered score
+    portability_tamper_detected = bool(not tampered.verify().evidence_sound)
+
+    # 11. A forged issuer signature is refused with a verifier; pinpointed not dropped.
+    good_att = attest_reputation(records("vendor", settled=2), "vendor", issuer="acme").sign(acme)
+    forged = attest_reputation(records("vendor", settled=2), "vendor", issuer="globex").sign(globex)
+    forged.signatures[0].signature = "deadbeef"
+    forged_prior = combine_attestations([good_att, forged], verify_with=acme)
+    portability_forged_refused = bool(
+        any("forged" in (v.reason or "") for v in forged_prior.refused)
+        and forged_prior.standing("vendor").attestations == 1
+    )
+
+    # 12. Two importers reading the same attestations compute the same standing.
+    atts = [a, b]
+    portability_importers_agree = bool(
+        combine_attestations(atts).weight("vendor")
+        == combine_attestations(list(reversed(atts))).weight("vendor")
+    )
+
+    # 13. Auditable: issuing an attestation lands on this app's hash-chained chain.
+    app.use_settlement_book()
+    app.settle(contract(seller="vendor"), cost_usd=0.05)
+    app.settle(contract(seller="vendor"), cost_usd=0.05)
+    issued = app.attest_reputation("vendor")
+    audit_recorded = bool(
+        app.audit.query(action="reputation_attestation")
+        and app.audit.verify_chain()
+        and issued.verify(app.contract_signer).valid
+    )
+
+    return {
+        "portability_attests_earned_standing": portability_attests_earned_standing,
+        "portability_combines_across_issuers": portability_combines_across_issuers,
+        "portability_evidence_weighted": portability_evidence_weighted,
+        "portability_bounded_weight": portability_bounded_weight,
+        "portability_self_attestation_refused": portability_self_attestation_refused,
+        "portability_new_counterparty_prior": portability_new_counterparty_prior,
+        "portability_weights_negotiation": portability_weights_negotiation,
+        "portability_issuer_cannot_stack": portability_issuer_cannot_stack,
+        "portability_attestation_verifies_offline": portability_attestation_verifies_offline,
+        "portability_tamper_detected": portability_tamper_detected,
+        "portability_forged_refused": portability_forged_refused,
+        "portability_importers_agree": portability_importers_agree,
+        "audit_recorded": audit_recorded,
+        "attestations_combined": standing.attestations,
+        "refused_attestations": len(forged_prior.refused),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -7461,6 +7653,7 @@ FAMILIES = {
     "discovery": bench_discovery,
     "netting": bench_netting,
     "arbitration": bench_arbitration,
+    "reputation_portability": bench_reputation_portability,
     "breaking_2_0": bench_breaking_2_0,
 }
 

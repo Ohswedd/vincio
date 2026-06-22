@@ -1186,6 +1186,37 @@ app.run("export button 500s").output.label
   not stand; unresolved debits nobody); `book.arbitrate(*counterparty_records, contract_id=None,
   sign=True, verify_with=None)` resolves one org's own record against submitted claims.
   `.print_summary()`, `.to_wire`/`.from_wire`.
+- **Cross-org reputation attestation & portability.** `from vincio import ReputationAttestation,
+  PortableReputation, attest_reputation, combine_attestations` (also `vincio.settlement.__all__`:
+  `AttestationConfig`, `AttestationVerification`, `AttestationVerdict`, `SubjectStanding` are
+  subpackage-only). Makes earned standing **portable** — reputation that travels the fabric, never
+  a hosted reputation bureau. `attest_reputation(records, subject, *, issuer="", resolutions=None,
+  config=None, verify_with=None, note="")` → a `ReputationAttestation`: reads an issuer's own signed
+  `SettlementRecord`s where `subject` is the **seller** (a fulfilled settlement a success, a breach a
+  failure) and arbitration `Resolution`s where `subject` is a dissenter (a failure), counting only
+  what it can recompute (a tampered own record is skipped; the exact `source_hashes` bound). Raises
+  `SettlementError` on no admissible history. **Content-bound & offline-verifiable**: the attestation
+  hash binds issuer/subject/`settled`/`breached`/`dissents`/prior/`reputation`/`source_hashes` (id +
+  timestamp excluded; issuer **is** bound — one issuer's signed claim); `att.sign(signer, party=None)`
+  (defaults to issuer), `att.verify(verifier=, require=None)` → `AttestationVerification` (`.hash_ok`,
+  `.evidence_sound` — the attested reputation re-derives from the evidence counts, so a tampered score
+  is caught even after re-sealing), `.require_valid()`, `.to_wire`/`.from_wire`. `combine_attestations(
+  attestations, *, subject=None, config=None, verify_with=None, base=None, allow_self=False)` → a
+  `PortableReputation`: verifies each (a tampered/forged one refused and pinpointed in `.refused`),
+  refuses a self-attestation (`issuer==subject`) and a stacked one (only an issuer's largest counts,
+  `.excluded`), and pools the admissible evidence per subject into one Beta-Bernoulli posterior under
+  the importer's prior (conjugate → combining is summing evidence, never one self-asserted number;
+  `AttestationConfig.per_issuer_cap` bounds any one issuer's mass). `.weight(member_id)` → `[floor, 1]`
+  (a `base` local `ReputationLedger`'s earned standing wins for a known counterparty; an unknown one
+  falls back to the prior), `.reputation`/`.standing`/`.subjects`/`.counted`/`.refused`/`.excluded`.
+  Drops into the existing negotiation/discovery path unchanged (`LocalParty`/`select_offer` accept any
+  `weight(member_id)`). `app.attest_reputation(subject, *, book=None, resolutions=None, config=None,
+  sign=True, record_audit=True)` issues from the app's settlement book, signs as the app, audits
+  (action `reputation_attestation`); `app.import_reputation(attestations, *, subject=None, config=None,
+  verify_with=None, allow_self=False, weight=True)` combines and (with `weight`) attaches the prior so
+  the next `app.negotiate` weights an unknown counterparty by what its past counterparties attest;
+  `book.attest(subject, *, resolutions=None, config=None, sign=True, verify_with=None, note="")` issues
+  signed as the book owner.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

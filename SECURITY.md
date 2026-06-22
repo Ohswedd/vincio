@@ -577,6 +577,37 @@ settled dispute also closes the reputation loop on the party whose claim did not
 and only in the upheld case, where corroboration *proves* the rejected claim wrong, so
 an honest party in an unresolved standoff is never debited.
 
+### Cross-org reputation attestation & portability
+
+Reputation attestation (`app.attest_reputation` / `attest_reputation` / `book.attest` and
+`app.import_reputation` / `combine_attestations` / `vincio.settlement.attestation`) makes a
+counterparty's earned standing **portable**, and is a **signed, offline-verifiable claim
+that combines into an evidence-weighted prior, never a hosted reputation bureau or a
+central score**. An attestation **reads only the issuer's own existing signed records and
+asserts nothing it cannot recompute**: it counts settlements where the subject was the
+seller (a fulfilled delivery a success, a breach a failure) and arbitration dissents,
+**skipping a record whose reconciliation hash no longer recomputes** so a tampered own
+record cannot inflate a standing, and binds the exact source hashes the evidence came
+from. The `ReputationAttestation` is **content-bound** the way a record is: an attestation
+hash binds the issuer, the subject, the evidence counts, the prior, and the source hashes,
+so `attestation.verify(verifier)` recomputes it **offline from the bytes alone** and
+**re-derives the attested reputation from the evidence counts** — a tampered score is caught
+even after re-sealing (the score no longer re-derives), and a forged issuer signature is
+caught. The issuer is bound into the hash, so an attestation is one issuer's signed claim,
+not an issuer-independent recomputation. Combining several issuers' attestations is an
+**evidence-weighted pool, never a single self-asserted number**: an issuer that vouches for
+itself (`issuer == subject`) is **refused**, an issuer cannot stack its own pull (only its
+largest attestation for a subject is counted, the rest pinpointed as superseded), a tampered
+or forged attestation is **refused and pinpointed** (`PortableReputation.refused`) rather
+than silently dropped, an optional `per_issuer_cap` bounds any one issuer's mass, and the
+importer's own prior anchors the pooled posterior so a thin attestation barely moves it. The
+imported prior weights a negotiation under the **same bounded `[floor, 1]` rule a local
+reputation does** — a regressor is discounted, never zeroed and never singled out, and the
+discount is reversible — and a counterparty the importer already knows keeps its own earned
+local standing (the `base` ledger), so a portable attestation only ever fills the gap where
+there is no local history; it can never *raise* a counterparty's pull past parity or bypass
+the quality bar.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

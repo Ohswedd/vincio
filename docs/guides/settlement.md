@@ -250,15 +250,59 @@ stand is debited, so a bad-faith revision weights the next negotiation. `book.ar
 resolves one org's own record against a counterparty's submitted claims — the dispute
 counterpart of `book.reconcile_with()`.
 
+## Porting reputation across orgs
+
+Settlement, netting, and arbitration all close the reputation loop — but the standing
+they earn lives inside one org's own ledger. A *new* counterparty has no way to trust it
+without a hosted reputation bureau. `app.attest_reputation()` (or `book.attest()`) issues
+a signed, offline-verifiable `ReputationAttestation` over a counterparty's earned
+standing, derived only from an org's own signed records and arbitration resolutions — a
+fulfilled delivery a success, a breach or a dissent a failure. It reads only what it can
+recompute (a tampered own record is skipped, the exact source hashes bound):
+
+```python
+# Each org attests the vendor's standing from its own settlement book.
+acme_attestation = acme.attest_reputation("vendor")       # signed by acme, audited
+globex_attestation = globex.attest_reputation("vendor")   # signed by globex
+
+# Offline-verifiable: the hash recomputes and the reputation re-derives from the
+# evidence counts, so a tampered score is caught even after re-sealing.
+assert acme_attestation.verify(acme.contract_signer).valid
+```
+
+A prospective counterparty combines several issuers' attestations into a bounded,
+evidence-weighted prior with `app.import_reputation()` (or `combine_attestations()`).
+Because a Beta-Bernoulli posterior is conjugate, combining is *pooling the evidence* —
+never a single self-asserted number: an issuer that vouches for itself is refused, an
+issuer cannot stack its own pull (only its largest attestation counts), and a tampered or
+forged attestation is pinpointed (`prior.refused`) and excluded:
+
+```python
+buyer.use_reputation_ledger()
+prior = buyer.import_reputation([acme_attestation, globex_attestation])
+
+# The prior exposes weight(member_id), so it drops into the existing negotiation path:
+# a never-before-seen vendor is weighted by what its past counterparties attest, under
+# the same bounded [floor, 1] rule a local reputation is — discounted, never zeroed.
+result = buyer.negotiate("transcribe calls", buyer=..., seller=..., seller_id="vendor")
+```
+
+The imported prior weights an *unknown* counterparty; one the buyer has lived through
+keeps its own earned `ReputationLedger` standing (passed as the `base`), so portability
+only fills the gap where there is no local history — `prior.standing("vendor")` shows the
+pooled evidence and `prior.weight("vendor")` the bounded weight it maps to.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
 marketplace. There is no money movement, no escrow service, no managed clearing
-house, no arbitration service or court of record — a settlement is a typed, signed
-record you hold and verify yourself, the book is a hash-chained ledger each
-organization keeps on its own, netting is a clearing *calculation* over those books,
-not a clearing *house*, and arbitration is a deterministic adjudication over the
-parties' own signed records, not a third party that rules by fiat. Vincio gives you a
-verifiable reconciliation of what was owed and delivered, a verifiable netting of it
-across a fleet, and a verifiable resolution when two books disagree; how an obligation
-is paid is yours.
+house, no arbitration service or court of record, no reputation bureau — a settlement
+is a typed, signed record you hold and verify yourself, the book is a hash-chained
+ledger each organization keeps on its own, netting is a clearing *calculation* over
+those books, not a clearing *house*, arbitration is a deterministic adjudication over
+the parties' own signed records, not a third party that rules by fiat, and a reputation
+attestation is one org's signed, verifiable claim that combines into an evidence-weighted
+prior, not a central score. Vincio gives you a verifiable reconciliation of what was owed
+and delivered, a verifiable netting of it across a fleet, a verifiable resolution when two
+books disagree, and a portable, verifiable attestation of earned standing; how an
+obligation is paid is yours.

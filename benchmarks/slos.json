@@ -1611,6 +1611,26 @@
       "threshold": true,
       "enforced_by": "families.arbitration.arbitration_verifies_offline",
       "rationale": "A settled dispute is only as good as its tamper-evidence. The budget gates that a signed resolution verifies offline; companion budgets gate that a tampered verdict fails verification, that a flipped standing flag is caught even after re-sealing because the decision re-derives from the claims, that two arbiters compute the same co-signable hash, and that the adjudication is audited and debits the dissenter — so a resolution is a mechanical, verifiable artifact, never a self-asserted ruling or a hosted court of record."
+    },
+    {
+      "id": "attestation_correctness",
+      "category": "reliability",
+      "statement": "A portable reputation asserts only what it can recompute and combines without singling anyone out: an attestation summarizes the issuer's own signed settlement and arbitration outcomes (a fulfilled delivery a success, a breach or a dissent a failure), several issuers' evidence pools into one bounded, evidence-weighted prior rather than a single self-asserted number, an issuer that vouches for itself is refused, an issuer cannot stack its own pull, and the imported prior weights a negotiation against an unknown counterparty under the same [floor, 1] rule a local reputation does — discounting a regressor without zeroing or singling it out.",
+      "metric": "families.reputation_portability.portability_combines_across_issuers",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation_portability.portability_combines_across_issuers",
+      "rationale": "Portable standing is only trustworthy if no one number can fabricate it. The budget gates that several issuers' attested evidence pools into one prior; companion budgets gate that an attestation summarizes the issuer's own earned outcomes, that more corroborating evidence raises the weight while a regressor stays above the floor, that a self-attestation and a stacked attestation are refused, that an unknown counterparty falls back to the benefit-of-the-doubt prior, and that the imported prior actually weights a negotiation — so reputation travels the fabric as an evidence-weighted prior, never a hosted reputation bureau or a self-asserted score."
+    },
+    {
+      "id": "attestation_integrity",
+      "category": "security",
+      "statement": "An attestation is content-bound and offline-verifiable: an attestation hash binds the issuer, the subject, the evidence counts, the prior, and the source records read, the attestation signs and recomputes from the bytes alone, a tampered score is caught even after re-sealing because the attested reputation re-derives from the evidence, a forged issuer is refused and pinpointed, two importers reading the same attestations compute the same standing, and issuance lands on the audit chain.",
+      "metric": "families.reputation_portability.portability_attestation_verifies_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation_portability.portability_attestation_verifies_offline",
+      "rationale": "A portable attestation is only as good as its tamper-evidence. The budget gates that a signed attestation verifies offline; companion budgets gate that a tampered score fails verification even after re-sealing because the reputation re-derives from the evidence, that a forged issuer is refused and pinpointed rather than silently dropped, that two importers compute the same standing, and that issuance is audited — so an attested standing is a mechanical, verifiable artifact a prospective counterparty trusts from the bytes alone, never a self-asserted claim or a hosted reputation service."
     }
   ]
 }
