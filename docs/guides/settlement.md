@@ -292,6 +292,48 @@ keeps its own earned `ReputationLedger` standing (passed as the `base`), so port
 only fills the gap where there is no local history — `prior.standing("vendor")` shows the
 pooled evidence and `prior.weight("vendor")` the bounded weight it maps to.
 
+## Keeping a ported reputation current
+
+An attestation is a *point-in-time* claim, but standing changes — so the portable prior
+is **time-aware and revocable**, reflecting current standing rather than a frozen
+snapshot, without a hosted revocation service.
+
+**Freshness.** An issuer declares a validity window when it attests
+(`horizon_days=`), bound into the attestation's signed hash. Against an as-of clock, a
+combination *excludes* a stale attestation (past its window) and *decays* an older one
+within its window by an importer-set half-life — its evidence mass halved each
+`half_life_days`, its attested ratio preserved — so an old attestation eases out of the
+pooled prior rather than anchoring it forever:
+
+```python
+from datetime import timedelta
+from vincio.core.utils import utcnow
+from vincio.settlement import AttestationConfig
+
+att = acme.attest_reputation("vendor", horizon_days=90)  # issuer's validity window
+cfg = AttestationConfig(half_life_days=30)               # importer's decay policy
+prior = buyer.import_reputation([att], config=cfg, as_of=utcnow())
+# A stale attestation lands in prior.stale (pinpointed); a fresh one decays by age.
+```
+
+**Revocation.** An issuer withdraws a claim it can no longer stand behind by signing a
+content-bound `AttestationRevocation` (`app.revoke_attestation()` / `book.revoke()`) that
+names the attestation **by its hash**. The importer passes revocations to the combination,
+which excludes the withdrawn claim — pinpointed in `prior.revoked`, never silently
+honored. Only the issuer can withdraw its *own* attestation: a forged revocation, or one
+naming another org's attestation, cannot cancel a claim.
+
+```python
+revocation = acme.revoke_attestation(att, reason="vendor regressed")  # signed, audited
+prior = buyer.import_reputation([att], revocations=[revocation])
+assert prior.standing("vendor") is None        # the withdrawn claim is excluded
+assert prior.revoked[0].issuer == "acme"       # pinpointed, not silently dropped
+```
+
+Freshness and revocation read only the existing signed artifacts, assert nothing they
+cannot recompute, and fold into the *same* bounded `[floor, 1]` weighting — never a
+central revocation service or a hosted bulletin board.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted

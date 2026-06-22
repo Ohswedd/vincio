@@ -11,17 +11,22 @@ rule a local reputation is.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from vincio import (
+    AttestationRevocation,
     ContextApp,
     PortableReputation,
     ReputationAttestation,
     attest_reputation,
     combine_attestations,
+    revoke_attestation,
     settle_contract,
 )
 from vincio.core.errors import SettlementError
+from vincio.core.utils import utcnow
 from vincio.negotiation import (
     Contract,
     ContractTerms,
@@ -32,7 +37,7 @@ from vincio.negotiation import (
 from vincio.providers import MockProvider
 from vincio.security.audit import HMACSigner
 from vincio.settlement import AttestationConfig, SettlementBook
-from vincio.settlement.attestation import ATTESTATION_ACTION
+from vincio.settlement.attestation import ATTESTATION_ACTION, REVOCATION_ACTION
 from vincio.settlement.attestation import attest_reputation as _attest
 
 ACME = HMACSigner("acme-key", key_id="acme")
@@ -112,8 +117,9 @@ def test_attest_counts_arbitration_dissents_as_failures():
     liar = settle_contract(c, cost_usd=0.05).sign(GLOBEX, party="vendor")
     resolution = app.arbitrate([acme_rec, vendor_agrees, liar])
     assert resolution.dissenters == ["vendor"]
-    att = attest_reputation(_records("vendor", settled=1), "vendor", issuer="acme",
-                            resolutions=[resolution])
+    att = attest_reputation(
+        _records("vendor", settled=1), "vendor", issuer="acme", resolutions=[resolution]
+    )
     assert att.dissents == 1
     assert att.failures == 1
 
@@ -130,8 +136,9 @@ def test_attest_ignores_a_tampered_resolution_dissent():
     resolution.upheld_balance_usd = 999.0  # tamper the upheld figure and re-seal
     resolution.seal()
     assert not resolution.verify().decision_sound
-    att = attest_reputation(_records("vendor", settled=1), "vendor", issuer="acme",
-                            resolutions=[resolution])
+    att = attest_reputation(
+        _records("vendor", settled=1), "vendor", issuer="acme", resolutions=[resolution]
+    )
     assert att.dissents == 0  # a tampered resolution cannot inflate dissents
 
 
@@ -406,12 +413,18 @@ def test_import_reputation_select_offer_prefers_reliable_seller():
     pos = buyer_position(max_price_usd=0.10, max_sla_seconds=5.0)
     app = _app("buyer")
     reliable = app.negotiate(
-        "work", buyer=pos, seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.12),
-        buyer_id="buyer", seller_id="reliable",
+        "work",
+        buyer=pos,
+        seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.12),
+        buyer_id="buyer",
+        seller_id="reliable",
     )
     flaky = app.negotiate(
-        "work", buyer=pos, seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.12),
-        buyer_id="buyer", seller_id="flaky",
+        "work",
+        buyer=pos,
+        seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.12),
+        buyer_id="buyer",
+        seller_id="flaky",
     )
     chosen = select_offer([reliable, flaky], pos, reputation=prior)
     assert chosen is not None and chosen.seller == "reliable"
@@ -440,3 +453,291 @@ def test_portable_reputation_weight_protocol_duck_types():
     assert isinstance(prior, PortableReputation)
     assert isinstance(prior.weight("vendor"), float)
     assert isinstance(prior.reputation("vendor"), float)
+
+
+# -- freshness: validity window & decay ---------------------------------------
+
+
+def _aged(att: ReputationAttestation, days: float, signer: HMACSigner = ACME):
+    """Backdate an attestation's issuance by ``days`` and re-seal / re-sign it."""
+    att.issued_at = utcnow() - timedelta(days=days)
+    att.seal()
+    return att.sign(signer)
+
+
+def test_horizon_attestation_still_verifies_offline():
+    att = attest_reputation(_records(), "vendor", issuer="acme", horizon_days=30).sign(ACME)
+    assert att.verify(ACME).valid
+    assert att.horizon_days == 30
+    assert att.expires_at is not None
+
+
+def test_horizon_is_bound_into_the_hash():
+    plain = attest_reputation(_records(settled=2), "vendor", issuer="acme")
+    windowed = attest_reputation(_records(settled=2), "vendor", issuer="acme", horizon_days=30)
+    # The validity window is a signed claim, so it changes the content hash.
+    assert plain.content_hash != windowed.content_hash
+
+
+def test_no_horizon_hash_is_unchanged_from_before_freshness():
+    # A no-horizon attestation must hash exactly as it did pre-3.30 (horizon excluded
+    # from the bound facts when None), so an already-issued attestation stays verifiable.
+    att = attest_reputation(_records(settled=2), "vendor", issuer="acme")
+    facts = att.attestation_facts()
+    assert "horizon_days" not in facts
+
+
+def test_no_horizon_attestation_never_stale():
+    att = attest_reputation(_records(), "vendor", issuer="acme").sign(ACME)
+    assert not att.is_stale(utcnow() + timedelta(days=3650))
+
+
+def test_is_stale_past_the_window():
+    att = _aged(attest_reputation(_records(), "vendor", issuer="acme", horizon_days=30), 40)
+    assert att.is_stale(utcnow())
+    assert not att.is_stale(att.issued_at + timedelta(days=10))
+
+
+def test_combine_excludes_a_stale_attestation_pinpointed():
+    fresh = attest_reputation(_records(settled=2), "vendor", issuer="globex", horizon_days=30)
+    fresh.sign(GLOBEX)
+    old = _aged(
+        attest_reputation(_records(settled=2), "vendor", issuer="acme", horizon_days=30), 90
+    )
+    prior = combine_attestations([fresh, old], as_of=utcnow())
+    assert len(prior.stale) == 1
+    assert prior.stale[0].issuer == "acme"
+    assert "stale" in prior.stale[0].reason
+    # Only the fresh attestation's evidence is pooled.
+    assert prior.standing("vendor").attestations == 1
+    assert prior.standing("vendor").issuers == ["globex"]
+
+
+def test_no_as_of_clock_means_no_expiry():
+    old = _aged(attest_reputation(_records(settled=2), "vendor", issuer="acme", horizon_days=1), 90)
+    prior = combine_attestations([old])  # no as_of → point-in-time, nothing expires
+    assert prior.standing("vendor").attestations == 1
+    assert not prior.stale
+
+
+def test_half_life_decays_evidence_by_age():
+    cfg = AttestationConfig(half_life_days=30)
+    old = _aged(attest_reputation(_records(settled=8), "vendor", issuer="acme"), 30)
+    prior = combine_attestations([old], config=cfg, as_of=utcnow())
+    # One half-life halves the mass: 8 successes → ~4.
+    assert abs(prior.standing("vendor").successes - 4.0) < 1e-6
+
+
+def test_decay_lowers_weight_versus_fresh():
+    cfg = AttestationConfig(half_life_days=30)
+    fresh = attest_reputation(_records(settled=8), "vendor", issuer="acme").sign(ACME)
+    old = _aged(attest_reputation(_records("other", settled=8), "other", issuer="acme"), 120)
+    now = utcnow()
+    fresh_prior = combine_attestations([fresh], config=cfg, as_of=now)
+    old_prior = combine_attestations([old], config=cfg, as_of=now)
+    assert old_prior.weight("other") < fresh_prior.weight("vendor")
+    assert old_prior.weight("other") >= cfg.weight_floor  # decays toward prior, not below floor
+
+
+def test_decay_is_deterministic_across_importers():
+    cfg = AttestationConfig(half_life_days=45)
+    a = _aged(attest_reputation(_records(settled=4), "vendor", issuer="acme"), 20)
+    b = _aged(attest_reputation(_records(settled=3), "vendor", issuer="globex"), 60, GLOBEX)
+    now = utcnow()
+    one = combine_attestations([a, b], config=cfg, as_of=now)
+    two = combine_attestations([b, a], config=cfg, as_of=now)
+    assert one.standing("vendor").successes == two.standing("vendor").successes
+    assert one.weight("vendor") == two.weight("vendor")
+
+
+def test_naive_issued_at_does_not_crash_as_of_combination():
+    # A cross-org attestation deserialized from a tz-naive ISO timestamp must still
+    # combine against an as-of clock rather than raising on naive/aware comparison.
+    att = attest_reputation(_records(settled=2), "vendor", issuer="acme", horizon_days=30)
+    att.issued_at = att.issued_at.replace(tzinfo=None) - timedelta(days=90)
+    att.seal().sign(ACME)
+    prior = combine_attestations([att], as_of=utcnow())
+    assert prior.standing("vendor") is None  # stale, excluded — no TypeError
+    assert len(prior.stale) == 1
+
+
+def test_invalid_horizon_raises():
+    with pytest.raises(SettlementError):
+        attest_reputation(_records(), "vendor", issuer="acme", horizon_days=0)
+
+
+def test_invalid_half_life_raises():
+    with pytest.raises(SettlementError):
+        AttestationConfig(half_life_days=-1).validate_coherent()
+
+
+# -- revocation ---------------------------------------------------------------
+
+
+def test_revoke_builds_signs_and_verifies():
+    att = attest_reputation(_records(), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(att, reason="vendor regressed").sign(ACME)
+    assert rev.issuer == "acme"
+    assert rev.subject == "vendor"
+    assert rev.attestation_hash == att.content_hash
+    assert rev.verify(ACME).valid
+    assert rev.revokes(att)
+
+
+def test_revocation_excludes_attestation_pinpointed():
+    att = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(att).sign(ACME)
+    prior = combine_attestations([att], revocations=[rev])
+    assert prior.standing("vendor") is None
+    assert len(prior.revoked) == 1
+    assert prior.revoked[0].revoked is True
+    assert "revoked" in prior.revoked[0].reason
+
+
+def test_revocation_keeps_other_issuers_evidence():
+    bad = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
+    good = attest_reputation(_records(settled=2), "vendor", issuer="globex").sign(GLOBEX)
+    rev = revoke_attestation(bad).sign(ACME)
+    prior = combine_attestations([bad, good], revocations=[rev])
+    assert prior.standing("vendor").attestations == 1
+    assert prior.standing("vendor").issuers == ["globex"]
+
+
+def test_supersession_names_the_replacement():
+    old = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
+    new = attest_reputation(_records(settled=6), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(old, replacement=new, reason="updated").sign(ACME)
+    assert rev.is_supersession
+    assert rev.replacement_hash == new.content_hash
+    prior = combine_attestations([old, new], revocations=[rev])
+    # The old one is revoked; the new one is counted.
+    assert prior.standing("vendor").successes == 6
+    assert "superseded" in prior.revoked[0].reason
+
+
+def test_forged_revocation_is_ignored_with_verifier():
+    att = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(att).sign(ACME)
+    rev.signatures[0].signature = "deadbeef"  # forge
+    prior = combine_attestations([att], revocations=[rev], verify_with=ACME)
+    assert prior.standing("vendor") is not None  # forged revocation not honored
+    assert not prior.revoked
+
+
+def test_cross_issuer_revocation_cannot_cancel_anothers_attestation():
+    att = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
+    # globex tries to revoke acme's attestation.
+    rogue = AttestationRevocation(
+        issuer="globex", subject="vendor", attestation_hash=att.content_hash
+    ).sign(GLOBEX)
+    # The issuer mismatch alone protects acme's claim — a revocation withdraws only
+    # an attestation issued by the same party, regardless of how it is signed.
+    prior = combine_attestations([att], revocations=[rogue])
+    assert prior.standing("vendor") is not None
+    assert not prior.revoked
+
+
+def test_tampered_revocation_hash_is_ignored():
+    att = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(att).sign(ACME)
+    rev.subject = "someone-else"  # tamper without resealing → hash mismatch
+    prior = combine_attestations([att], revocations=[rev])
+    assert prior.standing("vendor") is not None
+    assert not prior.revoked
+
+
+def test_revoke_by_hash_string_offline():
+    att = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(att.content_hash, subject="vendor", issuer="acme").sign(ACME)
+    prior = combine_attestations([att], revocations=[rev])
+    assert prior.standing("vendor") is None
+
+
+def test_revoke_wrong_issuer_raises():
+    att = attest_reputation(_records(), "vendor", issuer="acme")
+    with pytest.raises(SettlementError):
+        revoke_attestation(att, issuer="globex")
+
+
+def test_revocation_wire_roundtrip_preserves_verification():
+    att = attest_reputation(_records(), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(att, reason="r").sign(ACME)
+    back = AttestationRevocation.from_wire(rev.to_wire())
+    assert back.verify(ACME).valid
+    assert back.content_hash == rev.content_hash
+
+
+def test_revocation_require_valid_raises_on_tamper():
+    att = attest_reputation(_records(), "vendor", issuer="acme").sign(ACME)
+    rev = revoke_attestation(att).sign(ACME)
+    rev.attestation_hash = "0" * 64  # tamper without resealing
+    with pytest.raises(SettlementError):
+        rev.require_valid(ACME)
+
+
+# -- book & app surface for revocation & freshness ----------------------------
+
+
+def test_settlement_book_revoke_signs_as_owner():
+    signer = HMACSigner("book-key", key_id="acme")
+    book = SettlementBook("acme", signer=signer)
+    book.settle(_contract(seller="vendor"), cost_usd=0.05)
+    book.settle(_contract(seller="vendor"), cost_usd=0.05)
+    att = book.attest("vendor")
+    rev = book.revoke(att, reason="regressed")
+    assert rev.issuer == "acme"
+    assert rev.signed_by == ["acme"]
+    assert rev.verify(signer).valid
+    assert rev.revokes(att)
+
+
+def test_settlement_book_revoke_rejects_foreign_attestation():
+    book = SettlementBook("acme", signer=HMACSigner("k", key_id="acme"))
+    foreign = attest_reputation(_records(), "vendor", issuer="globex")
+    with pytest.raises(SettlementError):
+        book.revoke(foreign)
+
+
+def test_app_revoke_attestation_audits_and_verifies():
+    app = _app("acme")
+    app.use_settlement_book()
+    app.settle(_contract(seller="vendor"), cost_usd=0.05)
+    app.settle(_contract(seller="vendor"), cost_usd=0.05)
+    att = app.attest_reputation("vendor")
+    rev = app.revoke_attestation(att, reason="regressed")
+    assert rev.verify(app.contract_signer).valid
+    assert app.audit.query(action=REVOCATION_ACTION)
+    assert app.audit.verify_chain()
+
+
+def test_app_import_reputation_honors_revocation():
+    issuer = _app("acme")
+    issuer.use_settlement_book()
+    for _ in range(4):
+        issuer.settle(_contract(seller="vendor"), cost_usd=0.05)
+    att = issuer.attest_reputation("vendor")
+    rev = issuer.revoke_attestation(att, reason="vendor regressed")
+
+    buyer = _app("buyer")
+    buyer.use_reputation_ledger()
+    prior = buyer.import_reputation([att], revocations=[rev])
+    assert prior.standing("vendor") is None
+    assert len(prior.revoked) == 1
+
+
+def test_app_import_reputation_decays_stale_with_as_of():
+    issuer = _app("acme")
+    issuer.use_settlement_book()
+    for _ in range(4):
+        issuer.settle(_contract(seller="vendor"), cost_usd=0.05)
+    att = issuer.attest_reputation("vendor")
+    att.horizon_days = 30
+    att.issued_at = utcnow() - timedelta(days=90)
+    att.seal()
+    att.sign(issuer.contract_signer, party="acme")
+
+    buyer = _app("buyer")
+    buyer.use_reputation_ledger()
+    prior = buyer.import_reputation([att], as_of=utcnow())
+    assert prior.standing("vendor") is None  # stale past its 30-day window
+    assert len(prior.stale) == 1

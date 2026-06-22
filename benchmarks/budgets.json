@@ -1837,10 +1837,28 @@
     "families.reputation_portability.audit_recorded": {
       "eq": true
     },
+    "families.reputation_portability.portability_stale_excluded": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_decays_with_age": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_revocation_excludes": {
+      "eq": true
+    },
+    "families.reputation_portability.portability_forged_revocation_ignored": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },
     "families.reputation_portability.refused_attestations": {
+      "gte": 1
+    },
+    "families.reputation_portability.stale_excluded": {
+      "gte": 1
+    },
+    "families.reputation_portability.revoked_excluded": {
       "gte": 1
     }
   }

@@ -4,6 +4,49 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.30.0] - 2026-06-22
+
+Cross-org attestation revocation & freshness. A `ReputationAttestation` is a point-in-time claim, but
+standing changes — a counterparty reliable a year ago may have regressed, and an issuer may need to
+**withdraw** a claim it can no longer stand behind — and the portable prior would otherwise trust a
+signed attestation forever. This release makes portable reputation **time-aware and revocable**, so an
+imported prior reflects *current* standing, not a frozen snapshot, without becoming a hosted revocation
+service. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, an attestation with no
+declared validity window hashes and verifies exactly as before, a combination with no as-of clock is
+point-in-time, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **Freshness — a validity window on the attestation.** `attest_reputation(..., horizon_days=None)`
+  (also `app.attest_reputation` / `book.attest`) lets an issuer declare how long its attestation holds;
+  the window is bound into the signed attestation hash only when set, so a no-horizon attestation hashes
+  exactly as it did before. `attestation.expires_at`, `.is_stale(as_of)`, and `.age_days(as_of)` expose
+  it. Against an as-of clock, `combine_attestations(..., as_of=)` **excludes** a stale attestation and
+  pinpoints it (`PortableReputation.stale`, `AttestationVerdict.stale`).
+- **Freshness — half-life decay.** `AttestationConfig(half_life_days=None)` decays an older (but still
+  valid) attestation's evidence by age — `0.5 ** (age_days / half_life_days)` of its mass, its attested
+  ratio preserved — so an old attestation decays out of the pooled prior toward the benefit-of-the-doubt
+  rather than anchoring it forever. With no as-of clock, attested evidence is never decayed.
+- **Revocation — a content-bound, offline-verifiable `AttestationRevocation`.**
+  `revoke_attestation(attestation_or_hash, *, subject="", issuer="", replacement=None, reason="")` (also
+  `app.revoke_attestation` / `book.revoke`) issues a signed revocation that withdraws or supersedes a
+  prior attestation **by its hash**. The revocation hash binds the issuer, the subject, the withdrawn
+  hash, and any replacement; `revocation.sign(signer, party=None)` co-signs it and
+  `revocation.verify(verifier=, require=None)` → `RevocationVerification` recomputes it offline.
+  `.revokes(attestation)`, `.is_supersession`, `.require_valid()`, `.to_wire` / `.from_wire`,
+  `.print_summary()`.
+- **Revocation folded into the combination.** `combine_attestations(..., revocations=)` (also
+  `app.import_reputation(..., revocations=, as_of=)`) excludes an attestation an admissible,
+  **issuer-matched** revocation withdraws — pinpointed (`PortableReputation.revoked`,
+  `AttestationVerdict.revoked`), never silently honored. A revocation is honored only when it verifies
+  (and, with a verifier, the issuer signature checks) and is issued by the same party whose attestation
+  it names, so a forged revocation, or one naming another org's attestation, **cannot cancel a claim**.
+  `app.revoke_attestation` records the issuance on the audit chain (action `attestation_revocation`).
+- **Surface.** `from vincio import AttestationRevocation, revoke_attestation` (and
+  `vincio.settlement.RevocationVerification`); a `reputation_portability` VincioBench extension with a
+  freshness + revocation SLO (`attestation_freshness_and_revocation`); and a runnable example,
+  `examples/74_cross_org_attestation_revocation_freshness.py`.
+
 ## [3.29.0] - 2026-06-22
 
 Cross-org reputation attestation & portability. Settlement, netting, and arbitration all close the

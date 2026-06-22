@@ -1631,6 +1631,16 @@
       "threshold": true,
       "enforced_by": "families.reputation_portability.portability_attestation_verifies_offline",
       "rationale": "A portable attestation is only as good as its tamper-evidence. The budget gates that a signed attestation verifies offline; companion budgets gate that a tampered score fails verification even after re-sealing because the reputation re-derives from the evidence, that a forged issuer is refused and pinpointed rather than silently dropped, that two importers compute the same standing, and that issuance is audited — so an attested standing is a mechanical, verifiable artifact a prospective counterparty trusts from the bytes alone, never a self-asserted claim or a hosted reputation service."
+    },
+    {
+      "id": "attestation_freshness_and_revocation",
+      "category": "security",
+      "statement": "A portable reputation reflects current standing, not a frozen snapshot: an attestation carries an issuer-declared validity window, so against an as-of clock a stale attestation is excluded and pinpointed while an older one decays out of the pooled prior by a half-life rather than anchoring it forever; and an issuer withdraws a claim it can no longer stand behind with a content-bound, offline-verifiable revocation that excludes the attestation by its hash — pinpointed, never silently honored — and a forged revocation, or one naming another org's attestation, cannot cancel a claim.",
+      "metric": "families.reputation_portability.portability_revocation_excludes",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation_portability.portability_revocation_excludes",
+      "rationale": "A portable prior that trusts a signed attestation forever cannot track standing that changes. The budget gates that a revoked attestation is excluded and pinpointed; companion budgets gate that a stale attestation past its validity window is excluded against an as-of clock, that an older attestation decays out of the prior by a half-life, and that a forged revocation cannot cancel a claim — so the imported prior reflects current standing without a hosted revocation service, reading only the existing signed artifacts and folding into the same bounded [floor, 1] weighting."
     }
   ]
 }

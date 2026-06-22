@@ -7437,15 +7437,24 @@ async def bench_reputation_portability() -> dict[str, Any]:
     tampered score is caught even after re-sealing because the reputation re-derives
     from the evidence, a forged issuer is refused, two importers reading the same
     attestations compute the same standing, and issuance lands on the audit chain). It
-    is reputation that travels the fabric, never a hosted reputation bureau.
+    is reputation that travels the fabric, never a hosted reputation bureau. Because
+    standing changes, the prior is also **time-aware and revocable**: a stale
+    attestation (past its issuer-declared validity window) is excluded against an
+    as-of clock and an older one decays out of the pooled prior by a half-life, while
+    a signed, content-bound revocation withdraws a claim by its hash — pinpointed,
+    offline-verifiable, and a forged revocation cannot cancel another's attestation.
     Deterministic and offline."""
+    from datetime import timedelta
+
     from vincio import (
         ContextApp,
         VincioConfig,
         attest_reputation,
         combine_attestations,
+        revoke_attestation,
         settle_contract,
     )
+    from vincio.core.utils import utcnow
     from vincio.negotiation import (
         Contract,
         ContractTerms,
@@ -7592,6 +7601,63 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and issued.verify(app.contract_signer).valid
     )
 
+    # 14. Freshness: a stale attestation (past its issuer-declared validity window) is
+    #     excluded against an as-of clock and pinpointed, never anchoring the prior.
+    now = utcnow()
+    stale_att = attest_reputation(
+        records("vendor", settled=4), "vendor", issuer="acme", horizon_days=30
+    )
+    stale_att.issued_at = now - timedelta(days=90)
+    stale_att.seal().sign(acme)
+    fresh_att = attest_reputation(
+        records("vendor", settled=2), "vendor", issuer="globex", horizon_days=30
+    ).sign(globex)
+    freshness_prior = combine_attestations([stale_att, fresh_att], as_of=now)
+    portability_stale_excluded = bool(
+        len(freshness_prior.stale) == 1
+        and freshness_prior.stale[0].issuer == "acme"
+        and freshness_prior.standing("vendor").issuers == ["globex"]
+    )
+
+    # 15. Decay: within the window, an older attestation contributes less evidence —
+    #     one half-life halves its mass, so it decays toward the benefit-of-the-doubt.
+    decay_cfg = AttestationConfig(half_life_days=30)
+    aged = attest_reputation(records("vendor", settled=8), "vendor", issuer="acme")
+    aged.issued_at = now - timedelta(days=30)
+    aged.seal().sign(acme)
+    decayed_prior = combine_attestations([aged], config=decay_cfg, as_of=now)
+    portability_decays_with_age = bool(
+        abs(decayed_prior.standing("vendor").successes - 4.0) < 1e-6
+    )
+
+    # 16. Revocation: an issuer withdraws its attestation by hash; the withdrawn claim
+    #     is excluded and pinpointed, and another issuer's evidence still stands.
+    revoked_att = attest_reputation(records("vendor", settled=4), "vendor", issuer="acme").sign(acme)
+    other_att = attest_reputation(records("vendor", settled=2), "vendor", issuer="globex").sign(
+        globex
+    )
+    revocation = revoke_attestation(revoked_att, reason="vendor regressed").sign(acme)
+    revoked_prior = combine_attestations(
+        [revoked_att, other_att], revocations=[revocation]
+    )
+    portability_revocation_excludes = bool(
+        len(revoked_prior.revoked) == 1
+        and revoked_prior.revoked[0].issuer == "acme"
+        and revoked_prior.standing("vendor").issuers == ["globex"]
+    )
+
+    # 17. A revocation is offline-verifiable, and a forged one cannot cancel a claim.
+    forged_rev = revoke_attestation(revoked_att).sign(acme)
+    forged_rev.signatures[0].signature = "deadbeef"
+    forged_rev_prior = combine_attestations(
+        [revoked_att], revocations=[forged_rev], verify_with=acme
+    )
+    portability_forged_revocation_ignored = bool(
+        revocation.verify(acme).valid
+        and forged_rev_prior.standing("vendor") is not None
+        and not forged_rev_prior.revoked
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -7606,8 +7672,14 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "portability_forged_refused": portability_forged_refused,
         "portability_importers_agree": portability_importers_agree,
         "audit_recorded": audit_recorded,
+        "portability_stale_excluded": portability_stale_excluded,
+        "portability_decays_with_age": portability_decays_with_age,
+        "portability_revocation_excludes": portability_revocation_excludes,
+        "portability_forged_revocation_ignored": portability_forged_revocation_ignored,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
+        "stale_excluded": len(freshness_prior.stale),
+        "revoked_excluded": len(revoked_prior.revoked),
     }
 
 

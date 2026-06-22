@@ -50,7 +50,7 @@ reputation service.
 from __future__ import annotations
 
 from collections.abc import Iterable
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
@@ -68,16 +68,22 @@ __all__ = [
     "ReputationAttestation",
     "AttestationVerification",
     "AttestationVerdict",
+    "AttestationRevocation",
+    "RevocationVerification",
     "SubjectStanding",
     "PortableReputation",
     "attest_reputation",
+    "revoke_attestation",
     "combine_attestations",
 ]
 
 # The audit action an issued attestation is recorded under.
 ATTESTATION_ACTION = "reputation_attestation"
+# The audit action an issued revocation is recorded under.
+REVOCATION_ACTION = "attestation_revocation"
 
 _TOLERANCE = 1e-9
+_SECONDS_PER_DAY = 86400.0
 
 
 class AttestationConfig(BaseModel):
@@ -107,6 +113,15 @@ class AttestationConfig(BaseModel):
       its attested reputation is preserved but its *mass* is bounded), so no one
       issuer — however much it claims to have seen — can dominate the combined prior.
       ``None`` leaves each issuer's evidence uncapped.
+    * ``half_life_days`` optionally **decays** an attestation's evidence by age when a
+      combination is evaluated against an as-of clock: an attestation contributes
+      ``0.5 ** (age_days / half_life_days)`` of its mass (its successes and failures
+      scaled down together, so its attested reputation is preserved but its pull
+      shrinks), so an old attestation decays out of the pooled prior toward the
+      benefit-of-the-doubt rather than anchoring it forever. ``None`` leaves attested
+      evidence undecayed (the default — a combination with no as-of clock never
+      decays). Freshness is *importer policy*: the issuer's own ``horizon_days`` is the
+      hard validity window, the importer's ``half_life_days`` the soft decay within it.
 
     The weight is ``weight_floor + (weight_ceiling − weight_floor) · reputation``, a
     monotonic map from reputation ``∈ (0, 1)`` to weight ``∈ [floor, ceiling]`` —
@@ -119,6 +134,7 @@ class AttestationConfig(BaseModel):
     weight_floor: float = 0.1
     weight_ceiling: float = 1.0
     per_issuer_cap: float | None = None
+    half_life_days: float | None = None
 
     def validate_coherent(self) -> AttestationConfig:
         """Raise :class:`SettlementError` unless the configuration is coherent."""
@@ -138,6 +154,11 @@ class AttestationConfig(BaseModel):
             raise SettlementError(
                 f"per_issuer_cap must be positive when set; got {self.per_issuer_cap}",
                 details={"per_issuer_cap": self.per_issuer_cap},
+            )
+        if self.half_life_days is not None and self.half_life_days <= 0.0:
+            raise SettlementError(
+                f"half_life_days must be positive when set; got {self.half_life_days}",
+                details={"half_life_days": self.half_life_days},
             )
         return self
 
@@ -163,6 +184,25 @@ class AttestationConfig(BaseModel):
             return successes, failures
         scale = cap / evidence
         return successes * scale, failures * scale
+
+    def decay_factor(self, age_days: float) -> float:
+        """The fraction of its mass an attestation aged ``age_days`` still contributes.
+
+        ``0.5 ** (age_days / half_life_days)`` — one half-life halves the mass — or
+        ``1.0`` when no half-life is set or the attestation is not yet aged (a
+        future-dated or as-of-or-earlier attestation is undecayed, never amplified).
+        """
+        hl = self.half_life_days
+        if hl is None or age_days <= 0.0:
+            return 1.0
+        return 0.5 ** (age_days / hl)
+
+    def decayed(self, successes: float, failures: float, age_days: float) -> tuple[float, float]:
+        """Scale one attestation's evidence down by its age-driven decay factor."""
+        factor = self.decay_factor(age_days)
+        if factor >= 1.0:
+            return successes, failures
+        return successes * factor, failures * factor
 
 
 class AttestationVerification(BaseModel):
@@ -214,6 +254,11 @@ class ReputationAttestation(BaseModel):
     source_hashes: list[str] = Field(default_factory=list)
     note: str = ""
 
+    # The issuer's validity window: the attestation is fresh for ``horizon_days``
+    # after ``issued_at``, after which an as-of-aware combination treats it as stale.
+    # ``None`` means the issuer asserts no expiry (the standing holds until revoked).
+    horizon_days: float | None = None
+
     issued_at: datetime = Field(default_factory=utcnow)
     content_hash: str = ""
     signatures: list[SettlementSignature] = Field(default_factory=list)
@@ -251,6 +296,32 @@ class ReputationAttestation(BaseModel):
         """The issuer is vouching for itself — refused when combining."""
         return self.issuer == self.subject
 
+    # -- freshness ----------------------------------------------------------
+
+    @property
+    def expires_at(self) -> datetime | None:
+        """The instant the validity window closes, or ``None`` if it never does."""
+        if self.horizon_days is None:
+            return None
+        # Normalize issued_at: a cross-org attestation deserialized from a tz-naive
+        # ISO string would otherwise make the comparison in is_stale raise.
+        return _as_utc(self.issued_at) + timedelta(days=float(self.horizon_days))
+
+    def age_days(self, as_of: datetime) -> float:
+        """Days between issuance and ``as_of`` (never negative — clamped at ``0``)."""
+        delta = (_as_utc(as_of) - _as_utc(self.issued_at)).total_seconds() / _SECONDS_PER_DAY
+        return max(0.0, delta)
+
+    def is_stale(self, as_of: datetime) -> bool:
+        """Whether the issuer's validity window has closed by ``as_of``.
+
+        An attestation with no declared ``horizon_days`` never goes stale (the issuer
+        asserts the standing holds until it is revoked); one with a horizon is stale
+        once ``as_of`` passes :attr:`expires_at`.
+        """
+        expiry = self.expires_at
+        return expiry is not None and _as_utc(as_of) > expiry
+
     # -- hashing & signing --------------------------------------------------
 
     def attestation_facts(self) -> dict[str, Any]:
@@ -262,7 +333,7 @@ class ReputationAttestation(BaseModel):
         second issuer attesting the same evidence produces a distinct, separately
         signed attestation that combines beside this one.
         """
-        return {
+        facts: dict[str, Any] = {
             "issuer": self.issuer,
             "subject": self.subject,
             "settled": int(self.settled),
@@ -273,6 +344,12 @@ class ReputationAttestation(BaseModel):
             "reputation": round(float(self.reputation), 9),
             "source_hashes": sorted(self.source_hashes),
         }
+        # Bind the validity window only when the issuer declares one, so an
+        # attestation with no horizon hashes exactly as it did before freshness
+        # existed — a pre-3.30 attestation stays offline-verifiable unchanged.
+        if self.horizon_days is not None:
+            facts["horizon_days"] = round(float(self.horizon_days), 9)
+        return facts
 
     def compute_hash(self) -> str:
         """The attestation hash binding the attested standing (id/time-independent)."""
@@ -363,10 +440,7 @@ class ReputationAttestation(BaseModel):
         if missing:
             signatures_ok = False
         valid = (
-            hash_ok
-            and evidence_sound
-            and signatures_ok
-            and (verifier is not None or not required)
+            hash_ok and evidence_sound and signatures_ok and (verifier is not None or not required)
         )
         reason = None
         if not evidence_sound:
@@ -435,6 +509,217 @@ class ReputationAttestation(BaseModel):
         )
 
 
+class RevocationVerification(BaseModel):
+    """The (non-raising) outcome of verifying a revocation offline."""
+
+    valid: bool
+    hash_ok: bool
+    signatures_ok: bool
+    signed_by: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class AttestationRevocation(BaseModel):
+    """A signed, offline-verifiable withdrawal of a prior attestation by its hash.
+
+    Standing changes: a counterparty reliable a year ago may have regressed, and an
+    issuer may need to **withdraw** an attestation it can no longer stand behind. A
+    revocation is the issuer's signed statement that a specific attestation — named by
+    its :attr:`attestation_hash` (the attestation's ``content_hash``) — no longer
+    holds. It optionally carries a :attr:`replacement_hash` (the attestation that
+    *supersedes* the withdrawn one), making the revocation a supersession rather than a
+    bare withdrawal.
+
+    A revocation is content-bound and verifies the way an attestation does: the
+    revocation hash binds the issuer, the subject, the withdrawn hash, and any
+    replacement, and the issuer co-signs *that* hash. :meth:`verify` recomputes it from
+    the bytes alone, so a forged revocation — one not signed by the very issuer whose
+    attestation it withdraws — is refused rather than silently honored. In a
+    combination only a revocation that both verifies and matches an attestation's own
+    issuer withdraws it (:meth:`revokes`), so no org can cancel another's attestation.
+    """
+
+    id: str = Field(default_factory=lambda: new_id("revocation"))
+    issuer: str
+    subject: str
+
+    # The ``content_hash`` of the attestation being withdrawn.
+    attestation_hash: str
+    # Optionally, the ``content_hash`` of the attestation that supersedes it.
+    replacement_hash: str = ""
+    reason: str = ""
+
+    issued_at: datetime = Field(default_factory=utcnow)
+    content_hash: str = ""
+    signatures: list[SettlementSignature] = Field(default_factory=list)
+    audit_id: str | None = None
+
+    # -- derived figures ----------------------------------------------------
+
+    @property
+    def signed_by(self) -> list[str]:
+        """The parties that have signed, in signing order."""
+        return [s.party for s in self.signatures]
+
+    @property
+    def is_supersession(self) -> bool:
+        """Whether the revocation points to a replacement (a supersede, not a withdraw)."""
+        return bool(self.replacement_hash)
+
+    def revokes(self, attestation: ReputationAttestation) -> bool:
+        """Whether this revocation withdraws ``attestation``.
+
+        A revocation withdraws an attestation only when it names that attestation's
+        ``content_hash`` *and* is issued by the same party — an issuer can withdraw
+        only its own claim, never another org's.
+        """
+        return (
+            bool(attestation.content_hash)
+            and self.attestation_hash == attestation.content_hash
+            and self.issuer == attestation.issuer
+        )
+
+    # -- hashing & signing --------------------------------------------------
+
+    def revocation_facts(self) -> dict[str, Any]:
+        """The facts the revocation hash binds (and the issuer signs).
+
+        Excludes the id, the timestamp, and the human-readable ``reason`` (local
+        metadata); binds the issuer, the subject, and the withdrawn / replacement
+        hashes — the claim a verifier must be able to recompute.
+        """
+        return {
+            "issuer": self.issuer,
+            "subject": self.subject,
+            "attestation_hash": self.attestation_hash,
+            "replacement_hash": self.replacement_hash,
+        }
+
+    def compute_hash(self) -> str:
+        """The revocation hash binding the withdrawal (id/time-independent)."""
+        return stable_hash(self.revocation_facts(), length=32)
+
+    def seal(self) -> AttestationRevocation:
+        """Stamp the revocation hash from the current fields (idempotent)."""
+        self.content_hash = self.compute_hash()
+        return self
+
+    def sign(self, signer: ChainSigner, *, party: str | None = None) -> AttestationRevocation:
+        """Add the issuer's signature over the revocation hash (sealing first).
+
+        ``party`` defaults to the issuer — a revocation is the issuer's own signed
+        statement. Re-signing for the same party replaces its prior signature.
+        """
+        signer_party = party or self.issuer
+        if not self.content_hash:
+            self.seal()
+        sig = SettlementSignature(
+            party=signer_party,
+            signature=signer.sign(self.content_hash),
+            key_id=getattr(signer, "key_id", ""),
+        )
+        self.signatures = [s for s in self.signatures if s.party != signer_party]
+        self.signatures.append(sig)
+        return self
+
+    # -- verification -------------------------------------------------------
+
+    def verify(
+        self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
+    ) -> RevocationVerification:
+        """Verify the revocation offline: hash and the issuer's signature.
+
+        Recomputes the revocation hash from the stored fields and — with a
+        ``verifier`` — checks the issuer's signature. ``require`` names the parties that
+        must have a verified signature (defaults to the issuer, whose signed statement
+        the revocation is); pass ``[]`` to check the binding alone.
+        """
+        expected = self.compute_hash()
+        hash_ok = bool(self.content_hash) and self.content_hash == expected
+        if not hash_ok:
+            return RevocationVerification(
+                valid=False,
+                hash_ok=False,
+                signatures_ok=False,
+                reason="content hash mismatch",
+            )
+        verified: list[str] = []
+        signatures_ok = True
+        for sig in self.signatures:
+            if verifier is not None:
+                if verifier.verify(self.content_hash, sig.signature):
+                    verified.append(sig.party)
+                else:
+                    signatures_ok = False
+            else:
+                verified.append(sig.party)
+        required = [self.issuer] if require is None else require
+        missing = [p for p in required if p not in verified]
+        if missing:
+            signatures_ok = False
+        valid = hash_ok and signatures_ok and (verifier is not None or not required)
+        reason = None
+        if not signatures_ok:
+            reason = (
+                f"missing/invalid signatures for {missing}" if missing else "signature mismatch"
+            )
+        elif verifier is None and required:
+            reason = "no verifier supplied — signature present but not authenticated"
+        return RevocationVerification(
+            valid=valid,
+            hash_ok=hash_ok,
+            signatures_ok=signatures_ok,
+            signed_by=verified,
+            reason=reason,
+        )
+
+    def require_valid(
+        self, verifier: ChainSigner, *, require: list[str] | None = None
+    ) -> AttestationRevocation:
+        """Verify and raise :class:`SettlementError` if the revocation is not valid."""
+        result = self.verify(verifier, require=require)
+        if not result.valid:
+            raise SettlementError(
+                f"revocation {self.id} failed verification: {result.reason}",
+                details={"revocation_id": self.id, "reason": result.reason},
+            )
+        return self
+
+    # -- serialization & reporting -----------------------------------------
+
+    def audit_details(self) -> dict[str, Any]:
+        """A compact, JSON-safe record of the revocation for the audit chain."""
+        return to_jsonable(
+            {
+                "revocation_id": self.id,
+                "issuer": self.issuer,
+                "subject": self.subject,
+                "attestation_hash": self.attestation_hash,
+                "replacement_hash": self.replacement_hash,
+                "supersession": self.is_supersession,
+                "content_hash": self.content_hash,
+                "signed_by": self.signed_by,
+            }
+        )
+
+    def to_wire(self) -> dict[str, Any]:
+        """A JSON-safe projection for exchange or persistence."""
+        return to_jsonable(self.model_dump(mode="json"))
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> AttestationRevocation:
+        return cls.model_validate(data)
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        """Print the withdrawal and what it supersedes, if anything."""
+        kind = "supersedes" if self.is_supersession else "withdraws"
+        print(
+            f"Revocation by {self.issuer} on {self.subject}: {kind} "
+            f"{self.attestation_hash[:12]}…"
+            + (f" → {self.replacement_hash[:12]}…" if self.is_supersession else "")
+        )
+
+
 class AttestationVerdict(BaseModel):
     """One submitted attestation's standing in a combination — pinpointed, not summed.
 
@@ -442,9 +727,12 @@ class AttestationVerdict(BaseModel):
     hash recomputes, its reputation re-derives from its evidence, and (with a
     verifier) the issuer's signature checks. An admissible attestation is **counted**
     toward the pooled prior unless it is a self-attestation (an issuer vouching for
-    itself) or superseded by the same issuer's larger attestation for the subject; an
-    inadmissible (tampered or forged) one is refused outright. Every non-counted
-    attestation's ``reason`` says why, so it is named rather than silently dropped.
+    itself), superseded by the same issuer's larger attestation for the subject,
+    **revoked** by its issuer, or **stale** past its validity window against the as-of
+    clock; an inadmissible (tampered or forged) one is refused outright. Every
+    non-counted attestation's ``reason`` says why — and the ``revoked`` / ``stale``
+    flags pinpoint a withdrawn or expired one — so it is named rather than silently
+    dropped.
     """
 
     attestation_id: str
@@ -454,6 +742,8 @@ class AttestationVerdict(BaseModel):
     reputation: float = 0.0
     admissible: bool = True
     counted: bool = False
+    revoked: bool = False
+    stale: bool = False
     reason: str | None = None
 
 
@@ -514,11 +804,13 @@ class PortableReputation:
         config: AttestationConfig,
         *,
         base: Any | None = None,
+        as_of: datetime | None = None,
     ) -> None:
         self.config = config
         self._standings = standings
         self.verdicts = verdicts
         self.base = base
+        self.as_of = as_of
 
     # -- reads --------------------------------------------------------------
 
@@ -582,14 +874,22 @@ class PortableReputation:
 
     @property
     def excluded(self) -> list[AttestationVerdict]:
-        """Verified attestations not counted — self-vouching or superseded."""
+        """Verified attestations not counted — self-vouching, superseded, revoked, or stale."""
         return [v for v in self.verdicts if v.admissible and not v.counted]
+
+    @property
+    def revoked(self) -> list[AttestationVerdict]:
+        """Verified attestations excluded because their issuer withdrew them."""
+        return [v for v in self.verdicts if v.revoked]
+
+    @property
+    def stale(self) -> list[AttestationVerdict]:
+        """Verified attestations excluded as past their validity window at the as-of clock."""
+        return [v for v in self.verdicts if v.stale]
 
     def verdict_for(self, issuer: str, subject: str) -> AttestationVerdict | None:
         """The verdict for one issuer's attestation about ``subject``, or ``None``."""
-        return next(
-            (v for v in self.verdicts if v.issuer == issuer and v.subject == subject), None
-        )
+        return next((v for v in self.verdicts if v.issuer == issuer and v.subject == subject), None)
 
     # -- reporting ----------------------------------------------------------
 
@@ -612,6 +912,17 @@ class PortableReputation:
             )
         for verdict in self.refused + self.excluded:
             print(f"  ! {verdict.issuer}→{verdict.subject}: {verdict.reason}")
+
+
+def _as_utc(moment: datetime) -> datetime:
+    """Normalize a possibly-naive datetime to UTC for a stable age computation.
+
+    :func:`~vincio.core.utils.utcnow` stamps ``issued_at`` tz-aware, so a naive
+    ``as_of`` (or revocation time) is assumed to already be UTC rather than rejected.
+    """
+    if moment.tzinfo is None:
+        return moment.replace(tzinfo=UTC)
+    return moment
 
 
 def _has_local_evidence(base: Any, member_id: str) -> bool:
@@ -642,6 +953,7 @@ def attest_reputation(
     resolutions: Iterable[Resolution] | None = None,
     config: AttestationConfig | None = None,
     verify_with: ChainSigner | None = None,
+    horizon_days: float | None = None,
     note: str = "",
 ) -> ReputationAttestation:
     """Issue an attestation of ``subject``'s earned standing from signed records.
@@ -657,12 +969,22 @@ def attest_reputation(
     tampered own record cannot inflate the standing, and the exact source hashes the
     evidence came from are bound into the attestation.
 
+    ``horizon_days`` optionally declares a **validity window**: the issuer asserts the
+    standing holds for that many days after issuance, after which an as-of-aware
+    combination treats the attestation as stale. ``None`` (the default) asserts no
+    expiry — the standing holds until the issuer revokes it.
+
     The returned attestation is sealed but unsigned — sign it with the issuer's key
     (or let :meth:`~vincio.settlement.book.SettlementBook.attest` do it). Raises
     :class:`SettlementError` when there is no admissible history for the subject to
     attest — an attestation asserts evidence, never a bare prior.
     """
     cfg = (config or AttestationConfig()).validate_coherent()
+    if horizon_days is not None and horizon_days <= 0.0:
+        raise SettlementError(
+            f"horizon_days must be positive when set; got {horizon_days}",
+            details={"subject": subject, "issuer": issuer, "horizon_days": horizon_days},
+        )
 
     counted: list[SettlementRecord] = []
     for record in records:
@@ -709,6 +1031,7 @@ def attest_reputation(
         prior_success=cfg.prior_success,
         prior_failure=cfg.prior_failure,
         source_hashes=source_hashes,
+        horizon_days=horizon_days,
         note=note,
     )
     # Derive the reputation from the attestation's own evidence properties (the same
@@ -718,6 +1041,77 @@ def attest_reputation(
         cfg.reputation_of(attestation.successes, attestation.failures), 9
     )
     return attestation.seal()
+
+
+# -- revoking -----------------------------------------------------------------
+
+
+def revoke_attestation(
+    attestation: ReputationAttestation | str,
+    *,
+    subject: str = "",
+    issuer: str = "",
+    replacement: ReputationAttestation | str | None = None,
+    reason: str = "",
+) -> AttestationRevocation:
+    """Issue a revocation withdrawing a prior attestation by its hash.
+
+    Pass the :class:`ReputationAttestation` being withdrawn (its issuer, subject, and
+    ``content_hash`` are read from it) or, offline, the attestation's ``content_hash``
+    as a string together with the ``subject`` and ``issuer`` it covered. ``replacement``
+    optionally names the attestation (or its hash) that *supersedes* the withdrawn one,
+    making the revocation a supersession.
+
+    The returned revocation is sealed but unsigned — sign it with the issuer's key (or
+    let :meth:`~vincio.settlement.book.SettlementBook.revoke` do it). Raises
+    :class:`SettlementError` when the attestation to withdraw has no content hash to
+    bind (an unsealed attestation), or when an explicit ``issuer`` / ``subject``
+    contradicts the attestation's own.
+    """
+    if isinstance(attestation, ReputationAttestation):
+        att_hash = attestation.content_hash or attestation.seal().content_hash
+        att_issuer = attestation.issuer
+        att_subject = attestation.subject
+        if issuer and issuer != att_issuer:
+            raise SettlementError(
+                f"issuer {issuer!r} cannot revoke an attestation issued by {att_issuer!r}",
+                details={"issuer": issuer, "attestation_issuer": att_issuer},
+            )
+        if subject and subject != att_subject:
+            raise SettlementError(
+                f"subject {subject!r} does not match the attestation's subject {att_subject!r}",
+                details={"subject": subject, "attestation_subject": att_subject},
+            )
+        issuer, subject = att_issuer, att_subject
+    else:
+        att_hash = attestation
+        if not att_hash:
+            raise SettlementError(
+                "a revocation must name the content hash of the attestation it withdraws",
+                details={"issuer": issuer, "subject": subject},
+            )
+
+    if not att_hash:
+        raise SettlementError(
+            "the attestation to revoke has no content hash — seal it before revoking",
+            details={"issuer": issuer, "subject": subject},
+        )
+
+    replacement_hash = ""
+    if replacement is not None:
+        if isinstance(replacement, ReputationAttestation):
+            replacement_hash = replacement.content_hash or replacement.seal().content_hash
+        else:
+            replacement_hash = replacement
+
+    revocation = AttestationRevocation(
+        issuer=issuer,
+        subject=subject,
+        attestation_hash=att_hash,
+        replacement_hash=replacement_hash,
+        reason=reason,
+    )
+    return revocation.seal()
 
 
 # -- combining ----------------------------------------------------------------
@@ -731,6 +1125,8 @@ def combine_attestations(
     verify_with: ChainSigner | None = None,
     base: Any | None = None,
     allow_self: bool = False,
+    revocations: Iterable[AttestationRevocation] | None = None,
+    as_of: datetime | None = None,
 ) -> PortableReputation:
     """Combine several issuers' attestations into one bounded, evidence-weighted prior.
 
@@ -746,6 +1142,20 @@ def combine_attestations(
     own pull. ``per_issuer_cap`` on the config caps any single issuer's contributed
     mass.
 
+    **Revocation.** ``revocations`` are signed :class:`AttestationRevocation`\\ s; an
+    attestation an *admissible, issuer-matched* revocation withdraws is excluded from
+    the combination and pinpointed (``revoked``), never silently honored — a forged
+    revocation (one whose signature does not check under ``verify_with``, or that
+    names another org's attestation) is itself ignored, so no org can cancel another's
+    claim.
+
+    **Freshness.** With an ``as_of`` clock, an attestation past its issuer-declared
+    validity window (:attr:`ReputationAttestation.horizon_days`) is excluded as stale
+    and pinpointed (``stale``); within the window, the config's ``half_life_days``
+    **decays** its evidence by age, so an old attestation decays out of the pooled
+    prior toward the benefit-of-the-doubt rather than anchoring it forever. Without an
+    ``as_of`` clock no attestation expires or decays — the combination is point-in-time.
+
     ``subject`` optionally restricts the combination to one counterparty; ``base`` is
     an optional local :class:`~vincio.optimize.reputation.ReputationLedger` whose
     earned standing wins for a counterparty the importer already knows. Returns a
@@ -754,15 +1164,32 @@ def combine_attestations(
     """
     cfg = (config or AttestationConfig()).validate_coherent()
     items = [a for a in attestations if subject is None or a.subject == subject]
+    clock = _as_utc(as_of) if as_of is not None else None
+
+    # 0. The set of attestation hashes withdrawn by an admissible, issuer-matched
+    #    revocation. A revocation is honored only when it verifies as an artifact (and,
+    #    with a verifier, the issuer signature checks) — a forged or unsigned-when-
+    #    -required revocation is ignored, so no org can cancel another's attestation.
+    revoked_keys: dict[tuple[str, str], AttestationRevocation] = {}
+    for rev in revocations or []:
+        if subject is not None and rev.subject != subject:
+            continue
+        if not rev.verify(verify_with, require=[]).hash_ok:
+            continue  # tampered revocation — its hash does not recompute
+        if verify_with is not None and rev.signatures:
+            if not rev.verify(verify_with, require=[]).signatures_ok:
+                continue  # forged revocation signature
+        revoked_keys[(rev.issuer, rev.attestation_hash)] = rev
 
     # 1. Admissibility per attestation, pinpointed not raised. A tampered or forged
-    #    attestation is inadmissible; a self-attestation is a valid artifact but is
-    #    not counted (an issuer cannot vouch for itself).
+    #    attestation is inadmissible; a self-attestation, a revoked one, or a stale one
+    #    is a valid artifact that is excluded (not counted) with a pinpointed reason.
     verdicts: list[AttestationVerdict] = []
     admissible: list[ReputationAttestation] = []
     for att in items:
         check = att.verify(verify_with, require=[])
         admissible_flag = True
+        revoked = stale = False
         reason: str | None = None
         if not check.hash_ok:
             admissible_flag, reason = False, "tampered: attestation hash does not recompute"
@@ -771,6 +1198,17 @@ def combine_attestations(
             reason = "tampered: attested reputation does not re-derive from the evidence"
         elif verify_with is not None and att.signatures and not check.signatures_ok:
             admissible_flag, reason = False, "forged: the issuer signature does not verify"
+        elif (match := revoked_keys.get((att.issuer, att.content_hash))) is not None:
+            revoked = True
+            detail = f" ({match.reason})" if match.reason else ""
+            reason = (
+                "revoked: superseded by its issuer" + detail
+                if match.is_supersession
+                else "revoked: withdrawn by its issuer" + detail
+            )
+        elif clock is not None and att.is_stale(clock):
+            stale = True
+            reason = f"stale: past its {att.horizon_days:g}-day validity window as of the clock"
         elif not allow_self and att.is_self_attestation:
             reason = "self-attestation: an issuer cannot vouch for itself"
         verdicts.append(
@@ -782,6 +1220,8 @@ def combine_attestations(
                 reputation=round(float(att.reputation), 9),
                 admissible=admissible_flag,
                 counted=False,
+                revoked=revoked,
+                stale=stale,
                 reason=reason,
             )
         )
@@ -807,10 +1247,14 @@ def combine_attestations(
         else:
             verdict.reason = "superseded: a larger attestation from this issuer was counted"
 
-    # 4. Pool the (optionally per-issuer capped) evidence per subject under the prior.
+    # 4. Pool the evidence per subject under the prior: decay by age (when an as-of
+    #    clock is set), then cap any one issuer's mass.
     pooled: dict[str, dict[str, Any]] = {}
     for (subj, issuer), att in best.items():
-        succ, fail = cfg.capped(float(att.successes), float(att.failures))
+        succ, fail = float(att.successes), float(att.failures)
+        if clock is not None:
+            succ, fail = cfg.decayed(succ, fail, att.age_days(clock))
+        succ, fail = cfg.capped(succ, fail)
         bucket = pooled.setdefault(subj, {"successes": 0.0, "failures": 0.0, "issuers": []})
         bucket["successes"] += succ
         bucket["failures"] += fail
@@ -831,7 +1275,7 @@ def combine_attestations(
             attestations=len(bucket["issuers"]),
         )
 
-    return PortableReputation(standings, verdicts, cfg, base=base)
+    return PortableReputation(standings, verdicts, cfg, base=base, as_of=as_of)
 
 
 def _supersedes(candidate: ReputationAttestation, current: ReputationAttestation) -> bool:

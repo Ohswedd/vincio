@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**316** public symbols.
+**318** public symbols.
 
 ## Classes
 
@@ -77,6 +77,10 @@ A multi-turn conversational session over a :class:`ContextApp`.
 ### `AssistantTurn(**data)`
 
 The outcome of one conversational turn.
+
+### `AttestationRevocation(**data)`
+
+A signed, offline-verifiable withdrawal of a prior attestation by its hash.
 
 ### `BatchRunner(backend, price_table=…, tracer=…, discount=…, poll_interval_s=…, timeout_s=…, clock=…)`
 
@@ -642,7 +646,7 @@ Flag likely-poisoned retrieved evidence from authority/provenance signals.
 
 Deterministic per-run policies (policies).
 
-### `PortableReputation(standings, verdicts, config, base=…)`
+### `PortableReputation(standings, verdicts, config, base=…, as_of=…)`
 
 An imported, evidence-weighted prior combined from several issuers' attestations.
 
@@ -1092,7 +1096,7 @@ Declare a signature output field.
 
 Adjudicate a disputed contract from the records its parties submit.
 
-### `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verify_with=…, note=…)`
+### `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verify_with=…, horizon_days=…, note=…)`
 
 Issue an attestation of ``subject``'s earned standing from signed records.
 
@@ -1112,7 +1116,7 @@ Build a buyer position: wants low price, fast SLA, high quality.
 
 Expose a local org's choreography handlers over A2A.
 
-### `combine_attestations(attestations, subject=…, config=…, verify_with=…, base=…, allow_self=…)`
+### `combine_attestations(attestations, subject=…, config=…, verify_with=…, base=…, allow_self=…, revocations=…, as_of=…)`
 
 Combine several issuers' attestations into one bounded, evidence-weighted prior.
 
@@ -1215,6 +1219,10 @@ Drive ``env`` through each action sequence, recording every tool step.
 ### `retrieval_regression(search_fn, golden, config, store=…, metrics=…, gates=…, top_k=…, alpha=…, min_delta=…, k_values=…)`
 
 Evaluate ``config`` on ``golden``, record an artifact, and gate vs. baseline.
+
+### `revoke_attestation(attestation, subject=…, issuer=…, replacement=…, reason=…)`
+
+Issue a revocation withdrawing a prior attestation by its hash.
 
 ### `select_offer(results, buyer_position, reputation=…)`
 
