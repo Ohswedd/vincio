@@ -24,12 +24,22 @@ posted stake is not committed beyond what it holds across the pools that draw on
   beneficiary out of capital another has first claim on. Each
   :class:`BeneficiaryClaim` carries the ``secured_usd`` it is actually covered for and the
   ``unsecured_usd`` the over-commitment leaves it exposed to.
+* **Proof-of-reserves.** The ``held`` figure was the one input the guard *trusted* — it was
+  **asserted**, not proven, so a counterparty over-stating its reserves still passed. A
+  :class:`~vincio.settlement.custody.CustodyAttestation` (``custody=``) makes the held capital
+  itself **evidence-backed**: a signed, content-bound proof-of-reserves the guard reads as
+  the ``held`` figure instead of the asserted default. When the proven reserves fall below
+  what the pools pledge, the shortfall surfaces as a bounded, pinpointed
+  :class:`UnderReservedBreach`, the way an over-commitment does — and a custody attestation
+  for a different poster, a tampered reserve figure, or (with a verifier) a forged custodian
+  is **refused**.
 * **Auditable & offline.** The ledger reads only the existing signed, content-bound pools
-  and asserts nothing it cannot recompute: a tampered pool (its content hash no longer
-  recomputes) is **refused** at fold time, and :meth:`CollateralLedger.verify` re-derives
-  the pledged total, the re-use breaches, and the beneficiary apportionment from the bytes
-  alone (a tampered figure is caught even after re-sealing). The settlement path lands each
-  guard on the hash-chained audit log — never a trusted third party.
+  (and the signed custody attestation) and asserts nothing it cannot recompute: a tampered
+  pool (its content hash no longer recomputes) is **refused** at fold time, and
+  :meth:`CollateralLedger.verify` re-derives the pledged total, the re-use breaches, the
+  beneficiary apportionment, and the under-reserved breach from the bytes alone (a tampered
+  figure is caught even after re-sealing). The settlement path lands each guard on the
+  hash-chained audit log — never a trusted third party.
 
 The guard folds over the *existing* collateral machinery:
 :func:`guard_collateral` reads a counterparty's
@@ -52,6 +62,7 @@ from pydantic import BaseModel, Field
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .collateral import CollateralPool
+from .custody import CustodyAttestation
 from .record import SettlementSignature
 
 if TYPE_CHECKING:
@@ -62,6 +73,7 @@ __all__ = [
     "LedgerPool",
     "ReuseBreach",
     "BeneficiaryClaim",
+    "UnderReservedBreach",
     "CollateralLedgerVerification",
     "CollateralLedger",
     "guard_collateral",
@@ -181,14 +193,34 @@ class BeneficiaryClaim(BaseModel):
         return self.unsecured_usd <= _TOLERANCE
 
 
+class UnderReservedBreach(BaseModel):
+    """A proven-reserves shortfall — the pools pledge more than the custodian attests.
+
+    Surfaced only when the held capital is **proven** by a
+    :class:`~vincio.settlement.custody.CustodyAttestation` (``custody=``) rather than
+    asserted: the ``custodian`` attests ``reserves_usd`` of capital (the attestation pinned
+    by ``attestation_hash``), but the pools collectively pledge ``pledged_usd``, so the
+    poster is under-reserved by ``shortfall_usd`` — capital it has committed but the proof
+    does not cover. The re-use guard's over-commitment was about the same contract pledged
+    twice; this is the orthogonal risk the proof closes: the reserves simply do not back the
+    pledges, double-pledged or not.
+    """
+
+    custodian: str
+    attestation_hash: str = ""
+    reserves_usd: float = 0.0
+    pledged_usd: float = 0.0
+    shortfall_usd: float = 0.0
+
+
 class CollateralLedgerVerification(BaseModel):
     """The (non-raising) outcome of verifying a collateral ledger offline.
 
     A ledger is **valid** when its content hash recomputes (``hash_ok``), the pledged total,
-    the re-use breaches, the held-capital reconciliation, and the beneficiary apportionment
-    re-derive from the per-pool figures (``terms_sound``), and — with a ``verifier`` — every
-    signature checks (``signatures_ok``). A tampered figure is caught from the bytes alone,
-    even after re-sealing.
+    the re-use breaches, the held-capital reconciliation, the beneficiary apportionment, and
+    the under-reserved breach re-derive from the per-pool figures and the proven reserves
+    (``terms_sound``), and — with a ``verifier`` — every signature checks (``signatures_ok``).
+    A tampered figure is caught from the bytes alone, even after re-sealing.
     """
 
     valid: bool
@@ -214,8 +246,11 @@ class CollateralLedger(BaseModel):
     ``reuse_usd``, surfaced when the same capital is pledged across pools. Every contract
     pledged by more than one pool is pinpointed as a :class:`ReuseBreach`, and each
     :class:`BeneficiaryClaim` is bounded to its deterministic share of the held capital, so
-    a scarce stake is apportioned by priority rather than over-promised. :meth:`verify`
-    re-derives all of it from the bytes alone.
+    a scarce stake is apportioned by priority rather than over-promised. When the held figure
+    is **proven** by a :class:`~vincio.settlement.custody.CustodyAttestation`
+    (``reserves_proven``) rather than asserted, a shortfall of the proven reserves below the
+    pledges surfaces as an :class:`UnderReservedBreach`. :meth:`verify` re-derives all of it
+    from the bytes alone.
     """
 
     id: str = Field(default_factory=lambda: new_id("collateral-ledger"))
@@ -231,8 +266,16 @@ class CollateralLedger(BaseModel):
     reuse_usd: float = 0.0
     duplicate_pledge_usd: float = 0.0
 
+    # Proof-of-reserves: when the held figure is backed by a signed CustodyAttestation, the
+    # custodian and the attestation hash are bound in, and a shortfall surfaces as a breach.
+    reserves_proven: bool = False
+    custodian: str = ""
+    custody_hash: str = ""
+    reserves_usd: float = 0.0
+
     breaches: list[ReuseBreach] = Field(default_factory=list)
     claims: list[BeneficiaryClaim] = Field(default_factory=list)
+    reserve_breach: UnderReservedBreach | None = None
 
     folded_at: datetime = Field(default_factory=utcnow)
     content_hash: str = ""
@@ -260,6 +303,17 @@ class CollateralLedger(BaseModel):
     def within_bounds(self) -> bool:
         """Whether every pledge is covered by held capital (no re-use)."""
         return not self.over_committed
+
+    @property
+    def under_reserved(self) -> bool:
+        """Whether the proven reserves fall below what the pools pledge.
+
+        Meaningful only when the held figure is backed by a
+        :class:`~vincio.settlement.custody.CustodyAttestation` (:attr:`reserves_proven`): an
+        asserted holdings figure is not *proven*, so it cannot under-reserve — it can only
+        over-commit. ``True`` exactly when a :attr:`reserve_breach` was surfaced.
+        """
+        return self.reserve_breach is not None
 
     @property
     def status(self) -> str:
@@ -298,6 +352,29 @@ class CollateralLedger(BaseModel):
         self.reuse_usd = _r6(max(0.0, -self.available_usd))
 
         self.claims = _beneficiary_claims(self.pools, self.held_usd)
+        self.reserve_breach = self._derive_reserve_breach()
+
+    def _derive_reserve_breach(self) -> UnderReservedBreach | None:
+        """The under-reserved breach when proven reserves fall below the pledges.
+
+        Surfaced only when the held figure is **proven** (:attr:`reserves_proven`): an
+        asserted holdings figure can over-commit but cannot under-*reserve*, because nothing
+        proves the reserves exist. When a custody attestation backs the held figure and the
+        proven reserves are below what the pools pledge, the shortfall is pinpointed against
+        the custodian and the attestation that vouched for it.
+        """
+        if not self.reserves_proven:
+            return None
+        shortfall = _r6(max(0.0, self.pledged_usd - self.reserves_usd))
+        if shortfall <= _TOLERANCE:
+            return None
+        return UnderReservedBreach(
+            custodian=self.custodian,
+            attestation_hash=self.custody_hash,
+            reserves_usd=_r6(self.reserves_usd),
+            pledged_usd=_r6(self.pledged_usd),
+            shortfall_usd=shortfall,
+        )
 
     # -- hashing ------------------------------------------------------------
 
@@ -318,6 +395,21 @@ class CollateralLedger(BaseModel):
             "available_usd": _r6(self.available_usd),
             "reuse_usd": _r6(self.reuse_usd),
             "duplicate_pledge_usd": _r6(self.duplicate_pledge_usd),
+            "reserves_proven": self.reserves_proven,
+            "custodian": self.custodian,
+            "custody_hash": self.custody_hash,
+            "reserves_usd": _r6(self.reserves_usd),
+            "reserve_breach": (
+                {
+                    "custodian": self.reserve_breach.custodian,
+                    "attestation_hash": self.reserve_breach.attestation_hash,
+                    "reserves_usd": _r6(self.reserve_breach.reserves_usd),
+                    "pledged_usd": _r6(self.reserve_breach.pledged_usd),
+                    "shortfall_usd": _r6(self.reserve_breach.shortfall_usd),
+                }
+                if self.reserve_breach is not None
+                else None
+            ),
             "pools": [p.facts() for p in sorted(self.pools, key=lambda p: p.pool_id)],
             "breaches": [
                 {
@@ -403,6 +495,36 @@ class CollateralLedger(BaseModel):
         expected_claims = _beneficiary_claims(self.pools, self.held_usd)
         if not _claims_match(self.claims, expected_claims):
             return False
+        if not self._reserves_sound():
+            return False
+        return True
+
+    def _reserves_sound(self) -> bool:
+        """The proven-reserves fields reconcile and the under-reserved breach re-derives.
+
+        When the held figure is proven, the proven reserves are exactly the held figure (the
+        custodian's attested total is what the guard bounds against) and the under-reserved
+        breach re-derives from the pledged total. When it is not proven, no reserve fields are
+        set and no breach is surfaced — so a fabricated breach is caught from the bytes.
+        """
+        if self.reserves_proven:
+            if abs(self.reserves_usd - self.held_usd) > _TOLERANCE:
+                return False
+        else:
+            if abs(self.reserves_usd) > _TOLERANCE or self.custodian or self.custody_hash:
+                return False
+        expected = self._derive_reserve_breach()
+        if (expected is None) != (self.reserve_breach is None):
+            return False
+        if expected is not None and self.reserve_breach is not None:
+            if (
+                self.reserve_breach.custodian != expected.custodian
+                or self.reserve_breach.attestation_hash != expected.attestation_hash
+                or abs(self.reserve_breach.reserves_usd - expected.reserves_usd) > _TOLERANCE
+                or abs(self.reserve_breach.pledged_usd - expected.pledged_usd) > _TOLERANCE
+                or abs(self.reserve_breach.shortfall_usd - expected.shortfall_usd) > _TOLERANCE
+            ):
+                return False
         return True
 
     def verify(
@@ -488,6 +610,31 @@ class CollateralLedger(BaseModel):
             )
         return self
 
+    def require_reserved(self) -> CollateralLedger:
+        """Raise :class:`SettlementError` if the proven reserves fall below the pledges.
+
+        The strict-mode counterpart to inspecting :attr:`under_reserved`: a poster whose
+        custody attestation proves less capital than its pools pledge cannot be admitted to a
+        new deal without resolving the under-reservation first. Unlike
+        :meth:`require_within_bounds`, this fires only when the held figure is **proven** by a
+        :class:`~vincio.settlement.custody.CustodyAttestation` — a self-asserted holdings
+        figure cannot under-reserve.
+        """
+        if self.reserve_breach is not None:
+            raise SettlementError(
+                f"collateral ledger {self.id} is under-reserved by "
+                f"${self.reserve_breach.shortfall_usd:,.2f}: {self.custodian!r} attests only "
+                f"${self.reserves_usd:,.2f} against ${self.pledged_usd:,.2f} pledged",
+                details={
+                    "ledger_id": self.id,
+                    "custodian": self.custodian,
+                    "reserves_usd": self.reserves_usd,
+                    "pledged_usd": self.pledged_usd,
+                    "shortfall_usd": self.reserve_breach.shortfall_usd,
+                },
+            )
+        return self
+
     # -- serialization & reporting -----------------------------------------
 
     def audit_details(self) -> dict[str, Any]:
@@ -504,6 +651,12 @@ class CollateralLedger(BaseModel):
                 "available_usd": _r6(self.available_usd),
                 "reuse_usd": _r6(self.reuse_usd),
                 "breaches": [b.contract_id for b in self.breaches],
+                "reserves_proven": self.reserves_proven,
+                "custodian": self.custodian,
+                "reserves_usd": _r6(self.reserves_usd),
+                "under_reserved_usd": (
+                    _r6(self.reserve_breach.shortfall_usd) if self.reserve_breach else 0.0
+                ),
                 "content_hash": self.content_hash,
                 "signed_by": self.signed_by,
             }
@@ -519,10 +672,20 @@ class CollateralLedger(BaseModel):
 
     def print_summary(self) -> None:  # pragma: no cover - cosmetic
         """Print the pledged total, the held capital, and the re-use breaches."""
+        held_label = (
+            f"${self.reserves_usd:,.2f} proven by {self.custodian}"
+            if self.reserves_proven
+            else f"${self.held_usd:,.2f} held"
+        )
         print(
             f"Collateral ledger ({self.poster}): {len(self.pools)} pool(s) pledge "
-            f"${self.pledged_usd:,.2f} against ${self.held_usd:,.2f} held — {self.status}"
+            f"${self.pledged_usd:,.2f} against {held_label} — {self.status}"
         )
+        if self.reserve_breach is not None:
+            print(
+                f"  ! under-reserved ${self.reserve_breach.shortfall_usd:,.2f}: proven "
+                f"reserves below the pledges"
+            )
         if self.over_committed:
             print(f"  re-use ${self.reuse_usd:,.2f} over the held stake")
         for b in self.breaches:
@@ -721,11 +884,48 @@ def _ledger_pool(pool: CollateralPool, *, verifier: ChainSigner | None) -> Ledge
     )
 
 
+def _reserves_from_custody(
+    custody: CustodyAttestation,
+    *,
+    poster: str,
+    verifier: ChainSigner | None,
+) -> float:
+    """Read a custody attestation's proven reserves, refusing a tampered or mismatched one.
+
+    Reads only what it can recompute: an attestation whose content hash no longer recomputes
+    or whose total no longer re-derives from the line items — a tampered reserve figure — is
+    refused outright, and with a ``verifier`` a forged custodian signature is too. An
+    attestation that vouches for a *different* poster cannot stand in for this poster's
+    reserves and is refused. Returns the attested ``reserves_usd``.
+    """
+    result = custody.verify(verifier)
+    if not result.hash_ok or not result.reserves_sound:
+        raise SettlementError(
+            f"custody attestation {custody.id} is tampered ({result.reason}); "
+            "refusing to read it as proof-of-reserves",
+            details={"attestation_id": custody.id, "reason": result.reason},
+        )
+    if verifier is not None and custody.signatures and not result.signatures_ok:
+        raise SettlementError(
+            f"custody attestation {custody.id} has an invalid custodian signature; "
+            "refusing to read it as proof-of-reserves",
+            details={"attestation_id": custody.id},
+        )
+    if custody.poster != poster:
+        raise SettlementError(
+            f"custody attestation {custody.id} attests reserves for {custody.poster!r}, "
+            f"not the poster {poster!r} the guard bounds; refusing it",
+            details={"attestation_id": custody.id, "attests": custody.poster, "poster": poster},
+        )
+    return _r6(custody.reserves_usd)
+
+
 def guard_collateral(
     pools: Iterable[CollateralPool],
     *,
     poster: str | None = None,
     held: float | None = None,
+    custody: CustodyAttestation | None = None,
     verify_with: ChainSigner | None = None,
 ) -> CollateralLedger:
     """Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
@@ -739,17 +939,35 @@ def guard_collateral(
     of the held capital. Returns a sealed, unsigned :class:`CollateralLedger`.
 
     ``poster`` is the counterparty whose stake the ledger views (defaults to the poster
-    every pool shares; an explicit poster is required when they differ). ``held`` is the
-    capital that poster actually holds backing every pool — the ground-truth custody figure
-    the guard bounds the pledges by; when omitted it defaults to the gross pledge minus the
-    provably double-pledged capital, so a re-pledged contract surfaces as an over-commitment
-    while genuinely separately-funded pools do not. Raises :class:`SettlementError` when the
-    set is empty, the posters differ and none is given, or ``held`` is negative.
+    every pool shares; an explicit poster is required when they differ). The capital that
+    poster holds — the figure the guard bounds the pledges by — comes from one of:
+
+    * ``custody`` — a signed :class:`~vincio.settlement.custody.CustodyAttestation`
+      **proving** the reserves. The guard reads its ``reserves_usd`` as the held figure,
+      marks the bound :attr:`~CollateralLedger.reserves_proven`, and surfaces an
+      :class:`UnderReservedBreach` when the proven reserves fall below the pledges. A
+      tampered reserve figure, a forged custodian (with ``verify_with``), or an attestation
+      for a different poster is **refused**.
+    * ``held`` — an explicit, *asserted* holdings figure (the legacy input). It can
+      over-commit but never under-*reserves*, because nothing proves it.
+    * neither — defaults to the gross pledge minus the provably double-pledged capital, so a
+      re-pledged contract surfaces as an over-commitment while genuinely separately-funded
+      pools do not.
+
+    Raises :class:`SettlementError` when the set is empty, the posters differ and none is
+    given, ``held`` is negative, or both ``held`` and ``custody`` are passed (the held figure
+    has one source).
     """
     pool_list = list(pools)
     if not pool_list:
         raise SettlementError(
             "guard_collateral needs at least one collateral pool to fold",
+            details={},
+        )
+    if held is not None and custody is not None:
+        raise SettlementError(
+            "guard_collateral takes either an asserted held= figure or a proven custody= "
+            "attestation, not both; the held figure has one source",
             details={},
         )
     posters = {p.poster for p in pool_list}
@@ -776,18 +994,36 @@ def guard_collateral(
         )
 
     ledger_pools = [_ledger_pool(p, verifier=verify_with) for p in pool_list]
-    # Default holdings: the poster is assumed to hold its gross pledge minus the part that
-    # is provably double-pledged (the same contract backed by more than one pool), so
-    # duplicates surface as an over-commitment by default while genuinely separately-funded
-    # pools do not. A caller that knows the true custody balance passes it explicitly.
+    # The held figure: proven by a custody attestation, asserted via held=, or defaulted to
+    # the gross pledge minus the provably double-pledged capital (the same contract backed by
+    # more than one pool), so duplicates surface as an over-commitment by default while
+    # genuinely separately-funded pools do not.
     pledged = _r6(sum(p.balance_usd for p in ledger_pools))
     _breaches, duplicate_pledge = _reuse_breaches(ledger_pools)
-    resolved_held = _r6(pledged - duplicate_pledge) if held is None else _r6(held)
+    reserves_proven = custody is not None
+    custodian = ""
+    custody_hash = ""
+    reserves_usd = 0.0
+    if custody is not None:
+        resolved_held = _reserves_from_custody(
+            custody, poster=resolved_poster, verifier=verify_with
+        )
+        custodian = custody.custodian
+        custody_hash = custody.content_hash
+        reserves_usd = resolved_held
+    elif held is None:
+        resolved_held = _r6(pledged - duplicate_pledge)
+    else:
+        resolved_held = _r6(held)
     ledger = CollateralLedger(
         poster=resolved_poster,
         pools=ledger_pools,
         pool_hashes=sorted(p.content_hash for p in ledger_pools),
         held_usd=resolved_held,
+        reserves_proven=reserves_proven,
+        custodian=custodian,
+        custody_hash=custody_hash,
+        reserves_usd=reserves_usd,
     )
     ledger._recompute()
     return ledger.seal()

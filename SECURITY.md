@@ -795,10 +795,40 @@ it), so a forfeiture **cannot pay one beneficiary out of capital another has fir
 The ledger is **content-bound and offline-verifiable**: `CollateralLedger.verify` recomputes the
 content hash and **re-derives the re-use bound and the beneficiary apportionment from the bytes
 alone**, so a tampered total, breach, or claim is caught even after re-sealing; the held-capital
-figure is a declared input the guard bounds the pledges by (signed into the hash, attributable
-to whoever asserted it), and every guard is signed and lands on the hash-chained audit log
-(action `rehypothecation`, decision = `over_committed` / `within_bounds`) so two folders reading
-the same pools compute the same co-signable hash.
+figure is an input the guard bounds the pledges by (signed into the hash, attributable to whoever
+asserted it — or **proven** by a custody attestation, below), and every guard is signed and lands
+on the hash-chained audit log (action `rehypothecation`, decision = `over_committed` /
+`within_bounds`) so two folders reading the same pools compute the same co-signable hash.
+
+### Cross-org collateral custody attestation & proof-of-reserves
+
+A custody attestation (`CustodyAttestation` / `attest_custody` / `app.attest_custody` /
+`book.attest_custody` in `vincio.settlement.custody`) is a **signed, content-bound
+proof-of-reserves that the rehypothecation guard reads as the held figure, never a hosted
+custodian or a proof-of-reserves auditor**. It closes a specific trust gap in the guard: the
+`held` capital the guard bounds pledges against was the one input it **trusted** — *asserted*,
+not proven — so a counterparty over-stating its real reserves still passed, the way a
+self-asserted reputation score passed before attestation made standing verifiable. The
+attestation makes the held capital itself **evidence-backed**: a custodian (or the poster's own
+signed reserve record — self-custody when `custodian == poster`) attests the capital actually
+held, itemized into `ReserveLine`s whose attested `reserves_usd` total **re-derives from the line
+items on every verify**, so a tampered total is caught even after re-sealing. It reads **only
+signed, content-bound artifacts and asserts nothing it cannot recompute**:
+`CustodyAttestation.verify` recomputes the content hash and re-derives the reserve total
+(`reserves_sound`), and with a verifier the custodian signature is checked
+(`require=[custodian]`). `guard_collateral(..., custody=)` reads `reserves_usd` as the held figure
+(`reserves_proven` on the ledger) and **refuses** a tampered reserve figure, a forged custodian
+(with `verify_with`), or an attestation that vouches for a **different poster** than the pools'
+— never silently honoring it. When the proven reserves fall below what the pools pledge, the
+shortfall surfaces as a bounded, pinpointed `UnderReservedBreach` (the custodian, the attestation
+hash, and the shortfall) and `require_reserved()` raises on it — the proof-of-reserves analogue of
+the re-use bound. The under-reserved breach **re-derives from the bytes alone** (a fabricated
+breach with no proof, or a hidden one re-sealed to match, is caught), the attestation is signed
+and lands on the hash-chained audit log (action `custody_attestation`, decision = `self_custody` /
+`custodied`), and an asserted `held=` figure can over-commit but never *under-reserves*, because
+nothing proves it — only a custody attestation can. Note this proves reserves *exist*, not that
+they exceed every liability the counterparty owes elsewhere; pledges are bounded against proven
+**held** capital, and a fresh attestation should be required for a current figure.
 
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a

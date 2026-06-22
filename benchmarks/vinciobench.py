@@ -8771,6 +8771,80 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and restored_ledger.verify().valid
     )
 
+    # 47. Proof-of-reserves: the held figure the guard bounds against is no longer asserted —
+    #     a signed CustodyAttestation proves the reserves, and guard_collateral(custody=) reads
+    #     its total as the held figure (reserves_proven), bounding pledges against proven capital.
+    from vincio import CustodyAttestation, attest_custody
+
+    por_c1, por_c2 = pool_contract("pa", 100.0), pool_contract("pb", 200.0)
+    por_pool = post_collateral_pool([por_c1, por_c2], fraction=0.1)  # pledges 30
+    proof = attest_custody("vendor", {"omnibus": 50.0}, custodian="custodian")  # 50 proven
+    por_ledger = guard_collateral([por_pool], custody=proof)
+    proof_of_reserves_bounds_held = bool(
+        por_ledger.reserves_proven
+        and abs(por_ledger.held_usd - 50.0) <= 1e-6
+        and abs(por_ledger.reserves_usd - 50.0) <= 1e-6
+        and por_ledger.custody_hash == proof.content_hash
+        and not por_ledger.under_reserved  # 50 covers 30
+        and proof.verify().reserves_sound
+        and por_ledger.verify().valid
+    )
+
+    # 48. Under-reserved breach: when the proven reserves fall below what the pools pledge, the
+    #     shortfall surfaces as a bounded, pinpointed breach (the way an over-commitment does),
+    #     rather than passing on an inflated holdings claim.
+    thin_proof = attest_custody("vendor", {"omnibus": 20.0}, custodian="custodian")
+    under_ledger = guard_collateral([por_pool], custody=thin_proof)
+    under_reserved_pinpoints = bool(
+        under_ledger.under_reserved
+        and under_ledger.reserve_breach is not None
+        and under_ledger.reserve_breach.custodian == "custodian"
+        and under_ledger.reserve_breach.attestation_hash == thin_proof.content_hash
+        and abs(under_ledger.reserve_breach.reserves_usd - 20.0) <= 1e-6
+        and abs(under_ledger.reserve_breach.pledged_usd - 30.0) <= 1e-6
+        and abs(under_ledger.reserve_breach.shortfall_usd - 10.0) <= 1e-6
+        and under_ledger.verify().valid
+    )
+
+    # 49. Auditable & offline: a tampered reserve figure, a forged custodian, and an
+    #     attestation for a different poster are each refused; the breach re-derives from the
+    #     bytes even after re-sealing; and app.guard_collateral(custody=) lands it on the chain.
+    por_app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+    por_app.use_settlement_book()
+    app_pool = por_app.post_collateral_pool([pool_contract("pf", 100.0)], fraction=0.3)
+    app_proof = por_app.attest_custody("vendor", {"omnibus": 10.0})  # under-reserves 30
+    app_por_ledger = por_app.guard_collateral([app_pool], custody=app_proof)
+    tampered_proof = attest_custody("vendor", {"omnibus": 50.0})
+    tampered_proof.reserves_usd = 9_999.0
+    tampered_proof.seal()  # re-seal the lie; the total no longer re-derives
+    try:
+        guard_collateral([por_pool], custody=tampered_proof)
+        por_tamper_refused = False
+    except SettlementError:
+        por_tamper_refused = True
+    wrong_poster = attest_custody("globex", 50.0)
+    try:
+        guard_collateral([por_pool], custody=wrong_poster)
+        por_poster_refused = False
+    except SettlementError:
+        por_poster_refused = True
+    resealed_por = guard_collateral([por_pool], custody=thin_proof)
+    resealed_por.reserve_breach.shortfall_usd = 0.0  # hide the breach
+    resealed_por.seal()  # recompute the hash to match the lie
+    por_auditable_offline = bool(
+        app_por_ledger.under_reserved
+        and app_por_ledger.audit_id is not None
+        and len(por_app.audit.query(action="custody_attestation")) == 1
+        and len(por_app.audit.query(action="rehypothecation")) == 1
+        and por_app.audit.verify_chain()
+        and app_por_ledger.verify(por_app.contract_signer).valid
+        and por_tamper_refused
+        and por_poster_refused
+        and resealed_por.verify().hash_ok
+        and not resealed_por.verify().terms_sound
+        and CustodyAttestation.from_wire(proof.to_wire()).verify().valid
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -8818,6 +8892,9 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "beneficiary_priority_bounded": beneficiary_priority_bounded,
         "guard_auditable_offline": guard_auditable_offline,
         "guard_content_bound": guard_content_bound,
+        "proof_of_reserves_bounds_held": proof_of_reserves_bounds_held,
+        "under_reserved_pinpoints": under_reserved_pinpoints,
+        "por_auditable_offline": por_auditable_offline,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

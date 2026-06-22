@@ -605,6 +605,38 @@ bytes alone (a tampered figure is caught even after re-sealing). `app.guard_coll
 ledger as the org and records the guard on the hash-chained audit log, so two folders reading the
 same pools compute the same co-signable hash.
 
+## Proving the reserves
+
+The `held` figure the guard bounds pledges against is the one input it **trusts** — it is
+*asserted*, not proven, so a counterparty over-stating its real reserves still passes, the way a
+self-asserted reputation score passed before attestation made standing verifiable. A
+`CustodyAttestation` (`app.attest_custody` / `attest_custody`) is the **proof-of-reserves**: a
+custodian (or the poster's own signed reserve record) attests the capital actually held, itemized
+into reserve accounts whose total re-derives on every verify, and `guard_collateral(custody=)`
+reads it as the held figure instead of the asserted default.
+
+```python
+# a custodian attests the vendor's reserves, itemized per account; the total re-derives on verify
+proof = custodian.attest_custody("vendor", {"omnibus": 40.0, "escrow": 10.0})  # 50 proven
+proof.verify(custodian.contract_signer).valid   # signed, content-bound, offline-verifiable
+
+ledger = buyer.guard_collateral([pool], custody=proof)   # held = proven reserves
+ledger.reserves_proven   # True — the held figure is evidence-backed, not asserted
+ledger.under_reserved    # True when the proven reserves fall below what the pools pledge
+ledger.reserve_breach    # the UnderReservedBreach: custodian, attestation hash, shortfall
+ledger.require_reserved()  # raises if the proven reserves cannot cover the pledges
+```
+
+`held=` and `custody=` are mutually exclusive — the held figure has one source. The attestation
+reads only signed, content-bound artifacts: a tampered reserve figure, a forged custodian (with
+`verify_with`), or an attestation that vouches for a **different poster** than the pools' is
+**refused**, and the under-reserved breach re-derives from the bytes alone (a fabricated or hidden
+breach is caught even after re-sealing). `app.attest_custody` signs it as the custodian and
+records the issuance on the hash-chained audit log (action `custody_attestation`). An asserted
+`held=` figure can over-commit but never *under-reserves*, because nothing proves it — only a
+custody attestation can. This proves the reserves *exist*, not that they exceed every liability
+the counterparty owes elsewhere.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -625,13 +657,16 @@ record of collateral posted against a contract and settled deterministically aga
 delivery verdict, not a custodian's ledger entry, an escrow service, or money in motion, and a
 collateral pool is a verifiable margin account that allocates one posted stake across many
 contracts and draws it deterministically, not a hosted clearing house, a margin custodian, or
-an omnibus account, and a collateral ledger is a verifiable re-use bound that folds a
+an omnibus account, a collateral ledger is a verifiable re-use bound that folds a
 counterparty's pools and reconciles what they pledge against what it holds, not a hosted
-custodian, a rehypothecation registry, or a proof-of-reserves service. Vincio gives you a verifiable
+custodian or a rehypothecation registry, and a custody attestation is one party's signed,
+verifiable proof-of-reserves that the guard reads as the held figure, not a hosted proof-of-reserves
+auditor or a trusted third party. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
 your own earned trust, a verifiable way to bound a counterparty's exposure to what its
 standing justifies, a verifiable way to back that exposure with posted collateral, a
-verifiable way to pool that collateral across many concurrent deals, and a verifiable way to
-bound its re-use across them; how an obligation is paid is yours.
+verifiable way to pool that collateral across many concurrent deals, a verifiable way to
+bound its re-use across them, and a verifiable proof that the capital backing it actually
+exists; how an obligation is paid is yours.

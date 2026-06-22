@@ -4,6 +4,60 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.37.0] - 2026-06-23
+
+Cross-org collateral custody attestation & proof-of-reserves. The rehypothecation guard (3.36) bounds a
+counterparty's pledges against the capital it `held` — but that holdings figure was the one input the guard
+**trusted**: it was *asserted*, not proven, so a counterparty over-stating its real reserves still passed the
+guard, the way a self-asserted reputation score passed before attestation made standing verifiable. This release
+makes the held capital itself **evidence-backed** — a signed, offline-verifiable **proof-of-reserves** the guard
+reads as the held figure instead of the asserted default. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the existing escrow, pooling, rehypothecation, admission, and settlement paths are
+unchanged (the `held=` input still works exactly as before), and the whole theme runs offline and deterministically.
+
+### Added
+
+- **CustodyAttestation (`vincio.settlement.custody`).** `attest_custody(poster, reserves, *, custodian=None,
+  as_of=None)` issues a sealed, unsigned `CustodyAttestation` over the capital a poster actually holds — the
+  proof-of-reserves analogue of `attest_reputation`. `reserves` is a number, a `{account: amount}` mapping, or
+  `ReserveLine` / `(account, amount)` items (a negative holding is refused); the attested `reserves_usd` is their
+  sum, re-derived on every verify. `custodian` defaults to the poster (self-custody when `custodian == poster`);
+  otherwise an independent custodian vouches.
+- **Read by the guard.** `guard_collateral(pools, *, poster=None, held=None, custody=None, verify_with=None)` reads
+  a `custody` attestation's `reserves_usd` as the `held` figure (`reserves_proven` / `custodian` / `custody_hash` /
+  `reserves_usd` on the `CollateralLedger`), bounding pledges against **proven** reserves. `held=` and `custody=`
+  are mutually exclusive — the held figure has one source.
+- **Under-reserved breach.** When the proven reserves fall below what the pools pledge, the shortfall surfaces as a
+  bounded, pinpointed `UnderReservedBreach` (`.custodian` / `.attestation_hash` / `.reserves_usd` / `.pledged_usd` /
+  `.shortfall_usd`) — exposed as `ledger.under_reserved` / `ledger.reserve_breach`, with `require_reserved()`
+  raising on it. An asserted `held=` figure can over-commit but never *under-reserves*, because nothing proves it.
+- **Offline-verifiable & refused-on-tamper.** `CustodyAttestation.verify(verifier=None, *, require=None)` →
+  `CustodyAttestationVerification(valid, hash_ok, reserves_sound, signatures_ok, signed_by, reason)` recomputes the
+  content hash and re-derives the reserve total from the line items, so a tampered figure is caught even after
+  re-sealing; only the custodian signs (`sign(signer, *, party=None)`). The guard **refuses** a tampered reserve
+  figure, a forged custodian (with `verify_with`), or an attestation that vouches for a different poster than the
+  pools', and the under-reserved breach re-derives from the bytes (a fabricated or hidden breach is caught after
+  re-sealing). `to_wire` / `from_wire` round-trip preserves verification.
+- **App / book surface.** `app.attest_custody(...)` / `book.attest_custody(...)` sign the attestation as the
+  custodian and record the issuance on the hash-chained audit log (action `custody_attestation`, decision =
+  `self_custody` / `custodied`); `app.guard_collateral(..., custody=)` / `book.guard_collateral(..., custody=)` pass
+  it through.
+- **Public surface.** `CustodyAttestation`, `CustodyAttestationVerification`, `ReserveLine`, `UnderReservedBreach`,
+  and `attest_custody` are exported from `vincio` and `vincio.settlement`.
+
+### Benchmarks & SLOs
+
+- **VincioBench `reputation_portability`** gains `proof_of_reserves_bounds_held`, `under_reserved_pinpoints`, and
+  `por_auditable_offline`, gated by a new **proof-of-reserves** SLO (a custody attestation is read as the held
+  figure, a proven shortfall is pinpointed as an under-reserved breach, and a tampered / forged / wrong-poster
+  attestation is refused while the guard lands on the audit chain).
+
+### Docs
+
+- New runnable example `81_cross_org_custody_proof_of_reserves.py`; settlement guide, README, llms.txt, SECURITY,
+  and ROADMAP updated; the next scheduled theme is **Cross-org custody liability attestation & proof-of-solvency**
+  (target 3.38).
+
 ## [3.36.0] - 2026-06-23
 
 Cross-org collateral rehypothecation guards & re-use bounds. A `CollateralPool` lets a counterparty back many
