@@ -27,6 +27,7 @@ from pydantic import BaseModel, Field
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .collateral import COLLATERAL_ACTION, CollateralPool, post_collateral_pool
+from .custody import CUSTODY_ACTION, CustodyAttestation, attest_custody
 from .escrow import ESCROW_ACTION, Escrow, post_escrow
 from .meter import Meter, MeterReading
 from .record import (
@@ -601,6 +602,45 @@ class SettlementBook:
         )
         pool.audit_id = getattr(entry, "id", None)
 
+    # -- custody attestation (proof-of-reserves) ----------------------------
+
+    def attest_custody(
+        self,
+        poster: str,
+        reserves: Any,
+        *,
+        custodian: str | None = None,
+        as_of: Any | None = None,
+        sign: bool = True,
+    ) -> CustodyAttestation:
+        """Attest a poster's proven reserves into a signed, audited proof-of-reserves.
+
+        Builds the :class:`~vincio.settlement.custody.CustodyAttestation`
+        (:func:`~vincio.settlement.custody.attest_custody`) over the capital ``poster`` holds
+        — itemized ``reserves`` whose total re-derives on every verify — signs it as the
+        custodian (this book's owner by default, i.e. self-custody when the owner is the
+        poster), and records the issuance on the audit chain. The attestation reads as the
+        ``held`` figure of :meth:`guard_collateral` (``custody=``). Returns it.
+        """
+        attestation = attest_custody(
+            poster, reserves, custodian=custodian or self.owner, as_of=as_of
+        )
+        if sign and self.signer is not None and self.owner == attestation.custodian:
+            attestation.sign(self.signer, party=attestation.custodian)
+        self._audit_custody(attestation)
+        return attestation
+
+    def _audit_custody(self, attestation: CustodyAttestation) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            CUSTODY_ACTION,
+            resource=attestation.poster,
+            decision="self_custody" if attestation.self_custody else "custodied",
+            details=attestation.audit_details(),
+        )
+        attestation.audit_id = getattr(entry, "id", None)
+
     # -- rehypothecation guard ----------------------------------------------
 
     def guard_collateral(
@@ -609,6 +649,7 @@ class SettlementBook:
         *,
         poster: str | None = None,
         held: float | None = None,
+        custody: CustodyAttestation | None = None,
         verify_with: ChainSigner | None = None,
         sign: bool = True,
     ) -> CollateralLedger:
@@ -616,14 +657,17 @@ class SettlementBook:
 
         Builds the :class:`~vincio.settlement.rehypothecation.CollateralLedger`
         (:func:`~vincio.settlement.rehypothecation.guard_collateral`) reconciling what the
-        ``pools`` collectively pledge against the capital the poster actually ``held`` —
-        pinpointing a contract pledged across more than one pool as a re-use breach and
-        bounding each beneficiary's claim to its deterministic share — signs it as this
-        book's owner, and records the guard on the audit chain. A tampered pool is refused;
-        with ``verify_with`` a forged pool signature is too. Returns the ledger.
+        ``pools`` collectively pledge against the capital the poster holds — proven by a
+        ``custody`` :class:`~vincio.settlement.custody.CustodyAttestation`, asserted via
+        ``held``, or defaulted — pinpointing a contract pledged across more than one pool as a
+        re-use breach, bounding each beneficiary's claim to its deterministic share, and
+        surfacing an under-reserved breach when the proven reserves fall below the pledges.
+        Signs the ledger as this book's owner and records the guard on the audit chain. A
+        tampered pool or custody attestation is refused; with ``verify_with`` a forged
+        signature is too. Returns the ledger.
         """
         ledger = guard_collateral(
-            pools, poster=poster, held=held, verify_with=verify_with
+            pools, poster=poster, held=held, custody=custody, verify_with=verify_with
         )
         if sign and self.signer is not None:
             ledger.sign(self.signer, party=self.owner)

@@ -1936,6 +1936,15 @@
     "families.reputation_portability.guard_content_bound": {
       "eq": true
     },
+    "families.reputation_portability.proof_of_reserves_bounds_held": {
+      "eq": true
+    },
+    "families.reputation_portability.under_reserved_pinpoints": {
+      "eq": true
+    },
+    "families.reputation_portability.por_auditable_offline": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

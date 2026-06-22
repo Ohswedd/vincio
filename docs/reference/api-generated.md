@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**347** public symbols.
+**352** public symbols.
 
 ## Classes
 
@@ -309,6 +309,14 @@ A concrete, minimal state that violates an invariant.
 ### `Crew(name=…, process=…, blackboard=…, tracer=…, manager_provider=…, manager_model=…, max_rounds=…, concurrency=…, cost_tracker=…, cost_ledger=…)`
 
 A multi-agent team that collaborates over a shared blackboard.
+
+### `CustodyAttestation(**data)`
+
+A signed, offline-verifiable proof-of-reserves over a poster's held capital.
+
+### `CustodyAttestationVerification(**data)`
+
+The (non-raising) outcome of verifying a custody attestation offline.
 
 ### `Dataset(**data)`
 
@@ -850,6 +858,10 @@ Explicit breadth/depth/source/token bounds for one research run.
 
 The cited, budgeted, eval-scored output of a research run.
 
+### `ReserveLine(**data)`
+
+One custodied holding backing the poster's proven reserves.
+
 ### `ResidencyPolicy(**data)`
 
 Pin allowed provider regions and refuse egress to others.
@@ -1098,6 +1110,10 @@ The importer's bounded, transitive trust in each issuer — the Sybil-resistant 
 
 Matryoshka + quantized coarse search, full-precision exact rerank.
 
+### `UnderReservedBreach(**data)`
+
+A proven-reserves shortfall — the pools pledge more than the custodian attests.
+
 ### `UsageEvent(**data)`
 
 One unit of delivered usage accrued against a contract.
@@ -1180,6 +1196,10 @@ Decide a counterparty's admitted exposure from its standing.
 
 Adjudicate a disputed contract from the records its parties submit.
 
+### `attest_custody(poster, reserves, custodian=…, as_of=…)`
+
+Attest a poster's proven reserves into an (unsigned) :class:`CustodyAttestation`.
+
 ### `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verify_with=…, horizon_days=…, note=…)`
 
 Issue an attestation of ``subject``'s earned standing from signed records.
@@ -1256,7 +1276,7 @@ Pull signed attestations and revocations from a bounded set of peers.
 
 Generate a tracked-change redline between two texts.
 
-### `guard_collateral(pools, poster=…, held=…, verify_with=…)`
+### `guard_collateral(pools, poster=…, held=…, custody=…, verify_with=…)`
 
 Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
 

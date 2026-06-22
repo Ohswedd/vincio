@@ -1383,27 +1383,50 @@ app.run("export button 500s").output.label
   re-allocates capital *within itself*, so nothing bounded a counterparty that pledged the **same** stake across more
   than one pool — the same capital double-counted, over-stating what backs each deal (the collateral analogue of a
   `SettlementRecord` double-counted before netting deduplicated it). A `CollateralLedger` is the **rehypothecation
-  guard**. `guard_collateral(pools, *, poster=None, held=None, verify_with=None)` → a sealed, unsigned
+  guard**. `guard_collateral(pools, *, poster=None, held=None, custody=None, verify_with=None)` → a sealed, unsigned
   `CollateralLedger`: reads a counterparty's pools (refusing one whose content hash no longer recomputes; a forged
   pool signature too, with `verify_with`), reconciles what they collectively pledge (`pledged_usd` = Σ live
-  `balance_usd`) against the capital it actually holds (`held_usd`; defaults to the gross pledge minus the provably
-  double-pledged capital). `CollateralLedger` (`.poster`/`.pools` (`LedgerPool`)/`.pool_hashes`, `.posted_usd`/
-  `.pledged_usd`/`.held_usd`/`.available_usd`/`.reuse_usd`/`.duplicate_pledge_usd`, `.breaches` (`ReuseBreach`:
+  `balance_usd`) against the capital it actually holds (`held_usd`; from a `custody` proof-of-reserves, an asserted
+  `held=`, or — by default — the gross pledge minus the provably double-pledged capital; `held` and `custody` are
+  mutually exclusive). `CollateralLedger` (`.poster`/`.pools` (`LedgerPool`)/`.pool_hashes`, `.posted_usd`/
+  `.pledged_usd`/`.held_usd`/`.available_usd`/`.reuse_usd`/`.duplicate_pledge_usd`, `.reserves_proven`/`.custodian`/
+  `.custody_hash`/`.reserves_usd`, `.breaches` (`ReuseBreach`:
   `.contract_id`/`.beneficiary`/`.pools`/`.secured_usd`/`.pledged_usd`/`.excess_usd`), `.claims` (`BeneficiaryClaim`:
-  `.beneficiary`/`.claim_usd`/`.secured_usd`/`.unsecured_usd`/`.share`/`.is_secured`), `.over_committed`/
-  `.within_bounds`/`.status` (`over_committed`|`within_bounds`), `.breach(id)`/`.claim(beneficiary)`): a contract
+  `.beneficiary`/`.claim_usd`/`.secured_usd`/`.unsecured_usd`/`.share`/`.is_secured`), `.reserve_breach`
+  (`UnderReservedBreach`: `.custodian`/`.attestation_hash`/`.reserves_usd`/`.pledged_usd`/`.shortfall_usd`),
+  `.over_committed`/`.within_bounds`/`.under_reserved`/`.status` (`over_committed`|`within_bounds`),
+  `.breach(id)`/`.claim(beneficiary)`): a contract
   pledged across more than one pool is a pinpointed `ReuseBreach` (its collateral honorable once, the excess provably
   double-pledged), and when a stake backs deals for more than one beneficiary each claim is bounded to its
   deterministic **pari-passu** share of the held capital (proportional to its claim) so a forfeiture cannot pay one
   beneficiary out of capital another has first claim on. **Content-bound & offline-verifiable** —
   `.compute_hash`/`.seal` (pools/breaches/claims sorted so fold-order is irrelevant), `.sign(signer, party)`,
   `.verify(verifier=None, *, require=None)` → `CollateralLedgerVerification(valid, hash_ok, terms_sound,
-  signatures_ok, signed_by, reason)` re-derives the pledged total, the re-use breaches, and the beneficiary
-  apportionment so a tampered figure is caught even after re-sealing, `.require_valid()`,
-  `.require_within_bounds()` (raises if over-committed), `.to_wire`/`.from_wire`.
-  `app.guard_collateral(pools, *, poster=, held=, sign=True, verify_with=, record_audit=True)` and
+  signatures_ok, signed_by, reason)` re-derives the pledged total, the re-use breaches, the beneficiary
+  apportionment, and the under-reserved breach so a tampered figure is caught even after re-sealing, `.require_valid()`,
+  `.require_within_bounds()` (raises if over-committed), `.require_reserved()` (raises if under-reserved),
+  `.to_wire`/`.from_wire`.
+  `app.guard_collateral(pools, *, poster=, held=, custody=, sign=True, verify_with=, record_audit=True)` and
   `book.guard_collateral(...)` sign it and record the guard on the audit chain (action `rehypothecation`, decision =
   the status). Deterministic and offline — never a hosted custodian, a clearing house, or a payment rail.
+- **Cross-org collateral custody attestation & proof-of-reserves.** `from vincio import CustodyAttestation,
+  CustodyAttestationVerification, ReserveLine, attest_custody` (all also in `vincio.settlement.__all__`). The
+  rehypothecation guard's `held` figure was *asserted*, not proven — a counterparty over-stating its reserves still
+  passed. A `CustodyAttestation` makes it **evidence-backed**: a signed, content-bound **proof-of-reserves**.
+  `attest_custody(poster, reserves, *, custodian=None, as_of=None)` → a sealed, unsigned `CustodyAttestation`:
+  `reserves` is a number, a `{account: amount}` mapping, or `ReserveLine`/`(account, amount)` items (a negative
+  holding is refused); `custodian` defaults to `poster` (self-custody). `CustodyAttestation` (`.custodian`/`.poster`/
+  `.reserves` (`ReserveLine`: `.account`/`.amount_usd`/`.note`)/`.reserves_usd`/`.as_of`, `.self_custody`/`.accounts`,
+  `.compute_hash`/`.seal`, `.sign(signer, *, party=None)` (only the custodian signs), `.verify(verifier=None, *,
+  require=None)` → `CustodyAttestationVerification(valid, hash_ok, reserves_sound, signatures_ok, signed_by, reason)`
+  re-derives the reserve total from the line items so a tampered figure is caught even after re-sealing,
+  `.require_valid()`, `.audit_details`/`.to_wire`/`.from_wire`). `guard_collateral(..., custody=)` reads
+  `.reserves_usd` as the `held` figure (`.reserves_proven` on the ledger), surfacing an `UnderReservedBreach` when the
+  proven reserves fall below the pledges — refusing a tampered figure, a forged custodian (with `verify_with`), or an
+  attestation for a different poster. `app.attest_custody(poster, reserves, *, custodian=, as_of=, sign=True,
+  record_audit=True)` / `book.attest_custody(...)` sign it as the custodian and record it on the audit chain (action
+  `custody_attestation`, decision = `self_custody`|`custodied`). Offline — never a hosted custodian or a
+  proof-of-reserves auditor.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

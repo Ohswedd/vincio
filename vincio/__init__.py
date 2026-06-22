@@ -308,6 +308,8 @@ from .settlement import (
     CollateralLedgerVerification,
     CollateralPool,
     CollateralPoolVerification,
+    CustodyAttestation,
+    CustodyAttestationVerification,
     Escrow,
     EscrowConfig,
     EscrowVerification,
@@ -321,6 +323,7 @@ from .settlement import (
     Reconciliation,
     ReputationAttestation,
     ReputationBundle,
+    ReserveLine,
     Resolution,
     ReuseBreach,
     SettlementBook,
@@ -328,9 +331,11 @@ from .settlement import (
     SettlementReport,
     TrustConfig,
     TrustModel,
+    UnderReservedBreach,
     UsageEvent,
     admit,
     arbitrate,
+    attest_custody,
     attest_reputation,
     attestation_a2a_server,
     build_trust_model,
@@ -359,7 +364,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.36.0"
+__version__ = "3.37.0"
 
 __all__ = [
     "ContextApp",
@@ -550,7 +555,13 @@ __all__ = [
     "CollateralLedgerVerification",
     "ReuseBreach",
     "BeneficiaryClaim",
+    "UnderReservedBreach",
     "guard_collateral",
+    # cross-org collateral custody attestation & proof-of-reserves
+    "CustodyAttestation",
+    "CustodyAttestationVerification",
+    "ReserveLine",
+    "attest_custody",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

@@ -97,10 +97,17 @@ the capital it actually holds, surfaces the same capital pledged twice as a boun
 :class:`ReuseBreach`, and bounds each beneficiary's claim to its deterministic pari-passu share
 so a forfeiture cannot pay one beneficiary out of capital another has first claim on — reading
 only the existing signed, content-bound pools (a tampered one is refused) and landing the guard
-on the hash-chained audit log. Everything is dependency-free, deterministic, and offline —
-never a hosted marketplace, a clearing house, an arbitration service, a reputation service, an
-underwriting service, an escrow custodian, a margin custodian, a rehypothecation registry, or a
-payment processor, only a mechanical, verifiable reconciliation.
+on the hash-chained audit log. And because the guard's ``held`` figure was the one input it
+*trusted* — asserted, not proven — a :class:`CustodyAttestation` (:func:`attest_custody` /
+:meth:`~vincio.core.app.ContextApp.attest_custody`) makes it **evidence-backed**: a custodian
+(or the poster's own signed reserve record) issues a signed, content-bound **proof-of-reserves**
+over the capital actually held, which :func:`guard_collateral` reads (``custody=``) as the held
+figure — surfacing an :class:`UnderReservedBreach` when the proven reserves fall below the
+pledges and refusing a tampered figure, a forged custodian, or an attestation for a different
+poster. Everything is dependency-free, deterministic, and offline — never a hosted marketplace,
+a clearing house, an arbitration service, a reputation service, an underwriting service, an
+escrow custodian, a margin custodian, a rehypothecation registry, a proof-of-reserves auditor,
+or a payment processor, only a mechanical, verifiable reconciliation.
 """
 
 from __future__ import annotations
@@ -154,6 +161,12 @@ from .collateral import (
     draw_pool,
     post_collateral_pool,
 )
+from .custody import (
+    CustodyAttestation,
+    CustodyAttestationVerification,
+    ReserveLine,
+    attest_custody,
+)
 from .escrow import (
     Escrow,
     EscrowConfig,
@@ -199,6 +212,7 @@ from .rehypothecation import (
     LedgerContract,
     LedgerPool,
     ReuseBreach,
+    UnderReservedBreach,
     guard_collateral,
 )
 
@@ -285,7 +299,13 @@ __all__ = [
     "LedgerContract",
     "ReuseBreach",
     "BeneficiaryClaim",
+    "UnderReservedBreach",
     "guard_collateral",
+    # collateral custody attestation & proof-of-reserves
+    "CustodyAttestation",
+    "CustodyAttestationVerification",
+    "ReserveLine",
+    "attest_custody",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",

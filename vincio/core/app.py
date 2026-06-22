@@ -3389,38 +3389,95 @@ class ContextApp:
             pool, record, config=config, party=party, sign=sign
         )
 
+    def attest_custody(
+        self,
+        poster: str,
+        reserves: Any,
+        *,
+        custodian: str | None = None,
+        as_of: Any | None = None,
+        sign: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Attest a poster's proven reserves into a signed, content-bound proof-of-reserves.
+
+        Issues a :class:`~vincio.settlement.CustodyAttestation` over the capital ``poster``
+        actually holds — itemized ``reserves`` (a number, a mapping of ``account -> amount``,
+        or :class:`~vincio.settlement.ReserveLine` items) whose total re-derives on every
+        verify — so the held figure :meth:`guard_collateral` bounds the pledges against is
+        **evidence-backed** rather than asserted. ``custodian`` defaults to this app (a
+        third-party custodian vouching), and when it is also the ``poster`` the attestation is
+        self-custody. Signs it as the custodian and, unless ``record_audit`` is off, records
+        the issuance on the audit chain. The attestation verifies offline from the bytes
+        alone — a tampered reserve figure or a forged custodian is caught. Returns it::
+
+            proof = app.attest_custody("vendor", {"omnibus": 80.0})
+            ledger = app.guard_collateral([pool_a, pool_b], custody=proof)
+            ledger.require_reserved()  # raises if proven reserves < pledged
+        """
+        from ..settlement import attest_custody as _attest
+
+        resolved_custodian = custodian or self.name
+        attestation = _attest(
+            poster, reserves, custodian=resolved_custodian, as_of=as_of
+        )
+        if sign and self.name == attestation.custodian:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                attestation.sign(signer, party=attestation.custodian)
+        if record_audit and self.audit is not None:
+            from ..settlement.custody import CUSTODY_ACTION
+
+            entry = self.audit.record(
+                CUSTODY_ACTION,
+                resource=attestation.poster,
+                decision="self_custody" if attestation.self_custody else "custodied",
+                details=attestation.audit_details(),
+            )
+            attestation.audit_id = getattr(entry, "id", None)
+        return attestation
+
     def guard_collateral(
         self,
         pools: list[Any],
         *,
         poster: str | None = None,
         held: float | None = None,
+        custody: Any | None = None,
         sign: bool = True,
         verify_with: Any | None = None,
         record_audit: bool = True,
     ) -> Any:
         """Fold a counterparty's collateral pools into a bounded re-use guard.
 
-        Reconciles what ``pools`` collectively pledge against the capital the poster
-        actually ``held`` into a single, content-bound
-        :class:`~vincio.settlement.CollateralLedger` — the rehypothecation analogue of
-        :meth:`clear_settlements`. The same capital pledged across more than one pool is
-        pinpointed as a :class:`~vincio.settlement.ReuseBreach`, and each beneficiary's
-        claim is bounded to its deterministic, pari-passu share of the held capital, so a
-        scarce stake is apportioned by priority rather than over-promised. Signs the ledger
-        as this app and, unless ``record_audit`` is off, records the guard on the audit
-        chain. The ledger verifies offline from the bytes alone, and a tampered pool is
+        Reconciles what ``pools`` collectively pledge against the capital the poster holds
+        into a single, content-bound :class:`~vincio.settlement.CollateralLedger` — the
+        rehypothecation analogue of :meth:`clear_settlements`. The same capital pledged across
+        more than one pool is pinpointed as a :class:`~vincio.settlement.ReuseBreach`, and
+        each beneficiary's claim is bounded to its deterministic, pari-passu share of the held
+        capital, so a scarce stake is apportioned by priority rather than over-promised. Signs
+        the ledger as this app and, unless ``record_audit`` is off, records the guard on the
+        audit chain. The ledger verifies offline from the bytes alone, and a tampered pool is
         **refused** (with ``verify_with`` a forged pool signature is too) rather than folded
-        silently. ``held`` defaults to the gross pledge minus the provably double-pledged
-        capital. Returns the ledger::
+        silently.
 
-            ledger = app.guard_collateral([pool_a, pool_b], held=80.0)
-            ledger.over_committed         # the same capital pledged twice
+        The held figure comes from a ``custody``
+        :class:`~vincio.settlement.CustodyAttestation` **proving** the reserves (a tampered or
+        forged one is refused, and an :class:`~vincio.settlement.UnderReservedBreach` surfaces
+        when the proven reserves fall below the pledges), an explicit *asserted* ``held``, or
+        — by default — the gross pledge minus the provably double-pledged capital. Returns the
+        ledger::
+
+            proof = app.attest_custody("vendor", {"omnibus": 80.0})
+            ledger = app.guard_collateral([pool_a, pool_b], custody=proof)
+            ledger.under_reserved          # proven reserves below the pledges
             ledger.require_within_bounds()  # raises if over-committed
         """
         from ..settlement import guard_collateral as _guard
 
-        ledger = _guard(pools, poster=poster, held=held, verify_with=verify_with)
+        ledger = _guard(
+            pools, poster=poster, held=held, custody=custody, verify_with=verify_with
+        )
         if sign:
             signer = self._resolve_contract_signer(None, True)
             if signer is not None:
