@@ -277,6 +277,22 @@ bi-temporal (`valid_from` / `valid_to`, as-of recall) with per-memory ACLs and a
 corrected fact never silently rewrites history. Every grant, revoke, denied check,
 and erasure proof lands on the audit chain.
 
+**A per-subject differential-privacy budget bounds what learning can leak.** The
+consent ledger answers *"may we process this, and for what?"*; the privacy
+accountant answers *"how much has a subject's data already leaked into what we
+learned, and is there budget left?"*. `app.use_privacy_accountant(...)` attaches a
+Rényi/moments `PrivacyAccountant` that composes the cumulative `(ε, δ)` a subject's
+data spends across **every** memory consolidation and federated contribution into
+one running budget — far more tightly than naively summing each step's `ε`. A
+release that would push a subject past their `PrivacyBudget` is **refused** (the
+privacy analogue of a hard cost cap) or **down-weighted** (clipped harder so its
+sensitivity, and therefore its privacy cost, fits the remaining budget). Every
+spend and refusal lands on the same hash-chained audit log, and
+`app.privacy_report()` rolls up each subject's spent / remaining `ε` next to the
+cost report — so the privacy guarantee is a mechanical, auditable number, not a
+policy doc. The accountant is opt-in and additive: with none attached, consolidation
+and contributions are unaccounted exactly as before.
+
 ### Governed discovery & interoperability
 
 Agent and tool discovery is governed by construction: an `AgentDirectory` resolves

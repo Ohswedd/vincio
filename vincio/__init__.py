@@ -118,6 +118,13 @@ from .governance import (
     LawfulBasis,
     LineageRecord,
     ModelCard,
+    PrivacyAccountant,
+    PrivacyBudget,
+    PrivacyBudgetError,
+    PrivacyDecision,
+    PrivacyMechanism,
+    PrivacyReport,
+    PrivacySpend,
     ProvenanceManifest,
     Purpose,
     ResidencyPolicy,
@@ -226,7 +233,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.15.0"
+__version__ = "3.16.0"
 
 __all__ = [
     "ContextApp",
@@ -400,6 +407,14 @@ __all__ = [
     "ConsentLedger",
     "Purpose",
     "LawfulBasis",
+    # differential-privacy memory & training
+    "PrivacyAccountant",
+    "PrivacyBudget",
+    "PrivacyMechanism",
+    "PrivacySpend",
+    "PrivacyDecision",
+    "PrivacyReport",
+    "PrivacyBudgetError",
     "ProvenanceManifest",
     "FertilityTracker",
     "PoisoningDetector",

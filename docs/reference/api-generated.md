@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**232** public symbols.
+**239** public symbols.
 
 ## Classes
 
@@ -422,7 +422,7 @@ The record of one real, committed step of a model-predictive plan.
 
 Matryoshka (MRL) dimension truncation over any embedder.
 
-### `MemoryEngine(store=…, write_policy=…, decay_lambda=…, min_confidence=…, graph_enabled=…, embedder=…, vector_weight=…, retention_weight=…, ttl_days=…, audit=…, consent_ledger=…)`
+### `MemoryEngine(store=…, write_policy=…, decay_lambda=…, min_confidence=…, graph_enabled=…, embedder=…, vector_weight=…, retention_weight=…, ttl_days=…, audit=…, consent_ledger=…, privacy_accountant=…, privacy_mechanism=…)`
 
 Layered, guarded, decaying long-term memory with hybrid recall.
 
@@ -506,9 +506,37 @@ Execute a signature against a provider with full output validation.
 
 The world model's prediction for one ``(observation, action)``.
 
+### `PrivacyAccountant(default_budget=…, default_mechanism=…, orders=…, delta=…, audit=…, store=…)`
+
+A composing, per-subject differential-privacy budget over the learning loop.
+
+### `PrivacyBudget(**data)`
+
+A per-subject (or default) ``(ε, δ)`` privacy ceiling.
+
+### `PrivacyBudgetError(message, details=…, hint=…, docs_url=…)`
+
+A learning step was refused because it would exceed a subject's DP budget.
+
 ### `PrivacyConfig(**data)`
 
 How a contribution is made privacy-preserving before it leaves a member.
+
+### `PrivacyDecision(**data)`
+
+An explainable verdict on whether a proposed release fits the budget.
+
+### `PrivacyMechanism(**data)`
+
+One differentially-private release, as accounted against a budget.
+
+### `PrivacyReport(**data)`
+
+Per-subject DP budget roll-up — the privacy analogue of the cost report.
+
+### `PrivacySpend(**data)`
+
+One accounted privacy release for a subject — a row on the audit chain.
 
 ### `PrometheusExporter(namespace=…)`
 

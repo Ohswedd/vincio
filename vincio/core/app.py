@@ -305,6 +305,11 @@ class ContextApp:
         # ``app.use_consent_ledger(...)`` it binds data to a GDPR purpose/lawful
         # basis and is consulted by access decisions and memory recall.
         self.consent_ledger: Any = None
+        # Differential-privacy accountant: opt-in, empty by default. When attached
+        # via ``app.use_privacy_accountant(...)`` it composes a per-subject (ε, δ)
+        # budget across memory consolidations and federated contributions and
+        # surfaces a privacy report alongside the cost report.
+        self.privacy_accountant: Any = None
         self.input_router = InputRouter()
 
         # provider
@@ -1429,6 +1434,90 @@ class ContextApp:
             self.memory.consent_ledger = ledger
         return ledger
 
+    def use_privacy_accountant(
+        self,
+        accountant: Any | None = None,
+        *,
+        default_budget: Any | None = None,
+        default_mechanism: Any | None = None,
+        delta: float = 1e-5,
+    ) -> Any:
+        """Attach a differential-privacy accountant over the learning loop.
+
+        Composes a per-subject ``(ε, δ)`` budget across every accounted memory
+        consolidation and federated contribution: a step that would exceed a
+        subject's remaining budget is refused (or down-weighted), every spend and
+        refusal on the same hash-chained audit log as consent and erasure. Once
+        attached, :meth:`MemoryEngine.consolidate` and
+        :meth:`contribute_federated` gate automatically, and
+        :meth:`privacy_report` rolls up the spent budget alongside
+        :meth:`cost_report`. Pass a configured
+        :class:`~vincio.governance.privacy.PrivacyAccountant`, or let this build
+        one wired to the app's audit chain and store. Returns the accountant::
+
+            from vincio import PrivacyBudget
+            app.use_privacy_accountant(default_budget=PrivacyBudget(epsilon=2.0))
+        """
+        from ..governance.privacy import PrivacyAccountant
+
+        if accountant is None:
+            accountant = PrivacyAccountant(
+                default_budget=default_budget,
+                default_mechanism=default_mechanism,
+                delta=delta,
+                audit=self.audit,
+                store=self.store,
+            )
+        self.privacy_accountant = accountant
+        if self.memory is not None:
+            self.memory.privacy_accountant = accountant
+        return accountant
+
+    def set_privacy_budget(
+        self,
+        *,
+        subject_id: str | None = None,
+        epsilon: float,
+        delta: float = 1e-5,
+        on_breach: str = "refuse",
+    ) -> ContextApp:
+        """Set a per-subject (or default) differential-privacy budget.
+
+        Creates the accountant on first use. ``subject_id=None`` is the default
+        budget applied to any subject without a specific one; ``on_breach`` is
+        ``"refuse"`` (a hard cap) or ``"downweight"`` (clip harder to fit)::
+
+            app.set_privacy_budget(subject_id="alice", epsilon=1.0)
+            app.set_privacy_budget(epsilon=3.0, on_breach="downweight")
+        """
+        from ..governance.privacy import PrivacyBudget
+
+        if self.privacy_accountant is None:
+            self.use_privacy_accountant(delta=delta)
+        self.privacy_accountant.set_budget(
+            PrivacyBudget(
+                subject_id=subject_id,
+                epsilon=epsilon,
+                delta=delta,
+                on_breach=on_breach,  # type: ignore[arg-type]
+            )
+        )
+        return self
+
+    def privacy_report(self, subject: str | None = None):
+        """Per-subject differential-privacy budget roll-up.
+
+        The privacy analogue of :meth:`cost_report`: each row is a subject's
+        cumulative ``ε`` spent against its ceiling, with operation and refusal
+        counts, so the spent privacy budget is an auditable number. Returns an
+        empty :class:`~vincio.governance.privacy.PrivacyReport` when no accountant
+        is attached."""
+        if self.privacy_accountant is None:
+            from ..governance.privacy import PrivacyReport
+
+            return PrivacyReport()
+        return self.privacy_accountant.report(subject)
+
     def erase_source(self, source: str, *, prove: bool = True) -> ErasureResult:
         """Right-to-erasure-by-source: purge a source from indexes, memory,
         caches, and generated artifacts, logged on the hash-chained audit chain.
@@ -1770,6 +1859,7 @@ class ContextApp:
             ttl_days=self.config.memory.ttl_days,
             audit=self.audit,
             consent_ledger=self.consent_ledger,
+            privacy_accountant=self.privacy_accountant,
         )
         self.memory_enabled = self.config.memory.enabled
         return self

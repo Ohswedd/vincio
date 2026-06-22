@@ -247,5 +247,22 @@ boundary and that individual updates are unrecoverable, while the no-regression 
 holds that the adopting member's re-fit adapter clears the same at-least-as-good gate
 a local promotion does, versioned and reversible.
 
+## Differential-privacy memory & training
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| A subject's cumulative (ε, δ) privacy loss composes across every consolidation and learning round their data touches, bounded more tightly than naively summing each step's ε. | true | `families.privacy.composes_across_rounds` |
+| A consolidation or contribution that would exceed a subject's privacy budget is refused — the privacy analogue of a hard cost cap — or down-weighted to fit; an over-budget release never silently proceeds. | true | `families.privacy.budget_refused` |
+| The spent privacy budget is a mechanical, auditable number: a per-subject report sits alongside the cost report, and every spend and refusal is on the verifiable audit chain. | true | `families.privacy.on_audit_chain` |
+
+The federated round bounds one member's *per-round* influence, but a subject's data
+is touched again and again — by every memory consolidation and learning round. A
+Rényi/moments privacy accountant composes the cumulative (ε, δ) a subject has spent
+and **refuses** once the budget is gone, the privacy analogue of a dollar budget. The
+composition SLO holds that the accountant tracks loss across rounds (and tighter than
+the naive sum); the refusal SLO holds that an over-budget release is refused or
+down-weighted, never silently admitted; and the auditability SLO holds that the spent
+budget is provable — reported per subject and recorded on the signed audit chain.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

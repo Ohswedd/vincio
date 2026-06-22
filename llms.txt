@@ -213,6 +213,27 @@ app.run("export button 500s").output.label
   event bus; `app.federated_improvement` returns the streaming controller. Held by
   `families.federated` (no-raw-traffic + secure-aggregation masks cancel/individual
   hidden + k-anonymity + at-least-as-good + regression refused/reversible).
+- **Differential-privacy memory & training.** A federated round bounds one member's
+  *per-round* influence; this adds the **end-to-end per-subject privacy budget** that
+  composes every memory consolidation and learning round a subject's data touches
+  (`vincio.governance.privacy`). `app.use_privacy_accountant(default_budget=PrivacyBudget(
+  epsilon=, delta=, on_breach="refuse"|"downweight"), default_mechanism=PrivacyMechanism(
+  noise_multiplier=, sample_rate=, steps=))` attaches a Rényi/moments `PrivacyAccountant`:
+  `gaussian_rdp(z, sample_rate=, steps=)` is the (sub-sampled) Gaussian RDP curve and
+  `rdp_to_epsilon(rdp, delta=)` the RDP→`(ε, δ)` conversion, so composing across rounds is
+  far tighter than naively summing each step's `ε`. `check(subject, mechanism)` decides
+  whether a release fits the subject's remaining budget; `charge(...)` gates **and** commits,
+  raising `PrivacyBudgetError` (code `PRIVACY_BUDGET_EXCEEDED`) on a refusal or down-weighting
+  by clipping harder (lower sensitivity → lower cost) to fit. It wires in automatically:
+  `app.memory.consolidate(session_id, user_id=)` charges the subject and refuses an
+  over-budget consolidation (`ConsolidationReport.privacy_refused`/`privacy_epsilon`), and a
+  federated `Contribution` composes the **same** budget when `PrivacyConfig.dp_epsilon` is set.
+  `app.set_privacy_budget(subject_id=, epsilon=, delta=, on_breach=)` is the one-liner;
+  `app.privacy_report(subject=)` rolls up each subject's spent/remaining `ε` next to the cost
+  report; every spend (`privacy_spend`) and refusal (`privacy_refused`) is on the audit chain.
+  Held by `families.privacy` (Gaussian-RDP-exact + composes-across-rounds + budget-refused +
+  per-subject-isolated + downweight-within-budget + consolidation/federated gated +
+  per-subject-report + on-audit-chain).
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`

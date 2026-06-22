@@ -9,7 +9,7 @@ archived (never silently dropped) with a ``consolidated_into`` backref.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
@@ -32,6 +32,9 @@ class ConsolidationReport(BaseModel):
     deduplicated: int = 0
     archived: int = 0
     items: list[MemoryItem] = Field(default_factory=list)
+    # Differential-privacy accounting (set only when an accountant is attached).
+    privacy_refused: bool = False
+    privacy_epsilon: float | None = None  # cumulative ε the subject has spent
 
 
 class MemoryConsolidator:
@@ -77,6 +80,19 @@ class MemoryConsolidator:
             target_scope, target_owner = MemoryScope.AGENT, agent_id
         else:
             target_scope, target_owner = MemoryScope.SESSION, session_id
+
+        # Differential-privacy gate: consolidating a subject's episodes into a
+        # durable summary is a release of aggregated information about that
+        # subject. When an accountant is attached, charge the subject's privacy
+        # budget; a consolidation that would exceed it is refused (the subject's
+        # data simply stays in its short-lived episodic form) and recorded.
+        spend = self._charge_privacy(subject=target_owner, session_id=session_id)
+        if spend is False:
+            report.privacy_refused = True
+            return report
+        if spend is not None:
+            report.privacy_epsilon = spend.cumulative_epsilon
+
         summaries = await self.summarizer.summarize(
             session_text, scope=target_scope, owner_id=target_owner, session_id=session_id
         )
@@ -122,6 +138,34 @@ class MemoryConsolidator:
             },
         )
         return report
+
+    def _charge_privacy(self, *, subject: str | None, session_id: str) -> Any:
+        """Charge the subject's DP budget for this consolidation.
+
+        Returns ``None`` when no accountant is attached (proceed unaccounted),
+        ``False`` when the budget refuses the consolidation (skip it), or the
+        recorded :class:`~vincio.governance.privacy.PrivacySpend` on success.
+        """
+        accountant = getattr(self.engine, "privacy_accountant", None)
+        if accountant is None or not subject:
+            return None
+        mechanism = getattr(self.engine, "privacy_mechanism", None)
+        # A consolidation releases a deterministic, extractive summary it cannot make
+        # noisier, so it must pay the *full* mechanism cost — a down-weight (which
+        # assumes a more-private release) is not honestly realizable here. Gate on the
+        # full cost: a clean fit proceeds; anything else (over budget, or a budget
+        # that would only admit a down-weighted release) is refused.
+        decision = accountant.check(subject, mechanism)
+        if decision.action != "allow":
+            accountant.note_refusal(decision, operation="memory_consolidation")
+            return False
+        return accountant.record(
+            subject,
+            mechanism,
+            operation="memory_consolidation",
+            round_id=session_id,
+            details={"session_id": session_id},
+        )
 
     def dedup(self, *, scope: MemoryScope | None = None, owner_id: str | None = None) -> int:
         """Merge near-duplicate active memories. The survivor keeps the
