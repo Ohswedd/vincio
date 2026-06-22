@@ -86,6 +86,15 @@ from .reflective import (
     apply_edits,
     cluster_failures,
 )
+from .reputation import (
+    MemberReputation,
+    ReputationConfig,
+    ReputationError,
+    ReputationLedger,
+    ReputationReport,
+    ReputationRow,
+    ReputationWeights,
+)
 from .retrieval_feedback import (
     ChunkingRecommendation,
     RelevanceRecord,
@@ -230,6 +239,14 @@ __all__ = [
     "FederatedEvent",
     "FederatedRoundResult",
     "FederatedImprovement",
+    # cross-fleet reputation & weighting
+    "ReputationError",
+    "ReputationConfig",
+    "MemberReputation",
+    "ReputationWeights",
+    "ReputationRow",
+    "ReputationReport",
+    "ReputationLedger",
     "RewardError",
     "RewardSignal",
     "RewardSample",

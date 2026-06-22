@@ -5375,6 +5375,189 @@ async def bench_federated() -> dict[str, Any]:
     }
 
 
+async def bench_reputation() -> dict[str, Any]:
+    """ReputationBench: reliability-weighted, gated cross-fleet aggregation.
+
+    The federated round merges every member with equal weight; this family holds
+    the rung above it — a per-member **reputation**, earned only from how each past
+    contribution fared against the no-regression gate (never from raw traffic) and
+    kept on the signed audit chain, that **discounts an unreliable or adversarial
+    member's pull** on the consensus geometry. The discount is bounded (a weight
+    never leaves ``[floor, 1]`` — a member is discounted, never singled out or
+    zeroed) and reversible (adoption still clears the very same no-regression gate,
+    so a bad reputation can never bypass the quality bar). All deterministic and
+    offline; reputation is a mechanical, replayable number."""
+    from vincio import (
+        ContextApp,
+        ContributionBuilder,
+        FederatedPolicy,
+        PrivacyConfig,
+        ReputationConfig,
+        ReputationLedger,
+        SecureAggregator,
+        VincioConfig,
+    )
+    from vincio.evals.datasets import Dataset, EvalCase
+    from vincio.optimize.distill import TrainingExample, TrainingSet
+    from vincio.optimize.federated import _top_eigenvectors
+    from vincio.optimize.reputation import REPUTATION_ACTION
+    from vincio.retrieval.embeddings import LocalHashEmbedder
+
+    dim = 64
+    qa_a = [
+        ("what is the refund policy", "Refunds are processed within 30 days."),
+        ("how do I reset my password", "Use the reset link on the login page."),
+    ]
+    qa_b = [
+        ("what are the shipping options", "We ship worldwide via DHL in 5-7 days."),
+        ("how do I contact support", "Email support@example.com any time."),
+    ]
+    qa_all = qa_a + qa_b
+    fleet = ["org-a", "org-b"]
+    emb = LocalHashEmbedder(dim=dim)
+
+    def make_ts(qa):
+        return TrainingSet(
+            name="federated-adapter",
+            examples=[
+                TrainingExample(
+                    messages=[{"role": "user", "content": q}, {"role": "assistant", "content": a}]
+                )
+                for q, a in qa
+            ],
+        )
+
+    # 1. Reputation is earned from gate outcomes and bounded into [floor, 1]: a
+    #    fresh member sits below a proven one; a persistent regressor decays toward
+    #    — but never below — the floor.
+    config = ReputationConfig(weight_floor=0.05)
+    ledger = ReputationLedger(config)
+    fresh_weight = ledger.weight("newcomer")
+    for i in range(30):
+        ledger.record_outcome("bad", passed=False, round_id=f"r{i}")
+        ledger.record_outcome("good", passed=True, round_id=f"r{i}")
+    regressor_discounted = bool(ledger.weight("bad") < ledger.weight("good"))
+    weight_floored = bool(ledger.weight("bad") >= config.weight_floor)
+    weight_bounded = bool(
+        config.weight_floor <= fresh_weight <= ledger.weight("good") <= config.weight_ceiling
+    )
+
+    # 2. Reliability-weighted aggregation discounts the regressor: the consensus
+    #    leans toward the reliable member compared with the equal-weight merge.
+    off = ContributionBuilder(embedder=emb, privacy=PrivacyConfig(secure_aggregation=False))
+    good_c = await off.build(make_ts(qa_a), "gguf-local", member_id="good", participants=None)
+    bad_c = await off.build(make_ts(qa_b), "gguf-local", member_id="bad", participants=None)
+    good_dir = _top_eigenvectors(good_c.scatter, 1)[0][0]
+    plain = SecureAggregator(privacy=PrivacyConfig(secure_aggregation=False), rank=1).aggregate(
+        [good_c, bad_c]
+    )
+    weighted = SecureAggregator(
+        privacy=PrivacyConfig(secure_aggregation=False), rank=1, reputation=ledger
+    ).aggregate([good_c, bad_c])
+
+    def align(subspace):
+        return abs(sum(a * b for a, b in zip(subspace.basis[0], good_dir, strict=True)))
+
+    discount_aligns_consensus = bool(align(weighted) > align(plain))
+    reputation_weighted = bool(weighted.provenance["reputation_weighted"])
+
+    # 3. Reputation lives on the audit chain and replays from it exactly.
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(
+        name="org-a", provider=MockProvider(default_text="I am not sure about that."), config=cfg
+    )
+    app.embedder = emb
+    bound = app.use_reputation_ledger()
+    for _ in range(5):
+        bound.record_outcome("org-b", passed=False, round_id="seed")
+        bound.record_outcome("org-a", passed=True, round_id="seed")
+    replayed = ReputationLedger.from_audit(app.audit)
+    audit_replayable = bool(
+        abs(replayed.weight("org-b") - bound.weight("org-b")) < 1e-9
+        and abs(replayed.weight("org-a") - bound.weight("org-a")) < 1e-9
+    )
+
+    # 4. A reliability-weighted round still adopts only when at-least-as-good, and
+    #    records its verdict back to the ledger.
+    dataset = Dataset(
+        name="golden",
+        cases=[EvalCase(id=f"c{i}", input=q, expected=a) for i, (q, a) in enumerate(qa_all)],
+    )
+    ctl = app.federated_improvement(
+        FederatedPolicy(min_examples=4, min_samples=4, require_significance=False),
+        dataset=dataset,
+    )
+    ca = await ctl.build_contribution(member_id="org-a", participants=fleet, training_set=make_ts(qa_a))
+    cb = await ctl.build_contribution(member_id="org-b", participants=fleet, training_set=make_ts(qa_b))
+    contribution_weighted = bool(cb.reputation_weight < ca.reputation_weight)
+    result = await ctl.aadopt(contributions=[ca, cb], training_set=make_ts(qa_all))
+    adopted = bool(result.adopted)
+    at_least_as_good = bool(result.verdict is not None and result.verdict.delta >= 0.0)
+    verdict_recorded = bool(
+        any(e.details.get("round_id") == "round" for e in app.audit.query(action=REPUTATION_ACTION))
+    )
+
+    # 5. A high reputation never bypasses the gate: a regressing adapter is refused
+    #    and reversible even when its contributors are pristine.
+    def echo(req):
+        return "GOOD answer " + req.messages[-1].text.split()[-1]
+
+    reg_qa = [(f"q item {w}", f"GOOD answer {w}") for w in ("alpha", "beta", "gamma", "delta")]
+    reg_app = ContextApp(name="org-r", provider=MockProvider(responder=echo), config=cfg)
+    reg_app.embedder = emb
+    reg_ledger = reg_app.use_reputation_ledger()
+    for _ in range(5):
+        reg_ledger.record_outcome("org-a", passed=True, round_id="seed")
+        reg_ledger.record_outcome("org-b", passed=True, round_id="seed")
+    reg_builder = ContributionBuilder(embedder=emb, privacy=PrivacyConfig())
+    reg_a = await reg_builder.build(
+        make_ts(reg_qa[:2]), "gguf-local", member_id="org-a", participants=fleet,
+        reputation_weight=reg_ledger.weight("org-a"),
+    )
+    reg_b = await reg_builder.build(
+        make_ts(reg_qa[2:]), "gguf-local", member_id="org-b", participants=fleet,
+        reputation_weight=reg_ledger.weight("org-b"),
+    )
+    reg_ds = Dataset(
+        name="g",
+        cases=[EvalCase(id=f"r{i}", input=q, expected=a) for i, (q, a) in enumerate(reg_qa)],
+    )
+    bad_local = TrainingSet(
+        name="federated-adapter",
+        examples=[
+            TrainingExample(
+                messages=[{"role": "user", "content": q}, {"role": "assistant", "content": "wrong"}]
+            )
+            for q, _ in reg_qa
+        ],
+    )
+    bad_result = reg_app.adopt_federated(
+        reg_ds,
+        [reg_a, reg_b],
+        training_set=bad_local,
+        policy=FederatedPolicy(min_examples=4, gate=0.6, min_samples=4, require_significance=False),
+    )
+    gate_not_bypassed = bool(not bad_result.adopted and reg_app.local_adapter is None)
+
+    return {
+        "regressor_discounted": regressor_discounted,
+        "weight_floored": weight_floored,
+        "weight_bounded": weight_bounded,
+        "discount_aligns_consensus": discount_aligns_consensus,
+        "reputation_weighted": reputation_weighted,
+        "audit_replayable": audit_replayable,
+        "contribution_weighted": contribution_weighted,
+        "adopted": adopted,
+        "at_least_as_good": at_least_as_good,
+        "verdict_recorded": verdict_recorded,
+        "gate_not_bypassed": gate_not_bypassed,
+        "fresh_weight": round(fresh_weight, 4),
+        "regressor_weight": round(ledger.weight("bad"), 4),
+        "reliable_weight": round(ledger.weight("good"), 4),
+    }
+
+
 async def bench_privacy() -> dict[str, Any]:
     """PrivacyBench: a composing, per-subject differential-privacy budget.
 
@@ -5602,6 +5785,7 @@ FAMILIES = {
     "semantic_cache": bench_semantic_cache,
     "local_adaptation": bench_local_adaptation,
     "federated": bench_federated,
+    "reputation": bench_reputation,
     "privacy": bench_privacy,
     "breaking_2_0": bench_breaking_2_0,
 }

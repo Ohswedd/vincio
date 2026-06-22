@@ -234,6 +234,28 @@ app.run("export button 500s").output.label
   Held by `families.privacy` (Gaussian-RDP-exact + composes-across-rounds + budget-refused +
   per-subject-isolated + downweight-within-budget + consolidation/federated gated +
   per-subject-report + on-audit-chain).
+- **Cross-fleet reputation & weighting.** A federated round merges every member with equal
+  weight; this adds a per-member **reputation** that discounts an unreliable or adversarial
+  member's pull on the shared consensus — earned only from how each contribution fared against
+  the no-regression gate, never from raw traffic (`vincio.optimize.reputation`).
+  `app.use_reputation_ledger(config=ReputationConfig(prior_success=, prior_failure=, decay=,
+  weight_floor=, weight_ceiling=))` attaches a `ReputationLedger` keeping each member's
+  reliability as a Beta-Bernoulli posterior over gate outcomes (a robust generalization of the
+  existing reliability scoring): `reputation(member)` is the posterior mean, `weight(member)`
+  maps it to an aggregation weight in `[weight_floor, 1]`, `record_outcome(member, passed=)`
+  composes one verdict, and `assign(members)` produces the round's weight vector.
+  `SecureAggregator(reputation=ledger)` weights a member's contribution by its reputation
+  **before** the secure-aggregation masks (so they still cancel exactly); a masked contribution
+  must carry the assigned weight (built with `ContributionBuilder.build(..., reputation_weight=)`)
+  or the aggregator refuses to re-weight it (`FederatedError`). Wires in automatically: when a
+  ledger is bound, `app.federated_improvement`/`app.adopt_federated` weight each contribution and
+  record the round's gate verdict back (`FederatedPolicy.record_reputation`). Bounded and
+  reversible — a weight only ever lowers pull, and adoption still clears the same no-regression
+  and canary gates, so reputation never bypasses the quality bar. `ReputationLedger.from_audit(
+  audit)` replays the whole ledger from the chain; `app.reputation_report(member=)` rolls up each
+  member's standing next to the cost and privacy reports. Held by `families.reputation`
+  (discount-the-regressor + weight-bounded/floored + audit-replayable + adopts-at-least-as-good +
+  gate-not-bypassed). `ReputationError` inherits `OPTIMIZATION_ERROR`.
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
@@ -780,6 +802,14 @@ app.run("export button 500s").output.label
   returns the streaming `FederatedImprovement` controller. Only numeric, masked,
   bounded-sensitivity aggregates cross a trust boundary. See the full entry above
   (`families.federated`).
+- **Cross-fleet reputation & weighting.** `app.use_reputation_ledger()` attaches a
+  `ReputationLedger` that earns a per-member reliability score from each federated
+  round's no-regression gate verdict and reliability-weights the `SecureAggregator`,
+  so a repeatedly-regressing or adversarial member is discounted without being singled
+  out. Bounded (a weight never leaves `[floor, 1]`) and reversible (adoption still
+  clears the same gate); `app.reputation_report()` rolls up each member's standing;
+  `ReputationLedger.from_audit(audit)` replays it from the chain. See the full entry
+  above (`families.reputation`).
 
 ## Security & governance
 
