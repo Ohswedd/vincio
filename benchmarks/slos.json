@@ -1571,6 +1571,26 @@
       "threshold": true,
       "enforced_by": "families.discovery.governance_preserved",
       "rationale": "Discovery resolves who, but must never bypass how. The budget gates that an unlisted candidate scores zero and is never bound while its resolution is audited; companion budgets gate that an unreachable candidate is rejected, that no eligible candidate raises rather than stalling, and that the binding decision itself is on the chain — so the agent fabric stays as accountable when the counterparty is discovered as when it is wired by id."
+    },
+    {
+      "id": "netting_correctness",
+      "category": "reliability",
+      "statement": "Multilateral netting is conservative and minimal: a fleet's net positions sum to zero (every payable is a receivable), the cleared set of obligations reproduces every org's net position exactly, and a web of bilateral obligations clears to fewer transfers than the gross edges — at most one per party less one.",
+      "metric": "families.netting.netting_conserves",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.netting.netting_conserves",
+      "rationale": "Clearing is only safe if no value is created or lost. The budget gates that the net positions balance to zero and the cleared obligations reproduce them; companion budgets gate that a cycle clears to fewer transfers than its gross edges, that two opposing flows collapse to one bilateral figure, and that the same settlement seen from both books is deduped rather than double-counted — so an org that is both buyer and seller across many contracts closes its books once, with every position conserved."
+    },
+    {
+      "id": "netting_integrity",
+      "category": "security",
+      "statement": "A cleared netting set is content-bound and offline-verifiable: a netting hash binds the fleet, the exact source records read, the net positions, and the cleared obligations, the set signs and recomputes from the bytes alone, a tampered figure or a forged source record is caught, and two books that disagree on a contract are pinpointed as a dispute rather than silently netted.",
+      "metric": "families.netting.netting_verifies_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.netting.netting_verifies_offline",
+      "rationale": "A clearing is only as good as its tamper-evidence. The budget gates that a signed netting set verifies offline; companion budgets gate that a tampered obligation fails verification, that a tampered source record is refused outright, that two clearers reading the same records compute the same co-signable hash, that a disagreement is pinpointed as a dispute and excluded, and that the clearing lands on the audit chain — so a cleared balance is a mechanical, verifiable artifact, never a self-asserted claim or a hosted clearing house."
     }
   ]
 }

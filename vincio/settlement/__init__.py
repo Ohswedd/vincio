@@ -24,8 +24,14 @@ payment rail, only a verifiable ledger of what was owed and delivered.
   negotiation.
 
 :func:`settle_contract` settles one contract; :func:`settle_saga` settles every
-contract a cross-org saga ran under, straight from its durable journal. Everything
-is dependency-free, deterministic, and offline — never a hosted marketplace or a
+contract a cross-org saga ran under, straight from its durable journal.
+
+Once an org keeps many bilateral books, :func:`net_settlements` / :func:`net_books`
+fold the whole fleet's balances into a single, content-bound :class:`NettingSet` —
+each org's many positions collapsed to the **minimal set** of net obligations,
+offline-verifiable the way a record is — so an org that is both buyer and seller
+across a web of contracts closes its books once. Everything is dependency-free,
+deterministic, and offline — never a hosted marketplace, a clearing house, or a
 payment processor, only a mechanical, verifiable reconciliation.
 """
 
@@ -40,6 +46,17 @@ from .book import (
     settle_saga,
 )
 from .meter import Meter, MeterReading, UsageEvent
+from .netting import (
+    BilateralNet,
+    GrossObligation,
+    NetObligation,
+    NetPosition,
+    NettingDispute,
+    NettingSet,
+    NettingVerification,
+    net_books,
+    net_settlements,
+)
 from .record import (
     Reconciliation,
     SettlementLine,
@@ -70,4 +87,14 @@ __all__ = [
     "BookVerification",
     "settle_contract",
     "settle_saga",
+    # multilateral netting & clearing
+    "NettingSet",
+    "NetPosition",
+    "NetObligation",
+    "BilateralNet",
+    "GrossObligation",
+    "NettingDispute",
+    "NettingVerification",
+    "net_settlements",
+    "net_books",
 ]

@@ -299,11 +299,14 @@ from .security.rails import Rail
 from .settlement import (
     Meter,
     MeterReading,
+    NettingSet,
     Reconciliation,
     SettlementBook,
     SettlementRecord,
     SettlementReport,
     UsageEvent,
+    net_books,
+    net_settlements,
     reconcile,
     settle_contract,
     settle_saga,
@@ -319,7 +322,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.26.0"
+__version__ = "3.27.0"
 
 __all__ = [
     "ContextApp",
@@ -462,6 +465,10 @@ __all__ = [
     "reconcile",
     "settle_contract",
     "settle_saga",
+    # cross-org settlement netting & multilateral clearing
+    "NettingSet",
+    "net_settlements",
+    "net_books",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

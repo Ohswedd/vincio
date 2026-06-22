@@ -147,11 +147,64 @@ app.settle(deal.contract, cost_usd=0.20, quality=0.6)   # a shortfall
 print(app.reputation_report(deal.contract.seller).rows[0].reputation)  # debited
 ```
 
+## Netting & multilateral clearing
+
+Once an org keeps many bilateral books, it is often both a buyer and a seller across
+a web of contracts. **Netting** folds those bilateral balances into a single minimal
+set of net obligations, so the books close once. `net_settlements` (over loose
+records) and `net_books` (over whole books) read only the existing signed,
+hash-chained records and produce a content-bound `NettingSet`:
+
+```python
+from vincio import net_settlements, settle_contract
+
+# A cycle: acme owes vendor, vendor owes data, data owes acme.
+fleet = [
+    settle_contract(acme_vendor, cost_usd=0.08),
+    settle_contract(vendor_data, cost_usd=0.05),
+    settle_contract(data_acme, cost_usd=0.03),
+]
+netting = app.clear_settlements(records=fleet)   # signs as the clearer, audits
+
+print(netting.gross_edges, "→", netting.cleared_transfers)   # 3 → 2
+for o in netting.obligations:
+    print(o.debtor, "→", o.creditor, o.amount_usd)
+```
+
+Each settled contract is a directed obligation — the buyer owes the seller the
+agreed price for the scope (the payable cap; a breach is surfaced by the
+settlement's own status and the reputation loop, it does not change what is owed).
+The directed payables aggregate per pair, collapse to one `BilateralNet` per
+counterparty, and clear to the minimal set of `NetObligation` transfers — at most
+`N − 1` for `N` parties, net-debtors paying net-creditors, deterministically.
+
+The `NettingSet` is offline-verifiable the way a record is. `verify()` recomputes
+the netting hash from the bytes alone, confirms the net positions balance to zero,
+and confirms the cleared transfers reproduce every org's position:
+
+```python
+verdict = netting.verify(app.contract_signer)
+assert verdict.valid and verdict.positions_balanced and verdict.conserves
+```
+
+Netting reads only signed records and asserts nothing it cannot recompute. A
+tampered source record (its reconciliation hash no longer recomputes) is refused
+outright, and two books that disagree on the same contract are pinpointed as a
+`NettingDispute` — excluded from the clearing, never silently absorbed:
+
+```python
+netting.require_clean()   # raises if any contract was disputed
+```
+
+`book.net()` nets a single org's own book into its position against each
+counterparty — the same calculation, one ledger.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
 marketplace. There is no money movement, no escrow service, no managed clearing
-house — a settlement is a typed, signed record you hold and verify yourself, and the
-book is a hash-chained ledger each organization keeps on its own. Vincio gives you a
-verifiable reconciliation of what was owed and delivered; how an obligation is paid
-is yours.
+house — a settlement is a typed, signed record you hold and verify yourself, the
+book is a hash-chained ledger each organization keeps on its own, and netting is a
+clearing *calculation* over those books, not a clearing *house*. Vincio gives you a
+verifiable reconciliation of what was owed and delivered, and a verifiable netting of
+it across a fleet; how an obligation is paid is yours.

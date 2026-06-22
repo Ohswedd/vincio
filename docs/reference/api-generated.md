@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**307** public symbols.
+**310** public symbols.
 
 ## Classes
 
@@ -598,6 +598,10 @@ A party's private stance: per-issue preferences and a concession curve.
 
 The outcome of a bounded negotiation — a deal, or a partial no-deal.
 
+### `NettingSet(**data)`
+
+A content-bound, offline-verifiable multilateral clearing of a fleet's books.
+
 ### `Objective(text=…, **data)`
 
 What the application is trying to accomplish.
@@ -1163,6 +1167,14 @@ Swap only the model on a fixed dataset and report a statistically grounded regre
 ### `negotiation_a2a_server(party, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)`
 
 Expose a local negotiating :class:`Party` over A2A.
+
+### `net_books(books, owner=…, verify_with=…, require_intact=…)`
+
+Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
+
+### `net_settlements(records, owner=…, fleet=…, verify_with=…)`
+
+Fold a fleet's settled contracts into a minimal cleared set of obligations.
 
 ### `provider_trainer(backend, registry=…, inherit_from=…, pricing=…, suffix=…, fmt=…, poll_interval_s=…, max_polls=…)`
 

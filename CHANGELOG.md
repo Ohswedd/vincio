@@ -4,6 +4,52 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.27.0] - 2026-06-22
+
+Cross-org settlement netting & multilateral clearing. With bilateral settlements signed, reconciled,
+and reputation-closing, this release adds the next rung: **netting** them. An org is often both a
+buyer and a seller across a web of contracts; netting folds a fleet's many bilateral `SettlementBook`
+balances into a single minimal set of net obligations, so the books close once — a library-side
+clearing *calculation*, never a hosted clearing house or a payment rail. The cleared `NettingSet` is
+content-bound and verifies offline the way a settlement record does. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the existing settlement path is unchanged, and the
+whole theme runs offline and deterministically.
+
+### Added
+
+- **Multilateral netting (`vincio.settlement.netting`).** `net_settlements(records, *, owner=,
+  fleet=, verify_with=)` and `net_books(books, *, owner=, verify_with=, require_intact=)` fold a
+  fleet's signed settlement records into a `NettingSet`. Each settled contract is a directed payable
+  (the buyer owes the seller the agreed price for the scope); the same settlement seen from both
+  books is **deduplicated by its reconciliation hash, not double-counted**, the directed payables
+  aggregate into `GrossObligation`s per pair, collapse to one `BilateralNet` figure per counterparty,
+  and the per-org `NetPosition`s (which sum to zero) **clear** to the minimal set of `NetObligation`
+  transfers — at most `N − 1` for `N` parties, net-debtors paying net-creditors, deterministically
+  (ties broken by org id).
+- **A content-bound, offline-verifiable `NettingSet`.** A netting hash binds the fleet, the exact
+  source records read, the net positions, and the cleared obligations; `netting.sign(signer, party=)`
+  co-signs it and `netting.verify(verifier=, require=)` → `NettingVerification` recomputes it offline
+  — the hash matches, the positions balance to zero (`positions_balanced`), and the cleared transfers
+  reproduce every position (`conserves`). A tampered source record is **refused** (`SettlementError`),
+  and two books that disagree on a contract are pinpointed as a `NettingDispute` and excluded
+  (`.clean` / `.require_clean()`), never silently absorbed.
+- **Netting on the app & book surface.** `app.clear_settlements(*, books=, records=, sign=True,
+  verify_with=, record_audit=True)` nets a fleet (defaulting to the app's attached book), signs the
+  set as the app, and records it on the audit chain (action `netting`); `book.net(*, sign=True)` nets
+  one org's own book into its position against each counterparty.
+- **A `netting` VincioBench family** holding a netting-correctness SLO (the net positions balance to
+  zero, the cleared obligations reproduce them, and a cycle clears to fewer transfers than its gross
+  edges) and a netting-integrity SLO (the cleared set signs and verifies offline, a tampered figure
+  or source record is caught, two clearers compute the same co-signable hash, and a disagreement is
+  pinpointed as a dispute).
+- **Example `71_cross_org_settlement_netting.py`** and a netting section in the settlement guide.
+
+### Public surface
+
+- Added to `vincio.__all__`: `NettingSet`, `net_settlements`, `net_books`. The supporting models
+  (`NetPosition`, `NetObligation`, `BilateralNet`, `GrossObligation`, `NettingDispute`,
+  `NettingVerification`) are exported from `vincio.settlement`. `API_VERSION` remains `3.0`.
+
 ## [3.26.0] - 2026-06-22
 
 Cross-org workflow discovery & dynamic choreography. With cross-org sagas negotiated, contracted,

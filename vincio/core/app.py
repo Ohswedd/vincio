@@ -3266,6 +3266,56 @@ class ContextApp:
             return SettlementReport(owner=self.name)
         return self.settlement_book.report(counterparty)
 
+    def clear_settlements(
+        self,
+        *,
+        books: list[Any] | None = None,
+        records: list[Any] | None = None,
+        sign: bool = True,
+        verify_with: Any | None = None,
+        record_audit: bool = True,
+    ) -> Any:
+        """Net a fleet's settlement books into one minimal cleared set.
+
+        Folds the bilateral balances across ``books`` (and/or loose ``records``) —
+        or, by default, this app's own attached settlement book — into a single,
+        content-bound :class:`~vincio.settlement.NettingSet`: each org's many
+        positions collapsed to the minimal set of net obligations, the same web of
+        contracts cleared once. Signs the set as this app (the clearer) and, unless
+        ``record_audit`` is off, records the clearing on the audit chain. The set
+        verifies offline from the bytes alone — the positions balance and the cleared
+        obligations reproduce them — and pinpoints any disputed contract rather than
+        netting it silently. Returns the set::
+
+            netting = app.clear_settlements(books=[acme_book, vendor_book])
+            netting.verify().valid  # offline-verifiable
+            netting.print_summary()
+        """
+        from ..settlement import net_settlements
+
+        all_records: list[Any] = list(records or [])
+        sources = books
+        if sources is None and not all_records and self.settlement_book is not None:
+            sources = [self.settlement_book]
+        for book in sources or []:
+            all_records.extend(book.records)
+        netting = net_settlements(all_records, owner=self.name, verify_with=verify_with)
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                netting.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.netting import NETTING_ACTION
+
+            entry = self.audit.record(
+                NETTING_ACTION,
+                resource=netting.id,
+                decision="clean" if netting.clean else "disputed",
+                details=netting.audit_details(),
+            )
+            netting.audit_id = getattr(entry, "id", None)
+        return netting
+
     # -- evaluators / optimizers ----------------------------------------------------------------------
 
     def add_evaluator(self, name: str | Callable) -> ContextApp:

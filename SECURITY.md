@@ -521,6 +521,32 @@ negotiation and choreography, settlement is **deterministic and offline by
 construction**: it asserts nothing it cannot verify from the bytes, and crosses a trust
 boundary only as a signed record reconciled on each side's own chain.
 
+### Cross-org settlement netting & multilateral clearing
+
+Netting a fleet's bilateral books (`app.clear_settlements` / `net_settlements` /
+`net_books` / `vincio.settlement.netting`) is a **clearing calculation, never a
+clearing house**: no money moves, there is no central ledger, and a `NettingSet` is a
+content-bound artifact each party can recompute. Netting **reads only the existing
+signed, hash-chained records and asserts nothing it cannot recompute**. A source
+record whose reconciliation hash no longer recomputes — a tampered economic figure —
+is **refused outright** rather than netted, and with a verifier a forged signature is
+too, so a clearing is never built on a falsified book. The same bilateral settlement
+seen from both parties' books is **deduplicated by its reconciliation hash, not
+double-counted**, and when two books carry *different* facts for the same contract the
+contract is **pinpointed as a `NettingDispute` and excluded** from the clearing — a
+disagreement is named, never silently absorbed (`require_clean()` raises on one). The
+`NettingSet` is **content-bound** the way a record is: a netting hash binds the fleet,
+the exact source records read (by their hashes), the net positions, and the cleared
+obligations, so `netting.verify(verifier)` recomputes it **offline from the bytes
+alone** — the hash matches, the net positions balance to zero (every payable is a
+receivable), and the cleared transfers reproduce every org's position, so a value
+created or lost in clearing is caught. The obligation a settlement contributes is the
+agreed price the buyer owes the seller for the scope; a breach is surfaced by the
+settlement's own status and the reputation loop, it never silently alters what is
+cleared. Because the netting hash excludes local metadata, two clearers reading the
+same records co-sign the **same** hash — a cleared balance is a mechanical, verifiable
+artifact, never a self-asserted claim.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them
