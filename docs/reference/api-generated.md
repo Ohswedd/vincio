@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**327** public symbols.
+**332** public symbols.
 
 ## Classes
 
@@ -37,6 +37,22 @@ A versioned, reversible store of on-device adapters.
 ### `AdaptiveSampler(cases, sample, gate, metric=…, budget, seed_samples=…, confidence=…, weights=…)`
 
 Decide a mean-aggregate gate with the fewest samples by allocating the budget to the highest-variance cases and stopping as soon as the verdict is certain.
+
+### `AdmissionConfig(**data)`
+
+How a counterparty's standing maps to a bounded exposure posture.
+
+### `AdmissionDecision(**data)`
+
+A bounded, offline-verifiable exposure posture for one counterparty.
+
+### `AdmissionPolicy(config=…)`
+
+A graduated-exposure policy over the standing the fabric already earns.
+
+### `AdmissionVerification(**data)`
+
+The (non-raising) outcome of verifying an admission decision offline.
 
 ### `AgentDirectory(allow_list=…, audit=…, principal=…)`
 
@@ -1115,6 +1131,10 @@ Declare a signature input field.
 ### `OutputField(desc=…, **kwargs)`
 
 Declare a signature output field.
+
+### `admit(subject, reputation=…, ledger=…, standing=…, config=…)`
+
+Decide a counterparty's admitted exposure from its standing.
 
 ### `arbitrate(records, contract_id=…, arbiter=…, verify_with=…)`
 

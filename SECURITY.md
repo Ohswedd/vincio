@@ -682,6 +682,37 @@ recoverable — and is **pinpointed** (`AttestationVerdict.trust`, `SubjectStand
 weighted prior still weights a negotiation under the same `[floor, 1]` discipline — it can
 never *raise* an issuer's pull past full or bypass the quality bar.
 
+### Cross-org reputation-gated admission & progressive exposure
+
+Reputation-gated admission (`AdmissionPolicy` / `app.admit` / `admit` in
+`vincio.settlement.admission`) is a defense against **over-exposure to an unproven or
+regressing counterparty**, and is a **mechanical, reconstructable exposure number computed
+in-process from the standing you already hold, never a hosted underwriting service**.
+Without it, a counterparty's weighted standing only *softens* a negotiation; nothing bounds
+how much a too-thin or too-low standing is trusted with up front, so a brand-new or
+low-trust org is admitted to a contract on the same terms as a long-trusted one and a
+regression is caught only after delivery. An `AdmissionPolicy` maps the standing the fabric
+already earns — an imported `PortableReputation` or a local `ReputationLedger` — to a
+bounded `AdmissionDecision`: a maximum contract value (the exposure ceiling), a required
+escrow/collateral fraction, and an SLA-strictness factor. Exposure is the product of the
+standing's posterior-mean reputation and a ramp over its **corroborated, settled** evidence,
+lifted off a `floor_fraction`, so a thin or low-trust standing is admitted on **conservative
+terms rather than refused** — discounted exposure, never a hard gate, never singled out, and
+recoverable as it earns history. The ceiling **ramps deterministically toward parity (and
+never past it)** as settled deliveries accrue, and a regression **walks it back**; **local
+first-hand evidence wins** over what others attest, so a regression the importer lived
+through bounds exposure even when other orgs still attest a high standing — closing the
+attestation-laundering gap where a Sybil-corroborated prior might otherwise out-weigh
+first-hand losses. Every decision is **content-bound and offline-verifiable**: it binds the
+standing it read and the terms it set onto a hash that `AdmissionDecision.verify` recomputes
+from the bytes alone and **re-derives the terms from the bound standing**, so a tampered
+ceiling, escrow, or SLA factor is caught even after re-sealing, and `app.admit` records the
+decision on the hash-chained audit log. It folds into the existing path without widening it:
+`bound_position` only ever *clamps* a buyer's reservation toward the ceiling (it can never
+*raise* exposure), and `apply_to_terms` stamps the escrow posture into contract metadata
+that is excluded from the canonical hash, so a contract minted from the capped terms stays
+offline-verifiable.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

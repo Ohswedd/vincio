@@ -1661,6 +1661,16 @@
       "threshold": true,
       "enforced_by": "families.reputation_portability.trust_weights_by_issuer",
       "rationale": "Pooling every issuer's evidence with equal pull lets a clutch of unknown peers out-evidence a few the importer has lived through, and an adversary can spin up Sybil issuers that all vouch the same way. The budget gates that a trusted issuer's evidence out-pulls an unknown one's with equal evidence; companion budgets gate that a Sybil cluster cannot outvote a trusted issuer (pull follows earned trust, not count), that trust composes at most a bounded hop with decay and a chain beyond the depth bound manufactures no standing, that an unknown issuer is floored rather than zeroed, and that the weighting is strictly opt-in (no trust source leaves pooling unchanged) — so reputation is weighed by earned trust through a deterministic, offline kernel, never an authority gate or a central trust service."
+    },
+    {
+      "id": "reputation_gated_admission",
+      "category": "reliability",
+      "statement": "A counterparty's weighted standing bounds its exposure, not merely its negotiation weight: an admission policy maps the standing (an imported PortableReputation or a local ReputationLedger) to a bounded, offline-verifiable exposure ceiling — a maximum contract value, a required escrow fraction, and an SLA-strictness factor — admitting a thin or low-trust standing on conservative terms rather than refusing it, ramping the ceiling toward parity as settled, corroborated history accrues and walking it back on a regression, and binding the standing it read and the terms it set onto a content hash that recomputes from the bytes alone and folds into the existing negotiation / contracting path.",
+      "metric": "families.reputation_portability.admission_gates_by_reputation",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation_portability.admission_gates_by_reputation",
+      "rationale": "Reputation made portable, current, discoverable, and trust-weighted was still only consulted as a soft weight on a negotiation; nothing acted on a too-thin or too-low standing to bound how much a new counterparty was trusted with up front, so a regression was caught only after the fact. The budget gates that a thin or low standing earns a strictly lower ceiling than a corroborated one — both admitted (positive ceiling), never refused or singled out; companion budgets gate that the ceiling ramps toward parity as settled history accrues and a regression walks it back (bounded and reversible), that a brand-new counterparty is admitted conservatively below parity (safe onboarding by construction), that every decision recomputes from the bytes and lands on the hash-chained audit log, and that it folds into the existing negotiation / contracting path — so exposure is a mechanical, reconstructable number, never a hosted underwriting service."
     }
   ]
 }

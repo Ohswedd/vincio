@@ -416,21 +416,74 @@ directly with `build_trust_model(...)` (each issuer's `IssuerTrust` records its
 `AttestationVerdict.trust` and `SubjectStanding.issuer_trust` — bounded `[floor, 1]`,
 reversible, and pinpointed at every step.
 
+## Gating admission by earned standing
+
+A portable, current, discoverable, trust-weighted standing still only ever *softened*
+a negotiation; nothing **acted** on a too-thin or too-low standing to bound how much a
+new counterparty was trusted with up front. An `AdmissionPolicy` (`app.admit`) maps the
+standing the fabric already earns — an imported `PortableReputation` or a local
+`ReputationLedger` — to a bounded, offline-verifiable `AdmissionDecision`: a maximum
+contract value (the exposure ceiling), a required escrow/collateral fraction, and an
+SLA-strictness factor.
+
+```python
+from vincio import AdmissionConfig
+
+policy = AdmissionConfig(parity_exposure_usd=1000.0)   # the ceiling at full trust
+decision = buyer.admit("vendor", config=policy)
+decision.max_contract_value_usd   # the exposure ceiling this standing earns
+decision.escrow_fraction          # collateral asked at this trust level
+decision.verify().valid           # offline-verifiable — terms re-derive from the bytes
+```
+
+Exposure is the product of two bounded signals — *how good* the standing is (its
+posterior-mean reputation) and *how much corroborated, settled history* stands behind it,
+ramped from a floor to parity — lifted off a `floor_fraction`. So a thin or low-trust
+standing is admitted on **conservative terms rather than refused** (discounted exposure,
+never a hard gate, never singled out), and as the counterparty accrues settled deliveries
+its ceiling **ramps** deterministically toward parity, a regression walking it back —
+exposure unlocked the way a credit line builds. Local first-hand evidence wins over what
+others attest, exactly as the negotiation `weight` resolves it, so a regression you lived
+through walks the ceiling back even when other orgs still attest a high standing.
+
+The decision folds into the **existing** path without a new code path through it:
+
+```python
+from vincio.negotiation import buyer_position, seller_position
+
+bounded = decision.bound_position(           # clamp the buyer to the exposure ceiling
+    buyer_position(max_price_usd=1e6, ideal_price_usd=0.01, max_sla_seconds=5.0)
+)
+result = buyer.negotiate("transcribe", buyer=bounded, seller=seller_position(...),
+                         seller_id="vendor")
+# the bargain can only converge within the admitted exposure
+```
+
+`apply_to_terms(terms)` caps a contract's price and stamps the escrow posture into the
+terms' (unhashed) metadata, so a contract minted from the capped terms stays
+offline-verifiable while carrying the collateral the deal must post. Every decision binds
+the standing it read and the terms it set onto a content hash that `verify` recomputes
+from the bytes — a tampered ceiling is caught even after re-sealing — and `app.admit`
+records it on the hash-chained audit log.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
 marketplace. There is no money movement, no escrow service, no managed clearing
-house, no arbitration service or court of record, no reputation bureau — a settlement
-is a typed, signed record you hold and verify yourself, the book is a hash-chained
-ledger each organization keeps on its own, netting is a clearing *calculation* over
-those books, not a clearing *house*, arbitration is a deterministic adjudication over
-the parties' own signed records, not a third party that rules by fiat, a reputation
-attestation is one org's signed, verifiable claim that combines into an evidence-weighted
-prior, not a central score, the attestation exchange is a bounded pull of those signed
-artifacts from peers you govern, not a hosted reputation registry or a push-based gossip
-bus, and the trust kernel is a bounded, transitive weighting computed in-process from your
-own ledger, not a central trust authority or a Sybil-detection service. Vincio gives you a
-verifiable reconciliation of what was owed and delivered, a verifiable netting of it across
-a fleet, a verifiable resolution when two books disagree, a portable, verifiable attestation
-of earned standing, a verifiable way to discover it across the fabric, and a verifiable way
-to weigh it by your own earned trust; how an obligation is paid is yours.
+house, no arbitration service or court of record, no reputation bureau, no underwriting
+service — a settlement is a typed, signed record you hold and verify yourself, the book
+is a hash-chained ledger each organization keeps on its own, netting is a clearing
+*calculation* over those books, not a clearing *house*, arbitration is a deterministic
+adjudication over the parties' own signed records, not a third party that rules by fiat, a
+reputation attestation is one org's signed, verifiable claim that combines into an
+evidence-weighted prior, not a central score, the attestation exchange is a bounded pull of
+those signed artifacts from peers you govern, not a hosted reputation registry or a
+push-based gossip bus, the trust kernel is a bounded, transitive weighting computed
+in-process from your own ledger, not a central trust authority or a Sybil-detection service,
+and an admission decision is a mechanical, reconstructable exposure number computed from the
+standing you already hold, not a hosted underwriting service. Vincio gives you a verifiable
+reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
+verifiable resolution when two books disagree, a portable, verifiable attestation of earned
+standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
+your own earned trust, and a verifiable way to bound a counterparty's exposure to what its
+standing justifies; how an obligation is paid is yours.

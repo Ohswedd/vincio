@@ -3567,6 +3567,55 @@ class ContextApp:
             self.imported_reputation = prior
         return prior
 
+    def admit(
+        self,
+        subject: str,
+        *,
+        reputation: Any | None = None,
+        policy: Any | None = None,
+        config: Any | None = None,
+        record_audit: bool = True,
+    ) -> Any:
+        """Decide a counterparty's admitted exposure from its earned standing.
+
+        Reads ``subject``'s standing from the same source the negotiation path weights
+        by — an imported :class:`~vincio.settlement.PortableReputation` if one is attached
+        (:meth:`import_reputation`), else the local
+        :class:`~vincio.optimize.reputation.ReputationLedger` — or an explicit
+        ``reputation`` source — and maps it to a bounded
+        :class:`~vincio.settlement.AdmissionDecision`: a maximum contract value (the
+        exposure ceiling), a required escrow fraction, and an SLA-strictness factor. A
+        thin or low-trust standing is admitted on *conservative* terms rather than
+        refused — discounted exposure, never a hard gate — and as the counterparty
+        accrues settled, corroborated history its ceiling **ramps** toward parity, a
+        regression walking it back. Pass an :class:`~vincio.settlement.AdmissionPolicy` as
+        ``policy`` (or an :class:`~vincio.settlement.AdmissionConfig` as ``config``) to set
+        the parity ceiling and ramp. Unless ``record_audit`` is off, the decision lands on
+        the hash-chained audit log, binding the standing it read and the ceiling it set.
+        The decision verifies offline from the bytes alone — the terms re-derive from the
+        bound standing — and folds into the existing negotiation / contracting path
+        (:meth:`~vincio.settlement.AdmissionDecision.bound_position` /
+        :meth:`~vincio.settlement.AdmissionDecision.apply_to_terms`). Returns it::
+
+            decision = app.admit("vendor")
+            buyer = decision.bound_position(buyer_position(max_price_usd=5.0, max_sla_seconds=5.0))
+            result = app.negotiate("transcribe", buyer=buyer, seller=..., seller_id="vendor")
+        """
+        from ..settlement.admission import ADMISSION_ACTION, AdmissionPolicy
+
+        engine = policy if isinstance(policy, AdmissionPolicy) else AdmissionPolicy(config)
+        source = reputation if reputation is not None else self._reputation_view()
+        decision = engine.admit(subject, reputation=source)
+        if record_audit and self.audit is not None:
+            entry = self.audit.record(
+                ADMISSION_ACTION,
+                resource=decision.subject,
+                decision="parity" if decision.at_parity else "graduated",
+                details=decision.audit_details(),
+            )
+            decision.audit_id = getattr(entry, "id", None)
+        return decision
+
     def serve_attestations(
         self,
         *,

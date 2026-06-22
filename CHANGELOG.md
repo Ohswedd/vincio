@@ -4,6 +4,56 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.33.0] - 2026-06-22
+
+Cross-org reputation-gated admission & progressive exposure. Reputation is now portable, current,
+discoverable, and trust-weighted — but it was still only ever *consulted* as a soft weight on a negotiation;
+nothing **acted** on a too-thin or too-low standing to bound how much a new counterparty was trusted with up
+front. A brand-new or low-trust counterparty was admitted to a contract on the same terms as a long-trusted
+one, the regression caught only after the fact. This release turns the weighted standing into a **graduated
+admission posture** — bounding a counterparty's exposure to what its earned trust justifies, ramping it as
+trust accrues — so onboarding an unknown org is safe by construction. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the existing negotiation, contracting, and settlement paths
+are unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **Admission policy (`vincio.settlement.admission`).** `AdmissionConfig(parity_exposure_usd=1000.0,
+  floor_fraction=0.1, full_trust_evidence=10.0, ramp_floor=0.2, max_escrow_fraction=0.5, min_sla_factor=0.5)`
+  configures a graduated-exposure map; `AdmissionPolicy(config=None).admit(subject, *, reputation=None,
+  ledger=None, standing=None)` (and the module-level `admit(...)`) reads a counterparty's standing — from an
+  imported `PortableReputation` or a local `ReputationLedger` — and maps it to a bounded `AdmissionDecision`.
+- **Reputation-gated terms.** Exposure is the product of two bounded signals — the standing's posterior-mean
+  reputation and a ramp over its corroborated, settled evidence — lifted off `floor_fraction`, so a thin or
+  low-trust standing is admitted on *conservative* terms rather than refused (discounted exposure, never a
+  hard gate, never singled out). The decision carries a `max_contract_value_usd` exposure ceiling, an
+  `escrow_fraction` (collateral demanded, falling to `0` at parity), and an `sla_factor` (SLA tightening,
+  relaxing to `1` at parity).
+- **Progressive ramp.** `AdmissionConfig.ramp_progress(evidence)` climbs `[ramp_floor, 1]` to parity at
+  `full_trust_evidence` settled deliveries (and never past it), so a counterparty's ceiling **ramps**
+  deterministically toward parity as it accrues history and a regression walks it back — bounded and
+  reversible. Local first-hand evidence wins over what others attest: when a portable prior's `base` ledger
+  has earned evidence for the subject, the standing is read from that ledger, exactly as
+  `PortableReputation.weight` resolves it, so a regression the importer lived through walks exposure back.
+- **Offline-verifiable.** `AdmissionDecision` binds the `Standing` it read and the terms it set onto a content
+  hash; `.verify()` → `AdmissionVerification(valid, hash_ok, terms_sound, reason)` re-derives the terms from
+  the bound standing, so a tampered ceiling, escrow, or SLA factor is caught even after re-sealing.
+  `.require_valid()`, `.to_wire` / `.from_wire`, and `.audit_details()` round it out.
+- **Folds into the existing path.** `AdmissionDecision.bound_position(position)` clamps a buyer's
+  `NegotiationPosition` price reservation to the exposure ceiling and tightens its SLA reservation (a copy;
+  the original is untouched), so the bargain can only converge within the admitted exposure;
+  `.apply_to_terms(terms)` caps a `ContractTerms` price / SLA and stamps the escrow posture into the terms'
+  `metadata` (excluded from the contract's canonical hash, so a contract minted from the capped terms stays
+  offline-verifiable).
+- **App surface.** `app.admit(subject, *, reputation=None, policy=None, config=None, record_audit=True)` reads
+  the same source the negotiation path weights by (`imported_reputation` else `reputation_ledger`) and records
+  the decision on the hash-chained audit log (action `reputation_admission`, decision `parity` | `graduated`).
+- **Surface.** `from vincio import AdmissionConfig, AdmissionDecision, AdmissionPolicy, AdmissionVerification,
+  admit` (all also in `vincio.settlement.__all__`, alongside `Standing`); a `reputation_portability`
+  VincioBench extension with five admission SLOs (gates-by-reputation, ramps-progressively,
+  newcomer-conservative, auditable-offline, folds-into-path) and a `reputation_gated_admission` published SLO;
+  and a runnable example, `examples/77_cross_org_reputation_gated_admission.py`.
+
 ## [3.32.0] - 2026-06-22
 
 Cross-org transitive trust & Sybil-resistant attestation weighting. Reputation is now portable, current,

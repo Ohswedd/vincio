@@ -1879,6 +1879,21 @@
     "families.reputation_portability.trust_backward_compatible": {
       "eq": true
     },
+    "families.reputation_portability.admission_gates_by_reputation": {
+      "eq": true
+    },
+    "families.reputation_portability.admission_ramps_progressively": {
+      "eq": true
+    },
+    "families.reputation_portability.admission_newcomer_conservative": {
+      "eq": true
+    },
+    "families.reputation_portability.admission_auditable_offline": {
+      "eq": true
+    },
+    "families.reputation_portability.admission_folds_into_path": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },
