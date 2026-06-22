@@ -547,6 +547,36 @@ cleared. Because the netting hash excludes local metadata, two clearers reading 
 same records co-sign the **same** hash — a cleared balance is a mechanical, verifiable
 artifact, never a self-asserted claim.
 
+### Cross-org dispute resolution & arbitration
+
+Arbitration (`app.arbitrate` / `arbitrate` / `book.arbitrate` /
+`vincio.settlement.arbitration`) resolves a pinpointed disagreement and is a
+**deterministic adjudication over the parties' own signed records, never a hosted
+arbitration service or a court of record**: no third party rules by fiat, and a
+`Resolution` is a content-bound artifact each party can recompute. Arbitration **reads
+only the existing signed records and asserts nothing it cannot recompute**. The
+decision rests on verifiable evidence: a reconciliation hash that **both** the buyer
+and the seller signed — each on their own record, the two co-signing one figure — is
+mutually corroborated and **upheld**; a unilateral claim contradicting the corroborated
+figure is **rejected and pinpointed**, not silently overruled; and when neither side's
+figure is corroborated the dispute is honestly left **unresolved** rather than decided
+without evidence — a security-conscious refusal to fabricate a winner. Unlike netting,
+which *refuses* to clear over a tampered book, arbitration is the venue where a bad
+claim is adjudicated: a claim whose reconciliation hash no longer recomputes (a tampered
+figure), one carrying no signature, or — with a verifier — one with a forged signature
+is marked **inadmissible** and pinpointed (`ClaimVerdict.reason`), never silently
+dropped and never crashing the resolution. The `Resolution` is **content-bound** the
+way a record is: a resolution hash binds the contract, the parties, the outcome, and
+every adjudicated claim (by reconciliation hash, corroborating signers, admissibility,
+and whether it stands), so `resolution.verify(verifier)` recomputes it **offline from
+the bytes alone** and **re-derives the whole decision from the recorded claims** — a
+flipped verdict, a swapped winner, or a smuggled-in standing claim is caught even when
+the hash was recomputed to match. Because the resolution hash excludes the arbiter and
+the local metadata, two arbiters reading the same records co-sign the **same** hash. A
+settled dispute also closes the reputation loop on the party whose claim did not stand —
+and only in the upheld case, where corroboration *proves* the rejected claim wrong, so
+an honest party in an unresolved standoff is never debited.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

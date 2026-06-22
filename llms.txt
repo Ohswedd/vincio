@@ -1160,6 +1160,32 @@ app.run("export button 500s").output.label
   `.require_clean()`). `app.clear_settlements(*, books=, records=, sign=True, verify_with=,
   record_audit=True)` nets a fleet, signs as the app, and audits (action `netting`);
   `book.net(*, sign=True)` nets one org's own book. `.print_summary()`, `.to_wire`/`.from_wire`.
+- **Cross-org dispute resolution & arbitration.** `from vincio import Resolution, arbitrate`
+  (also `vincio.settlement.__all__`: `ResolutionStatus`, `ResolutionVerification`, `ClaimVerdict`
+  are subpackage-only). **Arbitration** resolves a pinpointed disagreement (a `NettingDispute`,
+  or two records that do not reconcile) — a library-side protocol, never a hosted arbitration
+  service or a court of record. `arbitrate(records, *, contract_id=None, arbiter="",
+  verify_with=None)` → a `Resolution`: each party submits its signed `SettlementRecord`s for one
+  contract and the decision rests on nothing it cannot recompute — a reconciliation hash **both**
+  the buyer and the seller signed (each on their own record, co-signing one figure) is mutually
+  corroborated and **upheld**; a unilateral claim contradicting it is **rejected** and pinpointed
+  (`ClaimVerdict.reason`); a single uncontested figure stands on its own; neither corroborated →
+  **unresolved** (`status` is `"upheld"`|`"unresolved"`). Unlike netting, a tampered/forged claim
+  is marked **inadmissible** and pinpointed (`.inadmissible_claims`), never raised — arbitration
+  is the venue that adjudicates a bad claim. **Content-bound & offline-verifiable**: the
+  resolution hash binds the contract, parties, outcome (`upheld_hash`/`upheld_balance_usd`), and
+  every claim verdict (by reconciliation hash + signers + admissible + stands, NOT record id, so
+  the same claim from both sides binds once; arbiter/id/timestamp excluded → two arbiters
+  co-sign one hash); `resolution.sign(signer, party=)`, `resolution.verify(verifier=, require=)`
+  → `ResolutionVerification` (`.hash_ok`, `.decision_sound` — the recorded outcome re-derives
+  from the recorded claims, so a flipped verdict is caught even after re-sealing), `.require_valid()`,
+  `.require_resolved()`. `.standing_claims`/`.rejected_claims`/`.inadmissible_claims`/`.dissenters`.
+  `app.arbitrate(records, *, contract_id=None, sign=True, verify_with=None, record_audit=True,
+  record_reputation=True)` adjudicates, signs as the app, audits (action `arbitration`), and
+  **closes the reputation loop** by debiting each dissenter (the party whose admissible claim did
+  not stand; unresolved debits nobody); `book.arbitrate(*counterparty_records, contract_id=None,
+  sign=True, verify_with=None)` resolves one org's own record against submitted claims.
+  `.print_summary()`, `.to_wire`/`.from_wire`.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

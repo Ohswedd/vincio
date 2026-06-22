@@ -4,6 +4,64 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.28.0] - 2026-06-22
+
+Cross-org dispute resolution & arbitration. With settlements signed, reconciled, netted, and a
+disagreement *pinpointed* as a `NettingDispute`, this release adds the next rung: **resolving** it.
+Each party submits its signed `SettlementRecord`s for the disputed contract and a deterministic
+adjudication decides which figure stands — a library-side protocol, never a hosted arbitration
+service or a court of record. The decision rests on nothing it cannot recompute: a reconciliation
+hash both parties co-signed is upheld, a contradicting unilateral claim is rejected and pinpointed, a
+tampered claim is marked inadmissible, and a genuine standoff is honestly left unresolved. The
+resulting `Resolution` is content-bound and verifies offline the way a settlement record does.
+Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, the existing settlement path
+is unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **Dispute arbitration (`vincio.settlement.arbitration`).** `arbitrate(records, *, contract_id=None,
+  arbiter="", verify_with=None)` adjudicates a disputed contract from the signed records its parties
+  submit and returns a `Resolution`. The decision is deterministic and evidence-based: a
+  reconciliation hash that **both** the buyer and the seller signed (each on their own record,
+  co-signing one figure) is mutually corroborated and **upheld**; a unilateral claim contradicting it
+  is **rejected** and its claimant pinpointed; a single uncontested figure stands on its own; and when
+  neither side's figure is corroborated the dispute is left **unresolved** rather than decided by fiat
+  (`status` is `"upheld"` | `"unresolved"`).
+- **Inadmissible claims are pinpointed, never raised.** Unlike netting, which *refuses* to clear over
+  a tampered book, arbitration is the venue where a bad claim is adjudicated: a claim whose
+  reconciliation hash no longer recomputes, one carrying no signature, or — with a verifier — one with
+  a forged signature is marked **inadmissible** with a reason on its `ClaimVerdict`, never silently
+  dropped and never crashing the resolution.
+- **A content-bound, offline-verifiable `Resolution`.** A resolution hash binds the contract, the
+  parties, the outcome, and every adjudicated claim (by reconciliation hash, corroborating signers,
+  admissibility, and whether it stands — not by record id, so the same claim from both sides binds
+  once); `resolution.sign(signer, party=)` co-signs it and `resolution.verify(verifier=, require=)` →
+  `ResolutionVerification` recomputes it offline and **re-derives the whole decision from the recorded
+  claims** (`decision_sound`), so a flipped verdict is caught even after re-sealing. Because the hash
+  excludes the arbiter, two arbiters reading the same records compute the same co-signable hash.
+  `.require_valid()` / `.require_resolved()`, `.standing_claims` / `.rejected_claims` /
+  `.inadmissible_claims` / `.dissenters`.
+- **Arbitration on the app & book surface.** `app.arbitrate(records, *, contract_id=None, sign=True,
+  verify_with=None, record_audit=True, record_reputation=True)` adjudicates, signs the resolution as
+  the app, records it on the audit chain (action `arbitration`), and **closes the reputation loop** by
+  debiting each dissenter (the party whose admissible claim did not stand; an unresolved standoff
+  debits nobody). `book.arbitrate(*counterparty_records, contract_id=None, sign=True, verify_with=None)`
+  resolves one org's own record against a counterparty's submitted claims.
+- **An `arbitration` VincioBench family** holding a resolution-correctness SLO (a co-signed figure is
+  upheld, a contradicting claim is rejected and its claimant pinpointed, a standoff is left unresolved,
+  and a tampered claim is inadmissible) and a resolution-integrity SLO (the resolution signs and
+  verifies offline, a tampered verdict is caught even after re-sealing because the decision re-derives
+  from the claims, two arbiters compute the same co-signable hash, and the adjudication is audited and
+  debits the dissenter).
+- **Example `72_cross_org_dispute_arbitration.py`** and a dispute-resolution section in the settlement
+  guide.
+
+### Public surface
+
+- Added to `vincio.__all__`: `Resolution`, `arbitrate`. The supporting types (`ResolutionStatus`,
+  `ResolutionVerification`, `ClaimVerdict`) are exported from `vincio.settlement`. `API_VERSION`
+  remains `3.0`.
+
 ## [3.27.0] - 2026-06-22
 
 Cross-org settlement netting & multilateral clearing. With bilateral settlements signed, reconciled,

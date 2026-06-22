@@ -199,12 +199,66 @@ netting.require_clean()   # raises if any contract was disputed
 `book.net()` nets a single org's own book into its position against each
 counterparty — the same calculation, one ledger.
 
+## Resolving a dispute
+
+Netting *pinpoints* a disagreement as a `NettingDispute`, and `reconcile` pinpoints
+one between two records — but neither *resolves* it. **Arbitration** does: each party
+submits its signed `SettlementRecord`s for the disputed contract and the
+deterministic `arbitrate` decides which figure stands, producing a content-bound,
+offline-verifiable `Resolution`.
+
+```python
+from vincio import arbitrate
+
+# The buyer and the seller each submit their signed record for the contract.
+resolution = app.arbitrate([buyer_record, seller_record])   # signs, audits
+print(resolution.status)                                    # "upheld" | "unresolved"
+```
+
+The decision rests on nothing it cannot recompute. A reconciliation hash that **both**
+the buyer and the seller signed — each on their own record, the two co-signing one
+figure exactly as `reconcile` describes — is mutually corroborated and **stands**; a
+unilateral claim contradicting it is **rejected** and its claimant pinpointed; a single
+uncontested figure stands on its own. When neither side's figure is corroborated the
+dispute is honestly left **unresolved** rather than decided by fiat:
+
+```python
+if resolution.upheld:
+    print(resolution.upheld_balance_usd, "corroborated by", resolution.corroborated_by)
+    for claim in resolution.rejected_claims:
+        print("rejected:", claim.settlement_id, claim.reason)
+else:
+    resolution.require_resolved()   # raises: no figure was corroborated
+```
+
+Unlike netting, which *refuses* to clear over a tampered book, arbitration is the
+venue where a bad claim is adjudicated: a tampered or forged claim is marked
+**inadmissible** and pinpointed (`resolution.inadmissible_claims`), never silently
+dropped and never crashing the resolution. The `Resolution` is offline-verifiable the
+way a record is — `verify()` recomputes the resolution hash from the bytes alone and
+re-derives the whole decision from the recorded claims, so a flipped verdict is caught
+even after re-sealing, and two arbiters reading the same records compute the same
+co-signable hash:
+
+```python
+verdict = resolution.verify(app.contract_signer)
+assert verdict.valid and verdict.hash_ok and verdict.decision_sound
+```
+
+Resolving a dispute also **closes the reputation loop**: the party whose claim did not
+stand is debited, so a bad-faith revision weights the next negotiation. `book.arbitrate()`
+resolves one org's own record against a counterparty's submitted claims — the dispute
+counterpart of `book.reconcile_with()`.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
 marketplace. There is no money movement, no escrow service, no managed clearing
-house — a settlement is a typed, signed record you hold and verify yourself, the
-book is a hash-chained ledger each organization keeps on its own, and netting is a
-clearing *calculation* over those books, not a clearing *house*. Vincio gives you a
-verifiable reconciliation of what was owed and delivered, and a verifiable netting of
-it across a fleet; how an obligation is paid is yours.
+house, no arbitration service or court of record — a settlement is a typed, signed
+record you hold and verify yourself, the book is a hash-chained ledger each
+organization keeps on its own, netting is a clearing *calculation* over those books,
+not a clearing *house*, and arbitration is a deterministic adjudication over the
+parties' own signed records, not a third party that rules by fiat. Vincio gives you a
+verifiable reconciliation of what was owed and delivered, a verifiable netting of it
+across a fleet, and a verifiable resolution when two books disagree; how an obligation
+is paid is yours.

@@ -301,10 +301,12 @@ from .settlement import (
     MeterReading,
     NettingSet,
     Reconciliation,
+    Resolution,
     SettlementBook,
     SettlementRecord,
     SettlementReport,
     UsageEvent,
+    arbitrate,
     net_books,
     net_settlements,
     reconcile,
@@ -322,7 +324,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.27.0"
+__version__ = "3.28.0"
 
 __all__ = [
     "ContextApp",
@@ -469,6 +471,9 @@ __all__ = [
     "NettingSet",
     "net_settlements",
     "net_books",
+    # cross-org dispute resolution & arbitration
+    "Resolution",
+    "arbitrate",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",
