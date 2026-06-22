@@ -1909,6 +1909,21 @@
     "families.reputation_portability.escrow_folds_into_settlement_path": {
       "eq": true
     },
+    "families.reputation_portability.pool_allocates_proportionally": {
+      "eq": true
+    },
+    "families.reputation_portability.pool_draws_and_frees": {
+      "eq": true
+    },
+    "families.reputation_portability.pool_topup_surfaces": {
+      "eq": true
+    },
+    "families.reputation_portability.pool_auditable_offline": {
+      "eq": true
+    },
+    "families.reputation_portability.pool_content_bound": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

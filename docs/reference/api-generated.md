@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**337** public symbols.
+**342** public symbols.
 
 ## Classes
 
@@ -185,6 +185,14 @@ Field/claim-level citation requirements for a cited report.
 ### `CitedReportBuilder(entailment=…, audit_log=…, tenant_id=…)`
 
 Resolve citations, verify per-claim support, render a cited report.
+
+### `CollateralPool(**data)`
+
+A counterparty's single posted stake backing many contracts — a margin account.
+
+### `CollateralPoolVerification(**data)`
+
+The (non-raising) outcome of verifying a collateral pool offline.
 
 ### `CommunityRegistry(allow_list=…, audit=…, signer=…, principal=…, require_signature=…, index=…)`
 
@@ -685,6 +693,10 @@ Flag likely-poisoned retrieved evidence from authority/provenance signals.
 ### `PolicySet(**data)`
 
 Deterministic per-run policies (policies).
+
+### `PooledContract(**data)`
+
+One contract a :class:`CollateralPool` backs, with its share and disposition.
 
 ### `PortableReputation(standings, verdicts, config, base=…, as_of=…, trust=…)`
 
@@ -1200,6 +1212,10 @@ Mark a function or class as deprecated.
 
 List installed Vincio plugins without registering them.
 
+### `draw_pool(pool, record, config=…)`
+
+Settle one backed contract against a settlement record (draw or release).
+
 ### `edge_environment()`
 
 Detect the current runtime and report its edge-relevant capabilities.
@@ -1271,6 +1287,10 @@ Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
 ### `net_settlements(records, owner=…, fleet=…, verify_with=…)`
 
 Fold a fleet's settled contracts into a minimal cleared set of obligations.
+
+### `post_collateral_pool(contracts, poster=…, posted=…, decisions=…, fraction=…, config=…)`
+
+Post one stake backing many contracts into an (unsigned) :class:`CollateralPool`.
 
 ### `post_escrow(contract, decision=…, fraction=…, amount=…, poster=…, beneficiary=…, config=…)`
 

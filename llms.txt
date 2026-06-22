@@ -1343,6 +1343,40 @@ app.run("export button 500s").output.label
   config=, party=, sign=True)`, and `app.settle(contract, ..., escrow=None, escrow_config=None)` resolve it in the
   same call — every transition signed and on the audit chain (action `escrow`, decision = the state). Deterministic
   and offline — never a hosted escrow custodian or a payment rail.
+- **Cross-org collateral pooling & cross-contract margin.** `from vincio import CollateralPool,
+  CollateralPoolVerification, PooledContract, post_collateral_pool, draw_pool` (all also in
+  `vincio.settlement.__all__`; `PooledContractState`, `PoolStatus` are subpackage-only). An `Escrow` backs *one*
+  contract; a counterparty running many concurrent contracts had to lock **separate** collateral per deal even
+  though its breaches and clean deliveries net out (capital stranded contract-by-contract the way bilateral
+  settlements were before netting). A `CollateralPool` is a **bounded margin account** posted once that backs many
+  contracts — the collateral analogue of a `NettingSet`. `post_collateral_pool(contracts, *, poster=None,
+  posted=None, decisions=None, fraction=None, config=None)` → a sealed, unsigned `CollateralPool`: each contract's
+  `required_usd` re-derives via the same source resolver as `post_escrow` (a matching `AdmissionDecision` in
+  `decisions` — a dict keyed by contract id or one decision for all — a uniform `fraction`, or the posture stamped
+  onto each contract's terms); `poster` defaults to the common seller; `posted` defaults to the total required (so
+  the pool starts exactly collateralized). Each open contract is **allocated** `required_usd × coverage`
+  (`coverage = min(1, balance/required_open)`), proportional to its requirement. `CollateralPool`
+  (`.poster`/`.contracts` (`PooledContract`: `.contract_id`/`.contract_hash`, `.buyer`/`.seller`/`.beneficiary`,
+  `.required_usd`/`.allocated_usd`, `.state` (`open`|`released`|`forfeited`), `.shortfall_fraction`/
+  `.forfeited_usd`/`.released_usd`/`.breaches`, `.settlement_hash`), `.posted_usd`/`.drawn_usd`/`.balance_usd`/
+  `.required_open_usd`/`.available_usd`/`.topup_usd`/`.coverage`, `.status` (`posted`|`active`|`settled`),
+  `.needs_topup`/`.residual_usd`/`.parties`/`.beneficiaries`/`.open_contracts`, `.contract(id)`): **content-bound &
+  offline-verifiable** — `.compute_hash`/`.seal` (contracts sorted by id so add-order is irrelevant), `.sign(signer,
+  party)` (poster or a counterparty only), `.verify(verifier=None, *, require=None)` →
+  `CollateralPoolVerification(valid, hash_ok, terms_sound, signatures_ok, signed_by, reason)` re-derives every
+  allocation and reconciles the balance (`balance == posted − drawn`, top-up == `max(0, required_open − balance)`,
+  each forfeiture == `min(shortfall, max_forfeit_fraction)·required`) so a tampered allocation/balance/forfeiture is
+  caught even after re-sealing, `.require_valid()`, `.to_wire`/`.from_wire`. `.draw(record, *, config=None)` /
+  `draw_pool(pool, record, *, config=None)` settles one backed contract against its `SettlementRecord`: a clean
+  delivery releases its requirement back to the available balance (frees capital for the next deal), a breach draws
+  a bounded slice from the shared stake and releases the rest — driven by the same record verdict, never the whole
+  stake. `.back(contract, *, decision=/fraction=/amount=, beneficiary=)` adds a contract to the open pool (may
+  surface a top-up); `.top_up(amount)` adds capital to clear a top-up obligation. Reuses `EscrowConfig`
+  (`max_forfeit_fraction`) for the forfeiture policy. `app.post_collateral_pool(contracts, *, poster=, posted=,
+  decisions=, fraction=, config=, party=, sign=True)`, `app.draw_pool(pool, record, *, config=, party=, sign=True)`,
+  and `app.settle(contract, ..., pool=None)` draw it in the same call — every transition signed and on the audit
+  chain (action `collateral_pool`, decision = the status). Deterministic and offline — never a hosted clearing
+  house, a margin custodian, or a payment rail.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

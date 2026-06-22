@@ -502,6 +502,67 @@ class Escrow(BaseModel):
 # -- module-level builders -----------------------------------------------------
 
 
+def _resolve_collateral(
+    contract: Any,
+    *,
+    decision: Any | None,
+    fraction: float | None,
+    amount: float | None,
+    source: str = "post_escrow",
+) -> tuple[float, float, float, str | None, str]:
+    """Resolve the collateral a contract must post, from its admission posture.
+
+    The shared collateral-source resolver for :func:`post_escrow` and the
+    :class:`~vincio.settlement.collateral.CollateralPool`: returns the contract
+    ``price``, the resolved ``fraction`` and ``amount`` of collateral, and the
+    admission decision id / hash it was read from. The amount comes from, in order: an
+    explicit ``amount`` (a flat stake), an explicit ``fraction`` of the contract price,
+    an :class:`~vincio.settlement.admission.AdmissionDecision`'s ``escrow_fraction``
+    (``decision``), or the admission posture stamped onto the contract's terms metadata.
+    Raises :class:`SettlementError` when no source is given and the terms carry no
+    admission posture, or when the resolved fraction / amount is negative.
+    """
+    terms = contract.terms
+    price = round(float(getattr(terms, "price_usd", 0.0)), 9)
+    decision_id: str | None = None
+    decision_hash = ""
+    resolved_fraction = 0.0
+
+    if amount is not None:
+        resolved_amount = round(float(amount), 6)
+    elif fraction is not None:
+        resolved_fraction = float(fraction)
+        resolved_amount = round(resolved_fraction * price, 6)
+    elif decision is not None:
+        resolved_fraction = float(getattr(decision, "escrow_fraction", 0.0))
+        resolved_amount = round(resolved_fraction * price, 6)
+        decision_id = getattr(decision, "id", None)
+        decision_hash = getattr(decision, "content_hash", "") or ""
+    else:
+        stamp = dict(getattr(terms, "metadata", {}) or {}).get("admission") or {}
+        if "escrow_fraction" not in stamp:
+            raise SettlementError(
+                f"{source} needs a collateral source: pass amount=, fraction=, "
+                "decision=, or a contract whose terms carry an admission posture",
+                details={"contract_id": getattr(contract, "id", None)},
+            )
+        resolved_fraction = float(stamp["escrow_fraction"])
+        resolved_amount = round(resolved_fraction * price, 6)
+        decision_id = stamp.get("decision_id")
+
+    if resolved_fraction < 0.0:
+        raise SettlementError(
+            f"collateral fraction must be non-negative; got {resolved_fraction}",
+            details={"contract_id": getattr(contract, "id", None)},
+        )
+    if resolved_amount < 0.0:
+        raise SettlementError(
+            f"collateral amount must be non-negative; got {resolved_amount}",
+            details={"contract_id": getattr(contract, "id", None)},
+        )
+    return price, resolved_fraction, resolved_amount, decision_id, decision_hash
+
+
 def post_escrow(
     contract: Any,
     *,
@@ -528,45 +589,10 @@ def post_escrow(
     :class:`SettlementError` when no collateral source is given and the contract carries
     no admission posture to read one from.
     """
+    price, resolved_fraction, resolved_amount, decision_id, decision_hash = _resolve_collateral(
+        contract, decision=decision, fraction=fraction, amount=amount, source="post_escrow"
+    )
     terms = contract.terms
-    price = round(float(getattr(terms, "price_usd", 0.0)), 9)
-    decision_id: str | None = None
-    decision_hash = ""
-    resolved_fraction = 0.0
-
-    if amount is not None:
-        resolved_amount = round(float(amount), 6)
-    elif fraction is not None:
-        resolved_fraction = float(fraction)
-        resolved_amount = round(resolved_fraction * price, 6)
-    elif decision is not None:
-        resolved_fraction = float(getattr(decision, "escrow_fraction", 0.0))
-        resolved_amount = round(resolved_fraction * price, 6)
-        decision_id = getattr(decision, "id", None)
-        decision_hash = getattr(decision, "content_hash", "") or ""
-    else:
-        stamp = dict(getattr(terms, "metadata", {}) or {}).get("admission") or {}
-        if "escrow_fraction" not in stamp:
-            raise SettlementError(
-                "post_escrow needs a collateral source: pass amount=, fraction=, "
-                "decision=, or a contract whose terms carry an admission posture",
-                details={"contract_id": getattr(contract, "id", None)},
-            )
-        resolved_fraction = float(stamp["escrow_fraction"])
-        resolved_amount = round(resolved_fraction * price, 6)
-        decision_id = stamp.get("decision_id")
-
-    if resolved_fraction < 0.0:
-        raise SettlementError(
-            f"escrow fraction must be non-negative; got {resolved_fraction}",
-            details={"contract_id": getattr(contract, "id", None)},
-        )
-    if resolved_amount < 0.0:
-        raise SettlementError(
-            f"escrow amount must be non-negative; got {resolved_amount}",
-            details={"contract_id": getattr(contract, "id", None)},
-        )
-
     escrow = Escrow(
         contract_id=contract.id,
         contract_hash=getattr(contract, "content_hash", "") or "",

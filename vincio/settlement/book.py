@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
+from .collateral import COLLATERAL_ACTION, CollateralPool, post_collateral_pool
 from .escrow import ESCROW_ACTION, Escrow, post_escrow
 from .meter import Meter, MeterReading
 from .record import (
@@ -355,6 +356,7 @@ class SettlementBook:
         record_reputation: bool = True,
         escrow: Escrow | None = None,
         escrow_config: Any | None = None,
+        pool: CollateralPool | None = None,
     ) -> SettlementRecord:
         """Reconcile delivery against a contract and close the books on it.
 
@@ -370,6 +372,11 @@ class SettlementBook:
         fulfilled delivery, a bounded proportional slice forfeited on a breach), signed,
         and audited in place — so the collateral closes the same loop the settlement
         does. ``escrow_config`` overrides the forfeiture policy for that resolution.
+
+        Pass a ``pool`` the contract is backed by to draw the same settlement against a
+        shared :class:`~vincio.settlement.collateral.CollateralPool` instead: the
+        forfeiture is drawn from the pooled stake and the rest released back to the
+        available balance, re-signed and audited in place.
         """
         record = settle_contract(
             contract,
@@ -389,6 +396,8 @@ class SettlementBook:
             self.settle_escrow(
                 escrow, record, party=party, sign=sign, config=escrow_config
             )
+        if pool is not None:
+            self.draw_pool(pool, record, party=party, sign=sign, config=escrow_config)
         return record
 
     def settle_saga(
@@ -511,6 +520,85 @@ class SettlementBook:
             details=escrow.audit_details(),
         )
         escrow.audit_id = getattr(entry, "id", None)
+
+    # -- collateral pooling -------------------------------------------------
+
+    def post_collateral_pool(
+        self,
+        contracts: Any,
+        *,
+        poster: str | None = None,
+        posted: float | None = None,
+        decisions: Any | None = None,
+        fraction: float | None = None,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> CollateralPool:
+        """Post one stake backing many contracts, signed and audited.
+
+        Builds the :class:`~vincio.settlement.collateral.CollateralPool`
+        (:func:`~vincio.settlement.collateral.post_collateral_pool`) holding a single stake
+        against the admission-required collateral of each contract — read from a matching
+        :class:`~vincio.settlement.admission.AdmissionDecision` in ``decisions``, a uniform
+        ``fraction``, or the admission posture stamped onto each contract's terms — signs it
+        as this book's owner (when a party to the pool), and records the posting on the
+        audit chain. Returns the pool.
+        """
+        pool = post_collateral_pool(
+            contracts,
+            poster=poster,
+            posted=posted,
+            decisions=decisions,
+            fraction=fraction,
+            config=config,
+        )
+        resolved_party = self._resolve_pool_party(party, pool)
+        if sign and self.signer is not None and resolved_party is not None:
+            pool.sign(self.signer, party=resolved_party)
+        self._audit_pool(pool)
+        return pool
+
+    def draw_pool(
+        self,
+        pool: CollateralPool,
+        record: SettlementRecord,
+        *,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> CollateralPool:
+        """Draw one backed contract's settlement against a collateral pool, signed and audited.
+
+        Draws a bounded forfeiture from the shared stake on a breach and releases the rest
+        back to the available balance on a clean delivery
+        (:meth:`~vincio.settlement.collateral.CollateralPool.draw`), re-signs the pool as
+        this book's owner, and records the draw on the audit chain — so the pooled
+        collateral's whole lifecycle is on the same tamper-evident log the settlement is.
+        Returns the pool.
+        """
+        pool.draw(record, config=config)
+        resolved_party = self._resolve_pool_party(party, pool)
+        if sign and self.signer is not None and resolved_party is not None:
+            pool.sign(self.signer, party=resolved_party)
+        self._audit_pool(pool)
+        return pool
+
+    def _resolve_pool_party(self, party: str | None, pool: CollateralPool) -> str | None:
+        if party is not None:
+            return party
+        return self.owner if self.owner in pool.parties else None
+
+    def _audit_pool(self, pool: CollateralPool) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            COLLATERAL_ACTION,
+            resource=pool.id,
+            decision=pool.status,
+            details=pool.audit_details(),
+        )
+        pool.audit_id = getattr(entry, "id", None)
 
     # -- reads --------------------------------------------------------------
 

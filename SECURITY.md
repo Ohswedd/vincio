@@ -742,6 +742,35 @@ is **idempotent-guarded** (an already-resolved escrow refuses re-resolution) and
 matched** (a record for a different contract is refused), so the collateral cannot be drained
 twice or settled against the wrong delivery.
 
+### Cross-org collateral pooling & cross-contract margin
+
+A collateral pool (`CollateralPool` / `post_collateral_pool` / `draw_pool` /
+`app.post_collateral_pool` / `app.settle(pool=…)` in `vincio.settlement.collateral`) is a
+**mechanical, reconstructable margin account that allocates one posted stake across many
+contracts and draws it deterministically, never a hosted clearing house, a margin custodian,
+or an omnibus account**. It is a defense against **capital stranded contract-by-contract**:
+without it, a counterparty backing many concurrent deals locks separate collateral per
+contract even though its breaches and clean deliveries net out. A `CollateralPool` binds a
+counterparty's single posted stake to the **specific** set of contracts it backs (each by id
+and content hash) and allocates each a per-contract share **proportional to its
+admission-required collateral** — so what backs each deal is a mechanical number, not a
+custodian's omnibus assertion, and the pool reads only the collateral the fabric already
+requires, asserting nothing it cannot recompute. Settling a contract draws against the shared
+stake off the **same** `SettlementRecord` verdict the books close on (it never re-judges
+delivery): a clean delivery releases the contract's requirement back to the available balance,
+and a breach draws a bounded slice **proportional to the shortfall** — `min(shortfall,
+max_forfeit_fraction)` of that contract's required collateral, **never the whole stake, never
+punitive**. The pool is **conservation-checked and content-bound**: `CollateralPool.verify`
+recomputes the content hash and **re-derives every allocation and reconciles the balance**
+(`balance == posted − drawn`, the top-up and each forfeiture re-derive from the bytes), so a
+tampered allocation, balance, or forfeiture is caught even after re-sealing. A pool committed
+below the collateral its open contracts require **surfaces a bounded, pinpointed top-up
+obligation rather than silently over-committing**, so an under-collateralized margin account
+is named, never hidden; only the poster or a counterparty can sign, drawing a contract is
+**idempotent-guarded** and **pool-matched** (a record for an unbacked or already-settled
+contract is refused), and every post, draw, release, and top-up lands on the hash-chained
+audit log.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

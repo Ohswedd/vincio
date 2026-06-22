@@ -509,6 +509,56 @@ the contract, the amount, and the verdict onto a content hash that `Escrow.verif
 recomputes — a tampered amount or forfeiture is caught even after re-sealing — and lands on
 the hash-chained audit log, so an escrow's whole lifecycle is reconstructable offline.
 
+## Pooling collateral across many contracts
+
+An escrow backs *one* contract. A counterparty running many concurrent contracts would have
+to lock **separate** collateral per deal — even though its breaches and clean deliveries
+across those contracts net out, so capital is stranded contract-by-contract the way bilateral
+settlements were stranded book-by-book before netting folded them. A `CollateralPool`
+(`app.post_collateral_pool` / `post_collateral_pool`) is a **bounded margin account** a
+counterparty posts once that backs many contracts — the collateral analogue of a
+`NettingSet`.
+
+```python
+# One stake backs three concurrent contracts, allocated per-contract by required collateral.
+pool = buyer.post_collateral_pool([c1, c2, c3], decisions=decision)
+pool.posted_usd                  # the single stake (defaults to the total required)
+[c.allocated_usd for c in pool.contracts]   # shares proportional to each required collateral
+pool.verify().valid              # offline-verifiable — allocations re-derive, balance reconciles
+```
+
+Each contract's required collateral re-derives from its admission posture exactly as a
+standalone escrow's does — a matching `AdmissionDecision` in `decisions=` (a dict keyed by
+contract id, or one decision applied to all), a uniform `fraction=`, or the posture stamped
+onto each contract's terms. The poster defaults to the seller every contract shares.
+
+Settling a contract draws against the **shared stake** instead of a per-deal escrow:
+
+```python
+buyer.settle(c1, cost_usd=60.0, pool=pool)    # clean — frees its requirement back to available
+buyer.settle(c2, cost_usd=300.0, pool=pool)   # a breach — draws a bounded slice from the stake
+pool.contract(c2.id).forfeited_usd            # proportional to the shortfall, never the whole stake
+pool.available_usd                            # capital the clean delivery freed for the next deal
+```
+
+A clean delivery frees its committed capital back to the available balance (reused, not
+stranded), and a breach draws a bounded, pinpointed slice — the **same** proportional forfeiture
+the `SettlementRecord` verdict measures — from the shared stake, releasing the rest. A pool
+committed below the collateral its still-open contracts require surfaces a bounded, pinpointed
+**top-up** obligation rather than silently over-committing:
+
+```python
+pool.back(c4, decision=decision)   # backing a new deal can over-commit the pool
+pool.topup_usd                     # the bounded amount the pool is short by
+pool.top_up(pool.topup_usd)        # add capital; the obligation clears
+```
+
+Every post, draw, release, and top-up binds the pool, the contracts, and the balances onto a
+content hash that `CollateralPool.verify` recomputes — the allocations re-derive and the
+balance reconciles (posted minus drawn), so a tampered allocation or balance is caught even
+after re-sealing — and lands on the hash-chained audit log, so a pool's whole lifecycle is
+reconstructable offline.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -524,13 +574,16 @@ those signed artifacts from peers you govern, not a hosted reputation registry o
 push-based gossip bus, the trust kernel is a bounded, transitive weighting computed
 in-process from your own ledger, not a central trust authority or a Sybil-detection service,
 an admission decision is a mechanical, reconstructable exposure number computed from the
-standing you already hold, not a hosted underwriting service, and an escrow is a verifiable
+standing you already hold, not a hosted underwriting service, an escrow is a verifiable
 record of collateral posted against a contract and settled deterministically against the
-delivery verdict, not a custodian's ledger entry, an escrow service, or money in motion.
-Vincio gives you a verifiable
+delivery verdict, not a custodian's ledger entry, an escrow service, or money in motion, and a
+collateral pool is a verifiable margin account that allocates one posted stake across many
+contracts and draws it deterministically, not a hosted clearing house, a margin custodian, or
+an omnibus account. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
 your own earned trust, a verifiable way to bound a counterparty's exposure to what its
-standing justifies, and a verifiable way to back that exposure with posted collateral; how
-an obligation is paid is yours.
+standing justifies, a verifiable way to back that exposure with posted collateral, and a
+verifiable way to pool that collateral across many concurrent deals; how an obligation is paid
+is yours.

@@ -3213,6 +3213,7 @@ class ContextApp:
         record_reputation: bool = True,
         escrow: Any | None = None,
         escrow_config: Any | None = None,
+        pool: Any | None = None,
     ) -> Any:
         """Close the books on contracted work: reconcile, sign, audit, and record.
 
@@ -3236,6 +3237,12 @@ class ContextApp:
         released on a fulfilled delivery, a bounded proportional slice forfeited on a
         breach — signed, and audited in place, so the collateral closes the same loop the
         settlement does. ``escrow_config`` overrides the forfeiture policy.
+
+        Pass a ``pool`` the contract is backed by (:meth:`post_collateral_pool`) to draw the
+        same settlement against a shared
+        :class:`~vincio.settlement.CollateralPool` instead — the forfeiture drawn from the
+        pooled stake and the rest released back to the available balance, re-signed and
+        audited in place.
         """
         return self._settlement_book().settle(
             contract,
@@ -3249,6 +3256,7 @@ class ContextApp:
             record_reputation=record_reputation,
             escrow=escrow,
             escrow_config=escrow_config,
+            pool=pool,
         )
 
     def post_escrow(
@@ -3316,6 +3324,69 @@ class ContextApp:
         """
         return self._settlement_book().settle_escrow(
             escrow, record, config=config, party=party, sign=sign
+        )
+
+    def post_collateral_pool(
+        self,
+        contracts: Any,
+        *,
+        poster: str | None = None,
+        posted: float | None = None,
+        decisions: Any | None = None,
+        fraction: float | None = None,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> Any:
+        """Post one stake backing many contracts as a signed, offline-verifiable margin account.
+
+        Binds a counterparty's single posted stake to the set of ``contracts`` it backs into
+        a :class:`~vincio.settlement.CollateralPool`, allocating each a per-contract share
+        proportional to its admission-required collateral — read from a matching
+        :class:`~vincio.settlement.AdmissionDecision` in ``decisions``, a uniform
+        ``fraction``, or the admission posture stamped onto each contract's terms. Signs it
+        as this app's side and appends the posting to the settlement book's audit chain. A
+        clean delivery frees capital for the next contract and a breach is covered from the
+        shared stake; :meth:`settle` (with ``pool=``) or :meth:`draw_pool` draws an open
+        contract's settlement against it::
+
+            pool = app.post_collateral_pool([c1, c2, c3], decisions={c1.id: d1, ...})
+            pool.verify().valid  # offline-verifiable — allocations re-derive, balance reconciles
+        """
+        return self._settlement_book().post_collateral_pool(
+            contracts,
+            poster=poster,
+            posted=posted,
+            decisions=decisions,
+            fraction=fraction,
+            config=config,
+            party=party,
+            sign=sign,
+        )
+
+    def draw_pool(
+        self,
+        pool: Any,
+        record: Any,
+        *,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> Any:
+        """Draw one backed contract's settlement against a collateral pool (draw or release).
+
+        Settles the matching contract against its
+        :class:`~vincio.settlement.SettlementRecord` (from :meth:`settle`): draws a bounded
+        slice proportional to the shortfall from the shared stake on a breach and releases
+        the rest back to the available balance on a clean delivery — driven by the same
+        settlement verdict — re-signs the pool as this app, and records the draw on the
+        audit chain. ``config`` overrides the forfeiture policy. Returns the pool::
+
+            record = app.settle(contract, cost_usd=140.0)   # a cost overrun: a breach
+            app.draw_pool(pool, record)                     # draws a proportional slice
+        """
+        return self._settlement_book().draw_pool(
+            pool, record, config=config, party=party, sign=sign
         )
 
     def settle_saga(
