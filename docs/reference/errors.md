@@ -330,3 +330,11 @@ without an entry here.
 ### EDGE_ERROR
 
 **Edge runtime request invalid or over profile.** Give the `EdgeRequest` a `task` or `objective`; under `strict=True`, raise the `EdgeProfile`'s `max_resident_bytes` / `max_input_tokens` or trim the request's evidence so the packet fits the edge profile.
+
+### NEGOTIATION_ERROR
+
+**Negotiation could not proceed.** Check the `NegotiationPosition` is coherent (the reservation must be no better for the party than its ideal) and the `NegotiationBudget` has positive `max_rounds`. A negotiation that runs out of rounds without a deal does not raise — it returns a partial NegotiationResult with `status='no_agreement'`.
+
+### CONTRACT_VIOLATION
+
+**Contract failed verification or was breached.** The contract's content hash did not recompute, a signature is missing or invalid, or delivered work breached the agreed price/SLA/quality (see `.breaches`). Re-verify with the signer both parties used, or renegotiate; use `contract.to_budget()` to enforce the terms up front.

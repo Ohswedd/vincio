@@ -320,6 +320,10 @@ class ContextApp:
         # from how each federated contribution fared against the no-regression gate
         # and reliability-weights the federated aggregation accordingly.
         self.reputation_ledger: Any = None
+        # Lazily-built signer for negotiated contracts when neither an explicit
+        # signer nor an audit-chain signer is available (so an offline negotiation
+        # still produces a signed, self-verifiable contract).
+        self._contract_signer: Any = None
         self.input_router = InputRouter()
 
         # provider
@@ -2747,6 +2751,183 @@ class ContextApp:
         if allow is not None or deny is not None or default_allow is False:
             gate = AllowListGate(allow=allow, deny=deny, default_allow=default_allow)
         return AgentDirectory(allow_list=gate, audit=self.audit)
+
+    # -- agent negotiation & contracting --------------------------------------
+
+    def _negotiation_party(self, spec: Any, role: str, member_id: str) -> Any:
+        """Coerce a position or a party into a negotiating :class:`Party`."""
+        from ..negotiation import LocalParty, NegotiationPosition
+        from ..negotiation.engine import Party
+
+        if isinstance(spec, NegotiationPosition):
+            if spec.role != role:
+                raise ConfigError(
+                    f"negotiate {role}= expects a {role} position; got role={spec.role!r}"
+                )
+            return LocalParty(member_id, spec, reputation=self.reputation_ledger)
+        if isinstance(spec, Party):
+            return spec
+        raise ConfigError(
+            f"negotiate {role}= must be a NegotiationPosition or a negotiation Party"
+        )
+
+    def _resolve_contract_signer(self, signer: Any | None, sign: bool) -> Any | None:
+        """Pick the signer for a contract: explicit → audit signer → per-app key."""
+        if signer is not None:
+            return signer
+        if not sign:
+            return None
+        audit_signer = getattr(self.audit, "signer", None)
+        if audit_signer is not None:
+            return audit_signer
+        if self._contract_signer is None:
+            from ..core.utils import new_id
+            from ..security.audit import HMACSigner
+
+            self._contract_signer = HMACSigner(
+                new_id("contract-key"), key_id=f"{self.name}-contracts"
+            )
+        return self._contract_signer
+
+    async def anegotiate(
+        self,
+        scope: str,
+        *,
+        buyer: Any,
+        seller: Any,
+        budget: Any | None = None,
+        signer: Any | None = None,
+        sign: bool = True,
+        buyer_id: str = "buyer",
+        seller_id: str = "seller",
+    ) -> Any:
+        """Run a bounded buyer/seller negotiation; return a :class:`NegotiationResult`.
+
+        ``buyer`` / ``seller`` are each a
+        :class:`~vincio.negotiation.NegotiationPosition` (run as a local,
+        deterministic party) or an already-built
+        :class:`~vincio.negotiation.Party` — e.g. an
+        :class:`~vincio.negotiation.A2ANegotiator` reaching a counterparty over the
+        A2A fabric. The bargain is bounded by ``budget`` (a
+        :class:`~vincio.negotiation.NegotiationBudget` or a kwargs dict);
+        termination is guaranteed, returning a partial result on a deadline. On
+        agreement a :class:`~vincio.negotiation.Contract` is minted and signed by
+        both parties (with ``signer``, else the audit-chain signer, else a per-app
+        key), and the outcome is recorded on the hash-chained audit log. When a
+        reputation ledger is attached (:meth:`use_reputation_ledger`) it weights
+        each local party's view of the counterparty's offers — a regressing agent
+        is discounted without being singled out::
+
+            from vincio.negotiation import buyer_position, seller_position
+
+            result = app.negotiate(
+                "transcribe 1k support calls",
+                buyer=buyer_position(max_price_usd=0.10, max_sla_seconds=5.0),
+                seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.12),
+            )
+            if result.agreed:
+                result.contract.verify(app.contract_signer)  # offline-verifiable
+        """
+        from ..negotiation import Negotiation, NegotiationBudget
+
+        nbudget = (
+            budget
+            if isinstance(budget, NegotiationBudget)
+            else NegotiationBudget(**(budget or {}))
+        )
+        buyer_party = self._negotiation_party(buyer, "buyer", buyer_id)
+        seller_party = self._negotiation_party(seller, "seller", seller_id)
+        contract_signer = self._resolve_contract_signer(signer, sign)
+        negotiation = Negotiation(
+            buyer_party,
+            seller_party,
+            budget=nbudget,
+            signer=contract_signer,
+            audit=self.audit,
+            events=self.events,
+        )
+        return await negotiation.run(scope)
+
+    def negotiate(self, scope: str, **kwargs: Any) -> Any:
+        """Synchronous wrapper around :meth:`anegotiate`."""
+        return run_sync(self.anegotiate(scope, **kwargs))
+
+    @property
+    def contract_signer(self) -> Any | None:
+        """The signer this app uses to sign/verify contracts (may build one)."""
+        return self._resolve_contract_signer(None, True)
+
+    def serve_negotiation(
+        self,
+        party: Any,
+        *,
+        name: str | None = None,
+        url: str = "",
+        description: str = "",
+        token_validator: Any | None = None,
+    ) -> Any:
+        """Expose a local negotiating :class:`~vincio.negotiation.Party` over A2A.
+
+        Returns an :class:`~vincio.a2a.A2AServer` whose Agent Card advertises a
+        ``negotiate`` skill; a remote engine reaches it with an
+        :class:`~vincio.negotiation.A2ANegotiator`. Each offer exchange is a
+        bounded, audited A2A task on this app's hash-chained log.
+        """
+        from ..negotiation.fabric import negotiation_a2a_server
+
+        return negotiation_a2a_server(
+            party,
+            name=name,
+            url=url,
+            description=description,
+            token_validator=token_validator,
+            audit=self.audit,
+        )
+
+    def enforce_contract(
+        self,
+        contract: Any,
+        *,
+        cost_usd: float | None = None,
+        latency_ms: float | None = None,
+        quality: float | None = None,
+        raise_on_breach: bool = False,
+        record_reputation: bool = True,
+    ) -> Any:
+        """Check delivered work against a contract and record the verdict.
+
+        Compares the delivered cost / latency / quality against the agreed terms
+        (:meth:`~vincio.negotiation.Contract.check`), records a
+        ``contract_fulfillment`` decision on the audit chain, and — when a
+        reputation ledger is attached and ``record_reputation`` is set — credits
+        the seller on fulfilment or debits it on a breach, so a breached SLA
+        discounts the seller's future offers. Returns a
+        :class:`~vincio.negotiation.ContractFulfillment`.
+        """
+        fulfillment = contract.check(
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            quality=quality,
+            raise_on_breach=raise_on_breach,
+        )
+        self.audit.record(
+            "contract_fulfillment",
+            resource=getattr(contract, "id", None),
+            decision="fulfilled" if fulfillment.fulfilled else "breached",
+            details={
+                "seller": getattr(contract, "seller", None),
+                "buyer": getattr(contract, "buyer", None),
+                "breaches": fulfillment.breaches,
+            },
+        )
+        if record_reputation and self.reputation_ledger is not None:
+            self.reputation_ledger.record_outcome(
+                contract.seller,
+                passed=fulfillment.fulfilled,
+                round_id=getattr(contract, "id", "contract"),
+                details={"kind": "contract_fulfillment"},
+            )
+        return fulfillment
 
     # -- evaluators / optimizers ----------------------------------------------------------------------
 

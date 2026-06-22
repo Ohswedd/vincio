@@ -84,6 +84,8 @@ __all__ = [
     "ReplayDivergenceError",
     "EnergyBudgetError",
     "EdgeError",
+    "NegotiationError",
+    "ContractError",
 ]
 
 
@@ -701,3 +703,39 @@ class EdgeError(VincioError):
     """
 
     code = "EDGE_ERROR"
+
+
+# --- agent negotiation & contracting -----------------------------------------
+
+
+class NegotiationError(VincioError):
+    """A bounded agent negotiation could not proceed.
+
+    Raised on an incoherent :class:`~vincio.negotiation.NegotiationPosition`
+    (a reservation strictly worse for the party than its own ideal, a
+    non-positive concession exponent) or a :class:`~vincio.negotiation.Negotiation`
+    that cannot run (no buyer/seller party, a non-positive round budget). A
+    negotiation that simply reaches its round/deadline budget without a deal does
+    **not** raise — it returns a partial :class:`~vincio.negotiation.NegotiationResult`
+    with ``status="no_agreement"``; termination is a guarantee, not an error.
+    """
+
+    code = "NEGOTIATION_ERROR"
+
+
+class ContractError(NegotiationError):
+    """A negotiated contract failed verification or was breached.
+
+    Raised when a :class:`~vincio.negotiation.Contract`'s content hash does not
+    recompute, a required signature is missing or does not verify, or (with
+    ``raise_on_breach=True``) when delivered work breaches the agreed
+    price / SLA / quality terms the orchestrator enforces like any other budget.
+    The breaching terms are carried on :attr:`breaches` so the violation is
+    debuggable, not just flagged.
+    """
+
+    code = "CONTRACT_VIOLATION"
+
+    def __init__(self, message: str, *, breaches: list[Any] | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.breaches = breaches or []
