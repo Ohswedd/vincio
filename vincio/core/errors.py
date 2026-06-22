@@ -86,6 +86,8 @@ __all__ = [
     "EdgeError",
     "NegotiationError",
     "ContractError",
+    "ChoreographyError",
+    "CompensationError",
 ]
 
 
@@ -739,3 +741,35 @@ class ContractError(NegotiationError):
     def __init__(self, message: str, *, breaches: list[Any] | None = None, **kw: Any) -> None:
         super().__init__(message, **kw)
         self.breaches = breaches or []
+
+
+class ChoreographyError(VincioError):
+    """A cross-org workflow choreography could not proceed.
+
+    Raised when a :class:`~vincio.choreography.Saga` cannot run or resume — a step
+    that names a participant with no registered binding, a duplicate or empty step
+    set, or a :meth:`~vincio.choreography.Choreography.resume` for a ``saga_id``
+    that is not in the durable store. A saga whose forward step fails does **not**
+    raise — it compensates the completed steps and returns a
+    :class:`~vincio.choreography.SagaResult` with ``status="compensated"``; a clean
+    unwind is an outcome, not an error.
+    """
+
+    code = "CHOREOGRAPHY_ERROR"
+
+
+class CompensationError(ChoreographyError):
+    """A saga could not unwind cleanly: one or more compensations failed.
+
+    Raised (only with ``raise_on_compensation_failure=True``) when a compensating
+    step itself fails, so a half-completed cross-org transaction is left partially
+    unwound and needs operator attention. The steps whose compensation failed are
+    carried on :attr:`failures` so the residue is pinpointed, not just flagged; the
+    saga's :class:`~vincio.choreography.SagaResult` ends with ``status="failed"``.
+    """
+
+    code = "COMPENSATION_FAILED"
+
+    def __init__(self, message: str, *, failures: list[Any] | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.failures = failures or []

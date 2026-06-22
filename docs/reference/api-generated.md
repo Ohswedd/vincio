@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**283** public symbols.
+**293** public symbols.
 
 ## Classes
 
@@ -133,6 +133,10 @@ An unforgeable, capability-scoped grant minted from the user's request.
 ### `CausalAttributor(app, dataset, factors, metric=…, aggregate=…, repeats=…, concurrency=…)`
 
 Attribute a metric delta to the components a release changed, by Shapley counterfactual replay over the dataset.
+
+### `Choreography(saga, participants, coordinator=…, store=…, audit=…, events=…, signer=…, clock=…, raise_on_compensation_failure=…)`
+
+Drives a :class:`~vincio.choreography.saga.Saga` across organizations.
 
 ### `CircuitBreaker(inner, failure_threshold=…, min_calls=…, window=…, latency_threshold_ms=…, cooldown_s=…, half_open_max=…, events=…, clock=…)`
 
@@ -706,6 +710,10 @@ GEPA-style reflective prompt optimizer.
 
 Exponential intra-run relevance decay (the memory recency model, per run).
 
+### `RemoteParticipant(client, org_id)`
+
+A choreography :class:`Participant` whose steps run in a remote A2A org.
+
 ### `ReputationConfig(**data)`
 
 How a member's gate track record maps to an aggregation weight.
@@ -777,6 +785,22 @@ Result of a ContextApp run.
 ### `RunStreamEvent(**data)`
 
 Event emitted by the streaming run flow (``ContextApp.astream``).
+
+### `Saga(**data)`
+
+A cross-org compensating workflow: an ordered list of steps.
+
+### `SagaJournal(**data)`
+
+The durable, resumable, offline-verifiable record of one saga run.
+
+### `SagaResult(**data)`
+
+The outcome of a cross-org saga run — completion, a clean unwind, or a pause.
+
+### `SagaStep(**data)`
+
+One step of a :class:`Saga`: a forward action and its compensation.
 
 ### `ScheduleResult(**data)`
 
@@ -853,6 +877,18 @@ Stability contract for a public symbol.
 ### `StateGraph(name=…, state_schema=…, reducers=…, defaults=…)`
 
 Build-time graph definition; ``compile()`` produces the runnable form.
+
+### `StepOutcome(**data)`
+
+A participant's result for one dispatched step.
+
+### `StepRecord(**data)`
+
+One immutable, hash-chained entry in a :class:`SagaJournal`.
+
+### `StepRequest(**data)`
+
+The typed envelope dispatched to a participant for one step — the handoff.
 
 ### `SubgraphScheduler(workers=…, store=…, coordinator=…, lease_ttl_s=…, budget=…, deadline_s=…, clock=…)`
 
@@ -1003,6 +1039,10 @@ Names of all packs that can be loaded (built-in + installed plugins + registered
 ### `buyer_position(max_price_usd, ideal_price_usd=…, max_sla_seconds, ideal_sla_seconds=…, min_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)`
 
 Build a buyer position: wants low price, fast SLA, high quality.
+
+### `choreography_a2a_server(handlers, org_id=…, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)`
+
+Expose a local org's choreography handlers over A2A.
 
 ### `compose(*steps, name=…, tracer=…)`
 

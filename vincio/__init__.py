@@ -51,6 +51,18 @@ from .caching import (
     SemanticGateCase,
     ThresholdCalibrator,
 )
+from .choreography import (
+    Choreography,
+    RemoteParticipant,
+    Saga,
+    SagaJournal,
+    SagaResult,
+    SagaStep,
+    StepOutcome,
+    StepRecord,
+    StepRequest,
+    choreography_a2a_server,
+)
 from .context.llmlingua import LLMLinguaCompressor
 from .context.longhorizon import (
     ContextBudget,
@@ -291,7 +303,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.23.0"
+__version__ = "3.24.0"
 
 __all__ = [
     "ContextApp",
@@ -407,6 +419,17 @@ __all__ = [
     "select_offer",
     "buyer_position",
     "seller_position",
+    # cross-org workflow choreography
+    "Saga",
+    "SagaStep",
+    "SagaResult",
+    "SagaJournal",
+    "StepRecord",
+    "StepRequest",
+    "StepOutcome",
+    "Choreography",
+    "RemoteParticipant",
+    "choreography_a2a_server",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

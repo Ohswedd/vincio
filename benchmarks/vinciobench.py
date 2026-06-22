@@ -6411,6 +6411,189 @@ async def bench_edge() -> dict[str, Any]:
     }
 
 
+async def bench_choreography() -> dict[str, Any]:
+    """ChoreographyBench: durable, compensating cross-org sagas over the A2A fabric.
+
+    With agents that negotiate and contract across organizations, this family holds
+    the rung beside it — the **durable work** they coordinate: a long-running,
+    compensating workflow spanning more than one org's fabric, the choreography
+    analogue of the in-process durable graph. It gates two guarantees:
+    **durability** (the saga journal is checkpointed after every step, so a fresh
+    process resumes it by id and never re-runs a completed step, and the
+    hash-chained journal verifies offline and catches a tampered record) and
+    **compensation** (a forward step that fails or breaches its step contract
+    triggers deterministic compensation of the completed steps in reverse order, so
+    a half-completed cross-org transaction unwinds cleanly). Per-org governance and
+    A2A parity are gated too — each side audits its own steps on its own chain.
+    Deterministic and offline; the A2A path runs in-process."""
+    from vincio import ContextApp, VincioConfig
+    from vincio.a2a import connect_a2a_in_process
+    from vincio.choreography import Choreography, RemoteParticipant, Saga, SagaJournal, StepOutcome
+    from vincio.negotiation import Contract, ContractTerms
+    from vincio.storage.base import InMemoryMetadataStore
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+
+    # 1. Forward path: an ordered cross-org saga completes every step in order.
+    fwd_order: list[str] = []
+    def mk(name, *, fail=False):
+        def handler(payload):
+            fwd_order.append(name)
+            return StepOutcome(ok=False, error="declined") if fail else {"step": name}
+        return handler
+
+    happy = (
+        Saga(name="fulfil")
+        .step("reserve", participant="wh", action="reserve", compensation="release")
+        .step("charge", participant="pay", action="charge", compensation="refund")
+        .step("ship", participant="wh", action="ship")
+    )
+    parts = {
+        "wh": {"reserve": mk("reserve"), "release": mk("release"), "ship": mk("ship")},
+        "pay": {"charge": mk("charge"), "refund": mk("refund")},
+    }
+    done = await app.achoreograph(happy, participants=parts)
+    forward_completes = bool(
+        done.status == "completed" and done.completed_steps == ["reserve", "charge", "ship"]
+    )
+
+    # 2. Compensation: a failure unwinds the completed steps in reverse order.
+    comp_order: list[str] = []
+    def undo(name):
+        def handler(payload):
+            comp_order.append(name)
+            return {"undone": name}
+        return handler
+
+    rollback = (
+        Saga(name="rollback")
+        .step("a", participant="o", action="do_a", compensation="undo_a")
+        .step("b", participant="o", action="do_b", compensation="undo_b")
+        .step("c", participant="o", action="do_c")  # fails
+    )
+    rb_parts = {
+        "o": {
+            "do_a": lambda p: {"a": 1},
+            "do_b": lambda p: {"b": 1},
+            "do_c": lambda p: StepOutcome(ok=False, error="boom"),
+            "undo_a": undo("a"),
+            "undo_b": undo("b"),
+        }
+    }
+    unwound = await app.achoreograph(rollback, participants=rb_parts)
+    compensation_unwinds_in_reverse = bool(
+        unwound.status == "compensated"
+        and unwound.compensated_steps == ["b", "a"]
+        and comp_order == ["b", "a"]
+    )
+
+    # 3. Contract governance: a delivered breach of the step contract compensates.
+    terms = ContractTerms(scope="x", price_usd=0.10, sla_seconds=3.0, quality_floor=0.8)
+    contract = Contract(buyer="a", seller="b", terms=terms).seal()
+    breach_comp: list[str] = []
+    governed = (
+        Saga(name="governed")
+        .step("pre", participant="o", action="pre", compensation="undo_pre")
+        .step("work", participant="o", action="work", contract=contract)
+    )
+    g_parts = {
+        "o": {
+            "pre": lambda p: {"pre": 1},
+            "undo_pre": lambda p: breach_comp.append("pre") or {},
+            "work": lambda p: StepOutcome(ok=True, cost_usd=0.50, quality=0.9),
+        }
+    }
+    breached = await app.achoreograph(governed, participants=g_parts)
+    breach_failed = [r for r in breached.journal.forward_records() if r.status == "failed"]
+    contract_breach_compensates = bool(
+        breached.status == "compensated"
+        and breach_comp == ["pre"]
+        and breach_failed
+        and breach_failed[0].fulfilled is False
+        and any("price" in b for b in breach_failed[0].breaches)
+    )
+
+    # 4. Durability: interrupt a saga, then resume on a FRESH engine sharing the
+    #    store — completed steps are not re-run and the saga finishes.
+    store = InMemoryMetadataStore()
+    runs: dict[str, int] = {}
+    def counted(name):
+        def handler(payload):
+            runs[name] = runs.get(name, 0) + 1
+            return {"step": name}
+        return handler
+
+    two = (
+        Saga(name="two")
+        .step("a", participant="o", action="do_a")
+        .step("b", participant="o", action="do_b")
+    )
+    d_parts = {"o": {"do_a": counted("a"), "do_b": counted("b")}}
+    engine1 = Choreography(two, d_parts, store=store)
+    paused = await engine1.arun(saga_id="s1", interrupt_after=1)
+    engine2 = Choreography(two, d_parts, store=store)  # fresh process, same store
+    resumed = await engine2.aresume("s1")
+    durable_resume_survives_restart = bool(
+        paused.status == "interrupted"
+        and resumed.status == "completed"
+        and runs == {"a": 1, "b": 1}  # step 'a' ran once, never re-run on resume
+    )
+
+    # 5. Journal integrity: the hash-chained journal verifies offline; a tampered
+    #    record is caught.
+    journal_verifies_offline = bool(done.journal.verify().intact)
+    tampered = SagaJournal.from_record(done.journal.to_record())
+    tampered.records[0].output = {"step": "forged"}
+    journal_tamper_detected = bool(not tampered.verify().intact)
+
+    # 6. Per-org governance + A2A parity: the same saga over the fabric reaches the
+    #    same result, and each side audits its own steps on its own chain.
+    coord = ContextApp(name="coord", provider=MockProvider(default_text="ok"), config=cfg)
+    vendor = ContextApp(name="vendor", provider=MockProvider(default_text="ok"), config=cfg)
+    server = vendor.serve_choreography(
+        {"do_a": lambda p: {"step": "a"}, "do_b": lambda p: {"step": "b"}}, org_id="o"
+    )
+    client = connect_a2a_in_process(server)
+    remote = RemoteParticipant(client, org_id="o")
+    over_a2a = await coord.achoreograph(
+        Saga(name="two").step("a", participant="o", action="do_a").step(
+            "b", participant="o", action="do_b"
+        ),
+        participants={"o": remote},
+    )
+    a2a_parity = bool(
+        over_a2a.status == "completed"
+        and over_a2a.output_of("b")["step"] == "b"
+    )
+    per_org_audit_separate_chains = bool(
+        coord.audit.query(action="choreography_step")
+        and vendor.audit.query(action="choreography_step")
+        and coord.audit.verify_chain()
+        and vendor.audit.verify_chain()
+    )
+
+    # 7. Auditable: the coordinator's saga steps are on its chain.
+    audit_recorded = bool(
+        app.audit.query(action="choreography_step") and app.audit.verify_chain()
+    )
+
+    return {
+        "forward_completes": forward_completes,
+        "compensation_unwinds_in_reverse": compensation_unwinds_in_reverse,
+        "contract_breach_compensates": contract_breach_compensates,
+        "durable_resume_survives_restart": durable_resume_survives_restart,
+        "journal_verifies_offline": journal_verifies_offline,
+        "journal_tamper_detected": journal_tamper_detected,
+        "a2a_parity": a2a_parity,
+        "per_org_audit_separate_chains": per_org_audit_separate_chains,
+        "audit_recorded": audit_recorded,
+        "steps_to_complete": len(done.completed_steps),
+        "compensations_run": len(unwound.compensated_steps),
+    }
+
+
 async def bench_negotiation() -> dict[str, Any]:
     """NegotiationBench: bounded contracting between agents over the A2A fabric.
 
@@ -6602,6 +6785,7 @@ FAMILIES = {
     "edge": bench_edge,
     "mcp_apps": bench_mcp_apps,
     "negotiation": bench_negotiation,
+    "choreography": bench_choreography,
     "breaking_2_0": bench_breaking_2_0,
 }
 

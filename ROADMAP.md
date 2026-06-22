@@ -52,6 +52,7 @@ and a runnable example.
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
 | **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. **MCP Apps** land the spec's newer surface in the same governed runtime: a server's `ui://` UI resource is surfaced through the existing AG-UI channel as an `mcp.ui` event (`app.mcp_app(...)` / `MCPAppBridge`) — untrusted-external provenance, token-metered against the run budget, audited; a typed **elicitation** request (`ElicitationGate` / `ElicitationRequest`) is gated by the same approval + rail machinery a write tool passes, so an accepted mid-call value is screened and tainted untrusted; and **evolving-spec parity** (protocol-version negotiation, a stateless-core transport mode) keeps a peer pinned to an older stable revision interoperable. |
 | **Agent negotiation & contracting** | Bounded negotiation and contracting between agents in a multi-org crew, in the same governed, audited, budgeted runtime — never a hosted marketplace. A `Negotiation` runs a typed offer/counter-offer bargain between a buyer and a seller party with **guaranteed termination** (the negotiation analogue of a bounded crew round): a deal when the parties' acceptable regions overlap, a clean no-deal when they do not, a partial result on a wall-clock deadline. The agreement is a typed `Contract` over **price / SLA / scope / quality** that both parties sign, that `Contract.verify` checks **offline** from the bytes alone (a tampered term or a forged signature is caught), and that `Contract.to_budget` / `Contract.check` (`app.enforce_contract`) enforce **like any other budget** — the delivered work's cost / latency / quality is held to the deal. The counterparty's `ReputationLedger` standing **weights its offers**, so a repeatedly-regressing agent is discounted without being singled out (a bounded `[floor, 1]` risk premium, reversible), and `select_offer` picks the reputation-weighted best deal among competing sellers; a breached contract debits the seller's reputation, closing the loop. The bargain runs fully offline against deterministic local parties or **over the A2A agent fabric** against a remote counterparty (`A2ANegotiator` / `app.serve_negotiation`) byte-for-byte the same, and every outcome lands on the hash-chained audit log (`app.negotiate`). |
+| **Cross-org workflow choreography** | The durable work agents coordinate once they can negotiate and contract: a long-running, compensating workflow that spans more than one organization's agent fabric — the choreography analogue of the in-process durable graph, now crossing trust boundaries. A `Saga` is an ordered list of steps, each dispatching a typed `StepRequest` to a participant org under a negotiated `Contract` and declaring the compensation that undoes it; a `Choreography` (`app.choreograph`) drives it with **per-org self-governance** — the coordinator audits the dispatched handoff on its own chain while each `Participant` runs and audits the step on its own, so no shared control plane crosses a trust boundary, only the typed contract and the audited handoff. The `SagaJournal` is checkpointed to the metadata store after every step, so a saga **survives a restart** — a fresh engine resumes it by id and never re-runs a completed step (`app.resume_choreography`) — and is **hash-chained**, so `verify()` recomputes it offline and catches any tampered record. A forward step that fails, raises, or **breaches its step contract** triggers deterministic **compensation** of the completed steps in reverse order, so a half-completed cross-org transaction unwinds cleanly. A `LocalParticipant` runs an org's handlers in-process and a `RemoteParticipant` / `app.serve_choreography` dispatches a step to a remote org **over the A2A agent fabric**, byte-for-byte the same — held by a durability SLO and a compensation SLO. |
 | **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
 | **Use-case coverage & verticals** | Full-stack vertical packs (healthcare/PHI, legal e-discovery, financial KYC/AML, customer support, code review) that preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set on top of the pack contract; a higher-level `Assistant` over `ContextApp` that threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval; an end-to-end `VoiceAgent` wiring the realtime session to the deep-research agent, the memory OS, and the rails; and a cookbook of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) as offline-gated runnable examples. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
@@ -82,34 +83,33 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **Agent negotiation & contracting** (a bounded `Negotiation` / `Contract`
-protocol over the A2A fabric — a typed, terminating offer/counter-offer bargain that mints a signed,
-audited, offline-verifiable contract over price / SLA / scope / quality the orchestrator enforces like any
-other budget; reputation-weighted offer selection via the `ReputationLedger`; `app.negotiate` /
-`app.serve_negotiation` / `A2ANegotiator`) — has shipped and folded into the **Agent negotiation &
-contracting** row above. The next theme is scheduled below. It closes a specific gap in the platform's *own*
-frontier — a rung that exists in the literature and in buyer demand but not yet in the package — rather than
-a gap measured against any one competitor. An indicative minor-version target is given; cadence holds one
-coherent theme per minor.
+The most recent scheduled theme — **Cross-org workflow choreography** (a durable, compensating `Saga` over
+the A2A fabric and the negotiated `Contract` — coordinator-driven dispatch with per-org self-governance,
+a hash-chained `SagaJournal` checkpointed for restart-survival and offline verification, and deterministic
+reverse-order compensation when a step fails or breaches its contract; `app.choreograph` /
+`app.resume_choreography` / `app.serve_choreography` / `RemoteParticipant`) — has shipped and folded into the
+**Cross-org workflow choreography** row above. The next theme is scheduled below. It closes a specific gap in
+the platform's *own* frontier — a rung that exists in the literature and in buyer demand but not yet in the
+package — rather than a gap measured against any one competitor. An indicative minor-version target is given;
+cadence holds one coherent theme per minor.
 
-### 1 · Cross-org workflow choreography *(target 3.24)*
+### 1 · Agent-to-agent settlement & metering *(target 3.25)*
 
-With agents that discover, negotiate, and contract across organizations, the next reach is the **durable
-work** they coordinate: a long-running, compensating workflow that spans more than one organization's agent
-fabric, where each org's steps are governed and audited on its *own* chain and a failure on one side triggers
-deterministic, cross-boundary compensation — the choreography analogue of the durable graphs that already run
-within one trust boundary.
+With cross-org sagas dispatching contracted work across organizations, the next reach is **closing the
+books** on it: a metered, auditable settlement record for work delivered under a negotiated `Contract`, so a
+cross-org engagement reconciles the way a run closes its cost report — never a payment rail, only a
+verifiable ledger of what was owed and delivered.
 
-- **Cross-org choreography** — a durable, resumable workflow whose steps dispatch to remote orgs over the
-  A2A fabric under a negotiated contract, surviving a restart the way an in-process durable graph does.
-- **Per-org governance** — each participant governs and audits its own steps on its own hash-chained chain;
-  no shared control plane, only the typed contract and the audited handoffs cross a trust boundary.
-- **Compensating saga** — a failure or an SLA breach on one side triggers deterministic compensation across
-  the choreography, so a half-completed cross-org transaction unwinds cleanly.
+- **Metered delivery** — usage accrued against the agreed price as a saga's steps complete, attributed to
+  the contract and the run the way the cost report attributes spend.
+- **Auditable settlement** — a typed, signed settlement record reconciling delivered work against the
+  contract terms on each side's hash-chained chain, offline-verifiable from the bytes alone.
+- **Reputation-closing** — a settled overrun or shortfall feeds the `ReputationLedger`, so reliability
+  earned in delivery weights the next negotiation.
 
-*Ships as:* a cross-org choreography primitive over the A2A fabric and the negotiated `Contract`; per-org
-audited steps with compensation; a `choreography` VincioBench family with a durability + compensation SLO;
-a runnable example.
+*Ships as:* a settlement / metering primitive over the negotiated `Contract` and the choreography journal;
+per-org signed settlement records reconciled on the audit chain; a `settlement` VincioBench family with a
+metering-accuracy + settlement-integrity SLO; a runnable example.
 
 ---
 
@@ -120,9 +120,10 @@ Grouped by where they would land.
 
 **Efficiency & reach**
 
-- 🔭 **Agent-to-agent settlement & metering** — a metered, auditable settlement record for work delivered
-  under a negotiated `Contract` (usage accrued against the agreed price, reconciled on the audit chain),
-  so a cross-org engagement closes its books the way a run closes its cost report — never a payment rail.
+- 🔭 **Cross-org workflow discovery & dynamic choreography** — a saga whose participant set is *resolved at
+  run time* from the governed agent directory by capability and reputation, rather than wired by org id up
+  front, so a choreography binds the best-available counterparty for each step under the same allow-list,
+  contract, and per-org governance — never a hosted matching service.
 
 **Breaking window**
 
