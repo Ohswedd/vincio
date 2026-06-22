@@ -543,6 +543,45 @@ class SettlementBook:
             netting.sign(self.signer, party=self.owner)
         return netting
 
+    def arbitrate(
+        self,
+        *counterparty_records: SettlementRecord,
+        contract_id: str | None = None,
+        sign: bool = True,
+        verify_with: ChainSigner | None = None,
+    ) -> Any:
+        """Adjudicate a dispute between this book's record and a counterparty's claims.
+
+        The dispute counterpart of :meth:`reconcile_with`: combines this book's own
+        record(s) for the disputed contract with the ``counterparty_records`` the
+        other side submits and resolves them with
+        :func:`~vincio.settlement.arbitration.arbitrate` — so an org settles which
+        figure stands from the signed records alone. ``contract_id`` selects the
+        disputed contract (inferred from the counterparty's records when omitted);
+        ``verify_with`` authenticates the submitted signatures. Signs the resulting
+        :class:`~vincio.settlement.arbitration.Resolution` as this book's owner when a
+        signer is attached, so a settled dispute is offline-verifiable the way a
+        record is.
+        """
+        from .arbitration import arbitrate
+
+        target = contract_id
+        if target is None:
+            ids = sorted({r.contract_id for r in counterparty_records})
+            if len(ids) == 1:
+                target = ids[0]
+        pool: list[SettlementRecord] = list(counterparty_records)
+        if target is not None:
+            pool += [r for r in self.records if r.contract_id == target]
+        else:
+            pool += list(self.records)
+        resolution = arbitrate(
+            pool, contract_id=target, arbiter=self.owner, verify_with=verify_with
+        )
+        if sign and self.signer is not None:
+            resolution.sign(self.signer, party=self.owner)
+        return resolution
+
     # -- reporting ----------------------------------------------------------
 
     def report(self, counterparty: str | None = None) -> SettlementReport:

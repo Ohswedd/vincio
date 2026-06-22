@@ -1755,6 +1755,48 @@
     },
     "families.netting.total_cleared_usd": {
       "gte": 0
+    },
+    "families.arbitration.arbitration_upholds_corroborated": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_rejects_contradicting": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_single_claim_stands": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_unresolved_standoff": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_inadmissible_pinpointed": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_forged_refused": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_verifies_offline": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_tamper_detected": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_decision_sound": {
+      "eq": true
+    },
+    "families.arbitration.arbitration_arbiters_agree": {
+      "eq": true
+    },
+    "families.arbitration.audit_recorded": {
+      "eq": true
+    },
+    "families.arbitration.reputation_closed": {
+      "eq": true
+    },
+    "families.arbitration.claims_adjudicated": {
+      "gte": 3
+    },
+    "families.arbitration.rejected_claims": {
+      "gte": 1
     }
   }
 }

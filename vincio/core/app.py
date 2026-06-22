@@ -3316,6 +3316,71 @@ class ContextApp:
             netting.audit_id = getattr(entry, "id", None)
         return netting
 
+    def arbitrate(
+        self,
+        records: list[Any],
+        *,
+        contract_id: str | None = None,
+        sign: bool = True,
+        verify_with: Any | None = None,
+        record_audit: bool = True,
+        record_reputation: bool = True,
+    ) -> Any:
+        """Adjudicate a disputed contract from the records its parties submit.
+
+        Resolves a pinpointed disagreement (a
+        :class:`~vincio.settlement.NettingDispute`, or two records that do not
+        reconcile) into a content-bound :class:`~vincio.settlement.Resolution`:
+        deterministically decides which figure stands — a reconciliation hash both
+        parties co-signed is upheld, a contradicting unilateral claim is rejected and
+        pinpointed — reading only the submitted signed records and asserting nothing
+        it cannot recompute. Signs the resolution as this app (the arbiter) and,
+        unless ``record_audit`` is off, records it on the audit chain; unless
+        ``record_reputation`` is off, closes the reputation loop by debiting the
+        party whose claim did not stand. The resolution verifies offline from the
+        bytes alone. Returns it::
+
+            resolution = app.arbitrate([buyer_record, seller_record])
+            resolution.verify().valid  # offline-verifiable
+            resolution.print_summary()
+        """
+        from ..settlement import arbitrate
+
+        resolution = arbitrate(
+            records,
+            contract_id=contract_id,
+            arbiter=self.name,
+            verify_with=verify_with,
+        )
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                resolution.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.arbitration import ARBITRATION_ACTION
+
+            entry = self.audit.record(
+                ARBITRATION_ACTION,
+                resource=resolution.contract_id,
+                decision=resolution.status,
+                details=resolution.audit_details(),
+            )
+            resolution.audit_id = getattr(entry, "id", None)
+        if record_reputation and self.reputation_ledger is not None:
+            for party in resolution.dissenters:
+                self.reputation_ledger.record_outcome(
+                    party,
+                    passed=False,
+                    round_id=resolution.contract_id,
+                    details={
+                        "kind": "arbitration",
+                        "resolution_id": resolution.id,
+                        "contract_id": resolution.contract_id,
+                        "reason": "claim did not stand",
+                    },
+                )
+        return resolution
+
     # -- evaluators / optimizers ----------------------------------------------------------------------
 
     def add_evaluator(self, name: str | Callable) -> ContextApp:

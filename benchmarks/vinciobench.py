@@ -7269,6 +7269,156 @@ async def bench_netting() -> dict[str, Any]:
     }
 
 
+async def bench_arbitration() -> dict[str, Any]:
+    """ArbitrationBench: cross-org dispute resolution & arbitration.
+
+    With a disagreement pinpointed as a netting dispute, this family holds the rung
+    that **resolves** it — a deterministic adjudication over the parties' own signed
+    settlement records that settles which figure stands. It gates two guarantees:
+    **resolution correctness** (a reconciliation hash both parties co-signed is
+    upheld, a unilateral claim contradicting it is rejected and its claimant
+    pinpointed, a genuine standoff is honestly left unresolved rather than decided by
+    fiat, and a tampered claim is marked inadmissible rather than crashing the
+    adjudication) and **resolution integrity** (the resolution is content-bound and
+    signs/verifies offline the way a settlement record does, a tampered verdict is
+    caught even after re-sealing because the decision re-derives from the claims, two
+    arbiters reading the same records compute the same co-signable hash, and the
+    adjudication lands on the audit chain and closes the reputation loop on the
+    dissenter). It is a library-side protocol, never a hosted arbitration service.
+    Deterministic and offline."""
+    from vincio import ContextApp, VincioConfig, arbitrate, settle_contract
+    from vincio.negotiation import Contract, ContractTerms
+    from vincio.security.audit import HMACSigner
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="arbiter", provider=MockProvider(default_text="ok"), config=cfg)
+    app.use_reputation_ledger()
+
+    buyer = HMACSigner("buyer-key", key_id="acme")
+    seller = HMACSigner("seller-key", key_id="vendor")
+
+    def contract(price=0.10):
+        return Contract(
+            buyer="acme", seller="vendor", terms=ContractTerms(scope="work", price_usd=price)
+        ).seal()
+
+    def claim(c, *, cost, signer, party):
+        return settle_contract(c, cost_usd=cost).sign(signer, party=party)
+
+    def agreed(c, *, cost=0.08):
+        return [
+            claim(c, cost=cost, signer=buyer, party="acme"),
+            claim(c, cost=cost, signer=seller, party="vendor"),
+        ]
+
+    # 1. Resolution correctness: a co-signed figure is upheld with the right balance.
+    c1 = contract()
+    res = arbitrate(agreed(c1, cost=0.08), arbiter="arbiter")
+    arbitration_upholds_corroborated = bool(
+        res.status == "upheld"
+        and sorted(res.corroborated_by) == ["acme", "vendor"]
+        and abs((res.upheld_balance_usd or 0.0) - 0.02) <= 1e-9
+        and all(cl.stands for cl in res.claims)
+    )
+
+    # 2. A unilateral claim contradicting the corroborated truth is rejected, pinpointed.
+    c2 = contract()
+    liar = claim(c2, cost=0.05, signer=seller, party="vendor")
+    rej = arbitrate([*agreed(c2, cost=0.08), liar])
+    arbitration_rejects_contradicting = bool(
+        rej.status == "upheld"
+        and len(rej.rejected_claims) == 1
+        and rej.rejected_claims[0].settlement_id == liar.id
+        and rej.dissenters == ["vendor"]
+    )
+
+    # 3. A single uncontested claim stands on its own.
+    c3 = contract()
+    only = claim(c3, cost=0.08, signer=buyer, party="acme")
+    arbitration_single_claim_stands = bool(arbitrate([only]).status == "upheld")
+
+    # 4. A genuine standoff is left unresolved; nobody is singled out.
+    c4 = contract()
+    standoff = arbitrate(
+        [
+            claim(c4, cost=0.08, signer=buyer, party="acme"),
+            claim(c4, cost=0.05, signer=seller, party="vendor"),
+        ]
+    )
+    arbitration_unresolved_standoff = bool(
+        standoff.status == "unresolved" and not standoff.dissenters and standoff.upheld_hash == ""
+    )
+
+    # 5. A tampered claim is marked inadmissible — pinpointed, never raised.
+    c5 = contract()
+    bad = claim(c5, cost=0.08, signer=seller, party="vendor")
+    bad.amount_owed_usd = 999.0  # tamper without resealing
+    tampered_res = arbitrate([*agreed(c5, cost=0.08), bad])
+    arbitration_inadmissible_pinpointed = bool(
+        len(tampered_res.inadmissible_claims) == 1
+        and tampered_res.inadmissible_claims[0].settlement_id == bad.id
+        and tampered_res.status == "upheld"  # the good co-signed figure still stands
+    )
+
+    # 6. A forged signature is refused with a verifier.
+    c6 = contract()
+    forged = claim(c6, cost=0.08, signer=seller, party="vendor")
+    forged.signatures[0].signature = "deadbeef"
+    forged_res = arbitrate([*agreed(c6, cost=0.08), forged], verify_with=seller)
+    arbitration_forged_refused = bool(
+        any("forged" in (cl.reason or "") for cl in forged_res.inadmissible_claims)
+    )
+
+    # 7. Resolution integrity: a signed resolution verifies offline; a tamper is caught.
+    signed = arbitrate(agreed(c1, cost=0.08)).sign(buyer, party="acme")
+    arbitration_verifies_offline = bool(signed.verify(buyer).valid)
+    tampered = arbitrate(agreed(c1, cost=0.08))
+    tampered.upheld_balance_usd = 999.0
+    arbitration_tamper_detected = bool(not tampered.verify().valid)
+
+    # 8. The decision re-derives from the claims: a flipped verdict is caught after reseal.
+    flipped = arbitrate(agreed(c1, cost=0.08))
+    flipped.claims[0].stands = False
+    flipped.seal()  # recompute the hash — the re-derived decision still catches it
+    arbitration_decision_sound = bool(not flipped.verify().decision_sound)
+
+    # 9. Two arbiters reading the same records compute the same co-signable hash.
+    claims = agreed(c1, cost=0.08)
+    arbitration_arbiters_agree = bool(
+        arbitrate(claims, arbiter="p").content_hash == arbitrate(claims, arbiter="q").content_hash
+    )
+
+    # 10. Auditable & reputation-closing: the adjudication lands on the chain and
+    #     debits the dissenter whose claim did not stand.
+    before = app.reputation_ledger.snapshot("vendor").reputation
+    app_res = app.arbitrate([*agreed(c2, cost=0.08), claim(c2, cost=0.05, signer=seller, party="vendor")])
+    after = app.reputation_ledger.snapshot("vendor").reputation
+    audit_recorded = bool(
+        app.audit.query(action="arbitration")
+        and app.audit.verify_chain()
+        and app_res.verify(app.contract_signer).valid
+    )
+    reputation_closed = bool(after < before)
+
+    return {
+        "arbitration_upholds_corroborated": arbitration_upholds_corroborated,
+        "arbitration_rejects_contradicting": arbitration_rejects_contradicting,
+        "arbitration_single_claim_stands": arbitration_single_claim_stands,
+        "arbitration_unresolved_standoff": arbitration_unresolved_standoff,
+        "arbitration_inadmissible_pinpointed": arbitration_inadmissible_pinpointed,
+        "arbitration_forged_refused": arbitration_forged_refused,
+        "arbitration_verifies_offline": arbitration_verifies_offline,
+        "arbitration_tamper_detected": arbitration_tamper_detected,
+        "arbitration_decision_sound": arbitration_decision_sound,
+        "arbitration_arbiters_agree": arbitration_arbiters_agree,
+        "audit_recorded": audit_recorded,
+        "reputation_closed": reputation_closed,
+        "claims_adjudicated": len(rej.claims),
+        "rejected_claims": len(rej.rejected_claims),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -7310,6 +7460,7 @@ FAMILIES = {
     "settlement": bench_settlement,
     "discovery": bench_discovery,
     "netting": bench_netting,
+    "arbitration": bench_arbitration,
     "breaking_2_0": bench_breaking_2_0,
 }
 

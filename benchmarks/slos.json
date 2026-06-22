@@ -1591,6 +1591,26 @@
       "threshold": true,
       "enforced_by": "families.netting.netting_verifies_offline",
       "rationale": "A clearing is only as good as its tamper-evidence. The budget gates that a signed netting set verifies offline; companion budgets gate that a tampered obligation fails verification, that a tampered source record is refused outright, that two clearers reading the same records compute the same co-signable hash, that a disagreement is pinpointed as a dispute and excluded, and that the clearing lands on the audit chain — so a cleared balance is a mechanical, verifiable artifact, never a self-asserted claim or a hosted clearing house."
+    },
+    {
+      "id": "resolution_correctness",
+      "category": "reliability",
+      "statement": "Dispute arbitration decides only from what it can recompute: a reconciliation hash that both the buyer and the seller co-signed is upheld with the figure they agreed, a unilateral claim that contradicts it is rejected and its claimant pinpointed, a single uncontested claim stands on its own, a genuine standoff neither side corroborated is left unresolved rather than decided by fiat, and a tampered or forged claim is marked inadmissible rather than crashing the adjudication.",
+      "metric": "families.arbitration.arbitration_upholds_corroborated",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.arbitration.arbitration_upholds_corroborated",
+      "rationale": "A resolution is only legitimate if it asserts nothing it cannot prove. The budget gates that a mutually co-signed figure is upheld with the correct balance; companion budgets gate that a contradicting unilateral claim is rejected and its claimant named, that a single uncontested claim stands, that a genuine standoff is left unresolved, and that a tampered or forged claim is marked inadmissible and pinpointed rather than dropped or raised — so a dispute closes the way a settlement does, on verifiable evidence, never on the arbiter's word."
+    },
+    {
+      "id": "resolution_integrity",
+      "category": "security",
+      "statement": "A resolution is content-bound and offline-verifiable: a resolution hash binds the contract, the parties, the outcome, and every adjudicated claim, the resolution signs and recomputes from the bytes alone, a tampered verdict is caught even after re-sealing because the decision re-derives from the recorded claims, two arbiters reading the same records compute the same co-signable hash, and the adjudication lands on the audit chain and closes the reputation loop on the party whose claim did not stand.",
+      "metric": "families.arbitration.arbitration_verifies_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.arbitration.arbitration_verifies_offline",
+      "rationale": "A settled dispute is only as good as its tamper-evidence. The budget gates that a signed resolution verifies offline; companion budgets gate that a tampered verdict fails verification, that a flipped standing flag is caught even after re-sealing because the decision re-derives from the claims, that two arbiters compute the same co-signable hash, and that the adjudication is audited and debits the dissenter — so a resolution is a mechanical, verifiable artifact, never a self-asserted ruling or a hosted court of record."
     }
   ]
 }

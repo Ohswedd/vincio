@@ -30,13 +30,26 @@ Once an org keeps many bilateral books, :func:`net_settlements` / :func:`net_boo
 fold the whole fleet's balances into a single, content-bound :class:`NettingSet` —
 each org's many positions collapsed to the **minimal set** of net obligations,
 offline-verifiable the way a record is — so an org that is both buyer and seller
-across a web of contracts closes its books once. Everything is dependency-free,
-deterministic, and offline — never a hosted marketplace, a clearing house, or a
-payment processor, only a mechanical, verifiable reconciliation.
+across a web of contracts closes its books once. When a disagreement is pinpointed
+(a :class:`NettingDispute`, or two records that do not reconcile), :func:`arbitrate`
+adjudicates it: each party submits its signed records and a deterministic
+:class:`Resolution` decides which figure stands — a reconciliation hash both parties
+co-signed is upheld, a contradicting unilateral claim is rejected and pinpointed —
+content-bound and offline-verifiable the way a record is. Everything is
+dependency-free, deterministic, and offline — never a hosted marketplace, a clearing
+house, an arbitration service, or a payment processor, only a mechanical, verifiable
+reconciliation.
 """
 
 from __future__ import annotations
 
+from .arbitration import (
+    ClaimVerdict,
+    Resolution,
+    ResolutionStatus,
+    ResolutionVerification,
+    arbitrate,
+)
 from .book import (
     BookVerification,
     SettlementBook,
@@ -97,4 +110,10 @@ __all__ = [
     "NettingVerification",
     "net_settlements",
     "net_books",
+    # dispute resolution & arbitration
+    "Resolution",
+    "ResolutionStatus",
+    "ResolutionVerification",
+    "ClaimVerdict",
+    "arbitrate",
 ]

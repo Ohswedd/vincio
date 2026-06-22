@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**310** public symbols.
+**312** public symbols.
 
 ## Classes
 
@@ -774,6 +774,10 @@ The cited, budgeted, eval-scored output of a research run.
 
 Pin allowed provider regions and refuse egress to others.
 
+### `Resolution(**data)`
+
+A content-bound, offline-verifiable adjudication of a disputed contract.
+
 ### `RetrievalEvaluator(k_values=…)`
 
 Score a retriever against a :class:`RetrievalGoldenSet` on the IR metrics.
@@ -1075,6 +1079,10 @@ Declare a signature input field.
 ### `OutputField(desc=…, **kwargs)`
 
 Declare a signature output field.
+
+### `arbitrate(records, contract_id=…, arbiter=…, verify_with=…)`
+
+Adjudicate a disputed contract from the records its parties submit.
 
 ### `attribute_regression(app, dataset, factors, metric=…, aggregate=…, repeats=…)`
 
