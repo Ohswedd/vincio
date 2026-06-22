@@ -1431,6 +1431,36 @@
       "threshold": true,
       "enforced_by": "families.video.understanding.video_modality_first_class",
       "rationale": "Video must ride the existing multimodal packet, not a bolt-on plane. The budget gates that clip segments lower to typed video evidence; companion budgets gate that the compiler selects a clip candidate and the packet carries its time range."
+    },
+    {
+      "id": "edge_parity_byte_identical",
+      "category": "quality",
+      "statement": "The edge / WASM build is the same library under a build target, not a fork: an edge compile is byte-identical to a direct server compile over the same inputs, so a capability can never silently diverge between server and edge.",
+      "metric": "families.edge.parity_byte_identical",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.edge.parity_byte_identical",
+      "rationale": "Parity is the whole point of an edge build that shares the core: if the edge packet drifted from the server packet, the offline test suite would no longer cover the edge path. The budget gates that the edge runtime and a direct server compile produce the same packet spec hash; companion budgets gate that the runtime delegates to the canonical compiler and rail engine rather than re-implementing them."
+    },
+    {
+      "id": "edge_bounded_profile",
+      "category": "performance",
+      "statement": "The edge runtime holds a bounded resident-memory profile: the compiled packet's footprint stays under the profile cap even as the candidate corpus grows 10×, held by slimming and evidence eviction the way the server's resident-memory budget is.",
+      "metric": "families.edge.bounded_profile",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.edge.bounded_profile",
+      "rationale": "A constrained target needs a guaranteed footprint, not a hope. The budget gates that a 4× and a 40× corpus both compile inside the profile's resident and token caps; a companion budget gates that eviction actually fires under the 10× load (some evidence dropped) while the footprint still fits, proving the bound is enforced, not merely unexercised."
+    },
+    {
+      "id": "edge_core_no_native_imports",
+      "category": "reliability",
+      "statement": "The edge core is WASM-buildable: every module on the compile/score/rail/pack path imports no native or optional dependency unconditionally — only the stdlib, pydantic, httpx, and other vincio modules — so the dependency-free core compiles for a browser or edge worker.",
+      "metric": "families.edge.no_native_imports",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.edge.no_native_imports",
+      "rationale": "\"Runs in your process\" extends to a WASM process only if the core pulls nothing native at import time. The budget gates that a static scan of the edge-core modules finds no unconditional import of a native/optional package (NumPy stays behind its guarded pure-Python fallback); a companion budget gates that the scanned module set stays comprehensive."
     }
   ]
 }

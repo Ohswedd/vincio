@@ -65,6 +65,7 @@ and a runnable example.
 | **Differential-privacy memory & training** | A provable, composing, per-subject privacy budget over memory consolidation and the whole learning loop. A Rényi/moments `PrivacyAccountant` (`app.use_privacy_accountant`) tracks the cumulative `(ε, δ)` a subject's data has spent across every consolidation and learning round — composing across rounds far more tightly than naively summing each step's `ε` — and a `PrivacyBudget` gates a learning step the way the cost report gates a dollar: a consolidation or a federated contribution that would exceed a subject's remaining budget is refused (a hard cap) or down-weighted (clipped harder, so its sensitivity and privacy cost fit). It wires into memory consolidation and federated contributions automatically; `app.privacy_report()` rolls up each subject's spent / remaining `ε` next to the cost report; and every spend and refusal lands on the hash-chained audit log, so the guarantee is a mechanical, auditable number. `gaussian_rdp` / `rdp_to_epsilon` expose the accountant's math; held by a budget-composition SLO and a refusal SLO. |
 | **Cross-fleet reputation & weighting** | A per-member reputation that discounts an unreliable or adversarial member's pull on the federated consensus — earned only from how each contribution fared against the no-regression gate, never from raw traffic. A `ReputationLedger` (`app.use_reputation_ledger`) keeps each member's reliability as a Beta-Bernoulli posterior over gate outcomes (a robust generalization of the existing reliability scoring): a newcomer earns the benefit of the doubt from a prior, a repeatedly-regressing member decays toward a floor, and a reformed member recovers. The `SecureAggregator` weights a member's contribution by its reputation before distilling the consensus subspace — folded in before the secure-aggregation masks so they still cancel exactly — so a regressor is discounted **without being singled out**. The discount is bounded and reversible: a weight never leaves `[floor, 1]` (lowering pull, never zeroing or bypassing the quality bar), and adoption still clears the same no-regression and canary gates a local promotion does. Every update lands on the signed audit chain and replays from it (`ReputationLedger.from_audit`), and `app.reputation_report()` rolls up each member's standing next to the cost and privacy reports; held by a discount-the-regressor SLO and a no-regression SLO. |
 | **Energy & carbon accounting** | A per-run energy (watt-hours) and estimated carbon (grams CO₂e) figure on the existing cost-report surface — the sustainability analogue of the dollar budget, never a new plane. `app.use_energy_accounting(region=)` turns it on; every run then accrues a deterministic estimate from its own token accounting against a per-model intensity (by tier, from the `ModelRegistry`) and a per-region grid factor, surfaced on `result.energy_wh` / `result.co2e_grams`, `app.cost_tracker.summary()`, and `app.energy_report()` (rolled up by model/tenant/feature from the same attributed events the cost report uses). Budgeted like a dollar: `app.set_energy_budget(limit_wh= / limit_co2e_grams=)` refuses a run that would exceed its sustainability envelope, the way a hard cost cap refuses spend. Auditable and offline: the estimate is computed in-process from a built-in intensity table (no external service), and both the per-run number and every refusal land on the hash-chained audit log. Held by a per-run-estimate SLO, a budget-refusal SLO, and an auditable-offline SLO. |
+| **Edge / WASM in-process runtime** | The dependency-free core — the prompt and context compilers, the vectorized scorer with its pure-Python fallback, the deterministic rails, and the offline-first evidence path — packaged for constrained and browser/WASM targets, so the same compile → score → rail → pack pipeline runs at the edge and in the browser, not only on a server. An `EdgeRuntime` (`app.edge_runtime()`) turns an `EdgeRequest` into a bounded, slim packet and a rendered prompt behind a thin in-process boundary, with no provider, network, filesystem, or caller-owned event loop. An `EdgeProfile` is the constrained-target analogue of the per-app resident-memory budget: it bounds the compiled packet's resident footprint and token window and lowers directly to the *same* `ContextCompilerOptions` the server compiler reads, so the footprint stays under the cap as the candidate corpus grows 10×, held by the same slimming + eviction and an edge-scaling SLO. It is parity, not a fork: `verify_edge_parity` proves an edge compile is byte-identical to a direct server compile over the same inputs, and `edge_manifest` statically certifies that every module on the core path imports nothing native (NumPy stays behind its guarded pure-Python fallback) — so the edge build is WASM-buildable, exercised by the same offline test suite, and a capability can never silently diverge between server and edge. `edge_environment` / `is_wasm_runtime` detect a Pyodide/WASI host. |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
@@ -80,34 +81,33 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **native video understanding & generation** (a `VideoRef` / video
-`ContentPart`, deterministic frame sampling and temporal segmentation, a `VideoAnalyzer` that lowers a clip
-into typed `modality="video"` evidence the compiler scores and cites beside text and images, temporal
-grounding that carries a segment's `time_range` through to the cited-report footnote, and C2PA-bound video
-generation/editing — `app.load_video` / `app.generate_video`) — has shipped and folded into the **Video
-understanding & generation** row above. The next theme is scheduled below. It closes a specific gap in the
-platform's *own* frontier — a rung that exists in the literature and in buyer demand but not yet in the
-package — rather than a gap measured against any one competitor. An indicative minor-version target is given;
-cadence holds one coherent theme per minor.
+The most recent scheduled theme — **edge / WASM in-process runtime** (an `EdgeRuntime` /
+`EdgeProfile` / `EdgeRequest` / `EdgeResult` packaging the dependency-free compile → score → rail → pack
+core for constrained and browser/WASM targets behind a thin in-process boundary, a bounded edge
+resident-memory profile lowering to the *same* `ContextCompilerOptions` the server reads, and the
+mechanical "parity, not a fork" guarantees `verify_edge_parity` / `edge_manifest` — `app.edge_runtime()`) —
+has shipped and folded into the **Edge / WASM in-process runtime** row above. The next theme is scheduled
+below. It closes a specific gap in the platform's *own* frontier — a rung that exists in the literature and
+in buyer demand but not yet in the package — rather than a gap measured against any one competitor. An
+indicative minor-version target is given; cadence holds one coherent theme per minor.
 
-### 1 · Edge / WASM in-process runtime *(target 3.21)*
+### 1 · MCP Apps & the evolving MCP spec *(target 3.22)*
 
-Vincio's promise is "runs in your process." The dependency-free core — the prompt and context compilers, the
-vectorized scorer with its pure-Python fallback, the deterministic rails, and the offline-first evidence path —
-already has no native dependencies on the default path, which makes the next reach a natural one: compile that
-core for constrained and browser/WASM targets, so the same context engineering runs at the edge and in the
-browser, not only on a server.
+Vincio already speaks MCP in-process — client and server, tools through the permissioned runtime, resources
+as cited evidence — and streams a run as AG-UI generative-UI events. The next reach adopts the MCP spec's
+newer surface as it stabilizes: **server-rendered UI (MCP Apps)**, **elicitation** (a server asking the
+user for a structured input mid-call), and the **stateless-core** transport changes — landed in the same
+governed, audited, budgeted runtime, never as a hosted service.
 
-- **The core compiled for WASM** — the compile / score / rail / pack path running in a browser or an
-  edge worker with no Python runtime, behind a thin in-process boundary, keeping the offline-first default.
-- **A bounded edge profile** — a resident-memory and latency profile for constrained targets, held by an
-  edge-scaling SLO the way the resident-memory budget holds a server run today.
-- **Parity, not a fork** — the edge build is the same library under a build target, exercised by the same
-  offline test suite, so a capability never silently diverges between server and edge.
+- **MCP Apps (server-rendered UI)** — a server's UI resource surfaced through the existing AG-UI
+  generative-UI channel, inheriting the run's provenance, budget, and audit.
+- **Elicitation** — a typed mid-call request for user input, gated by the same approval and rail machinery
+  that governs a write tool today, so an elicited value is contained like any other untrusted input.
+- **Parity with the stable spec** — adopted once the relevant MCP spec changes ship stable, exercised by
+  the same offline test suite with a deterministic-mock server substitute.
 
-*Ships as:* a WASM/edge build target for the dependency-free core (with the server path unchanged as the
-default); a bounded edge resident-memory and latency profile; an `edge` VincioBench family with an
-edge-scaling SLO; a runnable example.
+*Ships as:* an MCP Apps UI-resource bridge over the existing AG-UI surface; an elicitation request/response
+type gated by the approval + rail engine; a `mcp_apps` VincioBench family with an SLO; a runnable example.
 
 ---
 
@@ -115,11 +115,6 @@ edge-scaling SLO; a runnable example.
 
 Candidates that are real but not yet scheduled — pulled forward when demand and the standards settle.
 Grouped by where they would land.
-
-**Modality & interaction**
-
-- 🔭 **MCP Apps & the evolving MCP spec** — server-rendered UI, elicitation, and stateless-core
-  changes, adopted once the spec ships stable, tracked alongside AG-UI generative-UI streaming.
 
 **Efficiency & reach**
 

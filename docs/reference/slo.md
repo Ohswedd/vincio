@@ -302,5 +302,24 @@ envelope refuses an over-budget run the way a hard cost cap refuses spend; and t
 auditable-offline SLO holds that the figure and every refusal are on the verifiable
 audit chain, computed in-process. Accounting is off until explicitly enabled.
 
+## Edge / WASM in-process runtime
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| The edge / WASM build is the same library under a build target, not a fork: an edge compile is byte-identical to a direct server compile over the same inputs, so a capability can never silently diverge between server and edge. | true | `families.edge.parity_byte_identical` |
+| The edge runtime holds a bounded resident-memory profile: the compiled packet's footprint stays under the profile cap even as the candidate corpus grows 10×, held by slimming and evidence eviction the way the server's resident-memory budget is. | true | `families.edge.bounded_profile` |
+| The edge core is WASM-buildable: every module on the compile/score/rail/pack path imports no native or optional dependency unconditionally, so the dependency-free core compiles for a browser or edge worker. | true | `families.edge.no_native_imports` |
+
+The dependency-free core runs at the edge through a thin in-process boundary
+(`EdgeRuntime`), bounded by an `EdgeProfile` that lowers to the *same*
+`ContextCompilerOptions` the server compiler reads. The parity SLO holds that an
+edge compile and a direct server compile produce a byte-identical packet — the
+edge build is exercised by the same offline test suite, never a fork. The
+bounded-profile SLO holds the resident footprint under the cap as the corpus
+grows 10×, by the same eviction the server's memory budget uses. The
+no-native-imports SLO holds, by a static scan, that the core path pulls nothing
+native at import time (NumPy stays behind its guarded pure-Python fallback), so
+the core is WASM-buildable.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

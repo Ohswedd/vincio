@@ -78,6 +78,19 @@ from .core.types import (
     TaskType,
     UserInput,
 )
+from .edge import (
+    EdgeEnvironment,
+    EdgeManifest,
+    EdgeParityReport,
+    EdgeProfile,
+    EdgeRequest,
+    EdgeResult,
+    EdgeRuntime,
+    edge_environment,
+    edge_manifest,
+    is_wasm_runtime,
+    verify_edge_parity,
+)
 from .evals.adaptive import AdaptiveSampler
 from .evals.attribution import CausalAttributor, attribute_regression
 from .evals.benchmarks import BenchmarkAdapter, load_benchmark
@@ -261,7 +274,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.20.0"
+__version__ = "3.21.0"
 
 __all__ = [
     "ContextApp",
@@ -430,6 +443,18 @@ __all__ = [
     "EnergyIntensityTable",
     "EnergyBudget",
     "EnergyReport",
+    # edge / WASM in-process runtime
+    "EdgeRuntime",
+    "EdgeRequest",
+    "EdgeResult",
+    "EdgeProfile",
+    "EdgeEnvironment",
+    "EdgeManifest",
+    "EdgeParityReport",
+    "edge_environment",
+    "is_wasm_runtime",
+    "edge_manifest",
+    "verify_edge_parity",
     "ShardedIndex",
     "MatryoshkaEmbedder",
     "RealtimeSession",

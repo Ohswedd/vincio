@@ -6121,6 +6121,132 @@ def _fmt_secs(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".") or "0"
 
 
+async def bench_edge() -> dict[str, Any]:
+    """EdgeBench: the dependency-free core compiled for a constrained / WASM target.
+
+    Vincio's promise is "runs in your process"; this family holds the rung beside
+    it — the same compile → score → rail → pack pipeline running behind a thin
+    in-process boundary, under a bounded edge profile. It gates three guarantees:
+    **parity** (an edge compile is byte-identical to a direct server compile over
+    the same inputs — the same library under a build target, never a fork), a
+    **bounded edge profile** (the compiled packet's resident footprint stays under
+    the profile cap even as the candidate corpus grows 10×, held by eviction the
+    way the server's resident-memory budget is), and a **WASM-buildable core** (the
+    whole edge path imports no native/optional dependency unconditionally). All
+    offline, deterministic, and with no provider, store, or network."""
+    from vincio.core.types import EvidenceItem, TaskType
+    from vincio.edge import (
+        EdgeProfile,
+        EdgeRequest,
+        EdgeRuntime,
+        edge_environment,
+        edge_manifest,
+        verify_edge_parity,
+    )
+    from vincio.security.rails import Rail
+
+    # 1. Parity: an edge compile equals a direct server compile, byte-for-byte.
+    parity = verify_edge_parity()
+    parity_byte_identical = bool(
+        parity.packet_identical and parity.edge_spec_hash == parity.server_spec_hash
+    )
+    parity_held = bool(parity.held)
+    same_core = bool(parity.same_compiler and parity.same_rail_engine)
+
+    # 2. WASM-buildable: the compile/score/rail/pack path imports nothing native.
+    manifest = edge_manifest()
+    no_native_imports = bool(manifest.clean)
+    core_modules = len(manifest.modules)
+
+    # 3. Bounded edge profile: as the corpus grows 10×, the resident footprint
+    #    stays under the profile cap (eviction holds the bound under pressure),
+    #    and the token window is never exceeded.
+    def corpus(n: int) -> list[Any]:
+        return [
+            EvidenceItem(
+                source_id=f"doc{j}",
+                text=(
+                    f"Clause {j}: the refund window is {30 + j} days and exception "
+                    f"{j} is approved by manager role-{j} in region {j}."
+                ),
+                authority=0.55 + (j % 4) * 0.1,
+                relevance=0.85,
+            )
+            for j in range(n)
+        ]
+
+    profile = EdgeProfile(
+        name="edge_bench",
+        max_resident_bytes=4096,
+        max_input_tokens=4096,
+        max_evidence_items=24,
+        max_memory_items=8,
+        max_output_tokens=512,
+        max_latency_ms=100.0,
+    )
+    runtime = EdgeRuntime(profile)
+    task = "refund window and exception approver"
+    small = runtime.run(EdgeRequest(task=task, task_type=TaskType.DOCUMENT_QA, evidence=corpus(4)))
+    big = runtime.run(EdgeRequest(task=task, task_type=TaskType.DOCUMENT_QA, evidence=corpus(40)))
+    bounded_profile = bool(
+        small.within_profile
+        and big.within_profile
+        and big.resident_bytes <= profile.max_resident_bytes
+    )
+    token_bounded = bool(big.token_count <= profile.max_input_tokens)
+    # The 10× corpus is offered far more evidence than the cap admits, so eviction
+    # must drop some while the footprint still fits — the bound, held under load.
+    eviction_under_pressure = bool(
+        len(big.packet.evidence_items) < 40 and big.resident_bytes <= profile.max_resident_bytes
+    )
+
+    # 4. Offline, in-process, slim: a prompt is rendered with no provider/network,
+    #    and the edge packet is zero-copy (text referenced by hash, not inlined).
+    offline_in_process = bool(small.prompt and small.packet.slim and small.token_count >= 0)
+
+    # 5. The deterministic rails run at the edge: a secret leaking from evidence
+    #    into the rendered context is refused, exactly as on the server.
+    guarded = EdgeRuntime(
+        profile,
+        rails=[Rail(name="no_secrets", kind="safety", detectors=["secrets", "pii"], direction="output")],
+    )
+    leaky = guarded.run(
+        EdgeRequest(
+            task="print the configuration",
+            evidence=[
+                EvidenceItem(
+                    source_id="cfg",
+                    text="api key sk-ABCD1234567890abcdef1234567890abcdef email ops@example.com",
+                    relevance=0.9,
+                    authority=0.9,
+                )
+            ],
+        )
+    )
+    rails_enforced = bool(
+        not leaky.allowed and any(v.rail == "no_secrets" for v in leaky.rail_check.violations)
+    )
+
+    # 6. The host runtime is detected without executing anything.
+    env = edge_environment()
+    env_detected = bool(env.runtime in ("cpython", "pyodide", "emscripten", "wasi", "unknown"))
+
+    return {
+        "parity_byte_identical": parity_byte_identical,
+        "parity_held": parity_held,
+        "same_core": same_core,
+        "no_native_imports": no_native_imports,
+        "bounded_profile": bounded_profile,
+        "token_bounded": token_bounded,
+        "eviction_under_pressure": eviction_under_pressure,
+        "offline_in_process": offline_in_process,
+        "rails_enforced": rails_enforced,
+        "env_detected": env_detected,
+        "edge_resident_bytes": big.resident_bytes,
+        "edge_core_modules": core_modules,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -6155,6 +6281,7 @@ FAMILIES = {
     "energy": bench_energy,
     "verification": bench_verification,
     "video": bench_video,
+    "edge": bench_edge,
     "breaking_2_0": bench_breaking_2_0,
 }
 

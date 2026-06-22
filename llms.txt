@@ -1068,6 +1068,33 @@ app.run("export button 500s").output.label
   `SandboxError`). Threat model in
   `docs/security/threat-model.md`.
 
+## Edge / WASM runtime
+
+- `vincio.edge` runs the dependency-free compile → score → rail → pack core at
+  the edge / in the browser (Pyodide/WASM), behind a thin in-process boundary.
+  `EdgeRuntime(profile=EdgeProfile.browser()).run(EdgeRequest(task=..., evidence=[...]))`
+  → `EdgeResult` (`.packet` slim `ContextPacket`, `.prompt` rendered model-ready
+  text, `.resident_bytes`, `.within_profile`, `.allowed`, `.rail_check`). No
+  provider, network, filesystem, or caller-owned event loop. `.run` is sync
+  (works under a WASM host loop); `.arun` is async. Accepts a plain string too.
+- `EdgeProfile` bounds the compiled packet — `max_resident_bytes` /
+  `max_input_tokens` / `max_evidence_items` — and lowers to the *same*
+  `ContextCompilerOptions` the server reads (`.to_compiler_options()`). Presets:
+  `EdgeProfile.browser()` (256 KiB / 4096 tok), `.worker()` (the default), and
+  `.server_like()` (for parity testing). The footprint stays under the cap as the
+  corpus grows 10×, held by slimming + eviction; `run(..., strict=True)` raises
+  `EdgeError` instead of `within_profile=False` on a breach.
+- Parity, not a fork: `verify_edge_parity()` → `EdgeParityReport` proves the edge
+  packet is byte-identical (same `spec_hash`) to a direct server compile and that
+  the runtime delegates to the canonical `ContextCompiler` / `RailEngine`.
+  `edge_manifest()` → `EdgeManifest` statically certifies the core path imports
+  nothing native (`.clean` / `.offending`), so it is WASM-buildable.
+- `edge_environment()` / `is_wasm_runtime()` detect a Pyodide/WASI host (reads
+  `sys.platform`, executes nothing). `app.edge_runtime(profile=None)` builds a
+  runtime seeded with the app's rails. Rails run at the edge: input rails screen
+  the task, output rails screen the *rendered context* (a secret leaking from
+  evidence is refused before the prompt is emitted).
+
 ## CLI & server
 
 - `vincio init (--template minimal|rag|agent|eval, --provider) · run · config
