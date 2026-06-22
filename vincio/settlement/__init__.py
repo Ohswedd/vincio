@@ -46,7 +46,13 @@ prospective counterparty verifies from the bytes alone (a tampered score or a fo
 issuer is caught) and :func:`combine_attestations` folds, across several issuers,
 into a bounded, evidence-weighted :class:`PortableReputation` prior that weights the
 next negotiation under the same ``[floor, 1]`` rule a local reputation does — never a
-hosted reputation bureau. Everything is dependency-free, deterministic, and
+hosted reputation bureau. Because standing changes, the portable prior is
+**time-aware and revocable**: an attestation carries an issuer ``horizon_days``
+validity window, an issuer signs a content-bound :class:`AttestationRevocation` to
+withdraw or supersede one (:meth:`SettlementBook.revoke`), and an as-of-aware
+:func:`combine_attestations` decays a stale attestation out of the prior and excludes
+a revoked one — pinpointed, never silently honored. Everything is dependency-free,
+deterministic, and
 offline — never a hosted marketplace, a clearing house, an arbitration service, a
 reputation service, or a payment processor, only a mechanical, verifiable
 reconciliation.
@@ -63,13 +69,16 @@ from .arbitration import (
 )
 from .attestation import (
     AttestationConfig,
+    AttestationRevocation,
     AttestationVerdict,
     AttestationVerification,
     PortableReputation,
     ReputationAttestation,
+    RevocationVerification,
     SubjectStanding,
     attest_reputation,
     combine_attestations,
+    revoke_attestation,
 )
 from .book import (
     BookVerification,
@@ -142,8 +151,11 @@ __all__ = [
     "AttestationConfig",
     "AttestationVerification",
     "AttestationVerdict",
+    "AttestationRevocation",
+    "RevocationVerification",
     "SubjectStanding",
     "PortableReputation",
     "attest_reputation",
+    "revoke_attestation",
     "combine_attestations",
 ]

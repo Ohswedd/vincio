@@ -608,6 +608,24 @@ local standing (the `base` ledger), so a portable attestation only ever fills th
 there is no local history; it can never *raise* a counterparty's pull past parity or bypass
 the quality bar.
 
+Because standing changes, the portable prior is **time-aware and revocable** — it reflects
+*current* standing, never a frozen snapshot, and still **reads only the existing signed
+artifacts**, asserting nothing it cannot recompute. **Freshness:** an attestation carries an
+issuer-declared validity window (`horizon_days`) bound into its signed hash, so against an
+as-of clock a stale attestation is **excluded and pinpointed** (`PortableReputation.stale`)
+while an older one within its window **decays** out of the pooled prior by an importer
+`half_life_days` (its evidence mass halved each half-life, its attested ratio preserved) —
+an old attestation eases out rather than anchoring the prior forever. **Revocation:** an
+issuer signs a content-bound `AttestationRevocation` (`app.revoke_attestation` /
+`book.revoke`) that withdraws or supersedes a prior attestation **by its hash**, and
+`revocation.verify(verifier)` recomputes it **offline from the bytes alone** — so the
+withdrawn claim is **excluded and pinpointed** (`PortableReputation.revoked`), never silently
+honored. A revocation withdraws an attestation only when it both verifies and is issued by
+the **same party** whose attestation it names, so a **forged revocation, or one naming
+another org's attestation, cannot cancel a claim** — there is no central revocation service
+or bulletin board, and freshness and revocation fold into the *same* bounded `[floor, 1]`
+weighting a local reputation uses.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

@@ -1616,9 +1616,7 @@ class ContextApp:
         self, video: Any, prompt: Any, *, provider: Any, model: str | None = None, **kwargs: Any
     ):
         """Synchronous :meth:`aedit_video`."""
-        return run_sync(
-            self.aedit_video(video, prompt, provider=provider, model=model, **kwargs)
-        )
+        return run_sync(self.aedit_video(video, prompt, provider=provider, model=model, **kwargs))
 
     def risk_tier(
         self,
@@ -2777,9 +2775,7 @@ class ContextApp:
             return LocalParty(member_id, spec, reputation=self._reputation_view())
         if isinstance(spec, Party):
             return spec
-        raise ConfigError(
-            f"negotiate {role}= must be a NegotiationPosition or a negotiation Party"
-        )
+        raise ConfigError(f"negotiate {role}= must be a NegotiationPosition or a negotiation Party")
 
     def _reputation_view(self) -> Any:
         """The reputation an offer is weighted by: imported prior over local ledger.
@@ -2856,9 +2852,7 @@ class ContextApp:
         from ..negotiation import Negotiation, NegotiationBudget
 
         nbudget = (
-            budget
-            if isinstance(budget, NegotiationBudget)
-            else NegotiationBudget(**(budget or {}))
+            budget if isinstance(budget, NegotiationBudget) else NegotiationBudget(**(budget or {}))
         )
         buyer_party = self._negotiation_party(buyer, "buyer", buyer_id)
         seller_party = self._negotiation_party(seller, "seller", seller_id)
@@ -2956,9 +2950,7 @@ class ContextApp:
 
     # -- cross-org workflow choreography --------------------------------------
 
-    def _capability_binder(
-        self, saga: Any, directory: Any, binder: Any, weights: Any
-    ) -> Any:
+    def _capability_binder(self, saga: Any, directory: Any, binder: Any, weights: Any) -> Any:
         """Resolve the binder for a saga: explicit binder, else built from a directory.
 
         Returns ``None`` for a fully statically-wired saga (no discovered steps), so
@@ -3408,6 +3400,7 @@ class ContextApp:
         book: Any | None = None,
         resolutions: Any | None = None,
         config: Any | None = None,
+        horizon_days: float | None = None,
         sign: bool = True,
         record_audit: bool = True,
     ) -> Any:
@@ -3420,8 +3413,10 @@ class ContextApp:
         :class:`~vincio.settlement.ReputationAttestation`, signed as this app (the
         issuer). A prospective counterparty verifies it from the bytes alone (a
         tampered score or a forged issuer is caught) and folds several issuers'
-        attestations into a bounded prior with :meth:`import_reputation`. Unless
-        ``record_audit`` is off, the issuance lands on the audit chain. Raises
+        attestations into a bounded prior with :meth:`import_reputation`.
+        ``horizon_days`` optionally declares a validity window after which an
+        as-of-aware import treats the attestation as stale. Unless ``record_audit`` is
+        off, the issuance lands on the audit chain. Raises
         :class:`~vincio.core.errors.SettlementError` when this app has no admissible
         history with the subject to attest. Returns the attestation::
 
@@ -3438,6 +3433,7 @@ class ContextApp:
             config=config,
             sign=sign and signer is not None,
             verify_with=None,
+            horizon_days=horizon_days,
         )
         if sign and signer is not None and source.signer is None:
             # Sign as the issuer (the book's owner), the identity book.attest would
@@ -3454,6 +3450,55 @@ class ContextApp:
             attestation.audit_id = getattr(entry, "id", None)
         return attestation
 
+    def revoke_attestation(
+        self,
+        attestation: Any,
+        *,
+        book: Any | None = None,
+        replacement: Any | None = None,
+        reason: str = "",
+        sign: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Withdraw a prior attestation, by its hash, as a signed revocation.
+
+        Builds a content-bound
+        :class:`~vincio.settlement.AttestationRevocation` that supersedes or withdraws
+        ``attestation`` — which this app (the issuer) must have issued — signed as this
+        app and, unless ``record_audit`` is off, recorded on the audit chain.
+        ``replacement`` optionally names the attestation that supersedes it. A
+        prospective counterparty passes the revocation to :meth:`import_reputation` so
+        the withdrawn claim is excluded from the combination, pinpointed, never
+        silently honored. Returns the revocation::
+
+            rev = app.revoke_attestation(att, reason="vendor regressed")
+            rev.verify(app.contract_signer).valid  # offline-verifiable
+        """
+        from ..settlement.attestation import REVOCATION_ACTION
+
+        source = book if book is not None else self._settlement_book()
+        signer = self._resolve_contract_signer(None, sign)
+        revocation = source.revoke(
+            attestation,
+            replacement=replacement,
+            reason=reason,
+            sign=sign and signer is not None,
+        )
+        if sign and signer is not None and source.signer is None:
+            # Sign as the issuer (the book's owner), matching how revoke would, so the
+            # signature party matches the revocation's issuer and it verifies against
+            # its own default require=[issuer].
+            revocation.sign(signer, party=revocation.issuer)
+        if record_audit and self.audit is not None:
+            entry = self.audit.record(
+                REVOCATION_ACTION,
+                resource=revocation.subject,
+                decision="superseded" if revocation.is_supersession else "withdrawn",
+                details=revocation.audit_details(),
+            )
+            revocation.audit_id = getattr(entry, "id", None)
+        return revocation
+
     def import_reputation(
         self,
         attestations: list[Any],
@@ -3462,6 +3507,8 @@ class ContextApp:
         config: Any | None = None,
         verify_with: Any | None = None,
         allow_self: bool = False,
+        revocations: list[Any] | None = None,
+        as_of: Any | None = None,
         weight: bool = True,
     ) -> Any:
         """Combine other orgs' attestations into a prior that weights negotiation.
@@ -3471,14 +3518,18 @@ class ContextApp:
         evidence across issuers into a bounded, evidence-weighted
         :class:`~vincio.settlement.PortableReputation` prior under ``config`` — never
         a single self-asserted number (an issuer that vouches for itself is refused).
-        With ``weight`` (the default) the prior is attached so the next negotiation
-        weights a counterparty with no local history by what its past counterparties
-        attest, under the same bounded ``[floor, 1]`` rule a local reputation uses;
-        the attached local :class:`~vincio.optimize.reputation.ReputationLedger` stays
-        the source of truth for a counterparty this app already knows. Returns the
-        prior::
+        Any signed :class:`~vincio.settlement.AttestationRevocation` in ``revocations``
+        excludes the attestation its issuer withdrew, and with an ``as_of`` clock a
+        stale attestation (past its issuer-declared validity window) decays out of the
+        prior rather than anchoring it forever — so the imported standing reflects
+        *current* standing, not a frozen snapshot. With ``weight`` (the default) the
+        prior is attached so the next negotiation weights a counterparty with no local
+        history by what its past counterparties attest, under the same bounded
+        ``[floor, 1]`` rule a local reputation uses; the attached local
+        :class:`~vincio.optimize.reputation.ReputationLedger` stays the source of truth
+        for a counterparty this app already knows. Returns the prior::
 
-            prior = app.import_reputation([att_a, att_b])
+            prior = app.import_reputation([att_a, att_b], revocations=[rev], as_of=now)
             result = app.negotiate("transcribe calls", buyer=..., seller=...)
         """
         from ..settlement.attestation import combine_attestations
@@ -3490,6 +3541,8 @@ class ContextApp:
             verify_with=verify_with,
             base=self.reputation_ledger,
             allow_self=allow_self,
+            revocations=revocations,
+            as_of=as_of,
         )
         if weight:
             self.imported_reputation = prior

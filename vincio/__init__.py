@@ -297,6 +297,7 @@ from .security.dualplane import DualPlaneExecutor
 from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
 from .settlement import (
+    AttestationRevocation,
     Meter,
     MeterReading,
     NettingSet,
@@ -314,6 +315,7 @@ from .settlement import (
     net_books,
     net_settlements,
     reconcile,
+    revoke_attestation,
     settle_contract,
     settle_saga,
 )
@@ -328,7 +330,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.29.0"
+__version__ = "3.30.0"
 
 __all__ = [
     "ContextApp",
@@ -480,8 +482,10 @@ __all__ = [
     "arbitrate",
     # cross-org reputation attestation & portability
     "ReputationAttestation",
+    "AttestationRevocation",
     "PortableReputation",
     "attest_reputation",
+    "revoke_attestation",
     "combine_attestations",
     # world-model / simulation-based planning
     "WorldModel",

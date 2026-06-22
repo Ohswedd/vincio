@@ -504,9 +504,7 @@ class SettlementBook:
             )
         return self
 
-    def reconcile_with(
-        self, counterparty_record: SettlementRecord
-    ) -> Reconciliation:
+    def reconcile_with(self, counterparty_record: SettlementRecord) -> Reconciliation:
         """Tie a counterparty's record out against this book's own for it.
 
         Looks up this book's settlement for the same contract and reconciles the
@@ -590,6 +588,7 @@ class SettlementBook:
         config: Any = None,
         sign: bool = True,
         verify_with: ChainSigner | None = None,
+        horizon_days: float | None = None,
         note: str = "",
     ) -> Any:
         """Issue a portable attestation of a counterparty's earned standing.
@@ -600,9 +599,11 @@ class SettlementBook:
         offline-verifiable :class:`~vincio.settlement.attestation.ReputationAttestation`
         (:func:`~vincio.settlement.attestation.attest_reputation`). A prospective
         counterparty verifies it from the bytes alone and folds several issuers'
-        attestations into a bounded prior that weights the next negotiation. Signs the
-        attestation as this book's owner (the issuer) when a signer is attached, so an
-        attested standing is offline-verifiable the way a record is. Raises
+        attestations into a bounded prior that weights the next negotiation.
+        ``horizon_days`` optionally declares a validity window after which an
+        as-of-aware combination treats the attestation as stale. Signs the attestation
+        as this book's owner (the issuer) when a signer is attached, so an attested
+        standing is offline-verifiable the way a record is. Raises
         :class:`SettlementError` when this book has no admissible history with the
         subject to attest.
         """
@@ -615,11 +616,48 @@ class SettlementBook:
             resolutions=resolutions,
             config=config,
             verify_with=verify_with,
+            horizon_days=horizon_days,
             note=note,
         )
         if sign and self.signer is not None:
             attestation.sign(self.signer, party=self.owner)
         return attestation
+
+    def revoke(
+        self,
+        attestation: Any,
+        *,
+        replacement: Any = None,
+        reason: str = "",
+        sign: bool = True,
+    ) -> Any:
+        """Withdraw a prior attestation this book issued, by its hash.
+
+        Builds a signed, offline-verifiable
+        :class:`~vincio.settlement.attestation.AttestationRevocation`
+        (:func:`~vincio.settlement.attestation.revoke_attestation`) that supersedes or
+        withdraws ``attestation`` — which this book must have issued, since an issuer
+        can revoke only its own claim. ``replacement`` optionally names the attestation
+        that supersedes it. A prospective counterparty folds the revocation into a
+        combination so the withdrawn claim is excluded, pinpointed, never silently
+        honored. Signs the revocation as this book's owner (the issuer) when a signer
+        is attached. Raises :class:`SettlementError` when the attestation was not
+        issued by this book.
+        """
+        from .attestation import revoke_attestation
+
+        if getattr(attestation, "issuer", self.owner) != self.owner:
+            raise SettlementError(
+                f"{self.owner!r} cannot revoke an attestation issued by "
+                f"{getattr(attestation, 'issuer', None)!r}",
+                details={"owner": self.owner, "issuer": getattr(attestation, "issuer", None)},
+            )
+        revocation = revoke_attestation(
+            attestation, issuer=self.owner, replacement=replacement, reason=reason
+        )
+        if sign and self.signer is not None:
+            revocation.sign(self.signer, party=self.owner)
+        return revocation
 
     # -- reporting ----------------------------------------------------------
 
@@ -633,9 +671,7 @@ class SettlementBook:
                 rows.append(SettlementRow(counterparty=party))
                 continue
             owed = round(sum(r.amount_owed_usd for r in recs), 9)
-            delivered = round(
-                sum(r.delivered_cost_usd or 0.0 for r in recs), 9
-            )
+            delivered = round(sum(r.delivered_cost_usd or 0.0 for r in recs), 9)
             rows.append(
                 SettlementRow(
                     counterparty=party,
@@ -668,9 +704,7 @@ class SettlementBook:
         """Populate this book from a persisted projection (replaces its state)."""
         self.id = data.get("id", self.id)
         self.head_hash = data.get("head_hash", "")
-        self.records = [
-            SettlementRecord.model_validate(r) for r in data.get("records", [])
-        ]
+        self.records = [SettlementRecord.model_validate(r) for r in data.get("records", [])]
         created = data.get("created_at")
         if isinstance(created, str):
             self.created_at = datetime.fromisoformat(created)

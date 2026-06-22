@@ -58,6 +58,7 @@ and a runnable example.
 | **Cross-org settlement netting & multilateral clearing** | The reach once bilateral settlements are signed, reconciled, and reputation-closing: **netting** them. An org is often both a buyer and a seller across a web of contracts; `net_settlements` / `net_books` fold a fleet's many bilateral `SettlementBook` balances into a single minimal set of net obligations, so the books close once — a library-side clearing **calculation**, never a hosted clearing house or a payment rail. Each settled contract is a directed payable (the buyer owes the seller the agreed price for the scope; a breach is surfaced by the settlement's own status and the reputation loop, not by altering what is owed); the directed obligations aggregate per pair, the same settlement seen from both books is **deduped not double-counted**, each pair collapses to one `BilateralNet` figure, and the per-org `NetPosition`s (every payable is someone's receivable, so they sum to zero) clear to the minimal set of `NetObligation` transfers — at most `N − 1` for `N` parties, net-debtors paying net-creditors, deterministically (ties broken by org id). The resulting `NettingSet` is **content-bound and offline-verifiable** the way a `SettlementRecord` is: a netting hash binds the fleet, the exact source records read, the positions, and the cleared obligations, and `verify` recomputes it from the bytes alone — the hash matches, the positions balance to zero, and the cleared transfers reproduce every position. Netting reads only the existing signed, hash-chained records and asserts nothing it cannot recompute: a tampered source record is **refused**, and two books that disagree on a contract are pinpointed as a `NettingDispute` — excluded from the clearing, never silently absorbed (`app.clear_settlements` / `book.net()`) — held by a netting-correctness SLO and a netting-integrity SLO. |
 | **Cross-org dispute resolution & arbitration** | The reach once a disagreement is *pinpointed* (a `NettingDispute`, or two records that do not reconcile): **resolving** it. Each party submits its signed `SettlementRecord`s for the disputed contract and the deterministic `arbitrate` (`app.arbitrate` / `book.arbitrate`) decides which figure stands — reading only the existing signed records and asserting nothing it cannot recompute, a library-side protocol, never a hosted arbitration service or a court of record. The decision rests on verifiable evidence: a reconciliation hash that **both** the buyer and the seller signed — each on their own record, the two co-signing one figure exactly as `reconcile` describes — is mutually corroborated and **upheld**; a unilateral claim contradicting it is **rejected** and its claimant pinpointed; a single uncontested figure stands on its own; and when neither side's figure is corroborated the dispute is honestly left **unresolved** rather than decided by fiat. Unlike netting, which *refuses* to clear over a tampered book, arbitration is the venue where a bad claim is adjudicated: a tampered or forged claim is marked **inadmissible** and pinpointed (`ClaimVerdict`), never silently dropped and never crashing the resolution. The resulting `Resolution` is **content-bound and offline-verifiable** the way a `SettlementRecord` is: a resolution hash binds the contract, the parties, the outcome, and every adjudicated claim, and `verify` recomputes it from the bytes alone and **re-derives the whole decision from the recorded claims** — so a flipped verdict is caught even after re-sealing, and two arbiters reading the same records compute the same co-signable hash. A settled dispute also **closes the reputation loop**: the party whose claim did not stand is debited, so a bad-faith revision weights the next negotiation — held by a resolution-correctness SLO and a resolution-integrity SLO. |
 | **Cross-org reputation attestation & portability** | The last reach once standing is earned everywhere: making it **portable**. Settlement, netting, and arbitration all close the reputation loop, but the standing they earn lives inside one org's own `ReputationLedger` — a *new* counterparty, with no prior history, has no way to trust it without a hosted reputation bureau. An org issues a signed `ReputationAttestation` over a counterparty's earned standing (`app.attest_reputation` / `book.attest`), derived only from its own `SettlementBook` records and arbitration `Resolution`s — a fulfilled delivery a success, a breach or an arbitration dissent a failure — reading only what it can recompute (a tampered own record is skipped, the exact source hashes bound) and signing it with the same `ChainSigner` a contract uses. The attestation is **content-bound and offline-verifiable** the way a `SettlementRecord` is: an attestation hash binds the issuer, the subject, the evidence counts, the prior, and the source records read, and `verify` recomputes it from the bytes alone and **re-derives the attested reputation from the evidence counts** — so a tampered score is caught even after re-sealing, and a forged issuer is refused. Several issuers' attestations `combine_attestations` (`app.import_reputation`) into a bounded, evidence-weighted `PortableReputation` prior: because a Beta-Bernoulli posterior is conjugate, combining is **pooling the evidence**, never a single self-asserted number — an issuer that vouches for itself is refused, an issuer cannot stack its own pull (only its largest attestation counts), a tampered or forged attestation is pinpointed (`AttestationVerdict`) and excluded, an optional `per_issuer_cap` bounds any one issuer's mass, and the importer's own prior anchors the pooled posterior so a thin attestation barely moves it. The prior exposes `weight(member_id)`, so it drops into the **existing** negotiation/discovery path unchanged — a regressor is discounted under the same bounded `[floor, 1]` rule a local reputation is, never zeroed, never singled out, reversible — and an unknown counterparty is weighted by what its past counterparties attest, while one the importer already knows keeps its own earned `ReputationLedger` standing (passed as the `base`). Held by an attestation-correctness SLO and an attestation-integrity SLO. |
+| **Cross-org attestation revocation & freshness** | The reach once standing is portable: keeping it **current**. A `ReputationAttestation` is a point-in-time claim, but standing changes — a counterparty reliable a year ago may have regressed, and an issuer may need to **withdraw** a claim it can no longer stand behind — and the portable prior would otherwise trust a signed attestation forever. **Freshness:** an attestation carries an issuer-declared validity window (`horizon_days` beside the `issued_at` it already has), bound into its signed hash, so against an as-of clock a stale attestation is **excluded and pinpointed** while an older one within its window **decays** out of the pooled prior by an importer `half_life_days` — its evidence mass halved each half-life, its attested ratio preserved — rather than anchoring it forever. **Revocation:** an issuer signs a content-bound `AttestationRevocation` (`app.revoke_attestation` / `book.revoke`) that withdraws or supersedes a prior attestation **by its hash**, offline-verifiable the way the attestation is — `verify` recomputes it from the bytes alone — so the withdrawn claim is excluded from the combination, pinpointed (`AttestationVerdict.revoked` / `.stale`), never silently honored; a forged revocation, or one naming another org's attestation, **cannot cancel a claim** (only the issuer can withdraw its own). Freshness and revocation read only the existing signed artifacts, assert nothing they cannot recompute, and fold into the same bounded `[floor, 1]` weighting — `combine_attestations(..., revocations=, as_of=)` / `app.import_reputation(..., revocations=, as_of=)` — never a central revocation service or a hosted bulletin board. Held by an attestation-correctness SLO, an attestation-integrity SLO, and an attestation-freshness-and-revocation SLO. |
 | **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
 | **Use-case coverage & verticals** | Full-stack vertical packs (healthcare/PHI, legal e-discovery, financial KYC/AML, customer support, code review) that preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set on top of the pack contract; a higher-level `Assistant` over `ContextApp` that threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval; an end-to-end `VoiceAgent` wiring the realtime session to the deep-research agent, the memory OS, and the rails; and a cookbook of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) as offline-gated runnable examples. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
@@ -88,40 +89,41 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **Cross-org reputation attestation & portability** (a signed,
-offline-verifiable `ReputationAttestation` an org issues over a counterparty's earned standing from its own
-`SettlementBook` and arbitration `Resolution`s — `app.attest_reputation` / `book.attest` — that `verify`
-recomputes from the bytes alone and re-derives from the evidence counts, so a tampered score or a forged
-issuer is caught; several issuers' attestations `combine_attestations` / `app.import_reputation` into a
-bounded, evidence-weighted `PortableReputation` prior that refuses a self-attestation, pinpoints a tampered
-one, and weights the existing negotiation/discovery path under the same `[floor, 1]` rule a local reputation
-does) — has shipped and folded into the **Cross-org reputation attestation & portability** row above. The
-next theme is scheduled below. It closes a specific gap in the platform's *own* frontier — a rung that exists
-in the literature and in buyer demand but not yet in the package — rather than a gap measured against any one
-competitor. An indicative minor-version target is given; cadence holds one coherent theme per minor.
+The most recent scheduled theme — **Cross-org attestation revocation & freshness** (an issuer-declared
+`horizon_days` validity window bound into an attestation's signed hash, so against an as-of clock a stale
+attestation is excluded and an older one decays out of the pooled prior by an importer `half_life_days`; and a
+content-bound, offline-verifiable `AttestationRevocation` — `app.revoke_attestation` / `book.revoke` — that
+withdraws or supersedes a prior attestation by its hash, so the withdrawn claim is excluded from
+`combine_attestations(..., revocations=, as_of=)` / `app.import_reputation`, pinpointed, never silently
+honored, and a forged revocation cannot cancel a claim) — has shipped and folded into the **Cross-org
+attestation revocation & freshness** row above. The next theme is scheduled below. It closes a specific gap in
+the platform's *own* frontier — a rung that exists in the literature and in buyer demand but not yet in the
+package — rather than a gap measured against any one competitor. An indicative minor-version target is given;
+cadence holds one coherent theme per minor.
 
-### 1 · Cross-org attestation revocation & freshness *(target 3.30)*
+### 1 · Cross-org reputation gossip & attestation exchange *(target 3.31)*
 
-A `ReputationAttestation` is a **point-in-time** claim, but standing changes: a counterparty that was reliable
-a year ago may have regressed since, and an issuer may need to **withdraw** an attestation it can no longer
-stand behind. Today's portable prior trusts a signed attestation forever, with no way to express that it has
-gone stale or been retracted. The next reach is making portable reputation **time-aware and revocable** — so
-an imported prior reflects *current* standing, not a frozen snapshot, without becoming a hosted revocation
-service.
+Attestations are now portable, time-aware, and revocable — but an importer still has to be *handed* the right
+bundle out of band: it has no way to **discover** who has attested a counterparty, or to learn that an issuer
+has since revoked one, without a hosted registry. The next reach is a bounded, pull-based **exchange** of the
+existing signed artifacts over the A2A fabric — the discovery analogue for reputation — so an importer
+assembles a *current* prior from what its peers hold, never from a central bulletin board.
 
-- **Freshness** — an attestation carries a validity window (an `issued_at` it already has, plus an explicit
-  horizon), and the importer down-weights or refuses a stale one against an as-of clock, so an old attestation
-  decays out of the pooled prior rather than anchoring it forever.
-- **Revocation** — an issuer signs a content-bound `AttestationRevocation` that supersedes or withdraws a prior
-  attestation by its hash, offline-verifiable the way the attestation is, so a withdrawn claim is excluded from
-  the combination — pinpointed, never silently honored.
-- **Same discipline** — freshness and revocation read only the existing signed artifacts, assert nothing they
-  cannot recompute, and fold into the same bounded `[floor, 1]` weighting, never a central bulletin board.
+- **Pull, never push** — an importer queries a peer for the attestations and revocations it holds about a
+  subject (`app.serve_attestations` / a remote `AttestationExchange`), and the peer returns only its own signed
+  artifacts; nothing is trusted that does not `verify` from the bytes alone, exactly as a directly-handed
+  bundle is.
+- **Bounded fan-out** — the exchange visits a bounded set of peers from the governed `AgentDirectory`,
+  deduplicates by attestation hash, and folds the gathered artifacts straight into `combine_attestations`
+  under the same freshness, revocation, and `[floor, 1]` discipline — so gossip changes *where the evidence
+  comes from*, never *how it is weighed*.
+- **Auditable & offline** — every fetched artifact and every peer visited lands on the hash-chained audit log,
+  and the whole exchange runs byte-for-byte the same against deterministic local peers as over the live fabric.
 
-*Ships as:* a validity window and an offline-verifiable `AttestationRevocation` over the existing
-`ReputationAttestation`, an as-of-aware combination that decays stale and excludes revoked evidence, an
-extension to the `reputation_portability` VincioBench family with a freshness + revocation SLO, and a runnable
-example.
+*Ships as:* a pull-based `AttestationExchange` over the A2A fabric (`app.serve_attestations` /
+`app.gather_reputation`) that gathers and verifies peers' signed attestations and revocations into the
+existing combination, an extension to the `reputation_portability` VincioBench family with an exchange SLO,
+and a runnable example.
 
 ---
 
