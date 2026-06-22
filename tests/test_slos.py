@@ -19,7 +19,14 @@ def test_slos_well_formed():
         assert slo["direction"] in ("gte", "lte", "eq")
         assert slo["statement"].strip()
         assert slo["rationale"].strip()
-        assert slo["category"] in ("performance", "cost", "quality", "reliability", "security")
+        assert slo["category"] in (
+            "performance",
+            "cost",
+            "quality",
+            "reliability",
+            "security",
+            "privacy",
+        )
 
 
 @pytest.mark.parametrize("slo", SLOS, ids=lambda s: s["id"])

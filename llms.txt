@@ -188,6 +188,31 @@ app.run("export button 500s").output.label
   or refuse, every decision on the audit chain and event bus. `app.local_adaptation`
   returns the streaming controller. Held by `families.local_adaptation`
   (at-least-as-good + bounded off-distribution + regression refused/reversible).
+- **Federated / cross-org self-improvement.** Sharing what a fleet learned
+  *across* trust boundaries without sharing raw traffic (`vincio.optimize.federated`).
+  Each member builds a `Contribution` with `ContributionBuilder(embedder=, privacy=)`
+  /`app.contribute_federated(member_id=, participants=, training_set=|runs=)`: it
+  embeds the member's prompts and forms the `d×d` **scatter** (`Σ wᵢ·(vᵢ⊗vᵢ)`, a
+  second-moment sufficient statistic of the local subspace), then **clips** it to
+  `PrivacyConfig.clip_norm`, optionally adds the **DP** Gaussian mechanism
+  (`dp_epsilon`/`dp_delta` → `noise_sigma()`), and folds in **secure-aggregation**
+  masks against `participants` — the wire object carries **no prompt and no
+  response**, only numbers, plus a consent attestation (TRAINING purpose, enforced
+  when `require_consent`) and a residency tag. `SecureAggregator(privacy=, rank=,
+  allowed_regions=).aggregate(contributions)` sums the masked updates (pairwise
+  masks cancel across the exact participant set, so no individual update is ever
+  observed), refuses a round below `min_contributors` (k-anonymity) or with mixed
+  base models/dims/disallowed regions, and extracts the consensus `FederatedSubspace`
+  by deterministic federated PCA (top eigenvectors of the aggregate scatter).
+  `refit_with_subspace(subspace, training_set, embedder=)` re-fits a member's own
+  `LocalAdapter` against the shared geometry (fleet basis, the member's own grounded
+  targets). `FederatedImprovement`/`app.adopt_federated(dataset, contributions,
+  training_set=|runs=)` runs the gated round — aggregate → refit → gate base-vs-adapted
+  with the same `AdapterGate` no-regression verdict → adopt (`AdapterRegistry.register`
+  + `app.use_local_adapter`) or refuse/rollback, every decision on the audit chain and
+  event bus; `app.federated_improvement` returns the streaming controller. Held by
+  `families.federated` (no-raw-traffic + secure-aggregation masks cancel/individual
+  hidden + k-anonymity + at-least-as-good + regression refused/reversible).
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
@@ -723,6 +748,17 @@ app.run("export button 500s").output.label
   the streaming `ContinualAdaptation` controller; `app.use_local_adapter(adapter)`
   applies one live and `app.use_local_adapter(None)` unloads it. See the full entry
   above (`families.local_adaptation`).
+- **Federated / cross-org self-improvement.** `app.contribute_federated(member_id=,
+  participants=, training_set=|runs=, policy=FederatedPolicy(), consent_subject=)`
+  builds this member's numeric, raw-text-free `Contribution` (behind the consent
+  ledger + residency posture); `app.adopt_federated(dataset, contributions,
+  training_set=|runs=, policy=, registry=)` securely aggregates the fleet's
+  contributions into a shared subspace, re-fits this member's own adapter against it,
+  gates it against the base on the held-out `dataset` (at-least-as-good), and on a
+  pass registers + applies it (`FederatedRoundResult`); `app.federated_improvement(...)`
+  returns the streaming `FederatedImprovement` controller. Only numeric, masked,
+  bounded-sensitivity aggregates cross a trust boundary. See the full entry above
+  (`families.federated`).
 
 ## Security & governance
 

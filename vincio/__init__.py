@@ -134,6 +134,16 @@ from .observability.store import IndexedTraceStore
 from .observability.viewer import serve_viewer
 from .optimize.controller import ContinuousImprovementController, ControllerDecision
 from .optimize.distill import BootstrapFinetune, TrainingSet, provider_trainer
+from .optimize.federated import (
+    Contribution,
+    ContributionBuilder,
+    FederatedImprovement,
+    FederatedPolicy,
+    FederatedRoundResult,
+    FederatedSubspace,
+    PrivacyConfig,
+    SecureAggregator,
+)
 from .optimize.judge_calibration import JudgeCalibrator
 from .optimize.local_adaptation import (
     AdaptationResult,
@@ -216,7 +226,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.14.0"
+__version__ = "3.15.0"
 
 __all__ = [
     "ContextApp",
@@ -301,6 +311,15 @@ __all__ = [
     "LocalAdaptationPolicy",
     "AdaptationResult",
     "ContinualAdaptation",
+    # federated / cross-org self-improvement
+    "PrivacyConfig",
+    "Contribution",
+    "ContributionBuilder",
+    "FederatedSubspace",
+    "SecureAggregator",
+    "FederatedPolicy",
+    "FederatedRoundResult",
+    "FederatedImprovement",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

@@ -1230,6 +1230,54 @@
     },
     "families.local_adaptation.versioned_rollback": {
       "eq": true
+    },
+    "families.federated.no_raw_traffic": {
+      "eq": true
+    },
+    "families.federated.sensitivity_bounded": {
+      "eq": true
+    },
+    "families.federated.secure_aggregation_individual_hidden": {
+      "eq": true
+    },
+    "families.federated.secure_aggregation_masks_cancel": {
+      "eq": true
+    },
+    "families.federated.k_anonymity_enforced": {
+      "eq": true
+    },
+    "families.federated.deterministic_subspace": {
+      "eq": true
+    },
+    "families.federated.fleet_coverage": {
+      "eq": true
+    },
+    "families.federated.subspace_rank": {
+      "gte": 1
+    },
+    "families.federated.contributor_count": {
+      "gte": 2
+    },
+    "families.federated.adopted": {
+      "eq": true
+    },
+    "families.federated.at_least_as_good": {
+      "eq": true
+    },
+    "families.federated.adapted_quality": {
+      "gte": 1.0
+    },
+    "families.federated.privacy_preserved": {
+      "eq": true
+    },
+    "families.federated.live_grounded": {
+      "eq": true
+    },
+    "families.federated.reversible": {
+      "eq": true
+    },
+    "families.federated.regression_refused": {
+      "eq": true
     }
   }
 }

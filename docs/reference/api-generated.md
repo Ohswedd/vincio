@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**224** public symbols.
+**232** public symbols.
 
 ## Classes
 
@@ -198,6 +198,14 @@ Drive continual on-device adaptation as a streaming, gated loop.
 
 Drive gated re-optimization / re-eval / rollback from live signals.
 
+### `Contribution(**data)`
+
+One member's privacy-preserving federated update — numeric, no raw traffic.
+
+### `ContributionBuilder(embedder=…, privacy=…)`
+
+Build a :class:`Contribution` from a member's local data — never its text.
+
 ### `ControllerDecision(**data)`
 
 The record of one controller evaluation — stamped on the audit chain.
@@ -281,6 +289,22 @@ Generate an Article 27 **fundamental-rights impact assessment** (FRIA).
 ### `FastEmbedEmbedder(model_name=…, dim=…, encode_fn=…, model=…, fallback=…)`
 
 Local ONNX dense embedder via ``fastembed``.
+
+### `FederatedImprovement(app, policy=…, dataset=…, registry=…, embedder=…, base_model=…)`
+
+Drive one gated, privacy-preserving federated round for the adopting member.
+
+### `FederatedPolicy(**data)`
+
+The opt-in contract for one gated federated-improvement round.
+
+### `FederatedRoundResult(**data)`
+
+The outcome of one gated federated-improvement round.
+
+### `FederatedSubspace(**data)`
+
+The fleet-consensus low-rank subspace distilled from a secure aggregation.
 
 ### `FertilityTracker(model=…, baseline_language=…)`
 
@@ -482,6 +506,10 @@ Execute a signature against a provider with full output validation.
 
 The world model's prediction for one ``(observation, action)``.
 
+### `PrivacyConfig(**data)`
+
+How a contribution is made privacy-preserving before it leaves a member.
+
 ### `PrometheusExporter(namespace=…)`
 
 Scrape-friendly Prometheus metrics for the served plane.
@@ -609,6 +637,10 @@ Bounds one search: candidate cap, optional cost cap, optional deadline.
 ### `SearchResult(**data)`
 
 The outcome of a search: the winner, every candidate, and why it stopped.
+
+### `SecureAggregator(privacy=…, rank=…, allowed_regions=…)`
+
+Merge masked contributions into a :class:`FederatedSubspace` — never seeing one.
 
 ### `SelfImprovementController(app, policy=…, dataset=…, golden=…, registry=…, prompt_name=…)`
 
