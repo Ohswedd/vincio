@@ -7144,6 +7144,131 @@ async def bench_discovery() -> dict[str, Any]:
     }
 
 
+async def bench_netting() -> dict[str, Any]:
+    """NettingBench: multilateral netting & clearing of a fleet's settlement books.
+
+    With bilateral settlements signed, reconciled, and reputation-closing, this
+    family holds the rung that **clears** them — folding a fleet's many bilateral
+    balances into a single minimal set of net obligations, so an org that is both a
+    buyer and a seller across a web of contracts closes its books once. It gates two
+    guarantees: **netting correctness** (the net positions balance to zero, the
+    cleared obligations reproduce every org's position, and a cycle clears to fewer
+    transfers than the gross edges — at most ``N - 1``) and **netting integrity**
+    (the cleared set is content-bound and signs/verifies offline the way a
+    settlement record does, a tampered figure is caught, a tampered source record is
+    refused, and two books that disagree on a contract are pinpointed as a dispute,
+    never silently netted). It is a library-side clearing calculation, never a hosted
+    clearing house. Deterministic and offline."""
+    from vincio import ContextApp, VincioConfig, net_settlements, settle_contract
+    from vincio.negotiation import Contract, ContractTerms
+    from vincio.security.audit import HMACSigner
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="clearer", provider=MockProvider(default_text="ok"), config=cfg)
+
+    def settled(buyer, seller, price, cost=0.01):
+        c = Contract(
+            buyer=buyer, seller=seller, terms=ContractTerms(scope="work", price_usd=price)
+        ).seal()
+        return settle_contract(c, cost_usd=cost)
+
+    # 1. Netting correctness: a 3-org cycle nets, positions balance, clearing conserves.
+    cycle = [settled("a", "b", 0.10), settled("b", "c", 0.06), settled("c", "a", 0.04)]
+    ns = net_settlements(cycle, owner="clearer")
+    positions_balance = abs(sum(p.net_usd for p in ns.positions)) <= 1e-9
+    flow = {p.party: 0.0 for p in ns.positions}
+    for o in ns.obligations:
+        flow[o.creditor] += o.amount_usd
+        flow[o.debtor] -= o.amount_usd
+    clearing_conserves = all(
+        abs(flow[p.party] - p.net_usd) <= 1e-9 for p in ns.positions
+    )
+    netting_conserves = bool(positions_balance and clearing_conserves and ns.verify().valid)
+
+    # 2. Multilateral clearing minimizes the transfers moved (cycle: 3 edges → 2).
+    netting_minimizes_transfers = bool(
+        ns.gross_edges == 3
+        and ns.cleared_transfers == 2
+        and ns.reduction == 1
+        and ns.total_cleared_usd < ns.total_gross_usd
+    )
+
+    # 3. The bilateral net collapses two opposing flows into one figure.
+    bil = net_settlements([settled("x", "y", 0.10), settled("y", "x", 0.04)])
+    netting_bilateral_collapses = bool(
+        len(bil.bilateral) == 1
+        and bil.bilateral[0].net_debtor == "x"
+        and bil.bilateral[0].net_amount_usd == round(0.10 - 0.04, 9)
+    )
+
+    # 4. The same settlement seen from both sides is deduped, not double-counted.
+    dc = Contract(buyer="a", seller="b", terms=ContractTerms(price_usd=0.10)).seal()
+    dedup = net_settlements(
+        [settle_contract(dc, cost_usd=0.05), settle_contract(dc, cost_usd=0.05)]
+    )
+    netting_dedup_correct = bool(dedup.settlements == 1 and dedup.gross_edges == 1)
+
+    # 5. Two books that disagree on a contract are pinpointed as a dispute.
+    disputed = net_settlements(
+        [settle_contract(dc, cost_usd=0.05), settle_contract(dc, cost_usd=0.07)]
+    )
+    netting_dispute_pinpointed = bool(
+        not disputed.clean
+        and len(disputed.disputes) == 1
+        and disputed.disputes[0].contract_id == dc.id
+        and disputed.settlements == 0
+    )
+
+    # 6. Netting integrity: a signed cleared set verifies offline; a tamper is caught.
+    signer = HMACSigner("clear-key", key_id="clearer")
+    signed = net_settlements(cycle, owner="clearer").sign(signer, party="clearer")
+    netting_verifies_offline = bool(signed.verify(signer).valid)
+    tampered = net_settlements(cycle).sign(signer, party="a")
+    tampered.obligations[0].amount_usd = 999.0
+    netting_tamper_detected = bool(not tampered.verify(signer).valid)
+
+    # 7. A tampered source record is refused outright (cannot net a forged book).
+    try:
+        bad = settled("a", "b", 0.10)
+        bad.amount_owed_usd = 999.0  # tamper without resealing
+        net_settlements([bad])
+        netting_tampered_source_refused = False
+    except Exception:
+        netting_tampered_source_refused = True
+
+    # 8. Two clearers reading the same records compute the same hash (co-signable).
+    netting_clearers_agree = bool(
+        net_settlements(cycle, owner="p").content_hash
+        == net_settlements(cycle, owner="q").content_hash
+    )
+
+    # 9. Auditable: the clearing lands on this app's hash-chained audit chain.
+    book_app_netting = app.clear_settlements(records=cycle)
+    audit_recorded = bool(
+        app.audit.query(action="netting")
+        and app.audit.verify_chain()
+        and book_app_netting.verify(app.contract_signer).valid
+    )
+
+    return {
+        "netting_conserves": netting_conserves,
+        "netting_minimizes_transfers": netting_minimizes_transfers,
+        "netting_bilateral_collapses": netting_bilateral_collapses,
+        "netting_dedup_correct": netting_dedup_correct,
+        "netting_dispute_pinpointed": netting_dispute_pinpointed,
+        "netting_verifies_offline": netting_verifies_offline,
+        "netting_tamper_detected": netting_tamper_detected,
+        "netting_tampered_source_refused": netting_tampered_source_refused,
+        "netting_clearers_agree": netting_clearers_agree,
+        "audit_recorded": audit_recorded,
+        "gross_edges": ns.gross_edges,
+        "cleared_transfers": ns.cleared_transfers,
+        "reduction": ns.reduction,
+        "total_cleared_usd": round(ns.total_cleared_usd, 4),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -7184,6 +7309,7 @@ FAMILIES = {
     "choreography": bench_choreography,
     "settlement": bench_settlement,
     "discovery": bench_discovery,
+    "netting": bench_netting,
     "breaking_2_0": bench_breaking_2_0,
 }
 

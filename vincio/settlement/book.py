@@ -526,6 +526,23 @@ class SettlementBook:
             )
         return reconcile(ours, counterparty_record)
 
+    def net(self, *, sign: bool = True) -> Any:
+        """Net this book's own records into the owner's cleared positions.
+
+        The single-org view of :func:`~vincio.settlement.netting.net_settlements`:
+        an org that is a buyer to some counterparties and a seller to others folds
+        its whole book into one :class:`~vincio.settlement.netting.NettingSet` — its
+        net position against each counterparty and the minimal cleared set of
+        transfers. Signs the set as this book's owner when a signer is attached, so
+        a cleared balance is offline-verifiable the way a record is.
+        """
+        from .netting import net_settlements
+
+        netting = net_settlements(self.records, owner=self.owner)
+        if sign and self.signer is not None:
+            netting.sign(self.signer, party=self.owner)
+        return netting
+
     # -- reporting ----------------------------------------------------------
 
     def report(self, counterparty: str | None = None) -> SettlementReport:

@@ -1136,6 +1136,30 @@ app.run("export button 500s").output.label
   settled overrun/shortfall debits the seller (via an attached `ReputationLedger`), so
   delivery weights the next negotiation. Audit action `settlement`. `SettlementError` (code
   `SETTLEMENT_ERROR`).
+- **Cross-org settlement netting & multilateral clearing.** `from vincio import NettingSet,
+  net_settlements, net_books` (also `vincio.settlement.__all__`: `NetPosition`,
+  `NetObligation`, `BilateralNet`, `GrossObligation`, `NettingDispute`, `NettingVerification`
+  are subpackage-only). **Netting** folds a fleet's many bilateral `SettlementBook` balances
+  into a single minimal set of net obligations — a library-side clearing *calculation*, never
+  a hosted clearing house or a payment rail. Each settled contract is a directed payable
+  (buyer owes seller `amount_owed_usd`, the agreed price; a breach is surfaced by the
+  settlement's own status/reputation, not by altering what is owed). `net_settlements(records,
+  *, owner=, fleet=, verify_with=)` and `net_books(books, *, owner=, verify_with=,
+  require_intact=)` → a `NettingSet`: the same settlement seen from both books is **deduped
+  not double-counted** (by reconciliation hash), the directed payables aggregate per pair into
+  `GrossObligation`s, collapse to one `BilateralNet` per counterparty, and the per-org
+  `NetPosition`s (`owed_usd`/`due_usd`/`net_usd`; sum to zero) **clear** to the minimal set of
+  `NetObligation` transfers — at most `N − 1`, net-debtors paying net-creditors,
+  deterministically (ties by org id). **Content-bound & offline-verifiable**: the netting hash
+  binds the fleet, the exact source records read, the positions, and the cleared obligations;
+  `netting.sign(signer, party=)`, `netting.verify(verifier=, require=)` → `NettingVerification`
+  (`.hash_ok`, `.positions_balanced`, `.conserves` — the cleared transfers reproduce every
+  position), `.require_valid()`. **Same discipline**: a tampered source record (its
+  reconciliation hash no longer recomputes) is **refused** (`SettlementError`), and two books
+  that disagree on a contract are pinpointed as a `NettingDispute` (excluded; `.clean`,
+  `.require_clean()`). `app.clear_settlements(*, books=, records=, sign=True, verify_with=,
+  record_audit=True)` nets a fleet, signs as the app, and audits (action `netting`);
+  `book.net(*, sign=True)` nets one org's own book. `.print_summary()`, `.to_wire`/`.from_wire`.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

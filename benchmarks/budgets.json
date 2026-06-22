@@ -1713,6 +1713,48 @@
     },
     "families.discovery.candidates_considered": {
       "gte": 2
+    },
+    "families.netting.netting_conserves": {
+      "eq": true
+    },
+    "families.netting.netting_minimizes_transfers": {
+      "eq": true
+    },
+    "families.netting.netting_bilateral_collapses": {
+      "eq": true
+    },
+    "families.netting.netting_dedup_correct": {
+      "eq": true
+    },
+    "families.netting.netting_dispute_pinpointed": {
+      "eq": true
+    },
+    "families.netting.netting_verifies_offline": {
+      "eq": true
+    },
+    "families.netting.netting_tamper_detected": {
+      "eq": true
+    },
+    "families.netting.netting_tampered_source_refused": {
+      "eq": true
+    },
+    "families.netting.netting_clearers_agree": {
+      "eq": true
+    },
+    "families.netting.audit_recorded": {
+      "eq": true
+    },
+    "families.netting.gross_edges": {
+      "gte": 3
+    },
+    "families.netting.cleared_transfers": {
+      "lte": 2
+    },
+    "families.netting.reduction": {
+      "gte": 1
+    },
+    "families.netting.total_cleared_usd": {
+      "gte": 0
     }
   }
 }
