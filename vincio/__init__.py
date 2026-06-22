@@ -154,6 +154,23 @@ from .governance import (
     verify_erasure_proof,
 )
 from .memory.engine import MemoryEngine, ScopedMemory
+from .negotiation import (
+    A2ANegotiator,
+    Contract,
+    ContractFulfillment,
+    ContractTerms,
+    ContractVerification,
+    IssuePreference,
+    Negotiation,
+    NegotiationBudget,
+    NegotiationPosition,
+    NegotiationResult,
+    Offer,
+    buyer_position,
+    negotiation_a2a_server,
+    select_offer,
+    seller_position,
+)
 from .notebook import enable_rich_reprs
 from .observability.energy import (
     EnergyEstimate,
@@ -274,7 +291,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.22.0"
+__version__ = "3.23.0"
 
 __all__ = [
     "ContextApp",
@@ -374,6 +391,22 @@ __all__ = [
     "MemberReputation",
     "ReputationReport",
     "ReputationError",
+    # agent negotiation & contracting
+    "Negotiation",
+    "NegotiationResult",
+    "NegotiationBudget",
+    "NegotiationPosition",
+    "IssuePreference",
+    "Offer",
+    "Contract",
+    "ContractTerms",
+    "ContractVerification",
+    "ContractFulfillment",
+    "A2ANegotiator",
+    "negotiation_a2a_server",
+    "select_offer",
+    "buyer_position",
+    "seller_position",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

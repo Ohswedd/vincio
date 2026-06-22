@@ -1022,6 +1022,31 @@ app.run("export button 500s").output.label
   `directory.find(capability=|tag=|query=)`, `directory.resolve(name)` passes an
   `AllowListGate` (fail-closed) and records an `agent_resolve` decision. AGNTCY/ACP
   + MCP-registry discover into the same directory.
+- **Agent negotiation & contracting.** `from vincio.negotiation import
+  buyer_position, seller_position, Negotiation, NegotiationBudget, Contract,
+  ContractTerms, select_offer, A2ANegotiator` (also top-level `vincio.__all__`).
+  `app.negotiate(scope, *, buyer=, seller=, budget=NegotiationBudget(max_rounds=,
+  deadline_s=), buyer_id=, seller_id=)` / `anegotiate` runs a typed alternating-offers
+  bargain between a buyer and a seller `NegotiationPosition` (or a `Party`) → a
+  `NegotiationResult` (`.status` agreement|no_agreement|walk_away, `.agreed`,
+  `.contract`, `.rounds`, `.offers`, `.deadline_hit`). **Termination guaranteed**:
+  a deal when the parties' acceptable regions overlap (time-dependent concession +
+  `AC_next` acceptance), a clean no-deal when they do not, a partial result on a
+  deadline. On agreement a `Contract` (price/SLA/scope/quality) is **signed by both
+  parties** (`app.contract_signer`, audit-chain signer, or per-app key) and recorded
+  (`negotiation` / `contract_signed` audit actions); `contract.verify(signer)`
+  validates **offline** (hash recomputes + signatures check; tamper → invalid),
+  `contract.to_budget()` lowers price→`max_cost_usd` / SLA→`max_latency_ms`, and
+  `contract.check(cost_usd=, latency_ms=, quality=)` / `app.enforce_contract(...)`
+  detect a breach (and debit the seller's reputation). When a `ReputationLedger` is
+  attached (`app.use_reputation_ledger()`), a local party discounts a counterparty's
+  offers by its reputation weight (`[floor, 1]`, bounded/reversible — discounted, not
+  singled out); `select_offer(results, buyer_position, reputation=)` picks the
+  reputation-weighted best deal. Over the A2A fabric: `app.serve_negotiation(party)`
+  exposes a `Party` as an A2A agent (a `negotiate` skill), `A2ANegotiator(client,
+  member_id=, role=)` drives a remote counterparty (member identity pinned, not
+  self-asserted). `NegotiationError`/`ContractError` (codes `NEGOTIATION_ERROR` /
+  `CONTRACT_VIOLATION`).
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

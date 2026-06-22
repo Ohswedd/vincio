@@ -1563,6 +1563,48 @@
     },
     "families.mcp_apps.ui_render_token_cost": {
       "gte": 0
+    },
+    "families.negotiation.terminates_within_budget": {
+      "eq": true
+    },
+    "families.negotiation.no_overlap_terminates": {
+      "eq": true
+    },
+    "families.negotiation.deadline_returns_partial": {
+      "eq": true
+    },
+    "families.negotiation.contract_signed_both": {
+      "eq": true
+    },
+    "families.negotiation.contract_verifies_offline": {
+      "eq": true
+    },
+    "families.negotiation.tamper_detected": {
+      "eq": true
+    },
+    "families.negotiation.contract_enforced_as_budget": {
+      "eq": true
+    },
+    "families.negotiation.reputation_discounts_regressor": {
+      "eq": true
+    },
+    "families.negotiation.reputation_weighted_selection": {
+      "eq": true
+    },
+    "families.negotiation.weight_bounded": {
+      "eq": true
+    },
+    "families.negotiation.a2a_parity": {
+      "eq": true
+    },
+    "families.negotiation.audit_recorded": {
+      "eq": true
+    },
+    "families.negotiation.rounds_to_agreement": {
+      "lte": 8
+    },
+    "families.negotiation.agreed_price_usd": {
+      "lte": 0.1
     }
   }
 }

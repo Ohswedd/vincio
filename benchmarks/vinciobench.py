@@ -6411,6 +6411,160 @@ async def bench_edge() -> dict[str, Any]:
     }
 
 
+async def bench_negotiation() -> dict[str, Any]:
+    """NegotiationBench: bounded contracting between agents over the A2A fabric.
+
+    Vincio governs a fabric of agents, scores per-member reliability, and discounts
+    an unreliable member's pull on a federated round; this family holds the rung
+    beside it — a **bounded offer/counter negotiation** that converges on a typed,
+    signed, audited **contract**, the negotiation analogue of a bounded crew round.
+    It gates three guarantees: **termination** (a bargain always ends within its
+    round/deadline budget — a deal when the parties' acceptable regions overlap, a
+    clean no-deal when they do not), **contract integrity** (the agreement is
+    signed by both parties and verifies offline from the bytes alone, a tampered
+    term is caught, and the terms enforce like a budget), and **reputation
+    weighting** (a regressing counterparty's offers are discounted without being
+    singled out, and the reputation-weighted best deal is selected). Deterministic
+    and offline; the A2A path runs in-process."""
+    from vincio import ContextApp, VincioConfig
+    from vincio.a2a import connect_a2a_in_process
+    from vincio.negotiation import (
+        A2ANegotiator,
+        Contract,
+        ContractTerms,
+        LocalParty,
+        Negotiation,
+        NegotiationBudget,
+        buyer_position,
+        select_offer,
+        seller_position,
+    )
+
+    def buyer():
+        return buyer_position(
+            max_price_usd=0.10, ideal_price_usd=0.0, max_sla_seconds=5.0,
+            ideal_sla_seconds=0.5, min_quality=0.7, ideal_quality=1.0,
+        )
+
+    def seller():
+        return seller_position(
+            min_price_usd=0.04, ideal_price_usd=0.14, min_sla_seconds=1.0,
+            ideal_sla_seconds=6.0, max_quality=0.95, ideal_quality=0.7,
+        )
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+
+    # 1. Termination: an overlapping bargain ends in a deal within the budget.
+    deal = await app.anegotiate(
+        "transcribe 1k calls", buyer=buyer(), seller=seller(),
+        budget=NegotiationBudget(max_rounds=8), buyer_id="acme", seller_id="vendor",
+    )
+    terminates_within_budget = bool(deal.agreed and 0 < deal.rounds <= 8)
+
+    # 2. Termination: a bargain with no overlapping acceptable region ends cleanly
+    #    in a no-deal rather than a false agreement or an unbounded loop.
+    no_overlap = await app.anegotiate(
+        "job",
+        buyer=buyer_position(max_price_usd=0.02, ideal_price_usd=0.0, max_sla_seconds=2.0, min_quality=0.9),
+        seller=seller_position(min_price_usd=0.10, ideal_price_usd=0.2, min_sla_seconds=5.0, max_quality=0.5),
+        budget=NegotiationBudget(max_rounds=6),
+    )
+    no_overlap_terminates = bool(
+        no_overlap.status in ("no_agreement", "walk_away")
+        and no_overlap.contract is None
+        and no_overlap.rounds <= 6
+    )
+
+    # 3. Termination: a wall-clock deadline returns a partial result.
+    ticks = iter([0.0, 100.0, 200.0])
+    neg = Negotiation(
+        LocalParty("b", buyer()), LocalParty("s", seller()),
+        budget=NegotiationBudget(max_rounds=8, deadline_s=1.0),
+        clock=lambda: next(ticks, 999.0),
+    )
+    timed = await neg.run("job")
+    deadline_returns_partial = bool(timed.status == "no_agreement" and timed.deadline_hit)
+
+    # 4. Contract integrity: signed by both, verifies offline, tamper is caught.
+    contract = deal.contract
+    contract_signed_both = bool(contract.fully_signed)
+    contract_verifies_offline = bool(contract.verify(app.contract_signer).valid)
+    tampered = Contract.model_validate(contract.model_dump())
+    tampered.terms.price_usd += 0.5
+    tamper_detected = bool(not tampered.verify(app.contract_signer).valid)
+
+    # 5. Contract enforcement: terms lower to a budget and breaches are detected.
+    enforce = ContractTerms(scope="x", price_usd=0.10, sla_seconds=3.0, quality_floor=0.8)
+    enforce_contract = Contract(buyer="a", seller="b", terms=enforce).seal()
+    budget = enforce_contract.to_budget()
+    breach = enforce_contract.check(cost_usd=0.20, latency_ms=4000, quality=0.5)
+    ok = enforce_contract.check(cost_usd=0.08, latency_ms=2500, quality=0.9)
+    contract_enforced_as_budget = bool(
+        budget.max_cost_usd == 0.10
+        and budget.max_latency_ms == 3000
+        and ok.fulfilled
+        and not breach.fulfilled
+        and len(breach.breaches) == 3
+    )
+
+    # 6. Reputation weighting: a regressing seller is discounted (must concede
+    #    more) without being singled out (it still closes a deal), and the
+    #    reputation-weighted best deal is selected.
+    led = app.use_reputation_ledger()
+    for _ in range(30):
+        led.record_outcome("vendor", passed=False, round_id="r")
+        led.record_outcome("trusty", passed=True, round_id="r")
+    bad = await app.anegotiate("job", buyer=buyer(), seller=seller(), buyer_id="acme", seller_id="vendor")
+    good = await app.anegotiate("job", buyer=buyer(), seller=seller(), buyer_id="acme", seller_id="trusty")
+    reputation_discounts_regressor = bool(
+        bad.agreed and good.agreed
+        and bad.contract.terms.price_usd <= good.contract.terms.price_usd + 1e-9
+    )
+    selected = select_offer([bad, good], buyer(), reputation=led)
+    reputation_weighted_selection = bool(selected is not None and selected.seller == "trusty")
+    weight_bounded = bool(led.config.weight_floor <= led.weight("vendor") <= 1.0)
+
+    # 7. A2A parity: the same bargain over the A2A fabric reaches the same terms
+    #    as a local one (on a clean app, so no reputation discount confounds it).
+    clean = ContextApp(name="clean", provider=MockProvider(default_text="ok"), config=cfg)
+    local_ref = await clean.anegotiate(
+        "transcribe 1k calls", buyer=buyer(), seller=seller(), buyer_id="acme", seller_id="vendor"
+    )
+    server = clean.serve_negotiation(LocalParty("vendor", seller()), name="vendor")
+    client = connect_a2a_in_process(server)
+    remote = A2ANegotiator(client, member_id="vendor", role="seller")
+    over_a2a = await clean.anegotiate("transcribe 1k calls", buyer=buyer(), seller=remote, buyer_id="acme")
+    a2a_parity = bool(
+        over_a2a.agreed and over_a2a.contract.terms.canonical() == local_ref.contract.terms.canonical()
+    )
+
+    # 8. Auditable: the outcome and the signed contract are on the chain.
+    audit_recorded = bool(
+        app.audit.query(action="negotiation")
+        and app.audit.query(action="contract_signed")
+        and app.audit.verify_chain()
+    )
+
+    return {
+        "terminates_within_budget": terminates_within_budget,
+        "no_overlap_terminates": no_overlap_terminates,
+        "deadline_returns_partial": deadline_returns_partial,
+        "contract_signed_both": contract_signed_both,
+        "contract_verifies_offline": contract_verifies_offline,
+        "tamper_detected": tamper_detected,
+        "contract_enforced_as_budget": contract_enforced_as_budget,
+        "reputation_discounts_regressor": reputation_discounts_regressor,
+        "reputation_weighted_selection": reputation_weighted_selection,
+        "weight_bounded": weight_bounded,
+        "a2a_parity": a2a_parity,
+        "audit_recorded": audit_recorded,
+        "rounds_to_agreement": deal.rounds,
+        "agreed_price_usd": round(deal.contract.terms.price_usd, 4),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -6447,6 +6601,7 @@ FAMILIES = {
     "video": bench_video,
     "edge": bench_edge,
     "mcp_apps": bench_mcp_apps,
+    "negotiation": bench_negotiation,
     "breaking_2_0": bench_breaking_2_0,
 }
 

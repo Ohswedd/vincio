@@ -409,6 +409,31 @@ consumer verifies with only the public key); resolution passes the same
 bundle is denied rather than loaded. Vincio ships the engine; the signing keys
 and any PKI are yours.
 
+### Agent negotiation & contracting
+
+A negotiation between agents (`app.negotiate` / `vincio.negotiation`) inherits the
+fabric's discipline rather than opening a new trust surface. It **terminates by
+construction**: a `NegotiationBudget` bounds the offer exchanges and an optional
+wall-clock deadline returns a partial result, so an adversarial counterparty
+cannot stall a bargain into an unbounded loop — the worst case is a clean no-deal.
+The negotiated **`Contract`** is **content-bound** (a stable hash over buyer,
+seller, terms, rounds, and timestamp) and **signed by both parties** with the same
+`ChainSigner` the audit chain uses (HMAC, or Ed25519 so a counterparty verifies
+with only the public key); `contract.verify(signer)` recomputes the hash and checks
+every signature **offline from the bytes alone**, so a tampered term or a forged
+signature is caught without the live parties, and a negotiation outcome and its
+signed contract land on the hash-chained audit log (`negotiation` /
+`contract_signed`). The contract is **enforced like a budget** — `to_budget()`
+lowers the agreed price/SLA into the same hard-cap machinery the runtime already
+enforces, and `app.enforce_contract` records a fulfilment or breach — so an agreed
+term is a mechanical cap, not a self-asserted promise. Reputation weighting is
+**bounded and reversible** (a counterparty's weight never leaves `[floor, 1]`, only
+lowering its pull), so a regressing agent is discounted without being singled out
+and a high reputation can never bypass the contract's terms. Over the A2A fabric, a
+remote party's identity is **pinned to the directory-resolved member id**, never the
+self-asserted one on the wire, so a counterparty cannot spoof another member's
+reputation; every offer exchange is a bounded, audited A2A task.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

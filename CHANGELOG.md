@@ -4,6 +4,54 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.23.0] - 2026-06-22
+
+Agent negotiation & contracting. Vincio already governs a fabric of agents over A2A and the
+MCP registry behind an allow-list, scores per-member reliability with a reputation ledger, and
+discounts an unreliable member's pull on a federated round. This release adds the next rung:
+**bounded negotiation and contracting** between agents in a multi-org crew — a buyer agent and a
+seller agent converge on a price/SLA/scope contract under a hard budget, the contract is a typed,
+signed, audited artifact both sides verify offline, and the counterparty's reputation weights the
+deal. Landed in the *same* governed, audited, budgeted runtime, never as a hosted marketplace.
+Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, and the whole theme runs
+offline against deterministic local parties or in-process over the A2A fabric.
+
+### Added
+
+- **The negotiation package (`vincio.negotiation`).** A `Negotiation` runs a typed
+  alternating-offers bargain between a buyer and a seller `Party` (each a `NegotiationPosition`
+  with per-issue ideal/reservation preferences and a time-dependent concession curve, run as a
+  deterministic `LocalParty`). `app.negotiate(scope, *, buyer=, seller=, budget=NegotiationBudget(
+  max_rounds=, deadline_s=))` / `anegotiate` returns a `NegotiationResult` (`.status`, `.agreed`,
+  `.contract`, `.rounds`, `.offers`, `.deadline_hit`). **Termination is guaranteed**: a deal when
+  the parties' acceptable regions overlap (`AC_next` acceptance), a clean no-deal when they do not,
+  a partial result on a wall-clock deadline. `buyer_position` / `seller_position` build positions;
+  `IssuePreference` / `Offer` are the typed primitives.
+- **Typed, signed, offline-verifiable contracts.** On agreement a `Contract` (`ContractTerms` over
+  price / SLA / scope / quality) is minted and **signed by both parties** (with an explicit signer,
+  the audit-chain signer, or a per-app key via `app.contract_signer`). `contract.verify(signer)`
+  recomputes the content hash and checks every signature **offline from the bytes alone** (a
+  tampered term or forged signature → invalid); `contract.to_budget()` lowers price→`max_cost_usd`
+  / SLA→`max_latency_ms`, and `contract.check(...)` / `app.enforce_contract(...)` detect a breach,
+  so the orchestrator enforces a contract **like any other budget**. The outcome and the signed
+  contract land on the hash-chained audit log (`negotiation` / `contract_signed` /
+  `contract_fulfillment`).
+- **Reputation-weighted offers.** When a `ReputationLedger` is attached
+  (`app.use_reputation_ledger()`), a local party discounts a counterparty's offers by its
+  reputation weight (`[floor, 1]`, bounded and reversible — discounted, never singled out or
+  zeroed); `select_offer(results, buyer_position, reputation=)` picks the reputation-weighted best
+  deal among competing sellers, and `app.enforce_contract` debits a breaching seller, closing the
+  loop from delivery back to reputation.
+- **Over the A2A fabric.** `app.serve_negotiation(party)` exposes a local `Party` as an A2A agent
+  (a `negotiate` skill), and `A2ANegotiator(client, member_id=, role=)` drives a remote counterparty
+  over A2A byte-for-byte the same as a local one — the remote party's identity is pinned to the
+  directory-resolved member id, never the self-asserted one on the wire.
+- **New errors** `NegotiationError` (`NEGOTIATION_ERROR`) and `ContractError` (`CONTRACT_VIOLATION`)
+  with error-catalog entries; a `negotiation` VincioBench family with two SLOs (negotiation
+  terminates within budget; contract integrity verifies offline), companion budgets, and
+  [`examples/67_agent_negotiation_and_contracting.py`](examples/67_agent_negotiation_and_contracting.py);
+  a [negotiation guide](docs/guides/negotiation.md).
+
 ## [3.22.0] - 2026-06-22
 
 MCP Apps & the evolving MCP spec. Vincio already speaks MCP in-process — client and

@@ -1491,6 +1491,26 @@
       "threshold": true,
       "enforced_by": "families.mcp_apps.version_negotiated",
       "rationale": "The spec moves; interoperability must survive it. The budget gates that negotiation returns a peer's supported revision and falls back for an unsupported one; a companion budget gates that an in-process initialize records the negotiated revision on both peers."
+    },
+    {
+      "id": "negotiation_terminates",
+      "category": "reliability",
+      "statement": "A bounded agent negotiation always terminates within its round/deadline budget: a bargain whose parties' acceptable regions overlap reaches a contract, and one with no overlap ends in a clean no-deal — never an unbounded loop, and a wall-clock deadline returns a partial result.",
+      "metric": "families.negotiation.terminates_within_budget",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.negotiation.terminates_within_budget",
+      "rationale": "Negotiation is the analogue of a bounded crew round; termination must be a guarantee, not a hope. The budget gates that an overlapping bargain agrees within the round budget; companion budgets gate that a no-overlap bargain ends in a bounded no-deal and that a deadline returns a partial result, so a negotiation can never run forever."
+    },
+    {
+      "id": "negotiation_contract_integrity",
+      "category": "security",
+      "statement": "A negotiated contract is a typed, signed, offline-verifiable artifact: it is signed by both parties, its content hash recomputes and every signature checks from the bytes alone, a tampered term is caught, and the agreed terms enforce like any other budget.",
+      "metric": "families.negotiation.contract_verifies_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.negotiation.contract_verifies_offline",
+      "rationale": "A contract is only as good as its tamper-evidence. The budget gates that an agreed contract verifies offline; companion budgets gate that it is signed by both parties, that a tampered term fails verification, and that the terms lower to a budget the runtime enforces — so a contract is a mechanical, verifiable cap, never a self-asserted promise."
     }
   ]
 }

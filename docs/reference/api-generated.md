@@ -6,9 +6,13 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**268** public symbols.
+**283** public symbols.
 
 ## Classes
+
+### `A2ANegotiator(client, member_id, role=…)`
+
+A negotiating :class:`Party` whose moves are made by a remote A2A agent.
 
 ### `AIBOM(**data)`
 
@@ -197,6 +201,22 @@ Drive continual on-device adaptation as a streaming, gated loop.
 ### `ContinuousImprovementController(app, metrics=…, golden=…, registry=…, prompt_name=…, monitor=…, sustain=…, cooldown_s=…, eval_budget=…, quality_floor=…, reoptimize=…, gates=…, clock=…)`
 
 Drive gated re-optimization / re-eval / rollback from live signals.
+
+### `Contract(**data)`
+
+A signed, audited, offline-verifiable agreement over typed terms.
+
+### `ContractFulfillment(**data)`
+
+Whether delivered work met the contract's terms — the enforcement verdict.
+
+### `ContractTerms(**data)`
+
+The typed, negotiated terms of an agreement.
+
+### `ContractVerification(**data)`
+
+The (non-raising) outcome of verifying a contract offline.
 
 ### `Contribution(**data)`
 
@@ -414,6 +434,10 @@ A formal governance property checked over a bounded, typed state space.
 
 The verdict of checking one :class:`Invariant` over its whole state space.
 
+### `IssuePreference(**data)`
+
+A party's preference over one numeric issue.
+
 ### `JudgeCalibrator(judge, reflector=…, kappa_bins=…, trust_threshold=…, min_kappa_gain=…)`
 
 Tune a :class:`~vincio.evals.judges.GEvalJudge`'s evaluation steps to maximize agreement with human labels, then leave the judge calibrated.
@@ -534,9 +558,29 @@ Plan by searching imagined rollouts under a :class:`WorldModel` (MPC).
 
 A catalog of :class:`ModelProfile` keyed by exact model id.
 
+### `Negotiation(buyer, seller, budget=…, signer=…, audit=…, events=…, clock=…)`
+
+Drives a bounded alternating-offers bargain between a buyer and a seller.
+
+### `NegotiationBudget(**data)`
+
+The guaranteed-termination budget for a negotiation.
+
+### `NegotiationPosition(**data)`
+
+A party's private stance: per-issue preferences and a concession curve.
+
+### `NegotiationResult(**data)`
+
+The outcome of a bounded negotiation — a deal, or a partial no-deal.
+
 ### `Objective(text=…, **data)`
 
 What the application is trying to accomplish.
+
+### `Offer(**data)`
+
+One move in a negotiation: a proposal, an acceptance, or a walk-away.
 
 ### `OpenAIFineTuneBackend(provider)`
 
@@ -956,6 +1000,10 @@ Attribute a metric regression to the changed ``factors`` by Shapley counterfactu
 
 Names of all packs that can be loaded (built-in + installed plugins + registered).
 
+### `buyer_position(max_price_usd, ideal_price_usd=…, max_sla_seconds, ideal_sla_seconds=…, min_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)`
+
+Build a buyer position: wants low price, fast SLA, high quality.
+
 ### `compose(*steps, name=…, tracer=…)`
 
 Compose steps left to right: ``compose(a, b) == compose(a) | b``.
@@ -1028,6 +1076,10 @@ A τ-bench-style retail world: orders mutated by tools, verified by end state.
 
 Swap only the model on a fixed dataset and report a statistically grounded regression analysis (the body of ``vincio eval regress``).
 
+### `negotiation_a2a_server(party, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)`
+
+Expose a local negotiating :class:`Party` over A2A.
+
 ### `provider_trainer(backend, registry=…, inherit_from=…, pricing=…, suffix=…, fmt=…, poll_interval_s=…, max_polls=…)`
 
 Build an *executed* :data:`StudentTrainer` over a fine-tune backend.
@@ -1039,6 +1091,14 @@ Drive ``env`` through each action sequence, recording every tool step.
 ### `retrieval_regression(search_fn, golden, config, store=…, metrics=…, gates=…, top_k=…, alpha=…, min_delta=…, k_values=…)`
 
 Evaluate ``config`` on ``golden``, record an artifact, and gate vs. baseline.
+
+### `select_offer(results, buyer_position, reputation=…)`
+
+Pick the best deal among competing sellers by reputation-weighted utility.
+
+### `seller_position(min_price_usd, ideal_price_usd, min_sla_seconds=…, ideal_sla_seconds=…, max_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)`
+
+Build a seller position: wants high price, a loose SLA, a low quality floor.
 
 ### `serve_viewer(store, host=…, port=…)`
 
