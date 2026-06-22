@@ -571,6 +571,13 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "(watt-hours), `limit_co2e_grams` (grams CO₂e), or both to "
             "`app.set_energy_budget(...)`.",
         ),
+        _entry(
+            "EDGE_ERROR",
+            "Edge runtime request invalid or over profile",
+            "Give the `EdgeRequest` a `task` or `objective`; under `strict=True`, "
+            "raise the `EdgeProfile`'s `max_resident_bytes` / `max_input_tokens` "
+            "or trim the request's evidence so the packet fits the edge profile.",
+        ),
     )
 }
 

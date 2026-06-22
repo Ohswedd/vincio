@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**257** public symbols.
+**268** public symbols.
 
 ## Classes
 
@@ -257,6 +257,34 @@ The structural contract a generated document must satisfy.
 ### `DualPlaneExecutor(tool_runtime, broker=…, monitor=…, principal=…, approval=…, provider=…, model=…)`
 
 Capability-secure executor separating the control and data planes.
+
+### `EdgeEnvironment(**data)`
+
+A report of the runtime the edge core is executing on.
+
+### `EdgeManifest(**data)`
+
+The static WASM-buildability certificate for the edge core.
+
+### `EdgeParityReport(**data)`
+
+The result of verifying the edge build is the same library, not a fork.
+
+### `EdgeProfile(**data)`
+
+A bounded resident-memory and latency profile for a constrained target.
+
+### `EdgeRequest(**data)`
+
+A self-contained context-engineering request for the edge runtime.
+
+### `EdgeResult(**data)`
+
+The outcome of one edge compile.
+
+### `EdgeRuntime(profile=…, rails=…)`
+
+A bounded, in-process context-engineering runtime for the edge.
 
 ### `EnergyBudget(**data)`
 
@@ -944,6 +972,14 @@ Mark a function or class as deprecated.
 
 List installed Vincio plugins without registering them.
 
+### `edge_environment()`
+
+Detect the current runtime and report its edge-relevant capabilities.
+
+### `edge_manifest()`
+
+Certify that the edge core imports no native/optional dependency.
+
 ### `enable_rich_reprs()`
 
 Attach ``_repr_html_`` / ``_repr_markdown_`` to the core result types.
@@ -959,6 +995,10 @@ Generate a tracked-change redline between two texts.
 ### `installed_plugins()`
 
 All installed Vincio plugins across every group (alias for discovery).
+
+### `is_wasm_runtime()`
+
+True when running on a WASM target (Emscripten/Pyodide or WASI).
 
 ### `load_benchmark(name, **kwargs)`
 
@@ -1027,6 +1067,10 @@ A goal-value function: the fraction of an environment task's checks an observati
 ### `verify_containment(events)`
 
 Check ``untrusted ⇒ no unapproved capability`` over recorded events.
+
+### `verify_edge_parity(request=…, profile=…)`
+
+Prove the edge runtime is the server compiler under a profile, not a fork.
 
 ### `verify_erasure_proof(proof, signer=…)`
 

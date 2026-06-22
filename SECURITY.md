@@ -352,6 +352,26 @@ refusal land on the hash-chained, tamper-evident audit log, so the sustainabilit
 an auditor sees is a verifiable number, not a vendor claim. Accounting is off by default
 and additive: with it disabled, a run behaves exactly as before.
 
+### Edge / WASM runtime — the same deterministic safety, offline
+
+**The edge runtime carries the deterministic rails to a constrained target without
+weakening them.** `vincio.edge.EdgeRuntime` packages the dependency-free
+compile → score → rail → pack core for a browser/WASM or edge-worker target behind a
+thin in-process boundary. It runs the **same** `RailEngine` the server does, so the
+deterministic PII / secret / injection detectors enforce at the edge exactly as in a
+server run: input rails screen the task, and **output rails screen the rendered
+context**, so a secret or PII that leaked from a retrieved document into the assembled
+prompt is refused before the prompt is ever emitted. The runtime holds **no provider,
+store, network, or filesystem** — it compiles a context and renders a prompt offline,
+opening no egress channel; generation stays a server-side concern. Resource bounds are
+enforced by construction: an `EdgeProfile` caps the compiled packet's resident footprint
+and token window, held under the cap by the same slimming + eviction the server's
+resident-memory budget uses, so a malicious or oversized corpus cannot exhaust a
+constrained host. And the edge build is **parity, not a fork**: `verify_edge_parity()`
+proves an edge compile is byte-identical to a direct server compile, and
+`edge_manifest()` statically certifies the core path imports nothing native — so a
+safety control can never silently diverge between the server and the edge.
+
 ### Governed discovery & interoperability
 
 Agent and tool discovery is governed by construction: an `AgentDirectory` resolves

@@ -760,6 +760,24 @@ class ContextApp:
         self.rail_engine.register(name, predicate)
         return self
 
+    def edge_runtime(self, profile: Any | None = None) -> Any:
+        """Build a bounded, in-process edge runtime that shares this app's rails.
+
+        Returns an :class:`~vincio.edge.runtime.EdgeRuntime` — the dependency-free
+        compile/score/rail/pack core packaged for a constrained or browser/WASM
+        target — seeded with the app's configured rails so the edge path enforces
+        the same deterministic safety the server does. ``profile`` defaults to the
+        bounded edge-worker :class:`~vincio.edge.profile.EdgeProfile`. The runtime
+        holds no provider, store, or tracer; it runs the identical context
+        engineering at the edge, offline::
+
+            edge = app.edge_runtime()
+            result = edge.run("Summarize the renewal terms")
+        """
+        from ..edge import EdgeRuntime
+
+        return EdgeRuntime(profile, rails=list(self.rail_engine.rails))
+
     # -- cost & reliability -----------------------------------------------
 
     def enable_prompt_caching(

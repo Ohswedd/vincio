@@ -83,6 +83,7 @@ __all__ = [
     "ObservabilityError",
     "ReplayDivergenceError",
     "EnergyBudgetError",
+    "EdgeError",
 ]
 
 
@@ -685,3 +686,18 @@ class EnergyBudgetError(ObservabilityError):
     energy (``limit_wh``) nor a carbon (``limit_co2e_grams``) ceiling."""
 
     code = "ENERGY_BUDGET_INVALID"
+
+
+# --- edge / WASM runtime -----------------------------------------------------
+
+
+class EdgeError(VincioError):
+    """An edge / WASM in-process runtime failure.
+
+    Raised by :class:`~vincio.edge.runtime.EdgeRuntime` when a request carries
+    neither a task nor an objective, or (with ``strict=True``) when the compiled
+    context cannot be held inside the :class:`~vincio.edge.profile.EdgeProfile`'s
+    resident-memory and token bounds.
+    """
+
+    code = "EDGE_ERROR"

@@ -4,6 +4,63 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.21.0] - 2026-06-22
+
+Edge / WASM in-process runtime. Vincio's promise is "runs in your process" — and the
+dependency-free core (the prompt and context compilers, the vectorized scorer with its
+pure-Python fallback, the deterministic rails, and the offline-first evidence path) already
+has no native dependencies on the default path. This release takes that core to the edge:
+the same **compile → score → rail → pack** pipeline runs in a browser (Pyodide/WASM) or an
+edge worker, behind a thin in-process boundary, bounded by an edge profile — not as a fork,
+but as the same library under a build target. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the server path is unchanged and remains the default, and the
+whole theme runs offline (no provider, store, network, or filesystem).
+
+### Added
+
+- **The edge runtime (`vincio.edge`).** `EdgeRuntime` turns an `EdgeRequest` (a task,
+  instructions, constraints, evidence, and memory — all the platform's own typed inputs)
+  into an `EdgeResult` (a bounded, slim `ContextPacket`, the rendered model-ready prompt,
+  the merged input/output rail outcome, and the measured resident footprint and latency)
+  with no model call, network hop, filesystem, or caller-owned event loop. `.run` is
+  synchronous (works under a WASM host's loop); `.arun` is async; a plain string is accepted
+  for the common case. It is parity by construction — the runtime *delegates* to the
+  canonical `ContextCompiler` and `RailEngine`, never re-implementing them.
+- **The bounded edge profile.** `EdgeProfile` caps the compiled packet's resident footprint,
+  token window, and evidence/memory counts for a constrained target, and lowers directly to
+  the *same* `ContextCompilerOptions` the server compiler reads (`.to_compiler_options()`).
+  Presets: `EdgeProfile.browser()` (256 KiB / 4096 tok), `.worker()` (the default), and
+  `.server_like()` (for parity testing). The footprint stays under the cap as the candidate
+  corpus grows 10×, held by the same slimming + eviction the server's resident-memory budget
+  uses; `run(..., strict=True)` raises `EdgeError` instead of reporting `within_profile=False`.
+- **Parity, not a fork.** `verify_edge_parity()` compiles the same inputs through the edge
+  runtime and through a direct server `ContextCompiler` under the same profile and asserts a
+  byte-identical packet (`spec_hash`, evidence selection, token count), plus that the runtime
+  delegates to the canonical compiler/rail engine. `edge_manifest()` statically scans every
+  module on the compile/score/rail/pack path and certifies it imports nothing native or
+  optional unconditionally (NumPy stays behind its guarded pure-Python fallback) — the
+  WASM-buildability guarantee.
+- **Host detection & app surface.** `edge_environment()` / `is_wasm_runtime()` detect a
+  Pyodide/WASI host without executing anything; `app.edge_runtime(profile=None)` builds a
+  runtime seeded with the app's rails so the edge path enforces the same deterministic safety
+  the server does (output rails screen the rendered context, refusing a secret that leaked
+  from evidence into the prompt). New error `EdgeError` (`EDGE_ERROR`, catalogued).
+- **`edge` VincioBench family + 3 SLOs.** Holds byte-identical parity, the bounded resident
+  profile under a 10× corpus (eviction firing under load), the no-native-imports certificate,
+  rails enforced at the edge, and fully-offline operation. SLOs: `edge_parity_byte_identical`,
+  `edge_bounded_profile`, `edge_core_no_native_imports`.
+- **Example.** `examples/65_edge_wasm_runtime.py` and the [edge guide](docs/guides/edge.md) —
+  a fully offline walkthrough of compiling at the edge, the bounded profile under load, rails
+  at the edge, parity, and host detection.
+
+### Changed
+
+- The public surface gains `EdgeRuntime`, `EdgeRequest`, `EdgeResult`, `EdgeProfile`,
+  `EdgeEnvironment`, `EdgeManifest`, `EdgeParityReport`, `edge_environment`,
+  `is_wasm_runtime`, `edge_manifest`, and `verify_edge_parity`; `vincio.core.errors` gains
+  `EdgeError`; `ContextApp` gains `edge_runtime()`. The next scheduled roadmap theme is
+  **MCP Apps & the evolving MCP spec** (target 3.22).
+
 ## [3.20.0] - 2026-06-22
 
 Native video understanding & generation. The multimodal packet already scores, budgets,

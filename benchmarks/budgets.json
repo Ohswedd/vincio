@@ -1491,6 +1491,42 @@
     },
     "families.video.provenance.edit_marked_synthetic": {
       "eq": true
+    },
+    "families.edge.parity_byte_identical": {
+      "eq": true
+    },
+    "families.edge.parity_held": {
+      "eq": true
+    },
+    "families.edge.same_core": {
+      "eq": true
+    },
+    "families.edge.no_native_imports": {
+      "eq": true
+    },
+    "families.edge.bounded_profile": {
+      "eq": true
+    },
+    "families.edge.token_bounded": {
+      "eq": true
+    },
+    "families.edge.eviction_under_pressure": {
+      "eq": true
+    },
+    "families.edge.offline_in_process": {
+      "eq": true
+    },
+    "families.edge.rails_enforced": {
+      "eq": true
+    },
+    "families.edge.env_detected": {
+      "eq": true
+    },
+    "families.edge.edge_resident_bytes": {
+      "gte": 0
+    },
+    "families.edge.edge_core_modules": {
+      "gte": 20
     }
   }
 }

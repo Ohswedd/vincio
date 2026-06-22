@@ -147,6 +147,7 @@ the terminal `done` (carrying `result: RunResult`).
 | `vincio.providers` | `FineTuneBackend`, `OpenAIFineTuneBackend` / `GoogleFineTuneBackend` / `AnthropicFineTuneBackend`, `make_finetune_backend`, `run_finetune`, `FineTuneJob` / `FineTuneStatus`, and `GGUFProvider` (in-process llama.cpp chat + on-device embedding) |
 | `vincio.cli` | `main`, `build_parser` — the `vincio` command (see [CLI reference](cli.md)); `vincio config migrate` (versioned config upgrades) and `vincio doctor` (deprecated-API + config-drift report, engine in `vincio.cli.doctor`: `run_doctor` / `collect_deprecations` / `scan_source` / `scan_config`) |
 | `vincio.stability` | `deprecated`, `experimental`, `deprecated_alias`, `stability_of`, `public_api`, `StabilityLevel`, `VincioDeprecationWarning`, `VincioExperimentalWarning`, `API_VERSION` |
+| `vincio.edge` | `EdgeRuntime`, `EdgeProfile`, `EdgeRequest`, `EdgeResult` (`app.edge_runtime()`) — the dependency-free compile → score → rail → pack core packaged for a constrained / browser-WASM target behind a thin in-process boundary; `EdgeProfile` bounds resident memory and the token window, `verify_edge_parity` / `edge_manifest` prove the edge build is the same library (byte-identical packet, no native imports), `edge_environment` / `is_wasm_runtime` detect a Pyodide/WASI host — see the [edge guide](../guides/edge.md) |
 
 All public data contracts are Pydantic models; all engines are async-first
 with sync wrappers (`run` / `arun`).
