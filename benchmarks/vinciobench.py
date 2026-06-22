@@ -6748,6 +6748,157 @@ async def bench_negotiation() -> dict[str, Any]:
     }
 
 
+async def bench_settlement() -> dict[str, Any]:
+    """SettlementBench: metered, auditable settlement of contracted cross-org work.
+
+    With cross-org sagas dispatching contracted work across organizations, this
+    family holds the rung that **closes the books** on it — a metered, auditable
+    settlement record reconciling delivered work against the negotiated contract,
+    the way a run closes its cost report. It gates two guarantees: **metering
+    accuracy** (a reading's totals are exactly the sum of the accrued usage events —
+    no double-count, no drop — so a settlement built from it is a faithful
+    reconciliation, not an estimate) and **settlement integrity** (a settlement
+    record binds the economic facts into a hash both parties sign and verifies
+    offline from the bytes alone, the hash-chained book recomputes, and a tampered
+    figure is caught). Reconciliation across the boundary and the reputation-closing
+    loop are gated too. Deterministic and offline."""
+    from vincio import ContextApp, VincioConfig
+    from vincio.choreography import Saga, StepOutcome
+    from vincio.negotiation import Contract, ContractTerms
+    from vincio.security.audit import HMACSigner
+    from vincio.settlement import Meter, SettlementBook, reconcile, settle_contract
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+
+    def mk_contract(seller="vendor", **terms):
+        base = {"scope": "work", "price_usd": 0.10, "sla_seconds": 5.0, "quality_floor": 0.8}
+        base.update(terms)
+        return Contract(buyer="acme", seller=seller, terms=ContractTerms(**base)).seal()
+
+    # 1. Metering accuracy: a reading's totals are exactly the sum of the events.
+    contract = mk_contract(price_usd=0.10)
+    meter = Meter(contract.id, run_id="run-1")
+    meter.accrue(units=500, cost_usd=0.04, latency_ms=1200, quality=0.95, step="a")
+    meter.accrue(units=500, cost_usd=0.03, latency_ms=900, quality=0.90, step="b")
+    reading = meter.reading()
+    metering_accurate = bool(
+        reading.events == 2
+        and reading.units == 1000.0
+        and reading.cost_usd == round(0.04 + 0.03, 9)
+        and reading.latency_ms == round(1200.0 + 900.0, 9)
+        and reading.quality == 0.90  # minimum (the weakest link held against a floor)
+    )
+
+    # 2. Settlement reconciles delivery against the agreed terms.
+    settled = settle_contract(contract, reading=reading)
+    settlement_reconciles = bool(
+        settled.status == "settled"
+        and settled.fulfilled
+        and settled.amount_owed_usd == 0.10
+        and settled.balance_usd == round(0.10 - 0.07, 9)
+        and not settled.breaches
+    )
+
+    # 3. A delivered breach reconciles to a breached settlement (overrun + shortfall).
+    breach_c = mk_contract(price_usd=0.05, quality_floor=0.9)
+    breached = settle_contract(breach_c, cost_usd=0.08, quality=0.6)
+    settlement_flags_breach = bool(
+        breached.status == "breached"
+        and breached.overrun_usd == round(0.08 - 0.05, 9)
+        and any("price" in b for b in breached.breaches)
+        and any("quality" in b for b in breached.breaches)
+    )
+
+    # 4. Settlement integrity: a signed record verifies offline; a tamper is caught.
+    signer = HMACSigner("settle-key", key_id="acme")
+    signed = settle_contract(contract, reading=reading)
+    signed.sign(signer, party="acme").sign(signer, party="vendor")
+    settlement_verifies_offline = bool(signed.verify(signer).valid)
+    tampered = settle_contract(contract, reading=reading).sign(signer, party="acme")
+    tampered.balance_usd = 999.0
+    settlement_tamper_detected = bool(not tampered.verify(signer, require=[]).hash_ok)
+
+    # 5. Reconciliation across the boundary: two parties' records tie out; a
+    #    disagreement is flagged as a dispute.
+    buyer_rec = settle_contract(contract, cost_usd=0.07, latency_ms=2100, quality=0.90)
+    seller_rec = settle_contract(contract, cost_usd=0.07, latency_ms=2100, quality=0.90)
+    reconciles_across_boundary = bool(
+        buyer_rec.content_hash == seller_rec.content_hash
+        and reconcile(buyer_rec, seller_rec).agrees
+    )
+    disagree = settle_contract(contract, cost_usd=0.09, latency_ms=2100, quality=0.90)
+    dispute_detected = bool(not reconcile(buyer_rec, disagree).agrees)
+
+    # 6. The book is a hash-chained ledger that verifies offline; a tamper breaks it.
+    book = SettlementBook("acme", signer=signer, audit=app.audit, events=app.events)
+    book.settle(mk_contract(seller="v1"), cost_usd=0.05, latency_ms=1000, quality=0.9)
+    book.settle(mk_contract(seller="v2"), cost_usd=0.05, latency_ms=1000, quality=0.9)
+    book_verifies_offline = bool(book.verify().intact and book.verify(signer).intact)
+    book_tamper = SettlementBook("acme").load_record(book.to_record())
+    book_tamper.records[0].balance_usd = 1.0
+    book_tamper_detected = bool(not book_tamper.verify().intact)
+
+    # 7. Reputation closing: a settled breach debits the seller.
+    rep_app = ContextApp(name="rep", provider=MockProvider(default_text="ok"), config=cfg)
+    rep_app.use_reputation_ledger()
+    rep_book = SettlementBook("rep", reputation=rep_app.reputation_ledger)
+    rc = mk_contract(seller="slipping", price_usd=0.10)
+    rep_book.settle(rc, cost_usd=0.05, latency_ms=1000, quality=0.95)  # fulfilled
+    rep_good = rep_app.reputation_ledger.reputation("slipping")
+    rep_book.settle(rc, cost_usd=0.50, quality=0.2)  # breach
+    reputation_closes_loop = bool(rep_app.reputation_ledger.reputation("slipping") < rep_good)
+
+    # 8. Settling a whole saga closes every contract from its durable journal.
+    c_res = Contract(
+        buyer="acme", seller="wh", terms=ContractTerms(scope="reserve", price_usd=0.20)
+    ).seal()
+    c_chg = Contract(
+        buyer="acme", seller="pay", terms=ContractTerms(scope="charge", price_usd=0.10)
+    ).seal()
+    saga = (
+        Saga(name="fulfil")
+        .step("reserve", participant="wh", action="reserve", contract=c_res)
+        .step("charge", participant="pay", action="charge", contract=c_chg)
+    )
+    parts = {
+        "wh": {"reserve": lambda p: StepOutcome(ok=True, cost_usd=0.15, output={"r": 1})},
+        "pay": {"charge": lambda p: StepOutcome(ok=True, cost_usd=0.08, output={"c": 1})},
+    }
+    app.use_settlement_book()
+    saga_result = await app.achoreograph(saga, participants=parts)
+    saga_records = app.settle_saga(saga_result, contracts={c_res.id: c_res, c_chg.id: c_chg})
+    saga_settles_every_contract = bool(
+        len(saga_records) == 2
+        and all(r.status == "settled" for r in saga_records)
+        and all(r.saga_id == saga_result.saga_id for r in saga_records)
+        and app.settlement_book.verify().intact
+    )
+
+    # 9. Auditable: the settlement verdict is on this app's hash-chained chain.
+    audit_recorded = bool(
+        app.audit.query(action="settlement") and app.audit.verify_chain()
+    )
+
+    return {
+        "metering_accurate": metering_accurate,
+        "settlement_reconciles": settlement_reconciles,
+        "settlement_flags_breach": settlement_flags_breach,
+        "settlement_verifies_offline": settlement_verifies_offline,
+        "settlement_tamper_detected": settlement_tamper_detected,
+        "reconciles_across_boundary": reconciles_across_boundary,
+        "dispute_detected": dispute_detected,
+        "book_verifies_offline": book_verifies_offline,
+        "book_tamper_detected": book_tamper_detected,
+        "reputation_closes_loop": reputation_closes_loop,
+        "saga_settles_every_contract": saga_settles_every_contract,
+        "audit_recorded": audit_recorded,
+        "contracts_settled": len(saga_records),
+        "net_balance_usd": round(app.settlement_report().net_balance_usd, 4),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -6786,6 +6937,7 @@ FAMILIES = {
     "mcp_apps": bench_mcp_apps,
     "negotiation": bench_negotiation,
     "choreography": bench_choreography,
+    "settlement": bench_settlement,
     "breaking_2_0": bench_breaking_2_0,
 }
 

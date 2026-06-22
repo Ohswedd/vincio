@@ -88,6 +88,7 @@ __all__ = [
     "ContractError",
     "ChoreographyError",
     "CompensationError",
+    "SettlementError",
 ]
 
 
@@ -773,3 +774,21 @@ class CompensationError(ChoreographyError):
     def __init__(self, message: str, *, failures: list[Any] | None = None, **kw: Any) -> None:
         super().__init__(message, **kw)
         self.failures = failures or []
+
+
+class SettlementError(VincioError):
+    """A settlement or metering operation could not proceed.
+
+    Raised when a settlement cannot be built or verified — a meter accruing a
+    negative quantity, a settlement signed by a party that is neither the buyer nor
+    the seller, a :class:`~vincio.settlement.SettlementRecord` or
+    :class:`~vincio.settlement.SettlementBook` that fails offline verification, a
+    saga settled without the contract terms its steps ran under, or a reconciliation
+    of records for two different contracts. A settlement whose delivered work simply
+    breaches the agreed terms does **not** raise — it reconciles to a record with
+    ``status="breached"`` and the breaching dimensions on
+    :attr:`~vincio.settlement.SettlementRecord.breaches`; a breach is a settled
+    outcome that debits the seller's reputation, not an error.
+    """
+
+    code = "SETTLEMENT_ERROR"

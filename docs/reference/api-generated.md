@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**293** public symbols.
+**303** public symbols.
 
 ## Classes
 
@@ -534,6 +534,14 @@ Enum where members are also (and must be) strings
 
 Enum where members are also (and must be) strings
 
+### `Meter(contract_id, run_id=…)`
+
+Accumulates the usage of work delivered under one contract.
+
+### `MeterReading(**data)`
+
+The deterministic roll-up of a meter's accrued usage for one contract.
+
 ### `MockImageProvider(size=…, default_model=…)`
 
 Deterministic offline image provider.
@@ -702,6 +710,10 @@ One cached reasoning trace: how much thinking a warm prefix already cost.
 
 Bounded LRU of reasoning traces under a resident-memory budget.
 
+### `Reconciliation(**data)`
+
+Whether two parties' settlement records tie out — the dispute verdict.
+
 ### `ReflectiveOptimizer(evaluate_variant, weights=…, gates=…, max_cost_per_case=…, objectives=…, reflector=…, constraints=…, prefer=…)`
 
 GEPA-style reflective prompt optimizer.
@@ -850,6 +862,18 @@ One probe for the cache gate: a query and its live (reference) answer.
 
 Dynamic fan-out instruction for map-reduce super-steps.
 
+### `SettlementBook(owner, signer=…, audit=…, events=…, store=…, reputation=…, book_id=…)`
+
+An org's durable, hash-chained, offline-verifiable ledger of settlements.
+
+### `SettlementRecord(**data)`
+
+A signed, offline-verifiable reconciliation of delivery against a contract.
+
+### `SettlementReport(**data)`
+
+Per-counterparty settlement roll-up — alongside the cost report.
+
 ### `ShadowProvider(primary, candidate, candidate_model=…, block=…, price_table=…, recorder=…, events=…, max_observations=…)`
 
 Return the primary's answer; dual-dispatch the candidate for offline diff.
@@ -957,6 +981,10 @@ A typed information-flow label on a value or context candidate.
 ### `TwoStageIndex(embedder=…, coarse_dims=…, quantization=…, rerank_factor=…)`
 
 Matryoshka + quantized coarse search, full-precision exact rerank.
+
+### `UsageEvent(**data)`
+
+One unit of delivered usage accrued against a contract.
 
 ### `UserInput(**data)`
 
@@ -1124,6 +1152,10 @@ Expose a local negotiating :class:`Party` over A2A.
 
 Build an *executed* :data:`StudentTrainer` over a fine-tune backend.
 
+### `reconcile(a, b, tolerance=…)`
+
+Tie two independently-produced settlement records out against each other.
+
 ### `record_transitions(env, action_sequences, include_failures=…)`
 
 Drive ``env`` through each action sequence, recording every tool step.
@@ -1143,6 +1175,14 @@ Build a seller position: wants high price, a loose SLA, a low quality floor.
 ### `serve_viewer(store, host=…, port=…)`
 
 Start the served observability plane over ``store`` (opt-in, self-hosted).
+
+### `settle_contract(contract, reading=…, cost_usd=…, latency_ms=…, quality=…, run_id=…, saga_id=…)`
+
+Reconcile delivery against a contract into an (unsigned) settlement record.
+
+### `settle_saga(result, contracts, run_id=…)`
+
+Settle every contract a cross-org saga ran under, from its durable journal.
 
 ### `signature(spec, instructions=…, name=…)`
 

@@ -1077,6 +1077,41 @@ app.run("export button 500s").output.label
   step to a remote org (same `perform`/`compensate` protocol as a local one).
   `ChoreographyError`/`CompensationError` (codes `CHOREOGRAPHY_ERROR` /
   `COMPENSATION_FAILED`).
+- **Agent-to-agent settlement & metering.** `from vincio import Meter, MeterReading,
+  UsageEvent, SettlementRecord, SettlementBook, SettlementReport, Reconciliation,
+  reconcile, settle_contract, settle_saga` (also `vincio.settlement.__all__`;
+  `SettlementLine`, `SettlementSignature`, `SettlementVerification`, `SettlementStatus`,
+  `SettlementRow`, `BookVerification` are subpackage-only). **Closing the books** on work
+  delivered under a negotiated `Contract` — never a payment rail, only a verifiable ledger
+  of what was owed and delivered. **Meter**: `app.meter(contract, *, run_id=)` →
+  `Meter(contract_id)`; `.accrue(*, units=, cost_usd=, latency_ms=, quality=, step=)` adds a
+  `UsageEvent`, `.reading()` → a **total-preserving** `MeterReading` (cost/latency summed,
+  quality the **minimum** = weakest link held against a floor, totals exactly the sum of the
+  events — the metering-accuracy invariant); `Meter.from_saga(result)` builds a meter per
+  contract from a saga's journal. **Settle**: `app.settle(contract, *, reading=|cost_usd=,
+  latency_ms=, quality=, run_id=, party=, sign=True, record_reputation=True)` → a
+  `SettlementRecord` (`.status` settled|breached, `.amount_owed_usd` = agreed price,
+  `.balance_usd` = price − delivered cost [+credit/−overrun], `.overrun_usd`/`.credit_usd`,
+  `.lines` per dimension, `.breaches`) — reconciles delivery via `contract.check`. A breach
+  is **not** an error (it reconciles to `status="breached"`). `settle_contract(contract, *,
+  reading=|cost_usd=,…)` is the pure builder; `app.settle_saga(result, *, contracts={id:
+  Contract})` / `settle_saga` settles every contract a saga ran under from its journal.
+  **Signed & offline-verifiable**: both parties sign one reconciliation hash over the
+  economic facts (run-id/timestamp-independent, so two sides co-sign the *same* hash);
+  `record.sign(signer, party=)` (party must be buyer/seller), `record.verify(verifier=,
+  require=)` → `SettlementVerification` (a tampered figure → `hash_ok=False`). **Reconcile
+  across the boundary**: `reconcile(a, b)` → `Reconciliation(.agrees, .hashes_match,
+  .discrepancies)` ties two orgs' records out (a disagreement is a dispute); raises
+  `SettlementError` only for different contracts. **Book**: `app.use_settlement_book(*,
+  owner=)` → `SettlementBook(owner, *, signer=, audit=, store=, reputation=, book_id=)`, a
+  **hash-chained** ledger (`book_id` defaults unique; pass a stable one to resume across
+  restarts via `store`); `.settle(...)` reconciles+signs+links+audits+reputation-closes,
+  `.verify(verifier=)` → `BookVerification` (tamper → `intact=False`, `broken_at=seq`),
+  `.report(counterparty=)` / `app.settlement_report(counterparty=)` → `SettlementReport`
+  (per-counterparty owed/delivered/net balance, settled/breached). **Reputation-closing**: a
+  settled overrun/shortfall debits the seller (via an attached `ReputationLedger`), so
+  delivery weights the next negotiation. Audit action `settlement`. `SettlementError` (code
+  `SETTLEMENT_ERROR`).
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,
