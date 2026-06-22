@@ -1377,6 +1377,33 @@ app.run("export button 500s").output.label
   and `app.settle(contract, ..., pool=None)` draw it in the same call — every transition signed and on the audit
   chain (action `collateral_pool`, decision = the status). Deterministic and offline — never a hosted clearing
   house, a margin custodian, or a payment rail.
+- **Cross-org collateral rehypothecation guards & re-use bounds.** `from vincio import CollateralLedger,
+  CollateralLedgerVerification, ReuseBreach, BeneficiaryClaim, guard_collateral` (all also in
+  `vincio.settlement.__all__`; `LedgerPool`, `LedgerContract` are subpackage-only). A `CollateralPool` only ever
+  re-allocates capital *within itself*, so nothing bounded a counterparty that pledged the **same** stake across more
+  than one pool — the same capital double-counted, over-stating what backs each deal (the collateral analogue of a
+  `SettlementRecord` double-counted before netting deduplicated it). A `CollateralLedger` is the **rehypothecation
+  guard**. `guard_collateral(pools, *, poster=None, held=None, verify_with=None)` → a sealed, unsigned
+  `CollateralLedger`: reads a counterparty's pools (refusing one whose content hash no longer recomputes; a forged
+  pool signature too, with `verify_with`), reconciles what they collectively pledge (`pledged_usd` = Σ live
+  `balance_usd`) against the capital it actually holds (`held_usd`; defaults to the gross pledge minus the provably
+  double-pledged capital). `CollateralLedger` (`.poster`/`.pools` (`LedgerPool`)/`.pool_hashes`, `.posted_usd`/
+  `.pledged_usd`/`.held_usd`/`.available_usd`/`.reuse_usd`/`.duplicate_pledge_usd`, `.breaches` (`ReuseBreach`:
+  `.contract_id`/`.beneficiary`/`.pools`/`.secured_usd`/`.pledged_usd`/`.excess_usd`), `.claims` (`BeneficiaryClaim`:
+  `.beneficiary`/`.claim_usd`/`.secured_usd`/`.unsecured_usd`/`.share`/`.is_secured`), `.over_committed`/
+  `.within_bounds`/`.status` (`over_committed`|`within_bounds`), `.breach(id)`/`.claim(beneficiary)`): a contract
+  pledged across more than one pool is a pinpointed `ReuseBreach` (its collateral honorable once, the excess provably
+  double-pledged), and when a stake backs deals for more than one beneficiary each claim is bounded to its
+  deterministic **pari-passu** share of the held capital (proportional to its claim) so a forfeiture cannot pay one
+  beneficiary out of capital another has first claim on. **Content-bound & offline-verifiable** —
+  `.compute_hash`/`.seal` (pools/breaches/claims sorted so fold-order is irrelevant), `.sign(signer, party)`,
+  `.verify(verifier=None, *, require=None)` → `CollateralLedgerVerification(valid, hash_ok, terms_sound,
+  signatures_ok, signed_by, reason)` re-derives the pledged total, the re-use breaches, and the beneficiary
+  apportionment so a tampered figure is caught even after re-sealing, `.require_valid()`,
+  `.require_within_bounds()` (raises if over-committed), `.to_wire`/`.from_wire`.
+  `app.guard_collateral(pools, *, poster=, held=, sign=True, verify_with=, record_audit=True)` and
+  `book.guard_collateral(...)` sign it and record the guard on the audit chain (action `rehypothecation`, decision =
+  the status). Deterministic and offline — never a hosted custodian, a clearing house, or a payment rail.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

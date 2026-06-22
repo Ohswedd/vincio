@@ -4,6 +4,54 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.36.0] - 2026-06-23
+
+Cross-org collateral rehypothecation guards & re-use bounds. A `CollateralPool` lets a counterparty back many
+contracts with one posted stake — but a pool only ever **re-allocates** capital *within itself*. When the
+counterparty pledges the **same** stake across more than one pool (or re-pledges collateral a beneficiary already
+has a claim on), nothing bounded the **re-use**: the same capital was double-counted, over-stating what actually
+backs each deal — the collateral analogue of a `SettlementRecord` double-counted before netting deduplicated it.
+This release adds a **rehypothecation guard** — a bounded, offline-verifiable check that a posted stake is not
+committed beyond what it holds across the pools that draw on it. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the existing escrow, pooling, admission, and settlement paths are unchanged, and the
+whole theme runs offline and deterministically.
+
+### Added
+
+- **CollateralLedger (`vincio.settlement.rehypothecation`).** `guard_collateral(pools, *, poster=None, held=None,
+  verify_with=None)` folds a counterparty's `CollateralPool`s into a sealed, unsigned `CollateralLedger` — the
+  rehypothecation analogue of `net_settlements`. It reconciles what the pools collectively pledge (`pledged_usd`,
+  the sum of their live balances) against the capital the poster actually holds (`held_usd`; defaults to the gross
+  pledge minus the provably double-pledged capital, so a re-pledged contract surfaces by default while genuinely
+  separately-funded pools do not). The poster defaults to the one every pool shares.
+- **Cross-pool re-use bound.** A contract pledged across more than one pool is surfaced as a bounded, pinpointed
+  `ReuseBreach` (`.contract_id` / `.pools` / `.pledged_usd` / `.secured_usd` / `.excess_usd`) — its collateral
+  honorable only once, the excess provably double-pledged — and the aggregate over-commitment is `reuse_usd`
+  (`.over_committed` / `.within_bounds` / `.status`), so the same capital pledged twice is named, never silently
+  absorbed into an over-stated coverage figure.
+- **Beneficiary-claim priority.** When a stake backs deals for more than one beneficiary, each `BeneficiaryClaim`
+  (`.claim_usd` / `.secured_usd` / `.unsecured_usd` / `.share` / `.is_secured`) is bounded to its deterministic
+  **pari-passu** share of the held capital (proportional to the capital pledged to it), so a forfeiture cannot pay
+  one beneficiary out of capital another has first claim on.
+- **Offline-verifiable.** The ledger reads only the existing signed, content-bound pools and asserts nothing it
+  cannot recompute: a pool whose content hash no longer recomputes is **refused** at fold time (a forged pool
+  signature too, with `verify_with`). It binds the poster, the folded per-pool figures, the reconciled totals, the
+  breaches, and the claims onto a content hash (pools / breaches / claims sorted, so fold-order is irrelevant);
+  `.verify(verifier=None, *, require=None)` → `CollateralLedgerVerification(valid, hash_ok, terms_sound,
+  signatures_ok, signed_by, reason)` re-derives the re-use bound and the beneficiary apportionment, so a tampered
+  total, breach, or claim is caught even after re-sealing. `.sign(signer, party)`, `.require_valid()`,
+  `.require_within_bounds()` (raises if over-committed), `.to_wire` / `.from_wire`, and `.audit_details()` round it
+  out.
+- **Folds into the settlement path.** `app.guard_collateral(pools, *, poster=, held=, sign=True, verify_with=,
+  record_audit=True)` and `book.guard_collateral(...)` sign the ledger as the org and record the guard on the
+  hash-chained audit log (action `rehypothecation`, decision = `over_committed` / `within_bounds`).
+- **Surface.** `from vincio import CollateralLedger, CollateralLedgerVerification, ReuseBreach, BeneficiaryClaim,
+  guard_collateral` (all also in `vincio.settlement.__all__`, alongside the subpackage-only `LedgerPool` /
+  `LedgerContract`); a `reputation_portability` VincioBench extension with four rehypothecation-guard metrics
+  (reuse-bound-pinpoints, beneficiary-priority-bounded, guard-auditable-offline, guard-content-bound) and a
+  `rehypothecation_guard` published SLO; and a runnable example,
+  `examples/80_cross_org_collateral_rehypothecation.py`.
+
 ## [3.35.0] - 2026-06-23
 
 Cross-org collateral pooling & cross-contract margin. An `Escrow` now backs *one* contract with collateral held

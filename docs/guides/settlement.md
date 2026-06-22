@@ -559,6 +559,52 @@ balance reconciles (posted minus drawn), so a tampered allocation or balance is 
 after re-sealing — and lands on the hash-chained audit log, so a pool's whole lifecycle is
 reconstructable offline.
 
+## Guarding against rehypothecation
+
+A pool only ever re-allocates capital *within itself*. When a counterparty pledges the **same**
+stake across more than one pool — or re-pledges collateral a beneficiary already has a claim
+on — nothing bounds the **re-use**: the same capital is double-counted, over-stating what
+actually backs each deal, the collateral analogue of a settlement record double-counted before
+netting deduplicated it. A `CollateralLedger` (`app.guard_collateral` / `guard_collateral`) is
+the **rehypothecation guard**: it folds a counterparty's pools into one view and reconciles
+what they collectively pledge against the capital it actually holds.
+
+```python
+# vendor backs two pools, but contract A is re-pledged across both — the same stake, twice.
+pool_one = buyer.post_collateral_pool([c_a, c_b], decisions=decision)
+pool_two = buyer.post_collateral_pool([c_a], decisions=decision)
+ledger = buyer.guard_collateral([pool_one, pool_two])
+
+ledger.pledged_usd      # what the pools collectively pledge
+ledger.held_usd         # the capital the poster actually holds (defaults to the distinct pledge)
+ledger.reuse_usd        # what the pledges exceed the holdings by — the over-commitment
+ledger.over_committed   # the same capital pledged twice
+ledger.breaches[0]      # the ReuseBreach: contract A, the pools, the double-pledged excess
+```
+
+Pass `held=` when you know the counterparty's true custody balance (the ground-truth figure the
+guard bounds the pledges by); it defaults to the gross pledge minus the provably double-pledged
+capital, so a re-pledged contract surfaces as an over-commitment while genuinely separately-
+funded pools do not. When a stake backs deals for more than one beneficiary and the held capital
+is scarce, each beneficiary's claim is bounded to its deterministic **pari-passu** share, so a
+forfeiture cannot pay one beneficiary out of capital another has first claim on:
+
+```python
+ledger = buyer.guard_collateral([multi_beneficiary_pool], held=20.0)
+claim = ledger.claim("globex")
+claim.claim_usd        # the capital pledged to globex across the poster's pools
+claim.secured_usd      # its bounded, proportional share of the held capital
+claim.unsecured_usd    # what the over-commitment leaves it exposed to
+ledger.require_within_bounds()   # raises if the poster has over-committed its capital
+```
+
+The ledger reads only the signed, content-bound pools and asserts nothing it cannot recompute: a
+tampered pool (its content hash no longer recomputes) is **refused** at fold time, and
+`CollateralLedger.verify` re-derives the re-use bound and the beneficiary apportionment from the
+bytes alone (a tampered figure is caught even after re-sealing). `app.guard_collateral` signs the
+ledger as the org and records the guard on the hash-chained audit log, so two folders reading the
+same pools compute the same co-signable hash.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -579,11 +625,13 @@ record of collateral posted against a contract and settled deterministically aga
 delivery verdict, not a custodian's ledger entry, an escrow service, or money in motion, and a
 collateral pool is a verifiable margin account that allocates one posted stake across many
 contracts and draws it deterministically, not a hosted clearing house, a margin custodian, or
-an omnibus account. Vincio gives you a verifiable
+an omnibus account, and a collateral ledger is a verifiable re-use bound that folds a
+counterparty's pools and reconciles what they pledge against what it holds, not a hosted
+custodian, a rehypothecation registry, or a proof-of-reserves service. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
 your own earned trust, a verifiable way to bound a counterparty's exposure to what its
-standing justifies, a verifiable way to back that exposure with posted collateral, and a
-verifiable way to pool that collateral across many concurrent deals; how an obligation is paid
-is yours.
+standing justifies, a verifiable way to back that exposure with posted collateral, a
+verifiable way to pool that collateral across many concurrent deals, and a verifiable way to
+bound its re-use across them; how an obligation is paid is yours.

@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**342** public symbols.
+**347** public symbols.
 
 ## Classes
 
@@ -110,6 +110,10 @@ Submit a batch, poll it to completion, reconcile, and cost-track.
 
 Base contract for a leaderboard adapter.
 
+### `BeneficiaryClaim(**data)`
+
+One beneficiary's bounded claim on the poster's held capital.
+
 ### `BindingCandidate(**data)`
 
 One ranked candidate for a capability binding — the decision's evidence.
@@ -185,6 +189,14 @@ Field/claim-level citation requirements for a cited report.
 ### `CitedReportBuilder(entailment=…, audit_log=…, tenant_id=…)`
 
 Resolve citations, verify per-claim support, render a cited report.
+
+### `CollateralLedger(**data)`
+
+A poster's cross-pool rehypothecation view — a bounded re-use guard.
+
+### `CollateralLedgerVerification(**data)`
+
+The (non-raising) outcome of verifying a collateral ledger offline.
 
 ### `CollateralPool(**data)`
 
@@ -854,6 +866,10 @@ Score a retriever against a :class:`RetrievalGoldenSet` on the IR metrics.
 
 A fixed query set scored against a fixed corpus.
 
+### `ReuseBreach(**data)`
+
+A contract pledged across more than one pool — the same collateral, twice.
+
 ### `RewardModel(rewards, success_threshold=…, name=…)`
 
 Compose verifiable rewards into one dense, confidence-weighted signal.
@@ -1239,6 +1255,10 @@ Pull signed attestations and revocations from a bounded set of peers.
 ### `generate_redline(original, revised, format=…, title=…)`
 
 Generate a tracked-change redline between two texts.
+
+### `guard_collateral(pools, poster=…, held=…, verify_with=…)`
+
+Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
 
 ### `installed_plugins()`
 

@@ -87,10 +87,20 @@ contract's admission-required collateral — the collateral analogue of a :class
 settling a contract **draws** a bounded forfeiture from the shared stake and **releases** the
 rest back to the available balance (:func:`draw_pool` / :meth:`SettlementBook.settle` with an
 attached pool), and a pool committed below the collateral its open contracts require surfaces a
-bounded, pinpointed **top-up** obligation rather than silently over-committing. Everything is
-dependency-free, deterministic, and offline — never a hosted marketplace, a clearing house, an
-arbitration service, a reputation service, an underwriting service, an escrow custodian, a
-margin custodian, or a payment processor, only a mechanical, verifiable reconciliation.
+bounded, pinpointed **top-up** obligation rather than silently over-committing. And because a
+pool only ever re-allocates capital *within itself* — nothing bounds a counterparty that
+pledges the *same* stake across more than one pool, double-counting what actually backs each
+deal — a :class:`CollateralLedger` (:func:`guard_collateral` /
+:meth:`~vincio.core.app.ContextApp.guard_collateral`) is the **rehypothecation guard**: it
+folds a counterparty's pools into one view, reconciles what they collectively pledge against
+the capital it actually holds, surfaces the same capital pledged twice as a bounded, pinpointed
+:class:`ReuseBreach`, and bounds each beneficiary's claim to its deterministic pari-passu share
+so a forfeiture cannot pay one beneficiary out of capital another has first claim on — reading
+only the existing signed, content-bound pools (a tampered one is refused) and landing the guard
+on the hash-chained audit log. Everything is dependency-free, deterministic, and offline —
+never a hosted marketplace, a clearing house, an arbitration service, a reputation service, an
+underwriting service, an escrow custodian, a margin custodian, a rehypothecation registry, or a
+payment processor, only a mechanical, verifiable reconciliation.
 """
 
 from __future__ import annotations
@@ -182,6 +192,15 @@ from .record import (
     SettlementVerification,
     reconcile,
 )
+from .rehypothecation import (
+    BeneficiaryClaim,
+    CollateralLedger,
+    CollateralLedgerVerification,
+    LedgerContract,
+    LedgerPool,
+    ReuseBreach,
+    guard_collateral,
+)
 
 __all__ = [
     # metering primitive
@@ -259,6 +278,14 @@ __all__ = [
     "PoolStatus",
     "post_collateral_pool",
     "draw_pool",
+    # collateral rehypothecation guards & re-use bounds
+    "CollateralLedger",
+    "CollateralLedgerVerification",
+    "LedgerPool",
+    "LedgerContract",
+    "ReuseBreach",
+    "BeneficiaryClaim",
+    "guard_collateral",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",

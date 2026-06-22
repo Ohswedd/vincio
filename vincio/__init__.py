@@ -303,6 +303,9 @@ from .settlement import (
     AdmissionVerification,
     AttestationExchange,
     AttestationRevocation,
+    BeneficiaryClaim,
+    CollateralLedger,
+    CollateralLedgerVerification,
     CollateralPool,
     CollateralPoolVerification,
     Escrow,
@@ -319,6 +322,7 @@ from .settlement import (
     ReputationAttestation,
     ReputationBundle,
     Resolution,
+    ReuseBreach,
     SettlementBook,
     SettlementRecord,
     SettlementReport,
@@ -333,6 +337,7 @@ from .settlement import (
     combine_attestations,
     draw_pool,
     gather_reputation,
+    guard_collateral,
     net_books,
     net_settlements,
     post_collateral_pool,
@@ -354,7 +359,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.35.0"
+__version__ = "3.36.0"
 
 __all__ = [
     "ContextApp",
@@ -540,6 +545,12 @@ __all__ = [
     "PooledContract",
     "post_collateral_pool",
     "draw_pool",
+    # cross-org collateral rehypothecation guards & re-use bounds
+    "CollateralLedger",
+    "CollateralLedgerVerification",
+    "ReuseBreach",
+    "BeneficiaryClaim",
+    "guard_collateral",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

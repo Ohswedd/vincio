@@ -3389,6 +3389,54 @@ class ContextApp:
             pool, record, config=config, party=party, sign=sign
         )
 
+    def guard_collateral(
+        self,
+        pools: list[Any],
+        *,
+        poster: str | None = None,
+        held: float | None = None,
+        sign: bool = True,
+        verify_with: Any | None = None,
+        record_audit: bool = True,
+    ) -> Any:
+        """Fold a counterparty's collateral pools into a bounded re-use guard.
+
+        Reconciles what ``pools`` collectively pledge against the capital the poster
+        actually ``held`` into a single, content-bound
+        :class:`~vincio.settlement.CollateralLedger` — the rehypothecation analogue of
+        :meth:`clear_settlements`. The same capital pledged across more than one pool is
+        pinpointed as a :class:`~vincio.settlement.ReuseBreach`, and each beneficiary's
+        claim is bounded to its deterministic, pari-passu share of the held capital, so a
+        scarce stake is apportioned by priority rather than over-promised. Signs the ledger
+        as this app and, unless ``record_audit`` is off, records the guard on the audit
+        chain. The ledger verifies offline from the bytes alone, and a tampered pool is
+        **refused** (with ``verify_with`` a forged pool signature is too) rather than folded
+        silently. ``held`` defaults to the gross pledge minus the provably double-pledged
+        capital. Returns the ledger::
+
+            ledger = app.guard_collateral([pool_a, pool_b], held=80.0)
+            ledger.over_committed         # the same capital pledged twice
+            ledger.require_within_bounds()  # raises if over-committed
+        """
+        from ..settlement import guard_collateral as _guard
+
+        ledger = _guard(pools, poster=poster, held=held, verify_with=verify_with)
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                ledger.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.rehypothecation import REHYPOTHECATION_ACTION
+
+            entry = self.audit.record(
+                REHYPOTHECATION_ACTION,
+                resource=ledger.id,
+                decision=ledger.status,
+                details=ledger.audit_details(),
+            )
+            ledger.audit_id = getattr(entry, "id", None)
+        return ledger
+
     def settle_saga(
         self,
         result: Any,

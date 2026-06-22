@@ -36,6 +36,7 @@ from .record import (
     SettlementRecord,
     reconcile,
 )
+from .rehypothecation import REHYPOTHECATION_ACTION, CollateralLedger, guard_collateral
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -599,6 +600,46 @@ class SettlementBook:
             details=pool.audit_details(),
         )
         pool.audit_id = getattr(entry, "id", None)
+
+    # -- rehypothecation guard ----------------------------------------------
+
+    def guard_collateral(
+        self,
+        pools: Any,
+        *,
+        poster: str | None = None,
+        held: float | None = None,
+        verify_with: ChainSigner | None = None,
+        sign: bool = True,
+    ) -> CollateralLedger:
+        """Fold a counterparty's collateral pools into a re-use guard, signed and audited.
+
+        Builds the :class:`~vincio.settlement.rehypothecation.CollateralLedger`
+        (:func:`~vincio.settlement.rehypothecation.guard_collateral`) reconciling what the
+        ``pools`` collectively pledge against the capital the poster actually ``held`` —
+        pinpointing a contract pledged across more than one pool as a re-use breach and
+        bounding each beneficiary's claim to its deterministic share — signs it as this
+        book's owner, and records the guard on the audit chain. A tampered pool is refused;
+        with ``verify_with`` a forged pool signature is too. Returns the ledger.
+        """
+        ledger = guard_collateral(
+            pools, poster=poster, held=held, verify_with=verify_with
+        )
+        if sign and self.signer is not None:
+            ledger.sign(self.signer, party=self.owner)
+        self._audit_ledger(ledger)
+        return ledger
+
+    def _audit_ledger(self, ledger: CollateralLedger) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            REHYPOTHECATION_ACTION,
+            resource=ledger.id,
+            decision=ledger.status,
+            details=ledger.audit_details(),
+        )
+        ledger.audit_id = getattr(entry, "id", None)
 
     # -- reads --------------------------------------------------------------
 
