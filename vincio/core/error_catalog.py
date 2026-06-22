@@ -596,6 +596,25 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "(see `.breaches`). Re-verify with the signer both parties used, or "
             "renegotiate; use `contract.to_budget()` to enforce the terms up front.",
         ),
+        # --- cross-org workflow choreography ---
+        _entry(
+            "CHOREOGRAPHY_ERROR",
+            "Cross-org choreography could not proceed",
+            "Register a participant binding for every org a `Saga` step names, give "
+            "the saga at least one uniquely-named step, and pass a `saga_id` that "
+            "exists in the durable store when calling `resume`. A saga whose forward "
+            "step fails does not raise — it compensates and returns a SagaResult "
+            "with `status='compensated'`.",
+        ),
+        _entry(
+            "COMPENSATION_FAILED",
+            "Saga could not unwind cleanly",
+            "A compensating step itself failed, leaving a half-completed cross-org "
+            "transaction partially unwound (see `.failures`). Resume the saga to "
+            "retry the outstanding compensations once the participant is reachable, "
+            "or reconcile the residue manually; the journal pinpoints every "
+            "compensation that did not complete.",
+        ),
     )
 }
 

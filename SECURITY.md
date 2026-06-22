@@ -434,6 +434,32 @@ remote party's identity is **pinned to the directory-resolved member id**, never
 self-asserted one on the wire, so a counterparty cannot spoof another member's
 reputation; every offer exchange is a bounded, audited A2A task.
 
+### Cross-org workflow choreography
+
+A cross-org saga (`app.choreograph` / `vincio.choreography`) coordinates durable
+work across organizations **without opening a shared control plane**: the only
+things that cross a trust boundary are the typed `StepRequest` handoff and the
+audited result, governed by the same A2A and contract discipline. **Governance is
+per-org**: the coordinator records each dispatched handoff on *its* hash-chained
+audit log (the `choreography_step` action) while each participant records its own
+execution on *its* chain, so no single party holds an authoritative log of another's
+steps and each side's record is independently verifiable. The **`SagaJournal`** is
+**content-bound** — every step record links to the previous by a stable hash (and,
+with a signer, carries a signature over it), so `journal.verify(verifier)` recomputes
+the chain **offline from the bytes alone** and pinpoints any record edited, inserted,
+or dropped; the journal is checkpointed to the metadata store after every step, so a
+restart resumes from durable state rather than re-running or losing committed work.
+**Failure is contained, not dangling**: a forward step that fails, raises, or
+**breaches its step `Contract`** (the delivered cost/latency/quality checked against
+the agreed terms) triggers deterministic compensation of the completed steps in
+reverse order — a half-completed cross-org transaction unwinds cleanly rather than
+stranding partial state across boundaries, and a compensation that itself fails ends
+the saga in an explicit `failed` state with the residue pinpointed, never silently
+swallowed. Like negotiation, it **terminates by construction**: a failure compensates
+and stops (it never loops), and a remote participant is driven over the same bounded,
+audited A2A task surface — so an adversarial or unreachable counterparty yields a
+recorded failure-and-unwind, not an unbounded hang.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

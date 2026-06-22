@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.24.0] - 2026-06-22
+
+Cross-org workflow choreography. With agents that discover, negotiate, and contract across
+organizations, this release adds the next rung: the **durable work** they coordinate — a
+long-running, compensating workflow that spans more than one organization's agent fabric, the
+choreography analogue of the in-process durable graph, now crossing trust boundaries. Each org
+governs and audits its own steps on its own hash-chained chain; only a typed contract and audited
+handoffs cross a trust boundary; and a failure on one side triggers deterministic compensation
+across the whole choreography. Landed in the *same* governed, audited, budgeted runtime, never as a
+hosted control plane. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, and
+the whole theme runs offline against deterministic local participants or in-process over the A2A
+fabric.
+
+### Added
+
+- **The choreography package (`vincio.choreography`).** A `Saga(name=).step(name, *, participant=,
+  action=, compensation=, payload=, build=, contract=, retries=)` defines an ordered, compensating
+  cross-org workflow. `app.choreograph(saga, *, participants=, input=, saga_id=, interrupt_after=)`
+  / `achoreograph` drives it with a `Choreography` engine and returns a `SagaResult` (`.status`
+  completed|compensated|failed|interrupted, `.completed_steps`, `.compensated_steps`, `.failed_step`,
+  `.output` / `.output_of(step)`, `.journal`). `participants` maps an org id to a `Participant` — a
+  `RemoteParticipant` over A2A or, as a convenience, a dict of `{action: handler}` callables wrapped
+  in a `LocalParticipant`; a handler returns a dict (output) or a `StepOutcome` declaring delivered
+  `cost_usd` / `latency_ms` / `quality`. A later step's payload can be derived from prior steps'
+  outputs with a `build` callable over a `SagaContext`.
+- **Per-org governance, no shared control plane.** The coordinator audits each dispatched
+  `StepRequest` handoff on its own hash-chained chain (the `choreography_step` action) while each
+  participant audits its execution on its own — only the typed contract and the audited handoff
+  cross a trust boundary.
+- **Durable & resumable.** The `SagaJournal` is checkpointed to the metadata store (kind
+  `choreography_sagas`) after every step, so `app.resume_choreography(saga, saga_id, *,
+  participants=)` resumes after a restart on a fresh engine and never re-runs a completed step;
+  `interrupt_after` cooperatively pauses a long saga into a resumable state. The journal is
+  **hash-chained**, so `journal.verify(verifier=)` recomputes it **offline** and pinpoints any
+  tampered record (`broken_at`); an optional engine `signer` signs each record.
+- **Compensating saga.** A forward step that returns `ok=False`, raises, or **breaches its step
+  `Contract`** (delivered cost/latency/quality checked against the agreed terms) triggers
+  deterministic compensation of the completed steps in **reverse order** (a compensation handler
+  receives the forward output under `payload["forward_output"]`). A clean unwind is
+  `status="compensated"`; a compensation that itself fails ends `status="failed"` (or raises
+  `CompensationError` with `raise_on_compensation_failure=True`).
+- **Over the A2A fabric.** `app.serve_choreography(handlers, *, org_id=)` exposes an org's handlers
+  as an A2A agent (a `choreograph` skill, audited on that org's chain), and `RemoteParticipant(
+  client, org_id=)` dispatches a step to a remote org over A2A byte-for-byte the same as a local
+  participant.
+- **New errors** `ChoreographyError` (`CHOREOGRAPHY_ERROR`) and `CompensationError`
+  (`COMPENSATION_FAILED`) with error-catalog entries; a `choreography` VincioBench family with two
+  SLOs (saga durability survives a restart; a failure compensates in reverse order), companion
+  budgets, and [`examples/68_cross_org_workflow_choreography.py`](examples/68_cross_org_workflow_choreography.py);
+  a [choreography guide](docs/guides/choreography.md).
+
 ## [3.23.0] - 2026-06-22
 
 Agent negotiation & contracting. Vincio already governs a fabric of agents over A2A and the

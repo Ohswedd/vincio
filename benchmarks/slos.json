@@ -1511,6 +1511,26 @@
       "threshold": true,
       "enforced_by": "families.negotiation.contract_verifies_offline",
       "rationale": "A contract is only as good as its tamper-evidence. The budget gates that an agreed contract verifies offline; companion budgets gate that it is signed by both parties, that a tampered term fails verification, and that the terms lower to a budget the runtime enforces — so a contract is a mechanical, verifiable cap, never a self-asserted promise."
+    },
+    {
+      "id": "choreography_durability",
+      "category": "reliability",
+      "statement": "A cross-org saga is durable and resumable: its journal is checkpointed after every step, so a fresh process resumes it by id and continues from the cursor — a completed step is never re-run — and the hash-chained journal verifies offline from the bytes alone, catching any tampered record.",
+      "metric": "families.choreography.durable_resume_survives_restart",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.choreography.durable_resume_survives_restart",
+      "rationale": "Cross-org work is long-running; it must survive a restart the way an in-process durable graph does. The budget gates that an interrupted saga resumes on a fresh engine sharing the store without re-running a completed step; companion budgets gate that the journal verifies offline and that a tampered record is caught — so a half-finished cross-org transaction is recoverable and tamper-evident, never lost or forged."
+    },
+    {
+      "id": "choreography_compensation",
+      "category": "reliability",
+      "statement": "A failed cross-org saga unwinds cleanly: a forward step that fails, raises, or breaches its step contract triggers deterministic compensation of the already-completed steps in reverse order, so a half-completed transaction is rolled back rather than left dangling.",
+      "metric": "families.choreography.compensation_unwinds_in_reverse",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.choreography.compensation_unwinds_in_reverse",
+      "rationale": "Without compensation a cross-org failure strands a partial transaction across trust boundaries. The budget gates that a failure compensates the completed steps in reverse order; companion budgets gate that a delivered contract breach also compensates and that each side audits its own steps on its own chain — so a saga is an all-or-nothing unit of cross-org work, governed per-org without a shared control plane."
     }
   ]
 }

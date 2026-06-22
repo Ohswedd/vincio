@@ -2929,6 +2929,127 @@ class ContextApp:
             )
         return fulfillment
 
+    # -- cross-org workflow choreography --------------------------------------
+
+    def _choreography(self, saga: Any, participants: dict[str, Any], signer: Any) -> Any:
+        """Build a :class:`~vincio.choreography.Choreography` bound to this app."""
+        from ..choreography import Choreography
+
+        return Choreography(
+            saga,
+            participants,
+            coordinator=self.name,
+            store=self.store,
+            audit=self.audit,
+            events=self.events,
+            signer=signer,
+        )
+
+    async def achoreograph(
+        self,
+        saga: Any,
+        *,
+        participants: dict[str, Any],
+        input: dict[str, Any] | None = None,
+        saga_id: str | None = None,
+        signer: Any | None = None,
+        sign: bool = True,
+        interrupt_after: int | None = None,
+    ) -> Any:
+        """Run a durable, compensating cross-org saga; return a :class:`SagaResult`.
+
+        ``saga`` is a :class:`~vincio.choreography.Saga`; ``participants`` maps each
+        org id the saga dispatches to onto a
+        :class:`~vincio.choreography.Participant` — a
+        :class:`~vincio.choreography.RemoteParticipant` reaching a counterparty over
+        the A2A fabric, or (as a convenience) a ``dict`` of handler callables run
+        in-process. The :class:`~vincio.choreography.SagaJournal` is checkpointed to
+        this app's metadata store after every step, so the saga **survives a
+        restart** — continue it with :meth:`aresume_choreography` — and is recorded,
+        hash-chained, on this app's audit log. A forward step that fails, raises, or
+        breaches its step contract triggers deterministic compensation of the
+        completed steps in reverse order. ``interrupt_after`` cooperatively pauses
+        the forward pass into a resumable state::
+
+            from vincio.choreography import Saga
+
+            saga = (
+                Saga(name="fulfil-order")
+                .step("reserve", participant="warehouse", action="reserve",
+                      compensation="release")
+                .step("charge", participant="payments", action="charge",
+                      compensation="refund")
+            )
+            result = app.choreograph(saga, participants={
+                "warehouse": warehouse_client, "payments": payments_handlers,
+            })
+            assert result.journal.verify().intact  # offline-verifiable
+        """
+        engine = self._choreography(
+            saga, participants, self._resolve_contract_signer(signer, sign)
+        )
+        return await engine.arun(input, saga_id=saga_id, interrupt_after=interrupt_after)
+
+    def choreograph(self, saga: Any, **kwargs: Any) -> Any:
+        """Synchronous wrapper around :meth:`achoreograph`."""
+        return run_sync(self.achoreograph(saga, **kwargs))
+
+    async def aresume_choreography(
+        self,
+        saga: Any,
+        saga_id: str,
+        *,
+        participants: dict[str, Any],
+        signer: Any | None = None,
+        sign: bool = True,
+        interrupt_after: int | None = None,
+    ) -> Any:
+        """Resume a saga from this app's durable store after a restart.
+
+        Rebuild the same :class:`~vincio.choreography.Saga` and ``participants`` in
+        code (only the journal is persisted) and pass the ``saga_id``; completed
+        steps keep their outputs and are not re-run, and a saga interrupted
+        mid-rollback finishes compensating. A terminal saga is returned unchanged.
+        """
+        engine = self._choreography(
+            saga, participants, self._resolve_contract_signer(signer, sign)
+        )
+        return await engine.aresume(saga_id, interrupt_after=interrupt_after)
+
+    def resume_choreography(self, saga: Any, saga_id: str, **kwargs: Any) -> Any:
+        """Synchronous wrapper around :meth:`aresume_choreography`."""
+        return run_sync(self.aresume_choreography(saga, saga_id, **kwargs))
+
+    def serve_choreography(
+        self,
+        handlers: Any,
+        *,
+        org_id: str | None = None,
+        name: str | None = None,
+        url: str = "",
+        description: str = "",
+        token_validator: Any | None = None,
+    ) -> Any:
+        """Expose this org's choreography handlers over A2A.
+
+        Returns an :class:`~vincio.a2a.A2AServer` whose Agent Card advertises a
+        ``choreograph`` skill; a remote coordinator dispatches steps to it with a
+        :class:`~vincio.choreography.RemoteParticipant`. Each step this org performs
+        or compensates is recorded on **this app's** hash-chained audit log — its
+        self-governance of the steps that cross into it.
+        """
+        from ..choreography.fabric import choreography_a2a_server
+
+        return choreography_a2a_server(
+            handlers,
+            org_id=org_id or self.name,
+            name=name,
+            url=url,
+            description=description,
+            token_validator=token_validator,
+            audit=self.audit,
+        )
+
     # -- evaluators / optimizers ----------------------------------------------------------------------
 
     def add_evaluator(self, name: str | Callable) -> ContextApp:

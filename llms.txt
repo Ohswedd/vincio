@@ -1047,6 +1047,36 @@ app.run("export button 500s").output.label
   member_id=, role=)` drives a remote counterparty (member identity pinned, not
   self-asserted). `NegotiationError`/`ContractError` (codes `NEGOTIATION_ERROR` /
   `CONTRACT_VIOLATION`).
+- **Cross-org workflow choreography.** `from vincio.choreography import Saga,
+  Choreography, SagaResult, SagaJournal, StepRequest, StepOutcome, RemoteParticipant,
+  choreography_a2a_server` (also top-level `vincio.__all__`; `Participant`,
+  `LocalParticipant`, `SagaContext` are subpackage-only). A `Saga(name=).step(name, *,
+  participant=, action=, compensation=, payload=, build=, contract=, retries=)` is an
+  ordered, compensating cross-org workflow (the choreography analogue of the in-process
+  durable graph). `app.choreograph(saga, *, participants=, input=, saga_id=,
+  interrupt_after=)` / `achoreograph` drives it → a `SagaResult` (`.status`
+  completed|compensated|failed|interrupted, `.completed_steps`, `.compensated_steps`,
+  `.failed_step`, `.output`/`.output_of(step)`, `.journal`). `participants` maps an org
+  id to a `Participant` (or, as a convenience, a dict of `{action: handler(payload)}`
+  callables, wrapped in a `LocalParticipant`); a handler returns a dict (output) or a
+  `StepOutcome(ok=, output=, cost_usd=, latency_ms=, quality=)`. **Per-org governance**:
+  the coordinator audits each dispatched handoff on its own chain (`choreography_step`
+  action) while each participant audits its execution on its own — no shared control
+  plane. **Compensation**: a forward step that returns `ok=False`, raises, or **breaches
+  its step `contract`** (`contract.check` on the delivered metrics) triggers
+  deterministic compensation of completed steps in **reverse order** (a compensation
+  handler gets the forward output under `payload["forward_output"]`); a clean unwind is
+  `status="compensated"`, an incomplete one `"failed"` (or `CompensationError` with
+  `raise_on_compensation_failure=True`). **Durable**: the `SagaJournal` is checkpointed
+  to `app.store` after every step (kind `choreography_sagas`), so `app.resume_choreography(
+  saga, saga_id, *, participants=)` resumes after a restart on a fresh engine and never
+  re-runs a completed step; the journal is **hash-chained** so `journal.verify(verifier=)`
+  recomputes it **offline** (tamper → `intact=False`, `broken_at=seq`). Over the A2A
+  fabric: `app.serve_choreography(handlers, *, org_id=)` exposes an org's handlers as an
+  A2A agent (a `choreograph` skill), `RemoteParticipant(client, org_id=)` dispatches a
+  step to a remote org (same `perform`/`compensate` protocol as a local one).
+  `ChoreographyError`/`CompensationError` (codes `CHOREOGRAPHY_ERROR` /
+  `COMPENSATION_FAILED`).
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

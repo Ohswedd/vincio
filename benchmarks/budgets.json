@@ -1605,6 +1605,39 @@
     },
     "families.negotiation.agreed_price_usd": {
       "lte": 0.1
+    },
+    "families.choreography.forward_completes": {
+      "eq": true
+    },
+    "families.choreography.compensation_unwinds_in_reverse": {
+      "eq": true
+    },
+    "families.choreography.contract_breach_compensates": {
+      "eq": true
+    },
+    "families.choreography.durable_resume_survives_restart": {
+      "eq": true
+    },
+    "families.choreography.journal_verifies_offline": {
+      "eq": true
+    },
+    "families.choreography.journal_tamper_detected": {
+      "eq": true
+    },
+    "families.choreography.a2a_parity": {
+      "eq": true
+    },
+    "families.choreography.per_org_audit_separate_chains": {
+      "eq": true
+    },
+    "families.choreography.audit_recorded": {
+      "eq": true
+    },
+    "families.choreography.steps_to_complete": {
+      "gte": 3
+    },
+    "families.choreography.compensations_run": {
+      "gte": 2
     }
   }
 }
