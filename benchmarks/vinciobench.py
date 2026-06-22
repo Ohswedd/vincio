@@ -5756,6 +5756,151 @@ async def bench_privacy() -> dict[str, Any]:
     }
 
 
+async def bench_energy() -> dict[str, Any]:
+    """EnergyBench: per-run energy & carbon, budgeted like a dollar.
+
+    The cost report makes a run's dollar spend an auditable number; this family
+    holds the rung beside it — a deterministic, offline estimate of a run's
+    **energy** (watt-hours) and **carbon** (grams CO₂e), accrued on the same
+    cost-report surface from the run's token accounting against a per-model
+    (by-tier) intensity and a per-region grid factor, and **budgeted the way the
+    cost report budgets dollars**: a run that would exceed its sustainability
+    envelope is refused on the audit chain. No external service; the estimate is
+    a mechanical, replayable number."""
+    from vincio import ContextApp, EnergyReport, VincioConfig
+    from vincio.core.types import TokenUsage
+    from vincio.observability.energy import (
+        DEFAULT_CARBON_INTENSITY,
+        WORLD_AVERAGE_CARBON_INTENSITY,
+        default_energy_table,
+    )
+
+    table = default_energy_table()
+
+    # 1. The estimate is mechanical and decomposes: equal inputs give an
+    #    identical estimate, and carbon is energy (kWh) × the grid intensity.
+    usage = TokenUsage(input_tokens=1000, output_tokens=500)
+    e1 = table.estimate("gpt-5.2-mini", usage, region="eu")
+    e2 = table.estimate("gpt-5.2-mini", usage, region="eu")
+    estimate_deterministic = bool(e1.model_dump() == e2.model_dump() and e1.energy_wh > 0.0)
+    carbon_tracks_energy = bool(
+        abs(e1.co2e_grams - e1.energy_wh / 1000.0 * e1.carbon_intensity_g_per_kwh) < 1e-12
+    )
+
+    # 2. Decode dominates prefill; a stronger tier draws more per token.
+    prefill = table.estimate("gpt-5.2", TokenUsage(input_tokens=1000, output_tokens=0))
+    decode = table.estimate("gpt-5.2", TokenUsage(input_tokens=0, output_tokens=1000))
+    decode_dominates = bool(decode.energy_wh > prefill.energy_wh * 5)
+    even = TokenUsage(input_tokens=500, output_tokens=500)
+    tier_monotonic = bool(
+        table.estimate("gpt-5.2-nano", even).energy_wh
+        < table.estimate("gpt-5.2-mini", even).energy_wh
+        < table.estimate("gpt-5.2", even).energy_wh
+    )
+
+    # 3. A cleaner grid lowers carbon for the same compute; an unknown model still
+    #    reports a non-zero estimate (default-tier reference, never silent zero).
+    fr = table.estimate("gpt-5.2", even, region="fr")
+    india = table.estimate("gpt-5.2", even, region="in")
+    region_intensity_differs = bool(
+        abs(fr.energy_wh - india.energy_wh) < 1e-12 and fr.co2e_grams < india.co2e_grams
+    )
+    unknown_model_nonzero = bool(table.estimate("no-such-model", even).energy_wh > 0.0)
+    region_fallback = bool(table.intensity_for("antarctica")[1] == WORLD_AVERAGE_CARBON_INTENSITY)
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+
+    def make_app() -> ContextApp:
+        return ContextApp(name="bench_energy", provider=MockProvider(default_text="x"), config=cfg)
+
+    # 4. Off by default; on the cost-report surface once enabled. A run gets a
+    #    positive estimate on the result, the tracker, the cost report, and a
+    #    dedicated energy report — all from the same attributed events.
+    off_app = make_app()
+    off_result = await off_app.arun("estimate nothing")
+    off_by_default = bool(off_result.energy_wh == 0.0 and off_result.co2e_grams == 0.0)
+
+    app = make_app()
+    app.use_energy_accounting(region="eu")
+    run = await app.arun("summarize the quarterly sustainability disclosure")
+    per_run_positive = bool(run.energy_wh > 0.0 and run.co2e_grams > 0.0)
+    per_run_estimate = bool(per_run_positive and estimate_deterministic)
+    report = app.energy_report(by="model")
+    cost = app.cost_report(by="model")
+    on_cost_surface = bool(
+        isinstance(report, EnergyReport)
+        and report.total_energy_wh > 0.0
+        and cost.rows
+        and cost.rows[0].energy_wh > 0.0
+    )
+    report_matches_tracker = bool(
+        abs(report.total_energy_wh - round(app.cost_tracker.energy_wh, 6)) < 1e-6
+    )
+    declared_region_pinned = bool(
+        abs(run.co2e_grams - run.energy_wh / 1000.0 * DEFAULT_CARBON_INTENSITY["eu"]) < 1e-9
+    )
+
+    # 5. Budgeted like a dollar: a carbon envelope refuses the over-budget run on
+    #    the audit chain, and the per-run estimate is itself on the chain. The
+    #    ceiling is set below a single run's accrual (measured on a probe), so the
+    #    first run lands and the next is refused once the period total reaches it.
+    probe = make_app()
+    probe.use_energy_accounting()
+    probe_run = await probe.arun("probe please summarize the content")
+    one_wh, one_co2e = probe_run.energy_wh, probe_run.co2e_grams
+
+    budgeted = make_app()
+    budgeted.set_energy_budget(scope="global", limit_co2e_grams=one_co2e * 0.5, period="total")
+    statuses = [
+        (await budgeted.arun(f"request {i} please summarize the content")).status.value
+        for i in range(3)
+    ]
+    budget_refused = bool(statuses[0] == "succeeded" and "denied" in statuses[1:])
+    audit_actions = {e.action for e in budgeted.audit.entries}
+    refusal_audited = bool("energy_budget" in audit_actions and budgeted.audit.verify_chain())
+    estimate_on_chain = bool(
+        any(
+            e.action == "run" and "energy_wh" in (e.details or {})
+            for e in app.audit.entries
+        )
+        and app.audit.verify_chain()
+    )
+    auditable_offline = bool(refusal_audited and estimate_on_chain and on_cost_surface)
+
+    # 6. An energy ceiling refuses too (not only carbon).
+    energy_capped = make_app()
+    energy_capped.set_energy_budget(scope="global", limit_wh=one_wh * 0.5, period="total")
+    energy_statuses = [
+        (await energy_capped.arun(f"req {i} please summarize")).status.value for i in range(3)
+    ]
+    energy_budget_refused = bool(
+        energy_statuses[0] == "succeeded" and "denied" in energy_statuses[1:]
+    )
+
+    return {
+        "per_run_estimate": per_run_estimate,
+        "estimate_deterministic": estimate_deterministic,
+        "carbon_tracks_energy": carbon_tracks_energy,
+        "decode_dominates": decode_dominates,
+        "tier_monotonic": tier_monotonic,
+        "region_intensity_differs": region_intensity_differs,
+        "unknown_model_nonzero": unknown_model_nonzero,
+        "region_fallback": region_fallback,
+        "off_by_default": off_by_default,
+        "on_cost_surface": on_cost_surface,
+        "report_matches_tracker": report_matches_tracker,
+        "declared_region_pinned": declared_region_pinned,
+        "budget_refused": budget_refused,
+        "energy_budget_refused": energy_budget_refused,
+        "refusal_audited": refusal_audited,
+        "estimate_on_chain": estimate_on_chain,
+        "auditable_offline": auditable_offline,
+        "per_run_energy_wh": round(run.energy_wh, 6),
+        "per_run_co2e_grams": round(run.co2e_grams, 6),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -5787,6 +5932,7 @@ FAMILIES = {
     "federated": bench_federated,
     "reputation": bench_reputation,
     "privacy": bench_privacy,
+    "energy": bench_energy,
     "breaking_2_0": bench_breaking_2_0,
 }
 

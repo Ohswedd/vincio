@@ -219,6 +219,57 @@ A response-cache hit costs nothing — it is billed `$0` and recorded as a free
 event, so `cost_report` reflects real spend, not what an uncached run would have
 cost.
 
+## Energy & carbon accounting
+
+The cost report makes a run's dollar spend an auditable number; the same surface
+also reports a run's **energy** (watt-hours) and estimated **carbon** (grams
+CO₂e) — the disclosure sustainability-reporting regimes increasingly require. It
+is **opt-in** and additive: until you enable it, `result.energy_wh` and
+`result.co2e_grams` stay `0.0`.
+
+```python
+app.use_energy_accounting(region="eu")     # estimate carbon against the EU grid
+
+result = app.run("summarize the quarterly report")
+print(result.energy_wh, result.co2e_grams)  # this run's footprint
+
+app.energy_report(by="model").print_summary()
+```
+
+The estimate is **mechanical and offline** — no external service. Each run accrues
+energy from its own token accounting against a per-model intensity (watt-hours per
+million tokens, seeded from the `ModelRegistry` by tier — decode dominates prefill,
+a stronger tier draws more), scaled by a datacenter power-overhead factor (`pue`);
+carbon is that energy at a per-region grid factor (g CO₂e/kWh) from a built-in
+table. `region=` pins the deployment region (an operator knows where their
+inference runs); otherwise the residency policy's resolved region is used, then a
+world-average fallback. Override the model intensity, the grid factors, or the PUE
+for a measured deployment:
+
+```python
+table = app.cost_tracker.energy_table
+table.set("my-model", EnergyProfile(wh_per_input_mtok=40, wh_per_output_mtok=400))
+app.use_energy_accounting(region="on_prem", carbon_intensity={"on_prem": 12.0}, pue=1.05)
+```
+
+`energy_report(by=...)` rolls up from the *same* attributed events as `cost_report`
+(by tenant / feature / user / model / provider / run), so a run's energy is
+attributed exactly where its dollars are.
+
+**Budget it like a dollar.** An energy or carbon envelope refuses a run that would
+exceed it, the way a hard cost cap refuses spend:
+
+```python
+app.set_energy_budget(scope="tenant", id="acme", limit_co2e_grams=500.0, period="day")
+app.set_energy_budget(limit_wh=1000.0, period="hour")   # an energy ceiling, globally
+```
+
+When a scope's accrued energy or carbon over the period reaches the ceiling, the
+run is **denied** — an `energy_budget` decision on the audit chain and an
+`energy.budget_exceeded` event on the bus, exactly parallel to `cost_budget`. Both
+the per-run estimate and every refusal land on the hash-chained, verifiable audit
+log, so the sustainability figure an auditor sees is a number, not a claim.
+
 ## Provider-aware prompt caching
 
 `app.enable_prompt_caching(ttl="5m")` caches the stable prefix of your prompt

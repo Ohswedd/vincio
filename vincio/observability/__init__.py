@@ -1,6 +1,13 @@
 """Vincio observability: traces, spans, sessions, exporters, costs, viewer."""
 
 from .costs import CostTracker, ModelPrice, PriceTable, default_price_table
+from .energy import (
+    DEFAULT_CARBON_INTENSITY,
+    EnergyEstimate,
+    EnergyIntensityTable,
+    EnergyProfile,
+    default_energy_table,
+)
 from .exporters import (
     Alert,
     AlertSink,
@@ -27,6 +34,10 @@ from .finops import (
     CostLedger,
     CostReport,
     CostRow,
+    EnergyBudget,
+    EnergyBudgetDecision,
+    EnergyReport,
+    EnergyRow,
 )
 from .record_replay import (
     BranchEdit,
@@ -66,6 +77,16 @@ __all__ = [
     "CostBudget",
     "BudgetDecision",
     "BudgetManager",
+    # energy & carbon accounting
+    "EnergyProfile",
+    "EnergyEstimate",
+    "EnergyIntensityTable",
+    "default_energy_table",
+    "DEFAULT_CARBON_INTENSITY",
+    "EnergyRow",
+    "EnergyReport",
+    "EnergyBudget",
+    "EnergyBudgetDecision",
     "ConsoleExporter",
     "InMemoryExporter",
     "JSONLExporter",

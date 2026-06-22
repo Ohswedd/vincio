@@ -1359,6 +1359,63 @@
     },
     "families.privacy.subjects": {
       "gte": 1
+    },
+    "families.energy.per_run_estimate": {
+      "eq": true
+    },
+    "families.energy.estimate_deterministic": {
+      "eq": true
+    },
+    "families.energy.carbon_tracks_energy": {
+      "eq": true
+    },
+    "families.energy.decode_dominates": {
+      "eq": true
+    },
+    "families.energy.tier_monotonic": {
+      "eq": true
+    },
+    "families.energy.region_intensity_differs": {
+      "eq": true
+    },
+    "families.energy.unknown_model_nonzero": {
+      "eq": true
+    },
+    "families.energy.region_fallback": {
+      "eq": true
+    },
+    "families.energy.off_by_default": {
+      "eq": true
+    },
+    "families.energy.on_cost_surface": {
+      "eq": true
+    },
+    "families.energy.report_matches_tracker": {
+      "eq": true
+    },
+    "families.energy.declared_region_pinned": {
+      "eq": true
+    },
+    "families.energy.budget_refused": {
+      "eq": true
+    },
+    "families.energy.energy_budget_refused": {
+      "eq": true
+    },
+    "families.energy.refusal_audited": {
+      "eq": true
+    },
+    "families.energy.estimate_on_chain": {
+      "eq": true
+    },
+    "families.energy.auditable_offline": {
+      "eq": true
+    },
+    "families.energy.per_run_energy_wh": {
+      "gte": 0
+    },
+    "families.energy.per_run_co2e_grams": {
+      "gte": 0
     }
   }
 }

@@ -256,6 +256,30 @@ app.run("export button 500s").output.label
   member's standing next to the cost and privacy reports. Held by `families.reputation`
   (discount-the-regressor + weight-bounded/floored + audit-replayable + adopts-at-least-as-good +
   gate-not-bypassed). `ReputationError` inherits `OPTIMIZATION_ERROR`.
+- **Energy & carbon accounting.** The cost report makes a run's dollar spend an auditable
+  number; this adds the sustainability figure beside it — a per-run **energy** (watt-hours) and
+  **carbon** (grams CO₂e) estimate on the *same* cost-report surface, never a new plane
+  (`vincio.observability.energy` / `vincio.observability.finops`). Opt in with
+  `app.use_energy_accounting(region=, pue=, carbon_intensity=)` (off by default; `result.energy_wh`
+  / `result.co2e_grams` stay 0 until enabled). Each run then accrues a **deterministic** estimate
+  from its own token accounting: an `EnergyIntensityTable` maps the model to an `EnergyProfile`
+  (watt-hours per million tokens, seeded by the `ModelRegistry` tier — decode dominates prefill, a
+  stronger tier draws more — and overridable via `.set(model, EnergyProfile(...))`), scales by the
+  datacenter `pue`, and multiplies by a per-region grid factor (g CO₂e/kWh, from a built-in
+  `DEFAULT_CARBON_INTENSITY` table, overridable via `.set_region_intensity(region, g)`); the region
+  is the operator's declared `region=` (pinned), else the residency policy's resolved region, else
+  the world average. `app.energy_report(by="model"|"tenant"|"feature"|"user"|"provider"|"run")`
+  returns an `EnergyReport` rolled up from the same attributed `CostEvent`s the cost report uses
+  (each now carries `energy_wh`/`co2e_grams`), and the figures also surface on
+  `app.cost_tracker.summary()`. **Budgeted like a dollar:** `app.set_energy_budget(scope=, id=,
+  limit_wh=, limit_co2e_grams=, period=)` adds an `EnergyBudget`; when a scope's accrued energy or
+  carbon over the period reaches the ceiling, the run is **refused** the way a hard cost cap refuses
+  spend (`EnergyBudgetDecision`, an `energy.budget_exceeded` event, an `energy_budget` audit entry).
+  **Auditable & offline:** no external service; the per-run estimate and every refusal land on the
+  hash-chained audit log (`run` entries carry `energy_wh`/`co2e_grams` when enabled). Held by
+  `families.energy` (per-run-estimate + budget-refused + auditable-offline + decode-dominates +
+  tier-monotonic + region-intensity-differs + carbon-tracks-energy + off-by-default +
+  on-cost-surface). `EnergyBudgetError` inherits `OBSERVABILITY_ERROR`.
 - **Performance.** Bounded concurrent fan-out (`vincio.core.concurrency`),
   content-addressed compile/chunk/embedding caches (on by default), request
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
@@ -810,6 +834,13 @@ app.run("export button 500s").output.label
   clears the same gate); `app.reputation_report()` rolls up each member's standing;
   `ReputationLedger.from_audit(audit)` replays it from the chain. See the full entry
   above (`families.reputation`).
+- **Energy & carbon accounting.** `app.use_energy_accounting(region=)` turns on a per-run
+  energy (Wh) and carbon (gCO₂e) estimate on the same cost-report surface; every run then carries
+  `result.energy_wh` / `result.co2e_grams`, and `app.energy_report(by=...)` rolls them up like
+  `app.cost_report`. `app.set_energy_budget(limit_wh=, limit_co2e_grams=, scope=, period=)` refuses
+  a run that would exceed its sustainability envelope, the way a hard cost cap refuses spend.
+  Deterministic and offline; the estimate and every refusal are on the audit chain. See the full
+  entry above (`families.energy`).
 
 ## Security & governance
 

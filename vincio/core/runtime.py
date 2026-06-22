@@ -366,6 +366,18 @@ class VincioRuntime:
                     app.cost_tracker.model_cost_usd += response.cost_usd
                     result.usage.add(response.usage)
                     result.cost_usd += response.cost_usd
+                    energy_wh = 0.0
+                    co2e_grams = 0.0
+                    if app.energy_accounting_enabled:
+                        estimate = app.cost_tracker.record_energy(
+                            prepared.model,
+                            response.usage,
+                            region=self._energy_region(prepared.model, response),
+                        )
+                        energy_wh = estimate.energy_wh
+                        co2e_grams = estimate.co2e_grams
+                        result.energy_wh += energy_wh
+                        result.co2e_grams += co2e_grams
                     app.cost_ledger.record_model_call(
                         model=prepared.model,
                         usage=response.usage,
@@ -377,6 +389,8 @@ class VincioRuntime:
                         run_id=run_id,
                         trace_id=result.trace_id,
                         batch=True,
+                        energy_wh=energy_wh,
+                        co2e_grams=co2e_grams,
                     )
                     await self._finalize(prepared, response, result, run_id, user_input, policies)
             app.tracer.export(trace)
@@ -482,6 +496,48 @@ class VincioRuntime:
                     result.error = f"cost budget exceeded: {decision.reason}{hint}"
                     return None
                 budget_model_override = decision.model_override
+
+        # 4d. energy/carbon-budget SLO enforcement: an opt-in sustainability
+        # envelope, gated the way the cost budget gates dollars. When a scope's
+        # accrued energy or carbon over the period reaches the limit, the run is
+        # refused on the same audit path — the energy analogue of a hard cap.
+        if enforce_budget and app.energy_accounting_enabled and app.budget_manager.energy_budgets:
+            energy_decision = app.budget_manager.check_energy(
+                tenant_id=routed.input.tenant_id,
+                user_id=routed.input.user_id,
+                feature=routed.input.feature,
+            )
+            if not energy_decision.allowed:
+                app.audit.record(
+                    "energy_budget",
+                    run_id=run_id,
+                    user_id=user_input.user_id,
+                    tenant_id=user_input.tenant_id,
+                    trace_id=result.trace_id,
+                    resource=energy_decision.scope,
+                    decision="deny",
+                    details={
+                        "metric": energy_decision.metric,
+                        "spent_wh": energy_decision.spent_wh,
+                        "limit_wh": energy_decision.limit_wh,
+                        "spent_co2e_grams": energy_decision.spent_co2e_grams,
+                        "limit_co2e_grams": energy_decision.limit_co2e_grams,
+                        "reason": energy_decision.reason,
+                    },
+                )
+                app.events.emit(
+                    "energy.budget_exceeded",
+                    {
+                        "metric": energy_decision.metric,
+                        "scope": energy_decision.scope,
+                        "reason": energy_decision.reason,
+                    },
+                    trace_id=result.trace_id,
+                )
+                result.metadata["energy_budget"] = energy_decision.model_dump()
+                result.status = RunStatus.DENIED
+                result.error = f"energy budget exceeded: {energy_decision.reason}"
+                return None
 
         # 4b. multi-schema routing: pick the output contract for this task.
         contract = app.output_contract
@@ -908,6 +964,16 @@ class VincioRuntime:
     ) -> None:
         """Record an attributed cost event and run anomaly detection."""
         app = self.app
+        energy_wh = 0.0
+        co2e_grams = 0.0
+        if app.energy_accounting_enabled:
+            estimate = app.cost_tracker.record_energy(
+                model, response.usage, region=self._energy_region(model, response)
+            )
+            energy_wh = estimate.energy_wh
+            co2e_grams = estimate.co2e_grams
+            result.energy_wh += energy_wh
+            result.co2e_grams += co2e_grams
         event = app.cost_ledger.record_model_call(
             model=model,
             usage=response.usage,
@@ -919,6 +985,8 @@ class VincioRuntime:
             run_id=run_id,
             trace_id=result.trace_id,
             batch=batch,
+            energy_wh=energy_wh,
+            co2e_grams=co2e_grams,
         )
         app.budget_manager.observe(event)
         if user_input.tenant_id or user_input.feature or user_input.user_id:
@@ -927,6 +995,21 @@ class VincioRuntime:
                 feature=user_input.feature,
                 user_id=user_input.user_id,
             )
+
+    def _energy_region(self, model: str, response: ModelResponse) -> str | None:
+        """Resolve the run's region for the regional carbon intensity.
+
+        An operator-declared ``region_override`` pins every call; otherwise the
+        residency policy resolves it (provider/model map, then endpoint inference,
+        then defaults), so energy and residency agree on where a call ran.
+        ``None`` falls back to the energy table's default region."""
+        override = self.app.cost_tracker.energy_table.region_override
+        if override:
+            return override
+        try:
+            return self.app.residency.region_for(response.provider or "", model)
+        except Exception:  # pragma: no cover - region resolution must never break a run
+            return None
 
     def _note_unknown_model(self, model: str, result: RunResult, span: Any) -> None:
         """Emit ``model.unknown`` (once per run per model) when the resolved
@@ -1758,17 +1841,23 @@ class VincioRuntime:
                         },
                     )
 
+        run_details: dict[str, Any] = {
+            "sources": [e.source_id for e in result.evidence][:32],
+            "tools": [t.tool_name for t in result.tool_results],
+            "cost_usd": result.cost_usd,
+        }
+        if app.energy_accounting_enabled:
+            # The per-run energy/carbon estimate lands on the hash-chained audit
+            # log, so the sustainability number is mechanical and verifiable.
+            run_details["energy_wh"] = round(result.energy_wh, 6)
+            run_details["co2e_grams"] = round(result.co2e_grams, 6)
         app.audit.record(
             "run",
             run_id=run_id,
             user_id=user_input.user_id,
             tenant_id=user_input.tenant_id,
             decision="allow",
-            details={
-                "sources": [e.source_id for e in result.evidence][:32],
-                "tools": [t.tool_name for t in result.tool_results],
-                "cost_usd": result.cost_usd,
-            },
+            details=run_details,
         )
         # The shared epilogue (_finish) writes a terminal audit only when one
         # wasn't already recorded here; mark it so a successful run audits once.
@@ -1885,6 +1974,14 @@ class VincioRuntime:
         # runs that never reached _finalize get their terminal audit here so the
         # audit chain has exactly one terminal entry per run.
         if not result.metadata.get("_run_audited"):
+            terminal_details: dict[str, Any] = {
+                "status": result.status.value,
+                "cost_usd": result.cost_usd,
+                "error": (result.error or "")[:300] or None,
+            }
+            if app.energy_accounting_enabled:
+                terminal_details["energy_wh"] = round(result.energy_wh, 6)
+                terminal_details["co2e_grams"] = round(result.co2e_grams, 6)
             app.audit.record(
                 "run",
                 run_id=run_id,
@@ -1892,11 +1989,7 @@ class VincioRuntime:
                 tenant_id=user_input.tenant_id,
                 trace_id=result.trace_id,
                 decision=self._TERMINAL_DECISION.get(result.status, "deny"),
-                details={
-                    "status": result.status.value,
-                    "cost_usd": result.cost_usd,
-                    "error": (result.error or "")[:300] or None,
-                },
+                details=terminal_details,
             )
             result.metadata["_run_audited"] = True
         await asave(app.store, "runs", self._run_record(result, run_id, user_input, app.name))

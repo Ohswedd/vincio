@@ -63,6 +63,7 @@ and a runnable example.
 | **Federated / cross-org self-improvement** | Sharing what was learned across organizations without sharing the raw traffic. Each member builds a numeric, raw-text-free `Contribution` — the clipped, optionally DP-noised, and secure-aggregation-masked subspace scatter of its local adapter geometry (`app.contribute_federated`) — behind the consent ledger's TRAINING purpose and the residency posture, never a prompt or a response. A `SecureAggregator` merges the fleet's contributions into a shared `FederatedSubspace` by deterministic federated PCA — the pairwise masks cancel exactly, so no single member's update is ever observed — refusing a round below the `PrivacyConfig` k-anonymity contributor floor. The adopting member re-fits its own adapter against the shared geometry (`app.adopt_federated` / `app.federated_improvement`), keeping its own grounded answers local, and adopts it only when at-least-as-good as its base on a held-out set — the same no-regression and canary gates a local promotion clears, versioned in the `AdapterRegistry` and rolled back on regression. Only numeric, masked, bounded-sensitivity aggregates cross a trust boundary; held by a privacy SLO and a no-regression SLO. |
 | **Differential-privacy memory & training** | A provable, composing, per-subject privacy budget over memory consolidation and the whole learning loop. A Rényi/moments `PrivacyAccountant` (`app.use_privacy_accountant`) tracks the cumulative `(ε, δ)` a subject's data has spent across every consolidation and learning round — composing across rounds far more tightly than naively summing each step's `ε` — and a `PrivacyBudget` gates a learning step the way the cost report gates a dollar: a consolidation or a federated contribution that would exceed a subject's remaining budget is refused (a hard cap) or down-weighted (clipped harder, so its sensitivity and privacy cost fit). It wires into memory consolidation and federated contributions automatically; `app.privacy_report()` rolls up each subject's spent / remaining `ε` next to the cost report; and every spend and refusal lands on the hash-chained audit log, so the guarantee is a mechanical, auditable number. `gaussian_rdp` / `rdp_to_epsilon` expose the accountant's math; held by a budget-composition SLO and a refusal SLO. |
 | **Cross-fleet reputation & weighting** | A per-member reputation that discounts an unreliable or adversarial member's pull on the federated consensus — earned only from how each contribution fared against the no-regression gate, never from raw traffic. A `ReputationLedger` (`app.use_reputation_ledger`) keeps each member's reliability as a Beta-Bernoulli posterior over gate outcomes (a robust generalization of the existing reliability scoring): a newcomer earns the benefit of the doubt from a prior, a repeatedly-regressing member decays toward a floor, and a reformed member recovers. The `SecureAggregator` weights a member's contribution by its reputation before distilling the consensus subspace — folded in before the secure-aggregation masks so they still cancel exactly — so a regressor is discounted **without being singled out**. The discount is bounded and reversible: a weight never leaves `[floor, 1]` (lowering pull, never zeroing or bypassing the quality bar), and adoption still clears the same no-regression and canary gates a local promotion does. Every update lands on the signed audit chain and replays from it (`ReputationLedger.from_audit`), and `app.reputation_report()` rolls up each member's standing next to the cost and privacy reports; held by a discount-the-regressor SLO and a no-regression SLO. |
+| **Energy & carbon accounting** | A per-run energy (watt-hours) and estimated carbon (grams CO₂e) figure on the existing cost-report surface — the sustainability analogue of the dollar budget, never a new plane. `app.use_energy_accounting(region=)` turns it on; every run then accrues a deterministic estimate from its own token accounting against a per-model intensity (by tier, from the `ModelRegistry`) and a per-region grid factor, surfaced on `result.energy_wh` / `result.co2e_grams`, `app.cost_tracker.summary()`, and `app.energy_report()` (rolled up by model/tenant/feature from the same attributed events the cost report uses). Budgeted like a dollar: `app.set_energy_budget(limit_wh= / limit_co2e_grams=)` refuses a run that would exceed its sustainability envelope, the way a hard cost cap refuses spend. Auditable and offline: the estimate is computed in-process from a built-in intensity table (no external service), and both the per-run number and every refusal land on the hash-chained audit log. Held by a per-run-estimate SLO, a budget-refusal SLO, and an auditable-offline SLO. |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
@@ -78,35 +79,37 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **cross-fleet reputation & weighting** (a `ReputationLedger` that earns a
-per-member reliability signal from how each federated contribution fared against the no-regression gate, a
-reputation-weighted `SecureAggregator` that discounts a repeatedly-regressing or adversarial member's pull on
-the consensus geometry without singling it out, and an `app.reputation_report()` that makes each member's
-standing an auditable, replayable number on the signed audit chain) — has shipped and folded into the
-**Cross-fleet reputation & weighting** row above. The next theme is scheduled below. It closes a
-specific gap in the platform's *own* frontier — a rung that exists in the literature and in buyer demand
-but not yet in the package — rather than a gap measured against any one competitor. An indicative
+The most recent scheduled theme — **energy & carbon accounting** (a per-run energy and estimated-carbon
+figure on the existing cost-report surface, accrued deterministically from token accounting against a
+per-model/per-region intensity table, budgeted and refused the way the cost report gates a dollar, and on the
+hash-chained audit log — `app.use_energy_accounting` / `app.set_energy_budget` / `app.energy_report`) — has
+shipped and folded into the **Energy & carbon accounting** row above. The next theme is scheduled below. It
+closes a specific gap in the platform's *own* frontier — a rung that exists in the literature and in buyer
+demand but not yet in the package — rather than a gap measured against any one competitor. An indicative
 minor-version target is given; cadence holds one coherent theme per minor.
 
-### 1 · Energy & carbon accounting *(target 3.18)*
+### 1 · Formal verification of governance invariants *(target 3.19)*
 
-The cost report makes a run's dollar spend an auditable number held by a budget SLO, and the resident-memory
-budget does the same for footprint — but the platform reports **nothing about a run's energy or carbon**, the
-disclosure sustainability-reporting regimes are beginning to demand. The rung not yet first-class is **per-run
-energy and estimated carbon, reported on the existing cost-report surface and held by an optional SLO** — the
-energy analogue of the dollar budget. The primitives are in place: the per-run cost report and its budget
-SLOs, the token and latency accounting on every span, and the `ModelRegistry` that already carries per-model
-metadata.
+The platform already *enforces* its governance invariants at runtime — residency refuses an out-of-region
+egress, provable erasure emits a signed proof over the removed-id set, the budget caps spend, and the
+injection-containment check proves an untrusted-tainted argument cannot reach a side-effecting tool without a
+user-minted capability — and records each decision on the signed audit chain. What is not yet first-class is a
+**machine-checkable proof that these invariants hold across the whole pipeline**, ahead of any single run: a
+property checked by construction rather than observed after the fact. The primitives are in place: the typed
+`TrustLabel` / `TaintedValue` information-flow labels, the `CapabilityToken` algebra, the residency and
+erasure machinery, and the per-run containment invariant already expressed as a checkable predicate.
 
-- **Per-run energy & carbon** — an estimate accrued from the run's token, compute, and latency accounting
-  against a configurable per-model/per-region intensity factor, on the cost-report surface, never a new plane.
-- **Budgeted like a dollar** — an opt-in energy/carbon budget gated the way the cost report gates spend, so a
-  run that would exceed its sustainability envelope is surfaced and refused.
-- **Auditable & offline** — the estimate is a mechanical, deterministic number on the audit chain, computed
-  in-process with a deterministic default intensity table (no external service).
+- **Invariants as machine-checked properties** — residency, erasure, budget, and injection-containment stated
+  as formal properties over the pipeline's typed state, checked by a deterministic in-process verifier rather
+  than asserted by a runtime guard alone.
+- **Counterexample, not just a verdict** — a failed property yields a concrete, minimal trace that violates
+  it (the input, the labels, the capability gap), so a governance regression is debuggable, not just flagged.
+- **Auditable & offline** — the verification result is a mechanical, deterministic artifact on the audit
+  chain, computed in-process with no external prover service, gated by a VincioBench family and an SLO.
 
-*Ships as:* an opt-in energy/carbon surface over the existing cost report; an `energy` VincioBench family with
-a per-run-estimate and a budget-refusal SLO; a runnable example.
+*Ships as:* an opt-in governance-verification surface over the existing audit and containment machinery; a
+`verification` VincioBench family with a property-holds and a counterexample-on-violation SLO; a runnable
+example.
 
 ---
 
@@ -121,12 +124,6 @@ Grouped by where they would land.
   segmentation, and generative output, extending multimodal beyond image and audio.
 - 🔭 **MCP Apps & the evolving MCP spec** — server-rendered UI, elicitation, and stateless-core
   changes, adopted once the spec ships stable, tracked alongside AG-UI generative-UI streaming.
-
-**Assurance & governance**
-
-- 🔭 **Formal verification of governance invariants** — machine-checkable proofs that residency,
-  erasure, budget, and the shipped injection-containment invariant hold across the whole
-  pipeline, beyond the signed audit chain, provable erasure, and the per-run containment check.
 
 **Efficiency & reach**
 

@@ -134,8 +134,21 @@ from .governance import (
 )
 from .memory.engine import MemoryEngine, ScopedMemory
 from .notebook import enable_rich_reprs
+from .observability.energy import (
+    EnergyEstimate,
+    EnergyIntensityTable,
+    EnergyProfile,
+)
 from .observability.exporters import AlertSink, PrometheusExporter
-from .observability.finops import AlertManager, AlertRule, BudgetManager, CostBudget, CostLedger
+from .observability.finops import (
+    AlertManager,
+    AlertRule,
+    BudgetManager,
+    CostBudget,
+    CostLedger,
+    EnergyBudget,
+    EnergyReport,
+)
 from .observability.redaction import ContentCapturePolicy
 from .observability.store import IndexedTraceStore
 from .observability.viewer import serve_viewer
@@ -240,7 +253,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.17.0"
+__version__ = "3.18.0"
 
 __all__ = [
     "ContextApp",
@@ -403,6 +416,12 @@ __all__ = [
     "CostLedger",
     "CostBudget",
     "BudgetManager",
+    # energy & carbon accounting
+    "EnergyProfile",
+    "EnergyEstimate",
+    "EnergyIntensityTable",
+    "EnergyBudget",
+    "EnergyReport",
     "ShardedIndex",
     "MatryoshkaEmbedder",
     "RealtimeSession",

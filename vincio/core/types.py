@@ -805,6 +805,11 @@ class RunResult(BaseModel):
     tool_results: list[ToolResult] = Field(default_factory=list)
     usage: TokenUsage = Field(default_factory=TokenUsage)
     cost_usd: float = 0.0
+    # Estimated energy (watt-hours) and carbon (grams CO₂e) of the run, accrued
+    # from token accounting when energy accounting is enabled (otherwise 0.0).
+    # The energy analogue of ``cost_usd``, on the same cost-report surface.
+    energy_wh: float = 0.0
+    co2e_grams: float = 0.0
     latency_ms: int = 0
     # Estimated resident-memory footprint of the compiled context packet, in
     # bytes. Held under the app's ``memory_budget_mb`` ceiling when one is set.

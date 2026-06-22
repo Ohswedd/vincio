@@ -258,6 +258,11 @@ class ContextApp:
             sample_rate=self.config.observability.sample_rate,
         )
         self.cost_tracker = CostTracker()
+        # Opt-in energy/carbon accounting. Off by default; turned on by
+        # ``use_energy_accounting`` / ``set_energy_budget``. When on, each run
+        # accrues an energy + carbon estimate on the cost-report surface and on
+        # the audit chain.
+        self.energy_accounting_enabled = False
         # Cumulative usage for out-of-run media generation (image/TTS), so the
         # budget cap is honored across repeated app.generate_image/synthesize_speech
         # calls rather than per-call only.
@@ -1090,6 +1095,92 @@ class ContextApp:
         """Roll up attributed model cost by ``tenant``/``feature``/``user``/
         ``model``/``provider``/``run`` (returns a :class:`CostReport`)."""
         return self.cost_ledger.report(by, since=since)  # type: ignore[arg-type]
+
+    def use_energy_accounting(
+        self,
+        *,
+        region: str | None = None,
+        pue: float | None = None,
+        carbon_intensity: dict[str, float] | None = None,
+    ) -> ContextApp:
+        """Turn on per-run energy & carbon accounting (opt-in).
+
+        Once enabled, every run accrues an estimated energy (watt-hours) and
+        carbon (grams CO₂e) figure — mechanical and deterministic, from the run's
+        token accounting against a per-model intensity (by tier) and a per-region
+        grid factor — onto the cost-report surface
+        (:meth:`energy_report`, ``result.energy_wh`` / ``result.co2e_grams``) and
+        the hash-chained audit log. No external service is consulted. The energy
+        analogue of the dollar cost report::
+
+            app.use_energy_accounting(region="eu")
+            result = app.run("summarize this")
+            print(result.energy_wh, result.co2e_grams)
+            app.energy_report(by="model").print_summary()
+
+        ``region`` overrides the default region used when a call's region cannot
+        be resolved; ``pue`` overrides the datacenter power-overhead factor;
+        ``carbon_intensity`` merges operator-measured grid factors (g CO₂e/kWh,
+        keyed by region) over the built-in defaults.
+        """
+        table = self.cost_tracker.energy_table
+        if region is not None:
+            table.region_override = region
+        if pue is not None:
+            table.pue = max(0.0, pue)
+        if carbon_intensity:
+            for reg, g in carbon_intensity.items():
+                table.set_region_intensity(reg, g)
+        self.energy_accounting_enabled = True
+        return self
+
+    def set_energy_budget(
+        self,
+        *,
+        scope: str = "global",
+        id: str | None = None,
+        limit_wh: float | None = None,
+        limit_co2e_grams: float | None = None,
+        period: str = "day",
+    ) -> ContextApp:
+        """Set an energy/carbon budget, refused on breach like a cost cap.
+
+        The sustainability analogue of :meth:`set_cost_budget`. Give an energy
+        ceiling (``limit_wh``), a carbon ceiling (``limit_co2e_grams``), or both;
+        when a scope's accrued energy or carbon over ``period`` reaches a ceiling,
+        the run is refused on the same audit path as a cost cap. Enables energy
+        accounting on first use::
+
+            app.set_energy_budget(scope="tenant", id="acme", limit_co2e_grams=500.0)
+            app.set_energy_budget(limit_wh=1000.0, period="hour")
+        """
+        from ..core.errors import EnergyBudgetError
+        from ..observability.finops import EnergyBudget
+
+        if limit_wh is None and limit_co2e_grams is None:
+            raise EnergyBudgetError(
+                "an energy budget needs at least one of limit_wh / limit_co2e_grams"
+            )
+        if not self.energy_accounting_enabled:
+            self.use_energy_accounting()
+        self.budget_manager.add_energy_budget(
+            EnergyBudget(
+                scope=scope,  # type: ignore[arg-type]
+                id=id,
+                limit_wh=limit_wh,
+                limit_co2e_grams=limit_co2e_grams,
+                period=period,  # type: ignore[arg-type]
+            )
+        )
+        return self
+
+    def energy_report(self, *, by: str = "tenant", since: Any | None = None):
+        """Roll up estimated energy + carbon by ``tenant``/``feature``/``user``/
+        ``model``/``provider``/``run`` (returns an :class:`EnergyReport`).
+
+        The energy analogue of :meth:`cost_report`, on the same surface and from
+        the same attributed events."""
+        return self.cost_ledger.energy_report(by, since=since)  # type: ignore[arg-type]
 
     def batch(
         self,
