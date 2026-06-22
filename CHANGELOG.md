@@ -4,6 +4,54 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.26.0] - 2026-06-22
+
+Cross-org workflow discovery & dynamic choreography. With cross-org sagas negotiated, contracted,
+settled, and reconciled, this release adds the next rung: **who** runs each step, resolved at run
+time rather than wired by org id up front. A saga step declares the *capability* it needs and the
+engine resolves the counterparty at dispatch time from the governed `AgentDirectory` — ranked by
+reputation and prior settlement fit — so a choreography binds the best-available counterparty for
+each step, never a hosted matching service. Discovery changes *who* runs a step, never *how*: the
+resolved org runs under the same allow-list, contract, per-org audit, compensation, durability, and
+A2A portability a statically-wired one does. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the default static-wiring path is unchanged, and the whole theme runs
+offline against deterministic local participants.
+
+### Added
+
+- **Run-time capability binding (`vincio.choreography.discovery`).** A `Saga` step may declare the
+  `capability=` it needs instead of a fixed `participant=`; a `CapabilityBinder(directory, *,
+  reputation=, settlement_book=, weights=)` resolves it to a participant at dispatch time. `.bind(
+  step, *, available=)` finds the directory records advertising the capability, governs each through
+  the directory's allow-list (audited), keeps the allowed **and** reachable candidates, and ranks
+  them by a weighted mean (`BindingWeights`) of reputation weight, prior settlement reliability, and
+  contract fit — best first, ties broken deterministically by org id — returning a `StepBinding`
+  (chosen org + the full ranked `BindingCandidate` field, for audit).
+- **Discovery on the app surface.** `app.choreograph(saga, *, participants=, directory=, binder=,
+  binding_weights=)` / `aresume_choreography(...)` build the binder automatically from `directory=`
+  and the app's reputation ledger and settlement book (or accept a prepared `binder=`). The binding
+  decision is recorded on the saga journal (`result.bindings` / `journal.bindings()`) and on the
+  coordinator's hash-chained audit chain (`choreography_bind`).
+- **A `discovery` VincioBench family** holding a binding-correctness SLO (the best-ranked allowed
+  candidate is bound, deterministically, and recorded) and a governance-preservation SLO (an unlisted
+  or unreachable candidate is never bound, every resolution and the binding are audited, a capability
+  no eligible candidate advertises is refused, and the bound step is contract-enforced, compensated
+  at the bound org, durable, and A2A-portable as a static one).
+- **Example `70_cross_org_workflow_discovery.py`** and a discovery section in the choreography guide.
+
+### Changed
+
+- `SagaStep` accepts exactly one of `participant=` (static) or `capability=` (discovered);
+  `Saga.step(...)` gains `capability=`. `StepRecord` / `StepRequest` carry the bound `capability`,
+  and `StepRecord.binding` carries the `StepBinding`. A discovered step is **compensated at the org it
+  was bound to** (recorded on the journal, never re-resolved), and a resume re-binds only steps not
+  yet run. Fully backward-compatible: a statically-wired saga behaves exactly as before.
+
+### Public surface
+
+- Added to `vincio.__all__`: `CapabilityBinder`, `BindingWeights`, `BindingCandidate`, `StepBinding`.
+  `API_VERSION` remains `3.0`.
+
 ## [3.25.0] - 2026-06-22
 
 Agent-to-agent settlement & metering. With cross-org sagas dispatching contracted work across

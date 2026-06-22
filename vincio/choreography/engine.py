@@ -37,6 +37,7 @@ from collections.abc import Awaitable, Callable
 from typing import Any, Protocol, runtime_checkable
 
 from ..core.errors import ChoreographyError, CompensationError
+from .discovery import BIND_ACTION, CapabilityBinder, StepBinding
 from .saga import (
     SAGA_STORE_KIND,
     STEP_DISPATCH_ACTION,
@@ -167,6 +168,14 @@ class Choreography:
     checkpointed to (durability); ``audit`` / ``events`` record the coordinator's
     handoffs and completion; ``signer`` signs each journal record for third-party
     verifiability.
+
+    ``binder`` enables **run-time discovery**: a step that declares a ``capability``
+    instead of a fixed ``participant`` is resolved against the binder's governed
+    :class:`~vincio.choreography.discovery.CapabilityBinder` at dispatch time, which
+    ranks the allowed candidates by reputation and prior settlement fit and picks
+    the best. The chosen org must be present in ``participants`` (that is *how* the
+    coordinator reaches it); discovery changes *who* runs a step, never how it is
+    governed, contract-enforced, compensated, or audited.
     """
 
     def __init__(
@@ -179,6 +188,7 @@ class Choreography:
         audit: Any | None = None,
         events: Any | None = None,
         signer: Any | None = None,
+        binder: CapabilityBinder | None = None,
         clock: Callable[[], float] | None = None,
         raise_on_compensation_failure: bool = False,
     ) -> None:
@@ -186,11 +196,25 @@ class Choreography:
         self.participants = {
             org: self._coerce_participant(org, p) for org, p in participants.items()
         }
-        missing = sorted({s.participant for s in self.saga.steps} - set(self.participants))
+        self.binder = binder
+        # Static steps must name a registered participant up front; discovered
+        # steps bind at dispatch time and so require a binder, not a pre-registered
+        # org (the resolved org is checked against ``participants`` when it is bound).
+        static_orgs = {s.participant for s in self.saga.steps if not s.is_discovered}
+        missing = sorted(static_orgs - set(self.participants))
         if missing:
             raise ChoreographyError(
                 f"saga {self.saga.name!r} dispatches to unregistered participant(s) {missing}",
                 details={"saga": self.saga.name, "missing": missing},
+            )
+        if any(s.is_discovered for s in self.saga.steps) and self.binder is None:
+            raise ChoreographyError(
+                f"saga {self.saga.name!r} declares capability steps but no binder was "
+                f"supplied to resolve them (pass binder= / directory=)",
+                details={
+                    "saga": self.saga.name,
+                    "discovered_steps": [s.name for s in self.saga.steps if s.is_discovered],
+                },
             )
         self.coordinator = coordinator
         self.store = store
@@ -323,8 +347,25 @@ class Choreography:
         self._checkpoint(journal)
         self._emit(journal)
 
+    def _bind_step(
+        self, journal: SagaJournal, step: SagaStep
+    ) -> tuple[str, Participant, StepBinding | None]:
+        """Resolve which org runs ``step`` — static wiring or run-time discovery.
+
+        A discovered step is bound at dispatch time from the governed directory,
+        ranked by reputation and prior settlement fit; the decision is recorded on
+        the coordinator's audit chain (``choreography_bind``) and carried on the
+        journal. The resolved org must have a participant binding to be reachable.
+        """
+        if not step.is_discovered:
+            return step.participant, self._resolve(step.participant), None
+        assert self.binder is not None  # guaranteed by __init__ validation
+        binding = self.binder.bind(step, available=set(self.participants))
+        self._audit_bind(journal, binding)
+        return binding.org, self._resolve(binding.org), binding
+
     async def _perform_step(self, journal: SagaJournal, step: SagaStep) -> StepRecord:
-        participant = self._resolve(step.participant)
+        org, participant, binding = self._bind_step(journal, step)
         payload = self._build_payload(journal, step)
         request = StepRequest(
             saga_id=journal.id,
@@ -334,6 +375,7 @@ class Choreography:
             payload=payload,
             scope=step.scope,
             contract_id=step.contract_id,
+            capability=step.capability,
         )
         outcome, attempts = await self._dispatch(participant.perform, request, step)
         fulfilled, breaches = self._check_contract(step, outcome)
@@ -344,12 +386,14 @@ class Choreography:
         record = StepRecord(
             seq=len(journal.records),
             step=step.name,
-            org=step.participant,
+            org=org,
             action=step.action,
             kind="forward",
             status=status,
             attempts=attempts,
             contract_id=step.contract_id,
+            capability=step.capability or None,
+            binding=binding,
             output=outcome.output,
             cost_usd=outcome.cost_usd,
             latency_ms=outcome.latency_ms,
@@ -374,7 +418,10 @@ class Choreography:
             step = self.saga.by_name(forward.step)
             if step is None or step.compensation is None:
                 continue
-            participant = self._resolve(step.participant)
+            # Compensate against the org that actually ran the forward step — the
+            # one recorded on the journal — so a discovered step unwinds at the
+            # counterparty it was bound to, never a freshly re-resolved one.
+            participant = self._resolve(forward.org)
             request = StepRequest(
                 saga_id=journal.id,
                 step=step.name,
@@ -383,6 +430,7 @@ class Choreography:
                 payload={"forward_output": dict(forward.output), **dict(step.payload)},
                 scope=step.scope,
                 contract_id=step.contract_id,
+                capability=step.capability,
             )
             outcome, attempts = await self._dispatch(
                 participant.compensate, request, step
@@ -391,12 +439,13 @@ class Choreography:
             record = StepRecord(
                 seq=len(journal.records),
                 step=step.name,
-                org=step.participant,
+                org=forward.org,
                 action=step.compensation,
                 kind="compensation",
                 status=status,
                 attempts=attempts,
                 contract_id=step.contract_id,
+                capability=step.capability or None,
                 output=outcome.output,
                 error=outcome.error,
             )
@@ -476,6 +525,17 @@ class Choreography:
             return None
         record = self.store.get(SAGA_STORE_KIND, saga_id)
         return SagaJournal.from_record(record) if record else None
+
+    def _audit_bind(self, journal: SagaJournal, binding: StepBinding) -> None:
+        """Record a run-time binding decision on the coordinator's chain."""
+        if self.audit is None:
+            return
+        self.audit.record(
+            BIND_ACTION,
+            resource=journal.id,
+            decision=binding.org,
+            details=binding.audit_details(),
+        )
 
     def _audit(self, journal: SagaJournal, record: StepRecord) -> None:
         if self.audit is None:

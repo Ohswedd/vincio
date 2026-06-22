@@ -52,12 +52,16 @@ from .caching import (
     ThresholdCalibrator,
 )
 from .choreography import (
+    BindingCandidate,
+    BindingWeights,
+    CapabilityBinder,
     Choreography,
     RemoteParticipant,
     Saga,
     SagaJournal,
     SagaResult,
     SagaStep,
+    StepBinding,
     StepOutcome,
     StepRecord,
     StepRequest,
@@ -315,7 +319,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.25.0"
+__version__ = "3.26.0"
 
 __all__ = [
     "ContextApp",
@@ -442,6 +446,11 @@ __all__ = [
     "Choreography",
     "RemoteParticipant",
     "choreography_a2a_server",
+    # cross-org workflow discovery & dynamic choreography
+    "CapabilityBinder",
+    "BindingWeights",
+    "BindingCandidate",
+    "StepBinding",
     # agent-to-agent settlement & metering
     "Meter",
     "MeterReading",

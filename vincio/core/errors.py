@@ -748,10 +748,13 @@ class ChoreographyError(VincioError):
     """A cross-org workflow choreography could not proceed.
 
     Raised when a :class:`~vincio.choreography.Saga` cannot run or resume — a step
-    that names a participant with no registered binding, a duplicate or empty step
-    set, or a :meth:`~vincio.choreography.Choreography.resume` for a ``saga_id``
-    that is not in the durable store. A saga whose forward step fails does **not**
-    raise — it compensates the completed steps and returns a
+    that names a participant with no registered binding, a step declaring neither or
+    both of ``participant=`` / ``capability=``, a discovered step whose capability
+    resolves to no allowed, reachable candidate (or that has no binder/directory to
+    resolve it), a duplicate or empty step set, or a
+    :meth:`~vincio.choreography.Choreography.resume` for a ``saga_id`` that is not in
+    the durable store. A saga whose forward step fails does **not** raise — it
+    compensates the completed steps and returns a
     :class:`~vincio.choreography.SagaResult` with ``status="compensated"``; a clean
     unwind is an outcome, not an error.
     """

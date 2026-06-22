@@ -1551,6 +1551,26 @@
       "threshold": true,
       "enforced_by": "families.settlement.settlement_verifies_offline",
       "rationale": "A settlement is only as good as its tamper-evidence. The budget gates that a signed settlement verifies offline; companion budgets gate that a tampered figure fails verification, that the hash-chained book recomputes and catches an edited record, that two orgs' records reconcile (and a disagreement is detected), and that the verdict lands on the audit chain — so a cross-org settlement is a mechanical, verifiable ledger of what was owed and delivered, never a self-asserted claim or a hosted clearing house."
+    },
+    {
+      "id": "discovery_binding_correctness",
+      "category": "reliability",
+      "statement": "A cross-org saga step that declares a capability binds the best-available counterparty at dispatch time: among the allow-listed candidates that advertise the capability and are reachable, the one whose reputation and prior settlement record best fit the step's contract is chosen, deterministically (ties broken by org id), and the decision is recorded on the saga journal.",
+      "metric": "families.discovery.binds_highest_ranked",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.discovery.binds_highest_ranked",
+      "rationale": "Run-time discovery is only useful if it binds the right counterparty. The budget gates that the higher-reputation candidate outranks a regressing one; companion budgets gate that a capability step binds and completes, that the candidate set is surfaced for audit, and that a discovered step is contract-enforced, compensated at the bound org, durable across a restart, and A2A-portable exactly as a statically-wired one — so discovery changes who runs a step, never whether it is bound correctly."
+    },
+    {
+      "id": "discovery_governance_preservation",
+      "category": "security",
+      "statement": "Run-time discovery never relaxes governance: a candidate that advertises the capability but is not allow-listed or has no participant binding is never bound, the governed resolution of every candidate and the binding decision land on the coordinator's hash-chained audit chain, and a capability with no eligible candidate is refused rather than silently dropped.",
+      "metric": "families.discovery.governance_preserved",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.discovery.governance_preserved",
+      "rationale": "Discovery resolves who, but must never bypass how. The budget gates that an unlisted candidate scores zero and is never bound while its resolution is audited; companion budgets gate that an unreachable candidate is rejected, that no eligible candidate raises rather than stalling, and that the binding decision itself is on the chain — so the agent fabric stays as accountable when the counterparty is discovered as when it is wired by id."
     }
   ]
 }

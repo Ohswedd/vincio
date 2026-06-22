@@ -1051,10 +1051,12 @@ app.run("export button 500s").output.label
   Choreography, SagaResult, SagaJournal, StepRequest, StepOutcome, RemoteParticipant,
   choreography_a2a_server` (also top-level `vincio.__all__`; `Participant`,
   `LocalParticipant`, `SagaContext` are subpackage-only). A `Saga(name=).step(name, *,
-  participant=, action=, compensation=, payload=, build=, contract=, retries=)` is an
-  ordered, compensating cross-org workflow (the choreography analogue of the in-process
-  durable graph). `app.choreograph(saga, *, participants=, input=, saga_id=,
-  interrupt_after=)` / `achoreograph` drives it → a `SagaResult` (`.status`
+  action=, participant=|capability=, compensation=, payload=, build=, contract=, retries=)`
+  is an ordered, compensating cross-org workflow (the choreography analogue of the in-process
+  durable graph); a step names its participant statically (`participant=`) **xor** declares a
+  `capability=` resolved at run time (run-time discovery, below). `app.choreograph(saga, *,
+  participants=, input=, saga_id=, directory=, binder=, binding_weights=, interrupt_after=)`
+  / `achoreograph` drives it → a `SagaResult` (`.status`
   completed|compensated|failed|interrupted, `.completed_steps`, `.compensated_steps`,
   `.failed_step`, `.output`/`.output_of(step)`, `.journal`). `participants` maps an org
   id to a `Participant` (or, as a convenience, a dict of `{action: handler(payload)}`
@@ -1077,6 +1079,28 @@ app.run("export button 500s").output.label
   step to a remote org (same `perform`/`compensate` protocol as a local one).
   `ChoreographyError`/`CompensationError` (codes `CHOREOGRAPHY_ERROR` /
   `COMPENSATION_FAILED`).
+- **Cross-org workflow discovery & dynamic choreography.** `from vincio.choreography import
+  CapabilityBinder, BindingWeights, BindingCandidate, StepBinding` (also top-level
+  `vincio.__all__`). A step declaring `capability=` is resolved to a participant **at dispatch
+  time** from a governed `AgentDirectory` (`app.agent_directory(allow=)`), passed as
+  `app.choreograph(..., directory=)` — discovery changes *who* runs a step, never *how*. A
+  `CapabilityBinder(directory, *, reputation=, settlement_book=, weights=BindingWeights(
+  reputation=, settlement=, contract_fit=, unknown_settlement_score=))` `.rank(capability, *,
+  contract=, available=)` / `.bind(step, *, available=)` finds the directory records advertising
+  the capability, governs each through the allow-list (audited `agent_resolve`), keeps the
+  allowed **and** reachable ones (an org present in both the directory and `participants`), and
+  ranks them by a weighted mean of reputation weight (`ReputationLedger.weight`), settlement
+  reliability (share honoured, from `SettlementBook.report`), and contract fit (prior delivered
+  cost vs the step contract's price) — best first, ties broken by org id (deterministic). The
+  chosen `StepBinding` (`.org`, `.score`, `.candidates`, `.considered`, `.eligible`) is recorded
+  on the journal (`result.bindings[step]` / `journal.bindings()`) and audited on the
+  coordinator's chain (`choreography_bind`). A capability no allowed, reachable candidate
+  advertises raises `ChoreographyError`. A discovered step is contract-enforced, **compensated at
+  the org it was bound to** (recorded `org`, not re-resolved), durable across a restart (a
+  resume re-binds only steps not yet run), and dispatched over the A2A fabric identically.
+  Build the binder automatically from `directory=` + the app's reputation ledger + settlement
+  book, or pass a prepared `binder=`. Held by `families.discovery` (binding-correctness +
+  governance-preservation).
 - **Agent-to-agent settlement & metering.** `from vincio import Meter, MeterReading,
   UsageEvent, SettlementRecord, SettlementBook, SettlementReport, Reconciliation,
   reconcile, settle_contract, settle_saga` (also `vincio.settlement.__all__`;
