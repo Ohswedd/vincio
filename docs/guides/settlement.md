@@ -334,6 +334,53 @@ Freshness and revocation read only the existing signed artifacts, assert nothing
 cannot recompute, and fold into the *same* bounded `[floor, 1]` weighting — never a
 central revocation service or a hosted bulletin board.
 
+## Gossiping reputation across the fabric
+
+Attestations are portable, current, and revocable — but an importer still has to be
+*handed* the right bundle: it has no way to **discover** who has attested a
+counterparty, or to learn that an issuer has since revoked one, without a hosted
+registry. A bounded, **pull-based** exchange of those signed artifacts over the A2A
+fabric closes that gap — the discovery analogue for reputation.
+
+**Pull, never push.** An org exposes its book as a queryable peer with
+`app.serve_attestations()`, returning an `A2AServer` whose Agent Card advertises an
+`attestation-exchange` skill. Answering a query for a subject, the peer returns a
+`ReputationBundle` of its *own* signed artifacts — the current attestation it can
+issue from its `SettlementBook` records, plus any revocations it has signed — and
+nothing else:
+
+```python
+acme.use_settlement_book()
+# ... acme settles work delivered by "vendor" ...
+acme_peer = acme.serve_attestations()      # a queryable peer, pull-only
+```
+
+**Bounded, governed gather.** An importer with no local history pulls a *bounded* set
+of peers with `app.gather_reputation()` (a remote `AttestationExchange` under the
+hood). Each peer is governed through an `AgentDirectory` allow-list (every resolution
+audited), every fetched artifact is *independently verified from the bytes*, the
+artifacts are deduplicated by content hash, and the result folds into the **same**
+`combine_attestations` — so gossip changes only *where the evidence comes from*:
+
+```python
+buyer.use_reputation_ledger()
+result = await buyer.agather_reputation(
+    "vendor",
+    peers={"acme": acme_peer, "globex": globex_peer},
+    directory=buyer.agent_directory(allow=["acme", "globex"]),  # governed
+    max_peers=8,                                                # bounded fan-out
+)
+result.weight("vendor")          # drops into the negotiation path, like a handed prior
+result.standing("vendor").issuers  # which peers corroborated the standing
+```
+
+A directory-denied peer is **skipped and pinpointed** (`result.visit_for(peer)`), a
+forged or tampered artifact a peer serves is **refused** (nothing is trusted that does
+not verify), a revocation a peer gossips **excludes** the withdrawn claim
+(`result.reputation.revoked`), and every peer visited and artifact fetched lands on the
+hash-chained audit log (`reputation_peer` / `reputation_fetch`). The whole exchange runs
+byte-for-byte the same against deterministic in-process peers as over the live fabric.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -342,9 +389,11 @@ house, no arbitration service or court of record, no reputation bureau — a set
 is a typed, signed record you hold and verify yourself, the book is a hash-chained
 ledger each organization keeps on its own, netting is a clearing *calculation* over
 those books, not a clearing *house*, arbitration is a deterministic adjudication over
-the parties' own signed records, not a third party that rules by fiat, and a reputation
+the parties' own signed records, not a third party that rules by fiat, a reputation
 attestation is one org's signed, verifiable claim that combines into an evidence-weighted
-prior, not a central score. Vincio gives you a verifiable reconciliation of what was owed
-and delivered, a verifiable netting of it across a fleet, a verifiable resolution when two
-books disagree, and a portable, verifiable attestation of earned standing; how an
-obligation is paid is yours.
+prior, not a central score, and the attestation exchange is a bounded pull of those signed
+artifacts from peers you govern, not a hosted reputation registry or a push-based gossip
+bus. Vincio gives you a verifiable reconciliation of what was owed and delivered, a
+verifiable netting of it across a fleet, a verifiable resolution when two books disagree,
+a portable, verifiable attestation of earned standing, and a verifiable way to discover
+it across the fabric; how an obligation is paid is yours.

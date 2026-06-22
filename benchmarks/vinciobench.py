@@ -7443,7 +7443,13 @@ async def bench_reputation_portability() -> dict[str, Any]:
     as-of clock and an older one decays out of the pooled prior by a half-life, while
     a signed, content-bound revocation withdraws a claim by its hash — pinpointed,
     offline-verifiable, and a forged revocation cannot cancel another's attestation.
-    Deterministic and offline."""
+    And because an importer must still **discover** who has attested a counterparty,
+    it gates **reputation gossip**: a bounded, pull-based exchange of those signed
+    artifacts over the A2A fabric, where an importer pulls attestations and
+    revocations from a bounded set of governed peers, verifies each from the bytes,
+    deduplicates them, and folds them into the *same* combination — a denied peer
+    skipped, a forged artifact refused, a gossiped revocation excluding the withdrawn
+    claim, and every peer and artifact audited. Deterministic and offline."""
     from datetime import timedelta
 
     from vincio import (
@@ -7658,6 +7664,92 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and not forged_rev_prior.revoked
     )
 
+    # 18. Gossip: an importer pulls signed artifacts from a bounded set of governed
+    #     peers and folds them into the same combination — gossip changes only where
+    #     the evidence comes from, never how it is weighed.
+    from vincio.a2a import AgentCard
+
+    def peer_org(org_name: str, *, settled: int) -> ContextApp:
+        org = ContextApp(name=org_name, provider=MockProvider(default_text="ok"))
+        org.use_settlement_book()
+        for _ in range(settled):
+            org.settle(contract(seller="vendor"), cost_usd=0.05)
+        return org
+
+    peer_acme = peer_org("acme-peer", settled=3)
+    peer_globex = peer_org("globex-peer", settled=2)
+    importer = ContextApp(name="importer", provider=MockProvider(default_text="ok"), config=cfg)
+    importer.use_reputation_ledger()
+
+    gathered = await importer.agather_reputation(
+        "vendor",
+        peers={
+            "acme-peer": peer_acme.serve_attestations(),
+            "globex-peer": peer_globex.serve_attestations(),
+        },
+    )
+    exchange_gathers_from_peers = bool(
+        gathered.attestations_gathered == 2
+        and gathered.peers_reachable == 2
+        and gathered.standing("vendor").issuers == ["acme-peer", "globex-peer"]
+    )
+
+    # 19. Governed & bounded: a denied peer is skipped; max_peers caps the fan-out.
+    gov_dir = importer.agent_directory(allow=["acme-peer"])
+    gov_dir.register(AgentCard(name="acme-peer", description="peer"))
+    gov_dir.register(AgentCard(name="evil-peer", description="peer"))
+    peer_evil = peer_org("evil-peer", settled=9)
+    governed = await importer.agather_reputation(
+        "vendor",
+        peers={
+            "acme-peer": peer_acme.serve_attestations(),
+            "evil-peer": peer_evil.serve_attestations(),
+        },
+        directory=gov_dir,
+        weight=False,
+    )
+    exchange_governed = bool(
+        governed.peers_reachable == 1
+        and governed.standing("vendor").issuers == ["acme-peer"]
+        and not governed.visit_for("evil-peer").allowed
+    )
+
+    # 20. A forged artifact a peer serves is refused — nothing is trusted that does
+    #     not verify from the bytes alone, exactly as a handed bundle is.
+    forged_att = peer_acme.attest_reputation("vendor")
+    forged_att.signatures[0].signature = "deadbeef"
+    forged_peer = peer_acme.serve_attestations(attestations=[forged_att])
+    forged_gather = await importer.agather_reputation(
+        "vendor",
+        peers={"acme-peer": forged_peer},
+        verify_with=peer_acme.contract_signer,
+        weight=False,
+    )
+    exchange_verifies_fetched = bool(forged_gather.attestations_gathered == 0)
+
+    # 21. A revocation a peer gossips excludes the withdrawn claim, pinpointed.
+    live_att = peer_acme.attest_reputation("vendor")
+    peer_acme.revoke_attestation(live_att, reason="vendor regressed")
+    revoked_gather = await importer.agather_reputation(
+        "vendor",
+        peers={
+            "acme-peer": peer_acme.serve_attestations(),
+            "globex-peer": peer_globex.serve_attestations(),
+        },
+        weight=False,
+    )
+    exchange_revocation_gossiped = bool(
+        len(revoked_gather.reputation.revoked) == 1
+        and revoked_gather.standing("vendor").issuers == ["globex-peer"]
+    )
+
+    # 22. Auditable: every peer visited and artifact fetched lands on the chain.
+    exchange_audited = bool(
+        importer.audit.query(action="reputation_peer")
+        and importer.audit.query(action="reputation_fetch")
+        and importer.audit.verify_chain()
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -7676,10 +7768,16 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "portability_decays_with_age": portability_decays_with_age,
         "portability_revocation_excludes": portability_revocation_excludes,
         "portability_forged_revocation_ignored": portability_forged_revocation_ignored,
+        "exchange_gathers_from_peers": exchange_gathers_from_peers,
+        "exchange_governed": exchange_governed,
+        "exchange_verifies_fetched": exchange_verifies_fetched,
+        "exchange_revocation_gossiped": exchange_revocation_gossiped,
+        "exchange_audited": exchange_audited,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),
         "revoked_excluded": len(revoked_prior.revoked),
+        "peers_gathered": gathered.peers_reachable,
     }
 
 

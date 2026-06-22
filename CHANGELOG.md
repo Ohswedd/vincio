@@ -4,6 +4,50 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.31.0] - 2026-06-22
+
+Cross-org reputation gossip & attestation exchange. Attestations are now portable, time-aware, and
+revocable — but an importer still had to be *handed* the right bundle out of band: it had no way to
+**discover** who has attested a counterparty, or to learn that an issuer has since revoked one, without a
+hosted registry. This release adds the discovery analogue for reputation: a bounded, **pull-based**
+exchange of the existing signed artifacts over the A2A fabric, so an importer assembles a *current* prior
+from what its peers hold, never from a central bulletin board. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the existing attestation, revocation, and negotiation
+paths are unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **Reputation exchange (`vincio.settlement.exchange`).** A `ReputationBundle` is the signed artifacts a
+  peer holds about a subject; `attestation_a2a_server(book, *, revocations=None, attestations=None,
+  config=None, ...)` exposes an org's settlement book as a queryable A2A peer whose Agent Card advertises
+  an `attestation-exchange` skill. **Pull, never push:** answering a subject query, the peer returns only
+  its own signed artifacts — the current attestation it can issue from its `SettlementBook` records, plus
+  the revocations it has signed (or an explicit signed snapshot). A subject it has no admissible history
+  for yields an attestation-free bundle rather than an error.
+- **Bounded, governed gather.** `AttestationExchange(client, *, peer_id="")` pulls one peer
+  (`.fetch(subject)`); `gather_reputation(subject, *, peers, directory=None, config=None, verify_with=None,
+  base=None, allow_self=False, held_attestations=None, held_revocations=None, as_of=None, max_peers=None,
+  audit=None, record_audit=True)` visits a **bounded** set of peers in deterministic order, **governs**
+  each through an `AgentDirectory` allow-list (a denied peer skipped and pinpointed, its resolution
+  audited), **verifies** every fetched artifact from the bytes (a forged or tampered one refused),
+  **deduplicates** by content hash, and folds the gathered (plus any already-held) artifacts into the
+  *same* `combine_attestations` under the same freshness, revocation, and `[floor, 1]` discipline. Returns
+  a `GatheredReputation` exposing `weight(member_id)` / `standing(id)` (delegating to the assembled
+  `PortableReputation`), the per-peer `PeerVisit` record, and the deduplicated artifacts.
+- **Auditable & offline.** Every peer visited (`reputation_peer`) and every artifact fetched
+  (`reputation_fetch`) lands on the hash-chained audit log; the whole exchange runs byte-for-byte the same
+  against deterministic in-process peers (`connect_a2a_in_process`) as over the live fabric.
+- **App surface.** `app.serve_attestations(*, book=None, revocations=None, attestations=None, config=None,
+  ...)` exposes this app's book as a peer (returning its retained revocations); `app.gather_reputation(...)`
+  / `app.agather_reputation(...)` gather with `base=self.reputation_ledger` and (with `weight=True`, the
+  default) attach the assembled prior so the next `app.negotiate` weights an unknown counterparty by what
+  its peers attest. `app.revoke_attestation` now retains the issued revocation so `serve_attestations` can
+  gossip it.
+- **Surface.** `from vincio import AttestationExchange, ReputationBundle, PeerVisit, GatheredReputation,
+  attestation_a2a_server, gather_reputation` (all also in `vincio.settlement.__all__`); a
+  `reputation_portability` VincioBench extension with a `reputation_exchange` SLO; and a runnable example,
+  `examples/75_cross_org_reputation_gossip.py`.
+
 ## [3.30.0] - 2026-06-22
 
 Cross-org attestation revocation & freshness. A `ReputationAttestation` is a point-in-time claim, but

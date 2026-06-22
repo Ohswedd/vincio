@@ -1849,6 +1849,21 @@
     "families.reputation_portability.portability_forged_revocation_ignored": {
       "eq": true
     },
+    "families.reputation_portability.exchange_gathers_from_peers": {
+      "eq": true
+    },
+    "families.reputation_portability.exchange_governed": {
+      "eq": true
+    },
+    "families.reputation_portability.exchange_verifies_fetched": {
+      "eq": true
+    },
+    "families.reputation_portability.exchange_revocation_gossiped": {
+      "eq": true
+    },
+    "families.reputation_portability.exchange_audited": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },
@@ -1860,6 +1875,9 @@
     },
     "families.reputation_portability.revoked_excluded": {
       "gte": 1
+    },
+    "families.reputation_portability.peers_gathered": {
+      "gte": 2
     }
   }
 }

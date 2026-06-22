@@ -334,6 +334,10 @@ class ContextApp:
         # into a bounded, evidence-weighted prior that weights a negotiation against a
         # counterparty this app has no local history with.
         self.imported_reputation: Any = None
+        # Revocations this app has issued (via ``app.revoke_attestation``), retained so
+        # ``app.serve_attestations`` can return them to a peer that pulls this app's
+        # standing about a subject — the gossip analogue of the settlement book.
+        self._issued_revocations: list[Any] = []
         self.input_router = InputRouter()
 
         # provider
@@ -3497,6 +3501,12 @@ class ContextApp:
                 details=revocation.audit_details(),
             )
             revocation.audit_id = getattr(entry, "id", None)
+        # Retain it so ``serve_attestations`` can return it to a peer that pulls this
+        # app's standing about the subject, superseding any cached copy of the claim.
+        self._issued_revocations = [
+            r for r in self._issued_revocations if r.content_hash != revocation.content_hash
+        ]
+        self._issued_revocations.append(revocation)
         return revocation
 
     def import_reputation(
@@ -3547,6 +3557,109 @@ class ContextApp:
         if weight:
             self.imported_reputation = prior
         return prior
+
+    def serve_attestations(
+        self,
+        *,
+        book: Any | None = None,
+        revocations: list[Any] | None = None,
+        attestations: list[Any] | None = None,
+        config: Any | None = None,
+        name: str | None = None,
+        url: str = "",
+        description: str = "",
+        token_validator: Any | None = None,
+    ) -> Any:
+        """Expose this app's earned standing as a queryable attestation peer over A2A.
+
+        Returns an :class:`~vincio.a2a.A2AServer` whose Agent Card advertises an
+        ``attestation-exchange`` skill; an importer pulls from it with
+        :meth:`gather_reputation`. Answering a query for a subject, the peer returns a
+        :class:`~vincio.settlement.ReputationBundle` of its **own** signed artifacts —
+        the *current* attestation it can issue from its settlement ``book`` (else the
+        attached one) and the revocations it has issued (``revocations``, else the ones
+        this app has signed via :meth:`revoke_attestation`). Pass an explicit
+        ``attestations`` list to serve a fixed signed snapshot instead of re-issuing.
+        **Pull, never push:** the peer only ever answers a query, and only with
+        artifacts it signed.
+        """
+        from ..settlement.exchange import attestation_a2a_server
+
+        return attestation_a2a_server(
+            book if book is not None else self._settlement_book(),
+            revocations=revocations if revocations is not None else self._issued_revocations,
+            attestations=attestations,
+            config=config,
+            name=name,
+            url=url,
+            description=description,
+            token_validator=token_validator,
+            audit=self.audit,
+        )
+
+    async def agather_reputation(
+        self,
+        subject: str,
+        *,
+        peers: Any,
+        directory: Any | None = None,
+        principal: Any | None = None,
+        config: Any | None = None,
+        verify_with: Any | None = None,
+        allow_self: bool = False,
+        held_attestations: list[Any] | None = None,
+        held_revocations: list[Any] | None = None,
+        as_of: Any | None = None,
+        max_peers: int | None = None,
+        weight: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Assemble a current prior by pulling signed artifacts from a bounded peer set.
+
+        The gossip analogue of :meth:`import_reputation`: instead of being *handed* a
+        bundle, this app **queries** a bounded set of ``peers`` (each an
+        :class:`~vincio.settlement.AttestationExchange`, an in-process
+        :class:`~vincio.a2a.A2AServer`, or an :class:`~vincio.a2a.A2AClient`) for the
+        signed attestations and revocations they hold about ``subject``, governs each
+        through ``directory`` (an :class:`~vincio.registry.AgentDirectory`'s
+        allow-list, audited), verifies every fetched artifact from the bytes,
+        deduplicates by content hash, and folds them — with any ``held_attestations`` /
+        ``held_revocations`` already on hand — into a bounded, evidence-weighted
+        :class:`~vincio.settlement.PortableReputation` under the same freshness,
+        revocation, and ``[floor, 1]`` discipline :meth:`import_reputation` uses. Every
+        peer visited and artifact fetched lands on the audit chain. With ``weight`` (the
+        default) the assembled prior is attached so the next negotiation weights an
+        unknown counterparty by what its peers attest. Returns a
+        :class:`~vincio.settlement.GatheredReputation`::
+
+            result = await app.agather_reputation("vendor", peers={"acme": acme_server})
+            result.weight("vendor")  # drops into the negotiation path
+        """
+        from ..settlement.exchange import gather_reputation
+
+        result = await gather_reputation(
+            subject,
+            peers=peers,
+            directory=directory,
+            principal=principal,
+            config=config,
+            verify_with=verify_with,
+            base=self.reputation_ledger,
+            allow_self=allow_self,
+            held_attestations=held_attestations,
+            held_revocations=held_revocations,
+            as_of=as_of,
+            max_peers=max_peers,
+            audit=self.audit,
+            record_audit=record_audit,
+        )
+        if weight:
+            self.imported_reputation = result.reputation
+        return result
+
+    def gather_reputation(self, subject: str, **kwargs: Any) -> Any:
+        """Synchronous wrapper around :meth:`agather_reputation`."""
+        return run_sync(self.agather_reputation(subject, **kwargs))
 
     # -- evaluators / optimizers ----------------------------------------------------------------------
 

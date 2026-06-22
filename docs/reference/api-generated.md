@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**318** public symbols.
+**323** public symbols.
 
 ## Classes
 
@@ -77,6 +77,10 @@ A multi-turn conversational session over a :class:`ContextApp`.
 ### `AssistantTurn(**data)`
 
 The outcome of one conversational turn.
+
+### `AttestationExchange(client, peer_id=…)`
+
+A peer reached over A2A that an importer pulls signed artifacts from.
 
 ### `AttestationRevocation(**data)`
 
@@ -405,6 +409,10 @@ Track tokens-per-word per language to surface the non-English token tax.
 ### `GGUFProvider(model_path=…, llama=…, n_ctx=…, embedding=…, lora_path=…, lora_scale=…, **kwargs)`
 
 Native in-process GGUF / llama.cpp provider with on-device embedding.
+
+### `GatheredReputation(subject, visits, attestations, revocations, reputation, duplicates=…)`
+
+A current prior assembled by pulling signed artifacts from a set of peers.
 
 ### `GoldenRegressionSuite(path=…, name=…)`
 
@@ -754,6 +762,10 @@ A choreography :class:`Participant` whose steps run in a remote A2A org.
 
 A signed, offline-verifiable attestation of a counterparty's earned standing.
 
+### `ReputationBundle(**data)`
+
+The signed artifacts a peer holds about one subject — its reply to a query.
+
 ### `ReputationConfig(**data)`
 
 How a member's gate track record maps to an aggregation weight.
@@ -1100,6 +1112,10 @@ Adjudicate a disputed contract from the records its parties submit.
 
 Issue an attestation of ``subject``'s earned standing from signed records.
 
+### `attestation_a2a_server(book, revocations=…, attestations=…, config=…, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)`
+
+Expose an org's settlement book as a queryable attestation peer over A2A.
+
 ### `attribute_regression(app, dataset, factors, metric=…, aggregate=…, repeats=…)`
 
 Attribute a metric regression to the changed ``factors`` by Shapley counterfactual replay — the convenience entry point behind a failing gate.
@@ -1151,6 +1167,10 @@ Attach ``_repr_html_`` / ``_repr_markdown_`` to the core result types.
 ### `experimental(since, note=…)`
 
 Mark a function or class as experimental (no stability guarantee).
+
+### `gather_reputation(subject, peers, directory=…, principal=…, config=…, verify_with=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, max_peers=…, audit=…, record_audit=…)`
+
+Pull signed attestations and revocations from a bounded set of peers.
 
 ### `generate_redline(original, revised, format=…, title=…)`
 

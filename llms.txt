@@ -1231,6 +1231,37 @@ app.run("export button 500s").output.label
   past counterparties attest; `book.attest(subject, *, resolutions=None, config=None, sign=True,
   verify_with=None, horizon_days=None, note="")` / `book.revoke(attestation, *, replacement=None,
   reason="", sign=True)` issue signed as the book owner.
+- **Cross-org reputation gossip & attestation exchange.** `from vincio import AttestationExchange,
+  ReputationBundle, PeerVisit, GatheredReputation, attestation_a2a_server, gather_reputation` (all also in
+  `vincio.settlement.__all__`). A bounded, **pull-based** exchange of the existing signed attestations and
+  revocations over the A2A fabric — the discovery analogue for reputation, never a hosted registry or a
+  push-based bus. **Peer (server):** `attestation_a2a_server(book, *, revocations=None, attestations=None,
+  config=None, name=None, url="", description="", tracer=None, token_validator=None, audit=None)` → an
+  `A2AServer` whose Agent Card advertises an `attestation-exchange` skill; answering a subject query it
+  returns a `ReputationBundle` of its **own** signed artifacts (the current attestation it can issue from
+  `book.attest(subject)` plus held `revocations` for that subject; pass explicit `attestations=` to serve a
+  fixed snapshot) — *pull, never push*, a no-history subject yields an attestation-free bundle, never an
+  error. `app.serve_attestations(*, book=None, revocations=None, attestations=None, config=None, name=None,
+  url="", description="", token_validator=None)` wires it from the app's book and its retained revocations.
+  **Importer (client):** `AttestationExchange(client, *, peer_id="")` wraps an `A2AClient`; `.fetch(subject)`
+  → a `ReputationBundle`. `gather_reputation(subject, *, peers, directory=None, principal=None, config=None,
+  verify_with=None, base=None, allow_self=False, held_attestations=None, held_revocations=None, as_of=None,
+  max_peers=None, audit=None, record_audit=True)` → a `GatheredReputation`: visits peers (a dict
+  `id→connection` or `(id, conn)` pairs; a connection is an `AttestationExchange`, an in-process `A2AServer`,
+  or an `A2AClient`) in deterministic order, **governs** each through `directory` (an `AgentDirectory`
+  allow-list, audited — a denied peer skipped and pinpointed), **bounds** the fan-out to `max_peers`,
+  **verifies** every fetched artifact from the bytes (a forged/tampered one refused), **dedupes** by content
+  hash, and folds the gathered (plus any `held_*`) artifacts into the **same** `combine_attestations` under the
+  same freshness/revocation/`[floor, 1]` discipline. `.weight(member_id)` / `.standing(id)` delegate to the
+  assembled `PortableReputation` (`.reputation`); `.visits` (a `PeerVisit` each: `.peer`/`.allowed`/`.reachable`/
+  `.attestations`/`.revocations`/`.duplicates`/`.reason`/`.contributed`), `.attestations`/`.revocations`
+  (deduped), `.peers_visited`/`.peers_reachable`/`.peers_contributing`/`.attestations_gathered`/
+  `.revocations_gathered`/`.duplicates`/`.visit_for(peer)`. Every peer visited (`reputation_peer`) and artifact
+  fetched (`reputation_fetch`) lands on the audit chain. `app.gather_reputation(subject, **kwargs)` /
+  `app.agather_reputation(...)` delegate with `base=self.reputation_ledger`, `audit=self.audit`, and (with
+  `weight=True`, the default) attach the assembled prior so the next `app.negotiate` weights an unknown
+  counterparty by what its peers attest. Runs byte-for-byte the same against in-process peers
+  (`connect_a2a_in_process`) as over the live fabric.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

@@ -626,6 +626,30 @@ another org's attestation, cannot cancel a claim** — there is no central revoc
 or bulletin board, and freshness and revocation fold into the *same* bounded `[floor, 1]`
 weighting a local reputation uses.
 
+### Cross-org reputation gossip & attestation exchange
+
+The attestation exchange (`app.serve_attestations` / `attestation_a2a_server` and
+`app.gather_reputation` / `gather_reputation` / `AttestationExchange` in
+`vincio.settlement.exchange`) makes portable standing **discoverable** over the A2A fabric,
+and is a **bounded pull of signed artifacts from peers you govern, never a hosted reputation
+registry or a push-based gossip bus**. It is *pull, never push*: a peer
+(`app.serve_attestations`) only ever **answers** a subject query, and only with **its own
+signed artifacts** — the current attestation it can issue from its own settlement book plus
+the revocations it has signed. An importer **trusts nothing on a peer's word**: every fetched
+artifact is **independently verified from the bytes** before it is counted, exactly as a
+directly-handed bundle is, so a forged or tampered artifact a peer serves is **refused**, and
+a revocation a peer gossips is honored only when it verifies and is issued by the same party
+(it still cannot cancel another org's claim). The fan-out is **bounded and governed**: the
+exchange visits at most `max_peers` peers, each cleared through the `AgentDirectory`
+allow-list (a denied peer **skipped and pinpointed** in `GatheredReputation.visits`, its
+resolution audited), deduplicates by content hash, and folds the result into the **same**
+`combine_attestations` under the same freshness, revocation, and `[floor, 1]` discipline — so
+**gossip changes only where the evidence comes from, never how it is weighed**. Every peer
+visited (`reputation_peer`) and every artifact fetched (`reputation_fetch`) lands on the
+hash-chained audit log, and the whole exchange runs byte-for-byte the same against
+deterministic in-process peers as over the live fabric — there is no central source of truth,
+only verifiable artifacts you pull from peers you control.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them
