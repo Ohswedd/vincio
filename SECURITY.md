@@ -650,6 +650,38 @@ hash-chained audit log, and the whole exchange runs byte-for-byte the same again
 deterministic in-process peers as over the live fabric — there is no central source of truth,
 only verifiable artifacts you pull from peers you control.
 
+### Cross-org transitive trust & Sybil-resistant weighting
+
+Issuer-trust weighting (`build_trust_model` / `TrustConfig` / `TrustModel` in
+`vincio.settlement.attestation`, opt-in via `combine_attestations(..., trust_config=)` /
+`app.import_reputation` / `app.gather_reputation`) is a defense against **Sybil and
+volume-stuffing attacks** on a pooled prior, and is a **bounded, transitive weighting
+computed in-process from your own ledger, never a central trust authority or a hosted
+Sybil-detection service**. Without it, every counted issuer's evidence pools with **equal
+pull**, weighted only by *how much* it attests — so a clutch of unknown peers can
+out-evidence a few you have lived through, and an adversary can spin up a cluster of
+**Sybil** issuers that all vouch the same way to manufacture a standing. The trust kernel
+scales each issuer's contributed evidence *mass* by the importer's **own trust in that
+issuer** (its successes and failures together, so it changes how much an issuer *pulls*,
+never the reputation it attests), under a bounded web-of-trust: an issuer the importer
+**knows first-hand** in its `base` `ReputationLedger` is trusted as much as that ledger
+weights it (hop 0); trust **composes at most `max_depth` hops** outward — a trusted issuer
+that *attests another issuer* (vouches for it as a counterparty) lends it trust derived
+from that pooled standing, attenuated by a per-hop `hop_decay` — under a **hard depth
+bound**, so a long unverifiable chain cannot manufacture standing and the computation stays
+finite, deterministic, and offline. Only **admissible (verified)** attestations vouch, and
+an issuer **never bootstraps its own trust** (a self-subject attestation is ignored for
+vouching). The kernel is **Sybil-resistant by construction**: trust is lent only *outward
+from a trusted root*, so a ring of mutually-vouching unknown issuers is **never reached**
+and every member stays at the floor — **pull follows earned trust, not issuer count**, so a
+Sybil clutch cannot outvote a few corroborating trusted peers. Every multiplier is bounded
+`[trust_floor, 1]` — an unknown issuer is **floored, never zeroed or singled out**, and
+recoverable — and is **pinpointed** (`AttestationVerdict.trust`, `SubjectStanding.issuer_trust`,
+`IssuerTrust`), never a silent exclusion. The weighting is **strictly opt-in**: with no
+`trust` / `trust_config`, the combination pools with equal pull exactly as before, and the
+weighted prior still weights a negotiation under the same `[floor, 1]` discipline — it can
+never *raise* an issuer's pull past full or bypass the quality bar.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

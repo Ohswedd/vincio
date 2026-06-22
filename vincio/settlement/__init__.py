@@ -51,8 +51,12 @@ hosted reputation bureau. Because standing changes, the portable prior is
 validity window, an issuer signs a content-bound :class:`AttestationRevocation` to
 withdraw or supersede one (:meth:`SettlementBook.revoke`), and an as-of-aware
 :func:`combine_attestations` decays a stale attestation out of the prior and excludes
-a revoked one — pinpointed, never silently honored. Everything is dependency-free,
-deterministic, and
+a revoked one — pinpointed, never silently honored. And because pooling every issuer's
+evidence with equal pull lets a *Sybil* cluster manufacture standing, a
+:class:`TrustModel` (:func:`build_trust_model`) weighs each issuer's evidence by the
+importer's **own trust in that issuer** — a bounded, transitive web-of-trust rooted in
+its local ledger — so corroboration from a trusted peer counts for more than volume
+from an unknown one. Everything is dependency-free, deterministic, and
 offline — never a hosted marketplace, a clearing house, an arbitration service, a
 reputation service, or a payment processor, only a mechanical, verifiable
 reconciliation.
@@ -72,11 +76,15 @@ from .attestation import (
     AttestationRevocation,
     AttestationVerdict,
     AttestationVerification,
+    IssuerTrust,
     PortableReputation,
     ReputationAttestation,
     RevocationVerification,
     SubjectStanding,
+    TrustConfig,
+    TrustModel,
     attest_reputation,
+    build_trust_model,
     combine_attestations,
     revoke_attestation,
 )
@@ -166,6 +174,11 @@ __all__ = [
     "attest_reputation",
     "revoke_attestation",
     "combine_attestations",
+    # transitive trust & Sybil-resistant weighting
+    "TrustConfig",
+    "TrustModel",
+    "IssuerTrust",
+    "build_trust_model",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",

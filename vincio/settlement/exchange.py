@@ -49,6 +49,7 @@ from .attestation import (
     AttestationRevocation,
     PortableReputation,
     ReputationAttestation,
+    TrustConfig,
     combine_attestations,
 )
 
@@ -458,6 +459,8 @@ async def gather_reputation(
     held_attestations: list[ReputationAttestation] | None = None,
     held_revocations: list[AttestationRevocation] | None = None,
     as_of: Any | None = None,
+    trust: Any | None = None,
+    trust_config: TrustConfig | None = None,
     max_peers: int | None = None,
     audit: Any | None = None,
     record_audit: bool = True,
@@ -476,6 +479,12 @@ async def gather_reputation(
     straight into :func:`~vincio.settlement.attestation.combine_attestations` under
     the same ``config`` prior, ``revocations``, ``as_of`` freshness, and ``[floor, 1]``
     discipline — so gossip changes only *where the evidence comes from*.
+
+    Pass a ``trust`` source or a ``trust_config`` to weigh each gathered issuer's
+    evidence by the importer's **own trust in that issuer** (rooted in ``base``,
+    composed transitively over the gathered attestations) — so a cluster of unknown
+    peers gossiping the same way cannot out-evidence a few the importer trusts. With
+    neither, every reachable peer's evidence pools with equal pull, as before.
 
     ``peers`` maps a peer id to a connection (an :class:`AttestationExchange`, an
     in-process :class:`~vincio.a2a.A2AServer`, or an
@@ -583,6 +592,8 @@ async def gather_reputation(
         allow_self=allow_self,
         revocations=revocations,
         as_of=as_of,
+        trust=trust,
+        trust_config=trust_config,
     )
     return GatheredReputation(
         subject, visits, attestations, revocations, reputation, duplicates=duplicates

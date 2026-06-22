@@ -1864,6 +1864,21 @@
     "families.reputation_portability.exchange_audited": {
       "eq": true
     },
+    "families.reputation_portability.trust_weights_by_issuer": {
+      "eq": true
+    },
+    "families.reputation_portability.trust_sybil_resistant": {
+      "eq": true
+    },
+    "families.reputation_portability.trust_bounded_transitive": {
+      "eq": true
+    },
+    "families.reputation_portability.trust_unknown_floored": {
+      "eq": true
+    },
+    "families.reputation_portability.trust_backward_compatible": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },
@@ -1877,6 +1892,9 @@
       "gte": 1
     },
     "families.reputation_portability.peers_gathered": {
+      "gte": 2
+    },
+    "families.reputation_portability.trust_issuers_weighted": {
       "gte": 2
     }
   }

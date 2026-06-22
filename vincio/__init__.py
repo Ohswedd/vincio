@@ -300,6 +300,7 @@ from .settlement import (
     AttestationExchange,
     AttestationRevocation,
     GatheredReputation,
+    IssuerTrust,
     Meter,
     MeterReading,
     NettingSet,
@@ -311,10 +312,13 @@ from .settlement import (
     SettlementBook,
     SettlementRecord,
     SettlementReport,
+    TrustConfig,
+    TrustModel,
     UsageEvent,
     arbitrate,
     attest_reputation,
     attestation_a2a_server,
+    build_trust_model,
     combine_attestations,
     gather_reputation,
     net_books,
@@ -335,7 +339,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.31.0"
+__version__ = "3.32.0"
 
 __all__ = [
     "ContextApp",
@@ -492,6 +496,11 @@ __all__ = [
     "attest_reputation",
     "revoke_attestation",
     "combine_attestations",
+    # cross-org transitive trust & Sybil-resistant weighting
+    "TrustConfig",
+    "TrustModel",
+    "IssuerTrust",
+    "build_trust_model",
     # cross-org reputation gossip & attestation exchange
     "ReputationBundle",
     "GatheredReputation",

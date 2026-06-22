@@ -381,6 +381,41 @@ not verify), a revocation a peer gossips **excludes** the withdrawn claim
 hash-chained audit log (`reputation_peer` / `reputation_fetch`). The whole exchange runs
 byte-for-byte the same against deterministic in-process peers as over the live fabric.
 
+## Weighing evidence by trust in the issuer
+
+Pooling every counted issuer's evidence with **equal pull** lets a clutch of unknown
+peers out-evidence a few you've lived through, and an adversary can spin up *Sybil*
+issuers that all vouch the same way. The trust kernel scales each issuer's contributed
+evidence *mass* by your **own trust in that issuer** — a bounded, transitive
+web-of-trust rooted in your local `ReputationLedger` — so corroboration from a trusted
+peer counts for more than volume from a stranger. It is **opt-in**: pass a `trust_config`
+(or an explicit `trust` source) to `combine_attestations` / `app.import_reputation` /
+`app.gather_reputation`; with neither, pooling is unchanged.
+
+```python
+from vincio import TrustConfig
+
+prior = buyer.import_reputation(
+    [trusted_issuer_att, unknown_issuer_att],   # equal evidence each
+    trust_config=TrustConfig(),                 # turn on issuer-trust weighting
+)
+standing = prior.standing("vendor")
+standing.issuer_trust   # {"acme": 0.93, "stranger": 0.10} — pinpointed multipliers
+```
+
+An issuer you know **first-hand** counts at its earned weight (hop 0); trust then
+**composes at most a bounded hop** outward — a trusted issuer lends weight to the issuers
+*it* attests, attenuated by a per-hop decay — under a hard depth bound, so a long
+unverifiable chain cannot manufacture standing. An **unknown** issuer is *floored*
+(`trust_floor`), never zeroed or singled out. Because trust is lent only *outward from a
+trusted root*, a cluster of mutually-vouching unknown issuers is never reached and every
+member stays at the floor — **pull follows earned trust, not issuer count**, so a Sybil
+clutch cannot outvote a few corroborating trusted peers. Build and inspect the model
+directly with `build_trust_model(...)` (each issuer's `IssuerTrust` records its
+`trust` / `depth` / `vouched_by`), and read the applied multipliers back from
+`AttestationVerdict.trust` and `SubjectStanding.issuer_trust` — bounded `[floor, 1]`,
+reversible, and pinpointed at every step.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -391,9 +426,11 @@ ledger each organization keeps on its own, netting is a clearing *calculation* o
 those books, not a clearing *house*, arbitration is a deterministic adjudication over
 the parties' own signed records, not a third party that rules by fiat, a reputation
 attestation is one org's signed, verifiable claim that combines into an evidence-weighted
-prior, not a central score, and the attestation exchange is a bounded pull of those signed
+prior, not a central score, the attestation exchange is a bounded pull of those signed
 artifacts from peers you govern, not a hosted reputation registry or a push-based gossip
-bus. Vincio gives you a verifiable reconciliation of what was owed and delivered, a
-verifiable netting of it across a fleet, a verifiable resolution when two books disagree,
-a portable, verifiable attestation of earned standing, and a verifiable way to discover
-it across the fabric; how an obligation is paid is yours.
+bus, and the trust kernel is a bounded, transitive weighting computed in-process from your
+own ledger, not a central trust authority or a Sybil-detection service. Vincio gives you a
+verifiable reconciliation of what was owed and delivered, a verifiable netting of it across
+a fleet, a verifiable resolution when two books disagree, a portable, verifiable attestation
+of earned standing, a verifiable way to discover it across the fabric, and a verifiable way
+to weigh it by your own earned trust; how an obligation is paid is yours.
