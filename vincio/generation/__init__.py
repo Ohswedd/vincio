@@ -38,7 +38,13 @@ from .image import (
     MockImageProvider,
     OpenAIImageProvider,
 )
-from .media import attach_media_provenance, image_cost, meter_media_cost, speech_cost
+from .media import (
+    attach_media_provenance,
+    image_cost,
+    meter_media_cost,
+    speech_cost,
+    video_cost,
+)
 from .model import DocBlock, DocumentModel
 from .render import DocumentArtifact, RenderFormat, render
 from .report import (
@@ -59,6 +65,16 @@ from .speech import (
     SpeechResponse,
 )
 from .templates import Slot, fill_docx_form, fill_pdf_form, fill_text_template
+from .video import (
+    GeneratedVideo,
+    GoogleVideoProvider,
+    HTTPVideoProvider,
+    MockVideoProvider,
+    OpenAIVideoProvider,
+    VideoGenRequest,
+    VideoGenResponse,
+    VideoProvider,
+)
 
 __all__ = [
     # document engine
@@ -105,9 +121,19 @@ __all__ = [
     "OpenAISpeechProvider",
     "GoogleSpeechProvider",
     "ElevenLabsSpeechProvider",
+    # video generation
+    "VideoProvider",
+    "VideoGenRequest",
+    "VideoGenResponse",
+    "GeneratedVideo",
+    "MockVideoProvider",
+    "OpenAIVideoProvider",
+    "GoogleVideoProvider",
+    "HTTPVideoProvider",
     # media plumbing
     "meter_media_cost",
     "attach_media_provenance",
     "image_cost",
     "speech_cost",
+    "video_cost",
 ]

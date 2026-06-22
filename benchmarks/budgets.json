@@ -1458,6 +1458,39 @@
     },
     "families.verification.invariants_checked": {
       "gte": 4
+    },
+    "families.video.understanding.frame_sampling_deterministic": {
+      "eq": true
+    },
+    "families.video.understanding.segmentation_covers_timeline": {
+      "eq": true
+    },
+    "families.video.understanding.video_modality_first_class": {
+      "eq": true
+    },
+    "families.video.understanding.video_candidate_selected": {
+      "eq": true
+    },
+    "families.video.understanding.packet_carries_time_range": {
+      "eq": true
+    },
+    "families.video.understanding.segments_checked": {
+      "gte": 1
+    },
+    "families.video.temporal_grounding.grounding_accuracy": {
+      "gte": 1.0
+    },
+    "families.video.temporal_grounding.citation_carries_timestamp": {
+      "eq": true
+    },
+    "families.video.provenance.video_provenance_verifies": {
+      "eq": true
+    },
+    "families.video.provenance.tamper_rejected": {
+      "eq": true
+    },
+    "families.video.provenance.edit_marked_synthetic": {
+      "eq": true
     }
   }
 }

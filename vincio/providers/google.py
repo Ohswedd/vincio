@@ -8,7 +8,7 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 from ..core.errors import ProviderResponseError
-from ..core.media import encode_audio_bytes, encode_image_bytes
+from ..core.media import encode_audio_bytes, encode_image_bytes, encode_video_bytes
 from ..core.types import (
     ModelCapabilities,
     ModelEvent,
@@ -113,6 +113,26 @@ class GoogleProvider(HTTPProvider):
                                     "fileData": {
                                         "mimeType": part.audio.media_type or "audio/wav",
                                         "fileUri": part.audio.url,
+                                    }
+                                }
+                            )
+                    elif part.type == "video" and part.video is not None:
+                        # Gemini accepts native video input as inlineData (a local
+                        # clip) or fileData (a Google-hosted URI) — the same envelope
+                        # as image/audio — so a video ``ContentPart`` is a real
+                        # multimodal input, not only an analyzed-into-frames surrogate.
+                        if part.video.path:
+                            media_type, data = encode_video_bytes(part.video)
+                            parts.append({"inlineData": {"mimeType": media_type, "data": data}})
+                        elif part.video.url and (
+                            part.video.url.startswith("gs://")
+                            or "generativelanguage.googleapis.com" in part.video.url
+                        ):
+                            parts.append(
+                                {
+                                    "fileData": {
+                                        "mimeType": part.video.media_type or "video/mp4",
+                                        "fileUri": part.video.url,
                                     }
                                 }
                             )

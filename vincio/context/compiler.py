@@ -147,6 +147,22 @@ _STRUCTURAL_REF_RE = re.compile(
 )
 
 
+def _media_identity(e: EvidenceItem) -> str | None:
+    """Stable hash of an evidence item's non-text payload (image/table/video),
+    or ``None`` for plain text — distinguishes media candidates in the cache
+    signature so two clips that share a caption don't collide."""
+    if e.modality == "text":
+        return None
+    payload: Any = None
+    if e.image is not None:
+        payload = e.image.model_dump(mode="json")
+    elif e.video is not None:
+        payload = e.video.model_dump(mode="json")
+    elif e.table is not None:
+        payload = e.table
+    return stable_hash(payload) if payload is not None else None
+
+
 def _looks_negated(text: str) -> bool:
     return bool(_NEGATION_RE.search(text.lower()))
 
@@ -321,9 +337,8 @@ class ContextCompiler:
                     e.token_cost,
                     e.source_id,
                     e.page,  # affects citation_ref, which _collect caches in metadata
-                    None
-                    if e.modality == "text"
-                    else stable_hash(e.image.model_dump(mode="json") if e.image else e.table),
+                    e.time_range,  # temporal locator → citation_ref for clip evidence
+                    _media_identity(e),
                 )
                 for e in evidence
             ],
@@ -358,13 +373,14 @@ class ContextCompiler:
     ) -> list[ContextCandidate]:
         candidates: list[ContextCandidate] = []
         for item in evidence:
-            # text, image, and table evidence are all candidates. The
-            # scorable surrogate (text / caption / table Markdown) drives
-            # relevance/dedup/ordering; image/table carry the non-text payload.
+            # text, image, table, and video evidence are all candidates. The
+            # scorable surrogate (text / caption / table Markdown / transcript)
+            # drives relevance/dedup/ordering; image/table/video carry the
+            # non-text payload.
             text = item.scorable_text.strip()
             if not text and item.modality == "text":
                 continue
-            if not text and item.image is None and item.table is None:
+            if not text and item.image is None and item.table is None and item.video is None:
                 continue
             token_cost = item.token_cost or item.estimated_token_cost() or count_tokens(text)
             candidates.append(
@@ -375,6 +391,7 @@ class ContextCompiler:
                     modality=item.modality,
                     image=item.image,
                     table=item.table,
+                    video=item.video,
                     token_cost=token_cost,
                     source=item,
                     authority=item.authority,
@@ -661,7 +678,14 @@ class ContextCompiler:
                 break
             remaining.remove(best)
             if used + best.token_cost > budget_tokens:
-                if self.options.compress_evidence and best.type == "evidence":
+                # Only compress text: a media item's scorable surrogate is a short
+                # caption/transcript whose token cost reflects the media payload,
+                # not the surrogate — compressing it would undercount the budget.
+                if (
+                    self.options.compress_evidence
+                    and best.type == "evidence"
+                    and best.modality == "text"
+                ):
                     remaining_budget = budget_tokens - used
                     if remaining_budget >= 32:
                         compressed = self.compressor(best.content, query, remaining_budget)

@@ -22,10 +22,13 @@ from ..governance.transparency import (
 __all__ = [
     "ImagePrice",
     "SpeechPrice",
+    "VideoPrice",
     "IMAGE_PRICES",
     "SPEECH_PRICES",
+    "VIDEO_PRICES",
     "image_cost",
     "speech_cost",
+    "video_cost",
     "meter_media_cost",
     "attach_media_provenance",
 ]
@@ -52,6 +55,20 @@ class SpeechPrice:
         self.per_mchar = per_mchar
 
 
+class VideoPrice:
+    """Per-second USD price of generated video by quality tier (overridable)."""
+
+    def __init__(self, *, low: float = 0.0, medium: float = 0.0, high: float = 0.0) -> None:
+        self.low = low
+        self.medium = medium
+        self.high = high
+
+    def per_second(self, quality: str) -> float:
+        return {"low": self.low, "medium": self.medium, "high": self.high}.get(
+            _quality_tier(quality), self.medium
+        )
+
+
 # Coarse public rates (USD), overridable per provider call. Kept conservative
 # and explicit rather than silently billing $0 for an unknown model.
 IMAGE_PRICES: dict[str, ImagePrice] = {
@@ -69,6 +86,15 @@ SPEECH_PRICES: dict[str, SpeechPrice] = {
     "gemini-2.5-flash-preview-tts": SpeechPrice(per_mchar=10.0),
     "eleven_multilingual_v2": SpeechPrice(per_mchar=110.0),
     "mock-tts": SpeechPrice(per_mchar=0.0),
+}
+
+# Per-second USD rates (overridable per call). Conservative and explicit rather
+# than silently billing $0 for an unknown model.
+VIDEO_PRICES: dict[str, VideoPrice] = {
+    "sora-2": VideoPrice(low=0.10, medium=0.10, high=0.30),
+    "sora-2-pro": VideoPrice(low=0.30, medium=0.30, high=0.50),
+    "veo-3.0-generate-001": VideoPrice(low=0.40, medium=0.40, high=0.75),
+    "mock-video": VideoPrice(low=0.0, medium=0.0, high=0.0),
 }
 
 
@@ -93,6 +119,15 @@ def speech_cost(model: str, *, characters: int, price: SpeechPrice | None = None
     if price is None:
         return 0.0
     return round(price.per_mchar * characters / 1_000_000, 8)
+
+
+def video_cost(
+    model: str, *, seconds: float, quality: str, n: int = 1, price: VideoPrice | None = None
+) -> float:
+    price = price or VIDEO_PRICES.get(model)
+    if price is None:
+        return 0.0
+    return round(price.per_second(quality) * max(0.0, seconds) * max(1, n), 8)
 
 
 def meter_media_cost(

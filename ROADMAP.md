@@ -48,6 +48,7 @@ and a runnable example.
 | **Observability** | Full trace span trees, sessions, feedback, eval scores on spans, JSONL + OpenTelemetry export; a local viewer; a served, self-hosted observability + alerting plane; a versioned prompt registry; per-run cost. |
 | **Security & governance** | Deterministic PII / secret / injection / RAG-poisoning detection, programmable rails, RBAC/ABAC, tenant isolation, a signed Merkle-checkpointed audit chain; provable prompt-injection containment that separates the control plane from the data plane — typed `TrustLabel` / `TaintedValue` information-flow labels, unforgeable `CapabilityToken`s minted from the user's request, a `DualPlaneExecutor` whose privileged planner sees only typed extractions of untrusted bytes, and a machine-checked containment invariant (`untrusted ⇒ no unapproved capability`); a formal **governance-invariant verifier** (`app.verify_governance`) that *proves* containment, residency, the budget cap, and the erasure-proof binding hold across their whole bounded, typed state space ahead of any run — a deterministic, offline, on-chain artifact that yields a minimal counterexample on violation; model & system cards, a compliance coverage matrix, an AI-BOM, an EU AI Act conformity pack, provable erasure, a consent ledger, data lineage, and residency-aware egress refusal. |
 | **Generation** | Cited DOCX/PDF/PPTX/HTML/Markdown, a cited-report builder with per-claim entailment, redlines, image generation and TTS with C2PA provenance, and richer inputs (OCR, transcripts, new-format loaders, forms/KYC). |
+| **Video understanding & generation** | Video is a first-class modality on the existing multimodal packet, not a new plane. A `VideoRef` / video `ContentPart`, deterministic frame sampling (`sample_frame_times`) and temporal segmentation (`segment_timeline`), and a `VideoAnalyzer` (deterministic `MockVideoAnalyzer` offline; `ProviderVideoAnalyzer` + a `PyAVFrameExtractor` behind the `vincio[video]` extra) turn a clip into typed `modality="video"` evidence (`video_evidence_items`) the context compiler scores, budgets, orders, and cites beside text and images. Temporal grounding carries a segment's `time_range` from the loader through retrieval to the cited-report footnote, so a clip-grounded answer points at the moment it came from (`<source>:t<start>-<end>`), auditable at sub-clip resolution. Generated or edited video (`VideoProvider` — `MockVideoProvider` / OpenAI Sora / Google Veo / a generic HTTP adapter) carries a C2PA manifest bound to its bytes, metered against the run budget and audited, exactly the way generated images and audio do (`app.load_video` / `app.generate_video` / `app.edit_video`). |
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
 | **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. |
 | **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
@@ -79,35 +80,34 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **formal verification of governance invariants** (a deterministic,
-in-process verifier that *proves* containment, residency, the budget cap, and the erasure-proof binding hold
-across their whole bounded, typed state space ahead of any run, yields a minimal counterexample on a
-violation, and records the content-hashed verdict on the hash-chained audit log — `app.verify_governance` /
-`GovernanceVerifier`) — has shipped and folded into the **Security & governance** row above. The next theme is
-scheduled below. It closes a specific gap in the platform's *own* frontier — a rung that exists in the
-literature and in buyer demand but not yet in the package — rather than a gap measured against any one
-competitor. An indicative minor-version target is given; cadence holds one coherent theme per minor.
+The most recent scheduled theme — **native video understanding & generation** (a `VideoRef` / video
+`ContentPart`, deterministic frame sampling and temporal segmentation, a `VideoAnalyzer` that lowers a clip
+into typed `modality="video"` evidence the compiler scores and cites beside text and images, temporal
+grounding that carries a segment's `time_range` through to the cited-report footnote, and C2PA-bound video
+generation/editing — `app.load_video` / `app.generate_video`) — has shipped and folded into the **Video
+understanding & generation** row above. The next theme is scheduled below. It closes a specific gap in the
+platform's *own* frontier — a rung that exists in the literature and in buyer demand but not yet in the
+package — rather than a gap measured against any one competitor. An indicative minor-version target is given;
+cadence holds one coherent theme per minor.
 
-### 1 · Native video understanding & generation *(target 3.20)*
+### 1 · Edge / WASM in-process runtime *(target 3.21)*
 
-The multimodal packet already scores, budgets, orders, and cites image and table evidence beside text, and
-generation flows images and audio *out* with C2PA provenance. Video is the modality not yet first-class: a
-recorded meeting, a screen capture, a product demo is today reduced to a transcript or a handful of stills,
-losing the temporal structure that makes it evidence. The primitives are in place — the multimodal
-`ContentPart`, the content-addressed evidence store, the cross-modal embedders, and the C2PA-bound generation
-path — so video is an additive modality on the existing packet, never a new plane.
+Vincio's promise is "runs in your process." The dependency-free core — the prompt and context compilers, the
+vectorized scorer with its pure-Python fallback, the deterministic rails, and the offline-first evidence path —
+already has no native dependencies on the default path, which makes the next reach a natural one: compile that
+core for constrained and browser/WASM targets, so the same context engineering runs at the edge and in the
+browser, not only on a server.
 
-- **Video as first-class evidence** — a video `ContentPart` with deterministic frame sampling and temporal
-  segmentation, scored and cited in the same packet as text and images, with timestamps preserved through to
-  the citation so an answer points at the moment it came from.
-- **Temporal grounding** — retrieval and the cited-report builder resolve a claim to a time range, not just a
-  document, so video-grounded answers are auditable at sub-clip resolution.
-- **Generative output with provenance** — generated or edited video carries a C2PA manifest bound to its
-  bytes, the same way generated images and audio already do, so synthetic video is as tamper-evident as text.
+- **The core compiled for WASM** — the compile / score / rail / pack path running in a browser or an
+  edge worker with no Python runtime, behind a thin in-process boundary, keeping the offline-first default.
+- **A bounded edge profile** — a resident-memory and latency profile for constrained targets, held by an
+  edge-scaling SLO the way the resident-memory budget holds a server run today.
+- **Parity, not a fork** — the edge build is the same library under a build target, exercised by the same
+  offline test suite, so a capability never silently diverges between server and edge.
 
-*Ships as:* a video `ContentPart` and loader behind an opt-in extra (with a deterministic-mock substitute for
-the offline path); temporal-segmentation and frame-sampling on the existing multimodal packet; a `video`
-VincioBench family with a temporal-grounding and a provenance-bound SLO; a runnable example.
+*Ships as:* a WASM/edge build target for the dependency-free core (with the server path unchanged as the
+default); a bounded edge resident-memory and latency profile; an `edge` VincioBench family with an
+edge-scaling SLO; a runnable example.
 
 ---
 
@@ -123,8 +123,6 @@ Grouped by where they would land.
 
 **Efficiency & reach**
 
-- 🔭 **Edge / WASM in-process runtime** — the dependency-free core compiled for constrained and
-  browser/WASM targets, extending "runs in your process" to "runs at the edge."
 - 🔭 **Agent negotiation & reputation** — bounded negotiation, contracting, and a reputation signal
   over the existing A2A agent fabric and reliability scoring, for multi-org crews.
 

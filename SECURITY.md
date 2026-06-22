@@ -273,12 +273,13 @@ fleet.
 
 ### Provenance & generated media
 
-Every generated image and audio asset auto-attaches a media-aware C2PA manifest
-bound to the asset's bytes by SHA-256 (a tampered asset fails `verify_manifest`),
-embedded in file metadata where the container supports it or as a `*.c2pa.json`
-sidecar otherwise, with edits marked, and each generation is metered against the
-run `Budget` and recorded as an `image_generate` / `speech_synthesize` audit
-event. Manifests can be cryptographically **signed**
+Every generated image, audio, and video asset auto-attaches a media-aware C2PA
+manifest bound to the asset's bytes by SHA-256 (a tampered asset fails
+`verify_manifest`), embedded in file metadata where the container supports it or as
+a `*.c2pa.json` sidecar otherwise, with edits marked, and each generation is metered
+against the run `Budget` and recorded as an `image_generate` / `speech_synthesize` /
+`video_generate` (or `video_edit`) audit event — so synthetic video is as
+tamper-evident as a generated image or a text answer. Manifests can be cryptographically **signed**
 (built-in symmetric `HmacSigner`, or your own asymmetric `ContentSigner`); Vincio
 assumes no signing authority — the key and any PKI are yours, and the
 invisible-watermark hook is a point you supply. Document generation is grounded by

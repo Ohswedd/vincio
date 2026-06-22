@@ -306,12 +306,14 @@ class RetrievalEngine:
 
                 stamp = stamp.replace(tzinfo=UTC)
             metadata["age_days"] = round((utcnow() - stamp).total_seconds() / 86_400, 3)
+        time_range = chunk.metadata.get("time_range")
         return EvidenceItem(
             id=chunk.citation_ref,
             source_id=chunk.document_id,
             source_type="document",
             text=text,
             page=chunk.page,
+            time_range=tuple(time_range) if time_range else None,
             section_path=chunk.section_path,
             trust_level=TrustLevel.UNTRUSTED_DOCUMENT,
             relevance=max(0.0, min(1.0, hit.score if hit.score <= 1.0 else lexical_similarity(chunk.text, query) + 0.5)),

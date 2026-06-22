@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**254** public symbols.
+**257** public symbols.
 
 ## Classes
 
@@ -486,6 +486,10 @@ Deterministic offline image provider.
 
 Deterministic offline TTS: a real WAV whose length scales with the text.
 
+### `MockVideoProvider(default_model=…)`
+
+Deterministic offline video provider.
+
 ### `ModelCard(**data)`
 
 Machine-readable documentation for a single model.
@@ -865,6 +869,14 @@ Scores a candidate answer or trajectory. Reuse an existing critic via the adapte
 ### `VerifierScore(**data)`
 
 A verifier's verdict on one candidate: a value, a confidence, a reason.
+
+### `VideoGenRequest(**data)`
+
+!!! abstract "Usage Documentation" [Models](../concepts/models.md)
+
+### `VideoProvider()`
+
+Abstract video generation/editing provider.
 
 ### `VincioConfig(**data)`
 

@@ -511,7 +511,7 @@ class DocumentContractError(GenerationError):
 
 
 class MediaGenerationError(GenerationError):
-    """An image-generation/editing or speech-synthesis provider call failed."""
+    """An image-, video-, or speech-generation/editing provider call failed."""
 
     code = "MEDIA_GENERATION"
 

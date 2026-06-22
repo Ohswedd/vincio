@@ -1401,6 +1401,36 @@
       "threshold": true,
       "enforced_by": "families.verification.auditable_offline",
       "rationale": "A proof auditors can trust must be reproducible and on the record. The budget gates that the verdict lands on the verifiable audit chain (allow when held, deny when a misconfigured app is flagged) — companion budgets gate that the report digest re-derives and that a fail-open posture is caught through the app surface."
+    },
+    {
+      "id": "video_temporal_grounding",
+      "category": "quality",
+      "statement": "A video-grounded claim resolves to a time range, not just a document: every clip-evidence citation carries the segment's start/end seconds end-to-end, so an answer is auditable at sub-clip resolution.",
+      "metric": "families.video.temporal_grounding.grounding_accuracy",
+      "direction": "gte",
+      "threshold": 0.9,
+      "enforced_by": "families.video.temporal_grounding.grounding_accuracy",
+      "rationale": "Temporal structure is what makes video evidence; an answer that loses the timestamp is no better than a transcript. The budget gates that every segment grounds to its exact time range, and a companion budget gates that the time range survives into the rendered citation footnote."
+    },
+    {
+      "id": "video_generation_provenance_bound",
+      "category": "security",
+      "statement": "Every generated or edited video carries a C2PA manifest bound to its bytes; tampering fails verification — synthetic video is as tamper-evident as a generated image, audio clip, or text answer.",
+      "metric": "families.video.provenance.video_provenance_verifies",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.video.provenance.video_provenance_verifies",
+      "rationale": "Synthetic media must be auditable: the manifest binds to the exact bytes a consumer receives. Companion budgets gate that an altered clip fails verification and that an edit is marked synthetic."
+    },
+    {
+      "id": "video_first_class_evidence",
+      "category": "quality",
+      "statement": "Video is a first-class evidence modality: a clip's segments are scored, budgeted, ordered, and cited in the same packet as text and image evidence, with the modality and temporal locator preserved through compilation.",
+      "metric": "families.video.understanding.video_modality_first_class",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.video.understanding.video_modality_first_class",
+      "rationale": "Video must ride the existing multimodal packet, not a bolt-on plane. The budget gates that clip segments lower to typed video evidence; companion budgets gate that the compiler selects a clip candidate and the packet carries its time range."
     }
   ]
 }
