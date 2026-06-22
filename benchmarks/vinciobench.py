@@ -6121,6 +6121,170 @@ def _fmt_secs(value: float) -> str:
     return f"{value:.2f}".rstrip("0").rstrip(".") or "0"
 
 
+async def bench_mcp_apps() -> dict[str, Any]:
+    """MCPAppsBench: server-rendered UI + governed elicitation, in the same runtime.
+
+    Vincio already speaks MCP in-process — tools through the permissioned runtime,
+    resources as cited evidence — and streams a run as AG-UI generative-UI events.
+    This family holds the spec's newer surface landed in the *same* governed,
+    audited, budgeted runtime, never a hosted service:
+
+    * **MCP Apps (server-rendered UI).** A server's ``ui://`` resource is surfaced
+      through the existing AG-UI channel as a ``CUSTOM`` ``mcp.ui`` event,
+      inheriting the run's provenance (untrusted-external trust level), budget
+      (the render is token-metered; an oversized render is refused), and audit
+      (every render lands on the hash-chained log).
+    * **Elicitation.** A server's mid-call request for input is governed by the
+      *same* approval + rail machinery a write tool passes: the collected value is
+      screened through the input rails and an accepted value is tainted untrusted,
+      so it is contained like any other untrusted input — a secret value is
+      refused, never silently accepted.
+    * **Evolving-spec parity.** Protocol-version negotiation honours a peer pinned
+      to an older stable revision, and the stateless-core transport mode carries
+      no session id. All offline and deterministic."""
+    import json as _json
+
+    from vincio import ContextApp
+    from vincio.mcp import (
+        SUPPORTED_PROTOCOL_VERSIONS,
+        ElicitationGate,
+        ElicitationPolicy,
+        ElicitationRequest,
+        MCPServer,
+        MCPUIResource,
+        connect_in_process,
+        negotiate_version,
+    )
+    from vincio.providers import MockProvider
+    from vincio.security.capability import TrustLabel
+    from vincio.server.agui import AGUIEventType
+
+    # -- MCP Apps: a server's UI resource surfaced through AG-UI, governed -----
+    provider_app = ContextApp(name="ui_provider", provider=MockProvider(), model="mock-1")
+    dashboard = MCPUIResource.from_html("ui://dashboard", "<h1>Live sales</h1>", name="dashboard")
+    server = provider_app.serve_mcp(ui_resources=[dashboard])
+    consumer = ContextApp(name="ui_consumer", provider=MockProvider(), model="mock-1")
+    consumer.add_mcp_server("ui_provider", server=server)
+    bridge = consumer.mcp_app("ui_provider")
+    ui_events = await bridge.to_agui_events()
+    ui_surfaced = bool(
+        len(ui_events) == 1
+        and ui_events[0].type == AGUIEventType.CUSTOM
+        and ui_events[0].name == "mcp.ui"
+        and ui_events[0].value["uri"] == "ui://dashboard"
+    )
+    # Provenance travels with the render: the UI is untrusted external.
+    ui_provenance = bool(ui_events[0].value["trustLevel"] == "untrusted_external")
+    ui_audited = bool(
+        any(e.action == "mcp_ui_render" and e.decision == "render" for e in consumer.audit.entries)
+    )
+    # Budget: an oversized render is refused (token-metered), never streamed.
+    big_app = ContextApp(name="big_provider", provider=MockProvider(), model="mock-1")
+    big_ui = MCPUIResource.from_html("ui://huge", "<div>" + "x " * 4000 + "</div>", name="huge")
+    big_server = big_app.serve_mcp(ui_resources=[big_ui])
+    big_consumer = ContextApp(name="big_consumer", provider=MockProvider(), model="mock-1")
+    big_consumer.add_mcp_server("big_provider", server=big_server)
+    big_bridge = big_consumer.mcp_app("big_provider", max_render_tokens=64)
+    big_renders = await big_bridge.renders()
+    ui_budget_refused = bool(
+        big_renders[0].refused
+        and big_renders[0].content == ""
+        and await big_bridge.to_agui_events() == []
+        and any(e.action == "mcp_ui_render" and e.decision == "refused" for e in big_consumer.audit.entries)
+    )
+
+    # -- Elicitation: gated by approval + rails, accepted value tainted -------
+    elig_app = ContextApp(name="elig", provider=MockProvider(), model="mock-1")
+    elig_app.add_rail(
+        name="no_secrets", kind="safety", detectors=["secrets"], direction="input", action="block"
+    )
+    # A benign value: screened clean, accepted, and tainted untrusted (contained).
+    accept_gate = ElicitationGate(
+        lambda msg, schema: {"email": "user@example.com"},
+        rail_engine=elig_app.rail_engine,
+        audit=elig_app.audit,
+    )
+    accepted = await accept_gate.decide(ElicitationRequest(message="email?", server="forms"))
+    elicit_accepted_tainted = bool(
+        accepted.accepted
+        and accepted.tainted is not None
+        and accepted.tainted.label is TrustLabel.UNTRUSTED
+        and "mcp:forms:elicitation" in accepted.tainted.sources
+    )
+    # A secret value: refused by the same input rail that guards a write tool.
+    refuse_gate = ElicitationGate(
+        lambda msg, schema: {"token": "sk-ABCD1234567890abcdef1234567890abcdef"},
+        rail_engine=elig_app.rail_engine,
+        audit=elig_app.audit,
+    )
+    refused = await refuse_gate.decide(ElicitationRequest(message="api key?", server="forms"))
+    elicit_secret_refused = bool(refused.response.action.value == "decline" and refused.tainted is None)
+    # An approval gate denies the request before the value is even collected.
+    collected = {"count": 0}
+
+    def _counting_collector(msg, schema):
+        collected["count"] += 1
+        return {"ok": True}
+
+    approval_gate = ElicitationGate(
+        _counting_collector,
+        policy=ElicitationPolicy(require_approval=True),
+        approver=lambda req: False,
+        rail_engine=elig_app.rail_engine,
+    )
+    denied = await approval_gate.decide(ElicitationRequest(message="confirm", server="forms"))
+    elicit_approval_gated = bool(denied.response.action.value == "decline" and collected["count"] == 0)
+    elicit_audited = bool(any(e.action == "mcp_elicit" for e in elig_app.audit.entries))
+
+    # End-to-end: a server tool elicits; the consumer governs and declines a secret.
+    pay = MCPServer(name="pay")
+    pay._list_tools = lambda: [{"name": "charge", "description": "", "inputSchema": {"type": "object"}}]
+
+    async def _charge(name, args):
+        res = await pay.elicit("card token?", schema={"type": "object"})
+        return {"text": _json.dumps(res)}
+
+    pay._call_tool = _charge
+    pay_consumer = ContextApp(name="pay_consumer", provider=MockProvider(), model="mock-1")
+    pay_consumer.add_rail(
+        name="no_secrets", kind="safety", detectors=["secrets"], direction="input", action="block"
+    )
+    pay_consumer.add_mcp_server(
+        "pay", server=pay,
+        elicitation=lambda msg, schema: {"token": "sk-ABCD1234567890abcdef1234567890abcdef"},
+    )
+    from vincio.core.types import ToolCall
+
+    charge_result = await pay_consumer.tool_runtime.execute(ToolCall(tool_name="pay.charge", arguments={}))
+    elicit_end_to_end_contained = bool(
+        charge_result.status == "ok" and _json.loads(charge_result.output) == {"action": "decline"}
+    )
+
+    # -- Evolving-spec parity: version negotiation + stateless transport ------
+    version_negotiated = bool(
+        negotiate_version("2024-11-05") == "2024-11-05"
+        and negotiate_version("3000-01-01") == SUPPORTED_PROTOCOL_VERSIONS[0]
+    )
+    neg_client = connect_in_process(MCPServer(name="s", list_tools=lambda: []))
+    await neg_client.initialize()
+    initialize_negotiates = bool(neg_client.negotiated_version == SUPPORTED_PROTOCOL_VERSIONS[0])
+
+    return {
+        "ui_surfaced_through_agui": ui_surfaced,
+        "ui_provenance_untrusted": ui_provenance,
+        "ui_audited": ui_audited,
+        "ui_budget_refused": ui_budget_refused,
+        "elicit_accepted_tainted": elicit_accepted_tainted,
+        "elicit_secret_refused": elicit_secret_refused,
+        "elicit_approval_gated": elicit_approval_gated,
+        "elicit_audited": elicit_audited,
+        "elicit_end_to_end_contained": elicit_end_to_end_contained,
+        "version_negotiated": version_negotiated,
+        "initialize_negotiates": initialize_negotiates,
+        "ui_render_token_cost": int(big_renders[0].token_cost),
+    }
+
+
 async def bench_edge() -> dict[str, Any]:
     """EdgeBench: the dependency-free core compiled for a constrained / WASM target.
 
@@ -6282,6 +6446,7 @@ FAMILIES = {
     "verification": bench_verification,
     "video": bench_video,
     "edge": bench_edge,
+    "mcp_apps": bench_mcp_apps,
     "breaking_2_0": bench_breaking_2_0,
 }
 

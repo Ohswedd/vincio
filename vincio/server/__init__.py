@@ -5,7 +5,14 @@ without FastAPI, so generative-UI events can be produced anywhere a run streams;
 only :func:`create_app` needs the ``server`` extra.
 """
 
-from .agui import AGUIEvent, AGUIEventType, agent_stream_to_agui, agui_sse, run_stream_to_agui
+from .agui import (
+    AGUIEvent,
+    AGUIEventType,
+    agent_stream_to_agui,
+    agui_sse,
+    mcp_ui_event,
+    run_stream_to_agui,
+)
 from .app import create_app
 
 __all__ = [
@@ -15,4 +22,5 @@ __all__ = [
     "run_stream_to_agui",
     "agent_stream_to_agui",
     "agui_sse",
+    "mcp_ui_event",
 ]

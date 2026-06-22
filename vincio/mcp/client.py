@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import asyncio
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..core.types import EvidenceItem, Message, ModelRequest, TrustLevel
+
+if TYPE_CHECKING:
+    from .server import MCPUIResource
 from .protocol import (
     INVALID_PARAMS,
     PROTOCOL_VERSION,
@@ -44,14 +47,21 @@ class MCPClient:
         sampling_provider: Any | None = None,
         sampling_model: str | None = None,
         elicitation_callback: Any | None = None,
+        elicitation_gate: Any | None = None,
     ) -> None:
         self.transport = transport
         self.name = name
         self.server_info: dict[str, Any] = {}
         self.server_capabilities: dict[str, Any] = {}
+        self.negotiated_version: str | None = None
         self.sampling_provider = sampling_provider
         self.sampling_model = sampling_model
+        # ``elicitation_gate`` (an :class:`~vincio.mcp.apps.ElicitationGate`)
+        # governs a server's mid-call input request through the approval + rail
+        # machinery and takes precedence; ``elicitation_callback`` is the raw,
+        # ungoverned fallback kept for backward compatibility.
         self.elicitation_callback = elicitation_callback
+        self.elicitation_gate = elicitation_gate
         self._initialized = False
         transport.on_server_request = self._handle_server_request
 
@@ -68,6 +78,7 @@ class MCPClient:
         )
         self.server_info = (result or {}).get("serverInfo", {})
         self.server_capabilities = (result or {}).get("capabilities", {})
+        self.negotiated_version = (result or {}).get("protocolVersion")
         await self.transport.notify("notifications/initialized")
         self._initialized = True
         return result or {}
@@ -106,6 +117,16 @@ class MCPClient:
             for r in (result or {}).get("resources", [])
         ]
 
+    async def list_ui_resources(self) -> list[MCPResourceInfo]:
+        """The server's server-rendered UI resources (MCP Apps: ``ui://`` / UI MIME).
+
+        A subset of :meth:`list_resources` filtered to renderable UI, for the
+        :class:`~vincio.mcp.apps.MCPAppBridge` to surface through the AG-UI channel.
+        """
+        from .apps import is_ui_resource
+
+        return [r for r in await self.list_resources() if is_ui_resource(r.uri, r.mime_type)]
+
     async def list_prompts(self) -> list[MCPPromptInfo]:
         await self._ensure_initialized()
         result = await self.transport.request("prompts/list")
@@ -138,6 +159,41 @@ class MCPClient:
         if result.get("isError"):
             raise MCPError(_content_text(result) or f"tool {name!r} returned an error")
         return _content_text(result)
+
+    async def call_tool_ui(
+        self, name: str, arguments: dict[str, Any] | None = None
+    ) -> tuple[str, list[MCPUIResource]]:
+        """Call a tool and return its text plus any embedded UI resources.
+
+        MCP Apps return server-rendered UI as an embedded ``resource`` content
+        block on the tool result; this surfaces both the text and those UI
+        resources (for the :class:`~vincio.mcp.apps.MCPAppBridge`), where
+        :meth:`call_tool` returns the text alone.
+        """
+        from .apps import is_ui_resource
+        from .server import MCPUIResource
+
+        await self._ensure_initialized()
+        result = await self.transport.request(
+            "tools/call", {"name": name, "arguments": arguments or {}}
+        )
+        result = result or {}
+        if result.get("isError"):
+            raise MCPError(_content_text(result) or f"tool {name!r} returned an error")
+        ui: list[MCPUIResource] = []
+        for block in result.get("content") or []:
+            if isinstance(block, dict) and block.get("type") == "resource":
+                res = block.get("resource") or {}
+                if is_ui_resource(res.get("uri", ""), res.get("mimeType", "")):
+                    ui.append(
+                        MCPUIResource(
+                            uri=res.get("uri", ""),
+                            name=res.get("uri", ""),
+                            mime_type=res.get("mimeType", "text/html"),
+                            text=res.get("text", ""),
+                        )
+                    )
+        return _content_text(result), ui
 
     async def read_resource(self, uri: str) -> str:
         await self._ensure_initialized()
@@ -222,6 +278,15 @@ class MCPClient:
         }
 
     async def _elicit(self, params: dict[str, Any]) -> dict[str, Any]:
+        # The governed path: an ElicitationGate runs the approval + rail machinery
+        # and taints the accepted value untrusted.
+        if self.elicitation_gate is not None:
+            from .apps import ElicitationRequest
+
+            request = ElicitationRequest.from_params(params, server=self.name)
+            decision = await self.elicitation_gate.decide(request)
+            return decision.to_wire()
+        # The raw, ungoverned fallback (no rail screening / taint).
         message = params.get("message", "")
         schema = params.get("requestedSchema")
         if self.elicitation_callback is None:

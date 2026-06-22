@@ -170,6 +170,17 @@ approval-gated, `external`-side-effecting tools on the same RBAC + audit + budge
 path, so a hosted capability is governed exactly like a local one. Write actions
 are idempotent and approval-gated.
 
+An MCP server's mid-call **elicitation** request (a server asking the user for a
+structured value) is treated as an untrusted-input boundary, not a trusted one. The
+`ElicitationGate` gates it with the same approval and rail machinery a write tool
+passes: an approver may deny the request before any value is collected, the
+collected value is screened through the input rail engine (a secret, PII, or
+injection value is declined — an injection-flagged value is quarantined), and an
+accepted value is wrapped as an `untrusted` `TaintedValue`, so it propagates taint
+and can never silently authorize a side effect. Server-rendered UI (**MCP Apps**)
+surfaced through the AG-UI channel is likewise `untrusted_external` content,
+token-metered against the run budget (an oversized render is refused), and audited.
+
 ### Runaway execution & cost
 
 The advertised `Budget` is a hard cap: cost / token / step overruns raise

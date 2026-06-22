@@ -2393,6 +2393,8 @@ class ContextApp:
         permissions: list[str] | None = None,
         sampling: bool = True,
         elicitation: Any | None = None,
+        elicitation_policy: Any | None = None,
+        elicitation_approval: Any | None = None,
     ) -> ContextApp:
         """Connect to an MCP server and register its tools/resources/prompts.
 
@@ -2401,8 +2403,18 @@ class ContextApp:
         tools register through the existing permissioned, sandboxed, audited
         runtime (namespaced ``<name>.<tool>``); resources become evidence with
         ``origin: mcp:<name>``. Server-initiated sampling routes to this app's
-        provider; elicitation routes to ``elicitation``. Connect happens now
-        (synchronously); the live client is kept on ``app.mcp_clients[name]``.
+        provider.
+
+        A server's mid-call **elicitation** request routes to a governed
+        :class:`~vincio.mcp.apps.ElicitationGate` built from ``elicitation`` (the
+        collector that obtains the user's value): the collected value is screened
+        through this app's input rails and tainted *untrusted*, so it is contained
+        like any other untrusted input. Pass an ``elicitation_approval`` callable
+        (``ElicitationRequest -> bool``) to additionally gate the request behind an
+        approval — the way a write tool is gated — or an
+        :class:`~vincio.mcp.apps.ElicitationPolicy` for full control. Connect
+        happens now (synchronously); the live client is kept on
+        ``app.mcp_clients[name]``.
         """
         from ..mcp import (
             InProcessTransport,
@@ -2424,12 +2436,26 @@ class ContextApp:
                 transport = StreamableHTTPTransport(url, headers=headers, client=http_client)
             else:
                 transport = InProcessTransport(server, auth=auth)
+        elicitation_gate = None
+        if elicitation is not None or elicitation_policy is not None:
+            from ..mcp.apps import ElicitationGate, ElicitationPolicy
+
+            policy = elicitation_policy
+            if policy is None:
+                policy = ElicitationPolicy(require_approval=callable(elicitation_approval))
+            elicitation_gate = ElicitationGate(
+                elicitation,
+                policy=policy,
+                rail_engine=self.rail_engine,
+                approver=elicitation_approval if callable(elicitation_approval) else None,
+                audit=self.audit,
+            )
         client = MCPClient(
             transport,
             name=name,
             sampling_provider=self.resolve_provider() if sampling else None,
             sampling_model=self.model,
-            elicitation_callback=elicitation,
+            elicitation_gate=elicitation_gate,
         )
         run_sync(
             client.register_into(
@@ -2548,6 +2574,25 @@ class ContextApp:
             ui_resources=ui_resources,
             token_validator=token_validator,
         )
+
+    def mcp_app(self, name: str, *, max_render_tokens: int = 4096) -> Any:
+        """Bridge a consumed MCP server's UI resources onto the AG-UI channel.
+
+        Returns an :class:`~vincio.mcp.apps.MCPAppBridge` over the client
+        connected as ``name`` (via :meth:`add_mcp_server`). The bridge reads the
+        server's server-rendered ``ui://`` resources and lowers each into an
+        :class:`~vincio.server.agui.AGUIEvent` — token-metered against
+        ``max_render_tokens`` and recorded on this app's audit chain — so MCP
+        Apps UI rides the *same* governed generative-UI stream as the run.
+        """
+        from ..mcp.apps import MCPAppBridge
+
+        client = self.mcp_clients.get(name)
+        if client is None:
+            raise ConfigError(
+                f"no MCP server connected as {name!r}; call add_mcp_server({name!r}, ...) first"
+            )
+        return MCPAppBridge(client, audit=self.audit, max_render_tokens=max_render_tokens)
 
     # -- realtime / voice (optional module) ------------------------------------------------------
 

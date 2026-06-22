@@ -4,6 +4,45 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.22.0] - 2026-06-22
+
+MCP Apps & the evolving MCP spec. Vincio already speaks MCP in-process — client and
+server, tools through the permissioned runtime, resources as cited evidence — and streams a
+run as AG-UI generative-UI events. This release adopts the spec's newer surface and lands it
+in the *same* governed, audited, budgeted runtime, never as a hosted service: server-rendered
+UI (MCP Apps) surfaced through the existing AG-UI channel, a typed elicitation request gated
+by the same approval + rail machinery a write tool passes, and evolving-spec parity (protocol
+negotiation + a stateless-core transport mode). Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the established MCP client/server paths are unchanged, and the whole
+theme runs offline with a deterministic in-process server substitute.
+
+### Added
+
+- **MCP Apps (server-rendered UI).** `app.mcp_app(name, max_render_tokens=)` returns an
+  `MCPAppBridge` (`vincio.mcp`) that reads a consumed server's `ui://` UI resources and lowers
+  each into an AG-UI `CUSTOM` `mcp.ui` event (`vincio.server.agui.mcp_ui_event`). Each render is
+  governed: untrusted-external provenance, token-metered against the run (an oversized render is
+  refused, no event emitted), and recorded on the hash-chained audit log (`mcp_ui_render`).
+  `bridge.to_agui_events()` / `bridge.stream(base)` (splices UI before `RUN_FINISHED`). A tool
+  result may embed a UI resource — surface text + `[MCPUIResource]` with `client.call_tool_ui`,
+  or return an `MCPUIResource` from an app tool. `is_ui_resource` / `MCPUIRender`.
+- **Elicitation (governed mid-call input).** `ElicitationGate` / `ElicitationRequest` /
+  `ElicitationResponse` / `ElicitationPolicy` / `ElicitationDecision` / `ElicitationAction`
+  (`vincio.mcp`). `app.add_mcp_server(..., elicitation=collector, elicitation_approval=fn,
+  elicitation_policy=...)` routes a server's `elicitation/create` through the gate: an approver
+  may deny the request, the collected value is screened through the input `RailEngine` (a secret
+  or injection value is declined), and an accepted value is wrapped `TaintedValue.untrusted(...)`
+  (`mcp:<server>:elicitation`) so it is contained like any other untrusted input. Every decision
+  is audited (`mcp_elicit`). A served app initiates one with `MCPServer.elicit(message, schema=)`.
+- **Evolving-spec parity.** Protocol-version negotiation (`negotiate_version`,
+  `SUPPORTED_PROTOCOL_VERSIONS`) honours a peer pinned to an older stable revision and is recorded
+  on both the client (`negotiated_version`) and server; `StreamableHTTPTransport(stateless=True)`
+  is the stateless-core transport mode (no `Mcp-Session-Id`). A `resource_content` JSON-RPC helper
+  for embedded-resource content blocks.
+- **A `mcp_apps` VincioBench family** with three SLOs (UI governed through AG-UI; elicitation
+  contained by approval + rails; spec-revision negotiated), companion budgets, and
+  [`examples/66_mcp_apps_and_elicitation.py`](examples/66_mcp_apps_and_elicitation.py).
+
 ## [3.21.0] - 2026-06-22
 
 Edge / WASM in-process runtime. Vincio's promise is "runs in your process" — and the

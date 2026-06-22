@@ -1527,6 +1527,42 @@
     },
     "families.edge.edge_core_modules": {
       "gte": 20
+    },
+    "families.mcp_apps.ui_surfaced_through_agui": {
+      "eq": true
+    },
+    "families.mcp_apps.ui_provenance_untrusted": {
+      "eq": true
+    },
+    "families.mcp_apps.ui_audited": {
+      "eq": true
+    },
+    "families.mcp_apps.ui_budget_refused": {
+      "eq": true
+    },
+    "families.mcp_apps.elicit_accepted_tainted": {
+      "eq": true
+    },
+    "families.mcp_apps.elicit_secret_refused": {
+      "eq": true
+    },
+    "families.mcp_apps.elicit_approval_gated": {
+      "eq": true
+    },
+    "families.mcp_apps.elicit_audited": {
+      "eq": true
+    },
+    "families.mcp_apps.elicit_end_to_end_contained": {
+      "eq": true
+    },
+    "families.mcp_apps.version_negotiated": {
+      "eq": true
+    },
+    "families.mcp_apps.initialize_negotiates": {
+      "eq": true
+    },
+    "families.mcp_apps.ui_render_token_cost": {
+      "gte": 0
     }
   }
 }
