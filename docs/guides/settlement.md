@@ -466,6 +466,49 @@ the standing it read and the terms it set onto a content hash that `verify` reco
 from the bytes — a tampered ceiling is caught even after re-sealing — and `app.admit`
 records it on the hash-chained audit log.
 
+## Backing the collateral with an escrow
+
+Admission sets a required escrow fraction on a thin or low-trust counterparty's contract —
+but on its own that fraction is only a *number stamped on the terms*; nothing **holds** it,
+releases it on a clean delivery, or forfeits a slice on a breach. An `Escrow`
+(`app.post_escrow` / `post_escrow`) makes the posted collateral a verifiable, offline
+escrow **bound to the contract** — the escrow analogue of a `SettlementRecord`.
+
+```python
+decision = buyer.admit("vendor")
+escrow = buyer.post_escrow(contract, decision=decision)   # hold the required collateral
+escrow.amount_usd          # = escrow_fraction × the contract price
+escrow.verify().valid      # offline-verifiable — the amount re-derives from the posture
+```
+
+The collateral source is, in order: an explicit `amount` (a flat stake), an explicit
+`fraction` of the contract price, an `AdmissionDecision`'s `escrow_fraction` (`decision=`),
+or — with none of those — the admission posture `apply_to_terms` already stamped onto the
+contract's terms. The poster (the counterparty backing its delivery) defaults to the
+seller and the beneficiary to the buyer.
+
+Settling the contract resolves the escrow deterministically — releasing the whole stake on
+a fulfilled delivery and forfeiting a **bounded, pinpointed slice proportional to the
+shortfall** on a breach (never the whole stake, never punitive), the remainder released:
+
+```python
+record = buyer.settle(contract, cost_usd=140.0, escrow=escrow)   # a 40% cost overrun
+escrow.state            # "forfeited"
+escrow.forfeited_usd    # a slice proportional to the shortfall the settlement measured
+escrow.released_usd     # the remainder, back to the poster
+escrow.breaches         # ["price"] — pinpointed to the term the delivery missed
+```
+
+The outcome is driven by the **same** `SettlementRecord` verdict the books already close
+on — so the collateral closes the same loop the settlement does, never judging the delivery
+a second time. Pass `escrow=` to `app.settle` to resolve it in the same call, or
+`app.settle_escrow(escrow, record)` to resolve it against a record you already have.
+`EscrowConfig(max_forfeit_fraction=0.8)` caps a single breach's forfeiture below the whole
+stake when you want a residual always released. Every post, release, and forfeiture binds
+the contract, the amount, and the verdict onto a content hash that `Escrow.verify`
+recomputes — a tampered amount or forfeiture is caught even after re-sealing — and lands on
+the hash-chained audit log, so an escrow's whole lifecycle is reconstructable offline.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -480,10 +523,14 @@ evidence-weighted prior, not a central score, the attestation exchange is a boun
 those signed artifacts from peers you govern, not a hosted reputation registry or a
 push-based gossip bus, the trust kernel is a bounded, transitive weighting computed
 in-process from your own ledger, not a central trust authority or a Sybil-detection service,
-and an admission decision is a mechanical, reconstructable exposure number computed from the
-standing you already hold, not a hosted underwriting service. Vincio gives you a verifiable
+an admission decision is a mechanical, reconstructable exposure number computed from the
+standing you already hold, not a hosted underwriting service, and an escrow is a verifiable
+record of collateral posted against a contract and settled deterministically against the
+delivery verdict, not a custodian's ledger entry, an escrow service, or money in motion.
+Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
-your own earned trust, and a verifiable way to bound a counterparty's exposure to what its
-standing justifies; how an obligation is paid is yours.
+your own earned trust, a verifiable way to bound a counterparty's exposure to what its
+standing justifies, and a verifiable way to back that exposure with posted collateral; how
+an obligation is paid is yours.

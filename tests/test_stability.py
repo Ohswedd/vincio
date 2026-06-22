@@ -21,7 +21,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "3.33.0"
+    assert vincio.__version__ == "3.34.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package patch level.
     assert API_VERSION == "3.0"

@@ -67,10 +67,20 @@ its ceiling toward parity as settled, corroborated history accrues (a regression
 it back). The decision binds the standing it read and the terms it set onto a content
 hash and folds into the existing negotiation / contracting path
 (:meth:`AdmissionDecision.bound_position` / :meth:`AdmissionDecision.apply_to_terms`).
-Everything is dependency-free, deterministic, and
+And because that required escrow fraction was still only a *number stamped on the terms* —
+nothing **held** it, released it on a clean delivery, or forfeited a slice on a breach —
+an :class:`Escrow` (:func:`post_escrow` / :meth:`~vincio.core.app.ContextApp.post_escrow`)
+finally backs it: it binds the admission-required collateral to a *specific*
+:class:`~vincio.negotiation.Contract` and counterparty into a signed, offline-verifiable
+artifact (the escrow analogue of a :class:`SettlementRecord`), and settling the contract
+**releases** the whole stake on a fulfilled delivery or **forfeits** a bounded, pinpointed
+slice proportional to the shortfall on a breach (:func:`settle_escrow` /
+:meth:`SettlementBook.settle` with an attached escrow) — driven by the same settlement
+verdict the books already close on, so the collateral closes the same loop the settlement
+does. Everything is dependency-free, deterministic, and
 offline — never a hosted marketplace, a clearing house, an arbitration service, a
-reputation service, an underwriting service, or a payment processor, only a mechanical,
-verifiable reconciliation.
+reputation service, an underwriting service, an escrow custodian, or a payment processor,
+only a mechanical, verifiable reconciliation.
 """
 
 from __future__ import annotations
@@ -114,6 +124,15 @@ from .book import (
     SettlementRow,
     settle_contract,
     settle_saga,
+)
+from .escrow import (
+    Escrow,
+    EscrowConfig,
+    EscrowSignature,
+    EscrowState,
+    EscrowVerification,
+    post_escrow,
+    settle_escrow,
 )
 from .exchange import (
     AttestationExchange,
@@ -205,6 +224,14 @@ __all__ = [
     "AdmissionPolicy",
     "Standing",
     "admit",
+    # collateralized settlement & escrow
+    "Escrow",
+    "EscrowConfig",
+    "EscrowSignature",
+    "EscrowState",
+    "EscrowVerification",
+    "post_escrow",
+    "settle_escrow",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",

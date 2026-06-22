@@ -496,7 +496,8 @@ operate, governed and audited in your process.
 
 Closing the books on contracted cross-org work (`app.settle` / `app.settle_saga` /
 `vincio.settlement`) produces a **verifiable ledger of what was owed and delivered,
-never a payment rail**: no money moves, there is no escrow or clearing service, and a
+never a payment rail**: no money moves, there is no escrow custodian or clearing service
+(posted collateral is a verifiable `Escrow` *record*, not a held account), and a
 settlement is a typed record each org holds and verifies itself. A `SettlementRecord`
 is **content-bound**: both parties sign one *reconciliation hash* over the economic
 facts alone — contract, parties, agreed terms, delivered metrics, balance — which is
@@ -712,6 +713,34 @@ decision on the hash-chained audit log. It folds into the existing path without 
 *raise* exposure), and `apply_to_terms` stamps the escrow posture into contract metadata
 that is excluded from the canonical hash, so a contract minted from the capped terms stays
 offline-verifiable.
+
+### Cross-org collateralized settlement & escrow
+
+Collateralized escrow (`Escrow` / `post_escrow` / `settle_escrow` / `app.post_escrow` /
+`app.settle_escrow` in `vincio.settlement.escrow`) is a defense against an
+**admission-required collateral that has no teeth**, and is a **mechanical, reconstructable
+record of posted collateral settled against the delivery verdict, never a hosted escrow
+custodian, an escrow service, or money in motion**. Without it, the escrow fraction admission
+asks for is only a number stamped on the terms: nothing holds the collateral, releases it on
+a clean delivery, or forfeits a slice on a breach, so a thin counterparty admitted on
+conservative terms posts nothing and a breach is debited only to reputation after the fact. An
+`Escrow` binds the collateral to a **specific** contract (by id and content hash) and
+counterparty, with the held amount **re-deriving from the admission posture** — so the posting
+is a mechanical number, not a custodian's assertion. Settling the contract resolves it
+deterministically off the **same** `SettlementRecord` verdict the books already close on (it
+never re-judges delivery): a fulfilled delivery releases the whole stake, and a breach forfeits
+a slice **proportional to the shortfall the settlement measured** — `min(shortfall,
+max_forfeit_fraction)` of the stake, **never the whole stake, never punitive** (you cannot lose
+more than you posted, and the forfeiture scales with how badly the worst term was missed), the
+remainder released, the missed term pinpointed. Every post, release, and forfeiture is
+**content-bound and offline-verifiable**: a content hash binds the contract, the amount, and
+the verdict, and `Escrow.verify` recomputes it from the bytes alone and **re-derives the
+disposition** (the held amount from the fraction, the release/forfeit split from the
+shortfall), so a tampered amount or forfeiture is caught even after re-sealing; only the
+buyer or seller can sign, and every transition lands on the hash-chained audit log. Resolution
+is **idempotent-guarded** (an already-resolved escrow refuses re-resolution) and **contract-
+matched** (a record for a different contract is refused), so the collateral cannot be drained
+twice or settled against the wrong delivery.
 
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a

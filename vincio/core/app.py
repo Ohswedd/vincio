@@ -3211,6 +3211,8 @@ class ContextApp:
         party: str | None = None,
         sign: bool = True,
         record_reputation: bool = True,
+        escrow: Any | None = None,
+        escrow_config: Any | None = None,
     ) -> Any:
         """Close the books on contracted work: reconcile, sign, audit, and record.
 
@@ -3228,6 +3230,12 @@ class ContextApp:
 
             record = app.settle(contract, cost_usd=0.08, latency_ms=1200, quality=0.92)
             record.verify(app.contract_signer)  # offline-verifiable
+
+        Pass an ``escrow`` posted against the contract (:meth:`post_escrow`) to settle the
+        collateral in the same call: it is resolved against the record — the whole stake
+        released on a fulfilled delivery, a bounded proportional slice forfeited on a
+        breach — signed, and audited in place, so the collateral closes the same loop the
+        settlement does. ``escrow_config`` overrides the forfeiture policy.
         """
         return self._settlement_book().settle(
             contract,
@@ -3239,6 +3247,75 @@ class ContextApp:
             party=party,
             sign=sign,
             record_reputation=record_reputation,
+            escrow=escrow,
+            escrow_config=escrow_config,
+        )
+
+    def post_escrow(
+        self,
+        contract: Any,
+        *,
+        decision: Any | None = None,
+        fraction: float | None = None,
+        amount: float | None = None,
+        poster: str | None = None,
+        beneficiary: str | None = None,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> Any:
+        """Post collateral against a contract as a signed, offline-verifiable escrow.
+
+        Binds the admission-required collateral — read from an
+        :class:`~vincio.settlement.AdmissionDecision` (``decision``), an explicit
+        ``fraction`` / ``amount``, or the admission posture
+        :meth:`~vincio.settlement.AdmissionDecision.apply_to_terms` stamped onto the
+        contract's terms — to the specific contract and counterparty into an
+        :class:`~vincio.settlement.Escrow`, signs it as this app's side of the contract,
+        appends the posting to the attached settlement book's audit chain, and returns
+        it. The escrow verifies offline from the bytes alone (the held amount re-derives
+        from the admission posture); :meth:`settle` (with ``escrow=``) or
+        :meth:`settle_escrow` resolves it against delivery::
+
+            decision = app.admit("vendor")
+            escrow = app.post_escrow(contract, decision=decision)
+            escrow.verify().valid  # offline-verifiable
+        """
+        return self._settlement_book().post_escrow(
+            contract,
+            decision=decision,
+            fraction=fraction,
+            amount=amount,
+            poster=poster,
+            beneficiary=beneficiary,
+            config=config,
+            party=party,
+            sign=sign,
+        )
+
+    def settle_escrow(
+        self,
+        escrow: Any,
+        record: Any,
+        *,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> Any:
+        """Resolve a posted escrow against a settlement record (release or forfeit).
+
+        Settles ``escrow`` against the contract's
+        :class:`~vincio.settlement.SettlementRecord` (from :meth:`settle`): releases the
+        whole stake on a fulfilled delivery and forfeits a bounded slice proportional to
+        the shortfall on a breach — driven by the same settlement verdict — re-signs the
+        resolved escrow as this app, and records the release / forfeiture on the audit
+        chain. ``config`` overrides the forfeiture policy. Returns the resolved escrow::
+
+            record = app.settle(contract, cost_usd=0.20)   # a cost overrun: a breach
+            app.settle_escrow(escrow, record)              # forfeits a proportional slice
+        """
+        return self._settlement_book().settle_escrow(
+            escrow, record, config=config, party=party, sign=sign
         )
 
     def settle_saga(
