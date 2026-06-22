@@ -62,6 +62,7 @@ and a runnable example.
 | **On-device fine-tuning & continual local adaptation** | A `LocalLoRATrainer` that fits a parameter-efficient, low-rank `LocalAdapter` on-device from the flywheel's grounded dataset (deterministic and dependency-free, with a `NativeLoRABackend` hook for a real GGUF/LoRA); an `AdaptedProvider` that applies it to any provider so in-distribution traffic is answered the way it was taught while off-distribution traffic falls through to the base model unchanged (bounded); a `ContinualAdaptation` loop (`app.adapt_locally` / `app.local_adaptation`) that promotes a new adapter version only when the locally-adapted model is at-least-as-good as its base on a held-out set — the same no-regression gate a hosted fine-tune job clears — and an `AdapterRegistry` that versions every adapter and rolls it back on regression. Apply or unload one live with `app.use_local_adapter`; the run never leaves the process, held by a no-regression SLO (a locally-adapted model is at-least-as-good as its base on the eval set). |
 | **Federated / cross-org self-improvement** | Sharing what was learned across organizations without sharing the raw traffic. Each member builds a numeric, raw-text-free `Contribution` — the clipped, optionally DP-noised, and secure-aggregation-masked subspace scatter of its local adapter geometry (`app.contribute_federated`) — behind the consent ledger's TRAINING purpose and the residency posture, never a prompt or a response. A `SecureAggregator` merges the fleet's contributions into a shared `FederatedSubspace` by deterministic federated PCA — the pairwise masks cancel exactly, so no single member's update is ever observed — refusing a round below the `PrivacyConfig` k-anonymity contributor floor. The adopting member re-fits its own adapter against the shared geometry (`app.adopt_federated` / `app.federated_improvement`), keeping its own grounded answers local, and adopts it only when at-least-as-good as its base on a held-out set — the same no-regression and canary gates a local promotion clears, versioned in the `AdapterRegistry` and rolled back on regression. Only numeric, masked, bounded-sensitivity aggregates cross a trust boundary; held by a privacy SLO and a no-regression SLO. |
 | **Differential-privacy memory & training** | A provable, composing, per-subject privacy budget over memory consolidation and the whole learning loop. A Rényi/moments `PrivacyAccountant` (`app.use_privacy_accountant`) tracks the cumulative `(ε, δ)` a subject's data has spent across every consolidation and learning round — composing across rounds far more tightly than naively summing each step's `ε` — and a `PrivacyBudget` gates a learning step the way the cost report gates a dollar: a consolidation or a federated contribution that would exceed a subject's remaining budget is refused (a hard cap) or down-weighted (clipped harder, so its sensitivity and privacy cost fit). It wires into memory consolidation and federated contributions automatically; `app.privacy_report()` rolls up each subject's spent / remaining `ε` next to the cost report; and every spend and refusal lands on the hash-chained audit log, so the guarantee is a mechanical, auditable number. `gaussian_rdp` / `rdp_to_epsilon` expose the accountant's math; held by a budget-composition SLO and a refusal SLO. |
+| **Cross-fleet reputation & weighting** | A per-member reputation that discounts an unreliable or adversarial member's pull on the federated consensus — earned only from how each contribution fared against the no-regression gate, never from raw traffic. A `ReputationLedger` (`app.use_reputation_ledger`) keeps each member's reliability as a Beta-Bernoulli posterior over gate outcomes (a robust generalization of the existing reliability scoring): a newcomer earns the benefit of the doubt from a prior, a repeatedly-regressing member decays toward a floor, and a reformed member recovers. The `SecureAggregator` weights a member's contribution by its reputation before distilling the consensus subspace — folded in before the secure-aggregation masks so they still cancel exactly — so a regressor is discounted **without being singled out**. The discount is bounded and reversible: a weight never leaves `[floor, 1]` (lowering pull, never zeroing or bypassing the quality bar), and adoption still clears the same no-regression and canary gates a local promotion does. Every update lands on the signed audit chain and replays from it (`ReputationLedger.from_audit`), and `app.reputation_report()` rolls up each member's standing next to the cost and privacy reports; held by a discount-the-regressor SLO and a no-regression SLO. |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
@@ -77,36 +78,35 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **differential-privacy memory & training** (a Rényi/moments
-`PrivacyAccountant` that composes the cumulative ``(ε, δ)`` a subject's data spends across every memory
-consolidation and federated contribution, a per-subject `PrivacyBudget` that refuses or down-weights an
-over-budget learning step the way the cost report gates a dollar, and an `app.privacy_report()` that makes
-the spent budget an auditable number on the signed audit chain) — has shipped and folded into the
-**Differential-privacy memory & training** row above. The next theme is scheduled below. It closes a
+The most recent scheduled theme — **cross-fleet reputation & weighting** (a `ReputationLedger` that earns a
+per-member reliability signal from how each federated contribution fared against the no-regression gate, a
+reputation-weighted `SecureAggregator` that discounts a repeatedly-regressing or adversarial member's pull on
+the consensus geometry without singling it out, and an `app.reputation_report()` that makes each member's
+standing an auditable, replayable number on the signed audit chain) — has shipped and folded into the
+**Cross-fleet reputation & weighting** row above. The next theme is scheduled below. It closes a
 specific gap in the platform's *own* frontier — a rung that exists in the literature and in buyer demand
 but not yet in the package — rather than a gap measured against any one competitor. An indicative
 minor-version target is given; cadence holds one coherent theme per minor.
 
-### 1 · Cross-fleet reputation & weighting *(target 3.17)*
+### 1 · Energy & carbon accounting *(target 3.18)*
 
-The federated round merges every member's contribution with equal weight, and the privacy accountant now
-bounds what each member can leak — but the platform has **no notion of a member's track record**: a member
-whose contributions repeatedly fail the no-regression gate still pulls the shared subspace as hard as a
-member whose contributions consistently help. The rung not yet first-class is **a reliability-weighted
-federated aggregation** — a per-member reputation, earned from how its past contributions fared against the
-gate, that discounts an unreliable or adversarial member's pull on the consensus geometry. The primitives
-are in place: the existing reliability scoring, the federated `SecureAggregator`, the no-regression and
-canary gates, and the signed audit chain.
+The cost report makes a run's dollar spend an auditable number held by a budget SLO, and the resident-memory
+budget does the same for footprint — but the platform reports **nothing about a run's energy or carbon**, the
+disclosure sustainability-reporting regimes are beginning to demand. The rung not yet first-class is **per-run
+energy and estimated carbon, reported on the existing cost-report surface and held by an optional SLO** — the
+energy analogue of the dollar budget. The primitives are in place: the per-run cost report and its budget
+SLOs, the token and latency accounting on every span, and the `ModelRegistry` that already carries per-model
+metadata.
 
-- **An earned reputation** — a per-member reliability signal accrued from how each past contribution fared
-  against the no-regression gate, on the audit chain, never from raw traffic.
-- **Reliability-weighted aggregation** — the `SecureAggregator` weights a member's contribution by its
-  reputation, so a repeatedly-regressing or adversarial member is discounted without being singled out.
-- **Bounded and reversible** — adoption still clears the same no-regression and canary gates, so a bad
-  reputation only ever lowers a member's pull, never bypasses the quality bar.
+- **Per-run energy & carbon** — an estimate accrued from the run's token, compute, and latency accounting
+  against a configurable per-model/per-region intensity factor, on the cost-report surface, never a new plane.
+- **Budgeted like a dollar** — an opt-in energy/carbon budget gated the way the cost report gates spend, so a
+  run that would exceed its sustainability envelope is surfaced and refused.
+- **Auditable & offline** — the estimate is a mechanical, deterministic number on the audit chain, computed
+  in-process with a deterministic default intensity table (no external service).
 
-*Ships as:* an opt-in reputation surface over the existing reliability scoring and the federated round; a
-`reputation` VincioBench family with a discount-the-regressor and a no-regression SLO; a runnable example.
+*Ships as:* an opt-in energy/carbon surface over the existing cost report; an `energy` VincioBench family with
+a per-run-estimate and a budget-refusal SLO; a runnable example.
 
 ---
 
@@ -127,9 +127,6 @@ Grouped by where they would land.
 - 🔭 **Formal verification of governance invariants** — machine-checkable proofs that residency,
   erasure, budget, and the shipped injection-containment invariant hold across the whole
   pipeline, beyond the signed audit chain, provable erasure, and the per-run containment check.
-- 🔭 **Energy & carbon accounting** — per-run energy and estimated carbon reported alongside cost and
-  held by an optional SLO, anticipating sustainability-disclosure demand, on the existing cost-report
-  surface.
 
 **Efficiency & reach**
 

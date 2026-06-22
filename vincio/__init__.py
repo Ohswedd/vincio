@@ -164,6 +164,13 @@ from .optimize.local_adaptation import (
 )
 from .optimize.loop import ExperimentProposer, ImprovementLoop, LoopResult
 from .optimize.reflective import ReflectiveOptimizer
+from .optimize.reputation import (
+    MemberReputation,
+    ReputationConfig,
+    ReputationError,
+    ReputationLedger,
+    ReputationReport,
+)
 from .optimize.rewards import RewardModel, VerifiableReward
 from .optimize.routing import GuardedBanditRouter, ModelCascade, Router
 from .optimize.self_improvement import (
@@ -233,7 +240,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.16.0"
+__version__ = "3.17.0"
 
 __all__ = [
     "ContextApp",
@@ -327,6 +334,12 @@ __all__ = [
     "FederatedPolicy",
     "FederatedRoundResult",
     "FederatedImprovement",
+    # cross-fleet reputation & weighting
+    "ReputationLedger",
+    "ReputationConfig",
+    "MemberReputation",
+    "ReputationReport",
+    "ReputationError",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

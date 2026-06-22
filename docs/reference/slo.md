@@ -247,6 +247,25 @@ boundary and that individual updates are unrecoverable, while the no-regression 
 holds that the adopting member's re-fit adapter clears the same at-least-as-good gate
 a local promotion does, versioned and reversible.
 
+## Cross-fleet reputation & weighting
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| A member's pull on the consensus geometry is weighted by a reputation earned only from how its contributions fared against the no-regression gate: discounting a regressing or adversarial member leans the merged subspace toward the reliable members, where an equal-weight merge would let it pull the consensus astray. | true | `families.reputation.discount_aligns_consensus` |
+| Reputation only ever lowers a member's pull, never bypasses the quality bar: a reliability-weighted round still adopts only when at-least-as-good as base, so even a pristine-reputation member cannot push a regressing adapter through the gate. | true | `families.reputation.gate_not_bypassed` |
+
+The federated round merged every member with equal weight, so a member whose
+contributions repeatedly fail the gate pulled the shared consensus as hard as one
+whose contributions consistently help. A reputation ledger earns a per-member
+reliability score from the gate verdicts on the audit chain — never from raw traffic —
+and the secure aggregator weights each member by it, discounting an unreliable or
+adversarial member without singling it out. The discount-the-regressor SLO holds that
+weighting measurably leans the consensus toward the reliable members; the
+no-regression SLO holds that the discount is bounded (a weight never leaves
+`[floor, 1]`) and reversible (adoption still clears the same gate), so reputation
+changes only which geometry the fleet converges toward when every candidate already
+passes the gate — it is never a way around it.
+
 ## Differential-privacy memory & training
 
 | SLO | Target | VincioBench metric (enforced by) |

@@ -1279,6 +1279,45 @@
     "families.federated.regression_refused": {
       "eq": true
     },
+    "families.reputation.regressor_discounted": {
+      "eq": true
+    },
+    "families.reputation.weight_floored": {
+      "eq": true
+    },
+    "families.reputation.weight_bounded": {
+      "eq": true
+    },
+    "families.reputation.discount_aligns_consensus": {
+      "eq": true
+    },
+    "families.reputation.reputation_weighted": {
+      "eq": true
+    },
+    "families.reputation.audit_replayable": {
+      "eq": true
+    },
+    "families.reputation.contribution_weighted": {
+      "eq": true
+    },
+    "families.reputation.adopted": {
+      "eq": true
+    },
+    "families.reputation.at_least_as_good": {
+      "eq": true
+    },
+    "families.reputation.verdict_recorded": {
+      "eq": true
+    },
+    "families.reputation.gate_not_bypassed": {
+      "eq": true
+    },
+    "families.reputation.regressor_weight": {
+      "lte": 0.5
+    },
+    "families.reputation.reliable_weight": {
+      "gte": 0.8
+    },
     "families.privacy.gaussian_rdp_exact": {
       "eq": true
     },

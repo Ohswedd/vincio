@@ -4,6 +4,75 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.17.0] - 2026-06-22
+
+Cross-fleet reputation & weighting. The federated round merged every member's
+contribution with **equal weight**, and the privacy accountant bounds what each
+member can *leak* — but the platform had **no notion of a member's track record**: a
+member whose contributions repeatedly fail the no-regression gate still pulled the
+shared consensus geometry as hard as one whose contributions consistently help. This
+release adds the missing rung — a per-member **reputation**, earned only from how each
+contribution fared against the gate (never from raw traffic), that discounts an
+unreliable or adversarial member's pull on the consensus. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path is
+the default, and without a ledger the federated round behaves exactly as before.
+
+### Added
+
+- **`ReputationLedger` + the reputation model (`vincio.optimize.reputation`).** A
+  per-member reliability signal kept as a Beta-Bernoulli posterior over no-regression
+  gate outcomes — a robust generalization of the existing `successes / calls`
+  reliability scoring: a newcomer earns the benefit of the doubt from a configurable
+  prior, a repeatedly-regressing member decays toward a floor, and (with `decay < 1`) a
+  reformed member recovers. `reputation(member)` is the posterior mean, `weight(member)`
+  maps it to an aggregation weight in `[weight_floor, 1]`, `record_outcome(member,
+  passed=)` composes one verdict, `record_round(members, passed=)` credits a whole
+  round, and `assign(members)` produces the round's weight vector.
+- **`ReputationConfig` / `MemberReputation` / `ReputationWeights` / `ReputationReport` /
+  `ReputationRow`.** The configuration (prior pseudo-counts, decay, weight band),
+  per-member snapshot, per-round weight assignment, and the per-member roll-up.
+  `ReputationError` inherits `OptimizationError`'s `OPTIMIZATION_ERROR` code (no new
+  catalog entry).
+- **Reliability-weighted aggregation.** `SecureAggregator(reputation=ledger)` (or an
+  explicit `weights=` map) weights a member's contribution by its reputation before
+  distilling the consensus subspace, so a regressor is discounted **without being
+  singled out**. The weight is folded into the contribution *before* the
+  secure-aggregation masks (via `ContributionBuilder.build(..., reputation_weight=)`),
+  so the masks still cancel exactly; the aggregator refuses to re-weight an
+  already-masked contribution (`FederatedError`), surfacing the cryptographic
+  constraint rather than silently corrupting the merge. `Contribution` carries an
+  auditable `reputation_weight`; the merged subspace records the per-member weights.
+- **Wired into the gated round.** When a ledger is bound,
+  `app.federated_improvement` / `app.adopt_federated` weight each member's contribution
+  and record the round's gate verdict back to the ledger (`FederatedPolicy.record_reputation`,
+  default on); `FederatedRoundResult` carries the applied `reputation_weights`. The
+  discount is bounded and reversible — a weight only ever lowers a member's pull, and
+  adoption still clears the same no-regression and canary gates — so reputation can
+  never bypass the quality bar.
+- **Audit-chain reputation.** Every update lands on the hash-chained, verifiable audit
+  log (`reputation_update`), and `ReputationLedger.from_audit(audit)` /
+  `replay_from_audit` reconstruct the whole ledger from the chain alone — a member's
+  standing is a mechanical, replayable number.
+- **App surface.** `app.use_reputation_ledger(config=)` attaches a ledger wired to the
+  audit chain, event bus, and store; `app.reputation_report(member=)` rolls up each
+  member's score and weight next to the cost and privacy reports.
+- **`reputation` VincioBench family + 2 SLOs.** Holds the discount-the-regressor,
+  weight-bounded/floored, audit-replayable, adopts-at-least-as-good, and
+  gate-not-bypassed invariants. SLOs: `reputation_discount_the_regressor`,
+  `reputation_no_regression`.
+- **Example.** `examples/61_cross_fleet_reputation_weighting.py` — a fully offline
+  walkthrough of earning, weighting, the discount, the bounded/reversible gate, and the
+  audit replay.
+
+### Changed
+
+- The public surface gains `ReputationLedger`, `ReputationConfig`, `MemberReputation`,
+  `ReputationReport`, and `ReputationError`; `vincio.optimize` additionally exports
+  `ReputationWeights` and `ReputationRow`. `SecureAggregator`, `ContributionBuilder`,
+  `FederatedImprovement`, `FederatedPolicy`, `FederatedRoundResult`, and `Contribution`
+  gain backward-compatible reputation fields/parameters (all defaulting to the
+  unweighted behavior).
+
 ## [3.16.0] - 2026-06-22
 
 Differential-privacy memory & training. The federated round bounds a *single

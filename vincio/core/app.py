@@ -310,6 +310,11 @@ class ContextApp:
         # budget across memory consolidations and federated contributions and
         # surfaces a privacy report alongside the cost report.
         self.privacy_accountant: Any = None
+        # Cross-fleet reputation ledger: opt-in, empty by default. When attached via
+        # ``app.use_reputation_ledger(...)`` it earns a per-member reliability score
+        # from how each federated contribution fared against the no-regression gate
+        # and reliability-weights the federated aggregation accordingly.
+        self.reputation_ledger: Any = None
         self.input_router = InputRouter()
 
         # provider
@@ -1517,6 +1522,53 @@ class ContextApp:
 
             return PrivacyReport()
         return self.privacy_accountant.report(subject)
+
+    def use_reputation_ledger(self, ledger: Any | None = None, *, config: Any | None = None) -> Any:
+        """Attach a cross-fleet reputation ledger over the federated round.
+
+        Earns a per-member reliability score from how each federated contribution
+        fared against the no-regression gate — a pass credits the contributor, a
+        regression debits it — and reliability-weights the
+        :class:`~vincio.optimize.federated.SecureAggregator` so a repeatedly
+        regressing or adversarial member is discounted without being singled out.
+        The discount is bounded and reversible: a weight only ever lowers a
+        member's pull, and adoption still clears the same gate, so reputation can
+        never bypass the quality bar. Every update lands on the same hash-chained
+        audit log as consent, privacy, and erasure, so a member's standing is a
+        mechanical, auditable, replayable number.
+
+        Once attached, :meth:`federated_improvement` / :meth:`adopt_federated`
+        weight contributions by reputation and record each round's verdict back
+        automatically, and :meth:`reputation_report` rolls up each member's score
+        next to the cost and privacy reports. Pass a configured
+        :class:`~vincio.optimize.reputation.ReputationLedger`, or let this build one
+        wired to the app's audit chain, event bus, and store. Returns the ledger::
+
+            app.use_reputation_ledger()
+            result = app.adopt_federated(golden, [mine, *peer_updates])
+        """
+        from ..optimize.reputation import ReputationLedger
+
+        if ledger is None:
+            ledger = ReputationLedger(
+                config=config, audit=self.audit, events=self.events, store=self.store
+            )
+        self.reputation_ledger = ledger
+        return ledger
+
+    def reputation_report(self, member: str | None = None):
+        """Per-member cross-fleet reputation roll-up.
+
+        Each row is a member's earned reliability score and the aggregation weight
+        it maps to, with the success / failure tally behind it, so a member's
+        standing in the fleet is an auditable number. Returns an empty
+        :class:`~vincio.optimize.reputation.ReputationReport` when no ledger is
+        attached."""
+        if self.reputation_ledger is None:
+            from ..optimize.reputation import ReputationReport
+
+            return ReputationReport()
+        return self.reputation_ledger.report(member)
 
     def erase_source(self, source: str, *, prove: bool = True) -> ErasureResult:
         """Right-to-erasure-by-source: purge a source from indexes, memory,

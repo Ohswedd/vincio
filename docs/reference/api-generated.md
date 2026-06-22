@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**239** public symbols.
+**244** public symbols.
 
 ## Classes
 
@@ -290,7 +290,7 @@ Generate an Article 27 **fundamental-rights impact assessment** (FRIA).
 
 Local ONNX dense embedder via ``fastembed``.
 
-### `FederatedImprovement(app, policy=…, dataset=…, registry=…, embedder=…, base_model=…)`
+### `FederatedImprovement(app, policy=…, dataset=…, registry=…, embedder=…, base_model=…, reputation=…)`
 
 Drive one gated, privacy-preserving federated round for the adopting member.
 
@@ -421,6 +421,10 @@ The record of one real, committed step of a model-predictive plan.
 ### `MatryoshkaEmbedder(inner, dimensions)`
 
 Matryoshka (MRL) dimension truncation over any embedder.
+
+### `MemberReputation(**data)`
+
+One member's reputation snapshot — its track record as an auditable number.
 
 ### `MemoryEngine(store=…, write_policy=…, decay_lambda=…, min_confidence=…, graph_enabled=…, embedder=…, vector_weight=…, retention_weight=…, ttl_days=…, audit=…, consent_ledger=…, privacy_accountant=…, privacy_mechanism=…)`
 
@@ -590,6 +594,22 @@ GEPA-style reflective prompt optimizer.
 
 Exponential intra-run relevance decay (the memory recency model, per run).
 
+### `ReputationConfig(**data)`
+
+How a member's gate track record maps to an aggregation weight.
+
+### `ReputationError(message, details=…, hint=…, docs_url=…)`
+
+A reputation operation could not proceed.
+
+### `ReputationLedger(config=…, audit=…, events=…, store=…)`
+
+A per-member, gate-earned reputation that weights federated aggregation.
+
+### `ReputationReport(**data)`
+
+Per-member reputation roll-up — alongside the cost and privacy reports.
+
 ### `ResearchAgent(app, budget=…, strategies=…, judge=…, min_support=…, require_citations=…)`
 
 Search → read → reflect → verify → synthesize, cited and budget-bounded.
@@ -666,7 +686,7 @@ Bounds one search: candidate cap, optional cost cap, optional deadline.
 
 The outcome of a search: the winner, every candidate, and why it stopped.
 
-### `SecureAggregator(privacy=…, rank=…, allowed_regions=…)`
+### `SecureAggregator(privacy=…, rank=…, allowed_regions=…, reputation=…)`
 
 Merge masked contributions into a :class:`FederatedSubspace` — never seeing one.
 

@@ -310,6 +310,11 @@ class Contribution(BaseModel):
     clipped_scale: float = 1.0
     dp_epsilon: float | None = None
     masked: bool = False
+    # The reliability weight folded into ``scatter`` before masking (1.0 = none).
+    # A reputation-discounted member releases a proportionally smaller-pull update;
+    # because the scale is applied before the secure-aggregation masks, the masks
+    # still cancel exactly in the aggregate. See :mod:`vincio.optimize.reputation`.
+    reputation_weight: float = 1.0
     # Governance attestation that travels with the numeric update.
     consent_basis: str | None = None
     residency: str = ""
@@ -363,8 +368,16 @@ class ContributionBuilder:
         consent_basis: str | None = None,
         residency: str = "",
         min_examples: int = 1,
+        reputation_weight: float = 1.0,
     ) -> Contribution:
-        """Build this member's numeric contribution from a grounded training set."""
+        """Build this member's numeric contribution from a grounded training set.
+
+        ``reputation_weight`` (``1.0`` by default) is the reliability weight the
+        federated round assigns this member from its track record; it scales the
+        contribution's signal *before* the secure-aggregation masks are folded in,
+        so a discounted member pulls the consensus less while the masks still
+        cancel exactly. See :mod:`vincio.optimize.reputation`.
+        """
         examples = list(training_set.examples)
         if len(examples) < min_examples:
             raise FederatedError(
@@ -397,6 +410,14 @@ class ContributionBuilder:
             clipped_scale = privacy.clip_norm / norm
             scatter = _scale(scatter, clipped_scale)
             clipped = True
+
+        # 1b. Reliability weighting — scale the *signal* by the member's reputation
+        #     weight before any noise or mask is added. A discounted member's pull on
+        #     the consensus shrinks proportionally while the DP noise stays calibrated
+        #     to the clip (so its privacy is unchanged) and the pairwise masks, added
+        #     last, still cancel exactly in the aggregate.
+        if reputation_weight != 1.0:
+            scatter = _scale(scatter, reputation_weight)
 
         # 2. Differential-privacy Gaussian mechanism (opt-in, seeded for tests).
         sigma = privacy.noise_sigma()
@@ -434,6 +455,7 @@ class ContributionBuilder:
             clipped_scale=round(clipped_scale, 9),
             dp_epsilon=privacy.dp_epsilon,
             masked=masked,
+            reputation_weight=round(reputation_weight, 9),
             consent_basis=consent_basis,
             residency=residency,
             provenance={
@@ -495,6 +517,14 @@ class SecureAggregator:
     k-anonymity), enforces a single ``base_model`` and embedding dimension across
     members, optionally enforces a residency allow-list, and extracts the consensus
     basis by deterministic federated PCA (:func:`_top_eigenvectors`).
+
+    Bind a :class:`~vincio.optimize.reputation.ReputationLedger` (or pass explicit
+    ``weights`` to :meth:`aggregate`) to **reliability-weight** the merge: a
+    member's contribution is scaled by its earned reputation, so a repeatedly
+    regressing or adversarial member is discounted without being singled out.
+    Because the masks only cancel at unit weight, a masked contribution must
+    already carry the assigned weight (folded in at build); the aggregator enforces
+    that and applies the weight directly only on the unmasked path.
     """
 
     def __init__(
@@ -503,15 +533,26 @@ class SecureAggregator:
         privacy: PrivacyConfig | None = None,
         rank: int = 8,
         allowed_regions: list[str] | None = None,
+        reputation: Any | None = None,
     ) -> None:
         self.privacy = privacy or PrivacyConfig()
         self.rank = rank
         self.allowed_regions = list(allowed_regions) if allowed_regions else []
+        self.reputation = reputation
 
     def aggregate(
-        self, contributions: list[Contribution], *, round_id: str = "round"
+        self,
+        contributions: list[Contribution],
+        *,
+        round_id: str = "round",
+        weights: dict[str, float] | None = None,
     ) -> FederatedSubspace:
-        """Securely merge ``contributions`` into the fleet-consensus subspace."""
+        """Securely merge ``contributions`` into the fleet-consensus subspace.
+
+        When a :class:`~vincio.optimize.reputation.ReputationLedger` is bound (or
+        ``weights`` are passed explicitly), each member's contribution is weighted
+        by its reputation before the consensus is distilled.
+        """
         members = {c.member_id for c in contributions}
         if len(members) < self.privacy.min_contributors:
             raise FederatedError(
@@ -542,11 +583,22 @@ class SecureAggregator:
         base_model = next(iter(base_models))
         dim = next(iter(dims))
 
+        # Resolve the per-member reliability weights: an explicit ``weights`` map
+        # wins, else a bound reputation ledger assigns them, else every member is
+        # weighted equally (the unweighted round, byte-identical to before).
+        applied_weights = self._resolve_weights(members, weights, round_id=round_id)
+
         # Sum the (masked) contributions — masks cancel across participants, so this
-        # is the true fleet scatter and no individual update was ever unmasked.
+        # is the true fleet scatter and no individual update was ever unmasked. A
+        # reputation weight is folded in here: on the unmasked path the aggregator
+        # scales the contribution directly; on the masked path the weight must
+        # already be carried (folded in before masking, or the masks would not
+        # cancel), so the aggregator only enforces consistency.
         total = _zeros(dim, dim)
         for contribution in contributions:
-            _add_into(total, contribution.scatter)
+            assigned = applied_weights.get(contribution.member_id, 1.0)
+            scatter = self._weighted_scatter(contribution, assigned)
+            _add_into(total, scatter)
         # Symmetrize to absorb any floating-point drift before the eigensolve.
         for i in range(dim):
             for j in range(i + 1, dim):
@@ -576,8 +628,48 @@ class SecureAggregator:
                 "members": sorted(members),
                 "total_examples": sum(c.n_examples for c in contributions),
                 "max_local_rank": max((c.local_rank for c in contributions), default=0),
+                "reputation_weighted": any(w != 1.0 for w in applied_weights.values()),
+                "reputation_weights": {m: applied_weights[m] for m in sorted(applied_weights)},
             },
         )
+
+    def _resolve_weights(
+        self,
+        members: set[str],
+        weights: dict[str, float] | None,
+        *,
+        round_id: str,
+    ) -> dict[str, float]:
+        """The per-member weight map for this round (explicit > ledger > equal)."""
+        if weights is not None:
+            return {m: float(weights.get(m, 1.0)) for m in members}
+        if self.reputation is not None:
+            assignment = self.reputation.assign(members, round_id=round_id)
+            return {m: assignment.get(m) for m in members}
+        return {m: 1.0 for m in members}
+
+    @staticmethod
+    def _weighted_scatter(contribution: Contribution, assigned: float) -> list[list[float]]:
+        """Apply ``assigned`` to ``contribution.scatter``, mask-safe.
+
+        If the contribution already carries the assigned weight (the production
+        path — the member folded it in before masking) the scatter is summed as-is.
+        Otherwise the weight is applied here, which is only safe for an unmasked
+        contribution; re-weighting a masked one would break mask cancellation, so
+        that case is refused with a clear error.
+        """
+        carried = contribution.reputation_weight
+        if abs(carried - assigned) <= 1e-9:
+            return contribution.scatter
+        if contribution.masked:
+            raise FederatedError(
+                f"cannot re-weight masked contribution from {contribution.member_id!r} "
+                f"(carries weight {carried:g}, ledger assigns {assigned:g}); a masked "
+                "contribution must be built with its reputation weight so the secure-"
+                "aggregation masks still cancel — rebuild it against the current ledger"
+            )
+        factor = assigned / carried if carried != 0.0 else assigned
+        return _scale(contribution.scatter, factor)
 
 
 # ---------------------------------------------------------------------------
@@ -689,6 +781,10 @@ class FederatedPolicy(BaseModel):
     min_samples: int = 4
     alpha: float = 0.05
     gates: dict[str, str] | None = None
+    # Reputation (opt-in: active only when a ReputationLedger is bound). When
+    # ``record_reputation`` is set, the round records its gate verdict back to the
+    # ledger for every contributor, so a member's reliability accrues across rounds.
+    record_reputation: bool = True
     # Eval & lifecycle.
     concurrency: int = 4
     keep_versions: int = 10
@@ -729,6 +825,7 @@ class FederatedRoundResult(BaseModel):
     verdict: CanaryVerdict | None = None
     rolled_back_to: int | None = None
     privacy: PrivacyAccounting | None = None
+    reputation_weights: dict[str, float] | None = None
     reason: str = ""
 
 
@@ -749,6 +846,14 @@ class FederatedImprovement:
     and refits but refuses to adopt, since it cannot prove no regression). The
     adopting member always refits over its **own** local data (``runs`` /
     ``training_set`` / its captured traces) — it never sees another member's data.
+
+    Bind a :class:`~vincio.optimize.reputation.ReputationLedger` (via
+    :meth:`~vincio.core.app.ContextApp.use_reputation_ledger`, or the ``reputation``
+    argument) to **reliability-weight** the round: each member's contribution is
+    discounted by its earned track record against the no-regression gate, and the
+    round records its own verdict back to the ledger. The discount is bounded and
+    reversible — a weight only ever lowers a member's pull, and adoption still
+    clears the same gate — so a bad reputation can never bypass the quality bar.
     """
 
     def __init__(
@@ -760,6 +865,7 @@ class FederatedImprovement:
         registry: AdapterRegistry | None = None,
         embedder: Embedder | None = None,
         base_model: str | None = None,
+        reputation: Any | None = None,
     ) -> None:
         self.app = app
         self.policy = policy or FederatedPolicy()
@@ -767,6 +873,12 @@ class FederatedImprovement:
         self.registry = registry or AdapterRegistry()
         self.embedder = embedder or app.embedder
         self.base_model = base_model or app.model
+        # The cross-fleet reputation ledger (opt-in): when bound, contributions are
+        # weighted by each member's earned reliability and the round records its
+        # gate verdict back. Defaults to the app's attached ledger, if any.
+        self.reputation = reputation if reputation is not None else getattr(
+            app, "reputation_ledger", None
+        )
         self.events: list[FederatedEvent] = []
         self.result = FederatedRoundResult(
             round_id=self.policy.round_id,
@@ -818,6 +930,14 @@ class FederatedImprovement:
                 update={"dp_epsilon": privacy.dp_epsilon * spend.downweight}
             )
 
+        # Reliability weighting: a member discounted by its track record releases a
+        # proportionally smaller-pull update. The weight is public (derived from the
+        # gate verdicts on the audit chain), folded into the signal before masking so
+        # the secure-aggregation masks still cancel exactly.
+        reputation_weight = (
+            self.reputation.weight(member_id) if self.reputation is not None else 1.0
+        )
+
         builder = ContributionBuilder(embedder=self.embedder, privacy=privacy)
         contribution = await builder.build(
             corpus,
@@ -828,6 +948,7 @@ class FederatedImprovement:
             consent_basis=consent_basis,
             residency=region,
             min_examples=1,
+            reputation_weight=reputation_weight,
         )
         self.app.audit.record(
             "federated_contribution",
@@ -839,6 +960,7 @@ class FederatedImprovement:
                 "n_examples": contribution.n_examples,
                 "masked": contribution.masked,
                 "dp_epsilon": contribution.dp_epsilon,
+                "reputation_weight": contribution.reputation_weight,
                 "residency": region,
                 "consent_basis": consent_basis,
                 "privacy_spent_epsilon": spend.cumulative_epsilon if spend else None,
@@ -989,12 +1111,18 @@ class FederatedImprovement:
         )
 
         aggregator = SecureAggregator(
-            privacy=policy.privacy, rank=policy.rank, allowed_regions=policy.allowed_regions
+            privacy=policy.privacy,
+            rank=policy.rank,
+            allowed_regions=policy.allowed_regions,
+            reputation=self.reputation,
         )
         subspace = aggregator.aggregate(contributions, round_id=policy.round_id)
         self.result.subspace_digest = subspace.digest
         self.result.subspace_rank = subspace.rank
         self.result.privacy = subspace.privacy
+        applied_weights = subspace.provenance.get("reputation_weights") or {}
+        if subspace.provenance.get("reputation_weighted"):
+            self.result.reputation_weights = applied_weights
         yield self._emit(
             FederatedEvent(
                 phase="aggregate",
@@ -1011,6 +1139,8 @@ class FederatedImprovement:
                     "dp_epsilon": subspace.privacy.dp_epsilon,
                     "clip_norm": subspace.privacy.clip_norm,
                     "min_contributors": subspace.privacy.min_contributors,
+                    "reputation_weighted": bool(subspace.provenance.get("reputation_weighted")),
+                    "reputation_weights": applied_weights,
                 },
             )
         )
@@ -1089,6 +1219,12 @@ class FederatedImprovement:
                 reason=verdict.reason,
             )
         )
+
+        # Reputation accrual: the round's gate verdict is each contributor's track
+        # record for this round — a pass credits every contributor, a regression
+        # debits them — composed onto the bound ledger and stamped on the audit
+        # chain, so the next round's weights reflect how this one fared.
+        self._record_reputation(contributions, verdict, weights=applied_weights)
 
         if not verdict.passed:
             current = self.registry.active(policy.name)
@@ -1170,6 +1306,26 @@ class FederatedImprovement:
         )
 
     # -- internals ----------------------------------------------------------
+
+    def _record_reputation(
+        self,
+        contributions: list[Contribution],
+        verdict: CanaryVerdict,
+        *,
+        weights: dict[str, float],
+    ) -> None:
+        """Compose this round's gate verdict onto every contributor's reputation."""
+        if self.reputation is None or not self.policy.record_reputation:
+            return
+        from .reputation import ReputationWeights
+
+        self.reputation.record_round(
+            (c.member_id for c in contributions),
+            passed=verdict.passed,
+            round_id=self.policy.round_id,
+            weights=ReputationWeights(round_id=self.policy.round_id, weights=weights),
+            details={"delta": verdict.delta, "metric": self.policy.metric},
+        )
 
     def _emit(self, event: FederatedEvent) -> FederatedEvent:
         self.events.append(event)

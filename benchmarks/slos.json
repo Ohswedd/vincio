@@ -1293,6 +1293,26 @@
       "rationale": "Sharing across a trust boundary must never trade quality for breadth; the gate is the at-least-as-good guarantee. Companion budgets gate that a regressing federated adapter is refused with the registry head unchanged, and that adoption is reversible."
     },
     {
+      "id": "reputation_discount_the_regressor",
+      "category": "quality",
+      "statement": "A member's pull on the consensus geometry is weighted by a reputation earned only from how its past contributions fared against the no-regression gate: discounting a repeatedly-regressing or adversarial member leans the merged subspace toward the reliable members, where an equal-weight merge would let the regressor pull it astray.",
+      "metric": "families.reputation.discount_aligns_consensus",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation.discount_aligns_consensus",
+      "rationale": "Equal-weight aggregation lets an unreliable member pull the consensus as hard as a reliable one; reputation weighting must measurably discount it. The budget gates that the weighted merge aligns the consensus closer to the reliable member than the unweighted merge — companion budgets gate that the regressor's weight is the smaller, that a weight never leaves [floor, 1] (discounted, never zeroed), and that reputation is reconstructable from the audit chain."
+    },
+    {
+      "id": "reputation_no_regression",
+      "category": "quality",
+      "statement": "Reputation only ever lowers a member's pull, never bypasses the quality bar: a reliability-weighted federated round still adopts only when at-least-as-good as base, so even a member with a pristine reputation cannot push a regressing adapter through the no-regression gate.",
+      "metric": "families.reputation.gate_not_bypassed",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation.gate_not_bypassed",
+      "rationale": "Weighting changes which geometry the fleet converges toward when every candidate already clears the gate — it must never become a way around the gate. The budget gates that a regressing adapter from pristine-reputation contributors is still refused and reversible; companion budgets gate that the round adopts when at-least-as-good and records its verdict back to the ledger."
+    },
+    {
       "id": "privacy_budget_composes",
       "category": "privacy",
       "statement": "A subject's cumulative (ε, δ) privacy loss composes across every memory consolidation and learning round their data touches: the Rényi/moments accountant tracks the running budget across rounds and bounds it more tightly than naively summing each step's ε.",

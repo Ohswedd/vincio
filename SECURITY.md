@@ -212,6 +212,26 @@ decision on the audit chain. The mask seeds and DP noise are deterministic for
 offline testing; a production deployment derives the mask seeds from a key-agreement
 protocol rather than a shared seed.
 
+**Cross-fleet reputation** adds a defense against a member that contributes
+*consistently harmful* geometry. Equal-weight aggregation lets a repeatedly-regressing
+or adversarial member pull the shared consensus as hard as a reliable one; a
+`ReputationLedger` (`app.use_reputation_ledger`) earns a per-member reliability score
+— a Beta-Bernoulli posterior over how each past contribution fared against the
+no-regression gate, accrued only from gate verdicts on the signed audit chain, never
+from raw traffic — and the `SecureAggregator` weights a member's contribution by that
+score, **discounting an unreliable member without singling it out**. The weight is
+folded into the contribution *before* the secure-aggregation masks, so the masks still
+cancel exactly; a masked contribution must carry the assigned weight, and the
+aggregator refuses to re-weight it after the fact (which would break cancellation).
+The discount is **bounded and reversible by construction**: a weight never leaves
+`[weight_floor, 1]`, so a bad reputation only ever *lowers* a member's pull — it can
+never zero a member out, never raise one past parity, and never bypass the quality
+bar, because adoption still clears the same no-regression and canary gates. Reputation
+changes only which geometry the fleet converges toward when every candidate already
+passes the gate; it is a discount on influence, not a substitute for the gate. Every
+update is on the audit chain and reconstructable from it (`ReputationLedger.from_audit`),
+so a member's standing is a mechanical, auditable, tamper-evident number.
+
 ### Audit integrity & tamper-evidence
 
 Every run lands on an append-only, hash-chained audit log, verifiable offline
