@@ -69,6 +69,18 @@ from .lineage import (
     build_erasure_proof,
     verify_erasure_proof,
 )
+from .privacy import (
+    PrivacyAccountant,
+    PrivacyBudget,
+    PrivacyBudgetError,
+    PrivacyDecision,
+    PrivacyMechanism,
+    PrivacyReport,
+    PrivacyRow,
+    PrivacySpend,
+    gaussian_rdp,
+    rdp_to_epsilon,
+)
 from .residency import ResidencyPolicy, infer_region_from_url, residency_violation
 from .transparency import (
     ContentSigner,
@@ -136,6 +148,17 @@ __all__ = [
     "ConsentDecision",
     "Purpose",
     "LawfulBasis",
+    # differential-privacy accounting
+    "PrivacyAccountant",
+    "PrivacyBudget",
+    "PrivacyBudgetError",
+    "PrivacyDecision",
+    "PrivacyMechanism",
+    "PrivacyReport",
+    "PrivacyRow",
+    "PrivacySpend",
+    "gaussian_rdp",
+    "rdp_to_epsilon",
     # residency
     "ResidencyPolicy",
     "residency_violation",

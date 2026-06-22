@@ -4,6 +4,66 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.16.0] - 2026-06-22
+
+Differential-privacy memory & training. The federated round bounds a *single
+member's per-round influence* with clipping and an optional Gaussian mechanism, but
+the platform had **no end-to-end privacy accountant**: a per-subject, cross-round
+budget that composes every memory consolidation and learning round a subject's data
+touches and *refuses* once the budget is spent. This release adds it — a provable,
+composing, per-subject privacy budget over memory consolidation and the whole
+learning loop. Entirely additive and backward-compatible — `API_VERSION` stays
+`3.0`, the dependency-free offline path is the default, and nothing below runs unless
+you opt in.
+
+### Added
+
+- **`PrivacyAccountant` + the accountant's math (`vincio.governance.privacy`).** A
+  Rényi / moments accountant that composes the cumulative `(ε, δ)` a subject's data
+  has spent across every accounted release into one running budget — far more tightly
+  than naively summing each step's `ε`. `gaussian_rdp(z, sample_rate=, steps=)` is
+  the (Poisson-sub-sampled) Gaussian-mechanism RDP curve (exact `α / 2z²` at full
+  batch, the moments-accountant binomial bound under sub-sampling), and
+  `rdp_to_epsilon(rdp, delta=)` is the standard RDP→`(ε, δ)` conversion.
+- **`PrivacyMechanism` / `PrivacyBudget` / `PrivacySpend` / `PrivacyDecision`.** A
+  mechanism models one Gaussian release (noise multiplier, sample rate, steps); a
+  budget is a per-subject (or default) `(ε, δ)` ceiling with an `on_breach` policy
+  (`refuse` — a hard cap — or `downweight` — clip harder so the release's sensitivity
+  and privacy cost fit). `check` decides whether a release fits; `charge` gates and
+  commits, raising `PrivacyBudgetError` (code `PRIVACY_BUDGET_EXCEEDED`) on a refusal.
+  Budgets are per-subject and isolated.
+- **`PrivacyReport` + `app.privacy_report()`.** A per-subject roll-up of `ε` spent
+  against the ceiling, with operation and refusal counts — the privacy analogue of
+  `app.cost_report()`. Every spend (`privacy_spend`) and refusal (`privacy_refused`)
+  lands on the hash-chained, verifiable audit log.
+- **App surface.** `app.use_privacy_accountant(default_budget=, default_mechanism=)`
+  attaches an accountant wired to the audit chain and store;
+  `app.set_privacy_budget(subject_id=, epsilon=, delta=, on_breach=)` is the
+  one-liner for a budget.
+- **Wired integrations.** Memory consolidation (`app.memory.consolidate(session_id,
+  user_id=)`) charges the subject's budget and refuses an over-budget consolidation —
+  the `ConsolidationReport` now carries `privacy_refused` and `privacy_epsilon`.
+  Federated contributions compose the **same** budget when the federated
+  `PrivacyConfig` configures the Gaussian mechanism (`dp_epsilon` set); an
+  over-budget contribution is refused, a down-weighted one is released more privately
+  (the mechanism's `ε` scaled down — more noise relative to sensitivity).
+- **`privacy` VincioBench family + 3 SLOs.** Holds the Gaussian-RDP exactness,
+  cross-round composition, budget refusal, per-subject isolation, down-weight,
+  memory- and federated-gating, report, and audit-chain invariants. SLOs:
+  `privacy_budget_composes`, `privacy_budget_refuses`, `privacy_budget_auditable`.
+- **Example.** `examples/60_differential_privacy_memory_training.py` — a fully
+  offline walkthrough of accounting, refusal, federation, down-weight, and the report.
+
+### Changed
+
+- `MemoryEngine` accepts an optional `privacy_accountant` / `privacy_mechanism`;
+  consolidation gates on the subject's budget when one is attached (unaccounted and
+  unchanged otherwise).
+- The public surface gains `PrivacyAccountant`, `PrivacyBudget`, `PrivacyMechanism`,
+  `PrivacySpend`, `PrivacyDecision`, `PrivacyReport`, and `PrivacyBudgetError`;
+  `vincio.governance` additionally exports `PrivacyRow`, `gaussian_rdp`, and
+  `rdp_to_epsilon`.
+
 ## [3.15.0] - 2026-06-22
 
 Federated / cross-org self-improvement. The platform already learns from its own

@@ -800,7 +800,25 @@ class FederatedImprovement:
         consent_basis = self._check_consent(subject)
         region = residency if residency is not None else self._residency_tag()
         corpus = self._build_training_set(runs, training_set)
-        builder = ContributionBuilder(embedder=self.embedder, privacy=policy.privacy)
+
+        # Differential-privacy budget gate: when an accountant is attached and the
+        # policy configures the Gaussian mechanism, this contribution composes the
+        # subject's cross-round privacy budget. A contribution that would exceed it
+        # is refused; a budget set to down-weight is honoured by releasing a *more
+        # private* contribution — the Gaussian mechanism's ``ε`` is scaled down by
+        # the same factor, so its noise rises (more noise at a fixed clip → the
+        # released noise multiplier ``z = σ/Δ`` rises to ``z/downweight``) and the
+        # discounted cost the accountant recorded matches the geometry released.
+        # (Scaling the clip alone would scale ``σ`` with it and leave ``z`` — and the
+        # true privacy cost — unchanged, an under-count.)
+        privacy = policy.privacy
+        spend = self._charge_privacy(subject, member_id=member_id)
+        if spend is not None and spend.downweight < 1.0 and privacy.dp_epsilon is not None:
+            privacy = privacy.model_copy(
+                update={"dp_epsilon": privacy.dp_epsilon * spend.downweight}
+            )
+
+        builder = ContributionBuilder(embedder=self.embedder, privacy=privacy)
         contribution = await builder.build(
             corpus,
             self.base_model,
@@ -823,6 +841,8 @@ class FederatedImprovement:
                 "dp_epsilon": contribution.dp_epsilon,
                 "residency": region,
                 "consent_basis": consent_basis,
+                "privacy_spent_epsilon": spend.cumulative_epsilon if spend else None,
+                "privacy_downweight": spend.downweight if spend else None,
             },
         )
         self.app.events.emit("federated.contribute", contribution.model_dump(exclude={"scatter"}))
@@ -849,6 +869,42 @@ class FederatedImprovement:
                 f"training consent denied for subject {subject!r}: {decision.reason}"
             )
         return decision.lawful_basis
+
+    def _charge_privacy(self, subject: str | None, *, member_id: str) -> Any:
+        """Compose this contribution onto the subject's DP budget.
+
+        Returns the recorded :class:`~vincio.governance.privacy.PrivacySpend`, or
+        ``None`` when no accountant is attached or the policy configures no
+        Gaussian mechanism (nothing differentially private to account). Raises
+        :class:`~vincio.governance.privacy.PrivacyBudgetError` when the budget
+        refuses the contribution.
+        """
+        accountant = getattr(self.app, "privacy_accountant", None)
+        privacy = self.policy.privacy
+        if (
+            accountant is None
+            or not subject
+            or privacy.dp_epsilon is None
+            or privacy.dp_epsilon <= 0.0
+            or privacy.clip_norm <= 0.0
+        ):
+            return None
+        from ..governance.privacy import PrivacyMechanism
+
+        # Noise relative to the clipped L2 sensitivity: z = σ/Δ, independent of the
+        # clip norm itself (σ = clip·√(2 ln(1.25/δ))/ε, so z = √(2 ln(1.25/δ))/ε).
+        noise_multiplier = privacy.noise_sigma() / privacy.clip_norm
+        mechanism = PrivacyMechanism(
+            label="federated_contribution", noise_multiplier=noise_multiplier
+        )
+        return accountant.charge(
+            subject,
+            mechanism,
+            operation="federated_contribution",
+            round_id=self.policy.round_id,
+            delta=privacy.dp_delta,
+            details={"member_id": member_id, "round_id": self.policy.round_id},
+        )
 
     def _residency_tag(self) -> str:
         regions = getattr(self.app.config.governance, "allowed_regions", []) or []

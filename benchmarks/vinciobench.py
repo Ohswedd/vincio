@@ -5375,6 +5375,204 @@ async def bench_federated() -> dict[str, Any]:
     }
 
 
+async def bench_privacy() -> dict[str, Any]:
+    """PrivacyBench: a composing, per-subject differential-privacy budget.
+
+    The federated round bounds a single member's per-round influence with clipping
+    and a Gaussian mechanism; this family holds the rung above it — an **end-to-end
+    privacy accountant** that composes every consolidation and learning round a
+    subject's data touches into one cumulative ``(ε, δ)`` and *refuses* once the
+    budget is spent. A Rényi/moments accountant composes across rounds far more
+    tightly than naively adding each step's ``ε``; a budget gates a write the way
+    the cost report gates a dollar (refuse, or down-weight by clipping harder); and
+    a per-subject report makes the spent budget an auditable number, every spend and
+    refusal on the hash-chained audit log. All deterministic and offline."""
+    from vincio import (
+        ContextApp,
+        FederatedPolicy,
+        PrivacyBudget,
+        VincioConfig,
+    )
+    from vincio.core.types import MemoryScope, MemoryType
+    from vincio.governance.privacy import (
+        PrivacyAccountant,
+        PrivacyMechanism,
+        gaussian_rdp,
+        rdp_to_epsilon,
+    )
+    from vincio.optimize.distill import TrainingExample, TrainingSet
+    from vincio.optimize.federated import PrivacyConfig
+    from vincio.retrieval.embeddings import LocalHashEmbedder
+
+    delta = 1e-5
+
+    # 1. The accountant's math: the full-batch Gaussian RDP is exact (α / 2z²).
+    rdp = gaussian_rdp(2.0, sample_rate=1.0, orders=(2, 4, 8))
+    gaussian_rdp_exact = bool(
+        all(abs(r - a / (2 * 4.0)) < 1e-9 for r, a in zip(rdp, (2, 4, 8), strict=True))
+    )
+    # An unspent budget reads ε = 0; sub-sampling amplifies privacy (lower ε).
+    zero_spend_zero_epsilon = bool(rdp_to_epsilon([0.0, 0.0, 0.0], delta=delta) == 0.0)
+    full = PrivacyMechanism(noise_multiplier=4.0).epsilon(delta=delta)
+    subsampled = PrivacyMechanism(noise_multiplier=4.0, sample_rate=0.1).epsilon(delta=delta)
+    subsampling_amplifies = bool(subsampled < full)
+
+    # 2. Composition across rounds: the cumulative ε grows (it composes) but stays
+    #    well under the naive sum of per-round ε (the moments accountant is tighter).
+    mech = PrivacyMechanism(noise_multiplier=4.0)
+    single = mech.epsilon(delta=delta)
+    acc = PrivacyAccountant(delta=delta)
+    for _ in range(4):
+        acc.record("subj", mech, operation="round")
+    cumulative4 = acc.spent("subj")
+    composes_across_rounds = bool(single < cumulative4 < 4 * single)
+    spend_monotonic = bool(
+        all(
+            a.cumulative_epsilon <= b.cumulative_epsilon + 1e-12
+            for a, b in zip(acc.spends("subj"), acc.spends("subj")[1:], strict=False)
+        )
+    )
+
+    # 3. Budget refusal (the privacy analogue of a hard cost cap) and per-subject
+    #    isolation: spending one subject's budget never touches another's.
+    gate = PrivacyAccountant(
+        default_budget=PrivacyBudget(epsilon=2.0, delta=delta), delta=delta
+    )
+    refused = False
+    for _ in range(8):
+        d = gate.check("alice", mech)
+        if not d.allowed:
+            refused = True
+            break
+        gate.record("alice", mech, operation="round")
+    budget_refused = bool(refused)
+    per_subject_isolated = bool(gate.spent("bob") == 0.0 and gate.spent("alice") > 0.0)
+
+    # 4. Down-weight: a budget set to down-weight admits a clipped-harder release
+    #    that lands within the ceiling instead of refusing outright.
+    dw = PrivacyAccountant(
+        default_budget=PrivacyBudget(epsilon=1.5, delta=delta, on_breach="downweight"),
+        delta=delta,
+    )
+    from vincio.governance.privacy import PrivacyBudgetError
+
+    weights = []
+    for _ in range(8):
+        try:
+            spend = dw.charge("carol", mech, operation="round")
+        except PrivacyBudgetError:
+            break
+        weights.append(spend.downweight)
+    downweight_within_budget = bool(
+        dw.spent("carol") <= 1.5 + 1e-6 and any(w < 1.0 for w in weights)
+    )
+
+    # 5. Memory consolidation is gated: an over-budget consolidation is refused and
+    #    the subject's episodes simply stay episodic; an under-budget one promotes.
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    cfg.storage.metadata = "memory://"  # deterministic on re-run; no on-disk spend log
+    app = ContextApp(name="dp", provider=MockProvider(default_text="ok"), config=cfg)
+    app.use_privacy_accountant(
+        default_budget=PrivacyBudget(epsilon=2.0, delta=delta),
+        default_mechanism=PrivacyMechanism(noise_multiplier=4.0),
+    )
+    app.add_memory()
+    eng = app.memory
+    # Distinct episodic content so the write policy keeps each as its own memory
+    # (near-duplicate facts would be collapsed before reaching consolidation).
+    facts = [
+        "the user prefers metric units and a dark theme",
+        "the user's home airport is SFO and they fly on Tuesdays",
+        "the user is allergic to penicillin",
+        "the user manages a team of six engineers in Berlin",
+    ]
+    consolidation_reports = []
+    for k in range(4):
+        for i, fact in enumerate(facts):
+            eng.write_fact(
+                f"{fact} (note {k}.{i})",
+                scope=MemoryScope.SESSION,
+                owner_id="sess-alice",
+                type=MemoryType.FACT,
+                confidence=0.9,
+            )
+        consolidation_reports.append(await eng.consolidate("sess-alice", user_id="alice"))
+    consolidation_allowed_under_budget = bool(consolidation_reports[0].promoted >= 1)
+    consolidation_gated = bool(any(r.privacy_refused for r in consolidation_reports))
+
+    # 6. Federated contributions compose the same per-subject budget and refuse.
+    emb = LocalHashEmbedder(dim=64)
+    fed_app = ContextApp(name="org-a", provider=MockProvider(default_text="x"), config=cfg)
+    fed_app.embedder = emb
+    fed_app.use_privacy_accountant(default_budget=PrivacyBudget(epsilon=1.5, delta=delta))
+    fed_ts = TrainingSet(
+        name="fed",
+        examples=[
+            TrainingExample(
+                messages=[
+                    {"role": "user", "content": f"q {i}"},
+                    {"role": "assistant", "content": f"a {i}"},
+                ]
+            )
+            for i in range(4)
+        ],
+    )
+    fed_policy = FederatedPolicy(
+        privacy=PrivacyConfig(
+            min_contributors=2, clip_norm=1.0, dp_epsilon=0.8, dp_delta=delta
+        ),
+        consent_subject="alice",
+    )
+    ctl = fed_app.federated_improvement(fed_policy)
+    fed_refused = False
+    for _ in range(6):
+        try:
+            await ctl.build_contribution(
+                member_id="org-a", participants=["org-a", "org-b"], training_set=fed_ts
+            )
+        except Exception:
+            fed_refused = True
+            break
+    federated_gated = bool(fed_refused)
+
+    # 7. Provable & reportable: a per-subject report sits alongside the cost report,
+    #    and every spend and refusal is on the verifiable audit chain.
+    report = app.privacy_report()
+    alice_row = next((r for r in report.rows if r.subject_id == "alice"), None)
+    per_subject_report = bool(
+        alice_row is not None
+        and alice_row.spent_epsilon > 0.0
+        and alice_row.remaining_epsilon is not None
+        and alice_row.refusals >= 1
+    )
+    privacy_actions = {e.action for e in app.audit.entries if "privacy" in e.action}
+    on_audit_chain = bool(
+        "privacy_spend" in privacy_actions
+        and "privacy_refused" in privacy_actions
+        and app.audit.verify_chain()
+    )
+
+    return {
+        "gaussian_rdp_exact": gaussian_rdp_exact,
+        "zero_spend_zero_epsilon": zero_spend_zero_epsilon,
+        "subsampling_amplifies": subsampling_amplifies,
+        "composes_across_rounds": composes_across_rounds,
+        "spend_monotonic": spend_monotonic,
+        "budget_refused": budget_refused,
+        "per_subject_isolated": per_subject_isolated,
+        "downweight_within_budget": downweight_within_budget,
+        "consolidation_allowed_under_budget": consolidation_allowed_under_budget,
+        "consolidation_gated": consolidation_gated,
+        "federated_gated": federated_gated,
+        "per_subject_report": per_subject_report,
+        "on_audit_chain": on_audit_chain,
+        "subjects": int(len(report.rows)),
+        "single_round_epsilon": round(single, 4),
+        "cumulative_epsilon": round(cumulative4, 4),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -5404,6 +5602,7 @@ FAMILIES = {
     "semantic_cache": bench_semantic_cache,
     "local_adaptation": bench_local_adaptation,
     "federated": bench_federated,
+    "privacy": bench_privacy,
     "breaking_2_0": bench_breaking_2_0,
 }
 

@@ -126,6 +126,8 @@ class MemoryEngine:
         ttl_days: Mapping[str, float] | None = None,
         audit: AuditLog | None = None,
         consent_ledger: ConsentLedger | None = None,
+        privacy_accountant: Any | None = None,
+        privacy_mechanism: Any | None = None,
     ) -> None:
         self.store = store or InMemoryMemoryStore()
         self.write_policy = write_policy or MemoryWritePolicy()
@@ -140,6 +142,11 @@ class MemoryEngine:
         # Optional consent ledger: when set, recall drops any memory whose
         # ``purpose`` no longer has active consent for its subject (``owner_id``).
         self.consent_ledger = consent_ledger
+        # Optional differential-privacy accountant: when set, consolidating a
+        # subject's episodes charges the subject's privacy budget and refuses
+        # (or down-weights) a consolidation that would exceed it.
+        self.privacy_accountant = privacy_accountant
+        self.privacy_mechanism = privacy_mechanism
         self.working: dict[str, Any] = {}  # L0 working memory (one run)
         self.conflicts: list[dict[str, str]] = []
         self._embedding_cache: dict[str, list[float]] = {}

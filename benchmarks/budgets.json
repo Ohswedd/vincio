@@ -1278,6 +1278,48 @@
     },
     "families.federated.regression_refused": {
       "eq": true
+    },
+    "families.privacy.gaussian_rdp_exact": {
+      "eq": true
+    },
+    "families.privacy.zero_spend_zero_epsilon": {
+      "eq": true
+    },
+    "families.privacy.subsampling_amplifies": {
+      "eq": true
+    },
+    "families.privacy.composes_across_rounds": {
+      "eq": true
+    },
+    "families.privacy.spend_monotonic": {
+      "eq": true
+    },
+    "families.privacy.budget_refused": {
+      "eq": true
+    },
+    "families.privacy.per_subject_isolated": {
+      "eq": true
+    },
+    "families.privacy.downweight_within_budget": {
+      "eq": true
+    },
+    "families.privacy.consolidation_allowed_under_budget": {
+      "eq": true
+    },
+    "families.privacy.consolidation_gated": {
+      "eq": true
+    },
+    "families.privacy.federated_gated": {
+      "eq": true
+    },
+    "families.privacy.per_subject_report": {
+      "eq": true
+    },
+    "families.privacy.on_audit_chain": {
+      "eq": true
+    },
+    "families.privacy.subjects": {
+      "gte": 1
     }
   }
 }

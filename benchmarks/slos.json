@@ -1291,6 +1291,36 @@
       "threshold": true,
       "enforced_by": "families.federated.at_least_as_good",
       "rationale": "Sharing across a trust boundary must never trade quality for breadth; the gate is the at-least-as-good guarantee. Companion budgets gate that a regressing federated adapter is refused with the registry head unchanged, and that adoption is reversible."
+    },
+    {
+      "id": "privacy_budget_composes",
+      "category": "privacy",
+      "statement": "A subject's cumulative (ε, δ) privacy loss composes across every memory consolidation and learning round their data touches: the Rényi/moments accountant tracks the running budget across rounds and bounds it more tightly than naively summing each step's ε.",
+      "metric": "families.privacy.composes_across_rounds",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.privacy.composes_across_rounds",
+      "rationale": "A per-round bound is not a per-subject guarantee; the accountant must compose across rounds. The budget gates that the cumulative ε grows with each round yet stays below the naive sum — companion budgets gate the exact Gaussian RDP and the monotonicity of the spend."
+    },
+    {
+      "id": "privacy_budget_refuses",
+      "category": "privacy",
+      "statement": "A memory consolidation or a federated contribution that would push a subject's cumulative (ε, δ) past their privacy budget is refused — the privacy analogue of a hard cost cap — or down-weighted to fit; an over-budget release never silently proceeds.",
+      "metric": "families.privacy.budget_refused",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.privacy.budget_refused",
+      "rationale": "A budget that cannot refuse is advisory, not a guarantee. The budget gates that an over-budget step is refused — companion budgets gate that memory consolidation and federated contributions are both gated, that down-weighting keeps the release within the ceiling, and that one subject's spend never touches another's."
+    },
+    {
+      "id": "privacy_budget_auditable",
+      "category": "privacy",
+      "statement": "The spent privacy budget is a mechanical, auditable number, not a policy doc: a per-subject privacy report sits alongside the cost report, and every spend and refusal is recorded on the hash-chained, verifiable audit log.",
+      "metric": "families.privacy.on_audit_chain",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.privacy.on_audit_chain",
+      "rationale": "A privacy guarantee must be provable, not asserted. The budget gates that spends and refusals land on the verifiable audit chain — a companion budget gates that the per-subject report exposes spent and remaining ε with operation and refusal counts."
     }
   ]
 }

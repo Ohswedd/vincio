@@ -291,6 +291,10 @@ without an entry here.
 
 **Erasure could not complete.** A right-to-erasure-by-source operation did not complete atomically. Retry `app.erase_source(...)`; inspect which stores were swept in `.details`.
 
+### PRIVACY_BUDGET_EXCEEDED
+
+**Differential-privacy budget exceeded.** A consolidation or learning round would push a subject's cumulative (ε, δ) past its PrivacyBudget. Raise the subject's epsilon, set `on_breach='downweight'` to admit a clipped-harder release, or refuse the step; inspect spent/remaining ε in `.details` and `app.privacy_report()`.
+
 ### STORAGE_ERROR
 
 **Storage backend error.** A storage backend failed. Verify the URL/credentials for the relevant `storage.*` setting and that the schema is migrated.
