@@ -1480,7 +1480,11 @@ class ContextApp:
         # honored across calls; also record on the cost tracker for cost_report.
         meter(response.cost_usd, budget=budget or self.budget, usage=self._media_usage)
         self.cost_tracker.record_infra(response.cost_usd)
-        assets = getattr(response, "images", None) or [getattr(response, "audio", None)]
+        assets = (
+            getattr(response, "images", None)
+            or getattr(response, "videos", None)
+            or [getattr(response, "audio", None)]
+        )
         manifests = [getattr(a, "manifest", None) for a in assets if a is not None]
         self.audit.record(
             action,
@@ -1501,6 +1505,88 @@ class ContextApp:
         from ..documents.loaders import load_media
 
         return load_media(path, transcriber=transcriber, tenant_id=tenant_id)
+
+    def load_video(self, path: str, *, analyzer: Any, tenant_id: str | None = None):
+        """Ingest a video as a temporally-segmented Document
+        (:func:`vincio.documents.load_video`).
+
+        ``analyzer`` is a :class:`~vincio.documents.video.VideoAnalyzer`
+        (``MockVideoAnalyzer`` offline, ``ProviderVideoAnalyzer`` online). Each
+        segment becomes a section carrying its ``start`` / ``end`` timestamps, so
+        a retrieved claim grounds to a time range, not just a document."""
+        from ..documents.loaders import load_video
+
+        return load_video(path, analyzer=analyzer, tenant_id=tenant_id)
+
+    async def agenerate_video(
+        self,
+        prompt: Any,
+        *,
+        provider: Any,
+        model: str | None = None,
+        seconds: float = 5.0,
+        size: str = "1280x720",
+        budget: Any | None = None,
+    ):
+        """Generate a video through a
+        :class:`~vincio.generation.video.VideoProvider`, metered against the
+        budget, audited (``video_generate``), and C2PA-stamped per clip."""
+        from ..generation.media import meter_media_cost
+        from ..generation.video import VideoGenRequest
+
+        request = (
+            prompt
+            if isinstance(prompt, VideoGenRequest)
+            else VideoGenRequest(prompt=str(prompt), seconds=seconds, size=size)
+        )
+        kwargs = {"model": model} if model else {}
+        response = await provider.generate_video(request, **kwargs)
+        self._meter_and_audit_media(
+            "video_generate", response, request.prompt, budget, meter_media_cost
+        )
+        return response
+
+    def generate_video(
+        self, prompt: Any, *, provider: Any, model: str | None = None, **kwargs: Any
+    ):
+        """Synchronous :meth:`agenerate_video`."""
+        return run_sync(self.agenerate_video(prompt, provider=provider, model=model, **kwargs))
+
+    async def aedit_video(
+        self,
+        video: Any,
+        prompt: Any,
+        *,
+        provider: Any,
+        model: str | None = None,
+        seconds: float = 5.0,
+        budget: Any | None = None,
+    ):
+        """Edit/extend a video through a
+        :class:`~vincio.generation.video.VideoProvider`, metered, audited
+        (``video_edit``), and C2PA-stamped (the manifest marks it as edited)."""
+        from ..generation.media import meter_media_cost
+        from ..generation.video import VideoGenRequest
+
+        request = (
+            prompt
+            if isinstance(prompt, VideoGenRequest)
+            else VideoGenRequest(prompt=str(prompt), seconds=seconds)
+        )
+        kwargs = {"model": model} if model else {}
+        response = await provider.edit_video(video, request, **kwargs)
+        self._meter_and_audit_media(
+            "video_edit", response, request.prompt, budget, meter_media_cost
+        )
+        return response
+
+    def edit_video(
+        self, video: Any, prompt: Any, *, provider: Any, model: str | None = None, **kwargs: Any
+    ):
+        """Synchronous :meth:`aedit_video`."""
+        return run_sync(
+            self.aedit_video(video, prompt, provider=provider, model=model, **kwargs)
+        )
 
     def risk_tier(
         self,

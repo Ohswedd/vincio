@@ -152,9 +152,15 @@ def heading_chunker(document: Document, size: int, overlap: int) -> list[Chunk]:
         header = " > ".join(path)
         body = f"{header}\n{text}" if header else text
         page = section.get("page")
+        # Carry a temporal locator (audio/video transcript segments) onto the
+        # chunk so a retrieved claim grounds to a time range, not just a doc.
+        extra: dict[str, Any] = {}
+        start, end = section.get("start"), section.get("end")
+        if start is not None and end is not None:
+            extra["metadata"] = {"time_range": (float(start), float(end))}
         if count_tokens(body) <= size:
             chunks.append(
-                _make_chunk(document, body, index, section_path=path, page=page)
+                _make_chunk(document, body, index, section_path=path, page=page, **extra)
             )
             index += 1
         else:
@@ -164,7 +170,7 @@ def heading_chunker(document: Document, size: int, overlap: int) -> list[Chunk]:
                 chunks.append(
                     _make_chunk(
                         document, f"{header}\n{piece.strip()}" if header else piece.strip(),
-                        index, section_path=path, page=page,
+                        index, section_path=path, page=page, **extra,
                     )
                 )
                 index += 1

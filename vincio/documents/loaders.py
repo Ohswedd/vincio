@@ -488,6 +488,60 @@ def load_media(
     )
 
 
+def load_video(
+    path: str | Path,
+    *,
+    analyzer: Any,
+    tenant_id: str | None = None,
+) -> Document:
+    """Ingest a video as a temporally-segmented :class:`Document`.
+
+    ``analyzer`` is a :class:`~vincio.documents.video.VideoAnalyzer` (e.g.
+    ``MockVideoAnalyzer`` offline, ``ProviderVideoAnalyzer`` online). Each
+    :class:`~vincio.documents.video.VideoSegment` becomes a section carrying its
+    ``start`` / ``end`` timestamps (in seconds), transcript/caption, and sampled
+    frame count — so the timeline is preserved end-to-end and a downstream
+    answer can cite the moment it came from.
+    """
+    path = Path(path)
+    if not path.is_file():
+        raise LoaderError(f"file not found: {path}")
+    analysis = _resolve_maybe_async(analyzer.analyze(path))
+    sections: list[dict[str, Any]] = []
+    for index, segment in enumerate(analysis.segments, start=1):
+        prefix = segment.timestamp + (f" {segment.speaker}:" if segment.speaker else "")
+        sections.append(
+            {
+                "title": f"segment {index}",
+                "level": 1,
+                "path": [f"seg{index}"],
+                "text": f"{prefix} {segment.text}".strip(),
+                "start_line": 0,
+                "start": segment.start,
+                "end": segment.end,
+                "speaker": segment.speaker,
+                "frame_count": len(segment.frames),
+                "extractor": "video",
+            }
+        )
+    return Document(
+        source_uri=str(path),
+        text=analysis.transcript,
+        title=path.stem,
+        media_type="video/analysis",
+        sections=sections,
+        tenant_id=tenant_id,
+        metadata={
+            "extractor": "video",
+            "language": analysis.language,
+            "duration_s": analysis.duration_s,
+            "fps": analysis.fps,
+            "segment_count": len(sections),
+            "filename": path.name,
+        },
+    )
+
+
 # -- figures → evidence -------------------------------------------------------
 
 

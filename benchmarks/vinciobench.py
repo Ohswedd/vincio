@@ -6028,6 +6028,99 @@ async def bench_verification() -> dict[str, Any]:
     }
 
 
+async def bench_video() -> dict[str, Any]:
+    """VideoBench: native video understanding & generation — deterministic frame
+    sampling and temporal segmentation, video as a first-class evidence modality
+    the compiler scores/cites alongside text, a claim grounded to a time range
+    preserved through to the citation, and generated/edited video carrying a C2PA
+    manifest bound to its bytes — all offline against deterministic mocks."""
+    from vincio.context.compiler import ContextCompiler
+    from vincio.context.ir import ContextIR
+    from vincio.context.packet import ContextPacket
+    from vincio.core.types import EvidenceItem, Objective, VideoRef
+    from vincio.documents import (
+        MockVideoAnalyzer,
+        sample_frame_times,
+        segment_timeline,
+        video_evidence_items,
+    )
+    from vincio.generation.report import CitedReportBuilder
+    from vincio.generation.video import MockVideoProvider, VideoGenRequest
+    from vincio.governance import verify_manifest
+
+    # -- understanding: deterministic sampling + full-timeline segmentation --
+    frame_sampling_deterministic = sample_frame_times(10.0, count=3) == sample_frame_times(
+        10.0, count=3
+    ) == [1.667, 5.0, 8.333]
+    windows = segment_timeline(12.0, window_s=5.0)
+    segmentation_covers_timeline = bool(windows and windows[0][0] == 0.0 and windows[-1][1] == 12.0)
+
+    analysis = await MockVideoAnalyzer(segment_seconds=5.0, frames_per_segment=2).analyze("d.mp4")
+    evidence = video_evidence_items(analysis, source_id="VID1", video_path="/d.mp4")
+    video_modality_first_class = bool(
+        evidence and all(e.modality == "video" and e.time_range is not None for e in evidence)
+    )
+
+    # The compiler scores/orders/cites a clip beside text as a first-class candidate.
+    mixed = [EvidenceItem(source_id="d1", text="An unrelated fact.", relevance=0.2), *evidence]
+    candidates = ContextCompiler()._collect(evidence=mixed, memory=[], tool_results=[])
+    video_candidate_selected = any(c.modality == "video" and c.token_cost > 0 for c in candidates)
+    packet = ContextPacket.from_ir(ir=ContextIR(objective=Objective("q"), evidence=mixed), slim=True)
+    entry = next(e for e in packet.evidence_items if e["source_id"] == "VID1")
+    packet_carries_time_range = entry.get("modality") == "video" and "time_range" in entry
+
+    # -- temporal grounding: a claim resolves to the right time range, cited --
+    grounded = 0
+    for item in evidence:
+        expected = f"VID1:t{_fmt_secs(item.time_range[0])}-{_fmt_secs(item.time_range[1])}"
+        if item.citation_ref == expected:
+            grounded += 1
+    grounding_accuracy = round(grounded / len(evidence), 4) if evidence else 0.0
+
+    answer = f"The chart appears later [{evidence[-1].citation_ref}]."
+    report = await CitedReportBuilder().build_report(answer, evidence)
+    citation = report.citations[0]
+    citation_carries_timestamp = bool(
+        citation.time_range == evidence[-1].time_range and "s" in citation.footnote().split(",")[-1]
+    )
+
+    # -- provenance: generated/edited video binds a C2PA manifest to its bytes --
+    provider = MockVideoProvider()
+    clip = (await provider.generate_video(VideoGenRequest(prompt="a demo", seconds=4))).videos[0]
+    video_provenance_verifies = bool(
+        clip.manifest is not None
+        and clip.manifest.media_type == "video/mp4"
+        and verify_manifest(clip.manifest, clip.data)
+    )
+    tamper_rejected = bool(clip.manifest is not None and not verify_manifest(clip.manifest, clip.data + b"x"))
+    edited = (await provider.edit_video(VideoRef(path="/in.mp4"), VideoGenRequest(prompt="a demo"))).videos[0]
+    edit_marked_synthetic = bool(edited.manifest is not None and edited.manifest.is_synthetic)
+
+    return {
+        "understanding": {
+            "frame_sampling_deterministic": frame_sampling_deterministic,
+            "segmentation_covers_timeline": segmentation_covers_timeline,
+            "video_modality_first_class": video_modality_first_class,
+            "video_candidate_selected": video_candidate_selected,
+            "packet_carries_time_range": packet_carries_time_range,
+            "segments_checked": len(evidence),
+        },
+        "temporal_grounding": {
+            "grounding_accuracy": grounding_accuracy,
+            "citation_carries_timestamp": citation_carries_timestamp,
+        },
+        "provenance": {
+            "video_provenance_verifies": video_provenance_verifies,
+            "tamper_rejected": tamper_rejected,
+            "edit_marked_synthetic": edit_marked_synthetic,
+        },
+    }
+
+
+def _fmt_secs(value: float) -> str:
+    return f"{value:.2f}".rstrip("0").rstrip(".") or "0"
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -6061,6 +6154,7 @@ FAMILIES = {
     "privacy": bench_privacy,
     "energy": bench_energy,
     "verification": bench_verification,
+    "video": bench_video,
     "breaking_2_0": bench_breaking_2_0,
 }
 

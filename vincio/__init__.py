@@ -101,8 +101,11 @@ from .generation import (
     ImageProvider,
     MockImageProvider,
     MockSpeechProvider,
+    MockVideoProvider,
     SpeechProvider,
     SpeechRequest,
+    VideoGenRequest,
+    VideoProvider,
     generate_redline,
 )
 from .governance import (
@@ -258,7 +261,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.19.0"
+__version__ = "3.20.0"
 
 __all__ = [
     "ContextApp",
@@ -474,6 +477,9 @@ __all__ = [
     "SpeechProvider",
     "SpeechRequest",
     "MockSpeechProvider",
+    "VideoProvider",
+    "VideoGenRequest",
+    "MockVideoProvider",
     "RiskTierClassifier",
     "AnnexIVBuilder",
     "FRIAGenerator",

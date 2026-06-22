@@ -315,9 +315,18 @@ app.run("export button 500s").output.label
   value-level (numbers/dates) contradiction as structured conflicts; default is
   lexical.
 - **Multimodal-native packet.** `EvidenceItem` / `ContextCandidate` carry a
-  `modality` (text/image/table) and image/table payloads; the compiler scores,
-  budgets, orders, and cites them together. Slim packets `materialize()`
-  cross-process from a content-addressed `InMemoryEvidenceStore`.
+  `modality` (text/image/table/video) and image/table/video payloads; the
+  compiler scores, budgets, orders, and cites them together. Slim packets
+  `materialize()` cross-process from a content-addressed `InMemoryEvidenceStore`.
+- **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
+  video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
+  `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`
+  / `segment_timeline` address a clip without decoding it; a `VideoAnalyzer` yields
+  a `VideoAnalysis` (segments + frames) that `video_evidence_items` lowers into
+  `modality="video"` `EvidenceItem`s with a `time_range` whose `citation_ref`
+  renders `<source>:t<start>-<end>`. `EvidenceItem.time_range` flows from retrieval
+  chunking through the `CitedReportBuilder` footnote — temporal grounding at
+  sub-clip resolution. `app.load_video(path, analyzer=)`.
 - **Learned compression.** `from vincio.context import LLMLinguaCompressor`
   (drop-in `ContextCompiler.compressor`, protects numbers/entities/citations/
   query terms); faithfulness-gated via `app.gate_compression(dataset)` →
@@ -948,6 +957,13 @@ app.run("export button 500s").output.label
   via `mark_synthetic_content` + `embed_provenance` (PNG) / `write_sidecar_manifest`),
   budget-metered (`meter_media_cost`), audited (`image_generate`/
   `speech_synthesize`).
+- **Video.** `app.generate_video(prompt, *, provider=VideoProvider, model=,
+  seconds=)` / `agenerate_video` (`VideoGenRequest`) and `app.edit_video(video,
+  prompt, *, provider=)` / `aedit_video`; providers `Mock`/`OpenAI`(Sora)/
+  `Google`(Veo)/`HTTP`Video; every clip C2PA-stamped (manifest `media_type`
+  `video/mp4`, bound to its bytes), priced by `video_cost`/`VideoPrice`,
+  budget-metered, audited (`video_generate`/`video_edit`). Real frame decode
+  behind `vincio[video]`.
 - **Richer inputs.** `load_pdf(path, ocr_engine=)` OCR fallback (`vincio[ocr]`),
   layout-aware `load_document(path, layout=True)` / `extract_pdf_layout`
   (`vincio[pdf-layout]`), `load_media(path, transcriber=MockTranscriber()|

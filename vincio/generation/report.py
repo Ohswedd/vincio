@@ -49,6 +49,10 @@ EntailmentFn = (
 _MARKER_RE = re.compile(r"\[((?:[A-Za-z]+[\w.-]*:)?[A-Za-z0-9][\w.:-]*)\]")
 
 
+def _fmt_seconds(value: float) -> str:
+    return f"{value:.2f}".rstrip("0").rstrip(".") or "0"
+
+
 class ResolvedCitation(BaseModel):
     marker: str
     number: int
@@ -56,12 +60,21 @@ class ResolvedCitation(BaseModel):
     source_id: str
     source_uri: str | None = None
     page: int | None = None
+    # Temporal locator (start, end in seconds) for a clip-grounded citation, so a
+    # video/audio answer points at the moment it came from, not just the source.
+    time_range: tuple[float, float] | None = None
     section_path: list[str] = Field(default_factory=list)
     trust_level: str = "untrusted_document"
     excerpt: str = ""
 
     def footnote(self) -> str:
-        locator = f", p{self.page}" if self.page is not None else ""
+        if self.time_range is not None:
+            start, end = self.time_range
+            locator = f", t{_fmt_seconds(start)}–{_fmt_seconds(end)}s"
+        elif self.page is not None:
+            locator = f", p{self.page}"
+        else:
+            locator = ""
         if self.section_path:
             locator += " §" + " › ".join(self.section_path)
         uri = f" — {self.source_uri}" if self.source_uri else ""
@@ -173,6 +186,7 @@ class CitedReportBuilder:
                         source_id=item.source_id,
                         source_uri=item.metadata.get("source_uri") or item.media_ref,
                         page=item.page,
+                        time_range=item.time_range,
                         section_path=list(item.section_path),
                         trust_level=getattr(item.trust_level, "value", str(item.trust_level)),
                         excerpt=excerpt[:200] + ("…" if len(excerpt) > 200 else ""),

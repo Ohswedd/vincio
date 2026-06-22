@@ -388,8 +388,8 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
         _entry(
             "MEDIA_GENERATION",
             "Media generation failure",
-            "An image or speech provider call failed. Verify the media provider "
-            "credentials and that the requested model supports the modality.",
+            "An image, video, or speech provider call failed. Verify the media "
+            "provider credentials and that the requested model supports the modality.",
         ),
         # --- evals ---
         _entry(

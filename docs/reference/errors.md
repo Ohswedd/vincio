@@ -221,7 +221,7 @@ without an entry here.
 
 ### MEDIA_GENERATION
 
-**Media generation failure.** An image or speech provider call failed. Verify the media provider credentials and that the requested model supports the modality.
+**Media generation failure.** An image, video, or speech provider call failed. Verify the media provider credentials and that the requested model supports the modality.
 
 ### EVAL_ERROR
 

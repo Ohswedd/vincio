@@ -4,6 +4,73 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.20.0] - 2026-06-22
+
+Native video understanding & generation. The multimodal packet already scores, budgets,
+orders, and cites image and table evidence beside text, and generation flows images and
+audio **out** with C2PA provenance. Video was the modality not yet first-class — a recorded
+meeting, a screen capture, a product demo reduced to a transcript or a handful of stills,
+losing the temporal structure that makes it evidence. This release makes video first-class
+on the **existing** packet, never a new plane: a typed video reference and content part,
+deterministic frame sampling and temporal segmentation, a video analyzer that lowers a clip
+into typed evidence the context compiler scores and cites beside everything else, temporal
+grounding that carries a segment's time range through to the citation, and C2PA-bound video
+generation/editing on the same metered, audited path as images and audio. Entirely additive
+and backward-compatible — `API_VERSION` stays `3.0`, the dependency-free offline path is the
+default (a deterministic mock substitutes for every model/codec call), and the real
+frame-decode path installs behind the new `vincio[video]` extra.
+
+### Added
+
+- **Video as a typed modality (`vincio.core`).** A `VideoRef` (path/url, media type,
+  duration, fps, detail) joins `ImageRef` / `AudioRef`; `ContentPart` gains a `video` part
+  and `UserInput` a `video` list. `EvidenceItem` gains `modality="video"`, a `video` carrier,
+  and a `time_range` temporal locator whose `citation_ref` renders `<source>:t<start>-<end>`;
+  `scorable_text` and the modality-aware token cost cover video. `core.media` gains
+  `encode_video_bytes` and `DEFAULT_MAX_VIDEO_BYTES`.
+- **Video understanding (`vincio.documents.video`).** Deterministic, dependency-free
+  `sample_frame_times` (frame sampling) and `segment_timeline` (temporal segmentation)
+  address a clip without decoding it. A `VideoAnalyzer` turns a clip into a `VideoAnalysis`
+  (a `VideoSegment` timeline of transcripts/captions and sampled `VideoFrame`s);
+  `MockVideoAnalyzer` keeps offline runs deterministic, and `ProviderVideoAnalyzer` +
+  `PyAVFrameExtractor` decode and caption frames behind the `vincio[video]` extra.
+  `video_evidence_items` lowers an analysis into typed, time-stamped, citable evidence.
+- **First-class in the packet & temporal grounding.** The context compiler scores, budgets,
+  orders, and cites video evidence beside text/image/table (the packet serializes the video
+  payload and its `time_range`). Retrieval chunking carries a transcript segment's
+  `(start, end)` onto the chunk and `_to_evidence`, and the cited-report builder resolves a
+  claim to a `time_range`, rendering the footnote at the moment (`, t10–15s`) — so a
+  video-grounded answer is auditable at sub-clip resolution. The evidence compressor now
+  only compresses text, so a media item's footprint is never undercounted.
+- **Video generation with provenance (`vincio.generation.video`).** A `VideoProvider`
+  surface — `generate_video` / `edit_video` — over a deterministic `MockVideoProvider`,
+  OpenAI Sora (`OpenAIVideoProvider`), Google Veo (`GoogleVideoProvider`), and a generic
+  `HTTPVideoProvider`. Every clip carries a C2PA `ProvenanceManifest` bound to its bytes
+  (`video_cost` / `VideoPrice` price it); editing marks the manifest synthetic-and-edited.
+- **App surface.** `app.load_video(path, *, analyzer)` ingests a clip as a
+  temporally-segmented document; `app.generate_video` / `app.aedit_video` (+ sync wrappers)
+  generate/edit video metered against the budget, audited (`video_generate` / `video_edit`),
+  and C2PA-stamped — the same choke point images and audio use.
+- **`video` VincioBench family + 3 SLOs.** Holds deterministic sampling, full-timeline
+  segmentation, video as a first-class compiler candidate, temporal-grounding accuracy with
+  the timestamp surviving into the citation, and provenance binding (tamper rejected, edit
+  marked). SLOs: `video_temporal_grounding`, `video_generation_provenance_bound`,
+  `video_first_class_evidence`.
+- **Example.** `examples/64_video_understanding_and_generation.py` and the
+  [video guide](docs/guides/video.md) — a fully offline walkthrough of understanding a clip,
+  citing it at the moment, and generating provenance-bound video.
+
+### Changed
+
+- The public surface gains `VideoProvider`, `VideoGenRequest`, and `MockVideoProvider`;
+  `vincio.generation` additionally exports the video providers, `VideoGenResponse`,
+  `GeneratedVideo`, and `video_cost`; `vincio.documents` exports the video analyzers,
+  `VideoAnalysis` / `VideoSegment` / `VideoFrame`, `sample_frame_times`, `segment_timeline`,
+  `video_evidence_items`, and `load_video`; `vincio.core.types` gains `VideoRef`.
+  `MediaGenerationError` now also covers video. A new `vincio[video]` extra installs the
+  real frame-decode backend (PyAV + Pillow). The next scheduled roadmap theme is **edge /
+  WASM in-process runtime** (target 3.21).
+
 ## [3.19.0] - 2026-06-22
 
 Formal verification of governance invariants. The platform already **enforces** its

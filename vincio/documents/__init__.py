@@ -35,6 +35,7 @@ from .loaders import (
     load_docx,
     load_media,
     load_pdf,
+    load_video,
     load_xlsx,
     register_loader,
     supported_extensions,
@@ -56,6 +57,19 @@ from .parsers import (
     table_quality_checks,
 )
 from .registry import ParserRegistry, default_parser_registry
+from .video import (
+    FrameExtractor,
+    MockVideoAnalyzer,
+    ProviderVideoAnalyzer,
+    PyAVFrameExtractor,
+    VideoAnalysis,
+    VideoAnalyzer,
+    VideoFrame,
+    VideoSegment,
+    sample_frame_times,
+    segment_timeline,
+    video_evidence_items,
+)
 
 __all__ = [
     "SUPPORTED_EXTENSIONS",
@@ -64,6 +78,7 @@ __all__ = [
     "load_docx",
     "load_media",
     "load_pdf",
+    "load_video",
     "load_xlsx",
     "figure_evidence",
     "register_loader",
@@ -73,6 +88,18 @@ __all__ = [
     "ImageAnalyzer",
     "ImageObservation",
     "image_evidence_items",
+    # video understanding
+    "VideoFrame",
+    "VideoSegment",
+    "VideoAnalysis",
+    "VideoAnalyzer",
+    "MockVideoAnalyzer",
+    "ProviderVideoAnalyzer",
+    "FrameExtractor",
+    "PyAVFrameExtractor",
+    "sample_frame_times",
+    "segment_timeline",
+    "video_evidence_items",
     "LayoutWord",
     "LayoutBlock",
     "LayoutFigure",

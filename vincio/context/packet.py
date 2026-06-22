@@ -96,13 +96,19 @@ class ContextPacket(BaseModel):
                 "relevance": e.relevance,
                 # multimodal evidence is first-class in the packet, so a
                 # downstream renderer/citer knows whether to ship text, an image,
-                # or a table — and can cite each uniformly.
+                # a table, or a video clip — and can cite each uniformly.
                 "modality": e.modality,
             }
+            # Temporal locator carried onto the packet so a clip-grounded answer
+            # cites the moment it came from, not just the document.
+            if e.time_range is not None:
+                entry["time_range"] = list(e.time_range)
             if e.modality == "image" and e.image is not None:
                 entry["image"] = e.image.model_dump(mode="json")
             if e.modality == "table" and e.table is not None:
                 entry["table"] = e.table
+            if e.modality == "video" and e.video is not None:
+                entry["video"] = e.video.model_dump(mode="json")
             scorable = e.scorable_text
             if slim:
                 entry["text_hash"] = _text_hash(scorable)

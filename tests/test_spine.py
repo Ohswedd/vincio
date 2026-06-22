@@ -433,6 +433,22 @@ class TestProtocols:
         with pytest.raises(InputError):
             encode_image_bytes(ImageRef(path=str(path)), max_bytes=512)
 
+    def test_google_video_part_is_inline_data(self, tmp_path):
+        from vincio.core.types import ContentPart, Message, ModelRequest, VideoRef
+        from vincio.providers.google import GoogleProvider
+
+        path = tmp_path / "clip.mp4"
+        path.write_bytes(b"\x00\x00\x00\x18ftypisom")  # tiny stand-in clip
+        request = ModelRequest(
+            model="gemini-2.5-flash",
+            messages=[
+                Message(role="user", content=[ContentPart(type="video", video=VideoRef(path=str(path)))])
+            ],
+        )
+        _, contents = GoogleProvider(api_key="x")._render(request)
+        inline = contents[0]["parts"][0]["inlineData"]
+        assert inline["mimeType"] == "video/mp4" and inline["data"]
+
     def test_a2a_card_streaming_default_false(self):
         from vincio.a2a.protocol import AgentCard
 

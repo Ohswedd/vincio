@@ -23,6 +23,7 @@ __all__ = [
     "FileRef",
     "ImageRef",
     "AudioRef",
+    "VideoRef",
     "UserInput",
     "Budget",
     "BudgetUsage",
@@ -147,6 +148,26 @@ class AudioRef(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+class VideoRef(BaseModel):
+    """A reference to a video clip — first-class beside :class:`ImageRef` and
+    :class:`AudioRef`.
+
+    ``duration_seconds`` and ``fps`` describe the timeline so deterministic
+    frame sampling and temporal segmentation can address the clip without
+    decoding it; ``detail`` drives the modality-aware token budget the same way
+    it does for images. ``metadata`` carries the scorable surrogate (a
+    ``transcript`` / ``caption``) and any sampled-frame references.
+    """
+
+    path: str | None = None
+    url: str | None = None
+    media_type: str | None = "video/mp4"
+    duration_seconds: float | None = None
+    fps: float | None = None
+    detail: Literal["low", "high", "auto"] = "auto"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class UserInput(BaseModel):
     """Structured task input."""
 
@@ -154,6 +175,7 @@ class UserInput(BaseModel):
     files: list[FileRef] = Field(default_factory=list)
     images: list[ImageRef] = Field(default_factory=list)
     audio: list[AudioRef] = Field(default_factory=list)
+    video: list[VideoRef] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     tenant_id: str | None = None
     user_id: str | None = None
@@ -273,14 +295,22 @@ class Example(BaseModel):
 
 
 # the modality of an evidence unit. The compiler selects, dedupes, orders,
-# budgets, and cites image and table evidence as first-class candidates
+# budgets, and cites image, table, and video evidence as first-class candidates
 # alongside text — not as observations bolted on after the fact.
-EvidenceModality = Literal["text", "image", "table"]
+EvidenceModality = Literal["text", "image", "table", "video"]
 
 # Representative token cost of an image part by requested detail (calibrated to
 # the common vision pricing tiers), and per-cell cost for a structured table.
 _IMAGE_TOKEN_COST = {"low": 85, "high": 765, "auto": 512}
 _TABLE_TOKEN_PER_CELL = 3
+# A video segment ships several sampled frames plus its transcript, so its
+# floor token cost is a small multiple of a single image's by requested detail.
+_VIDEO_TOKEN_COST = {"low": 256, "high": 2048, "auto": 1024}
+
+
+def _fmt_seconds(value: float) -> str:
+    """Compact fixed-point seconds for a temporal citation ref (``12``/``12.5``)."""
+    return f"{value:.2f}".rstrip("0").rstrip(".") or "0"
 
 
 class EvidenceItem(BaseModel):
@@ -300,9 +330,14 @@ class EvidenceItem(BaseModel):
     text: str | None = None
     image: ImageRef | None = None
     table: dict[str, Any] | None = None  # {"columns": [...], "rows": [[...]], "markdown": "..."}
+    video: VideoRef | None = None
     media_ref: str | None = None
     page: int | None = None
     span: tuple[int, int] | None = None
+    # Temporal locator (start, end) in seconds for video / audio evidence, so a
+    # claim grounds to a moment in a clip the way ``page`` grounds it to a page.
+    # Preserved through to the citation (``citation_ref`` renders ``:t12-18.5``).
+    time_range: tuple[float, float] | None = None
     section_path: list[str] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
     trust_level: TrustLevel = TrustLevel.UNTRUSTED_DOCUMENT
@@ -314,7 +349,11 @@ class EvidenceItem(BaseModel):
 
     @property
     def citation_ref(self) -> str:
-        """Stable reference for citations, e.g. ``D1:p4`` style."""
+        """Stable reference for citations, e.g. ``D1:p4`` or, for a clip,
+        ``D1:t12-18.5`` (a time range in seconds) style."""
+        if self.time_range is not None:
+            start, end = self.time_range
+            return f"{self.source_id}:t{_fmt_seconds(start)}-{_fmt_seconds(end)}"
         if self.page is not None:
             return f"{self.source_id}:p{self.page}"
         return self.id
@@ -328,6 +367,10 @@ class EvidenceItem(BaseModel):
             return str(self.table.get("markdown") or self.table.get("caption") or "")
         if self.modality == "image" and self.image is not None:
             return str(self.image.metadata.get("caption") or self.image.metadata.get("alt") or "")
+        if self.modality == "video" and self.video is not None:
+            return str(
+                self.video.metadata.get("transcript") or self.video.metadata.get("caption") or ""
+            )
         return ""
 
     def estimated_token_cost(self) -> int:
@@ -341,6 +384,8 @@ class EvidenceItem(BaseModel):
             cols = self.table.get("columns") or []
             cells = sum(len(r) for r in rows) if rows else 0
             return max(self.token_cost, _TABLE_TOKEN_PER_CELL * (cells + len(cols)))
+        if self.modality == "video" and self.video is not None:
+            return _VIDEO_TOKEN_COST.get(self.video.detail, _VIDEO_TOKEN_COST["auto"])
         return self.token_cost
 
 
@@ -581,10 +626,11 @@ MessageRole = Literal["system", "developer", "user", "assistant", "tool"]
 
 
 class ContentPart(BaseModel):
-    type: Literal["text", "image", "audio", "tool_result"] = "text"
+    type: Literal["text", "image", "audio", "video", "tool_result"] = "text"
     text: str | None = None
     image: ImageRef | None = None
     audio: AudioRef | None = None
+    video: VideoRef | None = None
     tool_call_id: str | None = None
     tool_output: Any = None
 

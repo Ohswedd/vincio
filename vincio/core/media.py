@@ -17,14 +17,16 @@ import hashlib
 from pathlib import Path
 
 from .errors import InputError
-from .types import AudioRef, ImageRef
+from .types import AudioRef, ImageRef, VideoRef
 
 __all__ = [
     "DEFAULT_MAX_IMAGE_BYTES",
     "DEFAULT_MAX_AUDIO_BYTES",
+    "DEFAULT_MAX_VIDEO_BYTES",
     "encode_image_bytes",
     "image_to_data_url",
     "encode_audio_bytes",
+    "encode_video_bytes",
     "audio_format_label",
     "media_sha256",
 ]
@@ -36,6 +38,11 @@ DEFAULT_MAX_IMAGE_BYTES = 20 * 1024 * 1024  # 20 MB
 # Audio is more compressible than images and turns are longer, so the byte cap
 # is higher; it still bounds an inlined chat-audio part to a sane request size.
 DEFAULT_MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB
+
+# Video is the heaviest inline modality, so the cap is higher still; it bounds a
+# clip inlined as a chat part. Sample frames / segment the timeline rather than
+# inlining a large clip whole when the source runs past this.
+DEFAULT_MAX_VIDEO_BYTES = 200 * 1024 * 1024  # 200 MB
 
 # Map common audio MIME types to the short format label the chat APIs expect
 # (OpenAI ``input_audio.format``; informational elsewhere).
@@ -124,6 +131,28 @@ def encode_audio_bytes(
             f"audio {audio.path!r} is {len(data)} bytes, over the {max_bytes}-byte cap"
         )
     media_type = audio.media_type or "audio/wav"
+    return media_type, base64.standard_b64encode(data).decode("ascii")
+
+
+def encode_video_bytes(
+    video: VideoRef, *, max_bytes: int = DEFAULT_MAX_VIDEO_BYTES
+) -> tuple[str, str]:
+    """Return ``(media_type, base64_data)`` for a local-path video clip.
+
+    The video companion to :func:`encode_image_bytes`: reads the file, enforces
+    the byte cap, and base64-encodes it, so a typed :class:`VideoRef` becomes a
+    chat video part. Raises :class:`InputError` when there is no local path or the
+    file exceeds the cap — sample frames / segment the timeline for a large clip
+    rather than inlining it whole.
+    """
+    if not video.path:
+        raise InputError("video has no local path to encode")
+    data = Path(video.path).read_bytes()
+    if len(data) > max_bytes:
+        raise InputError(
+            f"video {video.path!r} is {len(data)} bytes, over the {max_bytes}-byte cap"
+        )
+    media_type = video.media_type or "video/mp4"
     return media_type, base64.standard_b64encode(data).decode("ascii")
 
 

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "3.19.0"
+version = "3.20.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -71,6 +71,8 @@ gen-docx = ["python-docx>=1.1"]
 gen-pdf = ["reportlab>=4.0"]
 gen-pptx = ["python-pptx>=0.6"]
 ocr = ["pypdfium2>=4.0", "pytesseract>=0.3", "pillow>=10.0"]
+# native video understanding — frame decoding for the real analyzer path
+video = ["av>=12.0", "pillow>=10.0"]
 parquet = ["pyarrow>=14.0"]
 msg = ["extract-msg>=0.48"]
 # 1.10 — computer-use / agentic browsing (real browser backend)
@@ -88,7 +90,7 @@ dev = [
   "mypy>=1.9",
 ]
 all = [
-  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,haystack,dspy,bigquery,snowflake,gen-docx,gen-pdf,gen-pptx,ocr,parquet,msg,computer-use,fastembed,splade,cross-encoder,gguf]",
+  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,haystack,dspy,bigquery,snowflake,gen-docx,gen-pdf,gen-pptx,ocr,video,parquet,msg,computer-use,fastembed,splade,cross-encoder,gguf]",
 ]
 
 [project.scripts]
