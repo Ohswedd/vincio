@@ -303,6 +303,8 @@ from .settlement import (
     AdmissionVerification,
     AttestationExchange,
     AttestationRevocation,
+    CollateralPool,
+    CollateralPoolVerification,
     Escrow,
     EscrowConfig,
     EscrowVerification,
@@ -311,6 +313,7 @@ from .settlement import (
     Meter,
     MeterReading,
     NettingSet,
+    PooledContract,
     PortableReputation,
     Reconciliation,
     ReputationAttestation,
@@ -328,9 +331,11 @@ from .settlement import (
     attestation_a2a_server,
     build_trust_model,
     combine_attestations,
+    draw_pool,
     gather_reputation,
     net_books,
     net_settlements,
+    post_collateral_pool,
     post_escrow,
     reconcile,
     revoke_attestation,
@@ -349,7 +354,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.34.0"
+__version__ = "3.35.0"
 
 __all__ = [
     "ContextApp",
@@ -529,6 +534,12 @@ __all__ = [
     "EscrowVerification",
     "post_escrow",
     "settle_escrow",
+    # cross-org collateral pooling & cross-contract margin
+    "CollateralPool",
+    "CollateralPoolVerification",
+    "PooledContract",
+    "post_collateral_pool",
+    "draw_pool",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

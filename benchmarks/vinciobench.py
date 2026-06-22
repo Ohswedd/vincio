@@ -8001,6 +8001,90 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and capped.verify().valid
     )
 
+    # 38. Collateral pooling: a counterparty backs many concurrent contracts with one posted
+    #     stake (a margin account), allocated per-contract proportional to each contract's
+    #     admission-required collateral — the collateral analogue of a NettingSet.
+    from vincio import CollateralPool, post_collateral_pool
+
+    def pool_contract(scope, price):
+        return Contract(
+            buyer="acme", seller="vendor", terms=ContractTerms(scope=scope, price_usd=price)
+        ).seal()
+
+    pc1, pc2, pc3 = pool_contract("a", 100.0), pool_contract("b", 200.0), pool_contract("c", 300.0)
+    pool = post_collateral_pool([pc1, pc2, pc3], fraction=0.1)  # 10 / 20 / 30, posted 60
+    pool_allocates_proportionally = bool(
+        pool.poster == "vendor"
+        and abs(pool.posted_usd - 60.0) <= 1e-6
+        and [round(c.allocated_usd, 6) for c in pool.contracts] == [10.0, 20.0, 30.0]
+        and abs(pool.required_open_usd - 60.0) <= 1e-6
+        and not pool.needs_topup
+        and pool.verify().valid
+    )
+
+    # 39. A clean delivery frees its committed capital back to the available balance (reused,
+    #     not stranded), and a breach draws a bounded slice from the shared stake.
+    pool.draw(settle_contract(pc1, cost_usd=60.0))  # clean — frees its $10 requirement
+    freed_after_clean = pool.available_usd
+    drawn = pool.draw(settle_contract(pc2, cost_usd=300.0))  # 50% over — draws half of $20
+    pool_draws_and_frees = bool(
+        abs(freed_after_clean - 10.0) <= 1e-6  # the clean delivery's requirement freed
+        and abs(pool.balance_usd - 50.0) <= 1e-6  # posted 60 − drawn 10
+        and drawn.state == "forfeited"
+        and abs(drawn.forfeited_usd - 10.0) <= 1e-6  # half its $20 requirement
+        and abs(drawn.released_usd - 10.0) <= 1e-6  # the rest freed
+        and drawn.breaches == ["price"]
+        and abs(pool.drawn_usd - 10.0) <= 1e-6
+        and pool.verify().valid
+    )
+
+    # 40. A pool committed below its open contracts' requirement surfaces a bounded, pinpointed
+    #     top-up obligation rather than silently over-committing; topping up clears it.
+    under = post_collateral_pool([pool_contract("d", 100.0)], fraction=0.4, posted=30.0)
+    topped = post_collateral_pool([pool_contract("e", 100.0)], fraction=0.4, posted=30.0)
+    topped.top_up(10.0)
+    pool_topup_surfaces = bool(
+        under.needs_topup
+        and abs(under.topup_usd - 10.0) <= 1e-6
+        and abs(under.coverage - 0.75) <= 1e-9  # allocations pro-rate down
+        and under.verify().valid  # an under-collateralized pool is still verifiable
+        and not topped.needs_topup
+        and abs(topped.available_usd) <= 1e-6
+        and topped.verify().valid
+    )
+
+    # 41. Auditable & offline: the allocations re-derive and the balance reconciles from the
+    #     bytes (a tampered allocation is caught even after re-sealing), and every transition
+    #     lands on the hash-chained audit log via app.post_collateral_pool / app.settle(pool=).
+    pool_app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+    pool_app.use_settlement_book()
+    apc = pool_contract("f", 100.0)
+    app_pool = pool_app.post_collateral_pool([apc], fraction=0.5)
+    pool_app.settle(apc, cost_usd=150.0, pool=app_pool)  # a breach drawn against the pool
+    tampered_pool = post_collateral_pool([pool_contract("g", 100.0)], fraction=0.5)
+    tampered_pool.contracts[0].allocated_usd = 9_999.0
+    tampered_pool.seal()
+    pool_auditable_offline = bool(
+        app_pool.contract(apc.id).state == "forfeited"
+        and app_pool.audit_id is not None
+        and len(pool_app.audit.query(action="collateral_pool")) == 2  # post + draw
+        and pool_app.audit.verify_chain()
+        and tampered_pool.verify().hash_ok
+        and not tampered_pool.verify().terms_sound
+    )
+
+    # 42. The pool is content-bound and deterministic: the same stake backing the same
+    #     contracts hashes identically regardless of the order they were added, and a wire
+    #     roundtrip preserves verification.
+    order_a = post_collateral_pool([pc1, pc3], fraction=0.4)
+    order_b = post_collateral_pool([pc3, pc1], fraction=0.4)
+    restored_pool = CollateralPool.from_wire(pool.to_wire())
+    pool_content_bound = bool(
+        order_a.compute_hash() == order_b.compute_hash()
+        and restored_pool.content_hash == pool.content_hash
+        and restored_pool.verify().valid
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -8039,6 +8123,11 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "escrow_forfeits_proportional_to_breach": escrow_forfeits_proportional_to_breach,
         "escrow_auditable_offline": escrow_auditable_offline,
         "escrow_folds_into_settlement_path": escrow_folds_into_settlement_path,
+        "pool_allocates_proportionally": pool_allocates_proportionally,
+        "pool_draws_and_frees": pool_draws_and_frees,
+        "pool_topup_surfaces": pool_topup_surfaces,
+        "pool_auditable_offline": pool_auditable_offline,
+        "pool_content_bound": pool_content_bound,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

@@ -77,10 +77,20 @@ artifact (the escrow analogue of a :class:`SettlementRecord`), and settling the 
 slice proportional to the shortfall on a breach (:func:`settle_escrow` /
 :meth:`SettlementBook.settle` with an attached escrow) — driven by the same settlement
 verdict the books already close on, so the collateral closes the same loop the settlement
-does. Everything is dependency-free, deterministic, and
-offline — never a hosted marketplace, a clearing house, an arbitration service, a
-reputation service, an underwriting service, an escrow custodian, or a payment processor,
-only a mechanical, verifiable reconciliation.
+does. And because a counterparty running many concurrent contracts would have to lock
+*separate* collateral per deal even though its breaches and clean deliveries net out — capital
+stranded contract-by-contract the way bilateral settlements were stranded book-by-book before
+netting — a :class:`CollateralPool` (:func:`post_collateral_pool` /
+:meth:`~vincio.core.app.ContextApp.post_collateral_pool`) pools it: a single posted stake
+backs many contracts at a deterministic, offline-verifiable allocation (proportional to each
+contract's admission-required collateral — the collateral analogue of a :class:`NettingSet`),
+settling a contract **draws** a bounded forfeiture from the shared stake and **releases** the
+rest back to the available balance (:func:`draw_pool` / :meth:`SettlementBook.settle` with an
+attached pool), and a pool committed below the collateral its open contracts require surfaces a
+bounded, pinpointed **top-up** obligation rather than silently over-committing. Everything is
+dependency-free, deterministic, and offline — never a hosted marketplace, a clearing house, an
+arbitration service, a reputation service, an underwriting service, an escrow custodian, a
+margin custodian, or a payment processor, only a mechanical, verifiable reconciliation.
 """
 
 from __future__ import annotations
@@ -124,6 +134,15 @@ from .book import (
     SettlementRow,
     settle_contract,
     settle_saga,
+)
+from .collateral import (
+    CollateralPool,
+    CollateralPoolVerification,
+    PooledContract,
+    PooledContractState,
+    PoolStatus,
+    draw_pool,
+    post_collateral_pool,
 )
 from .escrow import (
     Escrow,
@@ -232,6 +251,14 @@ __all__ = [
     "EscrowVerification",
     "post_escrow",
     "settle_escrow",
+    # collateral pooling & cross-contract margin
+    "CollateralPool",
+    "CollateralPoolVerification",
+    "PooledContract",
+    "PooledContractState",
+    "PoolStatus",
+    "post_collateral_pool",
+    "draw_pool",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",

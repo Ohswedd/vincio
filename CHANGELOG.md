@@ -4,6 +4,54 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.35.0] - 2026-06-23
+
+Cross-org collateral pooling & cross-contract margin. An `Escrow` now backs *one* contract with collateral held
+against its delivery — but a counterparty running many concurrent contracts had to lock **separate** collateral
+per deal, even though its breaches and clean deliveries across those contracts net out. Capital was stranded
+contract-by-contract the way bilateral settlements were stranded book-by-book before netting folded them. This
+release adds a **bounded collateral pool** — a margin account a counterparty posts once that backs many contracts
+at a deterministic, offline-verifiable allocation, the collateral analogue of the `NettingSet`. Entirely additive
+and backward-compatible — `API_VERSION` stays `3.0`, the existing escrow, admission, and settlement paths are
+unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **CollateralPool (`vincio.settlement.collateral`).** `post_collateral_pool(contracts, *, poster=None,
+  posted=None, decisions=None, fraction=None, config=None)` binds a counterparty's single posted stake to the set
+  of contracts it backs into a sealed, unsigned `CollateralPool` — the collateral analogue of a `NettingSet`. Each
+  contract's required collateral re-derives via the same source resolver as `post_escrow` (a matching
+  `AdmissionDecision` in `decisions` — a dict keyed by contract id or one decision for all — a uniform `fraction`,
+  or the admission posture stamped onto each contract's terms), and each is allocated a per-contract share
+  **proportional to its required collateral**. The poster defaults to the common seller; the posted stake defaults
+  to the total required collateral, so the pool starts exactly collateralized.
+- **Deterministic draw, release & top-up.** `CollateralPool.draw(record, *, config=None)` / `draw_pool(pool,
+  record, *, config=None)` settles one backed contract against its `SettlementRecord`: a clean delivery
+  **releases** its requirement back to the available balance (freeing capital for the next contract), and a breach
+  **draws** a bounded, pinpointed slice — `min(shortfall, max_forfeit_fraction)` of its required collateral,
+  pinpointed in `.breaches` — from the shared stake, releasing the rest (never the whole stake, never punitive),
+  driven by the *same* `SettlementRecord` verdict the books close on. `CollateralPool.back(contract, ...)` adds a
+  contract to the open pool, and a pool committed below the collateral its open contracts require surfaces a
+  bounded `.topup_usd` obligation that `CollateralPool.top_up(amount)` clears. The forfeiture policy reuses
+  `EscrowConfig(max_forfeit_fraction=1.0)`.
+- **Offline-verifiable.** `CollateralPool` binds the poster, the posted stake, every backed contract, and the
+  balances onto a content hash (contracts sorted by id, so add-order is irrelevant); `.verify(verifier=None, *,
+  require=None)` → `CollateralPoolVerification(valid, hash_ok, terms_sound, signatures_ok, signed_by, reason)`
+  re-derives every allocation and reconciles the balance (`balance == posted − drawn`, the top-up and each
+  forfeiture re-derive), so a tampered allocation, balance, or forfeiture is caught even after re-sealing.
+  `.sign(signer, party)` (the poster or a counterparty only), `.require_valid()`, `.to_wire` / `.from_wire`, and
+  `.audit_details()` round it out; `.draw` is idempotent-guarded and contract-matched.
+- **Folds into the settlement path.** `app.post_collateral_pool(...)` posts and audits the pool; `app.settle(
+  contract, ..., pool=None)` draws an attached pool against the record it produces in the same call; `app.draw_pool(
+  pool, record, ...)` draws one against a record you already have — every post, draw, release, and top-up signed
+  and recorded on the hash-chained audit log (action `collateral_pool`, decision = the status).
+- **Surface.** `from vincio import CollateralPool, CollateralPoolVerification, PooledContract,
+  post_collateral_pool, draw_pool` (all also in `vincio.settlement.__all__`, alongside `PooledContractState` /
+  `PoolStatus`); a `reputation_portability` VincioBench extension with five collateral-pool metrics
+  (allocates-proportionally, draws-and-frees, top-up-surfaces, auditable-offline, content-bound) and a
+  `collateral_pooling` published SLO; and a runnable example,
+  `examples/79_cross_org_collateral_pooling.py`.
+
 ## [3.34.0] - 2026-06-22
 
 Cross-org collateralized settlement & escrow. Admission now sets a required collateral / escrow fraction on a
