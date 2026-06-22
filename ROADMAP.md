@@ -61,6 +61,7 @@ and a runnable example.
 | **Cross-org attestation revocation & freshness** | The reach once standing is portable: keeping it **current**. A `ReputationAttestation` is a point-in-time claim, but standing changes — a counterparty reliable a year ago may have regressed, and an issuer may need to **withdraw** a claim it can no longer stand behind — and the portable prior would otherwise trust a signed attestation forever. **Freshness:** an attestation carries an issuer-declared validity window (`horizon_days` beside the `issued_at` it already has), bound into its signed hash, so against an as-of clock a stale attestation is **excluded and pinpointed** while an older one within its window **decays** out of the pooled prior by an importer `half_life_days` — its evidence mass halved each half-life, its attested ratio preserved — rather than anchoring it forever. **Revocation:** an issuer signs a content-bound `AttestationRevocation` (`app.revoke_attestation` / `book.revoke`) that withdraws or supersedes a prior attestation **by its hash**, offline-verifiable the way the attestation is — `verify` recomputes it from the bytes alone — so the withdrawn claim is excluded from the combination, pinpointed (`AttestationVerdict.revoked` / `.stale`), never silently honored; a forged revocation, or one naming another org's attestation, **cannot cancel a claim** (only the issuer can withdraw its own). Freshness and revocation read only the existing signed artifacts, assert nothing they cannot recompute, and fold into the same bounded `[floor, 1]` weighting — `combine_attestations(..., revocations=, as_of=)` / `app.import_reputation(..., revocations=, as_of=)` — never a central revocation service or a hosted bulletin board. Held by an attestation-correctness SLO, an attestation-integrity SLO, and an attestation-freshness-and-revocation SLO. |
 | **Cross-org reputation gossip & attestation exchange** | The reach once standing is portable, time-aware, and revocable: making it **discoverable**. An importer could be *handed* the right bundle, but had no way to **find** who has attested a counterparty — or to learn an issuer has since revoked one — without a hosted registry. The next rung is a bounded, **pull-based** exchange of the existing signed artifacts over the A2A fabric — the discovery analogue for reputation. **Pull, never push:** an org exposes its book as a queryable peer (`app.serve_attestations`) that answers a subject query with its *own* signed artifacts — the current attestation it can issue from its `SettlementBook` records plus the revocations it has signed — and `app.gather_reputation` (a remote `AttestationExchange`) pulls them; nothing is trusted that does not `verify` from the bytes alone, exactly as a directly-handed bundle is. **Bounded fan-out:** the exchange visits a bounded set of peers governed through the `AgentDirectory` allow-list (every resolution audited), deduplicates by attestation hash, and folds the gathered artifacts straight into `combine_attestations` under the *same* freshness, revocation, and `[floor, 1]` discipline — so gossip changes *where the evidence comes from*, never *how it is weighed*: a denied peer is skipped and pinpointed, a forged artifact a peer serves is refused, and a revocation a peer gossips excludes the withdrawn claim. **Auditable & offline:** every peer visited and every artifact fetched lands on the hash-chained audit log, and the whole exchange runs byte-for-byte the same against deterministic in-process peers as over the live fabric (`app.serve_attestations` / `app.gather_reputation`). Held by an attestation-correctness SLO, an attestation-integrity SLO, an attestation-freshness-and-revocation SLO, and a reputation-exchange SLO. |
 | **Cross-org transitive trust & Sybil-resistant weighting** | The reach once standing is portable, current, and discoverable: weighing it by **trust in the issuer**. Every counted issuer's evidence had pooled into the prior with equal pull, weighted only by *how much* it attests — so a clutch of unknown peers could out-evidence a few an importer has lived through, and an adversary could spin up **Sybil** issuers that all vouch the same way. A `TrustModel` (`build_trust_model`, opt-in via `combine_attestations(..., trust_config=)` / `app.import_reputation` / `app.gather_reputation`) scales each issuer's contributed evidence **mass** by the importer's **own trust in that issuer** — a bounded, transitive web-of-trust rooted in its local `ReputationLedger`. **Issuer-weighted pooling:** an issuer the importer knows first-hand counts at its earned weight (hop 0), and trust **composes at most a bounded hop** outward — a trusted issuer lends weight to the issuers *it* attests (hop 1), attenuated by a per-hop decay — under a hard depth bound, so a long unverifiable chain cannot manufacture standing and the kernel stays deterministic and offline. **Sybil resistance:** trust is lent only *outward from a trusted root*, so a cluster of mutually-vouching unknown issuers is never reached and every member stays at the floor — pull follows **earned trust, not issuer count**, so corroboration from a few trusted peers cannot be outvoted by volume from unknown ones. Every multiplier is bounded `[trust_floor, 1]` (an unknown issuer is **floored, never zeroed or singled out**, and recoverable), pinpointed (`SubjectStanding.issuer_trust` / `AttestationVerdict.trust` / `IssuerTrust`), reversible, and **strictly opt-in** — with no trust source the combination pools with equal pull exactly as before — and the weighted prior still exposes `weight(member_id)` for the negotiation path unchanged. Held by an attestation-correctness SLO, an attestation-integrity SLO, an attestation-freshness-and-revocation SLO, a reputation-exchange SLO, and a transitive-trust SLO. |
+| **Cross-org reputation-gated admission & progressive exposure** | The reach once standing is portable, current, discoverable, and trust-weighted: making it **act**. A counterparty's weighted standing was still only *consulted* as a soft weight on a negotiation — nothing bounded how much a too-thin or too-low counterparty was trusted with up front, so a brand-new or low-trust org was admitted to a contract on the same terms as a long-trusted one, the regression caught only after the fact. An `AdmissionPolicy` (`app.admit` / `admit`) maps the standing the fabric already earns — an imported `PortableReputation` or a local `ReputationLedger` — to a bounded `AdmissionDecision`: a maximum contract value (the exposure ceiling), a required collateral/escrow fraction, and an SLA-strictness factor. **Reputation-gated terms:** exposure is the product of two bounded signals — *how good* the standing is (its posterior-mean reputation) and *how much corroborated, settled history* stands behind it — lifted off a floor fraction, so a thin or low-trust standing is admitted on **conservative terms rather than refused** (discounted exposure, never a hard gate, never singled out), and local first-hand evidence wins over what others attest exactly as the negotiation weight resolves it. **Progressive ramp:** as the counterparty accrues settled deliveries its ceiling **ramps deterministically toward parity** — never past it — and a regression walks it back, so trust earned over real deliveries unlocks exposure the way a credit line builds, bounded and reversible at every step. **Auditable & offline:** every decision binds the standing it read and the terms it set onto a content hash that `AdmissionDecision.verify` **recomputes from the bytes alone** (re-deriving the terms, so a tampered ceiling is caught even after re-sealing), lands on the hash-chained audit log, and folds into the existing negotiation/contracting path (`bound_position` clamps a buyer's position to the ceiling, `apply_to_terms` caps and stamps the terms) — a mechanical, reconstructable number, never a hosted underwriting service. Held by an attestation-correctness SLO, an attestation-integrity SLO, an attestation-freshness-and-revocation SLO, a reputation-exchange SLO, a transitive-trust SLO, and an admission-gating SLO. |
 | **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
 | **Use-case coverage & verticals** | Full-stack vertical packs (healthcare/PHI, legal e-discovery, financial KYC/AML, customer support, code review) that preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set on top of the pack contract; a higher-level `Assistant` over `ContextApp` that threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval; an end-to-end `VoiceAgent` wiring the realtime session to the deep-research agent, the memory OS, and the rails; and a cookbook of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) as offline-gated runnable examples. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
@@ -91,42 +92,45 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **Cross-org transitive trust & Sybil-resistant attestation weighting** (a
-bounded, transitive web-of-trust over the existing standing — `build_trust_model` / `TrustConfig`, opt-in via
-`combine_attestations(..., trust_config=)` / `app.import_reputation` / `app.gather_reputation`, that scales each
-issuer's contributed evidence mass by the importer's own trust in it, rooted in its local `ReputationLedger` and
-composed at most a hop outward with decay; an unknown issuer is floored never zeroed, a Sybil cluster cannot
-outvote a few trusted peers because pull follows earned trust not issuer count, every multiplier is pinpointed
-and reversible, and the weighting is strictly opt-in) — has shipped and folded into the **Cross-org transitive
-trust & Sybil-resistant weighting** row above. The next theme is scheduled below. It closes a specific gap in
-the platform's *own* frontier — a rung that exists in the literature and in buyer demand but not yet in the
-package — rather than a gap measured against any one competitor. An indicative minor-version target is given;
-cadence holds one coherent theme per minor.
+The most recent scheduled theme — **Cross-org reputation-gated admission & progressive exposure** (an
+`AdmissionPolicy` / `app.admit` that maps the standing the fabric already earns — an imported
+`PortableReputation` or a local `ReputationLedger` — to a bounded, offline-verifiable `AdmissionDecision`: a
+maximum contract value, a required escrow fraction, and an SLA-strictness factor; exposure is the product of
+standing quality and corroborated settled history lifted off a floor, so a thin or low-trust standing is
+admitted on conservative terms rather than refused, the ceiling ramps deterministically toward parity as history
+accrues and a regression walks it back, local first-hand evidence wins, every decision recomputes from the bytes
+and lands on the audit chain, and it folds into the negotiation / contracting path via `bound_position` /
+`apply_to_terms`) — has shipped and folded into the **Cross-org reputation-gated admission & progressive
+exposure** row above. The next theme is scheduled below. It closes a specific gap in the platform's *own*
+frontier — a rung that exists in the literature and in buyer demand but not yet in the package — rather than a
+gap measured against any one competitor. An indicative minor-version target is given; cadence holds one coherent
+theme per minor.
 
-### 1 · Cross-org reputation-gated admission & progressive exposure *(target 3.33)*
+### 1 · Cross-org collateralized settlement & escrow *(target 3.34)*
 
-Reputation is now portable, current, discoverable, and trust-weighted — but it is still only ever *consulted* as
-a soft weight on a negotiation; nothing **acts** on a too-thin or too-low standing to bound how much a new
-counterparty is trusted with up front. A brand-new or low-trust counterparty is admitted to a contract on the
-same terms as a long-trusted one, with the regression caught only after the fact. The next reach is to turn the
-weighted standing into a **graduated admission posture** — bounding a counterparty's exposure to what its
-earned trust justifies, and ramping it as trust accrues — so onboarding an unknown org is safe by construction,
-not by hope.
+Admission now sets a required collateral / escrow fraction on a thin or low-trust counterparty's contract — but
+the fraction is still only a *number stamped on the terms*; nothing **holds** it, releases it on a clean
+delivery, or forfeits a bounded slice of it on a breach. A counterparty admitted on conservative terms posts no
+actual collateral, so the escrow the admission policy asked for has no teeth, and a breach is still only debited
+to reputation after the fact. The next reach is to make the posted collateral a **verifiable, offline escrow
+bound to the contract** — held against delivery and settled deterministically — so the conservative terms a
+thin standing is admitted on are backed by something, not merely recorded.
 
-- **Reputation-gated terms** — an `AdmissionPolicy` maps a counterparty's `PortableReputation` /
-  `ReputationLedger` weight to a bounded exposure ceiling (max contract value, required collateral / escrow
-  fraction, SLA strictness), so a thin or low-trust standing is admitted on *conservative* terms rather than
-  refused — discounted exposure, never a hard gate, never singled out.
-- **Progressive ramp** — as a counterparty accrues settled, corroborated history its ceiling **ramps**
-  deterministically toward parity, and a regression walks it back, so trust earned over real deliveries
-  unlocks exposure the way a credit line builds — bounded, reversible, and pinpointed at every step.
-- **Auditable & offline** — every admission decision binds the standing it read and the ceiling it set onto the
-  hash-chained audit log and folds into the existing negotiation / contracting path, so a counterparty's
-  exposure is a mechanical, reconstructable number, never a hosted underwriting service.
+- **Posted, content-bound escrow** — an `Escrow` binds an admission-required collateral amount to a specific
+  `Contract` and counterparty into a signed, offline-verifiable artifact (the escrow analogue of a
+  `SettlementRecord`), so what was posted is a mechanical, reconstructable number, never a custodian's ledger
+  entry — a hosted escrow service is explicitly out of scope.
+- **Deterministic release & forfeiture** — settling the contract **releases** the escrow on a fulfilled
+  delivery and **forfeits** a bounded, pinpointed slice on a breach (proportional to the shortfall, never the
+  whole stake, never punitive), folding the outcome into the existing `SettlementBook` and reputation loop so
+  the collateral closes the same loop the settlement does.
+- **Auditable & offline** — every post, release, and forfeiture binds the contract, the amount, and the verdict
+  onto the hash-chained audit log and verifies from the bytes alone, so an escrow's whole lifecycle is
+  reconstructable offline, never a trusted third party.
 
-*Ships as:* an `AdmissionPolicy` over the existing `PortableReputation` / `ReputationLedger`, wired into the
-negotiation / contracting path, an extension to the `reputation_portability` VincioBench family with an
-admission-gating SLO, and a runnable example.
+*Ships as:* an `Escrow` over the existing `AdmissionDecision` / `Contract` / `SettlementBook`, wired into the
+settlement path, an extension to the `reputation_portability` VincioBench family with an escrow-settlement SLO,
+and a runnable example.
 
 ---
 

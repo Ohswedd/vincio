@@ -297,6 +297,10 @@ from .security.dualplane import DualPlaneExecutor
 from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
 from .settlement import (
+    AdmissionConfig,
+    AdmissionDecision,
+    AdmissionPolicy,
+    AdmissionVerification,
     AttestationExchange,
     AttestationRevocation,
     GatheredReputation,
@@ -315,6 +319,7 @@ from .settlement import (
     TrustConfig,
     TrustModel,
     UsageEvent,
+    admit,
     arbitrate,
     attest_reputation,
     attestation_a2a_server,
@@ -339,7 +344,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.32.0"
+__version__ = "3.33.0"
 
 __all__ = [
     "ContextApp",
@@ -507,6 +512,12 @@ __all__ = [
     "AttestationExchange",
     "attestation_a2a_server",
     "gather_reputation",
+    # cross-org reputation-gated admission & progressive exposure
+    "AdmissionConfig",
+    "AdmissionDecision",
+    "AdmissionVerification",
+    "AdmissionPolicy",
+    "admit",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

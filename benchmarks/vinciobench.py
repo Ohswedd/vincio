@@ -7456,7 +7456,14 @@ async def bench_reputation_portability() -> dict[str, Any]:
     most a hop with decay), so corroboration from a trusted peer counts for more than
     volume from an unknown one, an unknown issuer is floored rather than zeroed, a
     mutually-vouching Sybil cluster cannot outvote a few trusted ones, and the
-    weighting stays strictly opt-in. Deterministic and offline."""
+    weighting stays strictly opt-in. And because that weighted standing was still only
+    *consulted*, it gates **reputation-gated admission**: a policy maps the standing to a
+    bounded, offline-verifiable exposure ceiling (max contract value, escrow fraction,
+    SLA strictness) — a thin or low-trust standing admitted on conservative terms rather
+    than refused, the ceiling ramping toward parity as settled, corroborated history
+    accrues and a regression walking it back, every decision binding the standing it read
+    and the terms it set onto the audit chain and folding into the negotiation /
+    contracting path. Deterministic and offline."""
     from datetime import timedelta
 
     from vincio import (
@@ -7832,6 +7839,87 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and plain_prior.trust is None
     )
 
+    # 28. Reputation-gated admission: the weighted standing finally *acts* — a low or
+    #     thin standing earns a lower exposure ceiling than a corroborated one, both
+    #     admitted (positive ceiling) rather than refused, never singled out.
+    from vincio.settlement import AdmissionConfig, admit
+
+    thin_prior = combine_attestations(
+        [attest_reputation(records("vendor", settled=1), "vendor", issuer="acme").sign(acme)]
+    )
+    rich_prior = combine_attestations(
+        [
+            attest_reputation(records("vendor", settled=8), "vendor", issuer="acme").sign(acme),
+            attest_reputation(records("vendor", settled=8), "vendor", issuer="globex").sign(globex),
+        ]
+    )
+    thin_admit = admit("vendor", reputation=thin_prior)
+    rich_admit = admit("vendor", reputation=rich_prior)
+    admission_gates_by_reputation = bool(
+        0.0 < thin_admit.max_contract_value_usd < rich_admit.max_contract_value_usd
+        and rich_admit.standing.issuers == ["acme", "globex"]
+    )
+
+    # 29. Progressive ramp: as corroborated, settled history accrues the ceiling ramps
+    #     toward parity; a regression walks it back — bounded and reversible.
+    ramp_ledger = ReputationLedger()
+    for _ in range(2):
+        ramp_ledger.record_outcome("vendor", passed=True, round_id="r")
+    early = admit("vendor", ledger=ramp_ledger)
+    for _ in range(20):
+        ramp_ledger.record_outcome("vendor", passed=True, round_id="r")
+    ramped = admit("vendor", ledger=ramp_ledger)
+    for _ in range(40):
+        ramp_ledger.record_outcome("vendor", passed=False, round_id="r")
+    regressed = admit("vendor", ledger=ramp_ledger)
+    admission_ramps_progressively = bool(
+        early.max_contract_value_usd
+        < ramped.max_contract_value_usd
+        <= AdmissionConfig().parity_exposure_usd
+        and regressed.max_contract_value_usd < ramped.max_contract_value_usd
+    )
+
+    # 30. A brand-new counterparty is admitted conservatively, never refused, and
+    #     bounded below parity — onboarding an unknown org is safe by construction.
+    newcomer = admit("stranger")
+    admission_newcomer_conservative = bool(
+        0.0 < newcomer.max_contract_value_usd
+        and not newcomer.at_parity
+        and newcomer.escrow_fraction > rich_admit.escrow_fraction  # more collateral asked
+    )
+
+    # 31. Auditable & offline: a decision recomputes from the bytes (terms re-derive
+    #     from the bound standing), a tampered ceiling is caught, and app.admit records
+    #     the decision on the hash-chained audit log.
+    admit_app = ContextApp(name="buyer", provider=MockProvider(default_text="ok"), config=cfg)
+    admit_app.use_reputation_ledger()
+    for _ in range(6):
+        admit_app.reputation_ledger.record_outcome("vendor", passed=True, round_id="r")
+    audited_decision = admit_app.admit("vendor")
+    tampered_decision = admit("vendor", ledger=admit_app.reputation_ledger)
+    tampered_decision.max_contract_value_usd = 9_999_999.0
+    tampered_decision.seal()
+    admission_auditable_offline = bool(
+        audited_decision.verify().valid
+        and not tampered_decision.verify().terms_sound
+        and admit_app.audit.query(action="reputation_admission")
+        and admit_app.audit.verify_chain()
+        and audited_decision.audit_id is not None
+    )
+
+    # 32. Folds into the existing negotiation / contracting path: a buyer's position
+    #     clamps to the ceiling, and contract terms cap and stamp the escrow posture.
+    bounded_pos = newcomer.bound_position(
+        buyer_position(max_price_usd=1e6, ideal_price_usd=1.0, max_sla_seconds=10.0)
+    )
+    bounded_price = next(i for i in bounded_pos.issues if i.name == "price_usd")
+    stamped_terms = newcomer.apply_to_terms(ContractTerms(scope="work", price_usd=1e6))
+    admission_folds_into_path = bool(
+        abs(bounded_price.reserve - newcomer.max_contract_value_usd) <= 1e-6
+        and stamped_terms.price_usd <= newcomer.max_contract_value_usd + 1e-9
+        and stamped_terms.metadata["admission"]["escrow_fraction"] == newcomer.escrow_fraction
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -7860,6 +7948,11 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "trust_bounded_transitive": trust_bounded_transitive,
         "trust_unknown_floored": trust_unknown_floored,
         "trust_backward_compatible": trust_backward_compatible,
+        "admission_gates_by_reputation": admission_gates_by_reputation,
+        "admission_ramps_progressively": admission_ramps_progressively,
+        "admission_newcomer_conservative": admission_newcomer_conservative,
+        "admission_auditable_offline": admission_auditable_offline,
+        "admission_folds_into_path": admission_folds_into_path,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),
