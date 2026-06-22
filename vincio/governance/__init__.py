@@ -21,6 +21,11 @@ files you own:
   purpose and lawful basis, consulted by access decisions and memory recall.
 * **Data-residency routing** (:mod:`~vincio.governance.residency`) — refuse
   egress to disallowed provider regions, deterministically.
+* **Invariant verification** (:mod:`~vincio.governance.verification`) — a
+  deterministic, in-process verifier that *proves* the governance invariants
+  (containment, residency, budget, erasure) hold across their whole bounded,
+  typed state space ahead of any run, and yields a minimal counterexample on a
+  violation.
 * **Tokenizer fertility** (:mod:`~vincio.governance.fertility`) — the non-English
   token tax, per language and tenant.
 
@@ -95,6 +100,20 @@ from .transparency import (
     verify_manifest,
     write_sidecar_manifest,
 )
+from .verification import (
+    Counterexample,
+    GovernanceVerifier,
+    Invariant,
+    InvariantResult,
+    StateVariable,
+    VerificationReport,
+    budget_invariant,
+    containment_invariant,
+    default_invariants,
+    erasure_invariant,
+    residency_invariant,
+    within_budget,
+)
 
 __all__ = [
     # cards
@@ -163,6 +182,19 @@ __all__ = [
     "ResidencyPolicy",
     "residency_violation",
     "infer_region_from_url",
+    # formal verification of governance invariants
+    "GovernanceVerifier",
+    "VerificationReport",
+    "InvariantResult",
+    "Counterexample",
+    "Invariant",
+    "StateVariable",
+    "containment_invariant",
+    "residency_invariant",
+    "budget_invariant",
+    "erasure_invariant",
+    "default_invariants",
+    "within_budget",
     # fertility
     "LanguageFertility",
     "FertilityTracker",

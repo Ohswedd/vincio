@@ -26,6 +26,7 @@ from .capability import (
     ContainmentReport,
     TaintedValue,
     TrustLabel,
+    requires_authority,
     verify_containment,
 )
 from .dualplane import DualPlaneExecutor, PlannedCall, QuarantineRef
@@ -62,6 +63,7 @@ __all__ = [
     "ContainmentReport",
     "ContainmentMonitor",
     "verify_containment",
+    "requires_authority",
     "DualPlaneExecutor",
     "QuarantineRef",
     "PlannedCall",

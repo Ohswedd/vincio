@@ -1371,6 +1371,36 @@
       "threshold": true,
       "enforced_by": "families.energy.auditable_offline",
       "rationale": "A sustainability figure auditors can trust must be reproducible and on the record, not a black-box service call. The budget gates that the per-run estimate and the refusal both land on the verifiable audit chain and the cost-report surface — companion budgets gate that the report matches the tracker and that accounting is off until explicitly enabled."
+    },
+    {
+      "id": "governance_invariants_proven",
+      "category": "security",
+      "statement": "The governance invariants — injection containment (untrusted ⇒ no unapproved capability), in-jurisdiction residency, the budget hard cap, and the erasure-proof content binding — are proven to hold across their whole bounded, typed state space by a deterministic in-process verifier, ahead of any run, with every holding invariant checked at every point of its domain (a proof, not a sample).",
+      "metric": "families.verification.property_holds",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.verification.property_holds",
+      "rationale": "A governance guarantee checked by construction beats one observed after the fact. The budget gates that all four invariants hold — companion budgets gate that the check covers the whole domain (states_checked == domain_size), spans all four invariants, and is deterministically reproducible."
+    },
+    {
+      "id": "governance_counterexample_on_violation",
+      "category": "security",
+      "statement": "A violated governance invariant yields a concrete, delta-minimized counterexample — the input, the labels, the capability gap — rather than a bare verdict, so a governance regression is debuggable; demonstrated by a fail-open residency posture, a projection-blind budget cap, and a bypassed containment gate each exhibiting a minimal witness.",
+      "metric": "families.verification.counterexample_on_violation",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.verification.counterexample_on_violation",
+      "rationale": "A verifier that only says 'failed' is not actionable. The budget gates that a violation in each of the residency, budget, and containment invariants produces a counterexample — a companion budget gates that the witness is delta-minimized to its simplest form."
+    },
+    {
+      "id": "governance_verification_auditable_offline",
+      "category": "reliability",
+      "statement": "The verification verdict is a mechanical, offline, auditable artifact: a content-hashed report computed in-process with no external prover service, recorded on the hash-chained, verifiable audit log — a holding pass as an allow decision and a violating pass as a deny.",
+      "metric": "families.verification.auditable_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.verification.auditable_offline",
+      "rationale": "A proof auditors can trust must be reproducible and on the record. The budget gates that the verdict lands on the verifiable audit chain (allow when held, deny when a misconfigured app is flagged) — companion budgets gate that the report digest re-derives and that a fail-open posture is caught through the app surface."
     }
   ]
 }

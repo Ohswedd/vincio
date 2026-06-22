@@ -64,6 +64,28 @@ The guarantee rests on capability-key secrecy, not on detecting the attack;
 capability-scoped tools are also available at the permission layer via
 `ToolPermissionChecker(broker=...)`.
 
+### Formal verification of governance invariants
+
+The controls above are *enforced* at runtime and recorded on the audit chain. A
+`GovernanceVerifier` (`app.verify_governance()`) adds the rung beside that: a
+**machine-checkable proof that the governance invariants hold across their whole
+bounded, typed state space, ahead of any run**. Four invariants — injection
+containment (`untrusted ⇒ no unapproved capability`), in-jurisdiction residency, the
+budget hard cap, and the erasure-proof content binding — are stated as formal
+specifications over the pipeline's typed state and checked exhaustively by a
+deterministic in-process verifier. The verifier binds to the *same* decision
+functions the runtime uses (the containment gate is `requires_authority`; the erasure
+binding is `verify_erasure_proof`), so a holding verdict is a proof about the shipped
+machinery, not a re-implementation. A violation returns a concrete, delta-minimized
+**counterexample** — the input, the labels, the capability gap — so a governance
+regression is debuggable, not merely flagged; the residency invariant reflects the
+app's own `deny_on_unknown` posture, so a fail-open configuration is caught. The
+content-hashed verdict is reproducible and lands on the hash-chained audit log as a
+`governance_verification` decision, computed in-process with **no external prover
+service**. The VincioBench `verification` family holds a property-holds, a
+counterexample-on-violation, and an auditable-offline SLO. See the
+[verification guide](docs/guides/governance-verification.md).
+
 ### Secret & PII leakage, and egress control
 
 Deterministic PII / secret detection and redaction runs in-process, with

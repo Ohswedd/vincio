@@ -51,10 +51,28 @@ __all__ = [
     # served alerting rule engine
     "AlertRule",
     "AlertManager",
+    "within_budget",
 ]
 
 Dimension = Literal["tenant", "feature", "user", "model", "provider", "run"]
 Period = Literal["run", "hour", "day", "month", "total"]
+
+
+def within_budget(spent: float, projected: float, limit: float | None) -> bool:
+    """Whether a run is admitted under a hard spend cap (the shared budget gate).
+
+    The single predicate behind every Vincio budget gate — dollar cost
+    (:meth:`BudgetManager.check`), energy, and carbon
+    (:meth:`BudgetManager.check_energy`): a run proceeds only while the scope's
+    accrued spend *plus* the run's projection stays strictly under the limit.
+    ``None`` means no cap. Checking the *projected* total — not just what is already
+    spent — is what makes the cap a guarantee: once the scope reaches its limit,
+    every further run is refused. The governance verifier proves this predicate
+    never admits an overspend across the whole (limit × spent × projected) space.
+    """
+    if limit is None:
+        return True
+    return spent + projected < limit
 
 
 class CostEvent(BaseModel):
@@ -460,7 +478,7 @@ class BudgetManager:
             spent = self._scope_spend(
                 budget, tenant_id=tenant_id, user_id=user_id, feature=feature, now=now
             )
-            if spent + projected_usd < budget.limit_usd:
+            if within_budget(spent, projected_usd, budget.limit_usd):
                 continue
             scope_id = budget.id or {"tenant": tenant_id, "feature": feature, "user": user_id}.get(
                 budget.scope
@@ -521,11 +539,12 @@ class BudgetManager:
                 "tenant": tenant_id, "feature": feature, "user": user_id
             }.get(budget.scope)
             metric: Literal["energy", "carbon"] | None = None
-            if budget.limit_wh is not None and spent_wh + projected_wh >= budget.limit_wh:
+            if budget.limit_wh is not None and not within_budget(
+                spent_wh, projected_wh, budget.limit_wh
+            ):
                 metric = "energy"
-            elif (
-                budget.limit_co2e_grams is not None
-                and spent_co2e + projected_co2e_grams >= budget.limit_co2e_grams
+            elif budget.limit_co2e_grams is not None and not within_budget(
+                spent_co2e, projected_co2e_grams, budget.limit_co2e_grams
             ):
                 metric = "carbon"
             if metric is None:

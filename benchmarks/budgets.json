@@ -1416,6 +1416,48 @@
     },
     "families.energy.per_run_co2e_grams": {
       "gte": 0
+    },
+    "families.verification.property_holds": {
+      "eq": true
+    },
+    "families.verification.proof_not_sample": {
+      "eq": true
+    },
+    "families.verification.covers_four_invariants": {
+      "eq": true
+    },
+    "families.verification.counterexample_on_violation": {
+      "eq": true
+    },
+    "families.verification.residency_counterexample": {
+      "eq": true
+    },
+    "families.verification.budget_counterexample": {
+      "eq": true
+    },
+    "families.verification.containment_counterexample": {
+      "eq": true
+    },
+    "families.verification.minimal_counterexample": {
+      "eq": true
+    },
+    "families.verification.deterministic": {
+      "eq": true
+    },
+    "families.verification.estimate_on_chain": {
+      "eq": true
+    },
+    "families.verification.misconfig_flagged": {
+      "eq": true
+    },
+    "families.verification.auditable_offline": {
+      "eq": true
+    },
+    "families.verification.states_checked": {
+      "gte": 0
+    },
+    "families.verification.invariants_checked": {
+      "gte": 4
     }
   }
 }

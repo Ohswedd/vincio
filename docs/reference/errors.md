@@ -291,6 +291,10 @@ without an entry here.
 
 **Erasure could not complete.** A right-to-erasure-by-source operation did not complete atomically. Retry `app.erase_source(...)`; inspect which stores were swept in `.details`.
 
+### GOVERNANCE_INVARIANT_VIOLATED
+
+**Governance invariant violated.** The formal verifier found a counterexample to a governance invariant (containment/residency/budget/erasure). Inspect `.counterexamples` for the minimal violating state, or call `app.verify_governance()` without `raise_on_violation` to get the full VerificationReport.
+
 ### PRIVACY_BUDGET_EXCEEDED
 
 **Differential-privacy budget exceeded.** A consolidation or learning round would push a subject's cumulative (ε, δ) past its PrivacyBudget. Raise the subject's epsilon, set `on_breach='downweight'` to admit a clipped-harder release, or refuse the step; inspect spent/remaining ε in `.details` and `app.privacy_report()`.

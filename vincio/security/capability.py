@@ -54,6 +54,8 @@ __all__ = [
     "ContainmentReport",
     "ContainmentMonitor",
     "verify_containment",
+    "requires_authority",
+    "AUTHORIZED",
     "SIDE_EFFECTING",
 ]
 
@@ -61,6 +63,25 @@ __all__ = [
 # or a human approval) before an untrusted-tainted argument may flow into them.
 # Read-only and pure tools carry no escalation risk and are exempt.
 SIDE_EFFECTING: frozenset[str] = frozenset({"write", "external"})
+
+# Authority kinds that legitimately permit an untrusted-tainted side effect: a
+# user-minted capability or an explicit human approval. ``trusted`` (the call
+# carried no taint) and ``none`` are not in this set.
+AUTHORIZED: frozenset[str] = frozenset({"capability", "approval"})
+
+
+def requires_authority(taint: TrustLabel, side_effects: str) -> bool:
+    """Whether a call needs an authority to execute under the containment rule.
+
+    The single predicate the gate turns on: a side-effecting tool class
+    (:data:`SIDE_EFFECTING`) carrying an untrusted taint may only run with a
+    user-minted capability or an explicit approval. Read-only / pure tools and
+    untainted calls are exempt. :class:`~vincio.security.DualPlaneExecutor` gates
+    on exactly this function, and the governance verifier checks the gate against
+    the :attr:`ContainmentEvent.is_escalation` specification over the whole typed
+    state space — so the runtime guard and the proof share one source of truth.
+    """
+    return side_effects in SIDE_EFFECTING and taint.is_tainted
 
 T = TypeVar("T")
 
@@ -398,7 +419,7 @@ class ContainmentEvent(BaseModel):
             not self.blocked
             and self.is_side_effecting
             and self.taint.is_tainted
-            and self.authority not in ("capability", "approval")
+            and self.authority not in AUTHORIZED
         )
 
 

@@ -111,10 +111,14 @@ from .governance import (
     ComplianceFramework,
     ComplianceReport,
     ConsentLedger,
+    Counterexample,
     ErasureProof,
     ErasureResult,
     FertilityTracker,
     FRIAGenerator,
+    GovernanceVerifier,
+    Invariant,
+    InvariantResult,
     LawfulBasis,
     LineageRecord,
     ModelCard,
@@ -130,6 +134,7 @@ from .governance import (
     ResidencyPolicy,
     RiskTierClassifier,
     SystemCard,
+    VerificationReport,
     verify_erasure_proof,
 )
 from .memory.engine import MemoryEngine, ScopedMemory
@@ -253,7 +258,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.18.0"
+__version__ = "3.19.0"
 
 __all__ = [
     "ContextApp",
@@ -447,6 +452,12 @@ __all__ = [
     "PrivacyDecision",
     "PrivacyReport",
     "PrivacyBudgetError",
+    # formal verification of governance invariants
+    "GovernanceVerifier",
+    "VerificationReport",
+    "InvariantResult",
+    "Counterexample",
+    "Invariant",
     "ProvenanceManifest",
     "FertilityTracker",
     "PoisoningDetector",

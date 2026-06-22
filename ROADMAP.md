@@ -46,7 +46,7 @@ and a runnable example.
 | **Evaluation** | Golden datasets, 30+ metrics, judges with calibration, judge ensembles whose disagreement is an uncertainty signal, synthetic data, red-teaming, experiments with significance, regression gates that attribute a failure to its cause (prompt / retrieval / model / budget) by Shapley counterfactual replay, adaptive sampling that converges a gate verdict for less budget, a pytest plugin, a stateful-environment harness with a task-success oracle, nine agentic benchmark adapters (SWE-bench, τ-bench, GAIA, WebArena, BFCL, AgentBench, ToolBench, LiveCodeBench, MMLU-Pro), and retrieval-eval with index-version regression. |
 | **Optimization & self-improvement** | The closed loop (trace → dataset → eval → optimize → promote) with safety-gated promotion; reflective (GEPA-style) optimization and MIPRO; a distillation flywheel with executed fine-tune jobs; learned prompt compression; one declarative `SelfImprovementPolicy` driving a streaming controller; canary-gated `app.deploy`; and on-policy reinforcement from verifiable rewards (RLVR) — a `RewardModel` over the task-success oracle, benchmark scorers, and disagreement-down-weighted judge ensembles, step-level Shapley credit, and a GRPO `TrajectoryOptimizer` (`app.learn`) with a KL-to-reference clamp and a monotonic no-regression gate that emits a fine-tune job through the flywheel. |
 | **Observability** | Full trace span trees, sessions, feedback, eval scores on spans, JSONL + OpenTelemetry export; a local viewer; a served, self-hosted observability + alerting plane; a versioned prompt registry; per-run cost. |
-| **Security & governance** | Deterministic PII / secret / injection / RAG-poisoning detection, programmable rails, RBAC/ABAC, tenant isolation, a signed Merkle-checkpointed audit chain; provable prompt-injection containment that separates the control plane from the data plane — typed `TrustLabel` / `TaintedValue` information-flow labels, unforgeable `CapabilityToken`s minted from the user's request, a `DualPlaneExecutor` whose privileged planner sees only typed extractions of untrusted bytes, and a machine-checked containment invariant (`untrusted ⇒ no unapproved capability`); model & system cards, a compliance coverage matrix, an AI-BOM, an EU AI Act conformity pack, provable erasure, a consent ledger, data lineage, and residency-aware egress refusal. |
+| **Security & governance** | Deterministic PII / secret / injection / RAG-poisoning detection, programmable rails, RBAC/ABAC, tenant isolation, a signed Merkle-checkpointed audit chain; provable prompt-injection containment that separates the control plane from the data plane — typed `TrustLabel` / `TaintedValue` information-flow labels, unforgeable `CapabilityToken`s minted from the user's request, a `DualPlaneExecutor` whose privileged planner sees only typed extractions of untrusted bytes, and a machine-checked containment invariant (`untrusted ⇒ no unapproved capability`); a formal **governance-invariant verifier** (`app.verify_governance`) that *proves* containment, residency, the budget cap, and the erasure-proof binding hold across their whole bounded, typed state space ahead of any run — a deterministic, offline, on-chain artifact that yields a minimal counterexample on violation; model & system cards, a compliance coverage matrix, an AI-BOM, an EU AI Act conformity pack, provable erasure, a consent ledger, data lineage, and residency-aware egress refusal. |
 | **Generation** | Cited DOCX/PDF/PPTX/HTML/Markdown, a cited-report builder with per-claim entailment, redlines, image generation and TTS with C2PA provenance, and richer inputs (OCR, transcripts, new-format loaders, forms/KYC). |
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
 | **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. |
@@ -79,37 +79,35 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **energy & carbon accounting** (a per-run energy and estimated-carbon
-figure on the existing cost-report surface, accrued deterministically from token accounting against a
-per-model/per-region intensity table, budgeted and refused the way the cost report gates a dollar, and on the
-hash-chained audit log — `app.use_energy_accounting` / `app.set_energy_budget` / `app.energy_report`) — has
-shipped and folded into the **Energy & carbon accounting** row above. The next theme is scheduled below. It
-closes a specific gap in the platform's *own* frontier — a rung that exists in the literature and in buyer
-demand but not yet in the package — rather than a gap measured against any one competitor. An indicative
-minor-version target is given; cadence holds one coherent theme per minor.
+The most recent scheduled theme — **formal verification of governance invariants** (a deterministic,
+in-process verifier that *proves* containment, residency, the budget cap, and the erasure-proof binding hold
+across their whole bounded, typed state space ahead of any run, yields a minimal counterexample on a
+violation, and records the content-hashed verdict on the hash-chained audit log — `app.verify_governance` /
+`GovernanceVerifier`) — has shipped and folded into the **Security & governance** row above. The next theme is
+scheduled below. It closes a specific gap in the platform's *own* frontier — a rung that exists in the
+literature and in buyer demand but not yet in the package — rather than a gap measured against any one
+competitor. An indicative minor-version target is given; cadence holds one coherent theme per minor.
 
-### 1 · Formal verification of governance invariants *(target 3.19)*
+### 1 · Native video understanding & generation *(target 3.20)*
 
-The platform already *enforces* its governance invariants at runtime — residency refuses an out-of-region
-egress, provable erasure emits a signed proof over the removed-id set, the budget caps spend, and the
-injection-containment check proves an untrusted-tainted argument cannot reach a side-effecting tool without a
-user-minted capability — and records each decision on the signed audit chain. What is not yet first-class is a
-**machine-checkable proof that these invariants hold across the whole pipeline**, ahead of any single run: a
-property checked by construction rather than observed after the fact. The primitives are in place: the typed
-`TrustLabel` / `TaintedValue` information-flow labels, the `CapabilityToken` algebra, the residency and
-erasure machinery, and the per-run containment invariant already expressed as a checkable predicate.
+The multimodal packet already scores, budgets, orders, and cites image and table evidence beside text, and
+generation flows images and audio *out* with C2PA provenance. Video is the modality not yet first-class: a
+recorded meeting, a screen capture, a product demo is today reduced to a transcript or a handful of stills,
+losing the temporal structure that makes it evidence. The primitives are in place — the multimodal
+`ContentPart`, the content-addressed evidence store, the cross-modal embedders, and the C2PA-bound generation
+path — so video is an additive modality on the existing packet, never a new plane.
 
-- **Invariants as machine-checked properties** — residency, erasure, budget, and injection-containment stated
-  as formal properties over the pipeline's typed state, checked by a deterministic in-process verifier rather
-  than asserted by a runtime guard alone.
-- **Counterexample, not just a verdict** — a failed property yields a concrete, minimal trace that violates
-  it (the input, the labels, the capability gap), so a governance regression is debuggable, not just flagged.
-- **Auditable & offline** — the verification result is a mechanical, deterministic artifact on the audit
-  chain, computed in-process with no external prover service, gated by a VincioBench family and an SLO.
+- **Video as first-class evidence** — a video `ContentPart` with deterministic frame sampling and temporal
+  segmentation, scored and cited in the same packet as text and images, with timestamps preserved through to
+  the citation so an answer points at the moment it came from.
+- **Temporal grounding** — retrieval and the cited-report builder resolve a claim to a time range, not just a
+  document, so video-grounded answers are auditable at sub-clip resolution.
+- **Generative output with provenance** — generated or edited video carries a C2PA manifest bound to its
+  bytes, the same way generated images and audio already do, so synthetic video is as tamper-evident as text.
 
-*Ships as:* an opt-in governance-verification surface over the existing audit and containment machinery; a
-`verification` VincioBench family with a property-holds and a counterexample-on-violation SLO; a runnable
-example.
+*Ships as:* a video `ContentPart` and loader behind an opt-in extra (with a deterministic-mock substitute for
+the offline path); temporal-segmentation and frame-sampling on the existing multimodal packet; a `video`
+VincioBench family with a temporal-grounding and a provenance-bound SLO; a runnable example.
 
 ---
 
@@ -120,8 +118,6 @@ Grouped by where they would land.
 
 **Modality & interaction**
 
-- 🔭 **Native video understanding & generation** — a video `ContentPart` with frame sampling, temporal
-  segmentation, and generative output, extending multimodal beyond image and audio.
 - 🔭 **MCP Apps & the evolving MCP spec** — server-rendered UI, elicitation, and stateless-core
   changes, adopted once the spec ships stable, tracked alongside AG-UI generative-UI streaming.
 

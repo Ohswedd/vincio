@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**249** public symbols.
+**254** public symbols.
 
 ## Classes
 
@@ -222,6 +222,10 @@ A spend limit on a scope, with an enforcement action on breach.
 
 In-process append-only ledger of attributed cost events.
 
+### `Counterexample(**data)`
+
+A concrete, minimal state that violates an invariant.
+
 ### `Crew(name=…, process=…, blackboard=…, tracer=…, manager_provider=…, manager_model=…, max_rounds=…, concurrency=…, cost_tracker=…, cost_ledger=…)`
 
 A multi-agent team that collaborates over a shared blackboard.
@@ -338,6 +342,10 @@ Native in-process GGUF / llama.cpp provider with on-device embedding.
 
 A held-out, *growing* golden regression set with per-case provenance.
 
+### `GovernanceVerifier(invariants=…, audit_log=…, claim_generator=…)`
+
+Proves governance invariants by exhaustive bounded model checking.
+
 ### `GuardedBanditRouter(entries, bandit=…, safe_model=…, reward_fn=…, context_fn=…, epsilon=…, alpha=…, context_dim=…, seed=…, regret_budget=…, rollback_margin=…, store=…, app_name=…, events=…)`
 
 A live routing bandit with a safety floor, regret tracking, and auto-rollback.
@@ -369,6 +377,14 @@ SQLite-backed, indexed trace + cost store with pre-aggregated rollups.
 ### `Instruction(text=…, **data)`
 
 !!! abstract "Usage Documentation" [Models](../concepts/models.md)
+
+### `Invariant(id, statement, category, variables, predicate, explain=…)`
+
+A formal governance property checked over a bounded, typed state space.
+
+### `InvariantResult(**data)`
+
+The verdict of checking one :class:`Invariant` over its whole state space.
 
 ### `JudgeCalibrator(judge, reflector=…, kappa_bins=…, trust_threshold=…, min_kappa_gain=…)`
 
@@ -837,6 +853,10 @@ Structured task input.
 ### `VerifiableReward()`
 
 Base contract: map a :class:`RewardSample` to a :class:`RewardSignal`.
+
+### `VerificationReport(**data)`
+
+The verdict of a governance-verification pass over all invariants.
 
 ### `Verifier(*args, **kwargs)`
 
