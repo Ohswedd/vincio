@@ -300,13 +300,17 @@ from .settlement import (
     Meter,
     MeterReading,
     NettingSet,
+    PortableReputation,
     Reconciliation,
+    ReputationAttestation,
     Resolution,
     SettlementBook,
     SettlementRecord,
     SettlementReport,
     UsageEvent,
     arbitrate,
+    attest_reputation,
+    combine_attestations,
     net_books,
     net_settlements,
     reconcile,
@@ -324,7 +328,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.28.0"
+__version__ = "3.29.0"
 
 __all__ = [
     "ContextApp",
@@ -474,6 +478,11 @@ __all__ = [
     # cross-org dispute resolution & arbitration
     "Resolution",
     "arbitrate",
+    # cross-org reputation attestation & portability
+    "ReputationAttestation",
+    "PortableReputation",
+    "attest_reputation",
+    "combine_attestations",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

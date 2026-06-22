@@ -582,6 +582,45 @@ class SettlementBook:
             resolution.sign(self.signer, party=self.owner)
         return resolution
 
+    def attest(
+        self,
+        subject: str,
+        *,
+        resolutions: Any = None,
+        config: Any = None,
+        sign: bool = True,
+        verify_with: ChainSigner | None = None,
+        note: str = "",
+    ) -> Any:
+        """Issue a portable attestation of a counterparty's earned standing.
+
+        Reads this book's own signed records (and any arbitration ``resolutions``)
+        for ``subject`` and summarizes how its delivery fared — fulfilled settlements
+        as successes, breaches and arbitration dissents as failures — into a signed,
+        offline-verifiable :class:`~vincio.settlement.attestation.ReputationAttestation`
+        (:func:`~vincio.settlement.attestation.attest_reputation`). A prospective
+        counterparty verifies it from the bytes alone and folds several issuers'
+        attestations into a bounded prior that weights the next negotiation. Signs the
+        attestation as this book's owner (the issuer) when a signer is attached, so an
+        attested standing is offline-verifiable the way a record is. Raises
+        :class:`SettlementError` when this book has no admissible history with the
+        subject to attest.
+        """
+        from .attestation import attest_reputation
+
+        attestation = attest_reputation(
+            self.records,
+            subject,
+            issuer=self.owner,
+            resolutions=resolutions,
+            config=config,
+            verify_with=verify_with,
+            note=note,
+        )
+        if sign and self.signer is not None:
+            attestation.sign(self.signer, party=self.owner)
+        return attestation
+
     # -- reporting ----------------------------------------------------------
 
     def report(self, counterparty: str | None = None) -> SettlementReport:

@@ -35,9 +35,20 @@ across a web of contracts closes its books once. When a disagreement is pinpoint
 adjudicates it: each party submits its signed records and a deterministic
 :class:`Resolution` decides which figure stands — a reconciliation hash both parties
 co-signed is upheld, a contradicting unilateral claim is rejected and pinpointed —
-content-bound and offline-verifiable the way a record is. Everything is
-dependency-free, deterministic, and offline — never a hosted marketplace, a clearing
-house, an arbitration service, or a payment processor, only a mechanical, verifiable
+content-bound and offline-verifiable the way a record is.
+
+The standing all of this earns lives inside one org's own ledger; making it
+**portable** is the last reach. :func:`attest_reputation` (or
+:meth:`SettlementBook.attest`) issues a signed, offline-verifiable
+:class:`ReputationAttestation` over a counterparty's earned standing — derived from
+an org's own :class:`SettlementBook` and arbitration :class:`Resolution`\\ s — that a
+prospective counterparty verifies from the bytes alone (a tampered score or a forged
+issuer is caught) and :func:`combine_attestations` folds, across several issuers,
+into a bounded, evidence-weighted :class:`PortableReputation` prior that weights the
+next negotiation under the same ``[floor, 1]`` rule a local reputation does — never a
+hosted reputation bureau. Everything is dependency-free, deterministic, and
+offline — never a hosted marketplace, a clearing house, an arbitration service, a
+reputation service, or a payment processor, only a mechanical, verifiable
 reconciliation.
 """
 
@@ -49,6 +60,16 @@ from .arbitration import (
     ResolutionStatus,
     ResolutionVerification,
     arbitrate,
+)
+from .attestation import (
+    AttestationConfig,
+    AttestationVerdict,
+    AttestationVerification,
+    PortableReputation,
+    ReputationAttestation,
+    SubjectStanding,
+    attest_reputation,
+    combine_attestations,
 )
 from .book import (
     BookVerification,
@@ -116,4 +137,13 @@ __all__ = [
     "ResolutionVerification",
     "ClaimVerdict",
     "arbitrate",
+    # reputation attestation & portability
+    "ReputationAttestation",
+    "AttestationConfig",
+    "AttestationVerification",
+    "AttestationVerdict",
+    "SubjectStanding",
+    "PortableReputation",
+    "attest_reputation",
+    "combine_attestations",
 ]
