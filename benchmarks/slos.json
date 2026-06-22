@@ -1641,6 +1641,16 @@
       "threshold": true,
       "enforced_by": "families.reputation_portability.portability_revocation_excludes",
       "rationale": "A portable prior that trusts a signed attestation forever cannot track standing that changes. The budget gates that a revoked attestation is excluded and pinpointed; companion budgets gate that a stale attestation past its validity window is excluded against an as-of clock, that an older attestation decays out of the prior by a half-life, and that a forged revocation cannot cancel a claim — so the imported prior reflects current standing without a hosted revocation service, reading only the existing signed artifacts and folding into the same bounded [floor, 1] weighting."
+    },
+    {
+      "id": "reputation_exchange",
+      "category": "reliability",
+      "statement": "An importer assembles a current prior by discovery rather than out-of-band handoff: a bounded, pull-based exchange queries a governed set of peers for the signed attestations and revocations they hold about a subject, verifies every fetched artifact from the bytes, deduplicates by content hash, and folds the result into the same combination — so gossip changes only where the evidence comes from, never how it is weighed: a denied peer is skipped, the fan-out is bounded, a forged artifact is refused, a gossiped revocation excludes the withdrawn claim, and every peer visited and artifact fetched lands on the audit chain.",
+      "metric": "families.reputation_portability.exchange_gathers_from_peers",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation_portability.exchange_gathers_from_peers",
+      "rationale": "Portable standing is only useful if an importer can find it without a hosted registry. The budget gates that a gather pools several peers' signed attestations into one prior; companion budgets gate that an allow-listed directory skips a denied peer and the fan-out is bounded, that a forged artifact a peer serves is refused (nothing trusted that does not verify from the bytes), that a revocation a peer gossips excludes the withdrawn claim, and that every peer and artifact is audited — so reputation is discovered over the fabric as a pull of verifiable artifacts, never pushed from or trusted on a central bulletin board."
     }
   ]
 }

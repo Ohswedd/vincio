@@ -88,6 +88,14 @@ from .book import (
     settle_contract,
     settle_saga,
 )
+from .exchange import (
+    AttestationExchange,
+    GatheredReputation,
+    PeerVisit,
+    ReputationBundle,
+    attestation_a2a_server,
+    gather_reputation,
+)
 from .meter import Meter, MeterReading, UsageEvent
 from .netting import (
     BilateralNet,
@@ -158,4 +166,11 @@ __all__ = [
     "attest_reputation",
     "revoke_attestation",
     "combine_attestations",
+    # reputation gossip & attestation exchange
+    "ReputationBundle",
+    "PeerVisit",
+    "GatheredReputation",
+    "AttestationExchange",
+    "attestation_a2a_server",
+    "gather_reputation",
 ]
