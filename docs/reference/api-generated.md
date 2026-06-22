@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**244** public symbols.
+**249** public symbols.
 
 ## Classes
 
@@ -96,7 +96,7 @@ Hard resource limits for a run (budgets, termination).
 
 ### `BudgetManager(ledger, events=…)`
 
-Enforces :class:`CostBudget`\ s and detects spend anomalies.
+Enforces :class:`CostBudget`/:class:`EnergyBudget`\ s and detects spend anomalies.
 
 ### `BundleRecord(**data)`
 
@@ -253,6 +253,26 @@ The structural contract a generated document must satisfy.
 ### `DualPlaneExecutor(tool_runtime, broker=…, monitor=…, principal=…, approval=…, provider=…, model=…)`
 
 Capability-secure executor separating the control and data planes.
+
+### `EnergyBudget(**data)`
+
+An energy/carbon limit on a scope, refused on breach.
+
+### `EnergyEstimate(**data)`
+
+A run (or call)'s estimated energy and carbon, with its breakdown.
+
+### `EnergyIntensityTable(**data)`
+
+Resolves a model + region into an energy/carbon estimate.
+
+### `EnergyProfile(**data)`
+
+Per-model energy intensity, in watt-hours per million tokens.
+
+### `EnergyReport(**data)`
+
+Estimated energy + carbon rolled up by dimension.
 
 ### `Environment(*args, **kwargs)`
 

@@ -43,6 +43,11 @@ __all__ = [
     "CostBudget",
     "BudgetDecision",
     "BudgetManager",
+    # energy & carbon accounting
+    "EnergyRow",
+    "EnergyReport",
+    "EnergyBudget",
+    "EnergyBudgetDecision",
     # served alerting rule engine
     "AlertRule",
     "AlertManager",
@@ -67,6 +72,8 @@ class CostEvent(BaseModel):
     output_tokens: int = 0
     cached_input_tokens: int = 0
     cost_usd: float = 0.0
+    energy_wh: float = 0.0
+    co2e_grams: float = 0.0
     batch: bool = False
     created_at: datetime = Field(default_factory=utcnow)
 
@@ -84,6 +91,8 @@ class CostEvent(BaseModel):
 class CostRow(BaseModel):
     key: str
     cost_usd: float = 0.0
+    energy_wh: float = 0.0
+    co2e_grams: float = 0.0
     calls: int = 0
     input_tokens: int = 0
     output_tokens: int = 0
@@ -103,6 +112,45 @@ class CostReport(BaseModel):
             print(
                 f"  {row.key:<{width}}  ${row.cost_usd:.6f}  "
                 f"calls={row.calls}  in={row.input_tokens} out={row.output_tokens}{cached}"
+            )
+
+
+class EnergyRow(BaseModel):
+    """One dimension's line in an :class:`EnergyReport`."""
+
+    key: str
+    energy_wh: float = 0.0
+    co2e_grams: float = 0.0
+    calls: int = 0
+
+
+class EnergyReport(BaseModel):
+    """Estimated energy + carbon rolled up by dimension.
+
+    The energy analogue of :class:`CostReport`, on the same surface: each row is
+    a tenant/feature/user/model/provider/run's accrued watt-hours and grams CO₂e.
+    """
+
+    dimension: str
+    rows: list[EnergyRow] = Field(default_factory=list)
+    total_energy_wh: float = 0.0
+    total_co2e_grams: float = 0.0
+
+    @property
+    def total_co2e_kg(self) -> float:
+        """Total carbon in kilograms CO₂e."""
+        return round(self.total_co2e_grams / 1000.0, 9)
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        print(
+            f"energy by {self.dimension}  "
+            f"(total {self.total_energy_wh:.3f} Wh, {self.total_co2e_grams:.3f} gCO₂e)"
+        )
+        width = max((len(r.key) for r in self.rows), default=3)
+        for row in self.rows:
+            print(
+                f"  {row.key:<{width}}  {row.energy_wh:.4f} Wh  "
+                f"{row.co2e_grams:.4f} gCO₂e  calls={row.calls}"
             )
 
 
@@ -161,6 +209,8 @@ class CostLedger:
         run_id: str | None = None,
         trace_id: str | None = None,
         batch: bool = False,
+        energy_wh: float = 0.0,
+        co2e_grams: float = 0.0,
     ) -> CostEvent:
         return self.record(
             CostEvent(
@@ -175,6 +225,8 @@ class CostLedger:
                 output_tokens=usage.output_tokens,
                 cached_input_tokens=usage.cached_input_tokens,
                 cost_usd=cost_usd,
+                energy_wh=energy_wh,
+                co2e_grams=co2e_grams,
                 batch=batch,
             )
         )
@@ -203,12 +255,22 @@ class CostLedger:
     def total(self, **filters: Any) -> float:
         return round(sum(e.cost_usd for e in self._filter(**filters)), 8)
 
+    def total_energy(self, **filters: Any) -> float:
+        """Total estimated energy (watt-hours) over the filtered events."""
+        return round(sum(e.energy_wh for e in self._filter(**filters)), 6)
+
+    def total_co2e(self, **filters: Any) -> float:
+        """Total estimated carbon (grams CO₂e) over the filtered events."""
+        return round(sum(e.co2e_grams for e in self._filter(**filters)), 6)
+
     def report(self, dimension: Dimension = "tenant", *, since: datetime | None = None) -> CostReport:
         rows: dict[str, CostRow] = {}
         for event in self._filter(since=since):
             key = event.dimension_value(dimension)
             row = rows.setdefault(key, CostRow(key=key))
             row.cost_usd += event.cost_usd
+            row.energy_wh += event.energy_wh
+            row.co2e_grams += event.co2e_grams
             row.calls += 1
             row.input_tokens += event.input_tokens
             row.output_tokens += event.output_tokens
@@ -216,10 +278,35 @@ class CostLedger:
         ordered = sorted(rows.values(), key=lambda r: r.cost_usd, reverse=True)
         for row in ordered:
             row.cost_usd = round(row.cost_usd, 8)
+            row.energy_wh = round(row.energy_wh, 6)
+            row.co2e_grams = round(row.co2e_grams, 6)
         return CostReport(
             dimension=dimension,
             rows=ordered,
             total_usd=round(sum(r.cost_usd for r in ordered), 8),
+        )
+
+    def energy_report(
+        self, dimension: Dimension = "tenant", *, since: datetime | None = None
+    ) -> EnergyReport:
+        """Roll up estimated energy + carbon by dimension — the energy analogue
+        of :meth:`report`, ordered by energy descending."""
+        rows: dict[str, EnergyRow] = {}
+        for event in self._filter(since=since):
+            key = event.dimension_value(dimension)
+            row = rows.setdefault(key, EnergyRow(key=key))
+            row.energy_wh += event.energy_wh
+            row.co2e_grams += event.co2e_grams
+            row.calls += 1
+        ordered = sorted(rows.values(), key=lambda r: r.energy_wh, reverse=True)
+        for row in ordered:
+            row.energy_wh = round(row.energy_wh, 6)
+            row.co2e_grams = round(row.co2e_grams, 6)
+        return EnergyReport(
+            dimension=dimension,
+            rows=ordered,
+            total_energy_wh=round(sum(r.energy_wh for r in ordered), 6),
+            total_co2e_grams=round(sum(r.co2e_grams for r in ordered), 6),
         )
 
     @classmethod
@@ -272,13 +359,61 @@ class BudgetDecision(BaseModel):
         return self.action in ("allow", "degrade")
 
 
+class EnergyBudget(BaseModel):
+    """An energy/carbon limit on a scope, refused on breach.
+
+    The sustainability analogue of :class:`CostBudget`. Set ``limit_wh`` (energy,
+    watt-hours), ``limit_co2e_grams`` (carbon, grams CO₂e), or both — a run is
+    refused when the scope's accrued energy or carbon over ``period`` reaches
+    either ceiling. ``on_breach`` is ``"cap"`` (refuse); a refused run is surfaced
+    on the same audit path as a cost cap.
+    """
+
+    scope: Literal["tenant", "feature", "user", "global"] = "global"
+    id: str | None = None  # the tenant/feature/user id; None applies to all of that scope
+    limit_wh: float | None = None
+    limit_co2e_grams: float | None = None
+    period: Period = "day"  # rolling window: run | hour | day (24h) | month (30d) | total
+    on_breach: Literal["cap"] = "cap"
+
+    def matches(
+        self, *, tenant_id: str | None, user_id: str | None, feature: str | None
+    ) -> bool:
+        value = {"tenant": tenant_id, "feature": feature, "user": user_id, "global": None}[
+            self.scope
+        ]
+        if self.scope == "global":
+            return True
+        if value is None:
+            return False
+        return self.id is None or self.id == value
+
+
+class EnergyBudgetDecision(BaseModel):
+    """An explainable verdict on whether a run fits its energy/carbon budget."""
+
+    action: Literal["allow", "cap"] = "allow"
+    metric: Literal["energy", "carbon"] = "energy"
+    spent_wh: float = 0.0
+    limit_wh: float | None = None
+    spent_co2e_grams: float = 0.0
+    limit_co2e_grams: float | None = None
+    scope: str = ""
+    reason: str = ""
+
+    @property
+    def allowed(self) -> bool:
+        return self.action == "allow"
+
+
 class BudgetManager:
-    """Enforces :class:`CostBudget`\\ s and detects spend anomalies."""
+    """Enforces :class:`CostBudget`/:class:`EnergyBudget`\\ s and detects spend anomalies."""
 
     def __init__(self, ledger: CostLedger, *, events: Any | None = None) -> None:
         self.ledger = ledger
         self.events = events
         self.budgets: list[CostBudget] = []
+        self.energy_budgets: list[EnergyBudget] = []
         self._anomaly_state: dict[str, tuple[int, float]] = {}  # key -> (count, mean)
 
     def add(self, budget: CostBudget) -> CostBudget:
@@ -286,6 +421,13 @@ class BudgetManager:
         self.budgets.append(budget)
         order = {"user": 0, "feature": 1, "tenant": 2, "global": 3}
         self.budgets.sort(key=lambda b: order.get(b.scope, 9))
+        return budget
+
+    def add_energy_budget(self, budget: EnergyBudget) -> EnergyBudget:
+        # Most specific scopes (user, feature, tenant) checked before global.
+        self.energy_budgets.append(budget)
+        order = {"user": 0, "feature": 1, "tenant": 2, "global": 3}
+        self.energy_budgets.sort(key=lambda b: order.get(b.scope, 9))
         return budget
 
     def _scope_spend(self, budget: CostBudget, *, tenant_id, user_id, feature, now) -> float:
@@ -336,6 +478,79 @@ class BudgetManager:
                 reason=reason,
             )
         return BudgetDecision(action="allow")
+
+    def _energy_scope_spend(
+        self, budget: EnergyBudget, *, tenant_id, user_id, feature, now
+    ) -> tuple[float, float]:
+        """Accrued (watt-hours, grams CO₂e) for a scope over the budget period."""
+        since = _period_start(budget.period, now=now)
+        if budget.period == "run":
+            return 0.0, 0.0  # per-run energy budgets only bound the projected run
+        kw: dict[str, Any] = {"since": since}
+        if budget.scope == "tenant":
+            kw["tenant_id"] = budget.id or tenant_id
+        elif budget.scope == "feature":
+            kw["feature"] = budget.id or feature
+        elif budget.scope == "user":
+            kw["user_id"] = budget.id or user_id
+        return self.ledger.total_energy(**kw), self.ledger.total_co2e(**kw)
+
+    def check_energy(
+        self,
+        *,
+        tenant_id: str | None = None,
+        user_id: str | None = None,
+        feature: str | None = None,
+        projected_wh: float = 0.0,
+        projected_co2e_grams: float = 0.0,
+        now: datetime | None = None,
+    ) -> EnergyBudgetDecision:
+        """Decide whether a run may proceed under the active energy budgets.
+
+        The energy analogue of :meth:`check`: a run is refused when the scope's
+        accrued energy or carbon over the period (plus any projection) reaches the
+        matching budget's ``limit_wh`` / ``limit_co2e_grams``."""
+        now = now or utcnow()
+        for budget in self.energy_budgets:
+            if not budget.matches(tenant_id=tenant_id, user_id=user_id, feature=feature):
+                continue
+            spent_wh, spent_co2e = self._energy_scope_spend(
+                budget, tenant_id=tenant_id, user_id=user_id, feature=feature, now=now
+            )
+            scope_id = budget.id or {
+                "tenant": tenant_id, "feature": feature, "user": user_id
+            }.get(budget.scope)
+            metric: Literal["energy", "carbon"] | None = None
+            if budget.limit_wh is not None and spent_wh + projected_wh >= budget.limit_wh:
+                metric = "energy"
+            elif (
+                budget.limit_co2e_grams is not None
+                and spent_co2e + projected_co2e_grams >= budget.limit_co2e_grams
+            ):
+                metric = "carbon"
+            if metric is None:
+                continue
+            if metric == "energy":
+                reason = (
+                    f"{budget.scope} {scope_id!r} energy {spent_wh:.3f} Wh reached budget "
+                    f"{budget.limit_wh:.3f} Wh ({budget.period})"
+                )
+            else:
+                reason = (
+                    f"{budget.scope} {scope_id!r} carbon {spent_co2e:.3f} gCO₂e reached budget "
+                    f"{budget.limit_co2e_grams:.3f} gCO₂e ({budget.period})"
+                )
+            return EnergyBudgetDecision(
+                action="cap",
+                metric=metric,
+                spent_wh=round(spent_wh, 6),
+                limit_wh=budget.limit_wh,
+                spent_co2e_grams=round(spent_co2e, 6),
+                limit_co2e_grams=budget.limit_co2e_grams,
+                scope=f"{budget.scope}:{scope_id}",
+                reason=reason,
+            )
+        return EnergyBudgetDecision(action="allow")
 
     def observe(self, event: CostEvent) -> None:
         """Update anomaly baselines for an event; raise ``cost.anomaly`` on a

@@ -313,6 +313,22 @@ cost report — so the privacy guarantee is a mechanical, auditable number, not 
 policy doc. The accountant is opt-in and additive: with none attached, consolidation
 and contributions are unaccounted exactly as before.
 
+**A run's energy and carbon are an auditable, in-process number — never an external
+call.** Sustainability-reporting regimes are beginning to require disclosure of a
+workload's energy and carbon footprint. `app.use_energy_accounting(...)` accrues a
+per-run **energy** (watt-hours) and **carbon** (grams CO₂e) estimate on the same
+cost-report surface, computed **entirely in-process** from the run's own token
+accounting against a built-in, deterministic intensity table (a per-model factor by
+tier and a per-region grid factor) — **no external service is consulted**, so enabling
+the estimate opens no new egress channel and leaks no run metadata to a third party.
+The estimate is mechanical and reproducible: the same run yields the same number. It is
+**budgeted like a dollar** — `app.set_energy_budget(...)` sets an energy or carbon
+envelope, and a run that would exceed it is **refused** on the same audit path as a hard
+cost cap (an `energy_budget` decision on the chain). Both the per-run estimate and every
+refusal land on the hash-chained, tamper-evident audit log, so the sustainability figure
+an auditor sees is a verifiable number, not a vendor claim. Accounting is off by default
+and additive: with it disabled, a run behaves exactly as before.
+
 ### Governed discovery & interoperability
 
 Agent and tool discovery is governed by construction: an `AgentDirectory` resolves

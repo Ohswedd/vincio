@@ -82,6 +82,7 @@ __all__ = [
     "ErasureError",
     "ObservabilityError",
     "ReplayDivergenceError",
+    "EnergyBudgetError",
 ]
 
 
@@ -660,3 +661,10 @@ class ReplayDivergenceError(ObservabilityError):
     could not be loaded/verified."""
 
     code = "REPLAY_DIVERGENCE"
+
+
+class EnergyBudgetError(ObservabilityError):
+    """An energy/carbon budget was misconfigured — e.g. set with neither an
+    energy (``limit_wh``) nor a carbon (``limit_co2e_grams``) ceiling."""
+
+    code = "ENERGY_BUDGET_INVALID"

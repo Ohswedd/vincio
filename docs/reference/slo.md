@@ -283,5 +283,24 @@ the naive sum); the refusal SLO holds that an over-budget release is refused or
 down-weighted, never silently admitted; and the auditability SLO holds that the spent
 budget is provable — reported per subject and recorded on the signed audit chain.
 
+## Energy & carbon accounting
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| Every run yields a per-run energy (Wh) and carbon (gCO₂e) estimate, accrued deterministically from token accounting against a per-model (by-tier) intensity and a per-region grid factor — the energy analogue of the per-run dollar cost, on the same cost-report surface. | true | `families.energy.per_run_estimate` |
+| A run that would push a scope's accrued energy or carbon over its sustainability envelope is refused — the energy analogue of a hard cost cap; an over-budget run never silently proceeds. | true | `families.energy.budget_refused` |
+| The estimate is a mechanical, offline, auditable number: computed in-process from a deterministic intensity table (no external service), on the cost-report surface, with the per-run estimate and every refusal on the verifiable audit chain. | true | `families.energy.auditable_offline` |
+
+The cost report makes a run's dollar spend an auditable number; this adds the
+sustainability figure beside it. A run's energy is accrued from its own token
+accounting against a per-model intensity (by tier, from the model registry) scaled by
+a datacenter overhead factor, and its carbon from a per-region grid factor — all from
+a built-in, deterministic table, so the estimate is reproducible and consults no
+external service. The per-run-estimate SLO holds that an enabled run reports a
+positive, mechanical figure; the budget-refusal SLO holds that an energy or carbon
+envelope refuses an over-budget run the way a hard cost cap refuses spend; and the
+auditable-offline SLO holds that the figure and every refusal are on the verifiable
+audit chain, computed in-process. Accounting is off until explicitly enabled.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

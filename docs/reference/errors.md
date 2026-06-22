@@ -318,3 +318,7 @@ without an entry here.
 ### REPLAY_DIVERGENCE
 
 **Recording no longer replays.** Live code asked for an edge (a model call, tool output, or retrieval) absent from the recording, or the recording failed to load/verify. Re-record against the current code, or use `Replayer.branch(...)` to re-execute the changed suffix against the recorded prefix.
+
+### ENERGY_BUDGET_INVALID
+
+**Energy budget misconfigured.** Set an energy budget with at least one ceiling: pass `limit_wh` (watt-hours), `limit_co2e_grams` (grams CO₂e), or both to `app.set_energy_budget(...)`.

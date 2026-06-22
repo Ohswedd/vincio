@@ -4,6 +4,70 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.18.0] - 2026-06-22
+
+Energy & carbon accounting. The cost report already makes a run's dollar spend an
+auditable number held by a budget SLO, and the resident-memory budget does the same
+for footprint — but the platform reported **nothing about a run's energy or carbon**,
+the disclosure sustainability-reporting regimes are beginning to demand. This release
+adds the missing rung — a per-run **energy** (watt-hours) and estimated **carbon**
+(grams CO₂e) figure on the *existing cost-report surface*, the energy analogue of the
+dollar budget, never a new plane. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the dependency-free offline path is the default, accounting
+is **off until explicitly enabled**, and the estimate is computed in-process from a
+deterministic intensity table with no external service.
+
+### Added
+
+- **The energy/carbon estimation model (`vincio.observability.energy`).** An
+  `EnergyIntensityTable` (the energy analogue of the `PriceTable`) maps a model to an
+  `EnergyProfile` — watt-hours per million input/output tokens, seeded from the
+  `ModelRegistry` by tier (decode dominates prefill; a stronger tier draws more) and
+  overridable per model — scales the result by a datacenter `pue`, and multiplies by a
+  per-region grid carbon factor (g CO₂e/kWh) from a built-in `DEFAULT_CARBON_INTENSITY`
+  table (overridable per region). `estimate(model, usage, region=)` returns a decomposed
+  `EnergyEstimate` (`energy_wh`, `co2e_grams`, the input/output breakdown, the resolved
+  region and intensity). The estimate is mechanical and reproducible.
+- **On the cost-report surface.** `CostTracker` accrues `energy_wh` / `co2e_grams`
+  (surfaced in `summary()`), each attributed `CostEvent` / `CostRow` carries its energy
+  and carbon, and `RunResult` gains `energy_wh` / `co2e_grams`. `CostLedger` gains
+  `total_energy` / `total_co2e` and an `energy_report(by=...)` returning an
+  `EnergyReport` / `EnergyRow` — rolled up from the *same* attributed events the cost
+  report uses, by tenant / feature / user / model / provider / run.
+- **Budgeted like a dollar.** An `EnergyBudget` (energy and/or carbon ceiling, scoped,
+  rolling period) added to the `BudgetManager`; `check_energy(...)` returns an
+  `EnergyBudgetDecision`, and a run whose scope has accrued past the envelope is
+  **refused** on the same audit path as a hard cost cap — an `energy_budget` audit entry
+  and an `energy.budget_exceeded` event.
+- **Auditable & offline.** No external service is consulted; both the per-run estimate
+  (on the terminal `run` audit entry, when enabled) and every refusal land on the
+  hash-chained, verifiable audit log.
+- **App surface.** `app.use_energy_accounting(region=, pue=, carbon_intensity=)` turns
+  accounting on (off by default) and pins the deployment region / overhead / grid
+  factors; `app.set_energy_budget(scope=, id=, limit_wh=, limit_co2e_grams=, period=)`
+  adds an envelope (enabling accounting on first use); `app.energy_report(by=)` rolls up
+  the estimate next to `cost_report`. `EnergyBudgetError` (`ENERGY_BUDGET_INVALID`,
+  under `ObservabilityError`) guards a budget set with no ceiling.
+- **`energy` VincioBench family + 3 SLOs.** Holds the per-run-estimate,
+  budget-refused, auditable-offline, decode-dominates, tier-monotonic,
+  region-intensity-differs, carbon-tracks-energy, off-by-default, and on-cost-surface
+  invariants. SLOs: `energy_per_run_estimate`, `energy_budget_refusal`,
+  `energy_auditable_offline`.
+- **Example.** `examples/62_energy_carbon_accounting.py` — a fully offline walkthrough
+  of enabling accounting, the per-run estimate, the region-dependent carbon, the cost
+  surface roll-up, the budget refusal, and the audit trail.
+
+### Changed
+
+- The public surface gains `EnergyProfile`, `EnergyEstimate`, `EnergyIntensityTable`,
+  `EnergyBudget`, and `EnergyReport`; `vincio.observability` additionally exports
+  `default_energy_table`, `DEFAULT_CARBON_INTENSITY`, `EnergyRow`, and
+  `EnergyBudgetDecision`; `vincio.core.errors` gains `EnergyBudgetError`. `CostTracker`,
+  `CostEvent`, `CostRow`, `CostLedger`, `BudgetManager`, and `RunResult` gain
+  backward-compatible energy/carbon fields and methods (all defaulting to the
+  pre-accounting behavior — zero until enabled). The next scheduled roadmap theme is
+  **formal verification of governance invariants** (target 3.19).
+
 ## [3.17.0] - 2026-06-22
 
 Cross-fleet reputation & weighting. The federated round merged every member's

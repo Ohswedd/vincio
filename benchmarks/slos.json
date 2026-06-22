@@ -1341,6 +1341,36 @@
       "threshold": true,
       "enforced_by": "families.privacy.on_audit_chain",
       "rationale": "A privacy guarantee must be provable, not asserted. The budget gates that spends and refusals land on the verifiable audit chain — a companion budget gates that the per-subject report exposes spent and remaining ε with operation and refusal counts."
+    },
+    {
+      "id": "energy_per_run_estimate",
+      "category": "cost",
+      "statement": "Every run yields a per-run energy (watt-hours) and carbon (grams CO₂e) estimate, accrued deterministically from the run's token accounting against a per-model (by-tier) intensity and a per-region grid factor — the energy analogue of the per-run dollar cost, on the same cost-report surface.",
+      "metric": "families.energy.per_run_estimate",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.energy.per_run_estimate",
+      "rationale": "Sustainability disclosure needs a number, not a gesture: the estimate must be produced for every run and be mechanical. The budget gates that an enabled run reports a positive, reproducible estimate — companion budgets gate that decode dominates prefill, that a stronger tier draws more, that carbon tracks energy at the grid intensity, and that an unknown model still reports non-zero rather than a silent zero."
+    },
+    {
+      "id": "energy_budget_refusal",
+      "category": "cost",
+      "statement": "A run that would push a scope's accrued energy or carbon over its sustainability envelope is refused — the energy analogue of a hard cost cap; an over-budget run never silently proceeds.",
+      "metric": "families.energy.budget_refused",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.energy.budget_refused",
+      "rationale": "A budget that cannot refuse is advisory, not a guarantee. The budget gates that a carbon envelope refuses the over-budget run — a companion budget gates that an energy (watt-hour) ceiling refuses too, so either unit can cap a run."
+    },
+    {
+      "id": "energy_auditable_offline",
+      "category": "reliability",
+      "statement": "The energy/carbon estimate is a mechanical, offline, auditable number: computed in-process from a deterministic intensity table (no external service), on the cost-report surface, with both the per-run estimate and every budget refusal recorded on the hash-chained, verifiable audit log.",
+      "metric": "families.energy.auditable_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.energy.auditable_offline",
+      "rationale": "A sustainability figure auditors can trust must be reproducible and on the record, not a black-box service call. The budget gates that the per-run estimate and the refusal both land on the verifiable audit chain and the cost-report surface — companion budgets gate that the report matches the tracker and that accounting is off until explicitly enabled."
     }
   ]
 }

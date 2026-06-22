@@ -15,6 +15,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field
 
 from ..core.types import ModelProfile, TokenUsage
+from .energy import EnergyEstimate, EnergyIntensityTable, default_energy_table
 
 __all__ = ["ModelPrice", "PriceTable", "CostTracker", "default_price_table"]
 
@@ -117,13 +118,26 @@ def default_price_table() -> PriceTable:
 class CostTracker:
     """Accumulates model/embedding/tool/infra cost for a run or app."""
 
-    def __init__(self, price_table: PriceTable | None = None) -> None:
+    def __init__(
+        self,
+        price_table: PriceTable | None = None,
+        *,
+        energy_table: EnergyIntensityTable | None = None,
+    ) -> None:
         self.price_table = price_table or default_price_table()
+        # Energy/carbon intensity table — the energy analogue of the price table.
+        # Always present (cheap; profiles seed lazily on lookup), so the energy
+        # surface is wired even before accounting is enabled.
+        self.energy_table = energy_table or default_energy_table()
         self.model_cost_usd = 0.0
         self.embedding_cost_usd = 0.0
         self.tool_cost_usd = 0.0
         self.infra_cost_usd = 0.0
         self.usage = TokenUsage()
+        # Estimated energy (watt-hours) and carbon (grams CO₂e) accrued across the
+        # runs this tracker has accounted for. Surfaced in :meth:`summary`.
+        self.energy_wh = 0.0
+        self.co2e_grams = 0.0
         # Peak resident-memory footprint observed across the runs this tracker
         # has accounted for, in bytes. Surfaced in :meth:`summary`.
         self.peak_resident_bytes = 0
@@ -137,6 +151,18 @@ class CostTracker:
         self.model_cost_usd += cost
         self.usage.add(usage)
         return cost
+
+    def record_energy(
+        self, model: str, usage: TokenUsage, *, region: str | None = None
+    ) -> EnergyEstimate:
+        """Estimate and accrue a model call's energy and carbon.
+
+        Returns the per-call :class:`~vincio.observability.energy.EnergyEstimate`
+        so the runtime can attribute it to the run and the cost event."""
+        estimate = self.energy_table.estimate(model, usage, region=region)
+        self.energy_wh += estimate.energy_wh
+        self.co2e_grams += estimate.co2e_grams
+        return estimate
 
     def record_embedding(self, model: str, tokens: int) -> float:
         cost = self.price_table.lookup(model).input_per_mtok * tokens / 1_000_000
@@ -165,4 +191,6 @@ class CostTracker:
             "cached_input_tokens": self.usage.cached_input_tokens,
             "reasoning_tokens": self.usage.reasoning_tokens,
             "peak_resident_bytes": self.peak_resident_bytes,
+            "energy_wh": round(self.energy_wh, 6),
+            "co2e_grams": round(self.co2e_grams, 6),
         }

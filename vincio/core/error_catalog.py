@@ -556,6 +556,13 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "Re-record against the current code, or use `Replayer.branch(...)` to "
             "re-execute the changed suffix against the recorded prefix.",
         ),
+        _entry(
+            "ENERGY_BUDGET_INVALID",
+            "Energy budget misconfigured",
+            "Set an energy budget with at least one ceiling: pass `limit_wh` "
+            "(watt-hours), `limit_co2e_grams` (grams CO₂e), or both to "
+            "`app.set_energy_budget(...)`.",
+        ),
     )
 }
 
