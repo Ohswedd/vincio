@@ -50,7 +50,7 @@ and a runnable example.
 | **Generation** | Cited DOCX/PDF/PPTX/HTML/Markdown, a cited-report builder with per-claim entailment, redlines, image generation and TTS with C2PA provenance, and richer inputs (OCR, transcripts, new-format loaders, forms/KYC). |
 | **Video understanding & generation** | Video is a first-class modality on the existing multimodal packet, not a new plane. A `VideoRef` / video `ContentPart`, deterministic frame sampling (`sample_frame_times`) and temporal segmentation (`segment_timeline`), and a `VideoAnalyzer` (deterministic `MockVideoAnalyzer` offline; `ProviderVideoAnalyzer` + a `PyAVFrameExtractor` behind the `vincio[video]` extra) turn a clip into typed `modality="video"` evidence (`video_evidence_items`) the context compiler scores, budgets, orders, and cites beside text and images. Temporal grounding carries a segment's `time_range` from the loader through retrieval to the cited-report footnote, so a clip-grounded answer points at the moment it came from (`<source>:t<start>-<end>`), auditable at sub-clip resolution. Generated or edited video (`VideoProvider` — `MockVideoProvider` / OpenAI Sora / Google Veo / a generic HTTP adapter) carries a C2PA manifest bound to its bytes, metered against the run budget and audited, exactly the way generated images and audio do (`app.load_video` / `app.generate_video` / `app.edit_video`). |
 | **Providers & storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an `AuthStrategy`, a deterministic mock, and local neural models; a data-driven `ModelRegistry`; pluggable metadata / blob / analytics / vector / graph backends with Redis shared state. |
-| **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. |
+| **Protocols & interoperability** | MCP client + server, A2A, Agent Skills, a governed agent fabric over an `AllowListGate`, AG-UI generative-UI streaming, and LangChain / LlamaIndex / Haystack / DSPy interop. **MCP Apps** land the spec's newer surface in the same governed runtime: a server's `ui://` UI resource is surfaced through the existing AG-UI channel as an `mcp.ui` event (`app.mcp_app(...)` / `MCPAppBridge`) — untrusted-external provenance, token-metered against the run budget, audited; a typed **elicitation** request (`ElicitationGate` / `ElicitationRequest`) is gated by the same approval + rail machinery a write tool passes, so an accepted mid-call value is screened and tainted untrusted; and **evolving-spec parity** (protocol-version negotiation, a stateless-core transport mode) keeps a peer pinned to an older stable revision interoperable. |
 | **Ecosystem & integration breadth** | First-party connectors for Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, and Snowflake feeding the document engine with full provenance behind `register_connector`; an entry-point plugin system (`vincio plugins list`) registering third-party providers, metrics, chunkers, rerankers, judges, connectors, and packs on install under a versioned plugin-API contract; a signed, allow-list-gated, audited `CommunityRegistry` of opt-in packs and `SKILL.md` bundles; and an MCP-server marketplace bridge (`app.add_mcp_from_registry`) that discovers, governs, and lands a server's tools in the permissioned runtime in one call. |
 | **Use-case coverage & verticals** | Full-stack vertical packs (healthcare/PHI, legal e-discovery, financial KYC/AML, customer support, code review) that preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set on top of the pack contract; a higher-level `Assistant` over `ContextApp` that threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval; an end-to-end `VoiceAgent` wiring the realtime session to the deep-research agent, the memory OS, and the rails; and a cookbook of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) as offline-gated runnable examples. |
 | **Cost, reliability & rotation** | Batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental + sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
@@ -81,33 +81,34 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The most recent scheduled theme — **edge / WASM in-process runtime** (an `EdgeRuntime` /
-`EdgeProfile` / `EdgeRequest` / `EdgeResult` packaging the dependency-free compile → score → rail → pack
-core for constrained and browser/WASM targets behind a thin in-process boundary, a bounded edge
-resident-memory profile lowering to the *same* `ContextCompilerOptions` the server reads, and the
-mechanical "parity, not a fork" guarantees `verify_edge_parity` / `edge_manifest` — `app.edge_runtime()`) —
-has shipped and folded into the **Edge / WASM in-process runtime** row above. The next theme is scheduled
-below. It closes a specific gap in the platform's *own* frontier — a rung that exists in the literature and
-in buyer demand but not yet in the package — rather than a gap measured against any one competitor. An
-indicative minor-version target is given; cadence holds one coherent theme per minor.
+The most recent scheduled theme — **MCP Apps & the evolving MCP spec** (a server's `ui://` UI resource
+surfaced through the existing AG-UI channel as a governed `mcp.ui` event via `app.mcp_app(...)` /
+`MCPAppBridge`; a typed `ElicitationGate` / `ElicitationRequest` that runs a server's mid-call input request
+through the same approval + rail machinery a write tool passes and taints an accepted value untrusted; and
+evolving-spec parity — protocol-version negotiation and a stateless-core transport mode) — has shipped and
+folded into the **Protocols & interoperability** row above. The next theme is scheduled below. It closes a
+specific gap in the platform's *own* frontier — a rung that exists in the literature and in buyer demand but
+not yet in the package — rather than a gap measured against any one competitor. An indicative minor-version
+target is given; cadence holds one coherent theme per minor.
 
-### 1 · MCP Apps & the evolving MCP spec *(target 3.22)*
+### 1 · Agent negotiation & contracting *(target 3.23)*
 
-Vincio already speaks MCP in-process — client and server, tools through the permissioned runtime, resources
-as cited evidence — and streams a run as AG-UI generative-UI events. The next reach adopts the MCP spec's
-newer surface as it stabilizes: **server-rendered UI (MCP Apps)**, **elicitation** (a server asking the
-user for a structured input mid-call), and the **stateless-core** transport changes — landed in the same
-governed, audited, budgeted runtime, never as a hosted service.
+Vincio governs a fabric of agents over A2A and the MCP registry behind an `AllowListGate`, scores per-member
+reliability with a Beta-Bernoulli reputation ledger, and discounts an unreliable member's pull on a federated
+round. The next reach is **bounded negotiation and contracting** between agents in a multi-org crew: a buyer
+agent and a seller agent converge on a price/SLA/scope contract under a hard budget, the contract is a typed,
+audited artifact both sides can verify, and the counterparty's reputation weights the deal — landed in the
+same governed, audited, budgeted runtime, never as a hosted marketplace.
 
-- **MCP Apps (server-rendered UI)** — a server's UI resource surfaced through the existing AG-UI
-  generative-UI channel, inheriting the run's provenance, budget, and audit.
-- **Elicitation** — a typed mid-call request for user input, gated by the same approval and rail machinery
-  that governs a write tool today, so an elicited value is contained like any other untrusted input.
-- **Parity with the stable spec** — adopted once the relevant MCP spec changes ship stable, exercised by
-  the same offline test suite with a deterministic-mock server substitute.
+- **Bounded negotiation** — a typed offer/counter-offer protocol over the existing A2A agent fabric, with a
+  guaranteed-termination budget the way a crew round is bounded, returning a partial result on a deadline.
+- **Typed contracts** — a negotiated agreement (price / SLA / scope) is a signed, audited artifact on the
+  hash-chained chain, verifiable offline, that the orchestrator enforces like any other budget.
+- **Reputation-weighted** — the counterparty's `ReputationLedger` standing weights its offers, so a
+  repeatedly-regressing agent is discounted without being singled out.
 
-*Ships as:* an MCP Apps UI-resource bridge over the existing AG-UI surface; an elicitation request/response
-type gated by the approval + rail engine; a `mcp_apps` VincioBench family with an SLO; a runnable example.
+*Ships as:* a bounded `Negotiation` / `Contract` protocol over the A2A fabric; reputation-weighted offer
+selection; a `negotiation` VincioBench family with a termination + contract-integrity SLO; a runnable example.
 
 ---
 
@@ -118,8 +119,8 @@ Grouped by where they would land.
 
 **Efficiency & reach**
 
-- 🔭 **Agent negotiation & reputation** — bounded negotiation, contracting, and a reputation signal
-  over the existing A2A agent fabric and reliability scoring, for multi-org crews.
+- 🔭 **Cross-org workflow choreography** — durable, compensating workflows that span more than one
+  organization's agent fabric, with each org's steps governed and audited on its own chain.
 
 **Breaking window**
 

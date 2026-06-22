@@ -985,9 +985,28 @@ app.run("export button 500s").output.label
 - **MCP.** `vincio.mcp`: `app.add_mcp_server(name, command=/url=/server=)`,
   `app.serve_mcp()` (stdio / Streamable HTTP / in-process); consumed tools run
   through the permissioned/sandboxed/audited runtime, resources become evidence
-  (`origin: mcp:<server>`), sampling routes to the provider, elicitation to a
-  human gate; OAuth 2.1 seams. `MCPUIResource` served via
-  `app.serve_mcp(ui_resources=[...])`.
+  (`origin: mcp:<server>`), sampling routes to the provider; OAuth 2.1 seams.
+  `MCPUIResource` served via `app.serve_mcp(ui_resources=[...])`. Protocol-version
+  negotiation (`negotiate_version`, `SUPPORTED_PROTOCOL_VERSIONS`) honours an
+  older-pinned peer; `StreamableHTTPTransport(stateless=True)` is the stateless-core
+  transport mode (no `Mcp-Session-Id`).
+- **MCP Apps (server-rendered UI).** `app.mcp_app(name, max_render_tokens=)` →
+  `MCPAppBridge` reads a consumed server's `ui://` resources and lowers each into an
+  AG-UI `CUSTOM` `mcp.ui` event (`from vincio.server.agui import mcp_ui_event`):
+  untrusted-external provenance, token-metered against the run (an oversized render
+  is `refused`), audited (`mcp_ui_render`). `bridge.to_agui_events()` /
+  `bridge.stream(base)` (splice before `RUN_FINISHED`); a tool result may embed a
+  UI resource (`client.call_tool_ui` → text + `[MCPUIResource]`); `is_ui_resource`.
+- **Elicitation (governed mid-call input).** `from vincio.mcp import ElicitationGate,
+  ElicitationRequest, ElicitationResponse, ElicitationPolicy, ElicitationAction`.
+  `app.add_mcp_server(..., elicitation=collector, elicitation_approval=fn,
+  elicitation_policy=ElicitationPolicy(require_approval=, screen_rails=,
+  forbid_quarantined=))` builds an `ElicitationGate`: a server's `elicitation/create`
+  is gated like a write tool — an approver may deny it, the collected value is
+  screened through the input `RailEngine` (a secret/injection value is declined), and
+  an accepted value is wrapped `TaintedValue.untrusted(...)` (`mcp:<server>:elicitation`)
+  so it is contained like any untrusted input; every decision audited (`mcp_elicit`).
+  A served app initiates one with `MCPServer.elicit(message, schema=)`.
 - **MCP marketplace bridge.** `app.add_mcp_from_registry(name, registry=,
   allow=/deny=/directory=)` — one call: discover via `MCPRegistryClient`, govern
   reachability through a governed `AgentDirectory` (`AllowListGate`, audited

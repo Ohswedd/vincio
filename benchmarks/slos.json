@@ -1461,6 +1461,36 @@
       "threshold": true,
       "enforced_by": "families.edge.no_native_imports",
       "rationale": "\"Runs in your process\" extends to a WASM process only if the core pulls nothing native at import time. The budget gates that a static scan of the edge-core modules finds no unconditional import of a native/optional package (NumPy stays behind its guarded pure-Python fallback); a companion budget gates that the scanned module set stays comprehensive."
+    },
+    {
+      "id": "mcp_apps_ui_governed",
+      "category": "security",
+      "statement": "A consumed MCP server's server-rendered UI resource is surfaced through the existing AG-UI generative-UI channel under the run's governance: each render carries an untrusted-external provenance, is token-metered against the run's budget (an oversized render is refused, not streamed), and is recorded on the hash-chained audit log.",
+      "metric": "families.mcp_apps.ui_surfaced_through_agui",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.mcp_apps.ui_surfaced_through_agui",
+      "rationale": "MCP Apps must ride one streamed run, not open a new ungoverned UI path. The budget gates that a server's ui:// resource becomes an AG-UI mcp.ui event; companion budgets gate that the render carries an untrusted-external trust level, that an oversized render is budget-refused rather than streamed, and that every render lands on the audit chain — so server UI inherits the run's provenance, budget, and audit."
+    },
+    {
+      "id": "mcp_apps_elicitation_contained",
+      "category": "security",
+      "statement": "A server's mid-call elicitation request is gated by the same approval and rail machinery that governs a write tool: an approval can deny the request before any value is collected, the collected value is screened through the input rails, and an accepted value is tainted untrusted — so a secret value is refused and an elicited value can never silently authorize a side effect.",
+      "metric": "families.mcp_apps.elicit_secret_refused",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.mcp_apps.elicit_secret_refused",
+      "rationale": "An elicited value is untrusted input from a third-party server; treating it as trusted would reopen the containment hole the dual-plane executor closes. The budget gates that a secret elicited value is refused by the input rail; companion budgets gate that an accepted value is tainted untrusted (contained), that an approval gate denies the request before collection, and that the end-to-end server-tool path is contained — so elicitation inherits the write-tool approval + rail guarantees."
+    },
+    {
+      "id": "mcp_apps_spec_parity",
+      "category": "reliability",
+      "statement": "Vincio adopts the evolving MCP spec's surface while staying interoperable: protocol-version negotiation honours a peer pinned to an older stable revision (falling back to the latest Vincio implements for an unknown one), so a capability never silently breaks across a spec-revision boundary.",
+      "metric": "families.mcp_apps.version_negotiated",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.mcp_apps.version_negotiated",
+      "rationale": "The spec moves; interoperability must survive it. The budget gates that negotiation returns a peer's supported revision and falls back for an unsupported one; a companion budget gates that an in-process initialize records the negotiated revision on both peers."
     }
   ]
 }

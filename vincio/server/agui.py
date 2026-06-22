@@ -25,7 +25,17 @@ from pydantic import BaseModel
 
 from ..core.types import new_id
 
-__all__ = ["AGUIEventType", "AGUIEvent", "run_stream_to_agui", "agent_stream_to_agui", "agui_sse"]
+__all__ = [
+    "AGUIEventType",
+    "AGUIEvent",
+    "run_stream_to_agui",
+    "agent_stream_to_agui",
+    "agui_sse",
+    "mcp_ui_event",
+]
+
+# The CUSTOM event name carrying a server-rendered MCP UI resource (MCP Apps).
+MCP_UI_EVENT = "mcp.ui"
 
 
 class AGUIEventType:
@@ -104,6 +114,33 @@ class AGUIEvent(BaseModel):
 def agui_sse(event: AGUIEvent) -> str:
     """Render an AG-UI event as one SSE frame."""
     return event.to_sse()
+
+
+def mcp_ui_event(
+    render: Any, *, thread_id: str | None = None, run_id: str | None = None
+) -> AGUIEvent:
+    """Lower an MCP Apps UI render into an AG-UI ``CUSTOM`` event.
+
+    A server-rendered UI resource (an :class:`~vincio.mcp.apps.MCPUIRender`) rides
+    the generative-UI channel as a ``CUSTOM`` event named ``mcp.ui`` whose
+    ``value`` carries the resource URI, MIME type, content, originating server,
+    and its (untrusted-external) trust level — so a host renders server UI inline
+    while the run's provenance travels with it.
+    """
+    return AGUIEvent(
+        type=AGUIEventType.CUSTOM,
+        name=MCP_UI_EVENT,
+        thread_id=thread_id,
+        run_id=run_id,
+        value={
+            "uri": render.uri,
+            "name": render.name,
+            "mimeType": render.mime_type,
+            "content": render.content,
+            "server": render.server,
+            "trustLevel": str(render.trust_level),
+        },
+    )
 
 
 class _MessageTracker:

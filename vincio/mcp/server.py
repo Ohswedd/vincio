@@ -20,10 +20,11 @@ from .protocol import (
     INVALID_PARAMS,
     INVALID_REQUEST,
     METHOD_NOT_FOUND,
-    PROTOCOL_VERSION,
     MCPError,
     jsonrpc_error,
     jsonrpc_response,
+    negotiate_version,
+    resource_content,
     text_content,
 )
 
@@ -105,6 +106,22 @@ class MCPServer:
         # Set by a bidirectional transport so handlers can initiate requests
         # back to the client (sampling/createMessage, elicitation/create).
         self.request_client: Callable[[str, dict[str, Any]], Awaitable[Any]] | None = None
+        # The protocol revision negotiated on the last ``initialize``.
+        self.negotiated_version: str | None = None
+
+    async def elicit(self, message: str, *, schema: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Ask the connected client for a structured value mid-call.
+
+        Initiates an ``elicitation/create`` request back to the client (which
+        governs it through its :class:`~vincio.mcp.apps.ElicitationGate`) and
+        returns the client's response object (``action`` / ``content``). Requires
+        a bidirectional transport (in-process or stdio).
+        """
+        if self.request_client is None:
+            raise MCPError("server cannot elicit: no bidirectional transport is bound")
+        return await self.request_client(
+            "elicitation/create", {"message": message, "requestedSchema": schema or {}}
+        )
 
     def capabilities(self) -> dict[str, Any]:
         caps: dict[str, Any] = {}
@@ -151,8 +168,9 @@ class MCPServer:
 
     async def _dispatch(self, method: str | None, params: dict[str, Any]) -> Any:
         if method == "initialize":
+            self.negotiated_version = negotiate_version(params.get("protocolVersion"))
             return {
-                "protocolVersion": PROTOCOL_VERSION,
+                "protocolVersion": self.negotiated_version,
                 "serverInfo": {"name": self.name, "version": self.version},
                 "capabilities": self.capabilities(),
             }
@@ -169,7 +187,16 @@ class MCPServer:
             output = await self._call_tool(name, params.get("arguments") or {})
             is_error = isinstance(output, dict) and output.get("_mcp_error") is True
             text = str(output["text"]) if isinstance(output, dict) and "text" in output else _stringify(output)
-            return {"content": [text_content(text)], "isError": is_error}
+            content: list[dict[str, Any]] = [text_content(text)]
+            # MCP Apps: a tool may return server-rendered UI as an embedded
+            # resource alongside its text (``{"text": ..., "ui": MCPUIResource}``,
+            # or an ``MCPUIResource`` directly).
+            ui = output.get("ui") if isinstance(output, dict) else None
+            if ui is None and isinstance(output, MCPUIResource):
+                ui = output
+            if ui is not None:
+                content.append(resource_content(ui.content() if isinstance(ui, MCPUIResource) else ui))
+            return {"content": content, "isError": is_error}
         if method == "resources/list":
             return {"resources": self._list_resources() if self._list_resources else []}
         if method == "resources/read":
@@ -192,6 +219,31 @@ class MCPServer:
 
 
 _METHOD_NOT_FOUND = object()
+
+
+def _as_ui_resource(value: Any) -> MCPUIResource | None:
+    """Recognize a server-rendered UI resource the runtime may have serialized.
+
+    A tool can return an :class:`MCPUIResource` directly; the permissioned tool
+    runtime serializes that to a dict, so a ``ui://`` (or UI-MIME) descriptor is
+    reconstructed back into one for the MCP Apps embedded-resource path.
+    """
+    from .apps import is_ui_resource
+
+    if isinstance(value, MCPUIResource):
+        return value
+    if isinstance(value, dict):
+        uri = str(value.get("uri", ""))
+        mime = str(value.get("mime_type") or value.get("mimeType") or "text/html")
+        if uri and is_ui_resource(uri, mime):
+            return MCPUIResource(
+                uri=uri,
+                name=str(value.get("name") or uri),
+                description=str(value.get("description") or ""),
+                mime_type=mime,
+                text=str(value.get("text") or ""),
+            )
+    return None
 
 
 def _stringify(value: Any) -> str:
@@ -253,6 +305,12 @@ def build_app_server(
         result = await app.tool_runtime.execute(call)
         if result.status != "ok":
             return {"_mcp_error": True, "text": result.error or f"tool {result.status}"}
+        # MCP Apps: a tool that returns server-rendered UI (an MCPUIResource, or
+        # the dict the runtime serializes it to) embeds it alongside its text, to
+        # be surfaced through the AG-UI channel on the consumer.
+        ui = _as_ui_resource(result.output)
+        if ui is not None:
+            return {"text": ui.description or ui.name, "ui": ui}
         return {"text": _stringify(result.output)}
 
     def list_resources() -> list[dict[str, Any]]:

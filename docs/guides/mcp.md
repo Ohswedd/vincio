@@ -38,7 +38,8 @@ surface into the app:
   so the compiler chunks, scores, budgets, and cites them like any document.
   (Pass `resources=False` to skip.)
 - **Server-initiated sampling** routes to the app's model provider;
-  **elicitation** routes to the `elicitation=` callback (e.g. a human gate).
+  **elicitation** (a mid-call request for user input) routes to a governed
+  `ElicitationGate` — see [Elicitation](#elicitation-governed-mid-call-input).
 
 The live client is kept on `app.mcp_clients["weather"]` for direct calls:
 
@@ -115,6 +116,103 @@ from vincio.mcp import serve_stdio
 await serve_stdio(server)
 ```
 
+## MCP Apps: server-rendered UI through the AG-UI channel
+
+[MCP Apps](https://modelcontextprotocol.io) let a server expose interactive UI as
+a resource (a `ui://` URI with an HTML or AG-UI body). Vincio surfaces that UI
+through its *existing* [generative-UI / AG-UI](agent-fabric.md) channel rather
+than opening a new, ungoverned path — so server UI rides one streamed run and
+inherits its provenance, budget, and audit.
+
+```python
+app.add_mcp_server("dashboards", server=dashboard_server)
+bridge = app.mcp_app("dashboards")              # an MCPAppBridge
+
+# Lower each ui:// resource into an AG-UI CUSTOM "mcp.ui" event.
+for event in await bridge.to_agui_events():
+    ...   # event.name == "mcp.ui"; event.value = {uri, mimeType, content, server, trustLevel}
+
+# Or splice the UI events onto an existing AG-UI run stream (before RUN_FINISHED):
+async for event in bridge.stream(run_stream_to_agui(app.astream("..."))):
+    ...
+```
+
+Each render is **governed**:
+
+- **Provenance.** The UI bytes are *untrusted external* content — a third-party
+  server rendered them — so the event carries `trustLevel="untrusted_external"`
+  and the originating server.
+- **Budget.** The render is token-metered; one whose cost exceeds
+  `max_render_tokens` (default 4096) is **refused** (its content dropped, no event
+  emitted) so a server UI can never blow the run's budget.
+- **Audit.** Every render and refusal lands on the hash-chained audit log as an
+  `mcp_ui_render` entry.
+
+A tool result may also **embed** a UI resource (the MCP Apps pattern of returning
+UI alongside text). Surface both with `call_tool_ui`, and serve UI from your own
+app either as a static resource (`app.serve_mcp(ui_resources=[MCPUIResource…])`) or
+by returning an `MCPUIResource` from a tool:
+
+```python
+text, ui_resources = await client.call_tool_ui("open_dashboard", {})
+```
+
+## Elicitation: governed mid-call input
+
+A server may ask the user for a structured value mid-call (`elicitation/create`).
+Vincio gates that request with the **same approval and rail machinery a write tool
+passes**, so an elicited value is contained like any other untrusted input:
+
+```python
+app.add_rail(name="no_secrets", kind="safety", detectors=["secrets"],
+             direction="input", action="block")
+
+app.add_mcp_server(
+    "forms",
+    server=forms_server,
+    elicitation=collect_value,                 # (message, schema) -> dict | None
+    elicitation_approval=lambda req: ...,      # optional: gate the request first
+)
+```
+
+The `ElicitationGate` runs, in order:
+
+1. **Approval.** If the policy requires it, an `elicitation_approval` callable must
+   grant the request before any value is collected — the gate a write tool passes.
+2. **Collect.** The `elicitation=` collector obtains the user's value (a falsy
+   return is an explicit decline).
+3. **Rail screen.** The value is run through the app's *input* rails; a secret,
+   PII, or injection value is **declined** (an injection-flagged value is declined
+   under `forbid_quarantined`, the default).
+4. **Taint.** An accepted value is wrapped `TaintedValue.untrusted(...)` with a
+   `mcp:<server>:elicitation` source, so downstream code that consumes it inherits
+   the taint and it can never silently authorize a side effect.
+
+Every decision is audited (`mcp_elicit`). Build a gate directly for full control:
+
+```python
+from vincio.mcp import ElicitationGate, ElicitationPolicy, ElicitationRequest
+
+gate = ElicitationGate(collect_value, policy=ElicitationPolicy(require_approval=True),
+                       approver=approve_fn, rail_engine=app.rail_engine, audit=app.audit)
+decision = await gate.decide(ElicitationRequest(message="email?", server="forms"))
+decision.accepted, decision.tainted, decision.to_wire()
+```
+
+## The evolving MCP spec
+
+Vincio tracks the spec's revisions while staying interoperable:
+
+- **Version negotiation.** The client requests the latest revision it implements;
+  a server echoes a supported revision and the client records it
+  (`client.negotiated_version`). `negotiate_version(requested)` honours a peer
+  pinned to an older stable revision in `SUPPORTED_PROTOCOL_VERSIONS`, falling back
+  to the latest for an unknown one — so a capability never silently breaks across a
+  spec-revision boundary.
+- **Stateless-core transport.** `StreamableHTTPTransport(url, stateless=True)`
+  never tracks or sends an `Mcp-Session-Id`, so each request is self-contained and
+  can be served by any stateless worker behind a load balancer.
+
 ## CLI
 
 ```bash
@@ -136,5 +234,6 @@ client = connect_in_process(server)
 assert await client.call_tool("add", {"a": 2, "b": 3}) == "5"
 ```
 
-See [`examples/22_mcp_tools_and_resources.py`](../../examples/22_mcp_tools_and_resources.py)
+See [`examples/22_mcp_tools_and_resources.py`](../../examples/22_mcp_tools_and_resources.py),
+[`examples/66_mcp_apps_and_elicitation.py`](../../examples/66_mcp_apps_and_elicitation.py),
 and the [threat model](../security/threat-model.md) for the MCP trust boundary.

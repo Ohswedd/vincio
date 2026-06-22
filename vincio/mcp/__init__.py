@@ -16,15 +16,28 @@ from __future__ import annotations
 
 from typing import Any
 
+from .apps import (
+    ElicitationAction,
+    ElicitationDecision,
+    ElicitationGate,
+    ElicitationPolicy,
+    ElicitationRequest,
+    ElicitationResponse,
+    MCPAppBridge,
+    MCPUIRender,
+    is_ui_resource,
+)
 from .client import MCPClient
 from .oauth import bearer_headers, pkce_pair, static_token_validator
 from .protocol import (
     PROTOCOL_VERSION,
+    SUPPORTED_PROTOCOL_VERSIONS,
     MCPError,
     MCPPromptInfo,
     MCPResourceInfo,
     MCPTask,
     MCPToolInfo,
+    negotiate_version,
 )
 from .server import MCPServer, MCPUIResource, build_app_server, serve_stdio
 from .transport import (
@@ -50,6 +63,17 @@ __all__ = [
     "MCPPromptInfo",
     "MCPTask",
     "PROTOCOL_VERSION",
+    "SUPPORTED_PROTOCOL_VERSIONS",
+    "negotiate_version",
+    "ElicitationAction",
+    "ElicitationRequest",
+    "ElicitationResponse",
+    "ElicitationPolicy",
+    "ElicitationDecision",
+    "ElicitationGate",
+    "MCPUIRender",
+    "MCPAppBridge",
+    "is_ui_resource",
     "pkce_pair",
     "bearer_headers",
     "static_token_validator",

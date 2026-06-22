@@ -174,7 +174,13 @@ class StdioTransport(MCPTransport):
 
 
 class StreamableHTTPTransport(MCPTransport):
-    """POST JSON-RPC to a Streamable HTTP MCP endpoint (legacy SSE accepted)."""
+    """POST JSON-RPC to a Streamable HTTP MCP endpoint (legacy SSE accepted).
+
+    ``stateless=True`` adopts the evolving spec's stateless-core mode: the
+    transport never tracks or sends an ``Mcp-Session-Id``, so each request is
+    self-contained and can be served by any stateless worker behind a load
+    balancer. The default tracks a session id (the established sticky mode).
+    """
 
     def __init__(
         self,
@@ -183,6 +189,7 @@ class StreamableHTTPTransport(MCPTransport):
         headers: dict[str, str] | None = None,
         client: Any | None = None,
         timeout_s: float = 60.0,
+        stateless: bool = False,
     ) -> None:
         self.url = url
         self.headers = {"Content-Type": "application/json", "Accept": "application/json, text/event-stream"}
@@ -191,6 +198,7 @@ class StreamableHTTPTransport(MCPTransport):
         self._client = client
         self._owns_client = client is None
         self.timeout_s = timeout_s
+        self.stateless = stateless
         self._counter = 0
         self._session_id: str | None = None
 
@@ -207,7 +215,7 @@ class StreamableHTTPTransport(MCPTransport):
         client = self._ensure_client()
         self._counter += 1
         headers = dict(self.headers)
-        if self._session_id:
+        if not self.stateless and self._session_id:
             headers["Mcp-Session-Id"] = self._session_id
         try:
             resp = await client.post(
@@ -219,9 +227,10 @@ class StreamableHTTPTransport(MCPTransport):
             raise MCPError("unauthorized", code=-32001, data={"status": 401})
         if resp.status_code >= 400:
             raise MCPError(f"HTTP {resp.status_code}: {resp.text[:200]}", code=INTERNAL_ERROR)
-        session = resp.headers.get("Mcp-Session-Id")
-        if session:
-            self._session_id = session
+        if not self.stateless:
+            session = resp.headers.get("Mcp-Session-Id")
+            if session:
+                self._session_id = session
         message = _decode_http_body(resp)
         if message is None:
             return None
@@ -233,7 +242,7 @@ class StreamableHTTPTransport(MCPTransport):
     async def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
         client = self._ensure_client()
         headers = dict(self.headers)
-        if self._session_id:
+        if not self.stateless and self._session_id:
             headers["Mcp-Session-Id"] = self._session_id
         await client.post(
             self.url, json={"jsonrpc": "2.0", "method": method, "params": params or {}}, headers=headers

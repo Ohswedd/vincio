@@ -15,6 +15,8 @@ from ..core.errors import VincioError
 
 __all__ = [
     "PROTOCOL_VERSION",
+    "SUPPORTED_PROTOCOL_VERSIONS",
+    "negotiate_version",
     "MCPError",
     "MCPToolInfo",
     "MCPResourceInfo",
@@ -24,6 +26,7 @@ __all__ = [
     "jsonrpc_response",
     "jsonrpc_error",
     "text_content",
+    "resource_content",
     "PARSE_ERROR",
     "INVALID_REQUEST",
     "METHOD_NOT_FOUND",
@@ -31,9 +34,32 @@ __all__ = [
     "INTERNAL_ERROR",
 ]
 
-# The stable MCP revision Vincio implements. (The in-flight 2025-11-25 spec and
-# MCP Apps are tracked under the roadmap's "Exploring" section.)
+# The latest MCP revision Vincio implements and requests on ``initialize``. The
+# spec evolves; :data:`SUPPORTED_PROTOCOL_VERSIONS` lists the revisions a server
+# and client negotiate down to, so a peer pinned to an older stable revision
+# still interoperates. Elicitation (``elicitation/create``) and MCP Apps
+# (``ui://`` resources surfaced through the AG-UI channel) ride this surface.
 PROTOCOL_VERSION = "2025-06-18"
+
+# Revisions Vincio can speak, newest first. Negotiation picks the requested
+# revision when supported, else falls back to the latest Vincio implements.
+SUPPORTED_PROTOCOL_VERSIONS: tuple[str, ...] = (
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+)
+
+
+def negotiate_version(requested: str | None) -> str:
+    """Pick the protocol revision for a session.
+
+    Returns the peer's ``requested`` revision when Vincio supports it (honouring
+    a peer pinned to an older stable spec), otherwise the latest revision Vincio
+    implements — the standard MCP ``initialize`` negotiation.
+    """
+    if requested and requested in SUPPORTED_PROTOCOL_VERSIONS:
+        return requested
+    return PROTOCOL_VERSION
 
 # JSON-RPC 2.0 error codes.
 PARSE_ERROR = -32700
@@ -113,3 +139,13 @@ def jsonrpc_error(id: Any, code: int, message: str, data: Any = None) -> dict[st
 def text_content(text: str) -> dict[str, Any]:
     """A single MCP text content block."""
     return {"type": "text", "text": text}
+
+
+def resource_content(resource: dict[str, Any]) -> dict[str, Any]:
+    """An MCP embedded-resource content block (e.g. a server-rendered ``ui://`` UI).
+
+    MCP Apps return interactive UI as an embedded resource on a tool result;
+    ``resource`` is the resource's content object (``uri`` / ``mimeType`` /
+    ``text``).
+    """
+    return {"type": "resource", "resource": resource}
