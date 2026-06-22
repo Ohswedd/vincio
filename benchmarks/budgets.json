@@ -1924,6 +1924,18 @@
     "families.reputation_portability.pool_content_bound": {
       "eq": true
     },
+    "families.reputation_portability.reuse_bound_pinpoints": {
+      "eq": true
+    },
+    "families.reputation_portability.beneficiary_priority_bounded": {
+      "eq": true
+    },
+    "families.reputation_portability.guard_auditable_offline": {
+      "eq": true
+    },
+    "families.reputation_portability.guard_content_bound": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

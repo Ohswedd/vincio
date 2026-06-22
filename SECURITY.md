@@ -771,6 +771,35 @@ is named, never hidden; only the poster or a counterparty can sign, drawing a co
 contract is refused), and every post, draw, release, and top-up lands on the hash-chained
 audit log.
 
+### Cross-org collateral rehypothecation guards & re-use bounds
+
+A collateral ledger (`CollateralLedger` / `guard_collateral` / `app.guard_collateral` /
+`book.guard_collateral` in `vincio.settlement.rehypothecation`) is a **mechanical,
+reconstructable re-use bound that folds a counterparty's pools and reconciles what they pledge
+against what it holds, never a hosted custodian, a rehypothecation registry, or a
+proof-of-reserves service**. It is a defense against **collateral re-use (rehypothecation)**:
+a `CollateralPool` only ever re-allocates capital *within itself*, so without the guard nothing
+bounds a counterparty that pledges the **same** stake across more than one pool (or re-pledges
+collateral a beneficiary already has a claim on) — the same capital double-counted, over-stating
+what actually backs each deal, the collateral analogue of a `SettlementRecord` double-counted
+before netting deduplicated it. The ledger reads **only the existing signed, content-bound
+pools and asserts nothing it cannot recompute**: a pool whose content hash no longer recomputes
+(a tampered allocation or balance) is **refused at fold time**, and with a verifier a forged
+pool signature is too. It reconciles what the pools collectively pledge (the sum of their live
+balances) against the capital the poster actually holds and surfaces the same capital pledged
+twice as a bounded, pinpointed `ReuseBreach` (a contract backed by more than one pool, its
+collateral provably double-pledged) **rather than silently over-stating coverage**. When a stake
+backs deals for more than one beneficiary, each `BeneficiaryClaim` is bounded to its
+deterministic **pari-passu** share of the held capital (proportional to the capital pledged to
+it), so a forfeiture **cannot pay one beneficiary out of capital another has first claim on**.
+The ledger is **content-bound and offline-verifiable**: `CollateralLedger.verify` recomputes the
+content hash and **re-derives the re-use bound and the beneficiary apportionment from the bytes
+alone**, so a tampered total, breach, or claim is caught even after re-sealing; the held-capital
+figure is a declared input the guard bounds the pledges by (signed into the hash, attributable
+to whoever asserted it), and every guard is signed and lands on the hash-chained audit log
+(action `rehypothecation`, decision = `over_committed` / `within_bounds`) so two folders reading
+the same pools compute the same co-signable hash.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them
