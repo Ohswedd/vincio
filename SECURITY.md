@@ -460,6 +460,35 @@ and stops (it never loops), and a remote participant is driven over the same bou
 audited A2A task surface — so an adversarial or unreachable counterparty yields a
 recorded failure-and-unwind, not an unbounded hang.
 
+### Agent-to-agent settlement & metering
+
+Closing the books on contracted cross-org work (`app.settle` / `app.settle_saga` /
+`vincio.settlement`) produces a **verifiable ledger of what was owed and delivered,
+never a payment rail**: no money moves, there is no escrow or clearing service, and a
+settlement is a typed record each org holds and verifies itself. A `SettlementRecord`
+is **content-bound**: both parties sign one *reconciliation hash* over the economic
+facts alone — contract, parties, agreed terms, delivered metrics, balance — which is
+deliberately independent of run id, timestamp, and book position, so two
+independently-produced records co-sign the **same** hash when the books agree and a
+tampered figure changes it. `record.verify(verifier)` recomputes the hash and checks
+every signature **offline from the bytes alone**, so a forged signature or an edited
+balance is caught without the live parties, and `reconcile(ours, theirs)` ties two
+orgs' records out and **pinpoints a disagreement as a dispute** rather than letting one
+side's number stand unchallenged. The **`SettlementBook`** is a **hash-chained** ledger
+— each record links to the previous by an entry hash — so `book.verify()` recomputes
+the whole ledger and catches any record edited, inserted, or dropped (`broken_at`),
+and it is checkpointed to the metadata store so a restart resumes from durable state.
+**Metering is total-preserving**: a reading's cost/latency/usage totals are exactly the
+sum of the accrued events (quality is the weakest link held against a floor), so a
+settlement built from it cannot silently under- or over-count delivery. A delivered
+**breach is contained, not hidden**: an overrun or shortfall reconciles to an explicit
+`status="breached"` record with the breaching dimensions named, and — closing the
+reputation loop — debits the seller's standing so an unreliable counterparty is
+discounted in the next negotiation, bounded and reversible, never singled out. Like
+negotiation and choreography, settlement is **deterministic and offline by
+construction**: it asserts nothing it cannot verify from the bytes, and crosses a trust
+boundary only as a signed record reconciled on each side's own chain.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

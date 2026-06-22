@@ -1638,6 +1638,48 @@
     },
     "families.choreography.compensations_run": {
       "gte": 2
+    },
+    "families.settlement.metering_accurate": {
+      "eq": true
+    },
+    "families.settlement.settlement_reconciles": {
+      "eq": true
+    },
+    "families.settlement.settlement_flags_breach": {
+      "eq": true
+    },
+    "families.settlement.settlement_verifies_offline": {
+      "eq": true
+    },
+    "families.settlement.settlement_tamper_detected": {
+      "eq": true
+    },
+    "families.settlement.reconciles_across_boundary": {
+      "eq": true
+    },
+    "families.settlement.dispute_detected": {
+      "eq": true
+    },
+    "families.settlement.book_verifies_offline": {
+      "eq": true
+    },
+    "families.settlement.book_tamper_detected": {
+      "eq": true
+    },
+    "families.settlement.reputation_closes_loop": {
+      "eq": true
+    },
+    "families.settlement.saga_settles_every_contract": {
+      "eq": true
+    },
+    "families.settlement.audit_recorded": {
+      "eq": true
+    },
+    "families.settlement.contracts_settled": {
+      "gte": 2
+    },
+    "families.settlement.net_balance_usd": {
+      "gte": 0
     }
   }
 }

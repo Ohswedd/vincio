@@ -346,3 +346,7 @@ without an entry here.
 ### COMPENSATION_FAILED
 
 **Saga could not unwind cleanly.** A compensating step itself failed, leaving a half-completed cross-org transaction partially unwound (see `.failures`). Resume the saga to retry the outstanding compensations once the participant is reachable, or reconcile the residue manually; the journal pinpoints every compensation that did not complete.
+
+### SETTLEMENT_ERROR
+
+**Settlement could not proceed.** Meter non-negative usage, sign a settlement only as its buyer or seller, and supply the contract terms a saga's steps ran under when settling it. A settlement whose delivered work breaches the agreed terms does not raise — it reconciles to a SettlementRecord with `status='breached'` (see `.breaches`); re-verify a record or book with the signer the parties used.

@@ -1531,6 +1531,26 @@
       "threshold": true,
       "enforced_by": "families.choreography.compensation_unwinds_in_reverse",
       "rationale": "Without compensation a cross-org failure strands a partial transaction across trust boundaries. The budget gates that a failure compensates the completed steps in reverse order; companion budgets gate that a delivered contract breach also compensates and that each side audits its own steps on its own chain — so a saga is an all-or-nothing unit of cross-org work, governed per-org without a shared control plane."
+    },
+    {
+      "id": "settlement_metering_accuracy",
+      "category": "reliability",
+      "statement": "Usage metered against a contract is total-preserving: a meter reading's cost, latency, and usage totals are exactly the sum of the accrued usage events — no double-count, no drop — so a settlement built from a reading is a faithful reconciliation of what was delivered, not an estimate.",
+      "metric": "families.settlement.metering_accurate",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.settlement.metering_accurate",
+      "rationale": "Closing the books is only meaningful if the meter is faithful. The budget gates that a reading's totals equal the sum of its events (cost and latency summed, quality the weakest link held against a floor); companion budgets gate that the resulting settlement reconciles delivery against the agreed terms and that a whole saga's contracted steps settle from the durable journal — so a cross-org engagement reconciles the way a run closes its cost report."
+    },
+    {
+      "id": "settlement_integrity",
+      "category": "security",
+      "statement": "A settlement record is a typed, signed, offline-verifiable reconciliation: both parties sign one reconciliation hash binding the economic facts, the record and the hash-chained settlement book recompute and every signature checks from the bytes alone, a tampered figure is caught, and two parties' independently-produced records tie out (a disagreement is flagged as a dispute).",
+      "metric": "families.settlement.settlement_verifies_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.settlement.settlement_verifies_offline",
+      "rationale": "A settlement is only as good as its tamper-evidence. The budget gates that a signed settlement verifies offline; companion budgets gate that a tampered figure fails verification, that the hash-chained book recomputes and catches an edited record, that two orgs' records reconcile (and a disagreement is detected), and that the verdict lands on the audit chain — so a cross-org settlement is a mechanical, verifiable ledger of what was owed and delivered, never a self-asserted claim or a hosted clearing house."
     }
   ]
 }

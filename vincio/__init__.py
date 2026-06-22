@@ -292,6 +292,18 @@ from .security.capability import (
 from .security.dualplane import DualPlaneExecutor
 from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
+from .settlement import (
+    Meter,
+    MeterReading,
+    Reconciliation,
+    SettlementBook,
+    SettlementRecord,
+    SettlementReport,
+    UsageEvent,
+    reconcile,
+    settle_contract,
+    settle_saga,
+)
 from .stability import (
     API_VERSION,
     StabilityLevel,
@@ -303,7 +315,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.24.0"
+__version__ = "3.25.0"
 
 __all__ = [
     "ContextApp",
@@ -430,6 +442,17 @@ __all__ = [
     "Choreography",
     "RemoteParticipant",
     "choreography_a2a_server",
+    # agent-to-agent settlement & metering
+    "Meter",
+    "MeterReading",
+    "UsageEvent",
+    "SettlementRecord",
+    "SettlementBook",
+    "SettlementReport",
+    "Reconciliation",
+    "reconcile",
+    "settle_contract",
+    "settle_saga",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

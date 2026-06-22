@@ -615,6 +615,17 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "or reconcile the residue manually; the journal pinpoints every "
             "compensation that did not complete.",
         ),
+        # --- agent-to-agent settlement & metering ---
+        _entry(
+            "SETTLEMENT_ERROR",
+            "Settlement could not proceed",
+            "Meter non-negative usage, sign a settlement only as its buyer or "
+            "seller, and supply the contract terms a saga's steps ran under when "
+            "settling it. A settlement whose delivered work breaches the agreed "
+            "terms does not raise — it reconciles to a SettlementRecord with "
+            "`status='breached'` (see `.breaches`); re-verify a record or book with "
+            "the signer the parties used.",
+        ),
     )
 }
 

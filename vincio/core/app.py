@@ -324,6 +324,11 @@ class ContextApp:
         # signer nor an audit-chain signer is available (so an offline negotiation
         # still produces a signed, self-verifiable contract).
         self._contract_signer: Any = None
+        # Settlement book: opt-in, empty by default. When attached via
+        # ``app.use_settlement_book(...)`` it keeps a durable, hash-chained ledger
+        # of the settlement records that close the books on contracted cross-org
+        # work, and surfaces a settlement report alongside the cost report.
+        self.settlement_book: Any = None
         self.input_router = InputRouter()
 
         # provider
@@ -3049,6 +3054,149 @@ class ContextApp:
             token_validator=token_validator,
             audit=self.audit,
         )
+
+    # -- agent-to-agent settlement & metering ---------------------------------
+
+    def use_settlement_book(self, book: Any | None = None, *, owner: str | None = None) -> Any:
+        """Attach a durable, hash-chained ledger of cross-org settlements.
+
+        Closing the books on contracted work — :meth:`settle` and
+        :meth:`settle_saga` — appends a typed, signed, offline-verifiable
+        :class:`~vincio.settlement.SettlementRecord` to this book, links it into the
+        book's hash chain, records the verdict on this app's audit chain, and (when
+        a reputation ledger is attached) credits or debits the seller, so a settled
+        overrun or shortfall weights the next negotiation. Pass a configured
+        :class:`~vincio.settlement.SettlementBook`, or let this build one wired to
+        the app's contract signer, audit chain, event bus, store, and reputation
+        ledger. Returns the book::
+
+            app.use_settlement_book()
+            record = app.settle(contract, cost_usd=0.08, latency_ms=1200, quality=0.9)
+            app.settlement_report().print_summary()
+        """
+        from ..settlement import SettlementBook
+
+        if book is None:
+            book = SettlementBook(
+                owner or self.name,
+                signer=self._resolve_contract_signer(None, True),
+                audit=self.audit,
+                events=self.events,
+                store=self.store,
+                reputation=self.reputation_ledger,
+            )
+        self.settlement_book = book
+        return book
+
+    def _settlement_book(self) -> Any:
+        """The attached book, or a transient one wired to this app for one call."""
+        if self.settlement_book is not None:
+            return self.settlement_book
+        from ..settlement import SettlementBook
+
+        return SettlementBook(
+            self.name,
+            signer=self._resolve_contract_signer(None, True),
+            audit=self.audit,
+            events=self.events,
+            reputation=self.reputation_ledger,
+        )
+
+    def meter(self, contract: Any, *, run_id: str | None = None) -> Any:
+        """A :class:`~vincio.settlement.Meter` accruing usage against a contract.
+
+        Accrue a :class:`~vincio.settlement.UsageEvent` as each unit of contracted
+        work completes; :meth:`settle` reconciles the resulting reading against the
+        agreed terms. Metering is pure accumulation — it records what was delivered,
+        attributed to the contract and the run, the way the cost report attributes
+        spend; the contract's budget is what enforces a cap.
+        """
+        from ..settlement import Meter
+
+        return Meter(contract.id, run_id=run_id)
+
+    def settle(
+        self,
+        contract: Any,
+        *,
+        reading: Any | None = None,
+        cost_usd: float | None = None,
+        latency_ms: float | None = None,
+        quality: float | None = None,
+        run_id: str | None = None,
+        party: str | None = None,
+        sign: bool = True,
+        record_reputation: bool = True,
+    ) -> Any:
+        """Close the books on contracted work: reconcile, sign, audit, and record.
+
+        Reconciles the delivered work — a metered
+        :class:`~vincio.settlement.MeterReading` (``reading``) or explicit
+        ``cost_usd`` / ``latency_ms`` / ``quality`` figures — against the contract's
+        agreed price / SLA / quality into a typed
+        :class:`~vincio.settlement.SettlementRecord`, signs it as this app's side of
+        the contract, appends it to the attached settlement book (hash-chained,
+        checkpointed) or a transient one, records the verdict on the audit chain,
+        and — unless ``record_reputation`` is off — credits the seller on fulfilment
+        or debits it on a breach. The record verifies offline from the bytes alone;
+        the counterparty's independently-produced record reconciles against it with
+        :func:`~vincio.settlement.reconcile`. Returns the record::
+
+            record = app.settle(contract, cost_usd=0.08, latency_ms=1200, quality=0.92)
+            record.verify(app.contract_signer)  # offline-verifiable
+        """
+        return self._settlement_book().settle(
+            contract,
+            reading=reading,
+            cost_usd=cost_usd,
+            latency_ms=latency_ms,
+            quality=quality,
+            run_id=run_id,
+            party=party,
+            sign=sign,
+            record_reputation=record_reputation,
+        )
+
+    def settle_saga(
+        self,
+        result: Any,
+        *,
+        contracts: dict[str, Any],
+        run_id: str | None = None,
+        party: str | None = None,
+        sign: bool = True,
+        record_reputation: bool = True,
+    ) -> list[Any]:
+        """Close the books on every contract a cross-org saga ran under.
+
+        Meters each contracted forward step from the saga's durable journal and
+        reconciles the per-step delivery against the matching contract in
+        ``contracts`` (keyed by contract id), appending one signed, hash-chained
+        :class:`~vincio.settlement.SettlementRecord` per contract to the settlement
+        book — so a whole cross-org engagement reconciles in one call. Returns the
+        records, in contract-id order.
+        """
+        return self._settlement_book().settle_saga(
+            result,
+            contracts=contracts,
+            run_id=run_id,
+            party=party,
+            sign=sign,
+            record_reputation=record_reputation,
+        )
+
+    def settlement_report(self, counterparty: str | None = None) -> Any:
+        """Per-counterparty settlement roll-up — beside the cost report.
+
+        Each row totals what was owed, what was delivered, and the net balance with
+        a counterparty, with the settled / breached tally behind it. Returns an
+        empty :class:`~vincio.settlement.SettlementReport` when no book is attached.
+        """
+        if self.settlement_book is None:
+            from ..settlement import SettlementReport
+
+            return SettlementReport(owner=self.name)
+        return self.settlement_book.report(counterparty)
 
     # -- evaluators / optimizers ----------------------------------------------------------------------
 

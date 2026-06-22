@@ -4,6 +4,55 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.25.0] - 2026-06-22
+
+Agent-to-agent settlement & metering. With cross-org sagas dispatching contracted work across
+organizations, this release adds the next rung: **closing the books** on it — a metered, auditable
+settlement record reconciling delivered work against a negotiated `Contract`, the way a run closes
+its cost report. It is never a payment rail, only a verifiable ledger of what was owed and
+delivered: usage accrues against the agreed price as the work completes, a typed, signed settlement
+record reconciles delivery against the terms and verifies offline from the bytes alone, two orgs'
+records reconcile across the boundary, and a settled overrun or shortfall closes the reputation
+loop. Landed in the *same* governed, audited runtime, never as a hosted marketplace or a payment
+processor. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, and the whole
+theme runs offline against deterministic figures.
+
+### Added
+
+- **The settlement package (`vincio.settlement`).** A `Meter` (`app.meter(contract)`) accrues the
+  usage of work delivered under a negotiated `Contract` — each unit a `UsageEvent` attributed to the
+  contract and the run — into a deterministic, **total-preserving** `MeterReading` (cost and latency
+  summed, quality the minimum/weakest link, totals exactly the sum of the events); `Meter.from_saga`
+  builds a meter per contract from a saga's durable journal.
+- **Signed, offline-verifiable settlement.** `app.settle(contract, *, reading= | cost_usd=,
+  latency_ms=, quality=, party=, sign=, record_reputation=)` reconciles delivery against the agreed
+  price / SLA / quality (via `contract.check`) into a `SettlementRecord` — `.status`
+  settled|breached, `.amount_owed_usd`, `.balance_usd` (+credit / −overrun), per-dimension `.lines`,
+  `.breaches`. Both parties sign one *reconciliation hash* over the economic facts (run-id- and
+  timestamp-independent, so two sides co-sign the same hash); `record.verify(verifier, require=)`
+  recomputes it from the bytes alone, so a tampered figure or forged signature is caught. A breach is
+  **not** an error — it reconciles to `status="breached"`. `settle_contract` is the pure builder.
+- **Reconciliation across the boundary.** `reconcile(a, b)` ties two independently-produced records
+  out into a `Reconciliation` (`.agrees`, `.hashes_match`, `.discrepancies`) — a disagreement is
+  pinpointed as a dispute, not merely flagged.
+- **The settlement book.** `app.use_settlement_book()` attaches a `SettlementBook` — an org's
+  durable, **hash-chained** ledger of settlements (the analogue of the `SagaJournal`). `.settle(...)`
+  reconciles, signs as the owner's side, links the record into the chain, audits the verdict (the
+  `settlement` action), and closes the reputation loop; `book.verify(verifier=)` recomputes the whole
+  ledger offline and pinpoints any tampered record (`broken_at`); `app.settlement_report(
+  counterparty=)` rolls the books up per counterparty beside the cost report. A unique `book_id` by
+  default (no cross-store collision); pass a stable one to resume across restarts.
+- **Settling a whole saga.** `app.settle_saga(result, *, contracts={id: Contract})` / `settle_saga`
+  meters each contracted step from the durable journal and reconciles the per-step delivery against
+  the matching contract, appending one signed record per contract.
+- **Reputation-closing.** A settled overrun or shortfall debits the seller on an attached
+  `ReputationLedger`, so reliability earned in delivery weights the next negotiation — bounded and
+  reversible, never singled out.
+- **New error** `SettlementError` (`SETTLEMENT_ERROR`) with an error-catalog entry; a `settlement`
+  VincioBench family with two SLOs (metering accuracy; settlement integrity), companion budgets, and
+  [`examples/69_agent_to_agent_settlement.py`](examples/69_agent_to_agent_settlement.py); a
+  [settlement guide](docs/guides/settlement.md).
+
 ## [3.24.0] - 2026-06-22
 
 Cross-org workflow choreography. With agents that discover, negotiate, and contract across
