@@ -600,11 +600,15 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
         _entry(
             "CHOREOGRAPHY_ERROR",
             "Cross-org choreography could not proceed",
-            "Register a participant binding for every org a `Saga` step names, give "
-            "the saga at least one uniquely-named step, and pass a `saga_id` that "
-            "exists in the durable store when calling `resume`. A saga whose forward "
-            "step fails does not raise — it compensates and returns a SagaResult "
-            "with `status='compensated'`.",
+            "Declare exactly one of `participant=` (static) or `capability=` "
+            "(discovered) per `Saga` step; register a participant binding for every "
+            "org a static step names; for a discovered step pass a governed "
+            "`directory=` / `binder=` so the capability resolves to an allowed, "
+            "reachable candidate at dispatch time. Give the saga at least one "
+            "uniquely-named step and pass a `saga_id` that exists in the durable "
+            "store when calling `resume`. A saga whose forward step fails does not "
+            "raise — it compensates and returns a SagaResult with "
+            "`status='compensated'`.",
         ),
         _entry(
             "COMPENSATION_FAILED",

@@ -22,6 +22,11 @@ crossing trust boundaries.
   **breaches its contract** — triggers deterministic compensation of the completed
   steps in reverse order, so a half-completed cross-org transaction unwinds
   cleanly.
+* A step may name its participant statically (``participant=``) or declare the
+  **capability** it needs (``capability=``) and let the engine **resolve the
+  counterparty at dispatch time** from the governed agent directory, ranked by
+  reputation and prior settlement fit — run-time discovery, never a hosted matching
+  service (see :class:`CapabilityBinder` in :mod:`vincio.choreography.discovery`).
 
 A choreography runs fully offline against in-process :class:`LocalParticipant` s,
 or over the A2A agent fabric against a :class:`RemoteParticipant` (see
@@ -32,6 +37,12 @@ mechanical, verifiable artifact, never a hosted control plane.
 
 from __future__ import annotations
 
+from .discovery import (
+    BindingCandidate,
+    BindingWeights,
+    CapabilityBinder,
+    StepBinding,
+)
 from .engine import Choreography, LocalParticipant, Participant
 from .fabric import RemoteParticipant, choreography_a2a_server
 from .saga import (
@@ -61,6 +72,11 @@ __all__ = [
     "Choreography",
     "Participant",
     "LocalParticipant",
+    # run-time capability discovery
+    "CapabilityBinder",
+    "BindingWeights",
+    "BindingCandidate",
+    "StepBinding",
     # A2A fabric binding
     "RemoteParticipant",
     "choreography_a2a_server",

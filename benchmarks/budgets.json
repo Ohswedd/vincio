@@ -1680,6 +1680,39 @@
     },
     "families.settlement.net_balance_usd": {
       "gte": 0
+    },
+    "families.discovery.binds_capability": {
+      "eq": true
+    },
+    "families.discovery.binds_highest_ranked": {
+      "eq": true
+    },
+    "families.discovery.governance_preserved": {
+      "eq": true
+    },
+    "families.discovery.unreachable_rejected": {
+      "eq": true
+    },
+    "families.discovery.no_candidate_refused": {
+      "eq": true
+    },
+    "families.discovery.binding_audited": {
+      "eq": true
+    },
+    "families.discovery.same_governance_as_static": {
+      "eq": true
+    },
+    "families.discovery.compensation_to_bound_org": {
+      "eq": true
+    },
+    "families.discovery.durable_rebinds_pending_only": {
+      "eq": true
+    },
+    "families.discovery.a2a_parity": {
+      "eq": true
+    },
+    "families.discovery.candidates_considered": {
+      "gte": 2
     }
   }
 }

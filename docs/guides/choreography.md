@@ -124,6 +124,69 @@ def transcribe(payload):
     return StepOutcome(ok=True, output=out, cost_usd=0.08, latency_ms=2400, quality=0.95)
 ```
 
+## Run-time discovery: bind a capability instead of an org
+
+A step does not have to name its participant up front. Instead of
+`participant="vendor"`, declare the **capability** the step needs and let the
+engine resolve *who* runs it at dispatch time from a governed
+[`AgentDirectory`](agent-fabric.md) — so a choreography binds the best-available
+counterparty for each step rather than a hard-coded org id. Discovery changes
+*who* runs a step, never *how* it is governed: the resolved org runs under the
+same allow-list, contract, per-org audit, compensation, and settlement a
+statically-wired one does.
+
+```python
+from vincio.choreography import Saga
+
+# Register candidate vendors in a governed (allow-listed, audited) directory.
+directory = app.agent_directory(allow=["vendor-*"])
+directory.register(vendor_a_card)   # an A2A Agent Card advertising "transcription"
+directory.register(vendor_b_card)
+
+saga = Saga(name="job").step(
+    "transcribe",
+    action="run",
+    capability="transcription",     # <- resolved at dispatch time, not wired by id
+    compensation="discard",
+)
+
+result = app.choreograph(
+    saga,
+    participants={"vendor-a": vendor_a, "vendor-b": vendor_b},
+    directory=directory,            # the binder is built from this + reputation + settlement
+)
+
+binding = result.bindings["transcribe"]
+print(binding.org)                  # the counterparty discovery chose
+print([(c.org, c.score) for c in binding.candidates])  # the full ranked field, for audit
+```
+
+Among the candidates that advertise the capability **and** pass the directory's
+allow-list **and** have a participant binding (so they are reachable), the binding
+prefers the one whose reputation and prior settlement record best fit the step's
+contract:
+
+- **Reputation** — a candidate's [`ReputationLedger`](../guides/negotiation.md)
+  standing (its no-regression / contract-fulfilment track record) weights its
+  score, so a repeatedly-regressing vendor is discounted without being singled out.
+- **Settlement fit** — its [`SettlementBook`](settlement.md) history weights the
+  rest: the share of prior settlements it honoured, and how well its delivered
+  cost sat under the step contract's agreed price.
+
+Attach a reputation ledger (`app.use_reputation_ledger()`) and a settlement book
+(`app.use_settlement_book()`) and they feed the ranking automatically; tune the
+blend with `binding_weights=BindingWeights(...)`, or pass a prepared
+`CapabilityBinder` as `binder=`. Ties break deterministically by org id, so a
+binding is reproducible.
+
+Every candidate's governed resolution is recorded on the audit chain
+(`agent_resolve`), and the binding decision itself lands as a `choreography_bind`
+entry — so discovery is as accountable as a statically-wired dispatch. A capability
+that no allowed, reachable candidate advertises raises a `ChoreographyError` rather
+than failing silently. A discovered step compensates at the org it was actually
+bound to (recorded on the journal), and a resume re-binds only the steps that had
+not yet run.
+
 ## Durable and resumable
 
 The `SagaJournal` is checkpointed to the app's metadata store after **every** step,

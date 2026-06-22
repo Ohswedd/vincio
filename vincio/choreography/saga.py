@@ -28,9 +28,10 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
+from .discovery import StepBinding
 
 __all__ = [
     "StepRequest",
@@ -78,6 +79,7 @@ class StepRequest(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     scope: str = ""
     contract_id: str | None = None
+    capability: str = ""
 
     def to_wire(self) -> dict[str, Any]:
         """A JSON-safe projection for dispatch over the A2A fabric."""
@@ -134,19 +136,27 @@ class SagaContext(BaseModel):
 class SagaStep(BaseModel):
     """One step of a :class:`Saga`: a forward action and its compensation.
 
-    ``participant`` names the org that performs the step (resolved to a binding at
-    run time); ``action`` is the capability it runs forward; ``compensation`` is
-    the capability that undoes it on rollback (``None`` means the step needs no
-    undo). ``build`` optionally derives the request payload from the accumulated
-    outputs of prior steps; ``contract`` binds the step to a negotiated agreement
-    whose price / SLA / quality the coordinator enforces on the delivered outcome.
+    A step names **who** runs it in exactly one of two ways. A statically-wired
+    step sets ``participant`` to a fixed org id. A **discovered** step instead sets
+    ``capability`` to the capability it needs, and the engine resolves the
+    participant from the governed agent directory at dispatch time — preferring the
+    allowed candidate whose reputation and prior settlement record best fit the
+    step's contract (see :mod:`vincio.choreography.discovery`). Either way ``action``
+    is the capability it runs forward and ``compensation`` is the capability that
+    undoes it on rollback (``None`` means the step needs no undo).
+
+    ``build`` optionally derives the request payload from the accumulated outputs of
+    prior steps; ``contract`` binds the step to a negotiated agreement whose
+    price / SLA / quality the coordinator enforces on the delivered outcome (and
+    which a discovered step's binding ranks candidates against).
     """
 
     model_config = {"arbitrary_types_allowed": True}
 
     name: str
-    participant: str
+    participant: str = ""
     action: str
+    capability: str = ""
     compensation: str | None = None
     payload: dict[str, Any] = Field(default_factory=dict)
     build: Any = None  # Callable[[SagaContext], dict] | None
@@ -154,6 +164,23 @@ class SagaStep(BaseModel):
     contract: Any = None  # vincio.negotiation.Contract | None
     retries: int = 0
     retry_delay_s: float = 0.0
+
+    @model_validator(mode="after")
+    def _exactly_one_binding(self) -> SagaStep:
+        """A step is statically wired (``participant``) xor discovered (``capability``)."""
+        if bool(self.participant) == bool(self.capability):
+            from ..core.errors import ChoreographyError
+
+            raise ChoreographyError(
+                f"saga step {self.name!r} must declare exactly one of "
+                f"participant= (static) or capability= (discovered)"
+            )
+        return self
+
+    @property
+    def is_discovered(self) -> bool:
+        """Whether this step binds its participant at run time from a capability."""
+        return bool(self.capability)
 
     @property
     def contract_id(self) -> str | None:
@@ -180,8 +207,9 @@ class Saga(BaseModel):
         self,
         name: str,
         *,
-        participant: str,
         action: str,
+        participant: str | None = None,
+        capability: str | None = None,
         compensation: str | None = None,
         payload: dict[str, Any] | None = None,
         build: Any = None,
@@ -190,7 +218,12 @@ class Saga(BaseModel):
         retries: int = 0,
         retry_delay_s: float = 0.0,
     ) -> Saga:
-        """Append a step and return ``self`` for chaining."""
+        """Append a step and return ``self`` for chaining.
+
+        Pass exactly one of ``participant`` (a fixed org id — static wiring) or
+        ``capability`` (the capability to resolve from the governed directory at
+        dispatch time — run-time discovery).
+        """
         if any(s.name == name for s in self.steps):
             from ..core.errors import ChoreographyError
 
@@ -198,8 +231,9 @@ class Saga(BaseModel):
         self.steps.append(
             SagaStep(
                 name=name,
-                participant=participant,
+                participant=participant or "",
                 action=action,
+                capability=capability or "",
                 compensation=compensation,
                 payload=payload or {},
                 build=build,
@@ -245,6 +279,8 @@ class StepRecord(BaseModel):
     status: StepStatus
     attempts: int = 1
     contract_id: str | None = None
+    capability: str | None = None
+    binding: StepBinding | None = None
     output: dict[str, Any] = Field(default_factory=dict)
     cost_usd: float | None = None
     latency_ms: float | None = None
@@ -270,6 +306,7 @@ class StepRecord(BaseModel):
                 "kind": self.kind,
                 "status": self.status,
                 "contract_id": self.contract_id,
+                "capability": self.capability,
                 "output": to_jsonable(self.output),
                 "cost_usd": self.cost_usd,
                 "latency_ms": self.latency_ms,
@@ -380,6 +417,20 @@ class SagaJournal(BaseModel):
         """The accumulated outputs of completed forward steps, keyed by step name."""
         return {r.step: dict(r.output) for r in self.completed_forward()}
 
+    def bindings(self) -> dict[str, StepBinding]:
+        """The run-time binding decision for each discovered step, keyed by step.
+
+        Empty for a fully statically-wired saga; one
+        :class:`~vincio.choreography.discovery.StepBinding` per discovered forward
+        step otherwise, so a resolved-at-run-time choreography records *who* was
+        bound and why, beside the journal it ran.
+        """
+        return {
+            r.step: r.binding
+            for r in self.records
+            if r.kind == "forward" and r.binding is not None
+        }
+
     def to_record(self) -> dict[str, Any]:
         """A JSON-safe projection for the metadata store (keyed by ``id``)."""
         return to_jsonable(self.model_dump(mode="json"))
@@ -431,6 +482,11 @@ class SagaResult(BaseModel):
             if record.step == step:
                 return dict(record.output)
         return {}
+
+    @property
+    def bindings(self) -> dict[str, StepBinding]:
+        """The run-time binding decision for each discovered step (see the journal)."""
+        return self.journal.bindings()
 
     @classmethod
     def from_journal(cls, journal: SagaJournal, *, duration_ms: int = 0) -> SagaResult:

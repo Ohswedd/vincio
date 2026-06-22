@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**303** public symbols.
+**307** public symbols.
 
 ## Classes
 
@@ -86,6 +86,14 @@ Submit a batch, poll it to completion, reconcile, and cost-track.
 
 Base contract for a leaderboard adapter.
 
+### `BindingCandidate(**data)`
+
+One ranked candidate for a capability binding — the decision's evidence.
+
+### `BindingWeights(**data)`
+
+How a candidate's signals combine into one ranking score.
+
 ### `Blackboard(event_bus=…)`
 
 Versioned, author-attributed shared memory for agent teams.
@@ -122,6 +130,10 @@ Ramp a percentage of live traffic onto a candidate, with auto-rollback.
 
 How a candidate is qualified before it is deployed live.
 
+### `CapabilityBinder(directory, reputation=…, settlement_book=…, weights=…, principal=…)`
+
+Resolves a capability-declaring saga step to a participant at dispatch time.
+
 ### `CapabilityBroker(secret=…, default_ttl_s=…)`
 
 Mints and verifies :class:`CapabilityToken`\ s from the user's authority.
@@ -134,7 +146,7 @@ An unforgeable, capability-scoped grant minted from the user's request.
 
 Attribute a metric delta to the components a release changed, by Shapley counterfactual replay over the dataset.
 
-### `Choreography(saga, participants, coordinator=…, store=…, audit=…, events=…, signer=…, clock=…, raise_on_compensation_failure=…)`
+### `Choreography(saga, participants, coordinator=…, store=…, audit=…, events=…, signer=…, binder=…, clock=…, raise_on_compensation_failure=…)`
 
 Drives a :class:`~vincio.choreography.saga.Saga` across organizations.
 
@@ -901,6 +913,10 @@ Stability contract for a public symbol.
 ### `StateGraph(name=…, state_schema=…, reducers=…, defaults=…)`
 
 Build-time graph definition; ``compile()`` produces the runnable form.
+
+### `StepBinding(**data)`
+
+The resolved run-time binding for one capability step.
 
 ### `StepOutcome(**data)`
 

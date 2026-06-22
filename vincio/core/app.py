@@ -2936,7 +2936,41 @@ class ContextApp:
 
     # -- cross-org workflow choreography --------------------------------------
 
-    def _choreography(self, saga: Any, participants: dict[str, Any], signer: Any) -> Any:
+    def _capability_binder(
+        self, saga: Any, directory: Any, binder: Any, weights: Any
+    ) -> Any:
+        """Resolve the binder for a saga: explicit binder, else built from a directory.
+
+        Returns ``None`` for a fully statically-wired saga (no discovered steps), so
+        the engine path is unchanged unless discovery is actually used. When the
+        saga has capability steps, an explicit ``binder`` wins; otherwise a
+        :class:`~vincio.choreography.CapabilityBinder` is built over ``directory``,
+        this app's reputation ledger, and its settlement book, so discovery is
+        ranked by the same reputation and settlement signals the rest of the fabric
+        uses.
+        """
+        if binder is not None:
+            return binder
+        if not any(getattr(s, "is_discovered", False) for s in saga.steps):
+            return None
+        if directory is None:
+            raise ConfigError(
+                "this saga declares capability steps; pass directory= (a governed "
+                "AgentDirectory) or binder= so the participant can be resolved at "
+                "dispatch time"
+            )
+        from ..choreography import CapabilityBinder
+
+        return CapabilityBinder(
+            directory,
+            reputation=self.reputation_ledger,
+            settlement_book=self.settlement_book,
+            weights=weights,
+        )
+
+    def _choreography(
+        self, saga: Any, participants: dict[str, Any], signer: Any, binder: Any = None
+    ) -> Any:
         """Build a :class:`~vincio.choreography.Choreography` bound to this app."""
         from ..choreography import Choreography
 
@@ -2948,6 +2982,7 @@ class ContextApp:
             audit=self.audit,
             events=self.events,
             signer=signer,
+            binder=binder,
         )
 
     async def achoreograph(
@@ -2959,6 +2994,9 @@ class ContextApp:
         saga_id: str | None = None,
         signer: Any | None = None,
         sign: bool = True,
+        directory: Any | None = None,
+        binder: Any | None = None,
+        binding_weights: Any | None = None,
         interrupt_after: int | None = None,
     ) -> Any:
         """Run a durable, compensating cross-org saga; return a :class:`SagaResult`.
@@ -2989,9 +3027,30 @@ class ContextApp:
                 "warehouse": warehouse_client, "payments": payments_handlers,
             })
             assert result.journal.verify().intact  # offline-verifiable
+
+        A step may instead declare the *capability* it needs and have its
+        counterparty **resolved at dispatch time** from a governed
+        :class:`~vincio.registry.AgentDirectory` passed as ``directory=`` — ranked
+        by reputation and prior settlement fit, under the same allow-list, contract,
+        and per-org audit a statically-wired step runs under. The candidate set is
+        the orgs registered in both the directory and ``participants``; pass a
+        prepared :class:`~vincio.choreography.CapabilityBinder` as ``binder=`` (or
+        :class:`~vincio.choreography.BindingWeights` as ``binding_weights=``) to
+        tune the ranking::
+
+            saga = Saga(name="fulfil").step(
+                "transcribe", capability="transcription", action="run",
+            )
+            result = app.choreograph(
+                saga, participants={"vendor-a": a, "vendor-b": b}, directory=directory,
+            )
+            result.bindings["transcribe"].org  # the counterparty discovery chose
         """
         engine = self._choreography(
-            saga, participants, self._resolve_contract_signer(signer, sign)
+            saga,
+            participants,
+            self._resolve_contract_signer(signer, sign),
+            self._capability_binder(saga, directory, binder, binding_weights),
         )
         return await engine.arun(input, saga_id=saga_id, interrupt_after=interrupt_after)
 
@@ -3007,6 +3066,9 @@ class ContextApp:
         participants: dict[str, Any],
         signer: Any | None = None,
         sign: bool = True,
+        directory: Any | None = None,
+        binder: Any | None = None,
+        binding_weights: Any | None = None,
         interrupt_after: int | None = None,
     ) -> Any:
         """Resume a saga from this app's durable store after a restart.
@@ -3015,9 +3077,15 @@ class ContextApp:
         code (only the journal is persisted) and pass the ``saga_id``; completed
         steps keep their outputs and are not re-run, and a saga interrupted
         mid-rollback finishes compensating. A terminal saga is returned unchanged.
+        A discovered step that already ran keeps the org it was bound to (recorded
+        on the journal); one not yet reached binds at dispatch time on resume, so
+        pass the same ``directory=`` / ``binder=`` used for the original run.
         """
         engine = self._choreography(
-            saga, participants, self._resolve_contract_signer(signer, sign)
+            saga,
+            participants,
+            self._resolve_contract_signer(signer, sign),
+            self._capability_binder(saga, directory, binder, binding_weights),
         )
         return await engine.aresume(saga_id, interrupt_after=interrupt_after)
 

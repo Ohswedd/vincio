@@ -6899,6 +6899,251 @@ async def bench_settlement() -> dict[str, Any]:
     }
 
 
+async def bench_discovery() -> dict[str, Any]:
+    """DiscoveryBench: run-time capability binding for cross-org sagas.
+
+    With cross-org sagas negotiated, contracted, settled, and reconciled, this
+    family holds the next rung — **who** runs each step. A discovered step declares
+    the *capability* it needs and the engine resolves the participant at dispatch
+    time from the governed agent directory, rather than a hard-coded org id. It
+    gates two guarantees: **binding correctness** (among the allowed candidates that
+    advertise the capability, the one whose reputation and prior settlement record
+    best fit the step's contract is bound, deterministically, and recorded) and
+    **governance preservation** (an unlisted or unreachable candidate is never
+    bound, the binding decision is audited on the coordinator's chain, and the
+    bound step is contract-enforced, compensated, durable, and A2A-portable exactly
+    as a statically-wired one — discovery changes *who*, never *how*). Deterministic
+    and offline; the A2A path runs in-process."""
+    from vincio import ContextApp, VincioConfig
+    from vincio.a2a import connect_a2a_in_process
+    from vincio.a2a.protocol import AgentCard, AgentSkill
+    from vincio.choreography import (
+        CapabilityBinder,
+        Choreography,
+        RemoteParticipant,
+        Saga,
+        StepOutcome,
+    )
+    from vincio.core.errors import ChoreographyError
+    from vincio.negotiation import Contract, ContractTerms
+    from vincio.storage.base import InMemoryMetadataStore
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+
+    def directory_of(app, vendors, *, allow=("vendor-*",), capability="transcription"):
+        directory = app.agent_directory(allow=list(allow))
+        for name in vendors:
+            directory.register(
+                AgentCard(
+                    name=name,
+                    description=f"{name}",
+                    skills=[AgentSkill(id="run", name="run", description=capability, tags=[capability])],
+                )
+            )
+        return directory
+
+    def vendor(org, log=None, *, fail=False):
+        def run(payload):
+            if log is not None:
+                log.append(f"{org}:run")
+            return StepOutcome(ok=False, error="declined") if fail else {"text": org}
+
+        def discard(payload):
+            if log is not None:
+                log.append(f"{org}:discard")
+            return {}
+
+        return {"run": run, "discard": discard}
+
+    # 1. Binding correctness: the best-reputation candidate is bound and runs.
+    app = ContextApp(name="coord", provider=MockProvider(default_text="ok"), config=cfg)
+    app.use_reputation_ledger()
+    app.reputation_ledger.record_outcome("vendor-a", passed=True, round_id="r1")
+    app.reputation_ledger.record_outcome("vendor-b", passed=False, round_id="r1")
+    app.reputation_ledger.record_outcome("vendor-b", passed=False, round_id="r2")
+    directory = directory_of(app, ["vendor-a", "vendor-b"])
+    parts = {"vendor-a": vendor("vendor-a"), "vendor-b": vendor("vendor-b")}
+    bound = await app.achoreograph(
+        Saga(name="job").step("t", action="run", capability="transcription"),
+        participants=parts,
+        directory=directory,
+    )
+    binds_capability = bool(bound.status == "completed" and bound.bindings["t"].org == "vendor-a")
+    cand = {c.org: c for c in bound.bindings["t"].candidates}
+    binds_highest_ranked = bool(cand["vendor-a"].score > cand["vendor-b"].score)
+    candidates_considered = bound.bindings["t"].considered
+
+    # 2. Governance: an unlisted candidate that advertises the capability is never
+    #    bound; the governed resolution lands on the audit chain.
+    gov = ContextApp(name="gov", provider=MockProvider(default_text="ok"), config=cfg)
+    gdir = directory_of(gov, ["vendor-a", "vendor-evil"], allow=["vendor-a"])
+    gres = await gov.achoreograph(
+        Saga(name="job").step("t", action="run", capability="transcription"),
+        participants={"vendor-a": vendor("vendor-a"), "vendor-evil": vendor("vendor-evil")},
+        directory=gdir,
+    )
+    gcand = {c.org: c for c in gres.bindings["t"].candidates}
+    governance_preserved = bool(
+        gres.bindings["t"].org == "vendor-a"
+        and gcand["vendor-evil"].allowed is False
+        and gcand["vendor-evil"].score == 0.0
+        and gov.audit.query(action="agent_resolve")
+    )
+
+    # 3. Unreachable candidate (advertised, no participant binding) is rejected.
+    ur = ContextApp(name="ur", provider=MockProvider(default_text="ok"), config=cfg)
+    udir = directory_of(ur, ["vendor-a", "vendor-b"])
+    ures = await ur.achoreograph(
+        Saga(name="job").step("t", action="run", capability="transcription"),
+        participants={"vendor-a": vendor("vendor-a")},  # vendor-b unreachable
+        directory=udir,
+    )
+    ucand = {c.org: c for c in ures.bindings["t"].candidates}
+    unreachable_rejected = bool(
+        ures.bindings["t"].org == "vendor-a" and ucand["vendor-b"].reachable is False
+    )
+
+    # 4. No eligible candidate is refused, not silently dropped.
+    nc = ContextApp(name="nc", provider=MockProvider(default_text="ok"), config=cfg)
+    ndir = directory_of(nc, ["vendor-evil"], allow=["vendor-a"])
+    no_candidate_refused = False
+    try:
+        await nc.achoreograph(
+            Saga(name="job").step("t", action="run", capability="transcription"),
+            participants={"vendor-evil": vendor("vendor-evil")},
+            directory=ndir,
+        )
+    except ChoreographyError:
+        no_candidate_refused = True
+
+    # 5. The binding decision is audited on the coordinator's chain.
+    binding_audited = bool(
+        app.audit.query(action="choreography_bind") and app.audit.verify_chain()
+    )
+
+    # 6. Same governance as static: a discovered step's delivered breach is checked
+    #    against its contract and unwinds the saga, exactly as for a static step. A
+    #    static "pre" step is compensated when the discovered step breaches.
+    gc = ContextApp(name="gc", provider=MockProvider(default_text="ok"), config=cfg)
+    gcdir = directory_of(gc, ["vendor-a"])
+    deal = Contract(buyer="gc", seller="*", terms=ContractTerms(scope="x", price_usd=0.10)).seal()
+    comp: list[str] = []
+    breach = await gc.achoreograph(
+        Saga(name="job")
+        .step("pre", action="prep", participant="setup", compensation="undo_pre")
+        .step("t", action="run", capability="transcription", contract=deal),
+        participants={
+            "setup": {
+                "prep": lambda p: {"ready": True},
+                "undo_pre": lambda p: comp.append("pre") or {},
+            },
+            "vendor-a": {"run": lambda p: StepOutcome(ok=True, cost_usd=0.50)},  # overrun
+        },
+        directory=gcdir,
+    )
+    breach_rec = [r for r in breach.journal.forward_records() if r.status == "failed"]
+    same_governance_as_static = bool(
+        breach.status == "compensated"
+        and comp == ["pre"]
+        and breach_rec
+        and breach_rec[0].fulfilled is False
+        and any("price" in b for b in breach_rec[0].breaches)
+    )
+
+    # 7. Compensation dispatches to the bound org, never a re-resolved one.
+    cb = ContextApp(name="cb", provider=MockProvider(default_text="ok"), config=cfg)
+    cb.use_reputation_ledger()
+    cb.reputation_ledger.record_outcome("vendor-b", passed=False, round_id="r1")
+    cbdir = directory_of(cb, ["vendor-a", "vendor-b"])
+    clog: list[str] = []
+    cparts = {"vendor-a": vendor("vendor-a", clog), "vendor-b": vendor("vendor-b", clog)}
+    cparts["vendor-a"]["fail"] = lambda p: StepOutcome(ok=False, error="boom")
+    rolled = await cb.achoreograph(
+        Saga(name="job")
+        .step("t", action="run", capability="transcription", compensation="discard")
+        .step("z", action="fail", participant="vendor-a"),
+        participants=cparts,
+        directory=cbdir,
+    )
+    compensation_to_bound_org = bool(
+        rolled.status == "compensated"
+        and "vendor-a:discard" in clog
+        and "vendor-b:discard" not in clog
+    )
+
+    # 8. Durable: a discovered step bound and completed is not re-bound/re-run on a
+    #    fresh-engine resume; a pending one binds at dispatch on resume.
+    store = InMemoryMetadataStore()
+    dapp = ContextApp(name="d", provider=MockProvider(default_text="ok"), config=cfg)
+    dapp.use_reputation_ledger()
+    dapp.reputation_ledger.record_outcome("vendor-b", passed=False, round_id="r1")
+    ddir = directory_of(dapp, ["vendor-a", "vendor-b"])
+    runs: dict[str, int] = {}
+
+    def counted(org):
+        def run(payload):
+            runs[org] = runs.get(org, 0) + 1
+            return {"text": org}
+
+        return {"run": run, "discard": lambda p: {}}
+
+    dparts = {"vendor-a": counted("vendor-a"), "vendor-b": counted("vendor-b")}
+    binder = CapabilityBinder(ddir, reputation=dapp.reputation_ledger)
+    dsaga = (
+        Saga(name="job")
+        .step("t1", action="run", capability="transcription")
+        .step("t2", action="run", capability="transcription")
+    )
+    paused = await Choreography(dsaga, dparts, store=store, binder=binder).arun(
+        saga_id="d1", interrupt_after=1
+    )
+    resumed = await Choreography(dsaga, dparts, store=store, binder=binder).aresume("d1")
+    durable_rebinds_pending_only = bool(
+        paused.status == "interrupted"
+        and resumed.status == "completed"
+        and runs == {"vendor-a": 2}
+    )
+
+    # 9. A2A parity: discovery binds a remote participant identically.
+    coord = ContextApp(name="coord2", provider=MockProvider(default_text="ok"), config=cfg)
+    rv = ContextApp(name="rv", provider=MockProvider(default_text="ok"), config=cfg)
+    rdir = coord.agent_directory(allow=["vendor-a"])
+    rdir.register(
+        AgentCard(
+            name="vendor-a",
+            description="remote",
+            skills=[AgentSkill(id="run", name="run", description="transcription", tags=["transcription"])],
+        )
+    )
+    server = rv.serve_choreography({"run": lambda p: {"text": "remote"}}, org_id="vendor-a")
+    remote = RemoteParticipant(connect_a2a_in_process(server), org_id="vendor-a")
+    over_a2a = await coord.achoreograph(
+        Saga(name="job").step("t", action="run", capability="transcription"),
+        participants={"vendor-a": remote},
+        directory=rdir,
+    )
+    a2a_parity = bool(
+        over_a2a.status == "completed"
+        and over_a2a.output_of("t") == {"text": "remote"}
+        and over_a2a.bindings["t"].org == "vendor-a"
+    )
+
+    return {
+        "binds_capability": binds_capability,
+        "binds_highest_ranked": binds_highest_ranked,
+        "governance_preserved": governance_preserved,
+        "unreachable_rejected": unreachable_rejected,
+        "no_candidate_refused": no_candidate_refused,
+        "binding_audited": binding_audited,
+        "same_governance_as_static": same_governance_as_static,
+        "compensation_to_bound_org": compensation_to_bound_org,
+        "durable_rebinds_pending_only": durable_rebinds_pending_only,
+        "a2a_parity": a2a_parity,
+        "candidates_considered": candidates_considered,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -6938,6 +7183,7 @@ FAMILIES = {
     "negotiation": bench_negotiation,
     "choreography": bench_choreography,
     "settlement": bench_settlement,
+    "discovery": bench_discovery,
     "breaking_2_0": bench_breaking_2_0,
 }
 

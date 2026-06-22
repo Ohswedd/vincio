@@ -460,6 +460,38 @@ and stops (it never loops), and a remote participant is driven over the same bou
 audited A2A task surface — so an adversarial or unreachable counterparty yields a
 recorded failure-and-unwind, not an unbounded hang.
 
+### Cross-org workflow discovery & dynamic choreography
+
+Resolving a saga step's counterparty at run time (`app.choreograph(..., directory=)`
+/ `vincio.choreography.discovery`) **changes who runs a step, never how it is
+governed**. A discovered step's candidate set is the agents that advertise the
+needed capability in the **same governed `AgentDirectory`** the rest of the fabric
+uses, so discovery inherits its discipline by construction: every candidate is
+resolved through the directory's fail-closed `AllowListGate` and **each resolution
+is recorded as an `agent_resolve` decision** before it can be bound — an unlisted
+candidate scores zero and is **never bound**, exactly as it is unreachable to a
+direct tool call. The binder considers only candidates that are both allow-listed
+**and** reachable (present in the coordinator's participant set), so an advertised
+but unbindable org is rejected rather than dispatched to a dead end, and a
+capability **no** allowed, reachable candidate advertises is **refused** with a
+`ChoreographyError` rather than silently skipped. The binding decision itself —
+the chosen org and the full ranked candidate field — lands on the coordinator's
+hash-chained chain as a `choreography_bind` entry and is carried on the saga
+journal (`result.bindings`), so *who* was chosen and *why* is as auditable as the
+handoff that follows. The ranking signals are **bounded and earned, never
+self-asserted**: a candidate's pull comes from its `ReputationLedger` standing
+(its no-regression / contract-fulfilment track record, bounded to `[floor, 1]`,
+discounting a regressor without singling it out) and its prior `SettlementBook`
+record (the share of settlements it honoured and how its delivered cost fit the
+agreed price) — both accrued from audited outcomes, not from anything a candidate
+claims on the wire. Once bound, the resolved org runs under the **same** contract
+enforcement, per-org audit, deterministic compensation (unwound at the org it was
+actually bound to, recorded on the journal — never a freshly re-resolved one), and
+durable-resume guarantees a statically-wired participant does; a restart re-binds
+only the steps that had not yet run. There is no hosted matching service or shared
+registry of intent — discovery is a library-side resolution over a directory you
+operate, governed and audited in your process.
+
 ### Agent-to-agent settlement & metering
 
 Closing the books on contracted cross-org work (`app.settle` / `app.settle_saga` /
