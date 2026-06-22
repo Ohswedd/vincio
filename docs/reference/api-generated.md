@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**332** public symbols.
+**337** public symbols.
 
 ## Classes
 
@@ -381,6 +381,18 @@ A signed, content-bound manifest of exactly what an erasure removed.
 ### `ErasureResult(**data)`
 
 Outcome of a right-to-erasure-by-source sweep.
+
+### `Escrow(**data)`
+
+Posted collateral bound to a contract — held, released, or forfeited.
+
+### `EscrowConfig(**data)`
+
+How a breach's measured shortfall maps to a bounded forfeiture.
+
+### `EscrowVerification(**data)`
+
+The (non-raising) outcome of verifying an escrow offline.
 
 ### `EvidenceItem(**data)`
 
@@ -1260,6 +1272,10 @@ Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
 
 Fold a fleet's settled contracts into a minimal cleared set of obligations.
 
+### `post_escrow(contract, decision=…, fraction=…, amount=…, poster=…, beneficiary=…, config=…)`
+
+Post collateral against a contract into an (unsigned) :class:`Escrow`.
+
 ### `provider_trainer(backend, registry=…, inherit_from=…, pricing=…, suffix=…, fmt=…, poll_interval_s=…, max_polls=…)`
 
 Build an *executed* :data:`StudentTrainer` over a fine-tune backend.
@@ -1295,6 +1311,10 @@ Start the served observability plane over ``store`` (opt-in, self-hosted).
 ### `settle_contract(contract, reading=…, cost_usd=…, latency_ms=…, quality=…, run_id=…, saga_id=…)`
 
 Reconcile delivery against a contract into an (unsigned) settlement record.
+
+### `settle_escrow(escrow, record, config=…)`
+
+Resolve a posted escrow against a settlement record (release or forfeit).
 
 ### `settle_saga(result, contracts, run_id=…)`
 

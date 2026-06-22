@@ -1318,6 +1318,31 @@ app.run("export button 500s").output.label
   same source the negotiation path weights by (`imported_reputation` else `reputation_ledger`) and records the
   decision on the audit chain (action `reputation_admission`, decision `parity`|`graduated`). Deterministic and
   offline — never a hosted underwriting service.
+- **Cross-org collateralized settlement & escrow.** `from vincio import Escrow, EscrowConfig, EscrowVerification,
+  post_escrow, settle_escrow` (all also in `vincio.settlement.__all__`; `EscrowState`, `EscrowSignature` are
+  subpackage-only). The admission-required escrow fraction was still only a *number stamped on the terms*; nothing
+  **held** it, released it, or forfeited a slice. `post_escrow(contract, *, decision=None, fraction=None,
+  amount=None, poster=None, beneficiary=None, config=None)` → a sealed, unsigned `Escrow` binding the collateral to
+  a specific contract: the amount comes from an explicit `amount` (flat), a `fraction` of the price, an
+  `AdmissionDecision.escrow_fraction` (`decision=`), or the admission posture `apply_to_terms` stamped onto the
+  contract's terms; `poster` defaults to the seller (the admitted counterparty backing its delivery), `beneficiary`
+  to the buyer. `Escrow` (`.contract_id`/`.contract_hash`, `.buyer`/`.seller`/`.poster`/`.beneficiary`,
+  `.price_usd`/`.escrow_fraction`/`.amount_usd`, `.decision_hash`, `.config`, `.state` (`posted`|`released`|
+  `forfeited`), `.shortfall_fraction`/`.forfeited_usd`/`.released_usd`/`.breaches`, `.settlement_hash`,
+  `.content_hash`/`.audit_id`, `.is_posted`/`.is_released`/`.is_forfeited`/`.is_resolved`): **content-bound &
+  offline-verifiable** — `.compute_hash`/`.seal`, `.sign(signer, party)` (buyer/seller only), `.verify(verifier=None,
+  *, require=None)` → `EscrowVerification(valid, hash_ok, terms_sound, signatures_ok, signed_by, reason)` re-derives
+  the amount from the fraction and the release/forfeit split from the shortfall so a tampered amount or forfeiture is
+  caught even after re-sealing, `.require_valid()`, `.to_wire`/`.from_wire`. `.resolve(record, *, config=None)` /
+  `settle_escrow(escrow, record, *, config=None)` settles it against a `SettlementRecord`: a fulfilled delivery
+  releases the whole stake, a breach forfeits `min(shortfall, max_forfeit_fraction)·amount` (the per-dimension
+  shortfall is how far delivery missed the worst breached term, pinpointed in `.breaches`) and releases the
+  remainder — driven by the same record verdict, never the whole stake. `EscrowConfig(max_forfeit_fraction=1.0)`
+  caps a single breach's forfeiture (set `<1` for a guaranteed residual). `app.post_escrow(contract, *, decision=,
+  fraction=, amount=, poster=, beneficiary=, config=, party=, sign=True)`, `app.settle_escrow(escrow, record, *,
+  config=, party=, sign=True)`, and `app.settle(contract, ..., escrow=None, escrow_config=None)` resolve it in the
+  same call — every transition signed and on the audit chain (action `escrow`, decision = the state). Deterministic
+  and offline — never a hosted escrow custodian or a payment rail.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

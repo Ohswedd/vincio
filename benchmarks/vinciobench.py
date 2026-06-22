@@ -7463,7 +7463,13 @@ async def bench_reputation_portability() -> dict[str, Any]:
     than refused, the ceiling ramping toward parity as settled, corroborated history
     accrues and a regression walking it back, every decision binding the standing it read
     and the terms it set onto the audit chain and folding into the negotiation /
-    contracting path. Deterministic and offline."""
+    contracting path. And because that required escrow fraction was still only a number
+    stamped on the terms, it gates **collateralized escrow**: a content-bound escrow holds
+    the admission-required collateral against the specific contract, releases the whole
+    stake on a fulfilled delivery and forfeits a bounded, pinpointed slice proportional to
+    the shortfall on a breach (never the whole stake, never punitive) — driven by the same
+    settlement verdict, recomputing from the bytes alone, and landing every post / release
+    / forfeiture on the audit chain. Deterministic and offline."""
     from datetime import timedelta
 
     from vincio import (
@@ -7920,6 +7926,81 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and stamped_terms.metadata["admission"]["escrow_fraction"] == newcomer.escrow_fraction
     )
 
+    # 33. Collateralized escrow: the admission-required collateral is finally *held*, not
+    #     merely stamped — a content-bound escrow binds the fraction to the specific
+    #     contract and counterparty, and the held amount re-derives from the posture.
+    from vincio import EscrowConfig, post_escrow, settle_escrow
+
+    escrow_contract = Contract(
+        buyer="acme", seller="vendor", terms=ContractTerms(scope="work", price_usd=1.0)
+    ).seal()
+    escrow_decision = admit("vendor", config=AdmissionConfig(floor_fraction=0.1))
+    posted = post_escrow(escrow_contract, decision=escrow_decision)
+    escrow_posts_against_contract = bool(
+        posted.is_posted
+        and posted.contract_id == escrow_contract.id
+        and posted.contract_hash == escrow_contract.content_hash
+        and posted.poster == "vendor"
+        and abs(posted.amount_usd - round(escrow_decision.escrow_fraction * 1.0, 6)) <= 1e-9
+        and posted.verify().valid
+    )
+
+    # 34. A fulfilled delivery releases the whole stake back to the poster.
+    released = post_escrow(escrow_contract, fraction=0.5)
+    settle_escrow(released, settle_contract(escrow_contract, cost_usd=0.5))
+    escrow_releases_on_fulfilment = bool(
+        released.is_released
+        and abs(released.released_usd - released.amount_usd) <= 1e-9
+        and released.forfeited_usd == 0.0
+        and released.verify().valid
+    )
+
+    # 35. A breach forfeits a bounded, pinpointed slice proportional to the shortfall —
+    #     never the whole stake, never punitive; the remainder is released.
+    forfeited = post_escrow(escrow_contract, fraction=0.5)  # $0.50 posted
+    settle_escrow(forfeited, settle_contract(escrow_contract, cost_usd=1.5))  # 50% over
+    escrow_forfeits_proportional_to_breach = bool(
+        forfeited.is_forfeited
+        and abs(forfeited.shortfall_fraction - 0.5) <= 1e-9
+        and 0.0 < forfeited.forfeited_usd < forfeited.amount_usd
+        and abs(forfeited.forfeited_usd - 0.25) <= 1e-9
+        and forfeited.breaches == ["price"]
+        and forfeited.verify().valid
+    )
+
+    # 36. Auditable & offline: the disposition re-derives from the bytes (a tampered
+    #     forfeiture is caught even after re-sealing), and every transition lands on the
+    #     hash-chained audit log.
+    escrow_app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+    escrow_app.use_settlement_book()
+    held = escrow_app.post_escrow(escrow_contract, fraction=0.4)
+    escrow_app.settle(escrow_contract, cost_usd=2.0, escrow=held)  # a breach
+    tampered_escrow = post_escrow(escrow_contract, fraction=0.5)
+    settle_escrow(tampered_escrow, settle_contract(escrow_contract, cost_usd=1.5))
+    tampered_escrow.forfeited_usd = 0.0
+    tampered_escrow.released_usd = tampered_escrow.amount_usd
+    tampered_escrow.seal()
+    escrow_auditable_offline = bool(
+        held.is_forfeited
+        and held.audit_id is not None
+        and len(escrow_app.audit.query(action="escrow")) == 2  # post + forfeit
+        and escrow_app.audit.verify_chain()
+        and tampered_escrow.verify().hash_ok
+        and not tampered_escrow.verify().terms_sound
+    )
+
+    # 37. Folds into the settlement path: app.settle(escrow=) resolves the collateral in
+    #     place against the same record verdict, capped below the whole stake on demand.
+    capped = post_escrow(escrow_contract, fraction=0.5, config=EscrowConfig(max_forfeit_fraction=0.8))
+    capped_record = settle_contract(escrow_contract, cost_usd=3.0)  # total miss
+    settle_escrow(capped, capped_record)
+    escrow_folds_into_settlement_path = bool(
+        held.settlement_hash != ""
+        and capped.released_usd > 0.0  # the cap guarantees a residual
+        and abs(capped.forfeited_usd - 0.8 * capped.amount_usd) <= 1e-9
+        and capped.verify().valid
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -7953,6 +8034,11 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "admission_newcomer_conservative": admission_newcomer_conservative,
         "admission_auditable_offline": admission_auditable_offline,
         "admission_folds_into_path": admission_folds_into_path,
+        "escrow_posts_against_contract": escrow_posts_against_contract,
+        "escrow_releases_on_fulfilment": escrow_releases_on_fulfilment,
+        "escrow_forfeits_proportional_to_breach": escrow_forfeits_proportional_to_breach,
+        "escrow_auditable_offline": escrow_auditable_offline,
+        "escrow_folds_into_settlement_path": escrow_folds_into_settlement_path,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

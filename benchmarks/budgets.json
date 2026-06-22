@@ -1894,6 +1894,21 @@
     "families.reputation_portability.admission_folds_into_path": {
       "eq": true
     },
+    "families.reputation_portability.escrow_posts_against_contract": {
+      "eq": true
+    },
+    "families.reputation_portability.escrow_releases_on_fulfilment": {
+      "eq": true
+    },
+    "families.reputation_portability.escrow_forfeits_proportional_to_breach": {
+      "eq": true
+    },
+    "families.reputation_portability.escrow_auditable_offline": {
+      "eq": true
+    },
+    "families.reputation_portability.escrow_folds_into_settlement_path": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

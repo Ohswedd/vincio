@@ -303,6 +303,9 @@ from .settlement import (
     AdmissionVerification,
     AttestationExchange,
     AttestationRevocation,
+    Escrow,
+    EscrowConfig,
+    EscrowVerification,
     GatheredReputation,
     IssuerTrust,
     Meter,
@@ -328,9 +331,11 @@ from .settlement import (
     gather_reputation,
     net_books,
     net_settlements,
+    post_escrow,
     reconcile,
     revoke_attestation,
     settle_contract,
+    settle_escrow,
     settle_saga,
 )
 from .stability import (
@@ -344,7 +349,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.33.0"
+__version__ = "3.34.0"
 
 __all__ = [
     "ContextApp",
@@ -518,6 +523,12 @@ __all__ = [
     "AdmissionVerification",
     "AdmissionPolicy",
     "admit",
+    # cross-org collateralized settlement & escrow
+    "Escrow",
+    "EscrowConfig",
+    "EscrowVerification",
+    "post_escrow",
+    "settle_escrow",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

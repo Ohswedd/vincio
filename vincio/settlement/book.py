@@ -26,6 +26,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
+from .escrow import ESCROW_ACTION, Escrow, post_escrow
 from .meter import Meter, MeterReading
 from .record import (
     SETTLEMENT_ACTION,
@@ -352,6 +353,8 @@ class SettlementBook:
         party: str | None = None,
         sign: bool = True,
         record_reputation: bool = True,
+        escrow: Escrow | None = None,
+        escrow_config: Any | None = None,
     ) -> SettlementRecord:
         """Reconcile delivery against a contract and close the books on it.
 
@@ -361,6 +364,12 @@ class SettlementBook:
         the audit chain, and — unless ``record_reputation`` is off — credits the
         seller on fulfilment or debits it on a breach, so reliability earned in
         delivery weights the next negotiation. Returns the appended record.
+
+        Pass an ``escrow`` posted against the contract to settle the collateral in the
+        same call: it is resolved against the record (the whole stake released on a
+        fulfilled delivery, a bounded proportional slice forfeited on a breach), signed,
+        and audited in place — so the collateral closes the same loop the settlement
+        does. ``escrow_config`` overrides the forfeiture policy for that resolution.
         """
         record = settle_contract(
             contract,
@@ -376,6 +385,10 @@ class SettlementBook:
             record.sign(self.signer, party=resolved_party)
         self.append(record)
         self._record_reputation(record, record_reputation)
+        if escrow is not None:
+            self.settle_escrow(
+                escrow, record, party=party, sign=sign, config=escrow_config
+            )
         return record
 
     def settle_saga(
@@ -418,12 +431,86 @@ class SettlementBook:
         self._emit(record)
         return record
 
-    def _resolve_party(self, party: str | None, record: SettlementRecord) -> str | None:
+    def _resolve_party(self, party: str | None, record: Any) -> str | None:
         if party is not None:
             return party
         if self.owner in (record.buyer, record.seller):
             return self.owner
         return None
+
+    # -- collateral / escrow ------------------------------------------------
+
+    def post_escrow(
+        self,
+        contract: Any,
+        *,
+        decision: Any | None = None,
+        fraction: float | None = None,
+        amount: float | None = None,
+        poster: str | None = None,
+        beneficiary: str | None = None,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> Escrow:
+        """Post collateral against a contract, signed and audited.
+
+        Builds the :class:`~vincio.settlement.escrow.Escrow`
+        (:func:`~vincio.settlement.escrow.post_escrow`) holding the admission-required
+        collateral — read from an :class:`~vincio.settlement.admission.AdmissionDecision`
+        (``decision``), an explicit ``fraction`` / ``amount``, or the admission posture
+        stamped onto the contract's terms — signs it as this book's owner (when a side of
+        the contract), and records the posting on the audit chain. Returns the escrow.
+        """
+        escrow = post_escrow(
+            contract,
+            decision=decision,
+            fraction=fraction,
+            amount=amount,
+            poster=poster,
+            beneficiary=beneficiary,
+            config=config,
+        )
+        resolved_party = self._resolve_party(party, escrow)
+        if sign and self.signer is not None and resolved_party is not None:
+            escrow.sign(self.signer, party=resolved_party)
+        self._audit_escrow(escrow)
+        return escrow
+
+    def settle_escrow(
+        self,
+        escrow: Escrow,
+        record: SettlementRecord,
+        *,
+        config: Any | None = None,
+        party: str | None = None,
+        sign: bool = True,
+    ) -> Escrow:
+        """Resolve a posted escrow against a settlement record, signed and audited.
+
+        Releases the whole stake on a fulfilled delivery and forfeits a bounded,
+        proportional slice on a breach (:meth:`Escrow.resolve`), re-signs the resolved
+        escrow as this book's owner, and records the release / forfeiture on the audit
+        chain — so the collateral's whole lifecycle is on the same tamper-evident log the
+        settlement is. Returns the resolved escrow.
+        """
+        escrow.resolve(record, config=config)
+        resolved_party = self._resolve_party(party, escrow)
+        if sign and self.signer is not None and resolved_party is not None:
+            escrow.sign(self.signer, party=resolved_party)
+        self._audit_escrow(escrow)
+        return escrow
+
+    def _audit_escrow(self, escrow: Escrow) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            ESCROW_ACTION,
+            resource=escrow.contract_id,
+            decision=escrow.state,
+            details=escrow.audit_details(),
+        )
+        escrow.audit_id = getattr(entry, "id", None)
 
     # -- reads --------------------------------------------------------------
 

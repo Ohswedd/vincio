@@ -4,6 +4,51 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.34.0] - 2026-06-22
+
+Cross-org collateralized settlement & escrow. Admission now sets a required collateral / escrow fraction on a
+thin or low-trust counterparty's contract — but the fraction was still only a *number stamped on the terms*;
+nothing **held** it, released it on a clean delivery, or forfeited a slice on a breach. A counterparty admitted
+on conservative terms posted no actual collateral, so the escrow the admission policy asked for had no teeth,
+and a breach was debited only to reputation after the fact. This release makes the posted collateral a
+**verifiable, offline escrow bound to the contract** — held against delivery and settled deterministically — so
+the conservative terms a thin standing is admitted on are backed by something, not merely recorded. Entirely
+additive and backward-compatible — `API_VERSION` stays `3.0`, the existing negotiation, contracting, and
+settlement paths are unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **Escrow (`vincio.settlement.escrow`).** `post_escrow(contract, *, decision=None, fraction=None, amount=None,
+  poster=None, beneficiary=None, config=None)` binds an admission-required collateral amount to a *specific*
+  `Contract` and counterparty into a sealed, unsigned `Escrow` — the escrow analogue of a `SettlementRecord`.
+  The held amount comes from an explicit `amount` (a flat stake), an explicit `fraction` of the contract price,
+  an `AdmissionDecision.escrow_fraction` (`decision=`), or the admission posture `apply_to_terms` already
+  stamped onto the contract's terms; the poster defaults to the seller (the counterparty backing its delivery)
+  and the beneficiary to the buyer.
+- **Deterministic release & forfeiture.** `Escrow.resolve(record, *, config=None)` / `settle_escrow(escrow,
+  record, *, config=None)` settles the escrow against the contract's `SettlementRecord`: a fulfilled delivery
+  **releases** the whole stake back to the poster, and a breach **forfeits** `min(shortfall,
+  max_forfeit_fraction)` of the stake — the per-dimension shortfall being how far delivery missed the worst
+  breached term, pinpointed in `.breaches` — releasing the remainder (never the whole stake, never punitive).
+  The outcome is driven by the *same* `SettlementRecord` verdict the books already close on. `EscrowConfig(
+  max_forfeit_fraction=1.0)` caps a single breach's forfeiture (set `<1` for a guaranteed residual).
+- **Offline-verifiable.** `Escrow` binds the contract, the amount, the admission posture, and the disposition
+  onto a content hash; `.verify(verifier=None, *, require=None)` → `EscrowVerification(valid, hash_ok,
+  terms_sound, signatures_ok, signed_by, reason)` re-derives the held amount from the fraction and the
+  release / forfeit split from the shortfall, so a tampered amount or forfeiture is caught even after
+  re-sealing. `.sign(signer, party)` (buyer/seller only), `.require_valid()`, `.to_wire` / `.from_wire`, and
+  `.audit_details()` round it out; resolution is idempotent-guarded and contract-matched.
+- **Folds into the settlement path.** `app.post_escrow(...)` posts and audits the collateral; `app.settle(
+  contract, ..., escrow=None, escrow_config=None)` resolves an attached escrow against the record it produces in
+  the same call; `app.settle_escrow(escrow, record, ...)` resolves one against a record you already have —
+  every post, release, and forfeiture signed and recorded on the hash-chained audit log (action `escrow`,
+  decision = the state).
+- **Surface.** `from vincio import Escrow, EscrowConfig, EscrowVerification, post_escrow, settle_escrow` (all
+  also in `vincio.settlement.__all__`, alongside `EscrowState` / `EscrowSignature`); a `reputation_portability`
+  VincioBench extension with five escrow metrics (posts-against-contract, releases-on-fulfilment,
+  forfeits-proportional-to-breach, auditable-offline, folds-into-settlement-path) and an `escrow_settlement`
+  published SLO; and a runnable example, `examples/78_cross_org_collateralized_escrow.py`.
+
 ## [3.33.0] - 2026-06-22
 
 Cross-org reputation-gated admission & progressive exposure. Reputation is now portable, current,
