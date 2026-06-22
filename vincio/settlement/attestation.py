@@ -39,6 +39,20 @@ central reputation service.
   history falls back to the benefit-of-the-doubt prior. With a local ledger as the
   ``base``, a counterparty the importer already knows keeps its own earned standing
   and only an unknown one leans on the imported attestations.
+* **Weighted by trust in the issuer.** Pooling every counted issuer's evidence with
+  equal pull lets a clutch of unknown peers out-evidence a few the importer has lived
+  through, and an adversary can spin up *Sybil* issuers that all vouch the same way. A
+  :class:`TrustModel` (:func:`build_trust_model`) closes that gap: it scales each
+  issuer's contributed evidence mass by the importer's **own trust in that issuer** —
+  its earned standing as a counterparty in the ``base`` ledger — under a bounded,
+  transitive web-of-trust. Trust composes at most ``max_depth`` hops (an issuer the
+  importer trusts lends weight to the issuers *it* attests) with a per-hop decay, and
+  every multiplier is bounded ``[trust_floor, 1]`` — so corroboration from a trusted
+  peer counts for more than volume from an unknown one, an unknown issuer still counts
+  (never zeroed), and a cluster of mutually-vouching unknown issuers cannot outvote a
+  few corroborating trusted ones because pull follows *earned trust*, not issuer
+  count. Issuer-trust weighting is opt-in (``trust`` / ``trust_config``); with neither,
+  combining pools evidence with equal pull exactly as before.
 
 :meth:`~vincio.core.app.ContextApp.attest_reputation` issues an attestation from an
 app's own settlement book; :meth:`~vincio.core.app.ContextApp.import_reputation`
@@ -72,6 +86,10 @@ __all__ = [
     "RevocationVerification",
     "SubjectStanding",
     "PortableReputation",
+    "TrustConfig",
+    "IssuerTrust",
+    "TrustModel",
+    "build_trust_model",
     "attest_reputation",
     "revoke_attestation",
     "combine_attestations",
@@ -203,6 +221,76 @@ class AttestationConfig(BaseModel):
         if factor >= 1.0:
             return successes, failures
         return successes * factor, failures * factor
+
+
+class TrustConfig(BaseModel):
+    """How the importer's trust in an issuer scales the evidence it contributes.
+
+    When attestations pool with equal pull, a clutch of unknown issuers can
+    out-evidence a few the importer has lived through, and a cluster of *Sybil*
+    issuers can manufacture standing by all vouching the same way. A trust model
+    (:func:`build_trust_model`) closes that by scaling each issuer's contributed
+    evidence *mass* by the importer's **own trust in that issuer** — a bounded,
+    transitive web-of-trust over the standing each issuer has *as a counterparty* —
+    so corroboration from a trusted peer counts for more than volume from an unknown
+    one, without a central trust authority.
+
+    * ``max_depth`` is the hard hop bound on transitivity: trust is anchored at the
+      importer (hop ``0`` — issuers it has first-hand evidence for in its ``base``
+      ledger), and an issuer the importer trusts can lend weight to the issuers *it*
+      attests (hop ``1``), and so on up to ``max_depth`` hops. The bound keeps a long,
+      unverifiable chain from manufacturing standing and the computation finite and
+      deterministic. ``0`` uses direct (first-hand) trust only.
+    * ``hop_decay`` ``∈ (0, 1]`` is the trust lent across **one** hop: a hop-``k``
+      issuer's mapped trust is multiplied by ``hop_decay ** k``, so vouched-for trust
+      attenuates with distance and a far issuer leans toward the floor.
+    * ``trust_floor`` / ``trust_ceiling`` bound every trust multiplier to the same
+      ``[floor, 1]`` band a reputation weight uses. The floor keeps an **unknown** (or
+      heavily discounted) issuer's evidence counting — discounted, never zeroed or
+      singled out, and recoverable — and the ceiling (``1.0``) means trust only ever
+      *lowers* an issuer's pull relative to a fully-trusted one, never amplifies it.
+
+    An issuer's earned standing ``r ∈ [0, 1]`` maps to a trust multiplier
+    ``trust_floor + (trust_ceiling − trust_floor) · r`` — the *same* monotonic map a
+    reputation uses for its aggregation weight — so trust and reputation weigh on one
+    scale. Trust scales an issuer's *mass* (its successes and failures together), never
+    the reputation it attests, exactly as the per-issuer cap and the age decay do.
+    """
+
+    max_depth: int = 1
+    hop_decay: float = 0.5
+    trust_floor: float = 0.1
+    trust_ceiling: float = 1.0
+
+    def validate_coherent(self) -> TrustConfig:
+        """Raise :class:`SettlementError` unless the configuration is coherent."""
+        if self.max_depth < 0:
+            raise SettlementError(
+                f"trust max_depth must be non-negative; got {self.max_depth}",
+                details={"max_depth": self.max_depth},
+            )
+        if not 0.0 < self.hop_decay <= 1.0:
+            raise SettlementError(
+                f"trust hop_decay must satisfy 0 < hop_decay ≤ 1; got {self.hop_decay}",
+                details={"hop_decay": self.hop_decay},
+            )
+        if not 0.0 <= self.trust_floor <= self.trust_ceiling <= 1.0:
+            raise SettlementError(
+                "trust weights must satisfy 0 ≤ trust_floor ≤ trust_ceiling ≤ 1; got "
+                f"floor={self.trust_floor}, ceiling={self.trust_ceiling}",
+                details={"trust_floor": self.trust_floor, "trust_ceiling": self.trust_ceiling},
+            )
+        return self
+
+    def clamp_trust(self, value: float) -> float:
+        """Clamp a trust value into the ``[trust_floor, trust_ceiling]`` band."""
+        return round(min(self.trust_ceiling, max(self.trust_floor, value)), 9)
+
+    def trust_of(self, reputation: float) -> float:
+        """Map an issuer's earned standing ``∈ [0, 1]`` to a trust multiplier in band."""
+        clamped = min(1.0, max(0.0, reputation))
+        span = self.trust_ceiling - self.trust_floor
+        return round(self.trust_floor + span * clamped, 9)
 
 
 class AttestationVerification(BaseModel):
@@ -744,6 +832,9 @@ class AttestationVerdict(BaseModel):
     counted: bool = False
     revoked: bool = False
     stale: bool = False
+    # The importer's trust multiplier applied to this issuer's evidence mass when the
+    # attestation was counted (``1.0`` when no issuer-trust weighting is in effect).
+    trust: float = 1.0
     reason: str | None = None
 
 
@@ -765,6 +856,9 @@ class SubjectStanding(BaseModel):
     weight: float = 1.0
     issuers: list[str] = Field(default_factory=list)
     attestations: int = 0
+    # The trust multiplier each counted issuer's evidence was scaled by (empty when no
+    # issuer-trust weighting is in effect — every issuer pooled with equal pull).
+    issuer_trust: dict[str, float] = Field(default_factory=dict)
 
     @property
     def evidence(self) -> float:
@@ -805,12 +899,14 @@ class PortableReputation:
         *,
         base: Any | None = None,
         as_of: datetime | None = None,
+        trust: Any | None = None,
     ) -> None:
         self.config = config
         self._standings = standings
         self.verdicts = verdicts
         self.base = base
         self.as_of = as_of
+        self.trust = trust
 
     # -- reads --------------------------------------------------------------
 
@@ -854,6 +950,15 @@ class PortableReputation:
             except Exception:  # noqa: BLE001 - a base miss should not break weighting
                 pass
         return self.config.weight_of(self.reputation(member_id))
+
+    def trust_in(self, issuer: str) -> float:
+        """The importer's trust multiplier applied to ``issuer``'s attested evidence.
+
+        ``1.0`` (full pull) when no issuer-trust weighting was in effect; otherwise the
+        bounded ``[trust_floor, 1]`` multiplier the :class:`TrustModel` resolved for the
+        issuer — the floor for one the importer neither knows nor reaches transitively.
+        """
+        return _trust_multiplier(self.trust, issuer)
 
     # -- verdicts -----------------------------------------------------------
 
@@ -912,6 +1017,104 @@ class PortableReputation:
             )
         for verdict in self.refused + self.excluded:
             print(f"  ! {verdict.issuer}→{verdict.subject}: {verdict.reason}")
+
+
+class IssuerTrust(BaseModel):
+    """The importer's resolved trust in one issuer — pinpointed, never silent.
+
+    Produced by :func:`build_trust_model`. ``trust`` is the bounded
+    ``[trust_floor, 1]`` multiplier the issuer's attested evidence is scaled by;
+    ``depth`` is its hop distance from the importer (``0`` for an issuer the importer
+    has first-hand evidence for, ``k`` for one a hop-``k`` chain of trusted issuers
+    vouches for, and ``None`` for one neither known nor reached — which falls back to
+    the floor). ``vouched_by`` names the trusted issuers that lent transitive trust
+    (empty for a direct or unreached issuer), and ``reputation`` is the standing the
+    transitive trust was derived from — so an issuer's pull is always traceable to who
+    vouched for it, never an opaque number.
+    """
+
+    issuer: str
+    trust: float
+    depth: int | None = None
+    direct: bool = False
+    vouched_by: list[str] = Field(default_factory=list)
+    reputation: float | None = None
+
+    @property
+    def transitive(self) -> bool:
+        """Whether the trust was lent across at least one hop (not first-hand)."""
+        return self.depth is not None and self.depth > 0
+
+
+class TrustModel:
+    """The importer's bounded, transitive trust in each issuer — the Sybil-resistant kernel.
+
+    Produced by :func:`build_trust_model` from the importer's own ``base`` ledger and
+    the attestations on hand. It resolves, for each issuer, a trust multiplier in the
+    ``[trust_floor, 1]`` band, computed by a bounded web-of-trust:
+
+    * **hop 0 (direct).** An issuer the importer has first-hand evidence for in its
+      ``base`` :class:`~vincio.optimize.reputation.ReputationLedger` is trusted exactly
+      as much as that ledger weights it (clamped into the trust band).
+    * **hops 1..max_depth (transitive).** An issuer the importer does *not* know
+      directly, but that an *already-trusted* issuer attests (the trusted issuer
+      vouches for it as a counterparty), inherits trust derived from that pooled
+      standing, attenuated by ``hop_decay`` per hop. The pool is itself weighted by the
+      voucher's trust, so a chain only lends as much as its weakest trusted link.
+    * **unreached.** An issuer neither known nor reachable from a trusted root within
+      ``max_depth`` hops falls back to ``trust_floor`` — counted, never zeroed.
+
+    The kernel is **Sybil-resistant** because trust is lent only *outward from a
+    trusted root*: a cluster of mutually-vouching unknown issuers is never reached from
+    the importer's ledger, so every member stays at the floor however much it vouches —
+    pull follows earned trust, not issuer count. It is deterministic and offline, and
+    quacks like a ledger (:meth:`weight` aliases :meth:`trust_in`) so it drops in as the
+    ``trust`` argument to :func:`combine_attestations`.
+    """
+
+    def __init__(self, assessments: dict[str, IssuerTrust], config: TrustConfig) -> None:
+        self.config = config
+        self._assessments = assessments
+
+    def trust_in(self, issuer: str) -> float:
+        """The trust multiplier for ``issuer`` — the floor for an unknown one."""
+        assessment = self._assessments.get(issuer)
+        return assessment.trust if assessment is not None else self.config.trust_floor
+
+    def weight(self, issuer: str) -> float:
+        """Alias of :meth:`trust_in` so the model is interchangeable with a ledger."""
+        return self.trust_in(issuer)
+
+    def assessment(self, issuer: str) -> IssuerTrust | None:
+        """The full :class:`IssuerTrust` for ``issuer``, or ``None`` if unassessed."""
+        return self._assessments.get(issuer)
+
+    def issuers(self) -> list[str]:
+        """Every issuer the model resolved a non-floor trust for, sorted."""
+        return sorted(self._assessments)
+
+    def direct_issuers(self) -> list[str]:
+        """The issuers trusted first-hand from the base ledger (hop 0), sorted."""
+        return sorted(i for i, a in self._assessments.items() if a.direct)
+
+    def transitive_issuers(self) -> list[str]:
+        """The issuers trusted transitively (hop ≥ 1), sorted."""
+        return sorted(i for i, a in self._assessments.items() if a.transitive)
+
+    def assessments(self) -> list[IssuerTrust]:
+        """Every resolved :class:`IssuerTrust`, sorted by issuer."""
+        return [self._assessments[i] for i in sorted(self._assessments)]
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        """Print each issuer's resolved trust and how it was reached."""
+        print(
+            f"Trust model: {len(self.direct_issuers())} direct / "
+            f"{len(self.transitive_issuers())} transitive issuer(s), "
+            f"floor={self.config.trust_floor:g}"
+        )
+        for a in self.assessments():
+            how = "direct" if a.direct else f"hop {a.depth} via {a.vouched_by}"
+            print(f"  {a.issuer}: trust={a.trust:.3f} ({how})")
 
 
 def _as_utc(moment: datetime) -> datetime:
@@ -1114,6 +1317,144 @@ def revoke_attestation(
     return revocation.seal()
 
 
+# -- trust --------------------------------------------------------------------
+
+
+def _admissible(att: ReputationAttestation, verify_with: ChainSigner | None) -> bool:
+    """Whether an attestation verifies as an artifact (hash, evidence, signature).
+
+    The same admissibility :func:`combine_attestations` applies, minus the policy
+    exclusions (self-attestation, revoked, stale) — a tampered or forged attestation
+    must not lend trust any more than it pools evidence.
+    """
+    check = att.verify(verify_with, require=[])
+    if not check.hash_ok or not check.evidence_sound:
+        return False
+    if verify_with is not None and att.signatures and not check.signatures_ok:
+        return False
+    return True
+
+
+def _trust_multiplier(trust: Any | None, issuer: str) -> float:
+    """Resolve an issuer's trust multiplier from a model, ledger, or callable.
+
+    Accepts a :class:`TrustModel` (or anything exposing ``trust_in`` / ``weight``) or a
+    plain ``issuer -> float`` callable, and clamps the result to ``[0, 1]`` so a custom
+    source can only ever *discount* an issuer's pull, never amplify it. ``None`` (no
+    weighting) maps every issuer to full pull (``1.0``).
+    """
+    if trust is None:
+        return 1.0
+    value: float = 1.0
+    resolver = getattr(trust, "trust_in", None) or getattr(trust, "weight", None)
+    try:
+        if resolver is not None:
+            value = float(resolver(issuer))
+        elif callable(trust):
+            value = float(trust(issuer))
+    except Exception:  # noqa: BLE001 - a trust-source miss should not break weighting
+        return 1.0
+    return min(1.0, max(0.0, value))
+
+
+def build_trust_model(
+    attestations: Iterable[ReputationAttestation],
+    *,
+    base: Any | None = None,
+    config: TrustConfig | None = None,
+    attestation_config: AttestationConfig | None = None,
+    verify_with: ChainSigner | None = None,
+) -> TrustModel:
+    """Build the importer's bounded, transitive trust over a set of issuers.
+
+    Roots trust at the importer's own ``base``
+    :class:`~vincio.optimize.reputation.ReputationLedger` — an issuer the importer has
+    first-hand evidence for is trusted as much as that ledger weights it (hop ``0``) —
+    then lends trust outward one hop at a time, up to ``config.max_depth``: an
+    already-trusted issuer that attests another issuer (vouches for it *as a
+    counterparty*) lends it trust derived from that pooled standing, attenuated by
+    ``config.hop_decay`` per hop. Only admissible attestations (hash recomputes,
+    reputation re-derives, and — with ``verify_with`` — the issuer signature checks)
+    count toward vouching, and an issuer vouching for itself never bootstraps its own
+    trust. Every multiplier is bounded into the ``[trust_floor, 1]`` band; an issuer
+    neither known nor reached falls back to the floor.
+
+    Because trust is only ever lent *outward from the trusted root*, a cluster of
+    mutually-vouching unknown issuers is never reached and every member stays at the
+    floor — the Sybil-resistance property. Pass the resulting :class:`TrustModel` as
+    the ``trust`` argument to :func:`combine_attestations`, or let it build one for you
+    by passing a ``trust_config``.
+    """
+    cfg = (config or TrustConfig()).validate_coherent()
+    acfg = (attestation_config or AttestationConfig()).validate_coherent()
+    admissible = [a for a in attestations if _admissible(a, verify_with)]
+    issuers = sorted({a.issuer for a in admissible})
+
+    assessments: dict[str, IssuerTrust] = {}
+
+    # Hop 0: direct, first-hand trust from the importer's own ledger.
+    if base is not None:
+        for issuer in issuers:
+            if not _has_local_evidence(base, issuer):
+                continue
+            try:
+                local_weight = float(base.weight(issuer))
+            except Exception:  # noqa: BLE001 - a base miss leaves the issuer unreached
+                continue
+            assessments[issuer] = IssuerTrust(
+                issuer=issuer,
+                trust=cfg.clamp_trust(local_weight),
+                depth=0,
+                direct=True,
+            )
+
+    # Index admissible attestations by the subject they vouch for, so a hop step can
+    # find who an already-trusted issuer attests.
+    by_subject: dict[str, list[ReputationAttestation]] = {}
+    for att in admissible:
+        by_subject.setdefault(att.subject, []).append(att)
+
+    # Hops 1..max_depth: lend trust outward from the established (lower-depth) issuers.
+    for hop in range(1, cfg.max_depth + 1):
+        established = {i: a for i, a in assessments.items() if a.depth is not None and a.depth < hop}
+        newly: dict[str, IssuerTrust] = {}
+        for issuer in issuers:
+            if issuer in assessments:
+                continue  # already reached at a shorter (stronger) distance
+            vouchers = [
+                a for a in by_subject.get(issuer, []) if a.issuer in established and a.issuer != issuer
+            ]
+            if not vouchers:
+                continue
+            # Keep each voucher-issuer's largest attestation, then pool its evidence
+            # weighted by the voucher's own trust — a chain lends as much as its link.
+            best_voucher: dict[str, ReputationAttestation] = {}
+            for att in vouchers:
+                current = best_voucher.get(att.issuer)
+                if current is None or _supersedes(att, current):
+                    best_voucher[att.issuer] = att
+            successes = failures = 0.0
+            for voucher_id, att in best_voucher.items():
+                voucher_trust = established[voucher_id].trust
+                successes += voucher_trust * att.successes
+                failures += voucher_trust * att.failures
+            reputation = acfg.reputation_of(successes, failures)
+            lent = cfg.trust_of(reputation) * (cfg.hop_decay**hop)
+            newly[issuer] = IssuerTrust(
+                issuer=issuer,
+                trust=cfg.clamp_trust(lent),
+                depth=hop,
+                direct=False,
+                vouched_by=sorted(best_voucher),
+                reputation=round(reputation, 9),
+            )
+        if not newly:
+            break  # the frontier is exhausted — no further hop can reach anyone new
+        assessments.update(newly)
+
+    return TrustModel(assessments, cfg)
+
+
 # -- combining ----------------------------------------------------------------
 
 
@@ -1127,6 +1468,8 @@ def combine_attestations(
     allow_self: bool = False,
     revocations: Iterable[AttestationRevocation] | None = None,
     as_of: datetime | None = None,
+    trust: Any | None = None,
+    trust_config: TrustConfig | None = None,
 ) -> PortableReputation:
     """Combine several issuers' attestations into one bounded, evidence-weighted prior.
 
@@ -1156,6 +1499,19 @@ def combine_attestations(
     prior toward the benefit-of-the-doubt rather than anchoring it forever. Without an
     ``as_of`` clock no attestation expires or decays — the combination is point-in-time.
 
+    **Issuer trust (Sybil resistance).** By default every counted issuer's evidence
+    pools with equal pull, weighted only by *how much* it attests. Pass a ``trust``
+    source (a :class:`TrustModel`, anything exposing ``trust_in`` / ``weight``, or an
+    ``issuer -> float`` callable) — or a ``trust_config`` to build a :class:`TrustModel`
+    from ``base`` and these attestations automatically — to scale each issuer's
+    contributed mass by the importer's **own trust in that issuer**, bounded
+    ``[trust_floor, 1]``. Corroboration from a trusted peer then counts for more than
+    volume from an unknown one, an unknown issuer still counts (floored, never zeroed),
+    and a cluster of mutually-vouching unknown issuers cannot outvote a few trusted
+    ones — pull follows earned trust, not issuer count. Each counted attestation's
+    applied multiplier is pinpointed (:attr:`AttestationVerdict.trust`) and the per-
+    issuer multipliers surface on :attr:`SubjectStanding.issuer_trust`.
+
     ``subject`` optionally restricts the combination to one counterparty; ``base`` is
     an optional local :class:`~vincio.optimize.reputation.ReputationLedger` whose
     earned standing wins for a counterparty the importer already knows. Returns a
@@ -1163,8 +1519,24 @@ def combine_attestations(
     path.
     """
     cfg = (config or AttestationConfig()).validate_coherent()
-    items = [a for a in attestations if subject is None or a.subject == subject]
+    all_atts = list(attestations)
+    items = [a for a in all_atts if subject is None or a.subject == subject]
     clock = _as_utc(as_of) if as_of is not None else None
+
+    # Issuer-trust weighting (opt-in). An explicit ``trust`` source wins; otherwise a
+    # ``trust_config`` builds the bounded transitive model from the *full* attestation
+    # set (so a trusted issuer can vouch for another even when ``subject`` is set), the
+    # importer's ``base`` ledger rooting it. With neither, no weighting is applied and
+    # every issuer pools with equal pull — byte-for-byte the pre-trust behavior.
+    trust_model = trust
+    if trust_model is None and trust_config is not None:
+        trust_model = build_trust_model(
+            all_atts,
+            base=base,
+            config=trust_config,
+            attestation_config=cfg,
+            verify_with=verify_with,
+        )
 
     # 0. The set of attestation hashes withdrawn by an admissible, issuer-matched
     #    revocation. A revocation is honored only when it verifies as an artifact (and,
@@ -1244,21 +1616,31 @@ def combine_attestations(
             continue
         if verdict.attestation_id in counted_ids:
             verdict.counted = True
+            verdict.trust = round(_trust_multiplier(trust_model, verdict.issuer), 9)
         else:
             verdict.reason = "superseded: a larger attestation from this issuer was counted"
 
     # 4. Pool the evidence per subject under the prior: decay by age (when an as-of
-    #    clock is set), then cap any one issuer's mass.
+    #    clock is set), scale by the importer's trust in the issuer, then cap any one
+    #    issuer's mass — each step scales successes and failures together, so it changes
+    #    how much an issuer's evidence *pulls*, never the reputation it attests.
     pooled: dict[str, dict[str, Any]] = {}
     for (subj, issuer), att in best.items():
         succ, fail = float(att.successes), float(att.failures)
         if clock is not None:
             succ, fail = cfg.decayed(succ, fail, att.age_days(clock))
+        tmul = _trust_multiplier(trust_model, issuer)
+        if tmul != 1.0:
+            succ, fail = succ * tmul, fail * tmul
         succ, fail = cfg.capped(succ, fail)
-        bucket = pooled.setdefault(subj, {"successes": 0.0, "failures": 0.0, "issuers": []})
+        bucket = pooled.setdefault(
+            subj, {"successes": 0.0, "failures": 0.0, "issuers": [], "trust": {}}
+        )
         bucket["successes"] += succ
         bucket["failures"] += fail
         bucket["issuers"].append(issuer)
+        if trust_model is not None:
+            bucket["trust"][issuer] = round(tmul, 9)
 
     standings: dict[str, SubjectStanding] = {}
     for subj, bucket in pooled.items():
@@ -1273,9 +1655,12 @@ def combine_attestations(
             weight=cfg.weight_of(reputation),
             issuers=sorted(bucket["issuers"]),
             attestations=len(bucket["issuers"]),
+            issuer_trust=dict(bucket["trust"]),
         )
 
-    return PortableReputation(standings, verdicts, cfg, base=base, as_of=as_of)
+    return PortableReputation(
+        standings, verdicts, cfg, base=base, as_of=as_of, trust=trust_model
+    )
 
 
 def _supersedes(candidate: ReputationAttestation, current: ReputationAttestation) -> bool:

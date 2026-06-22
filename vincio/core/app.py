@@ -3519,6 +3519,8 @@ class ContextApp:
         allow_self: bool = False,
         revocations: list[Any] | None = None,
         as_of: Any | None = None,
+        trust: Any | None = None,
+        trust_config: Any | None = None,
         weight: bool = True,
     ) -> Any:
         """Combine other orgs' attestations into a prior that weights negotiation.
@@ -3532,12 +3534,17 @@ class ContextApp:
         excludes the attestation its issuer withdrew, and with an ``as_of`` clock a
         stale attestation (past its issuer-declared validity window) decays out of the
         prior rather than anchoring it forever — so the imported standing reflects
-        *current* standing, not a frozen snapshot. With ``weight`` (the default) the
-        prior is attached so the next negotiation weights a counterparty with no local
-        history by what its past counterparties attest, under the same bounded
-        ``[floor, 1]`` rule a local reputation uses; the attached local
-        :class:`~vincio.optimize.reputation.ReputationLedger` stays the source of truth
-        for a counterparty this app already knows. Returns the prior::
+        *current* standing, not a frozen snapshot. Pass a ``trust`` source or a
+        ``trust_config`` to weigh each issuer's evidence by this app's **own trust in
+        that issuer** (rooted in the attached
+        :class:`~vincio.optimize.reputation.ReputationLedger`, composed transitively
+        over the attestations), so corroboration from a trusted issuer counts for more
+        than volume from an unknown one and a Sybil cluster cannot manufacture standing.
+        With ``weight`` (the default) the prior is attached so the next negotiation
+        weights a counterparty with no local history by what its past counterparties
+        attest, under the same bounded ``[floor, 1]`` rule a local reputation uses; the
+        attached local ledger stays the source of truth for a counterparty this app
+        already knows. Returns the prior::
 
             prior = app.import_reputation([att_a, att_b], revocations=[rev], as_of=now)
             result = app.negotiate("transcribe calls", buyer=..., seller=...)
@@ -3553,6 +3560,8 @@ class ContextApp:
             allow_self=allow_self,
             revocations=revocations,
             as_of=as_of,
+            trust=trust,
+            trust_config=trust_config,
         )
         if weight:
             self.imported_reputation = prior
@@ -3610,6 +3619,8 @@ class ContextApp:
         held_attestations: list[Any] | None = None,
         held_revocations: list[Any] | None = None,
         as_of: Any | None = None,
+        trust: Any | None = None,
+        trust_config: Any | None = None,
         max_peers: int | None = None,
         weight: bool = True,
         record_audit: bool = True,
@@ -3626,10 +3637,13 @@ class ContextApp:
         deduplicates by content hash, and folds them — with any ``held_attestations`` /
         ``held_revocations`` already on hand — into a bounded, evidence-weighted
         :class:`~vincio.settlement.PortableReputation` under the same freshness,
-        revocation, and ``[floor, 1]`` discipline :meth:`import_reputation` uses. Every
-        peer visited and artifact fetched lands on the audit chain. With ``weight`` (the
-        default) the assembled prior is attached so the next negotiation weights an
-        unknown counterparty by what its peers attest. Returns a
+        revocation, and ``[floor, 1]`` discipline :meth:`import_reputation` uses. Pass a
+        ``trust`` source or a ``trust_config`` to weigh each gathered issuer's evidence
+        by this app's own trust in it (rooted in the attached ledger, composed
+        transitively), so a cluster of unknown peers cannot out-evidence a few it
+        trusts. Every peer visited and artifact fetched lands on the audit chain. With
+        ``weight`` (the default) the assembled prior is attached so the next negotiation
+        weights an unknown counterparty by what its peers attest. Returns a
         :class:`~vincio.settlement.GatheredReputation`::
 
             result = await app.agather_reputation("vendor", peers={"acme": acme_server})
@@ -3649,6 +3663,8 @@ class ContextApp:
             held_attestations=held_attestations,
             held_revocations=held_revocations,
             as_of=as_of,
+            trust=trust,
+            trust_config=trust_config,
             max_peers=max_peers,
             audit=self.audit,
             record_audit=record_audit,

@@ -7449,7 +7449,14 @@ async def bench_reputation_portability() -> dict[str, Any]:
     revocations from a bounded set of governed peers, verifies each from the bytes,
     deduplicates them, and folds them into the *same* combination — a denied peer
     skipped, a forged artifact refused, a gossiped revocation excluding the withdrawn
-    claim, and every peer and artifact audited. Deterministic and offline."""
+    claim, and every peer and artifact audited. And because pooling every issuer's
+    evidence with equal pull lets a Sybil cluster manufacture standing, it gates
+    **transitive trust**: each issuer's evidence is weighed by the importer's own
+    bounded, transitive trust in that issuer (rooted in its local ledger, composed at
+    most a hop with decay), so corroboration from a trusted peer counts for more than
+    volume from an unknown one, an unknown issuer is floored rather than zeroed, a
+    mutually-vouching Sybil cluster cannot outvote a few trusted ones, and the
+    weighting stays strictly opt-in. Deterministic and offline."""
     from datetime import timedelta
 
     from vincio import (
@@ -7750,6 +7757,81 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and importer.audit.verify_chain()
     )
 
+    # 23. Transitive trust: an issuer the importer knows first-hand out-pulls an
+    #     unknown one with equal evidence — corroboration from a trusted peer counts
+    #     for more than volume from a stranger, never an authority gate.
+    from vincio.optimize.reputation import ReputationLedger
+    from vincio.settlement import TrustConfig, build_trust_model
+
+    trust_base = ReputationLedger()
+    for _ in range(10):
+        trust_base.record_outcome("acme", passed=True, round_id="r")
+    trusted_att = attest_reputation(records("vendor", settled=4), "vendor", issuer="acme").sign(acme)
+    unknown_att = attest_reputation(
+        records("vendor", settled=4), "vendor", issuer="stranger"
+    ).sign(HMACSigner("stranger-key", key_id="stranger"))
+    trust_prior = combine_attestations(
+        [trusted_att, unknown_att], base=trust_base, trust_config=TrustConfig()
+    )
+    trust_standing = trust_prior.standing("vendor")
+    trust_weights_by_issuer = bool(
+        trust_standing.issuer_trust["acme"] > trust_standing.issuer_trust["stranger"]
+        and trust_prior.verdict_for("acme", "vendor").trust == trust_standing.issuer_trust["acme"]
+    )
+
+    # 24. Sybil resistance: a clutch of unknown issuers vouching the same way cannot
+    #     out-evidence one trusted issuer's adverse outcomes — pull follows trust.
+    sybils = [
+        attest_reputation(records("vendor", settled=4), "vendor", issuer=f"sybil{i}").sign(
+            HMACSigner(f"sybil{i}-key", key_id=f"sybil{i}")
+        )
+        for i in range(5)
+    ]
+    trusted_bad = attest_reputation(records("vendor", breached=4), "vendor", issuer="acme").sign(acme)
+    sybil_weighted = combine_attestations(
+        [*sybils, trusted_bad], base=trust_base, trust_config=TrustConfig()
+    )
+    sybil_plain = combine_attestations([*sybils, trusted_bad])
+    trust_sybil_resistant = bool(
+        sybil_weighted.standing("vendor").reputation < sybil_plain.standing("vendor").reputation
+        and all(sybil_weighted.standing("vendor").issuer_trust[f"sybil{i}"] == 0.1 for i in range(5))
+    )
+
+    # 25. Bounded transitivity: a trusted issuer lends weight one hop to the issuers
+    #     *it* attests, attenuated by decay; a chain beyond the depth bound does not.
+    acme_on_broker = attest_reputation(
+        records("broker", settled=8), "broker", issuer="acme"
+    ).sign(acme)
+    broker_on_vendor = attest_reputation(
+        records("vendor", settled=4), "vendor", issuer="broker"
+    ).sign(HMACSigner("broker-key", key_id="broker"))
+    one_hop = build_trust_model(
+        [acme_on_broker, broker_on_vendor], base=trust_base, config=TrustConfig(max_depth=1)
+    )
+    zero_hop = build_trust_model(
+        [acme_on_broker, broker_on_vendor], base=trust_base, config=TrustConfig(max_depth=0)
+    )
+    trust_bounded_transitive = bool(
+        0.1 < one_hop.trust_in("broker") < one_hop.trust_in("acme")
+        and one_hop.assessment("broker").depth == 1
+        and zero_hop.trust_in("broker") == 0.1  # depth bound stops transitivity
+    )
+
+    # 26. An unknown issuer still counts — floored, never zeroed or singled out.
+    trust_unknown_floored = bool(
+        trust_standing.issuer_trust["stranger"] == 0.1
+        and trust_prior.trust_in("stranger") > 0.0
+    )
+
+    # 27. Backward-compatible: with no trust source, every issuer pools with equal
+    #     pull exactly as before — trust weighting is strictly opt-in.
+    plain_prior = combine_attestations([trusted_att, unknown_att])
+    trust_backward_compatible = bool(
+        plain_prior.standing("vendor").successes == 8.0
+        and plain_prior.standing("vendor").issuer_trust == {}
+        and plain_prior.trust is None
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -7773,11 +7855,17 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "exchange_verifies_fetched": exchange_verifies_fetched,
         "exchange_revocation_gossiped": exchange_revocation_gossiped,
         "exchange_audited": exchange_audited,
+        "trust_weights_by_issuer": trust_weights_by_issuer,
+        "trust_sybil_resistant": trust_sybil_resistant,
+        "trust_bounded_transitive": trust_bounded_transitive,
+        "trust_unknown_floored": trust_unknown_floored,
+        "trust_backward_compatible": trust_backward_compatible,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),
         "revoked_excluded": len(revoked_prior.revoked),
         "peers_gathered": gathered.peers_reachable,
+        "trust_issuers_weighted": len(trust_standing.issuer_trust),
     }
 
 

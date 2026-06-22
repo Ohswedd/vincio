@@ -1651,6 +1651,16 @@
       "threshold": true,
       "enforced_by": "families.reputation_portability.exchange_gathers_from_peers",
       "rationale": "Portable standing is only useful if an importer can find it without a hosted registry. The budget gates that a gather pools several peers' signed attestations into one prior; companion budgets gate that an allow-listed directory skips a denied peer and the fan-out is bounded, that a forged artifact a peer serves is refused (nothing trusted that does not verify from the bytes), that a revocation a peer gossips excludes the withdrawn claim, and that every peer and artifact is audited — so reputation is discovered over the fabric as a pull of verifiable artifacts, never pushed from or trusted on a central bulletin board."
+    },
+    {
+      "id": "reputation_transitive_trust",
+      "category": "reliability",
+      "statement": "An importer weighs an issuer's attested evidence by its own trust in that issuer, not by volume: each issuer's contributed mass is scaled by a bounded, transitive web-of-trust rooted in the importer's local ledger (an issuer it knows first-hand at full pull, an issuer a trusted one vouches for at most a hop away with decay, an unknown one floored, never zeroed), so corroboration from a trusted peer counts for more than volume from a stranger, a chain beyond the depth bound cannot manufacture standing, and a cluster of mutually-vouching unknown Sybil issuers cannot outvote a few trusted ones — pull follows earned trust, not issuer count, and the weighting is bounded, pinpointed, reversible, and strictly opt-in.",
+      "metric": "families.reputation_portability.trust_weights_by_issuer",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.reputation_portability.trust_weights_by_issuer",
+      "rationale": "Pooling every issuer's evidence with equal pull lets a clutch of unknown peers out-evidence a few the importer has lived through, and an adversary can spin up Sybil issuers that all vouch the same way. The budget gates that a trusted issuer's evidence out-pulls an unknown one's with equal evidence; companion budgets gate that a Sybil cluster cannot outvote a trusted issuer (pull follows earned trust, not count), that trust composes at most a bounded hop with decay and a chain beyond the depth bound manufactures no standing, that an unknown issuer is floored rather than zeroed, and that the weighting is strictly opt-in (no trust source leaves pooling unchanged) — so reputation is weighed by earned trust through a deterministic, offline kernel, never an authority gate or a central trust service."
     }
   ]
 }

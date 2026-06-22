@@ -4,6 +4,50 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.32.0] - 2026-06-22
+
+Cross-org transitive trust & Sybil-resistant attestation weighting. Reputation is now portable, current,
+discoverable, and revocable — but every counted issuer's evidence pooled into the prior with **equal
+pull**, weighted only by *how much* it attests, not by *how much the importer trusts the issuer*. A clutch
+of unknown peers could therefore out-evidence a few an importer has lived through, and an adversary could
+spin up **Sybil** issuers that all vouch the same way. This release adds an opt-in, bounded, transitive
+web-of-trust that scales each issuer's contributed evidence by the importer's **own trust in that issuer**,
+so pull follows earned trust rather than issuer count, without a central trust authority. Entirely additive
+and backward-compatible — `API_VERSION` stays `3.0`, and with no trust source the combination pools with
+equal pull byte-for-byte as before; the whole theme runs offline and deterministically.
+
+### Added
+
+- **Trust kernel (`vincio.settlement.attestation`).** `TrustConfig(max_depth=1, hop_decay=0.5,
+  trust_floor=0.1, trust_ceiling=1.0)` configures a bounded, transitive web-of-trust;
+  `build_trust_model(attestations, *, base=None, config=None, attestation_config=None, verify_with=None)`
+  builds a `TrustModel` from the importer's own `ReputationLedger` and the attestations on hand. **Hop 0:**
+  an issuer the importer has first-hand evidence for is trusted as much as that ledger weights it. **Hops
+  1..max_depth:** an already-trusted issuer that *attests another issuer* (vouches for it as a counterparty)
+  lends it trust derived from that pooled standing, attenuated by `hop_decay` per hop, under a hard depth
+  bound. **Unreached:** an issuer neither known nor reachable from a trusted root falls back to the floor —
+  counted, never zeroed. Only admissible (verified) attestations vouch, and an issuer never bootstraps its
+  own trust.
+- **Sybil resistance.** Trust is lent only *outward from a trusted root*, so a cluster of mutually-vouching
+  unknown issuers is never reached and every member stays at the floor — corroboration from a few trusted
+  peers cannot be outvoted by volume from unknown ones.
+- **Issuer-weighted pooling.** `combine_attestations(attestations, *, ..., trust=None, trust_config=None)`
+  scales each issuer's contributed evidence *mass* (successes and failures together, so it changes how much
+  an issuer *pulls*, never the reputation it attests) by the resolved trust multiplier, bounded
+  `[trust_floor, 1]`. Pass a `trust` source (a `TrustModel`, anything exposing `trust_in` / `weight`, or an
+  `issuer -> float` callable) or a `trust_config` to build the model automatically from `base` and the full
+  attestation set. The applied multiplier is pinpointed on `AttestationVerdict.trust` (counted) and
+  `SubjectStanding.issuer_trust`; `PortableReputation.trust` holds the model and `.trust_in(issuer)` reads it.
+- **App surface.** `app.import_reputation(..., trust=None, trust_config=None)` and
+  `app.gather_reputation(...)` / `app.agather_reputation(...)` thread the trust source through, rooted in
+  `self.reputation_ledger`. `TrustModel` quacks like a ledger (`weight(issuer)` aliases `trust_in(issuer)`),
+  and each issuer's `IssuerTrust` records its `trust` / `depth` / `vouched_by` so a multiplier is always
+  traceable.
+- **Surface.** `from vincio import TrustConfig, TrustModel, IssuerTrust, build_trust_model` (all also in
+  `vincio.settlement.__all__`); a `reputation_portability` VincioBench extension with a
+  `reputation_transitive_trust` SLO; and a runnable example,
+  `examples/76_cross_org_transitive_trust.py`.
+
 ## [3.31.0] - 2026-06-22
 
 Cross-org reputation gossip & attestation exchange. Attestations are now portable, time-aware, and

@@ -1262,6 +1262,34 @@ app.run("export button 500s").output.label
   `weight=True`, the default) attach the assembled prior so the next `app.negotiate` weights an unknown
   counterparty by what its peers attest. Runs byte-for-byte the same against in-process peers
   (`connect_a2a_in_process`) as over the live fabric.
+- **Cross-org transitive trust & Sybil-resistant weighting.** `from vincio import TrustConfig, TrustModel,
+  IssuerTrust, build_trust_model` (all also in `vincio.settlement.__all__`). Pooling every counted issuer's
+  evidence with equal pull lets a clutch of unknown peers out-evidence a few you've lived through, and a Sybil
+  cluster manufacture standing by all vouching the same way. **Opt-in** issuer-trust weighting closes that:
+  `combine_attestations(attestations, *, ..., trust=None, trust_config=None)` scales each issuer's contributed
+  evidence *mass* by the importer's own trust in that issuer (successes and failures together, so it changes how
+  much an issuer *pulls*, never the reputation it attests), bounded `[trust_floor, 1]`. With neither `trust` nor
+  `trust_config`, pooling is byte-for-byte the pre-trust behavior (every issuer at full pull). `TrustConfig(
+  max_depth=1, hop_decay=0.5, trust_floor=0.1, trust_ceiling=1.0)`: `.trust_of(reputation)` maps a standing into
+  the band, `.clamp_trust(v)` holds it, `.validate_coherent()`. `build_trust_model(attestations, *, base=None,
+  config=None, attestation_config=None, verify_with=None)` → a `TrustModel` by a bounded web-of-trust: **hop 0**
+  an issuer the importer has first-hand evidence for in its `base` `ReputationLedger` is trusted as much as that
+  ledger weights it; **hops 1..max_depth** an already-trusted issuer that *attests another issuer* (vouches for
+  it as a counterparty) lends it trust derived from that pooled standing, attenuated by `hop_decay` per hop;
+  **unreached** issuers fall back to `trust_floor` (counted, never zeroed). Only admissible (verified)
+  attestations vouch, and an issuer never bootstraps its own trust. **Sybil-resistant** because trust is lent
+  only *outward from a trusted root* — a ring of mutually-vouching unknown issuers is never reached and stays at
+  the floor, so pull follows earned trust, not issuer count. `TrustModel.trust_in(issuer)` / `.weight(issuer)`
+  (alias, so it drops in as a `trust=` source or wherever a ledger is), `.assessment(issuer)`→`IssuerTrust`
+  (`.issuer`/`.trust`/`.depth`[0 direct, k transitive, None unreached]/`.direct`/`.vouched_by`/`.reputation`/
+  `.transitive`), `.issuers()`/`.direct_issuers()`/`.transitive_issuers()`/`.assessments()`. Pass a `trust=` (a
+  `TrustModel`, anything with `trust_in`/`weight`, or an `issuer→float` callable; clamped to `[0,1]`) or a
+  `trust_config=` (builds the model from `base` + the *full* attestation set, so a trusted issuer can vouch even
+  when `subject` is set). The applied multiplier is pinpointed on `AttestationVerdict.trust` (counted) and
+  `SubjectStanding.issuer_trust` (`{issuer: multiplier}`); `PortableReputation.trust` holds the model and
+  `.trust_in(issuer)` reads it. `app.import_reputation(..., trust=None, trust_config=None)` /
+  `app.gather_reputation(..., trust=None, trust_config=None)` thread it through, rooted in
+  `self.reputation_ledger`. Deterministic and offline — never a central trust authority.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

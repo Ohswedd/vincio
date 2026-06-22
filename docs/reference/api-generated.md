@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**323** public symbols.
+**327** public symbols.
 
 ## Classes
 
@@ -466,6 +466,10 @@ The verdict of checking one :class:`Invariant` over its whole state space.
 
 A party's preference over one numeric issue.
 
+### `IssuerTrust(**data)`
+
+The importer's resolved trust in one issuer — pinpointed, never silent.
+
 ### `JudgeCalibrator(judge, reflector=…, kappa_bins=…, trust_threshold=…, min_kappa_gain=…)`
 
 Tune a :class:`~vincio.evals.judges.GEvalJudge`'s evaluation steps to maximize agreement with human labels, then leave the judge calibrated.
@@ -654,7 +658,7 @@ Flag likely-poisoned retrieved evidence from authority/provenance signals.
 
 Deterministic per-run policies (policies).
 
-### `PortableReputation(standings, verdicts, config, base=…, as_of=…)`
+### `PortableReputation(standings, verdicts, config, base=…, as_of=…, trust=…)`
 
 An imported, evidence-weighted prior combined from several issuers' attestations.
 
@@ -1022,9 +1026,17 @@ GRPO-style on-policy update over a deterministic policy, safety-gated.
 
 One recorded ``(observation, action) → next_observation`` step.
 
+### `TrustConfig(**data)`
+
+How the importer's trust in an issuer scales the evidence it contributes.
+
 ### `TrustLabel(*args, **kwds)`
 
 A typed information-flow label on a value or context candidate.
+
+### `TrustModel(assessments, config)`
+
+The importer's bounded, transitive trust in each issuer — the Sybil-resistant kernel.
 
 ### `TwoStageIndex(embedder=…, coarse_dims=…, quantization=…, rerank_factor=…)`
 
@@ -1124,6 +1136,10 @@ Attribute a metric regression to the changed ``factors`` by Shapley counterfactu
 
 Names of all packs that can be loaded (built-in + installed plugins + registered).
 
+### `build_trust_model(attestations, base=…, config=…, attestation_config=…, verify_with=…)`
+
+Build the importer's bounded, transitive trust over a set of issuers.
+
 ### `buyer_position(max_price_usd, ideal_price_usd=…, max_sla_seconds, ideal_sla_seconds=…, min_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)`
 
 Build a buyer position: wants low price, fast SLA, high quality.
@@ -1132,7 +1148,7 @@ Build a buyer position: wants low price, fast SLA, high quality.
 
 Expose a local org's choreography handlers over A2A.
 
-### `combine_attestations(attestations, subject=…, config=…, verify_with=…, base=…, allow_self=…, revocations=…, as_of=…)`
+### `combine_attestations(attestations, subject=…, config=…, verify_with=…, base=…, allow_self=…, revocations=…, as_of=…, trust=…, trust_config=…)`
 
 Combine several issuers' attestations into one bounded, evidence-weighted prior.
 
@@ -1168,7 +1184,7 @@ Attach ``_repr_html_`` / ``_repr_markdown_`` to the core result types.
 
 Mark a function or class as experimental (no stability guarantee).
 
-### `gather_reputation(subject, peers, directory=…, principal=…, config=…, verify_with=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, max_peers=…, audit=…, record_audit=…)`
+### `gather_reputation(subject, peers, directory=…, principal=…, config=…, verify_with=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, trust=…, trust_config=…, max_peers=…, audit=…, record_audit=…)`
 
 Pull signed attestations and revocations from a bounded set of peers.
 
