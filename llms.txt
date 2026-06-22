@@ -841,6 +841,12 @@ app.run("export button 500s").output.label
   a run that would exceed its sustainability envelope, the way a hard cost cap refuses spend.
   Deterministic and offline; the estimate and every refusal are on the audit chain. See the full
   entry above (`families.energy`).
+- **Formal verification of governance invariants.** `app.verify_governance()` proves containment,
+  residency, the budget hard cap, and the erasure-proof binding hold across their whole bounded,
+  typed state space ahead of any run (a `held=True` verdict checks every point of each invariant's
+  domain — a proof, not a sample), yields a delta-minimized `Counterexample` on violation, and lands
+  a content-hashed verdict on the audit chain offline with no external prover. See the full entry
+  below (`families.verification`).
 
 ## Security & governance
 
@@ -886,6 +892,23 @@ app.run("export button 500s").output.label
   Purpose, LawfulBasis`; `app.use_consent_ledger()`,
   `AccessController.check_purpose(...)`; recall drops items whose purpose lost
   consent.
+- **Formal verification of governance invariants.** `app.verify_governance()` →
+  `VerificationReport` *proves* — by exhaustive bounded model checking, ahead of any
+  run — that four governance invariants hold across their whole bounded, typed state
+  space: containment (`untrusted ⇒ no unapproved capability`), in-jurisdiction
+  residency (reflecting the app's `deny_on_unknown` posture), the budget hard cap,
+  and the erasure-proof content binding. Each `Invariant` binds to the *same*
+  decision function the runtime uses (the containment gate is `requires_authority`;
+  the erasure binding is `verify_erasure_proof`), so a `held=True` verdict is a proof
+  about the shipped machinery (`states_checked == domain_size`), not a sample. A
+  violation yields a delta-minimized `Counterexample` (`.render()`); the
+  content-hashed verdict (`report.content_sha256`, `report.verify()`) lands on the
+  audit chain as a `governance_verification` decision (`allow`/`deny`), offline with
+  no external prover. `from vincio import GovernanceVerifier, VerificationReport,
+  Counterexample, Invariant`; `from vincio.governance import default_invariants,
+  containment_invariant, residency_invariant, budget_invariant, erasure_invariant,
+  within_budget`; `raise_on_violation=True` raises `GovernanceVerificationError`.
+  VincioBench `verification` family + 3 SLOs.
 - **Compliance evidence (generated, no hosted dependency).** `app.model_card()` /
   `system_card()` (`CardFormat` vincio|open_model_card|ai_card);
   `app.compliance_report()` / `ComplianceMapper().map(redteam=, eval_report=,

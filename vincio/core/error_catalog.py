@@ -506,6 +506,14 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "`.details`.",
         ),
         _entry(
+            "GOVERNANCE_INVARIANT_VIOLATED",
+            "Governance invariant violated",
+            "The formal verifier found a counterexample to a governance invariant "
+            "(containment/residency/budget/erasure). Inspect `.counterexamples` for "
+            "the minimal violating state, or call `app.verify_governance()` without "
+            "`raise_on_violation` to get the full VerificationReport.",
+        ),
+        _entry(
             "PRIVACY_BUDGET_EXCEEDED",
             "Differential-privacy budget exceeded",
             "A consolidation or learning round would push a subject's cumulative "

@@ -4,6 +4,76 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.19.0] - 2026-06-22
+
+Formal verification of governance invariants. The platform already **enforces** its
+governance invariants at runtime — residency refuses an out-of-region egress, provable
+erasure binds a signed proof to the removed-id set, the budget caps spend, and the
+injection-containment gate stops an untrusted-tainted argument reaching a side-effecting
+tool without a user-minted capability — and records each decision on the signed audit
+chain. What was not yet first-class is a **machine-checkable proof that those invariants
+hold across the whole input space, ahead of any single run** — a property checked by
+construction rather than observed after the fact. This release adds it: a deterministic,
+in-process verifier that proves four governance invariants over their whole bounded,
+typed state space by exhaustive bounded model checking, yields a minimal counterexample
+on a violation, and records the content-hashed verdict on the hash-chained audit log.
+Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, the
+dependency-free offline path is the default, and verification is **opt-in** (nothing
+runs unless you call `app.verify_governance()`).
+
+### Added
+
+- **The verifier (`vincio.governance.verification`).** A `GovernanceVerifier` checks a
+  list of `Invariant`s — each a formal specification, a tuple of `StateVariable`s, and a
+  predicate over an assignment — by enumerating the *full* Cartesian product of the
+  variables' representative values. A `held=True` verdict means the predicate was
+  confirmed at every point of the bounded domain (`states_checked == domain_size`) — a
+  proof over the modeled domain, not a sample. `verify()` returns a content-hashed
+  `VerificationReport` (`held`, per-invariant `InvariantResult`s, `content_sha256`,
+  reproducible via `report.verify()`).
+- **The four platform invariants, bound to the shipped machinery.** `containment_invariant`
+  proves `untrusted ⇒ no unapproved capability` against the *same* gate the
+  `DualPlaneExecutor` runs (the extracted `requires_authority` predicate) vs the
+  `ContainmentEvent.is_escalation` specification; `residency_invariant` proves an enforced
+  `ResidencyPolicy` admits egress only to an in-jurisdiction region (and refuses an unknown
+  one fail-closed); `budget_invariant` proves the canonical hard-cap predicate
+  (`within_budget`, behind the dollar/energy/carbon caps) never admits an overspend;
+  `erasure_invariant` proves `verify_erasure_proof` accepts a proof iff its removed-id set
+  is intact. `default_invariants()` returns the four, fail-closed.
+- **Counterexample, not just a verdict.** A failed property returns a delta-minimized
+  `Counterexample` — the concrete violating assignment (the input, the labels, the
+  capability gap), with each variable relaxed back toward its benign default while the
+  violation persists — rendered one-line via `.render()`.
+- **Auditable & offline.** No external prover service is consulted; the verdict lands on
+  the hash-chained, verifiable audit log as a `governance_verification` decision (`allow`
+  when held, `deny` otherwise), carrying each invariant's verdict and any counterexample.
+- **App surface.** `app.verify_governance(invariants=None, *, record=True,
+  raise_on_violation=False)` runs the four invariants — the residency one reflecting the
+  app's own `deny_on_unknown` posture, so a fail-open configuration is caught — records the
+  verdict, and returns the report; `raise_on_violation=True` raises the new
+  `GovernanceVerificationError` (`GOVERNANCE_INVARIANT_VIOLATED`, under `GovernanceError`)
+  carrying the counterexamples.
+- **`verification` VincioBench family + 3 SLOs.** Holds the property-holds,
+  proof-not-sample, four-invariant-coverage, counterexample-on-violation (residency,
+  budget, and containment), minimal-counterexample, deterministic, and auditable-offline
+  invariants. SLOs: `governance_invariants_proven`,
+  `governance_counterexample_on_violation`, `governance_verification_auditable_offline`.
+- **Example.** `examples/63_governance_invariant_verification.py` and the
+  [verification guide](docs/guides/governance-verification.md) — a fully offline
+  walkthrough of proving the invariants, the proof-not-sample property, the
+  counterexample on a fail-open posture and a buggy budget cap, and the audit trail.
+
+### Changed
+
+- The public surface gains `GovernanceVerifier`, `VerificationReport`, `InvariantResult`,
+  `Counterexample`, and `Invariant`; `vincio.governance` additionally exports
+  `StateVariable`, the four invariant builders, `default_invariants`, and `within_budget`;
+  `vincio.core.errors` gains `GovernanceVerificationError`. `vincio.security` gains the
+  shared `requires_authority` gate predicate (and `AUTHORIZED`); the `DualPlaneExecutor`
+  now gates on it, so the runtime guard and the proof share one source of truth (no
+  behavior change). The next scheduled roadmap theme is **native video understanding &
+  generation** (target 3.20).
+
 ## [3.18.0] - 2026-06-22
 
 Energy & carbon accounting. The cost report already makes a run's dollar spend an

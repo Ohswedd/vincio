@@ -40,13 +40,13 @@ from ..core.types import Message, ModelRequest, ToolCall, ToolResult, TrustLevel
 from ..core.utils import new_id
 from .access import Principal
 from .capability import (
-    SIDE_EFFECTING,
     CapabilityBroker,
     CapabilityToken,
     ContainmentMonitor,
     ContainmentReport,
     TaintedValue,
     TrustLabel,
+    requires_authority,
 )
 
 if TYPE_CHECKING:  # pragma: no cover - typing only
@@ -389,7 +389,7 @@ class DualPlaneExecutor:
         spec = self.tools.registry.get(tool_name).spec
         side_effects = spec.side_effects
 
-        if side_effects in SIDE_EFFECTING and taint.is_tainted:
+        if requires_authority(taint, side_effects):
             authority = self._authorize(tool_name, plain_args, capability)
             if authority is None and self.approval is not None:
                 granted = approved or await self.approval(

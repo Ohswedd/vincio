@@ -630,6 +630,23 @@ class ErasureError(GovernanceError):
     code = "ERASURE_ERROR"
 
 
+class GovernanceVerificationError(GovernanceError):
+    """A formal governance invariant did not hold across its state space.
+
+    Raised by :meth:`~vincio.core.app.ContextApp.verify_governance` (with
+    ``raise_on_violation=True``) when the deterministic verifier finds a
+    counterexample to one of the machine-checked invariants — containment,
+    residency, budget, or erasure. The offending counterexample(s) are carried on
+    :attr:`counterexamples` so the violation is debuggable, not just flagged.
+    """
+
+    code = "GOVERNANCE_INVARIANT_VIOLATED"
+
+    def __init__(self, message: str, *, counterexamples: list[Any] | None = None, **kw: Any) -> None:
+        super().__init__(message, **kw)
+        self.counterexamples = counterexamples or []
+
+
 # --- storage -----------------------------------------------------------------
 
 

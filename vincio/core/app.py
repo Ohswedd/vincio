@@ -1267,6 +1267,62 @@ class ContextApp:
         name or document id (:class:`~vincio.governance.LineageRecord`)."""
         return self.lineage.trace(source)
 
+    def verify_governance(
+        self,
+        invariants: Any | None = None,
+        *,
+        record: bool = True,
+        raise_on_violation: bool = False,
+    ):
+        """Formally verify the governance invariants hold, ahead of any run.
+
+        Proves — by exhaustive bounded model checking, not after-the-fact
+        observation — that the platform's governance controls satisfy their
+        specifications across the whole typed input space: injection-containment
+        (``untrusted ⇒ no unapproved capability``), data residency (in-jurisdiction
+        egress refusal, reflecting this app's ``deny_on_unknown`` posture), the
+        budget hard cap, and the erasure-proof content binding. Returns a
+        content-hashed :class:`~vincio.governance.VerificationReport`; a failed
+        property carries a minimal :class:`~vincio.governance.Counterexample`::
+
+            report = app.verify_governance()
+            assert report.held
+            for cx in report.counterexamples:
+                print(cx.render())
+
+        The verdict is deterministic and offline, and (when ``record``) lands on
+        the hash-chained audit log as a ``governance_verification`` decision. Pass
+        a custom ``invariants`` list to verify a different property set; set
+        ``raise_on_violation`` to raise
+        :class:`~vincio.core.errors.GovernanceVerificationError` instead of
+        returning a non-holding report.
+        """
+        from ..core.errors import GovernanceVerificationError
+        from ..governance.verification import (
+            GovernanceVerifier,
+            budget_invariant,
+            containment_invariant,
+            erasure_invariant,
+            residency_invariant,
+        )
+
+        if invariants is None:
+            invariants = [
+                containment_invariant(),
+                residency_invariant(deny_on_unknown=self.residency.deny_on_unknown),
+                budget_invariant(),
+                erasure_invariant(),
+            ]
+        verifier = GovernanceVerifier(invariants, audit_log=self.audit)
+        report = verifier.verify(record=record)
+        if raise_on_violation and not report.held:
+            raise GovernanceVerificationError(
+                f"{len(report.counterexamples)} governance invariant(s) violated: "
+                + "; ".join(c.render() for c in report.counterexamples),
+                counterexamples=report.counterexamples,
+            )
+        return report
+
     def mark_output(self, content: str, *, model: str | None = None, signer: Any | None = None):
         """Build a C2PA-style synthetic-content provenance manifest for output
         (:class:`~vincio.governance.ProvenanceManifest`).

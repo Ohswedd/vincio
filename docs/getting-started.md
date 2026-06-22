@@ -121,6 +121,7 @@ vincio eval run golden/basic.jsonl --app app.py \
 - [Guide: orchestrate multi-agent systems](guides/orchestrate-agents.md)
 - [Concepts: observability](concepts/observability.md)
 - [Guide: performance & streaming](guides/performance.md)
+- [Guide: verify governance invariants](guides/governance-verification.md)
 - [Guide: integrations (providers, vector stores, frameworks)](guides/integrations.md)
 - [Migrating from LangChain](guides/migrate-from-langchain.md), [LlamaIndex](guides/migrate-from-llamaindex.md), [Ragas](guides/migrate-from-ragas.md), or [Mem0](guides/migrate-from-mem0.md)
 - [Reference: configuration](reference/config.md)

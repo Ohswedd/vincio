@@ -5901,6 +5901,133 @@ async def bench_energy() -> dict[str, Any]:
     }
 
 
+async def bench_verification() -> dict[str, Any]:
+    """VerificationBench: formal verification of governance invariants.
+
+    The platform *enforces* residency, erasure, the budget cap, and injection
+    containment at runtime; this family gates the proof beside it — a deterministic
+    in-process verifier that checks those invariants hold across the whole bounded,
+    typed input space *ahead of any run*, yields a minimal counterexample on a
+    violation, and records the verdict on the hash-chained audit log.
+    """
+    import dataclasses
+
+    from vincio import VincioConfig
+    from vincio.governance.verification import (
+        GovernanceVerifier,
+        budget_invariant,
+        containment_invariant,
+        residency_invariant,
+    )
+    from vincio.security.capability import AUTHORIZED, TrustLabel
+
+    cfg = VincioConfig()
+    cfg.storage.metadata = "memory://"
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="bench_verification", provider=MockProvider(default_text="x"), config=cfg)
+
+    # 1. Property holds: all four invariants prove across their whole domain.
+    report = app.verify_governance()
+    property_holds = bool(report.held and all(r.held for r in report.results))
+    proof_not_sample = bool(all(r.states_checked == r.domain_size for r in report.results))
+    covers_four = {r.category for r in report.results} == {
+        "containment",
+        "residency",
+        "budget",
+        "erasure",
+    }
+
+    # 2. Counterexample on violation: a fail-open residency posture, a projection-blind
+    #    budget cap, and a bypassed containment gate each yield a minimal witness.
+    fail_open = GovernanceVerifier([residency_invariant(deny_on_unknown=False)]).verify(record=False)
+    residency_counterexample = bool(
+        not fail_open.held and fail_open.counterexamples[0].assignment.get("region") is None
+    )
+
+    weak_budget = GovernanceVerifier(
+        [budget_invariant(admits=lambda spent, projected, limit: spent < limit)]
+    ).verify(record=False)
+    weak_cx = weak_budget.counterexamples[0].assignment if not weak_budget.held else {}
+    budget_counterexample = bool(
+        not weak_budget.held
+        and weak_cx["spent"] + weak_cx["projected"] >= weak_cx["limit"]
+    )
+
+    base = containment_invariant()
+    bypassed = dataclasses.replace(
+        base,
+        id="containment_bypassed",
+        predicate=lambda s: not (
+            s["side_effects"] in {"write", "external"}
+            and TrustLabel(s["taint"]).is_tainted
+            and s["authority"] not in AUTHORIZED
+        ),
+    )
+    bypass_report = GovernanceVerifier([bypassed]).verify(record=False)
+    containment_counterexample = bool(
+        not bypass_report.held
+        and bypass_report.counterexamples[0].assignment["authority"] in ("none", "trusted")
+    )
+    counterexample_on_violation = bool(
+        residency_counterexample and budget_counterexample and containment_counterexample
+    )
+
+    # 3. Counterexamples are delta-minimized toward each variable's benign default.
+    cx = fail_open.counterexamples[0]
+    minimal_counterexample = bool(cx.assignment["allowed"] == "eu" and cx.assignment["region"] is None)
+
+    # 4. Deterministic & reproducible: two passes agree, and the digest re-derives.
+    again = app.verify_governance(record=False)
+    deterministic = bool(again.content_sha256 == report.content_sha256 and report.verify())
+
+    # 5. Auditable & offline: the verdict is on the verifiable chain; a non-holding
+    #    pass (a fail-open residency app) is recorded as a deny and flagged.
+    audit_actions = {e.action for e in app.audit.entries}
+    entry = next(e for e in app.audit.entries if e.action == "governance_verification")
+    estimate_on_chain = bool(
+        "governance_verification" in audit_actions
+        and entry.decision == "allow"
+        and entry.details.get("content_sha256") == report.content_sha256
+    )
+    chain_verifies = bool(app.audit.verify_chain())
+
+    bad_cfg = VincioConfig()
+    bad_cfg.storage.metadata = "memory://"
+    bad_cfg.observability.exporter = "memory"
+    bad_cfg.governance.allowed_regions = ["eu"]
+    bad_cfg.governance.deny_on_unknown_region = False
+    misconfigured = ContextApp(
+        name="bench_verification_bad", provider=MockProvider(default_text="x"), config=bad_cfg
+    )
+    bad_report = misconfigured.verify_governance()
+    bad_entry = next(
+        e for e in misconfigured.audit.entries if e.action == "governance_verification"
+    )
+    misconfig_flagged = bool(
+        not bad_report.held
+        and bad_entry.decision == "deny"
+        and misconfigured.audit.verify_chain()
+    )
+    auditable_offline = bool(estimate_on_chain and chain_verifies and misconfig_flagged)
+
+    return {
+        "property_holds": property_holds,
+        "proof_not_sample": proof_not_sample,
+        "covers_four_invariants": covers_four,
+        "counterexample_on_violation": counterexample_on_violation,
+        "residency_counterexample": residency_counterexample,
+        "budget_counterexample": budget_counterexample,
+        "containment_counterexample": containment_counterexample,
+        "minimal_counterexample": minimal_counterexample,
+        "deterministic": deterministic,
+        "estimate_on_chain": estimate_on_chain,
+        "misconfig_flagged": misconfig_flagged,
+        "auditable_offline": auditable_offline,
+        "states_checked": report.states_checked,
+        "invariants_checked": len(report.results),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -5933,6 +6060,7 @@ FAMILIES = {
     "reputation": bench_reputation,
     "privacy": bench_privacy,
     "energy": bench_energy,
+    "verification": bench_verification,
     "breaking_2_0": bench_breaking_2_0,
 }
 
