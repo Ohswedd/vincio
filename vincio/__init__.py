@@ -353,6 +353,8 @@ from .settlement import (
     SenioritySchedule,
     SeniorityTranche,
     SeniorityVerification,
+    SetOffStatement,
+    SetOffVerification,
     SettlementBook,
     SettlementRecord,
     SettlementReport,
@@ -370,6 +372,7 @@ from .settlement import (
     attest_reputation,
     attestation_a2a_server,
     build_seniority_schedule,
+    build_set_off_statement,
     build_trust_model,
     check_completeness,
     check_history_consistency,
@@ -388,6 +391,7 @@ from .settlement import (
     reconcile,
     resolve_insolvency,
     revoke_attestation,
+    set_off_from_records,
     settle_contract,
     settle_escrow,
     settle_saga,
@@ -403,7 +407,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.41.0"
+__version__ = "3.43.0"
 
 __all__ = [
     "ContextApp",
@@ -644,6 +648,10 @@ __all__ = [
     "InsolvencyResolution",
     "InsolvencyResolutionVerification",
     "resolve_insolvency",
+    "SetOffStatement",
+    "SetOffVerification",
+    "build_set_off_statement",
+    "set_off_from_records",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

@@ -1006,6 +1006,31 @@ total is caught). A tampered or wrong-poster attestation, or a malformed/wrong-p
 `SolvencyProof` passed as `solvency=` must verify and bind the supplied attestations (an unrelated or
 tampered proof is refused). `require_fully_recovered` raises when any creditor bears a shortfall.
 
+### Cross-org insolvency set-off & close-out netting
+
+A set-off statement (`SetOffStatement` / `build_set_off_statement` / `set_off_from_records` /
+`app.build_set_off_statement` / `book.build_set_off_statement`, in `vincio.settlement.setoff`) is a
+**mutually-signed, content-bound close-out of the obligations running both ways between a poster and
+one creditor, never a hosted clearing house, a bankruptcy court, or a trusted third party**. It closes
+a gap the waterfall leaves: a creditor of an insolvent estate is often *also* a debtor of it, and the
+waterfall pays it on its **gross** claim while it still owes the estate the other side. The statement
+records what the poster owes the creditor (`owed_usd`) and what the creditor owes back (`owing_usd`),
+collapsed to the poster's bounded net liability (`max(0, owed − owing)`), and `resolve_insolvency(set_off=…)`
+reduces each creditor to its net claim **before** distributing — a creditor in debit recovers nothing,
+and the distributable estate shrinks to the true net exposure. **Trust model:** the statement asserts
+nothing it cannot recompute — `SetOffStatement.verify` recomputes the content hash and re-derives the
+net from the two gross figures, so an over-stated set-off (a tampered `owing_usd` inflating what the
+creditor is said to owe back, wiping out its recovery) or a tampered net is caught from the bytes alone
+(even after re-sealing). A close-out is a **mutual** agreement: `require_mutual` (and the fold path)
+refuses a one-sided statement only one party signed, and `set_off_from_records` derives the figures
+only from the existing signed `LiabilityAttestation` and `SettlementRecord`s (a tampered artifact
+refused, a forged signature too with a verifier). At fold time each statement is reconciled against the
+*completed* gross the attestation commits — an over-stated set-off claiming a different gross is
+**refused** — one creditor cannot be set off twice, and a statement for a different poster is refused;
+the netted resolution binds the statement hashes and re-derives every net claim from the recorded
+gross, so `verify(set_off=…)` catches a substituted or re-stated close-out. Each statement lands on the
+hash-chained audit log (action `liability_set_off`, decision = the net direction).
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

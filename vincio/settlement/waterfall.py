@@ -63,6 +63,7 @@ from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .custody import CustodyAttestation
 from .record import SettlementSignature
+from .setoff import SetOffStatement
 from .solvency import CompletenessProof, LiabilityAttestation, SolvencyProof, prove_solvency
 
 if TYPE_CHECKING:
@@ -451,11 +452,22 @@ class CreditorRecovery(BaseModel):
     recovery_usd: float = 0.0
     shortfall_usd: float = 0.0
     recovery_rate: float = 1.0
+    # Close-out set-off (3.43): the creditor's gross claim before set-off and the amount its own
+    # obligation back cancelled, so ``claim_usd`` (the net distributed over) re-derives as
+    # ``max(0, gross_claim_usd − set_off_usd)``. Both equal ``claim_usd`` / ``0`` when no set-off
+    # applies, and are bound into the resolution hash only when a set-off was folded.
+    gross_claim_usd: float = 0.0
+    set_off_usd: float = 0.0
 
     @property
     def made_whole(self) -> bool:
         """Whether the creditor recovered its full claim (no shortfall)."""
         return self.shortfall_usd <= _TOLERANCE
+
+    @property
+    def set_off(self) -> bool:
+        """Whether the creditor's gross claim was reduced by a close-out set-off."""
+        return self.set_off_usd > _TOLERANCE
 
 
 class WaterfallTranche(BaseModel):
@@ -552,13 +564,16 @@ class InsolvencyResolutionVerification(BaseModel):
     (``distribution_sound`` — so an over-stated recovery, a re-ordered tranche, or a junior
     creditor paid ahead of a senior one is caught), and — with a ``verifier`` — every signature
     checks (``signatures_ok``). When the seniority schedule is supplied, ``schedule_bound`` also
-    holds when each creditor's rank matches the one the schedule signed.
+    holds when each creditor's rank matches the one the schedule signed; when the set-off statements
+    are supplied, ``set_off_bound`` holds when the resolution binds exactly those statements and each
+    nets its creditor's claim as the statement commits.
     """
 
     valid: bool
     hash_ok: bool
     distribution_sound: bool
     schedule_bound: bool = True
+    set_off_bound: bool = True
     signatures_ok: bool = True
     signed_by: list[str] = Field(default_factory=list)
     reason: str | None = None
@@ -580,9 +595,13 @@ class InsolvencyResolution(BaseModel):
 
     The resolution is **solvent** when the reserves cover every obligation (no shortfall);
     otherwise the creditors with a shortfall are :attr:`shortfall_bearers`, ordered by seniority.
-    :meth:`verify` re-derives the entire waterfall from the recorded claims, ranks, and reserves —
-    so an over-stated recovery or a re-ordered tranche is caught from the bytes alone — and binds
-    the seniority schedule by hash.
+    When a close-out set-off was folded (:func:`~vincio.settlement.resolve_insolvency` with
+    ``set_off=``), each creditor's gross claim is reduced to its net liability *before* the
+    distribution, the netted statements are bound by hash, and every :class:`CreditorRecovery`
+    carries its ``gross_claim_usd`` and ``set_off_usd`` so the net it was distributed over
+    re-derives. :meth:`verify` re-derives the entire waterfall from the recorded claims, ranks, and
+    reserves — so an over-stated recovery or a re-ordered tranche is caught from the bytes alone —
+    and binds the seniority schedule and the set-off statements by hash.
     """
 
     id: str = Field(default_factory=lambda: new_id("insolvency"))
@@ -594,10 +613,16 @@ class InsolvencyResolution(BaseModel):
     completeness_hash: str = ""
     solvency_hash: str = ""
     schedule_hash: str = ""
+    # Close-out set-off (3.43): the statements whose mutual obligations were netted before the
+    # waterfall, sorted. Bound into the content hash only when non-empty, so a resolution with no
+    # set-off hashes exactly as before — the close-out is additive.
+    set_off_hashes: list[str] = Field(default_factory=list)
 
     reserves_usd: float = 0.0
     liabilities_usd: float = 0.0
+    gross_liabilities_usd: float = 0.0
     attested_liabilities_usd: float = 0.0
+    set_off_usd: float = 0.0
     distributed_usd: float = 0.0
     shortfall_usd: float = 0.0
     surplus_usd: float = 0.0
@@ -644,8 +669,13 @@ class InsolvencyResolution(BaseModel):
 
     @property
     def recovery_rate(self) -> float:
-        """The overall fraction of the total obligations the reserves recovered."""
+        """The overall fraction of the (net) obligations the reserves recovered."""
         return _rate(self.distributed_usd, self.liabilities_usd)
+
+    @property
+    def set_off(self) -> bool:
+        """Whether a close-out set-off reduced the obligations before the distribution."""
+        return bool(self.set_off_hashes)
 
     def recovery_of(self, creditor: str) -> CreditorRecovery | None:
         """The :class:`CreditorRecovery` for ``creditor``, or ``None`` if it is not a creditor."""
@@ -669,7 +699,7 @@ class InsolvencyResolution(BaseModel):
         re-ordered tranche or an over-stated recovery is caught even after re-sealing. Excludes the
         id, signatures, and audit linkage (local metadata), so two folders compute the same hash.
         """
-        return {
+        facts: dict[str, Any] = {
             "poster": self.poster,
             "custodian": self.custodian,
             "attestor": self.attestor,
@@ -697,6 +727,25 @@ class InsolvencyResolution(BaseModel):
                 for r in sorted(self.recoveries, key=lambda r: (r.rank, r.creditor))
             ],
         }
+        # The close-out set-off is bound only when one was folded, so a resolution with no set-off
+        # hashes exactly as before (backward-compatible). The per-creditor gross and netted amounts
+        # are bound for every creditor the set-off touched, so verify re-derives each net claim.
+        if self.set_off_hashes:
+            facts["set_off"] = {
+                "hashes": sorted(self.set_off_hashes),
+                "gross_liabilities_usd": _r6(self.gross_liabilities_usd),
+                "set_off_usd": _r6(self.set_off_usd),
+                "by_creditor": [
+                    {
+                        "creditor": r.creditor,
+                        "gross_claim_usd": _r6(r.gross_claim_usd),
+                        "set_off_usd": _r6(r.set_off_usd),
+                    }
+                    for r in sorted(self.recoveries, key=lambda r: (r.rank, r.creditor))
+                    if r.set_off_usd > _TOLERANCE
+                ],
+            }
+        return facts
 
     def compute_hash(self) -> str:
         """The content hash binding the folded proofs and the seniority waterfall."""
@@ -734,14 +783,48 @@ class InsolvencyResolution(BaseModel):
 
     # -- verification -------------------------------------------------------
 
+    def _set_off_sound(self) -> bool:
+        """When a close-out set-off was folded, every net claim re-derives from the gross.
+
+        With no set-off bound this is vacuously true. Otherwise each recovery's distributed claim
+        must equal its gross minus the netted amount floored at zero, both figures non-negative, and
+        the bound gross / set-off totals must equal the sums and reconcile the net liabilities — so a
+        tampered gross, an inflated set-off, or a re-stated net is caught from the bytes alone.
+        """
+        if not self.set_off_hashes:
+            return True
+        gross_total = 0.0
+        set_off_total = 0.0
+        for r in self.recoveries:
+            gross = _r6(r.gross_claim_usd)
+            netted = _r6(r.set_off_usd)
+            if gross < -_TOLERANCE or netted < -_TOLERANCE:
+                return False
+            if abs(r.claim_usd - _r6(max(0.0, gross - netted))) > _TOLERANCE:
+                return False
+            gross_total = _r6(gross_total + gross)
+            set_off_total = _r6(set_off_total + netted)
+        if abs(self.gross_liabilities_usd - gross_total) > _TOLERANCE:
+            return False
+        if abs(self.set_off_usd - set_off_total) > _TOLERANCE:
+            return False
+        if abs(self.liabilities_usd - _r6(gross_total - set_off_total)) > _TOLERANCE:
+            return False
+        return True
+
     def _distribution_sound(self) -> bool:
         """The recorded distribution re-derives from the recorded claims, ranks, and reserves."""
         if self.reserves_usd < -_TOLERANCE or self.liabilities_usd < -_TOLERANCE:
             return False
-        # The completed liabilities can only raise the attestor's figure, never lower it.
         if self.attested_liabilities_usd < -_TOLERANCE:
             return False
-        if self.liabilities_usd < _r6(self.attested_liabilities_usd) - _TOLERANCE:
+        if not self._set_off_sound():
+            return False
+        # The completed liabilities can only raise the attestor's figure, never lower it. With a
+        # close-out set-off the bound *gross* total carries that floor (the net is the gross minus
+        # the set-off and can legitimately fall below the attested figure).
+        gross_floor = self.gross_liabilities_usd if self.set_off_hashes else self.liabilities_usd
+        if gross_floor < _r6(self.attested_liabilities_usd) - _TOLERANCE:
             return False
         claims = self._recorded_claims()
         ranking = self._recorded_ranking()
@@ -801,6 +884,7 @@ class InsolvencyResolution(BaseModel):
         self,
         verifier: ChainSigner | None = None,
         schedule: SenioritySchedule | None = None,
+        set_off: list[SetOffStatement] | None = None,
         *,
         require: list[str] | None = None,
     ) -> InsolvencyResolutionVerification:
@@ -814,6 +898,10 @@ class InsolvencyResolution(BaseModel):
         ``schedule`` binds it: each creditor's recorded rank must match the rank the schedule
         signed, and the bound :attr:`schedule_hash` must match the schedule's content hash — so a
         resolution cannot quietly re-rank a creditor away from the order its creditors agreed to.
+        Passing the ``set_off`` statements binds them: the resolution must bind exactly those
+        statements (by hash), each must verify (mutually-signed with a ``verifier``), and each must
+        net its creditor's gross claim by the amount it commits — so a resolution cannot quietly
+        net a creditor against a set-off it never agreed to.
         """
         hash_ok = bool(self.content_hash) and self.content_hash == self.compute_hash()
         distribution_sound = self._distribution_sound()
@@ -831,6 +919,10 @@ class InsolvencyResolution(BaseModel):
                     schedule_reason = "resolution does not bind the supplied schedule's hash"
                 else:
                     schedule_reason = "a creditor's rank does not match the supplied schedule"
+        set_off_bound = True
+        set_off_reason: str | None = None
+        if set_off is not None:
+            set_off_bound, set_off_reason = self._verify_set_off(set_off, verifier)
         verified: list[str] = []
         signatures_ok = True
         for sig in self.signatures:
@@ -844,7 +936,9 @@ class InsolvencyResolution(BaseModel):
         missing = [p for p in (require or []) if p not in verified]
         if missing:
             signatures_ok = False
-        valid = hash_ok and distribution_sound and schedule_bound and signatures_ok
+        valid = (
+            hash_ok and distribution_sound and schedule_bound and set_off_bound and signatures_ok
+        )
         reason: str | None = None
         if not valid:
             if not self.content_hash:
@@ -855,6 +949,8 @@ class InsolvencyResolution(BaseModel):
                 reason = "the seniority waterfall does not re-derive from the recorded recoveries"
             elif not schedule_bound:
                 reason = schedule_reason
+            elif not set_off_bound:
+                reason = set_off_reason
             elif missing:
                 reason = f"missing/invalid signatures for {missing}"
             else:
@@ -864,20 +960,46 @@ class InsolvencyResolution(BaseModel):
             hash_ok=hash_ok,
             distribution_sound=distribution_sound,
             schedule_bound=schedule_bound,
+            set_off_bound=set_off_bound,
             signatures_ok=signatures_ok,
             signed_by=verified,
             reason=reason,
         )
 
+    def _verify_set_off(
+        self, statements: list[SetOffStatement], verifier: ChainSigner | None
+    ) -> tuple[bool, str | None]:
+        """Whether the resolution binds exactly these statements and nets each as they commit."""
+        bound = sorted(self.set_off_hashes)
+        supplied = sorted(s.content_hash for s in statements)
+        if bound != supplied:
+            return False, "resolution does not bind exactly the supplied set-off statements"
+        recoveries = {r.creditor: r for r in self.recoveries}
+        for statement in statements:
+            result = statement.verify(verifier, require_mutual=True)
+            if not result.valid:
+                return False, f"bound set-off statement failed verification: {result.reason}"
+            if statement.poster != self.poster:
+                return False, "a set-off statement is for a different poster"
+            recovery = recoveries.get(statement.creditor)
+            if recovery is None:
+                return False, f"creditor {statement.creditor!r} has no recovery to set off"
+            if abs(recovery.gross_claim_usd - statement.owed_usd) > _TOLERANCE:
+                return False, "a set-off statement's gross does not match the recorded claim"
+            if abs(recovery.set_off_usd - statement.set_off_usd) > _TOLERANCE:
+                return False, "a set-off statement nets a different amount than recorded"
+        return True, None
+
     def require_valid(
         self,
         verifier: ChainSigner | None = None,
         schedule: SenioritySchedule | None = None,
+        set_off: list[SetOffStatement] | None = None,
         *,
         require: list[str] | None = None,
     ) -> InsolvencyResolution:
         """Verify and raise :class:`SettlementError` if the resolution is not valid."""
-        result = self.verify(verifier, schedule, require=require)
+        result = self.verify(verifier, schedule, set_off, require=require)
         if not result.valid:
             raise SettlementError(
                 f"insolvency resolution {self.id} failed verification: {result.reason}",
@@ -919,12 +1041,15 @@ class InsolvencyResolution(BaseModel):
                 "status": self.status,
                 "reserves_usd": _r6(self.reserves_usd),
                 "liabilities_usd": _r6(self.liabilities_usd),
+                "gross_liabilities_usd": _r6(self.gross_liabilities_usd),
+                "set_off_usd": _r6(self.set_off_usd),
                 "distributed_usd": _r6(self.distributed_usd),
                 "shortfall_usd": _r6(self.shortfall_usd),
                 "recovery_rate": self.recovery_rate,
                 "tranches": len(self.tranches),
                 "shortfall_bearers": self.shortfall_bearers,
                 "schedule_hash": self.schedule_hash,
+                "set_off_hashes": sorted(self.set_off_hashes),
                 "content_hash": self.content_hash,
                 "signed_by": self.signed_by,
             }
@@ -964,6 +1089,69 @@ def _claim_map(liabilities: LiabilityAttestation) -> dict[str, float]:
     return owed
 
 
+def _apply_set_off(
+    claims: dict[str, float],
+    statements: list[SetOffStatement],
+    poster: str,
+    *,
+    verifier: ChainSigner | None,
+) -> tuple[dict[str, float], dict[str, float], list[str]]:
+    """Reduce each creditor's gross claim to its net liability via the close-out statements.
+
+    The close-out pass run *before* the waterfall: for every set-off statement, the creditor's
+    proven liability is reduced by what it owes the estate back, floored at zero, so a creditor in
+    debit recovers nothing and the distributable claims shrink to the true net exposure. Each
+    statement must be mutually-signed and well-formed (a one-sided or tampered close-out is refused),
+    for *this* poster, and reconcile against the gross the attestation commits — an over-stated
+    set-off claiming a different gross than the attested claim is refused — and one creditor cannot
+    be set off twice. Returns the netted claims, the per-creditor amount netted out, and the bound
+    statement hashes (sorted).
+    """
+    netted = dict(claims)
+    set_off_by_creditor: dict[str, float] = {}
+    hashes: list[str] = []
+    seen: set[str] = set()
+    for statement in statements:
+        statement.require_valid(verifier, require_mutual=True)
+        if statement.poster != poster:
+            raise SettlementError(
+                f"set-off statement {statement.id} is for poster {statement.poster!r}, not the "
+                f"poster {poster!r} the resolution distributes; refusing it",
+                details={"setoff_id": statement.id, "poster": poster},
+            )
+        creditor = statement.creditor
+        if creditor in seen:
+            raise SettlementError(
+                f"creditor {creditor!r} is set off in more than one statement for {poster!r}; "
+                "a creditor's mutual obligations must net into a single close-out",
+                details={"poster": poster, "creditor": creditor},
+            )
+        seen.add(creditor)
+        gross = _r6(netted.get(creditor, 0.0))
+        if abs(statement.owed_usd - gross) > _TOLERANCE:
+            raise SettlementError(
+                f"set-off statement {statement.id} states {poster!r} owes {creditor!r} "
+                f"${statement.owed_usd:,.2f}, but the proven liabilities show ${gross:,.2f}; "
+                "refusing an over-stated set-off",
+                details={
+                    "setoff_id": statement.id,
+                    "creditor": creditor,
+                    "stated_owed_usd": statement.owed_usd,
+                    "proven_owed_usd": gross,
+                },
+            )
+        applied = _r6(min(gross, statement.owing_usd))
+        if applied <= _TOLERANCE:
+            # A statement that nets nothing (the creditor owes the estate nothing) is recorded so
+            # the close-out is auditable, but leaves the claim unchanged.
+            hashes.append(statement.content_hash)
+            continue
+        netted[creditor] = _r6(max(0.0, gross - statement.owing_usd))
+        set_off_by_creditor[creditor] = applied
+        hashes.append(statement.content_hash)
+    return netted, set_off_by_creditor, sorted(hashes)
+
+
 def resolve_insolvency(
     custody: CustodyAttestation,
     liabilities: LiabilityAttestation,
@@ -972,6 +1160,7 @@ def resolve_insolvency(
     poster: str | None = None,
     completeness: CompletenessProof | None = None,
     solvency: SolvencyProof | None = None,
+    set_off: list[SetOffStatement] | None = None,
     as_of: datetime | None = None,
     verifier: ChainSigner | None = None,
 ) -> InsolvencyResolution:
@@ -989,13 +1178,21 @@ def resolve_insolvency(
     Pass ``completeness`` (a :class:`~vincio.settlement.solvency.CompletenessProof` over this
     attestation) to distribute against the **completed** liability set — every creditor a proof
     shows the attestor omitted is added at its proven claim, so the waterfall pays the obligations
-    creditors can prove, not only the ones the attestor listed. Returns a sealed, unsigned
-    :class:`InsolvencyResolution` whose per-creditor :class:`CreditorRecovery` is bounded and whose
-    :meth:`~InsolvencyResolution.verify` re-derives the whole distribution from the bytes.
+    creditors can prove, not only the ones the attestor listed.
+
+    Pass ``set_off`` — a list of mutually-signed :class:`~vincio.settlement.setoff.SetOffStatement`\\
+    s for this poster — to **close-out net** the obligations *before* distributing: each creditor's
+    gross claim is reduced by what it owes the estate back (floored at zero), so a creditor in debit
+    recovers nothing and the distributable claims shrink to the true net exposure. The set-off is
+    applied after completeness (so it nets the *completed* gross), reconciled against that gross (an
+    over-stated set-off is refused), and bound into the resolution by hash. Returns a sealed,
+    unsigned :class:`InsolvencyResolution` whose per-creditor :class:`CreditorRecovery` is bounded
+    and whose :meth:`~InsolvencyResolution.verify` re-derives the whole distribution from the bytes.
 
     ``poster`` is the counterparty both attestations are about (defaults to the one they share).
     Raises :class:`SettlementError` when an attestation is tampered, forged, or for the wrong
-    poster, or when the ``schedule`` is malformed or for a different poster.
+    poster, when the ``schedule`` is malformed or for a different poster, or when a ``set_off``
+    statement is one-sided, tampered, for a different poster, or over-states the gross it nets.
     """
     # A pre-built proof is honored only when no completeness is folded here: folding completeness
     # raises the claims (and adds omitted creditors) and is verified by prove_solvency, so a
@@ -1048,6 +1245,16 @@ def resolve_insolvency(
         for breach in completeness.breaches:
             claims[breach.creditor] = _r6(max(claims.get(breach.creditor, 0.0), breach.claimed_usd))
 
+    # The gross claims (post-completeness) the close-out nets against; retained so each recovery can
+    # carry its gross and the amount set off, and verify can re-derive the net.
+    gross_claims = dict(claims)
+    set_off_by_creditor: dict[str, float] = {}
+    set_off_hashes: list[str] = []
+    if set_off:
+        claims, set_off_by_creditor, set_off_hashes = _apply_set_off(
+            claims, list(set_off), resolved_poster, verifier=verifier
+        )
+
     schedule_hash = ""
     ranking: dict[str, int] = {}
     residual_rank = 0
@@ -1082,8 +1289,16 @@ def resolve_insolvency(
         labels = {t.rank: t.label for t in schedule.tranches if t.label}
 
     reserves_usd = _r6(proof.reserves_usd)
+    gross_liabilities_usd = _r6(sum(gross_claims.values()))
     liabilities_usd = _r6(sum(claims.values()))
     tranches, recoveries = _distribute(claims, ranking, residual_rank, reserves_usd, labels)
+    # Annotate each recovery with the gross it carried and the amount its own obligation cancelled,
+    # so verify re-derives the net claim it was distributed over (both equal the claim / 0 when no
+    # set-off touched the creditor).
+    for recovery in recoveries:
+        gross = _r6(gross_claims.get(recovery.creditor, recovery.claim_usd))
+        recovery.gross_claim_usd = gross
+        recovery.set_off_usd = _r6(set_off_by_creditor.get(recovery.creditor, 0.0))
     distributed = _r6(sum(r.recovery_usd for r in recoveries))
     shortfall = _r6(max(0.0, liabilities_usd - distributed))
     surplus = _r6(max(0.0, reserves_usd - distributed))
@@ -1097,9 +1312,12 @@ def resolve_insolvency(
         completeness_hash=proof.completeness_hash,
         solvency_hash=proof.content_hash,
         schedule_hash=schedule_hash,
+        set_off_hashes=set_off_hashes,
         reserves_usd=reserves_usd,
         liabilities_usd=liabilities_usd,
+        gross_liabilities_usd=gross_liabilities_usd,
         attested_liabilities_usd=_r6(proof.attested_liabilities_usd),
+        set_off_usd=_r6(gross_liabilities_usd - liabilities_usd),
         distributed_usd=distributed,
         shortfall_usd=shortfall,
         surplus_usd=surplus,

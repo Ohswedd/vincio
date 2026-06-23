@@ -4,6 +4,50 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.43.0] - 2026-06-23
+
+Cross-org insolvency set-off & close-out netting. The insolvency waterfall (3.42) distributes a poster's reserves across
+the creditors it owes — but a creditor is often **also** a debtor of the same counterparty across a web of contracts, and
+the waterfall pays it on its **gross** claim while it still owes the estate the other side. Real insolvency law resolves
+this first with **set-off** (close-out netting): mutual obligations collapse to a single net claim before any
+distribution. The fabric already nets bilateral *settlements* multilaterally (`net_settlements`); this release applies the
+same to the liability side *before* the waterfall. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`,
+a resolution with no set-off hashes exactly as before, every existing custody, solvency, completeness, non-equivocation,
+history, seniority-waterfall, escrow, pooling, rehypothecation, admission, and settlement path is unchanged, and the whole
+theme runs offline and deterministically.
+
+### Added
+
+- **Signed set-off statement (`vincio.settlement.setoff`).** `build_set_off_statement(poster, creditor, owed_usd,
+  owing_usd, *, references=None, as_of=None)` states the obligations running both ways between a poster and one creditor
+  — what the poster owes and what the creditor owes back — into a sealed, unsigned `SetOffStatement` collapsed to the
+  poster's bounded net liability (`max(0, owed − owing)`). Signed by **both** parties (a mutually-agreed close-out);
+  `verify(verifier=None, *, require=None, require_mutual=False)` recomputes the hash, re-derives the net from the two
+  gross figures (an over-stated set-off or a tampered net is caught), and refuses a one-sided claim with `require_mutual`.
+  `poster_net_claim_usd` / `set_off_usd` / `creditor_in_debit` / `eliminated` / `direction` / `mutual`, `require_valid`,
+  `to_wire` / `from_wire`. `set_off_from_records(poster, creditor, liabilities, records, *, as_of=None, verifier=None)`
+  derives a statement straight from the existing signed `LiabilityAttestation` (the `owed_usd`) and `SettlementRecord`s
+  (the `owing_usd`, deduped by reconciliation hash) — a tampered artifact refused, a forged signature too with a verifier.
+  `SetOffStatement`, `SetOffVerification`, `build_set_off_statement`, `set_off_from_records` are public.
+- **Close-out netting into the waterfall.** `resolve_insolvency(..., set_off=[...])` reduces each creditor's proven
+  liability to its **net** claim before distributing the reserves — a creditor in debit recovers nothing, and the
+  distributable estate shrinks to the true net exposure. Applied after `completeness` (so it nets the *completed* gross),
+  reconciled against that gross (an over-stated set-off claiming a different gross, a one-sided statement, a wrong-poster
+  statement, or a creditor set off twice is refused), and bound into the resolution by hash. `InsolvencyResolution` gains
+  `gross_liabilities_usd` / `set_off_usd` / `set_off_hashes` and `set_off`; `CreditorRecovery` gains `gross_claim_usd` /
+  `set_off_usd` / `set_off`; `verify(verifier=None, schedule=None, set_off=None, *, require=None)` re-derives every net
+  claim from the recorded gross and the applied set-off (an inflated set-off caught even after re-sealing) and binds the
+  mutually-signed statements (`set_off_bound`). All fields default such that a resolution with no set-off is byte-identical
+  to before.
+- **App & book methods.** `app.build_set_off_statement` / `book.build_set_off_statement` sign and record the statement
+  (action `liability_set_off`, decision `poster_owes` / `creditor_in_debit` / `eliminated`); `book.build_set_off_statement`
+  can derive it from the book's own settlement records via `liabilities=`. `app.resolve_insolvency` /
+  `book.resolve_insolvency` gain a `set_off=` parameter.
+- **VincioBench, SLO, example, docs.** The `reputation_portability` family gains `set_off_nets_before_waterfall` and
+  `set_off_auditable_offline` with a published insolvency-set-off SLO and CI budgets; example
+  `87_cross_org_insolvency_set_off.py`; the settlement guide, README, llms.txt, SECURITY.md, ROADMAP, and the generated
+  API index are updated. The public surface grows from 392 to 396 symbols.
+
 ## [3.42.0] - 2026-06-23
 
 Cross-org insolvency resolution & liability seniority waterfall. A `SolvencyProof` (3.38) *flags* an insolvency when a

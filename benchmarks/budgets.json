@@ -1981,6 +1981,12 @@
     "families.reputation_portability.insolvency_resolution_auditable_offline": {
       "eq": true
     },
+    "families.reputation_portability.set_off_nets_before_waterfall": {
+      "eq": true
+    },
+    "families.reputation_portability.set_off_auditable_offline": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

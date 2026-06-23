@@ -827,6 +827,39 @@ signed. `app.resolve_insolvency` records the resolution (action `insolvency_reso
 `solvent` / `resolved`) on the hash-chained audit log and dings a poster that could not make its
 creditors whole on the reputation ledger.
 
+## Setting off mutual obligations
+
+The waterfall pays a creditor on its **gross** claim — but a creditor of an insolvent estate is often
+*also* a debtor of it, still owing the other side across a web of contracts. Real insolvency law
+resolves this first with **set-off** (close-out netting): mutual obligations collapse to a single net
+claim *before* any distribution. State the obligations running both ways between a poster and one
+creditor as a `SetOffStatement` (`app.build_set_off_statement` / `build_set_off_statement`, or
+`set_off_from_records` to derive it straight from the existing `LiabilityAttestation` and settlement
+records), have **both** parties co-sign it, and pass `set_off=` to `resolve_insolvency` to net each
+creditor to its true exposure before the reserves are distributed.
+
+```python
+owed = auditor.attest_liabilities("vendor", {"bank": 50.0, "acme": 30.0})   # $80 gross
+# acme owes the vendor $12 back: its $30 claim nets to $18. Both parties co-sign.
+statement = build_set_off_statement("vendor", "acme", 30.0, 12.0)
+statement.sign(vendor_signer, party="vendor").sign(acme_signer, party="acme")
+
+resolution = auditor.resolve_insolvency(reserves, owed, set_off=[statement])
+resolution.gross_liabilities_usd        # 80.0 — before set-off
+resolution.liabilities_usd              # 68.0 — acme netted from 30 to 18
+resolution.recovery_of("acme").set_off_usd      # 12.0 netted out of acme's gross claim
+```
+
+A creditor **in debit** (owing the estate at least as much as it is owed) nets to a zero claim and
+recovers nothing, and the estate's distributable claims shrink to the true net exposure. The set-off
+is applied after `completeness` (so it nets the *completed* gross), reconciled against that gross — an
+over-stated set-off claiming a different gross than the attestation is refused — and the statements
+must be mutually-signed: a one-sided close-out is refused at fold time. `InsolvencyResolution.verify`
+re-derives every net claim from the recorded gross and the applied set-off (an inflated set-off is
+caught even after re-sealing), and passing `set_off=` to `verify` binds the statements by hash.
+`app.build_set_off_statement` records the statement (action `liability_set_off`, decision
+`poster_owes` / `creditor_in_debit` / `eliminated`) on the hash-chained audit log.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -863,7 +896,10 @@ a non-repudiable walk of a counterparty's hash-linked liability snapshots that p
 dropped between them without a signed, creditor-issued discharge, not a hosted transparency log or a
 trusted third party, and an insolvency resolution is a verifiable distribution of a counterparty's
 proven reserves across the creditors it owes by seniority then pari-passu within a tranche, not a
-hosted receiver, a bankruptcy court, or a trusted third party. Vincio gives you a verifiable
+hosted receiver, a bankruptcy court, or a trusted third party, and a set-off statement is a
+mutually-signed, verifiable close-out of the obligations running both ways between a poster and one
+creditor that the waterfall nets before distributing, not a hosted clearing house or a trusted third
+party. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
@@ -875,5 +911,7 @@ exists, a verifiable proof that it exceeds everything the counterparty owes, a v
 proof that the liabilities counted against it are complete, a verifiable proof that the
 counterparty signed one liability total per instant, not different ones to different creditors, a
 verifiable proof that its liabilities are monotone over time, not a debt quietly dropped between
-snapshots, and a verifiable resolution of an insolvency into who-gets-what by seniority, not a debt
-left to assume it is made whole; how an obligation is paid is yours.
+snapshots, a verifiable resolution of an insolvency into who-gets-what by seniority, not a debt
+left to assume it is made whole, and a verifiable close-out of mutual obligations so a creditor
+recovers only its net exposure, not its gross claim while it still owes the estate the other side;
+how an obligation is paid is yours.
