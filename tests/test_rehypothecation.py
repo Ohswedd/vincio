@@ -475,7 +475,7 @@ def test_asserted_held_does_not_under_reserve():
 def test_held_and_custody_are_mutually_exclusive():
     c1 = _contract("a", 100.0)
     pool = post_collateral_pool([c1], fraction=0.3)
-    with pytest.raises(SettlementError, match="not both"):
+    with pytest.raises(SettlementError, match="one source"):
         guard_collateral([pool], held=10.0, custody=_custody(20.0))
 
 

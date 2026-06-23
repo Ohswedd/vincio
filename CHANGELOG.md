@@ -4,6 +4,69 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.38.0] - 2026-06-23
+
+Cross-org custody liability attestation & proof-of-solvency. Proof-of-reserves (3.37) proves the capital a
+counterparty *holds*, so the rehypothecation guard bounds its pledges against a verified figure. But reserves are
+only one side of the ledger: a counterparty solvent against one buyer's pledges may be deeply **under-water** once
+*every* obligation it owes is counted — it could prove the same reserves against many buyers while quietly insolvent
+across all of them, the canonical gap the proof-of-reserves literature closes next with a **proof-of-solvency**
+(`reserves ≥ total liabilities`). This release makes the *liability* side evidence-backed too and folds the two
+proofs into a bounded, offline-verifiable solvency margin the guard bounds pledges against. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the existing custody, escrow, pooling, rehypothecation, admission,
+and settlement paths are unchanged (the `held=` and `custody=` inputs still work exactly as before), and the whole
+theme runs offline and deterministically.
+
+### Added
+
+- **LiabilityAttestation (`vincio.settlement.solvency`).** `attest_liabilities(poster, liabilities, *, attestor=None,
+  as_of=None)` issues a sealed, unsigned `LiabilityAttestation` over the total obligations a poster owes — the
+  liability analogue of `attest_custody`. `liabilities` is a number, a `{creditor: amount}` mapping, or
+  `LiabilityLine` / `(creditor, amount)` items (a negative obligation is refused); the attested `liabilities_usd` is
+  their sum, re-derived on every verify. `attestor` defaults to the poster (self-attested when `attestor == poster`);
+  otherwise an independent auditor/custodian vouches. Only the attestor signs (`sign(signer, *, party=None)`).
+- **Proof-of-solvency.** `prove_solvency(custody, liabilities, *, poster=None, as_of=None, verifier=None)` folds a
+  proven `CustodyAttestation` against a proven `LiabilityAttestation` for the same poster into a sealed, unsigned
+  `SolvencyProof` — a bounded solvency `margin_usd` (`reserves − liabilities`). It **refuses** a tampered figure, a
+  forged issuer (with `verifier`), or a custody / liability pair for different posters. The proof exposes
+  `solvent` / `insolvent` / `status`, `solvency_adjusted_held` (`max(0, margin)` — the unencumbered capital), and an
+  `InsolvencyBreach` (`.poster` / `.custodian` / `.attestor` / `.custody_hash` / `.liability_hash` / `.reserves_usd` /
+  `.liabilities_usd` / `.shortfall_usd`) when the liabilities exceed the reserves, with `require_solvent()` raising on
+  it.
+- **Read by the guard.** `guard_collateral(pools, *, poster=None, held=None, custody=None, solvency=None,
+  verify_with=None)` reads a `solvency` proof's `solvency_adjusted_held` as the `held` figure (`solvency_adjusted` /
+  `attestor` / `liability_hash` / `liabilities_usd` / `solvency_margin_usd` / `gross_reserves_usd` / `insolvent` /
+  `require_solvent()` on the `CollateralLedger`), bounding pledges against capital **not already owed elsewhere**.
+  `held=` / `custody=` / `solvency=` are mutually exclusive — the held figure has one source. A tampered proof, a
+  forged signature (with `verify_with`), or a proof for a different poster is refused.
+- **Offline-verifiable & refused-on-tamper.** `LiabilityAttestation.verify(...)` →
+  `LiabilityAttestationVerification(valid, hash_ok, liabilities_sound, signatures_ok, signed_by, reason)` re-derives
+  the liability total from the line items; `SolvencyProof.verify(...)` →
+  `SolvencyProofVerification(valid, hash_ok, margin_sound, signatures_ok, signed_by, reason)` re-derives the margin
+  and the insolvency breach — so a tampered figure or a flipped solvency verdict is caught even after re-sealing.
+  `to_wire` / `from_wire` round-trip preserves verification.
+- **App / book surface.** `app.attest_liabilities(...)` / `book.attest_liabilities(...)` sign the attestation as the
+  attestor and record the issuance on the hash-chained audit log (action `liability_attestation`, decision =
+  `self_attested` / `attested`); `app.prove_solvency(...)` / `book.prove_solvency(...)` sign and record the proof
+  (action `solvency_proof`, decision = `solvent` / `insolvent`); `app.guard_collateral(..., solvency=)` /
+  `book.guard_collateral(..., solvency=)` pass it through.
+- **Public surface.** `LiabilityAttestation`, `LiabilityAttestationVerification`, `LiabilityLine`, `InsolvencyBreach`,
+  `SolvencyProof`, `SolvencyProofVerification`, `attest_liabilities`, and `prove_solvency` are exported from `vincio`
+  and `vincio.settlement`.
+
+### Benchmarks & SLOs
+
+- **VincioBench `reputation_portability`** gains `solvency_bounds_held`, `insolvency_pinpoints`, and
+  `solvency_auditable_offline`, gated by a new **proof-of-solvency** SLO (a liability attestation folds against the
+  reserve proof into a solvency-adjusted held figure, a proven insolvency is pinpointed as an insolvency breach with
+  zero free capital, and a tampered / forged / wrong-poster attestation is refused while the proof lands on the audit
+  chain).
+
+### Docs
+
+- New runnable example `82_cross_org_proof_of_solvency.py`; settlement guide, README, llms.txt, SECURITY, and ROADMAP
+  updated; the next scheduled theme is **Cross-org liability inclusion proofs & completeness** (target 3.39).
+
 ## [3.37.0] - 2026-06-23
 
 Cross-org collateral custody attestation & proof-of-reserves. The rehypothecation guard (3.36) bounds a

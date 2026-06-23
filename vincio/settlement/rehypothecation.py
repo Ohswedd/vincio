@@ -33,6 +33,14 @@ posted stake is not committed beyond what it holds across the pools that draw on
   :class:`UnderReservedBreach`, the way an over-commitment does — and a custody attestation
   for a different poster, a tampered reserve figure, or (with a verifier) a forged custodian
   is **refused**.
+* **Proof-of-solvency.** Proven reserves are only one side of the ledger: a counterparty
+  solvent against one buyer's pledges may be under-water once *every* obligation it owes is
+  counted. A :class:`~vincio.settlement.solvency.SolvencyProof` (``solvency=``) folds the
+  proven reserves against a proven :class:`~vincio.settlement.solvency.LiabilityAttestation`
+  and feeds the guard a *solvency-adjusted* held figure (``max(0, reserves − liabilities)``),
+  so a pledge is bounded against capital **not already owed elsewhere** — surfacing the same
+  :class:`UnderReservedBreach` when the unencumbered capital falls short and exposing
+  :attr:`~CollateralLedger.insolvent` when the proven liabilities exceed the reserves.
 * **Auditable & offline.** The ledger reads only the existing signed, content-bound pools
   (and the signed custody attestation) and asserts nothing it cannot recompute: a tampered
   pool (its content hash no longer recomputes) is **refused** at fold time, and
@@ -64,6 +72,7 @@ from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .collateral import CollateralPool
 from .custody import CustodyAttestation
 from .record import SettlementSignature
+from .solvency import SolvencyProof
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -273,6 +282,16 @@ class CollateralLedger(BaseModel):
     custody_hash: str = ""
     reserves_usd: float = 0.0
 
+    # Proof-of-solvency: when the held figure is *solvency-adjusted* by a SolvencyProof, the
+    # held figure is the unencumbered capital (reserves − liabilities), the liability attestor
+    # and hash are bound in, and the margin is recorded (negative when insolvent). The
+    # under-reserved breach then bounds pledges against capital not already owed elsewhere.
+    solvency_adjusted: bool = False
+    attestor: str = ""
+    liability_hash: str = ""
+    liabilities_usd: float = 0.0
+    solvency_margin_usd: float = 0.0
+
     breaches: list[ReuseBreach] = Field(default_factory=list)
     claims: list[BeneficiaryClaim] = Field(default_factory=list)
     reserve_breach: UnderReservedBreach | None = None
@@ -306,14 +325,42 @@ class CollateralLedger(BaseModel):
 
     @property
     def under_reserved(self) -> bool:
-        """Whether the proven reserves fall below what the pools pledge.
+        """Whether the proven (held) capital falls below what the pools pledge.
 
         Meaningful only when the held figure is backed by a
         :class:`~vincio.settlement.custody.CustodyAttestation` (:attr:`reserves_proven`): an
         asserted holdings figure is not *proven*, so it cannot under-reserve — it can only
-        over-commit. ``True`` exactly when a :attr:`reserve_breach` was surfaced.
+        over-commit. When the held figure is **solvency-adjusted** (:attr:`solvency_adjusted`),
+        the proven figure is the unencumbered capital (reserves minus liabilities), so the
+        pledges are bounded against capital not already owed elsewhere. ``True`` exactly when a
+        :attr:`reserve_breach` was surfaced.
         """
         return self.reserve_breach is not None
+
+    @property
+    def insolvent(self) -> bool:
+        """Whether the proven liabilities exceed the proven reserves (a solvency shortfall).
+
+        Meaningful only when the held figure is **solvency-adjusted** by a
+        :class:`~vincio.settlement.solvency.SolvencyProof` (:attr:`solvency_adjusted`): an
+        insolvent counterparty owes more than it holds, so its unencumbered capital is zero
+        however much any one buyer's pledges are. Orthogonal to :attr:`under_reserved`, which is
+        about the pledges this guard sees rather than the counterparty's whole obligation set.
+        """
+        return self.solvency_adjusted and self.solvency_margin_usd < -_TOLERANCE
+
+    @property
+    def gross_reserves_usd(self) -> float:
+        """The gross proven reserves before the solvency adjustment.
+
+        When the held figure is solvency-adjusted, :attr:`reserves_usd` is the *unencumbered*
+        capital (``max(0, reserves − liabilities)``); the gross reserves the custody attestation
+        proved are ``margin + liabilities``. Without a solvency adjustment this is just the
+        proven reserves (or ``0`` when the held figure is asserted, not proven).
+        """
+        if self.solvency_adjusted:
+            return _r6(self.solvency_margin_usd + self.liabilities_usd)
+        return _r6(self.reserves_usd)
 
     @property
     def status(self) -> str:
@@ -399,6 +446,11 @@ class CollateralLedger(BaseModel):
             "custodian": self.custodian,
             "custody_hash": self.custody_hash,
             "reserves_usd": _r6(self.reserves_usd),
+            "solvency_adjusted": self.solvency_adjusted,
+            "attestor": self.attestor,
+            "liability_hash": self.liability_hash,
+            "liabilities_usd": _r6(self.liabilities_usd),
+            "solvency_margin_usd": _r6(self.solvency_margin_usd),
             "reserve_breach": (
                 {
                     "custodian": self.reserve_breach.custodian,
@@ -499,6 +551,20 @@ class CollateralLedger(BaseModel):
             return False
         return True
 
+    def _no_solvency_fields(self) -> bool:
+        """Whether no solvency-adjustment fields are set (the held figure is not solvency-adjusted).
+
+        A non-solvency held figure (asserted, reserves-only, or defaulted) must carry no
+        liability side — so a fabricated solvency adjustment is caught from the bytes.
+        """
+        return not (
+            self.solvency_adjusted
+            or self.attestor
+            or self.liability_hash
+            or abs(self.liabilities_usd) > _TOLERANCE
+            or abs(self.solvency_margin_usd) > _TOLERANCE
+        )
+
     def _reserves_sound(self) -> bool:
         """The proven-reserves fields reconcile and the under-reserved breach re-derives.
 
@@ -510,8 +576,21 @@ class CollateralLedger(BaseModel):
         if self.reserves_proven:
             if abs(self.reserves_usd - self.held_usd) > _TOLERANCE:
                 return False
+            if self.solvency_adjusted:
+                # The held figure is the unencumbered capital — max(0, reserves − liabilities) —
+                # so it must reconcile to the bound margin, and the liability side is recorded.
+                if self.liabilities_usd < -_TOLERANCE:
+                    return False
+                if abs(self.reserves_usd - _r6(max(0.0, self.solvency_margin_usd))) > _TOLERANCE:
+                    return False
+                if not self.attestor or not self.liability_hash:
+                    return False
+            elif not self._no_solvency_fields():
+                return False
         else:
             if abs(self.reserves_usd) > _TOLERANCE or self.custodian or self.custody_hash:
+                return False
+            if not self._no_solvency_fields():
                 return False
         expected = self._derive_reserve_breach()
         if (expected is None) != (self.reserve_breach is None):
@@ -635,6 +714,32 @@ class CollateralLedger(BaseModel):
             )
         return self
 
+    def require_solvent(self) -> CollateralLedger:
+        """Raise :class:`SettlementError` if the counterparty is provably insolvent.
+
+        The strict-mode counterpart to inspecting :attr:`insolvent`: when the held figure is
+        solvency-adjusted (:attr:`solvency_adjusted`) and the proven liabilities exceed the
+        proven reserves, the counterparty has no unencumbered capital to back *any* pledge —
+        a deeper failure than :meth:`require_reserved`, which only bounds the pledges this guard
+        sees. Fires only under a :class:`~vincio.settlement.solvency.SolvencyProof`; an asserted
+        or reserves-only held figure cannot prove insolvency.
+        """
+        if self.insolvent:
+            shortfall = _r6(self.liabilities_usd - self.gross_reserves_usd)
+            raise SettlementError(
+                f"collateral ledger {self.id} is insolvent by ${shortfall:,.2f}: "
+                f"{self.poster!r} owes ${self.liabilities_usd:,.2f} against "
+                f"${self.gross_reserves_usd:,.2f} proven reserves",
+                details={
+                    "ledger_id": self.id,
+                    "poster": self.poster,
+                    "reserves_usd": self.gross_reserves_usd,
+                    "liabilities_usd": self.liabilities_usd,
+                    "shortfall_usd": shortfall,
+                },
+            )
+        return self
+
     # -- serialization & reporting -----------------------------------------
 
     def audit_details(self) -> dict[str, Any]:
@@ -657,6 +762,11 @@ class CollateralLedger(BaseModel):
                 "under_reserved_usd": (
                     _r6(self.reserve_breach.shortfall_usd) if self.reserve_breach else 0.0
                 ),
+                "solvency_adjusted": self.solvency_adjusted,
+                "attestor": self.attestor,
+                "liabilities_usd": _r6(self.liabilities_usd),
+                "solvency_margin_usd": _r6(self.solvency_margin_usd),
+                "insolvent": self.insolvent,
                 "content_hash": self.content_hash,
                 "signed_by": self.signed_by,
             }
@@ -672,15 +782,24 @@ class CollateralLedger(BaseModel):
 
     def print_summary(self) -> None:  # pragma: no cover - cosmetic
         """Print the pledged total, the held capital, and the re-use breaches."""
-        held_label = (
-            f"${self.reserves_usd:,.2f} proven by {self.custodian}"
-            if self.reserves_proven
-            else f"${self.held_usd:,.2f} held"
-        )
+        if self.solvency_adjusted:
+            held_label = (
+                f"${self.reserves_usd:,.2f} free (${self.gross_reserves_usd:,.2f} reserves − "
+                f"${self.liabilities_usd:,.2f} liabilities, attested by {self.attestor})"
+            )
+        elif self.reserves_proven:
+            held_label = f"${self.reserves_usd:,.2f} proven by {self.custodian}"
+        else:
+            held_label = f"${self.held_usd:,.2f} held"
         print(
             f"Collateral ledger ({self.poster}): {len(self.pools)} pool(s) pledge "
             f"${self.pledged_usd:,.2f} against {held_label} — {self.status}"
         )
+        if self.insolvent:
+            print(
+                f"  ! insolvent: ${self.liabilities_usd:,.2f} owed exceeds "
+                f"${self.gross_reserves_usd:,.2f} proven reserves"
+            )
         if self.reserve_breach is not None:
             print(
                 f"  ! under-reserved ${self.reserve_breach.shortfall_usd:,.2f}: proven "
@@ -920,12 +1039,46 @@ def _reserves_from_custody(
     return _r6(custody.reserves_usd)
 
 
+def _held_from_solvency(
+    solvency: SolvencyProof, *, poster: str, verifier: ChainSigner | None
+) -> float:
+    """Read a solvency proof's solvency-adjusted held figure, refusing a tampered one.
+
+    Reads only what it can recompute: a proof whose content hash no longer recomputes or whose
+    margin no longer re-derives from the proven figures — a tampered solvency claim — is refused
+    outright, and with a ``verifier`` a forged signature is too. A proof folding attestations for
+    a *different* poster cannot stand in for this poster and is refused. Returns the
+    solvency-adjusted held figure (``max(0, reserves − liabilities)``).
+    """
+    result = solvency.verify(verifier)
+    if not result.hash_ok or not result.margin_sound:
+        raise SettlementError(
+            f"solvency proof {solvency.id} is tampered ({result.reason}); refusing to read it "
+            "as proof-of-solvency",
+            details={"proof_id": solvency.id, "reason": result.reason},
+        )
+    if verifier is not None and solvency.signatures and not result.signatures_ok:
+        raise SettlementError(
+            f"solvency proof {solvency.id} has an invalid signature; refusing to read it as "
+            "proof-of-solvency",
+            details={"proof_id": solvency.id},
+        )
+    if solvency.poster != poster:
+        raise SettlementError(
+            f"solvency proof {solvency.id} folds attestations for {solvency.poster!r}, not the "
+            f"poster {poster!r} the guard bounds; refusing it",
+            details={"proof_id": solvency.id, "proves": solvency.poster, "poster": poster},
+        )
+    return solvency.solvency_adjusted_held
+
+
 def guard_collateral(
     pools: Iterable[CollateralPool],
     *,
     poster: str | None = None,
     held: float | None = None,
     custody: CustodyAttestation | None = None,
+    solvency: SolvencyProof | None = None,
     verify_with: ChainSigner | None = None,
 ) -> CollateralLedger:
     """Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
@@ -942,6 +1095,15 @@ def guard_collateral(
     every pool shares; an explicit poster is required when they differ). The capital that
     poster holds — the figure the guard bounds the pledges by — comes from one of:
 
+    * ``solvency`` — a signed :class:`~vincio.settlement.solvency.SolvencyProof` folding a
+      proven reserve attestation against a proven liability attestation. The guard reads its
+      *solvency-adjusted* held figure (``max(0, reserves − liabilities)``) as the held figure,
+      marks the bound :attr:`~CollateralLedger.solvency_adjusted`, and bounds the pledges
+      against capital **not already owed elsewhere** — surfacing an :class:`UnderReservedBreach`
+      when that unencumbered capital falls below the pledges and exposing
+      :attr:`~CollateralLedger.insolvent` when the proven liabilities exceed the reserves. A
+      tampered proof, a forged signature (with ``verify_with``), or a proof for a different
+      poster is **refused**.
     * ``custody`` — a signed :class:`~vincio.settlement.custody.CustodyAttestation`
       **proving** the reserves. The guard reads its ``reserves_usd`` as the held figure,
       marks the bound :attr:`~CollateralLedger.reserves_proven`, and surfaces an
@@ -950,13 +1112,13 @@ def guard_collateral(
       for a different poster is **refused**.
     * ``held`` — an explicit, *asserted* holdings figure (the legacy input). It can
       over-commit but never under-*reserves*, because nothing proves it.
-    * neither — defaults to the gross pledge minus the provably double-pledged capital, so a
+    * none — defaults to the gross pledge minus the provably double-pledged capital, so a
       re-pledged contract surfaces as an over-commitment while genuinely separately-funded
       pools do not.
 
     Raises :class:`SettlementError` when the set is empty, the posters differ and none is
-    given, ``held`` is negative, or both ``held`` and ``custody`` are passed (the held figure
-    has one source).
+    given, ``held`` is negative, or more than one of ``held`` / ``custody`` / ``solvency`` is
+    passed (the held figure has one source).
     """
     pool_list = list(pools)
     if not pool_list:
@@ -964,10 +1126,12 @@ def guard_collateral(
             "guard_collateral needs at least one collateral pool to fold",
             details={},
         )
-    if held is not None and custody is not None:
+    sources = sum(x is not None for x in (held, custody, solvency))
+    if sources > 1:
         raise SettlementError(
-            "guard_collateral takes either an asserted held= figure or a proven custody= "
-            "attestation, not both; the held figure has one source",
+            "guard_collateral takes at most one held-figure source — an asserted held=, a "
+            "proven custody= attestation, or a proven solvency= proof — not several; the held "
+            "figure has one source",
             details={},
         )
     posters = {p.poster for p in pool_list}
@@ -1000,11 +1164,25 @@ def guard_collateral(
     # genuinely separately-funded pools do not.
     pledged = _r6(sum(p.balance_usd for p in ledger_pools))
     _breaches, duplicate_pledge = _reuse_breaches(ledger_pools)
-    reserves_proven = custody is not None
+    reserves_proven = custody is not None or solvency is not None
     custodian = ""
     custody_hash = ""
     reserves_usd = 0.0
-    if custody is not None:
+    solvency_adjusted = solvency is not None
+    attestor = ""
+    liability_hash = ""
+    liabilities_usd = 0.0
+    solvency_margin_usd = 0.0
+    if solvency is not None:
+        resolved_held = _held_from_solvency(solvency, poster=resolved_poster, verifier=verify_with)
+        custodian = solvency.custodian
+        custody_hash = solvency.custody_hash
+        reserves_usd = resolved_held
+        attestor = solvency.attestor
+        liability_hash = solvency.liability_hash
+        liabilities_usd = _r6(solvency.liabilities_usd)
+        solvency_margin_usd = _r6(solvency.margin_usd)
+    elif custody is not None:
         resolved_held = _reserves_from_custody(
             custody, poster=resolved_poster, verifier=verify_with
         )
@@ -1024,6 +1202,11 @@ def guard_collateral(
         custodian=custodian,
         custody_hash=custody_hash,
         reserves_usd=reserves_usd,
+        solvency_adjusted=solvency_adjusted,
+        attestor=attestor,
+        liability_hash=liability_hash,
+        liabilities_usd=liabilities_usd,
+        solvency_margin_usd=solvency_margin_usd,
     )
     ledger._recompute()
     return ledger.seal()

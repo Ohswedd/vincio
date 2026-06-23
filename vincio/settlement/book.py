@@ -38,6 +38,14 @@ from .record import (
     reconcile,
 )
 from .rehypothecation import REHYPOTHECATION_ACTION, CollateralLedger, guard_collateral
+from .solvency import (
+    LIABILITY_ACTION,
+    SOLVENCY_ACTION,
+    LiabilityAttestation,
+    SolvencyProof,
+    attest_liabilities,
+    prove_solvency,
+)
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -395,9 +403,7 @@ class SettlementBook:
         self.append(record)
         self._record_reputation(record, record_reputation)
         if escrow is not None:
-            self.settle_escrow(
-                escrow, record, party=party, sign=sign, config=escrow_config
-            )
+            self.settle_escrow(escrow, record, party=party, sign=sign, config=escrow_config)
         if pool is not None:
             self.draw_pool(pool, record, party=party, sign=sign, config=escrow_config)
         return record
@@ -641,6 +647,85 @@ class SettlementBook:
         )
         attestation.audit_id = getattr(entry, "id", None)
 
+    # -- liability attestation & proof-of-solvency --------------------------
+
+    def attest_liabilities(
+        self,
+        poster: str,
+        liabilities: Any,
+        *,
+        attestor: str | None = None,
+        as_of: Any | None = None,
+        sign: bool = True,
+    ) -> LiabilityAttestation:
+        """Attest a poster's total obligations into a signed, audited proof-of-liabilities.
+
+        Builds the :class:`~vincio.settlement.solvency.LiabilityAttestation`
+        (:func:`~vincio.settlement.solvency.attest_liabilities`) over the obligations ``poster``
+        owes — itemized ``liabilities`` whose total re-derives on every verify — signs it as the
+        attestor (this book's owner by default, i.e. self-attested when the owner is the poster),
+        and records the issuance on the audit chain. It folds against a proof-of-reserves in
+        :meth:`prove_solvency`. Returns it.
+        """
+        attestation = attest_liabilities(
+            poster, liabilities, attestor=attestor or self.owner, as_of=as_of
+        )
+        if sign and self.signer is not None and self.owner == attestation.attestor:
+            attestation.sign(self.signer, party=attestation.attestor)
+        self._audit_liabilities(attestation)
+        return attestation
+
+    def _audit_liabilities(self, attestation: LiabilityAttestation) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            LIABILITY_ACTION,
+            resource=attestation.poster,
+            decision="self_attested" if attestation.self_attested else "attested",
+            details=attestation.audit_details(),
+        )
+        attestation.audit_id = getattr(entry, "id", None)
+
+    def prove_solvency(
+        self,
+        custody: CustodyAttestation,
+        liabilities: LiabilityAttestation,
+        *,
+        poster: str | None = None,
+        as_of: Any | None = None,
+        verify_with: ChainSigner | None = None,
+        sign: bool = True,
+    ) -> SolvencyProof:
+        """Fold a reserve proof against a liability proof into a signed, audited proof-of-solvency.
+
+        Builds the :class:`~vincio.settlement.solvency.SolvencyProof`
+        (:func:`~vincio.settlement.solvency.prove_solvency`) reconciling the proven reserves
+        against the proven liabilities into a bounded solvency margin, pinpointing an
+        :class:`~vincio.settlement.solvency.InsolvencyBreach` when the liabilities exceed the
+        reserves. Signs the proof as this book's owner and records it on the audit chain. A
+        tampered or wrong-poster attestation is refused; with ``verify_with`` a forged signature
+        is too. The proof's solvency-adjusted held figure reads into
+        :meth:`guard_collateral` (``solvency=``). Returns the proof.
+        """
+        proof = prove_solvency(
+            custody, liabilities, poster=poster, as_of=as_of, verifier=verify_with
+        )
+        if sign and self.signer is not None:
+            proof.sign(self.signer, party=self.owner)
+        self._audit_solvency(proof)
+        return proof
+
+    def _audit_solvency(self, proof: SolvencyProof) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            SOLVENCY_ACTION,
+            resource=proof.poster,
+            decision=proof.status,
+            details=proof.audit_details(),
+        )
+        proof.audit_id = getattr(entry, "id", None)
+
     # -- rehypothecation guard ----------------------------------------------
 
     def guard_collateral(
@@ -650,6 +735,7 @@ class SettlementBook:
         poster: str | None = None,
         held: float | None = None,
         custody: CustodyAttestation | None = None,
+        solvency: SolvencyProof | None = None,
         verify_with: ChainSigner | None = None,
         sign: bool = True,
     ) -> CollateralLedger:
@@ -657,17 +743,23 @@ class SettlementBook:
 
         Builds the :class:`~vincio.settlement.rehypothecation.CollateralLedger`
         (:func:`~vincio.settlement.rehypothecation.guard_collateral`) reconciling what the
-        ``pools`` collectively pledge against the capital the poster holds — proven by a
-        ``custody`` :class:`~vincio.settlement.custody.CustodyAttestation`, asserted via
-        ``held``, or defaulted — pinpointing a contract pledged across more than one pool as a
-        re-use breach, bounding each beneficiary's claim to its deterministic share, and
-        surfacing an under-reserved breach when the proven reserves fall below the pledges.
-        Signs the ledger as this book's owner and records the guard on the audit chain. A
-        tampered pool or custody attestation is refused; with ``verify_with`` a forged
-        signature is too. Returns the ledger.
+        ``pools`` collectively pledge against the capital the poster holds — solvency-adjusted by
+        a ``solvency`` :class:`~vincio.settlement.solvency.SolvencyProof`, proven by a ``custody``
+        :class:`~vincio.settlement.custody.CustodyAttestation`, asserted via ``held``, or
+        defaulted — pinpointing a contract pledged across more than one pool as a re-use breach,
+        bounding each beneficiary's claim to its deterministic share, and surfacing an
+        under-reserved breach when the held capital falls below the pledges. Signs the ledger as
+        this book's owner and records the guard on the audit chain. A tampered pool, custody
+        attestation, or solvency proof is refused; with ``verify_with`` a forged signature is
+        too. Returns the ledger.
         """
         ledger = guard_collateral(
-            pools, poster=poster, held=held, custody=custody, verify_with=verify_with
+            pools,
+            poster=poster,
+            held=held,
+            custody=custody,
+            solvency=solvency,
+            verify_with=verify_with,
         )
         if sign and self.signer is not None:
             ledger.sign(self.signer, party=self.owner)

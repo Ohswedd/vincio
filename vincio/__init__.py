@@ -314,7 +314,11 @@ from .settlement import (
     EscrowConfig,
     EscrowVerification,
     GatheredReputation,
+    InsolvencyBreach,
     IssuerTrust,
+    LiabilityAttestation,
+    LiabilityAttestationVerification,
+    LiabilityLine,
     Meter,
     MeterReading,
     NettingSet,
@@ -329,6 +333,8 @@ from .settlement import (
     SettlementBook,
     SettlementRecord,
     SettlementReport,
+    SolvencyProof,
+    SolvencyProofVerification,
     TrustConfig,
     TrustModel,
     UnderReservedBreach,
@@ -336,6 +342,7 @@ from .settlement import (
     admit,
     arbitrate,
     attest_custody,
+    attest_liabilities,
     attest_reputation,
     attestation_a2a_server,
     build_trust_model,
@@ -347,6 +354,7 @@ from .settlement import (
     net_settlements,
     post_collateral_pool,
     post_escrow,
+    prove_solvency,
     reconcile,
     revoke_attestation,
     settle_contract,
@@ -364,7 +372,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.37.0"
+__version__ = "3.38.0"
 
 __all__ = [
     "ContextApp",
@@ -562,6 +570,15 @@ __all__ = [
     "CustodyAttestationVerification",
     "ReserveLine",
     "attest_custody",
+    # cross-org custody liability attestation & proof-of-solvency
+    "LiabilityAttestation",
+    "LiabilityAttestationVerification",
+    "LiabilityLine",
+    "InsolvencyBreach",
+    "SolvencyProof",
+    "SolvencyProofVerification",
+    "attest_liabilities",
+    "prove_solvency",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

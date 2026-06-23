@@ -8845,6 +8845,90 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and CustodyAttestation.from_wire(proof.to_wire()).verify().valid
     )
 
+    # 50. Proof-of-solvency: proven reserves are only one side of the ledger — a liability
+    #     attestation makes the obligations evidence-backed too, and prove_solvency folds the
+    #     two into a solvency-adjusted held figure the guard bounds pledges against (capital not
+    #     already owed elsewhere).
+    from vincio import SolvencyProof, attest_liabilities, prove_solvency
+
+    sol_c1, sol_c2 = pool_contract("sa", 100.0), pool_contract("sb", 200.0)
+    sol_pool = post_collateral_pool([sol_c1, sol_c2], fraction=0.1)  # pledges 30
+    sol_reserves = attest_custody("vendor", {"omnibus": 80.0}, custodian="custodian")  # 80 held
+    sol_owed = attest_liabilities("vendor", {"globex": 35.0, "initech": 15.0}, attestor="auditor")
+    sol_proof = prove_solvency(sol_reserves, sol_owed)  # margin = 30 free
+    sol_ledger = guard_collateral([sol_pool], solvency=sol_proof)
+    solvency_bounds_held = bool(
+        sol_proof.solvent
+        and abs(sol_proof.margin_usd - 30.0) <= 1e-6
+        and abs(sol_proof.solvency_adjusted_held - 30.0) <= 1e-6
+        and sol_ledger.solvency_adjusted
+        and abs(sol_ledger.held_usd - 30.0) <= 1e-6
+        and abs(sol_ledger.gross_reserves_usd - 80.0) <= 1e-6
+        and abs(sol_ledger.liabilities_usd - 50.0) <= 1e-6
+        and not sol_ledger.under_reserved  # 30 free covers 30 pledged
+        and not sol_ledger.insolvent
+        and sol_proof.verify().valid
+        and sol_ledger.verify().valid
+    )
+
+    # 51. Insolvency breach: when the proven liabilities exceed the proven reserves the shortfall
+    #     surfaces as a bounded, pinpointed breach, and the guard sees zero free capital — a
+    #     counterparty proving the same reserves against many buyers while insolvent is caught.
+    deep_owed = attest_liabilities("vendor", {"globex": 70.0, "initech": 50.0}, attestor="auditor")
+    insolvent_proof = prove_solvency(sol_reserves, deep_owed)  # 80 − 120 = −40
+    insolvent_ledger = guard_collateral([sol_pool], solvency=insolvent_proof)
+    insolvency_pinpoints = bool(
+        insolvent_proof.insolvent
+        and insolvent_proof.breach is not None
+        and insolvent_proof.breach.attestor == "auditor"
+        and insolvent_proof.breach.custodian == "custodian"
+        and abs(insolvent_proof.breach.shortfall_usd - 40.0) <= 1e-6
+        and abs(insolvent_proof.solvency_adjusted_held) <= 1e-6
+        and insolvent_ledger.insolvent
+        and abs(insolvent_ledger.held_usd) <= 1e-6
+        and insolvent_ledger.under_reserved
+        and insolvent_ledger.verify().valid
+    )
+
+    # 52. Auditable & offline: a tampered liability figure, a custody/liability pair for different
+    #     posters, and a tampered solvency proof are each refused; a flipped verdict re-derives
+    #     from the bytes even after re-sealing; and app.prove_solvency lands it on the chain.
+    sol_app = ContextApp(name="auditor", provider=MockProvider(default_text="ok"), config=cfg)
+    sol_app.use_settlement_book()
+    app_reserves = sol_app.attest_custody("vendor", {"omnibus": 50.0})
+    app_owed = sol_app.attest_liabilities("vendor", {"globex": 120.0})  # insolvent
+    app_proof = sol_app.prove_solvency(app_reserves, app_owed)
+    tampered_owed = attest_liabilities("vendor", {"globex": 60.0})
+    tampered_owed.liabilities_usd = 1.0
+    tampered_owed.seal()  # re-seal the lie; the total no longer re-derives
+    try:
+        prove_solvency(sol_reserves, tampered_owed)
+        sol_tamper_refused = False
+    except SettlementError:
+        sol_tamper_refused = True
+    wrong_pair = attest_liabilities("globex", 60.0)  # attests globex, not the reserves' vendor
+    try:
+        prove_solvency(sol_reserves, wrong_pair)
+        sol_poster_refused = False
+    except SettlementError:
+        sol_poster_refused = True
+    flipped = prove_solvency(sol_reserves, deep_owed)
+    flipped.breach = None  # hide the insolvency
+    flipped.seal()  # recompute the hash to match the lie
+    solvency_auditable_offline = bool(
+        app_proof.insolvent
+        and app_proof.audit_id is not None
+        and len(sol_app.audit.query(action="liability_attestation")) == 1
+        and len(sol_app.audit.query(action="solvency_proof")) == 1
+        and sol_app.audit.verify_chain()
+        and app_proof.verify(sol_app.contract_signer).valid
+        and sol_tamper_refused
+        and sol_poster_refused
+        and flipped.verify().hash_ok
+        and not flipped.verify().margin_sound
+        and SolvencyProof.from_wire(sol_proof.to_wire()).verify().valid
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -8895,6 +8979,9 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "proof_of_reserves_bounds_held": proof_of_reserves_bounds_held,
         "under_reserved_pinpoints": under_reserved_pinpoints,
         "por_auditable_offline": por_auditable_offline,
+        "solvency_bounds_held": solvency_bounds_held,
+        "insolvency_pinpoints": insolvency_pinpoints,
+        "solvency_auditable_offline": solvency_auditable_offline,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

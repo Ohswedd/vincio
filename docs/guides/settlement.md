@@ -635,7 +635,44 @@ breach is caught even after re-sealing). `app.attest_custody` signs it as the cu
 records the issuance on the hash-chained audit log (action `custody_attestation`). An asserted
 `held=` figure can over-commit but never *under-reserves*, because nothing proves it — only a
 custody attestation can. This proves the reserves *exist*, not that they exceed every liability
-the counterparty owes elsewhere.
+the counterparty owes elsewhere — that second half is the proof-of-solvency below.
+
+## Proving solvency
+
+Proven reserves are only one side of the ledger. A counterparty solvent against *one* buyer's
+pledges may be deeply **under-water** once *every* obligation it owes is counted — and could prove
+the same reserves against many buyers while quietly insolvent across all of them. A
+`LiabilityAttestation` (`app.attest_liabilities` / `attest_liabilities`) makes the liability side
+evidence-backed too — a counterparty (or its auditor) attests the total obligations it owes,
+itemized into creditors whose total re-derives on every verify — and `prove_solvency`
+(`app.prove_solvency`) folds it against the proven reserves into a `SolvencyProof`: a bounded
+solvency margin (`reserves − liabilities`) the guard reads as the held figure.
+
+```python
+# the vendor proves $80 of reserves but owes $50 to other creditors
+reserves = custodian.attest_custody("vendor", {"omnibus": 80.0})       # 80 held
+owed = auditor.attest_liabilities("vendor", {"globex": 35.0, "initech": 15.0})  # 50 owed
+proof = auditor.prove_solvency(reserves, owed)   # margin = 30 free
+proof.solvent              # True — reserves cover the liabilities
+proof.margin_usd           # 30.0 (reserves − liabilities)
+proof.solvency_adjusted_held  # 30.0 — the unencumbered capital, max(0, margin)
+
+ledger = buyer.guard_collateral([pool], solvency=proof)  # held = solvency-adjusted margin
+ledger.solvency_adjusted   # True — pledges bounded against capital not already owed elsewhere
+ledger.insolvent           # True when the proven liabilities exceed the proven reserves
+ledger.under_reserved      # True when the unencumbered capital falls below the pledges
+proof.require_solvent()    # raises if the liabilities exceed the reserves
+```
+
+`held=`, `custody=`, and `solvency=` are mutually exclusive — the held figure has one source.
+`prove_solvency` reads only signed, content-bound artifacts: a tampered liability figure, a forged
+issuer (with `verifier`/`verify_with`), or a custody / liability pair for **different posters** is
+**refused**, and the solvency margin and the `InsolvencyBreach` re-derive from the bytes alone (a
+flipped solvency verdict re-sealed to match is caught). `app.attest_liabilities` signs the
+attestation as the attestor (action `liability_attestation`) and `app.prove_solvency` signs and
+records the proof (action `solvency_proof`, decision `solvent` / `insolvent`) on the hash-chained
+audit log. The proof bounds the guard's held figure by the counterparty's whole obligation set,
+not one buyer's view.
 
 ## What it is not
 
@@ -659,14 +696,17 @@ collateral pool is a verifiable margin account that allocates one posted stake a
 contracts and draws it deterministically, not a hosted clearing house, a margin custodian, or
 an omnibus account, a collateral ledger is a verifiable re-use bound that folds a
 counterparty's pools and reconciles what they pledge against what it holds, not a hosted
-custodian or a rehypothecation registry, and a custody attestation is one party's signed,
+custodian or a rehypothecation registry, a custody attestation is one party's signed,
 verifiable proof-of-reserves that the guard reads as the held figure, not a hosted proof-of-reserves
-auditor or a trusted third party. Vincio gives you a verifiable
+auditor or a trusted third party, and a solvency proof is a verifiable fold of a counterparty's
+proven reserves against its proven liabilities that the guard reads as a solvency-adjusted held
+figure, not a hosted solvency auditor. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
 your own earned trust, a verifiable way to bound a counterparty's exposure to what its
 standing justifies, a verifiable way to back that exposure with posted collateral, a
 verifiable way to pool that collateral across many concurrent deals, a verifiable way to
-bound its re-use across them, and a verifiable proof that the capital backing it actually
-exists; how an obligation is paid is yours.
+bound its re-use across them, a verifiable proof that the capital backing it actually
+exists, and a verifiable proof that it exceeds everything the counterparty owes; how an
+obligation is paid is yours.

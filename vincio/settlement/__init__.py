@@ -104,10 +104,18 @@ on the hash-chained audit log. And because the guard's ``held`` figure was the o
 over the capital actually held, which :func:`guard_collateral` reads (``custody=``) as the held
 figure — surfacing an :class:`UnderReservedBreach` when the proven reserves fall below the
 pledges and refusing a tampered figure, a forged custodian, or an attestation for a different
-poster. Everything is dependency-free, deterministic, and offline — never a hosted marketplace,
-a clearing house, an arbitration service, a reputation service, an underwriting service, an
-escrow custodian, a margin custodian, a rehypothecation registry, a proof-of-reserves auditor,
-or a payment processor, only a mechanical, verifiable reconciliation.
+poster. And because proven reserves are only one side of the ledger — a counterparty solvent
+against one buyer's pledges may be under-water once *every* obligation it owes is counted — a
+:class:`LiabilityAttestation` (:func:`attest_liabilities`) makes the liability side
+evidence-backed too, and :func:`prove_solvency` folds the two proofs into a signed,
+offline-verifiable :class:`SolvencyProof` (reserves − liabilities) that :func:`guard_collateral`
+reads (``solvency=``) as a *solvency-adjusted* held figure — bounding a pledge against capital
+not already owed elsewhere and pinpointing an :class:`InsolvencyBreach` when the proven
+liabilities exceed the reserves. Everything is dependency-free, deterministic, and offline —
+never a hosted marketplace, a clearing house, an arbitration service, a reputation service, an
+underwriting service, an escrow custodian, a margin custodian, a rehypothecation registry, a
+proof-of-reserves auditor, a solvency auditor, or a payment processor, only a mechanical,
+verifiable reconciliation.
 """
 
 from __future__ import annotations
@@ -215,6 +223,16 @@ from .rehypothecation import (
     UnderReservedBreach,
     guard_collateral,
 )
+from .solvency import (
+    InsolvencyBreach,
+    LiabilityAttestation,
+    LiabilityAttestationVerification,
+    LiabilityLine,
+    SolvencyProof,
+    SolvencyProofVerification,
+    attest_liabilities,
+    prove_solvency,
+)
 
 __all__ = [
     # metering primitive
@@ -306,6 +324,15 @@ __all__ = [
     "CustodyAttestationVerification",
     "ReserveLine",
     "attest_custody",
+    # custody liability attestation & proof-of-solvency
+    "LiabilityAttestation",
+    "LiabilityAttestationVerification",
+    "LiabilityLine",
+    "InsolvencyBreach",
+    "SolvencyProof",
+    "SolvencyProofVerification",
+    "attest_liabilities",
+    "prove_solvency",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",

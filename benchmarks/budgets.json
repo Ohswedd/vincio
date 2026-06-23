@@ -1945,6 +1945,15 @@
     "families.reputation_portability.por_auditable_offline": {
       "eq": true
     },
+    "families.reputation_portability.solvency_bounds_held": {
+      "eq": true
+    },
+    "families.reputation_portability.insolvency_pinpoints": {
+      "eq": true
+    },
+    "families.reputation_portability.solvency_auditable_offline": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

@@ -1427,6 +1427,37 @@ app.run("export button 500s").output.label
   record_audit=True)` / `book.attest_custody(...)` sign it as the custodian and record it on the audit chain (action
   `custody_attestation`, decision = `self_custody`|`custodied`). Offline — never a hosted custodian or a
   proof-of-reserves auditor.
+- **Cross-org custody liability attestation & proof-of-solvency.** `from vincio import LiabilityAttestation,
+  LiabilityAttestationVerification, LiabilityLine, InsolvencyBreach, SolvencyProof, SolvencyProofVerification,
+  attest_liabilities, prove_solvency` (all also in `vincio.settlement.__all__`). Proof-of-reserves proves the capital a
+  counterparty *holds*, but reserves are one side of the ledger — a counterparty solvent against one buyer may be
+  under-water once *every* obligation it owes is counted. A `LiabilityAttestation` makes the liability side
+  evidence-backed: `attest_liabilities(poster, liabilities, *, attestor=None, as_of=None)` → a sealed, unsigned
+  `LiabilityAttestation` over the total obligations owed (`liabilities` is a number, a `{creditor: amount}` mapping, or
+  `LiabilityLine`/`(creditor, amount)` items; a negative obligation is refused; `attestor` defaults to `poster` —
+  self-attested). `LiabilityAttestation` (`.attestor`/`.poster`/`.liabilities` (`LiabilityLine`:
+  `.creditor`/`.amount_usd`/`.note`)/`.liabilities_usd`/`.as_of`, `.self_attested`/`.creditors`, `.compute_hash()`/
+  `.seal()`/`.sign(signer, *, party=None)` (only the attestor signs), `.verify(verifier=None, *, require=None)` →
+  `LiabilityAttestationVerification(valid, hash_ok, liabilities_sound, signatures_ok, signed_by, reason)` re-derives the
+  total from the line items so a tampered figure is caught even after re-sealing, `.require_valid()`,
+  `.audit_details`/`.to_wire`/`.from_wire`). `prove_solvency(custody, liabilities, *, poster=None, as_of=None,
+  verifier=None)` folds a proven `CustodyAttestation` against a proven `LiabilityAttestation` for the same poster
+  (refusing a tampered, forged, or wrong-poster attestation) → a sealed, unsigned `SolvencyProof` (`.poster`/`.custodian`/
+  `.attestor`/`.custody_hash`/`.liability_hash`/`.reserves_usd`/`.liabilities_usd`/`.margin_usd` (reserves − liabilities),
+  `.solvent`/`.insolvent`/`.status` (`solvent`|`insolvent`), `.solvency_adjusted_held` (`max(0, margin)` — the
+  unencumbered capital), `.breach` (`InsolvencyBreach`: `.poster`/`.custodian`/`.attestor`/`.custody_hash`/
+  `.liability_hash`/`.reserves_usd`/`.liabilities_usd`/`.shortfall_usd`), `.verify(verifier=None, *, require=None)` →
+  `SolvencyProofVerification(valid, hash_ok, margin_sound, signatures_ok, signed_by, reason)` re-derives the margin and
+  breach so a flipped verdict is caught even after re-sealing, `.require_valid()`, `.require_solvent()` (raises if
+  insolvent), `.sign(signer, *, party)`, `.audit_details`/`.to_wire`/`.from_wire`). `guard_collateral(..., solvency=)`
+  reads `.solvency_adjusted_held` as the `held` figure (`.solvency_adjusted` on the ledger, with `.attestor`/
+  `.liability_hash`/`.liabilities_usd`/`.solvency_margin_usd`/`.gross_reserves_usd`/`.insolvent`/`.require_solvent()`),
+  bounding pledges against capital not already owed elsewhere — refusing a tampered proof, a forged signature (with
+  `verify_with`), or a proof for a different poster. `app.attest_liabilities(poster, liabilities, *, attestor=,
+  as_of=, sign=True, record_audit=True)` / `book.attest_liabilities(...)` sign it as the attestor (action
+  `liability_attestation`, decision = `self_attested`|`attested`), and `app.prove_solvency(custody, liabilities, *,
+  poster=, as_of=, verify_with=, sign=True, record_audit=True)` / `book.prove_solvency(...)` sign and record the proof
+  (action `solvency_proof`, decision = `solvent`|`insolvent`). Offline — never a hosted solvency auditor.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,
