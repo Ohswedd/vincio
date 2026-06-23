@@ -715,6 +715,45 @@ and a completeness check for a **different** attestation or poster is **refused*
 them from its owner's own settled records against the attestation's poster — what the creditor
 delivered against and is owed.
 
+## Catching equivocation across creditors
+
+Completeness catches an omission only when the *omitted* creditor folds its own claim. But a
+counterparty issues its attestation **per relationship**, so it can **equivocate**: sign a *smaller*
+liability root for one creditor and a different one for another, each creditor's `InclusionProof`
+verifying against the root *it* was shown while the totals disagree. The creditors compare the signed
+roots to catch it. `attestation.root_commitment()` produces a signed, privacy-preserving
+`RootCommitment` — the root and `as_of` the attestor signed, **without** the line items — and
+`check_root_consistency` (`app.check_root_consistency` / `book.check_root_consistency`) groups a set
+of held attestations by their `(poster, attestor, as_of)` key and folds any two conflicting roots
+into a non-repudiable `EquivocationProof`.
+
+```python
+as_of = datetime(2026, 1, 1, tzinfo=UTC)
+to_acme = auditor.attest_liabilities("vendor", {"acme": 60.0}, as_of=as_of)    # root shown to acme
+to_globex = auditor.attest_liabilities("vendor", {"globex": 40.0}, as_of=as_of)  # a different root
+
+# The creditors compare the signed commitments — root + as-of only, no line items.
+to_acme.root_commitment().conflicts_with(to_globex.root_commitment())   # True
+
+# An auditor verifying both folds the conflict into a non-repudiable proof.
+report = auditor.check_root_consistency(
+    [("acme", to_acme), ("globex", to_globex)], verify_with=auditor.contract_signer
+)
+report.consistent              # False
+report.equivocating_posters    # ["vendor"]
+report.equivocations[0].liabilities_gap_usd   # 20.0 — the two signed totals disagree
+report.require_consistent()    # raises: vendor signed two roots for one instant
+```
+
+The comparison and the proof read only signed, content-bound artifacts: each embedded attestation
+re-derives its root from the bytes (a mislabeled root cannot survive), and with the attestor's
+verifier a **forged conflicting root is refused** and excluded from a scan, so it cannot manufacture
+a false accusation against an honest poster. `app.check_root_consistency` records each equivocation
+(action `liability_equivocation`, decision `equivocation`) on the hash-chained audit log and dings
+the equivocating poster on the bound reputation ledger. Non-equivocation is defined for one `as_of`:
+two roots a poster signed *as of the same instant* are a contradiction, while two roots for
+*different* instants are distinct snapshots a later one legitimately supersedes.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -744,7 +783,9 @@ proven reserves against its proven liabilities that the guard reads as a solvenc
 figure, not a hosted solvency auditor, and an inclusion proof and a completeness check are one
 party's signed, verifiable proof that a creditor's claim is counted in the attested liabilities and
 that the attested total omits nothing a creditor can prove, not a hosted attestation registry or a
-transparency log. Vincio gives you a verifiable
+transparency log, and an equivocation proof is a non-repudiable fold of two conflicting liability
+roots one counterparty signed for the same instant, surfaced by creditors comparing the signed roots
+themselves, not a hosted transparency log or a trusted third party. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
@@ -752,5 +793,7 @@ your own earned trust, a verifiable way to bound a counterparty's exposure to wh
 standing justifies, a verifiable way to back that exposure with posted collateral, a
 verifiable way to pool that collateral across many concurrent deals, a verifiable way to
 bound its re-use across them, a verifiable proof that the capital backing it actually
-exists, a verifiable proof that it exceeds everything the counterparty owes, and a verifiable
-proof that the liabilities counted against it are complete; how an obligation is paid is yours.
+exists, a verifiable proof that it exceeds everything the counterparty owes, a verifiable
+proof that the liabilities counted against it are complete, and a verifiable proof that the
+counterparty signed one liability total per instant, not different ones to different creditors;
+how an obligation is paid is yours.

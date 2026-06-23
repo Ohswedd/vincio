@@ -40,14 +40,18 @@ from .record import (
 from .rehypothecation import REHYPOTHECATION_ACTION, CollateralLedger, guard_collateral
 from .solvency import (
     COMPLETENESS_ACTION,
+    EQUIVOCATION_ACTION,
     LIABILITY_ACTION,
     SOLVENCY_ACTION,
     CompletenessProof,
+    EquivocationProof,
     InclusionProof,
     LiabilityAttestation,
+    RootConsistencyReport,
     SolvencyProof,
     attest_liabilities,
     check_completeness,
+    check_root_consistency,
     prove_solvency,
 )
 
@@ -801,6 +805,66 @@ class SettlementBook:
             details=proof.audit_details(),
         )
         proof.audit_id = getattr(entry, "id", None)
+
+    def check_root_consistency(
+        self,
+        attestations: Any,
+        *,
+        verify_with: ChainSigner | None = None,
+        record_reputation: bool = True,
+    ) -> RootConsistencyReport:
+        """Compare liability attestations across creditors for cross-org non-equivocation.
+
+        Folds a set of liability attestations a group of creditors hold — each the attestation a
+        poster signed *for it* — into a
+        :class:`~vincio.settlement.solvency.RootConsistencyReport`
+        (:func:`~vincio.settlement.solvency.check_root_consistency`), surfacing every poster that
+        signed **different** roots for the same ``(poster, attestor, as_of)`` as a non-repudiable
+        :class:`~vincio.settlement.solvency.EquivocationProof`. Completeness catches an omission
+        only when the omitted creditor folds its own claim; this catches the counterparty that
+        equivocates across the set. ``attestations`` items may be bare attestations or
+        ``(creditor, attestation)`` pairs to record which creditor saw each root. With
+        ``verify_with`` only attestor-signed roots are admitted as evidence, so a forged root
+        cannot manufacture a false accusation. Records each proven equivocation on the audit chain
+        and — unless ``record_reputation`` is off — credits a failure against the equivocating
+        poster on the bound reputation ledger. Returns the report.
+        """
+        report = check_root_consistency(attestations, verifier=verify_with)
+        dinged: set[str] = set()
+        for proof in report.equivocations:
+            self._audit_equivocation(proof)
+            # Every distinct pairwise conflict is audited, but a poster's reputation is debited
+            # once per check — three conflicting roots are one equivocating counterparty.
+            if proof.poster not in dinged:
+                self._record_equivocation_reputation(proof, record_reputation)
+                dinged.add(proof.poster)
+        return report
+
+    def _audit_equivocation(self, proof: EquivocationProof) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            EQUIVOCATION_ACTION,
+            resource=proof.poster,
+            decision="equivocation",
+            details=proof.audit_details(),
+        )
+        proof.audit_id = getattr(entry, "id", None)
+
+    def _record_equivocation_reputation(self, proof: EquivocationProof, enabled: bool) -> None:
+        if not enabled or self.reputation is None:
+            return
+        self.reputation.record_outcome(
+            proof.poster,
+            passed=False,
+            round_id=proof.id,
+            details={
+                "kind": "liability_equivocation",
+                "proof_id": proof.id,
+                "attestor": proof.attestor,
+                "liabilities_gap_usd": proof.liabilities_gap_usd,
+            },
+        )
 
     # -- rehypothecation guard ----------------------------------------------
 

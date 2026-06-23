@@ -1963,6 +1963,12 @@
     "families.reputation_portability.completeness_auditable_offline": {
       "eq": true
     },
+    "families.reputation_portability.equivocation_detects_conflicting_roots": {
+      "eq": true
+    },
+    "families.reputation_portability.equivocation_auditable_offline": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

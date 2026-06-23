@@ -1486,6 +1486,32 @@ app.run("export button 500s").output.label
   attestor's figure (refusing a check for a different poster/attestation), so the solvency margin is bounded by the
   obligations creditors can prove. App/book sign and record the check (action `liability_completeness`, decision =
   `complete`|`incomplete`). Offline — never a hosted attestation registry.
+- **Cross-org liability non-equivocation & root consistency.** `from vincio import RootCommitment,
+  RootCommitmentVerification, EquivocationProof, EquivocationProofVerification, RootConsistencyReport,
+  prove_equivocation, check_root_consistency` (all also in `vincio.settlement.__all__`). Completeness catches an omission
+  only when the omitted creditor folds its own claim, but a counterparty issues its attestation per relationship — so it
+  can **equivocate**, signing a smaller `liabilities_root` for one creditor and a different one for another, each
+  creditor's `InclusionProof` verifying against the root *it* was shown. `attestation.root_commitment()` →
+  `RootCommitment` (`.poster`/`.attestor`/`.as_of`/`.liabilities_root`/`.liabilities_usd`/`.liability_hash`/`.signature`,
+  `.consistency_key` (`(poster, attestor, as_of)`), `.conflicts_with(other)`, `.verify(verifier=None)` →
+  `RootCommitmentVerification(valid, committed, signed_ok, signed_by, reason)`, `.to_wire`/`.from_wire`) — a signed,
+  privacy-preserving digest of the root and `as_of` the attestor signed, **without** the line items, that creditors
+  compare over the attestation exchange. `prove_equivocation(first, second, *, verifier=None, first_creditor="",
+  second_creditor="")` folds two attestations a poster signed for the same `(poster, attestor, as_of)` with different
+  roots → an `EquivocationProof` (`.poster`/`.attestor`/`.as_of`/`.first`/`.second` (whole attestations, canonical
+  content-hash order)/`.first_root`/`.second_root`/`.first_creditor`/`.second_creditor`/`.roots`/`.creditors`/
+  `.liabilities_gap_usd`, `.verify(verifier=None, *, require=None)` → `EquivocationProofVerification(valid, hash_ok,
+  attestations_ok, conflict_ok, attestor_signed, signatures_ok, signed_by, reason)` re-derives each embedded root from
+  the bytes and (with the verifier) checks the attestor signed each so a forged conflicting root is refused,
+  `.require_valid()`, `.sign(signer, *, party)`, `.audit_details`/`.to_wire`/`.from_wire`); refuses different
+  posters/instants (distinct snapshots) or identical roots (no conflict). `check_root_consistency(attestations, *,
+  verifier=None)` groups a set of held attestations (bare or `(creditor, attestation)`) by their key and folds every
+  conflicting pair → a `RootConsistencyReport` (`.consistent`/`.checked`/`.keys`/`.equivocations`/`.equivocating_posters`,
+  `.require_consistent()`, `.to_wire`/`.from_wire`); a tampered or (with a verifier) forged/unsigned root is excluded as
+  inadmissible, so it cannot manufacture a false accusation. `app.check_root_consistency(attestations, *, verify_with=,
+  record_reputation=True, record_audit=True)` / `book.check_root_consistency(...)` record each equivocation (action
+  `liability_equivocation`, decision `equivocation`) on the audit log and ding the equivocating poster on the bound
+  reputation ledger. Offline — never a hosted transparency log.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

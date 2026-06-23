@@ -9004,6 +9004,84 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and CompletenessProof.from_wire(comp_check.to_wire()).verify().valid
     )
 
+    # 54. Liability non-equivocation: completeness catches an omission only when the omitted
+    #     creditor folds its own claim — but a counterparty issues its attestation per relationship,
+    #     so it can equivocate, signing a *smaller* root for one creditor and a different one for
+    #     another, each creditor's inclusion proof verifying against the root it was shown. Creditors
+    #     compare the signed roots over the exchange, and two conflicting roots a poster signed for
+    #     one instant fold into a non-repudiable EquivocationProof.
+    from datetime import UTC
+    from datetime import datetime as _dt
+
+    from vincio import (
+        EquivocationProof,
+        check_root_consistency,
+        prove_equivocation,
+    )
+
+    eq_t = _dt(2026, 1, 1, tzinfo=UTC)
+    # The vendor's auditor signs acme a root of {acme: 60} and globex a different root of
+    # {globex: 40} — a smaller total each, for the *same* instant.
+    eq_acme = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=eq_t)
+    eq_globex = attest_liabilities("vendor", {"globex": 40.0}, attestor="auditor", as_of=eq_t)
+    eq_signer = ContextApp(
+        name="auditor", provider=MockProvider(default_text="ok")
+    ).contract_signer
+    eq_acme.sign(eq_signer, party="auditor")
+    eq_globex.sign(eq_signer, party="auditor")
+    # The privacy-preserving commitments detect the conflict without the line items.
+    eq_ca, eq_cg = eq_acme.root_commitment(), eq_globex.root_commitment()
+    eq_proof = prove_equivocation(
+        eq_acme, eq_globex, verifier=eq_signer, first_creditor="acme", second_creditor="globex"
+    )
+    equivocation_detects_conflicting_roots = bool(
+        eq_ca.conflicts_with(eq_cg)  # same (poster, attestor, as_of), different root
+        and eq_ca.verify(eq_signer).valid
+        and "acme" not in eq_ca.model_dump_json()  # the commitment leaks no line items
+        and eq_proof.verify(eq_signer).valid
+        and eq_proof.verify(eq_signer).attestor_signed
+        and eq_proof.poster == "vendor"
+        and abs(eq_proof.liabilities_gap_usd - 20.0) <= 1e-6
+        and EquivocationProof.from_wire(eq_proof.to_wire()).verify(eq_signer).valid
+    )
+
+    # Auditable & offline: a forged conflicting root (signed with the wrong key) is refused and
+    # excluded from a scan; an honest set (the same root shown to every creditor) is consistent; the
+    # scan dings the equivocating poster's reputation and lands on the audit chain.
+    eq_app = ContextApp(name="auditor", provider=MockProvider(default_text="ok"), config=cfg)
+    eq_app.use_settlement_book()
+    eq_app.use_reputation_ledger()
+    eq_a = eq_app.attest_liabilities("vendor", {"acme": 60.0}, as_of=eq_t)
+    eq_b = eq_app.attest_liabilities("vendor", {"globex": 40.0}, as_of=eq_t)
+    eq_report = eq_app.check_root_consistency(
+        [("acme", eq_a), ("globex", eq_b)], verify_with=eq_app.contract_signer
+    )
+    eq_forged = attest_liabilities("vendor", {"zeta": 5.0}, attestor="auditor", as_of=eq_t)
+    eq_forged.sign(HMACSigner("forger-key", key_id="auditor"), party="auditor")
+    try:
+        prove_equivocation(eq_acme, eq_forged, verifier=eq_signer)
+        eq_forged_refused = False
+    except SettlementError:
+        eq_forged_refused = True
+    eq_honest = check_root_consistency(
+        [eq_acme, attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=eq_t).sign(
+            eq_signer, party="auditor"
+        )],
+        verifier=eq_signer,
+    )
+    eq_scan_forged = check_root_consistency([eq_acme, eq_forged], verifier=eq_signer)
+    equivocation_auditable_offline = bool(
+        not eq_report.consistent
+        and eq_report.equivocating_posters == ["vendor"]
+        and eq_report.equivocations[0].audit_id is not None
+        and len(eq_app.audit.query(action="liability_equivocation")) == 1
+        and eq_app.audit.verify_chain()
+        and eq_app.reputation_ledger.weight("vendor") < 1.0  # equivocation counts as a failure
+        and eq_forged_refused
+        and eq_scan_forged.consistent  # the forged root cannot manufacture a false accusation
+        and eq_honest.consistent  # the same root shown to every creditor is consistent
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -9060,6 +9138,8 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "inclusion_proof_detects_omission": inclusion_proof_detects_omission,
         "completeness_bounds_solvency": completeness_bounds_solvency,
         "completeness_auditable_offline": completeness_auditable_offline,
+        "equivocation_detects_conflicting_roots": equivocation_detects_conflicting_roots,
+        "equivocation_auditable_offline": equivocation_auditable_offline,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

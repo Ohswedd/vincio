@@ -3597,6 +3597,67 @@ class ContextApp:
             proof.audit_id = getattr(entry, "id", None)
         return proof
 
+    def check_root_consistency(
+        self,
+        attestations: Any,
+        *,
+        verify_with: Any | None = None,
+        record_reputation: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Compare liability attestations across creditors for cross-org non-equivocation.
+
+        Folds a set of liability attestations a group of creditors hold — each the attestation a
+        poster signed *for it* — into a :class:`~vincio.settlement.RootConsistencyReport`
+        (:func:`~vincio.settlement.check_root_consistency`), surfacing every poster that signed
+        **different** roots for the same ``(poster, attestor, as_of)`` as a non-repudiable
+        :class:`~vincio.settlement.EquivocationProof`. Where :meth:`check_completeness` catches an
+        omission only when the omitted creditor folds its own claim, this catches the counterparty
+        that **equivocates** — showing each creditor a root on which its own claim *is* present
+        while the totals disagree. ``attestations`` items may be bare attestations or
+        ``(creditor, attestation)`` pairs to record which creditor saw each root. With
+        ``verify_with`` only attestor-signed roots are admitted, so a forged root cannot
+        manufacture a false accusation. Unless ``record_audit`` is off, records each proven
+        equivocation on the audit chain; unless ``record_reputation`` is off, credits a failure
+        against the equivocating poster on this app's reputation ledger (when one is attached).
+        Returns the report::
+
+            owed_acme = vendor.attest_liabilities("vendor", {"acme": 60.0}, as_of=t)
+            owed_globex = vendor.attest_liabilities("vendor", {"globex": 40.0}, as_of=t)
+            report = auditor.check_root_consistency([("acme", owed_acme), ("globex", owed_globex)])
+            report.require_consistent()  # raises: vendor signed two roots for one instant
+        """
+        from ..settlement import check_root_consistency as _check
+
+        report = _check(attestations, verifier=verify_with)
+        dinged: set[str] = set()
+        for proof in report.equivocations:
+            if record_audit and self.audit is not None:
+                from ..settlement.solvency import EQUIVOCATION_ACTION
+
+                entry = self.audit.record(
+                    EQUIVOCATION_ACTION,
+                    resource=proof.poster,
+                    decision="equivocation",
+                    details=proof.audit_details(),
+                )
+                proof.audit_id = getattr(entry, "id", None)
+            # Every distinct pairwise conflict is audited, but a poster's reputation is debited
+            # once per check — three conflicting roots are one equivocating counterparty.
+            if (
+                record_reputation
+                and self.reputation_ledger is not None
+                and proof.poster not in dinged
+            ):
+                self.reputation_ledger.record_outcome(
+                    proof.poster,
+                    passed=False,
+                    round_id=proof.id,
+                    details={"kind": "liability_equivocation", "attestor": proof.attestor},
+                )
+                dinged.add(proof.poster)
+        return report
+
     def guard_collateral(
         self,
         pools: list[Any],

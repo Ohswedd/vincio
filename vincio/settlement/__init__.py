@@ -226,6 +226,8 @@ from .rehypothecation import (
 from .solvency import (
     CompletenessProof,
     CompletenessVerification,
+    EquivocationProof,
+    EquivocationProofVerification,
     InclusionProof,
     InclusionProofVerification,
     InsolvencyBreach,
@@ -234,10 +236,15 @@ from .solvency import (
     LiabilityLine,
     MerkleStep,
     OmissionBreach,
+    RootCommitment,
+    RootCommitmentVerification,
+    RootConsistencyReport,
     SolvencyProof,
     SolvencyProofVerification,
     attest_liabilities,
     check_completeness,
+    check_root_consistency,
+    prove_equivocation,
     prove_solvency,
 )
 
@@ -348,6 +355,14 @@ __all__ = [
     "CompletenessProof",
     "CompletenessVerification",
     "check_completeness",
+    # liability non-equivocation & root consistency
+    "RootCommitment",
+    "RootCommitmentVerification",
+    "EquivocationProof",
+    "EquivocationProofVerification",
+    "RootConsistencyReport",
+    "prove_equivocation",
+    "check_root_consistency",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",
