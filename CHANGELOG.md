@@ -4,6 +4,46 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.40.0] - 2026-06-23
+
+Cross-org liability non-equivocation & root consistency. Completeness (3.39) proves each creditor's claim is *included*
+in the attested liabilities, but a counterparty issues its liability attestation **per relationship**: nothing yet
+stopped it presenting **different liability roots** — a *smaller* total — to different creditors, so each creditor's
+inclusion proof verifies against the root *it* was shown while the counterparty equivocates across the set. Completeness
+catches an omission only when the *omitted* creditor folds its own claim; equivocation hides the omission by showing each
+creditor a root on which its own claim *is* present. This release lets creditors compare the signed roots and folds two
+conflicting roots one poster signed for the same instant into a non-repudiable equivocation proof. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, every existing custody, solvency, completeness, escrow, pooling,
+rehypothecation, admission, and settlement path is unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **RootCommitment (`vincio.settlement.solvency`).** `LiabilityAttestation.root_commitment()` produces a signed,
+  privacy-preserving `RootCommitment` — the `liabilities_root` and `as_of` the attestor signed, carried with the
+  attestor's signature over the content hash but **without** the line items — that creditors compare over the existing
+  attestation exchange. `consistency_key` is `(poster, attestor, as_of)`; `conflicts_with(other)` detects two roots a
+  poster signed for the same key; `verify(verifier=None)` checks the embedded attestor signature, refusing a forged one.
+  `RootCommitment`, `RootCommitmentVerification` are public.
+- **EquivocationProof.** `prove_equivocation(first, second, *, verifier=None, first_creditor="", second_creditor="")`
+  folds two attestations a poster signed for the same `(poster, attestor, as_of)` with **different** roots into a
+  content-bound `EquivocationProof` that embeds both whole attestations (in canonical content-hash order) and names the
+  poster, the two roots, and the creditor each was shown. `verify` re-derives each embedded root from the bytes (a
+  mislabeled root cannot survive) and, with the verifier, checks the attestor signed each — so a forged conflicting root
+  is refused. It refuses different posters/instants (distinct snapshots) or identical roots (no conflict). `EquivocationProof`,
+  `EquivocationProofVerification` are public.
+- **check_root_consistency.** `check_root_consistency(attestations, *, verifier=None)` groups a set of held attestations
+  (bare or `(creditor, attestation)` pairs) by their `(poster, attestor, as_of)` key and folds every conflicting pair
+  into a `RootConsistencyReport` (`consistent` / `checked` / `keys` / `equivocations` / `equivocating_posters`,
+  `require_consistent()`). A tampered or — with a verifier — forged/unsigned root is excluded as inadmissible evidence,
+  so it cannot manufacture a false accusation. `RootConsistencyReport`, `check_root_consistency` are public.
+- **App & book methods.** `app.check_root_consistency` / `book.check_root_consistency` record each equivocation on the
+  audit chain (action `liability_equivocation`, decision `equivocation`) and credit a failure against the equivocating
+  poster on the bound `ReputationLedger`.
+- **VincioBench, SLO, example, docs.** The `reputation_portability` family gains `equivocation_detects_conflicting_roots`
+  and `equivocation_auditable_offline` with a published liability-non-equivocation SLO and CI budgets; example
+  `84_cross_org_liability_non_equivocation.py`; the settlement guide, README, llms.txt, SECURITY.md, ROADMAP, and the
+  generated API index are updated. The public surface grows from 367 to 374 symbols.
+
 ## [3.39.0] - 2026-06-23
 
 Cross-org liability inclusion proofs & completeness. Proof-of-solvency (3.38) folds a proven liability *total* against

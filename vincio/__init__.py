@@ -312,6 +312,8 @@ from .settlement import (
     CompletenessVerification,
     CustodyAttestation,
     CustodyAttestationVerification,
+    EquivocationProof,
+    EquivocationProofVerification,
     Escrow,
     EscrowConfig,
     EscrowVerification,
@@ -336,6 +338,9 @@ from .settlement import (
     ReserveLine,
     Resolution,
     ReuseBreach,
+    RootCommitment,
+    RootCommitmentVerification,
+    RootConsistencyReport,
     SettlementBook,
     SettlementRecord,
     SettlementReport,
@@ -353,6 +358,7 @@ from .settlement import (
     attestation_a2a_server,
     build_trust_model,
     check_completeness,
+    check_root_consistency,
     combine_attestations,
     draw_pool,
     gather_reputation,
@@ -361,6 +367,7 @@ from .settlement import (
     net_settlements,
     post_collateral_pool,
     post_escrow,
+    prove_equivocation,
     prove_solvency,
     reconcile,
     revoke_attestation,
@@ -379,7 +386,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.39.0"
+__version__ = "3.40.0"
 
 __all__ = [
     "ContextApp",
@@ -594,6 +601,14 @@ __all__ = [
     "CompletenessProof",
     "CompletenessVerification",
     "check_completeness",
+    # cross-org liability non-equivocation & root consistency
+    "RootCommitment",
+    "RootCommitmentVerification",
+    "EquivocationProof",
+    "EquivocationProofVerification",
+    "RootConsistencyReport",
+    "prove_equivocation",
+    "check_root_consistency",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

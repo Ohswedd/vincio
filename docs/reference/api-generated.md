@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**367** public symbols.
+**374** public symbols.
 
 ## Classes
 
@@ -409,6 +409,14 @@ The stateful-environment contract: ``reset`` / ``step`` / ``observe`` / ``verify
 ### `EnvironmentSimulator(max_steps=…)`
 
 Drive an agent *policy* through an :class:`Environment` to a verified end state.
+
+### `EquivocationProof(**data)`
+
+A signed, offline-verifiable proof that a poster signed two conflicting liability roots.
+
+### `EquivocationProofVerification(**data)`
+
+The (non-raising) outcome of verifying a liability equivocation proof offline.
 
 ### `ErasureProof(**data)`
 
@@ -934,6 +942,18 @@ Score candidates with any :class:`~vincio.optimize.rewards.VerifiableReward` or 
 
 Place an app into the EU AI Act risk tiers from its declared profile.
 
+### `RootCommitment(**data)`
+
+A compact, signed digest of one liability attestation's root, for cross-creditor compare.
+
+### `RootCommitmentVerification(**data)`
+
+The (non-raising) outcome of verifying a liability root commitment offline.
+
+### `RootConsistencyReport(**data)`
+
+The outcome of comparing a set of liability roots for cross-creditor non-equivocation.
+
 ### `Router(entries, strategy=…, registry=…, price_table=…, budget_usd=…, guard_capabilities=…, events=…)`
 
 A registry-backed router: pick the cheapest / fastest / least-busy *capable* model per request, inside your own process and audit boundary.
@@ -1280,6 +1300,10 @@ Build a buyer position: wants low price, fast SLA, high quality.
 
 Fold a set of creditor claims against a liability attestation into a completeness check.
 
+### `check_root_consistency(attestations, verifier=…)`
+
+Compare a set of liability attestations for cross-creditor root non-equivocation.
+
 ### `choreography_a2a_server(handlers, org_id=…, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)`
 
 Expose a local org's choreography handlers over A2A.
@@ -1391,6 +1415,10 @@ Post one stake backing many contracts into an (unsigned) :class:`CollateralPool`
 ### `post_escrow(contract, decision=…, fraction=…, amount=…, poster=…, beneficiary=…, config=…)`
 
 Post collateral against a contract into an (unsigned) :class:`Escrow`.
+
+### `prove_equivocation(first, second, verifier=…, first_creditor=…, second_creditor=…)`
+
+Fold two conflicting liability attestations into a non-repudiable :class:`EquivocationProof`.
 
 ### `prove_solvency(custody, liabilities, poster=…, completeness=…, as_of=…, verifier=…)`
 

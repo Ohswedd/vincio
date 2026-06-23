@@ -897,7 +897,45 @@ hash-chained audit log (action `liability_completeness`, decision = `complete` /
 **Trust model:** a completeness check is the *creditor's* signed, non-repudiable claim — the
 security property is that an *omitted creditor* can produce and sign one (no third party can be
 forced to fold a claim it does not hold), not that any observer can reconstruct omissions from the
-attestation alone; tampering with a *given* signed check is what is caught from the bytes.
+attestation alone; tampering with a *given* signed check is what is caught from the bytes. But
+completeness catches an omission only when the *omitted* creditor folds its own claim: a
+counterparty issues its attestation per relationship, so it can **equivocate** — show each creditor
+a root on which that creditor's own claim *is* present while the totals disagree across the set —
+which is the trust gap the next section closes.
+
+### Cross-org liability non-equivocation & root consistency
+
+A root commitment and an equivocation proof (`RootCommitment` / `EquivocationProof` /
+`prove_equivocation` / `check_root_consistency` / `app.check_root_consistency` /
+`book.check_root_consistency` in `vincio.settlement.solvency`) are **signed, content-bound proofs
+that a counterparty signed one liability root per instant, not different roots to different
+creditors — never a hosted transparency log or a trusted third party**. They close the residual gap
+completeness leaves: a counterparty issues its liability attestation **per relationship**, so it can
+sign a *smaller* `liabilities_root` for one creditor and a different one for another, each
+creditor's `InclusionProof` verifying against the root *it* was shown while the totals disagree.
+`LiabilityAttestation.root_commitment()` produces a signed, **privacy-preserving** `RootCommitment`
+— the `liabilities_root` and `as_of` the attestor signed, carried with the attestor's signature over
+the content hash but **without the line items** — that creditors compare over the existing
+attestation exchange (`RootCommitment.conflicts_with`): two commitments a poster signed for the same
+`(poster, attestor, as_of)` key with **different** roots are a detected equivocation.
+`check_root_consistency` groups a set of held attestations by that key and folds any two conflicting
+roots into an `EquivocationProof` — a content-bound breach embedding both **whole** attestations and
+naming the poster, the two signed roots, and the creditor each was shown. It reads **only signed,
+content-bound artifacts**: `EquivocationProof.verify(verifier)` re-derives each embedded
+attestation's root from its line items (a **mislabeled root cannot survive**) and, with the
+attestor's verifier, checks the attestor signed each — so a **forged conflicting root is refused**
+(the forger lacking the attestor's key) and, in a scan, **excluded as inadmissible evidence** so it
+cannot manufacture a false accusation against an honest poster. The two attestations are stored in
+canonical content-hash order, so the same conflict yields the same proof whichever way the inputs
+were supplied. The equivocating poster is dinged on the **reputation path** (a recorded failure on
+the bound `ReputationLedger`), and every check lands on the hash-chained audit log (action
+`liability_equivocation`, decision = `equivocation`). **Scope & trust model:** non-equivocation is
+defined for one `as_of` — two roots a poster signed *as of the same instant* are a contradiction,
+while two roots for *different* instants are distinct snapshots (a later one legitimately supersedes
+an earlier one, governed by the freshness horizon). The non-repudiable anchor is the attestor's
+signature on each whole attestation; the `RootCommitment` is a privacy-preserving **detection** aid
+whose accusation is substantiated by those full attestations, since a commitment alone, lacking the
+line items, cannot recompute its own hash.
 
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a

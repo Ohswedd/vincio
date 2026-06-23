@@ -40,6 +40,17 @@ into a bounded, offline-verifiable solvency margin the guard bounds pledges agai
   :class:`OmissionBreach` and raising the attested figure to a **completed** total that
   :func:`prove_solvency` reads (``completeness=``) — so the solvency margin is bounded by the
   obligations creditors can prove, not only the ones the attestor chose to list.
+* **Root consistency & non-equivocation.** Completeness catches an omission only when the omitted
+  creditor folds its *own* claim. A counterparty issues its liability attestation per relationship,
+  so it can instead **equivocate** — sign a *smaller* root for one creditor and a different one for
+  another, each creditor's :class:`InclusionProof` verifying against the root *it* was shown while
+  the totals disagree across the set. :meth:`LiabilityAttestation.root_commitment` produces the
+  signed :class:`RootCommitment` creditors compare over the attestation exchange — the root and the
+  ``as_of`` the attestor signed, **without** the line items — and :func:`check_root_consistency`
+  groups a set of held attestations by their ``(poster, attestor, as_of)`` key and folds any two
+  conflicting roots into an :class:`EquivocationProof`: a content-bound, offline-verifiable breach
+  pinning the poster, the two signed roots, and the creditors each was shown, so a counterparty
+  signing inconsistent totals is caught with non-repudiable evidence rather than merely suspected.
 * **Auditable & offline.** Both attestations read only signed, content-bound artifacts:
   :meth:`LiabilityAttestation.verify` recomputes the content hash and re-derives the
   liability total from the line items, so a tampered figure is caught even after re-sealing,
@@ -90,6 +101,13 @@ __all__ = [
     "SolvencyProofVerification",
     "SolvencyProof",
     "prove_solvency",
+    "RootCommitmentVerification",
+    "RootCommitment",
+    "EquivocationProofVerification",
+    "EquivocationProof",
+    "RootConsistencyReport",
+    "prove_equivocation",
+    "check_root_consistency",
 ]
 
 # The audit action a liability attestation is recorded under; the decision field carries
@@ -103,6 +121,10 @@ COMPLETENESS_ACTION = "liability_completeness"
 # The audit action a solvency proof is recorded under; the decision field carries whether the
 # counterparty is solvent (``solvent`` / ``insolvent``).
 SOLVENCY_ACTION = "solvency_proof"
+
+# The audit action a root-consistency check is recorded under; the decision field carries whether
+# the poster's signed liability roots are mutually consistent (``consistent`` / ``equivocation``).
+EQUIVOCATION_ACTION = "liability_equivocation"
 
 _TOLERANCE = 1e-6
 
@@ -537,6 +559,34 @@ class LiabilityAttestation(BaseModel):
                 )
             )
         return proofs
+
+    # -- root commitment ----------------------------------------------------
+
+    def root_commitment(self) -> RootCommitment:
+        """A compact, signed digest of this attestation's root for cross-creditor comparison.
+
+        The privacy-preserving artifact a creditor shares over the attestation exchange to
+        compare the ``liabilities_root`` (and ``as_of``) a poster signed *for it* against the root
+        the poster signed for *another* creditor — **without** revealing its line items. It
+        carries the signed ``content_hash`` and the attestor's signature, so a peer confirms the
+        attestor authored this root (:meth:`RootCommitment.verify`) but learns nothing of the
+        obligations behind it. Two commitments a poster signed for the same ``as_of`` with
+        **different** roots are a detected equivocation (:meth:`RootCommitment.conflicts_with`)
+        that :func:`prove_equivocation` turns into a non-repudiable :class:`EquivocationProof` from
+        the two full attestations. Seals the attestation first if needed.
+        """
+        if not self.content_hash or not self.liabilities_root:
+            self.seal()
+        attestor_sig = next((s for s in self.signatures if s.party == self.attestor), None)
+        return RootCommitment(
+            poster=self.poster,
+            attestor=self.attestor,
+            as_of=self.as_of,
+            liabilities_root=self.liabilities_root,
+            liabilities_usd=_r6(self.liabilities_usd),
+            liability_hash=self.content_hash,
+            signature=attestor_sig,
+        )
 
     # -- serialization & reporting -----------------------------------------
 
@@ -1823,3 +1873,656 @@ def prove_solvency(
     )
     proof.breach = proof._derive_breach()
     return proof.seal()
+
+
+# -- root consistency & non-equivocation --------------------------------------
+
+
+class RootCommitmentVerification(BaseModel):
+    """The (non-raising) outcome of verifying a liability root commitment offline.
+
+    A commitment is **valid** when it pins a non-empty root and content hash (``committed``) and —
+    with a ``verifier`` — the attestor's signature over that content hash checks (``signed_ok``),
+    so the root is attributable to the attestor. A commitment whose embedded signature is forged
+    (does not verify against the attestor's key) is caught from the bytes alone.
+    """
+
+    valid: bool
+    committed: bool
+    signed_ok: bool = True
+    signed_by: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class RootCommitment(BaseModel):
+    """A compact, signed digest of one liability attestation's root, for cross-creditor compare.
+
+    Built by :meth:`LiabilityAttestation.root_commitment`: the privacy-preserving artifact a
+    creditor shares over the attestation exchange to compare the ``liabilities_root`` (and
+    ``as_of``) a poster signed *for it* against the root the poster signed for *another* creditor,
+    **without** revealing its line items. It carries the attestation's signed ``liability_hash``
+    (the content hash, which already binds the root and the ``as_of``) and the attestor's
+    ``signature`` over it, so a peer confirms the attestor authored this root
+    (:meth:`verify`) but learns nothing of the obligations behind it.
+
+    A commitment is a **detection** aid, not the proof: two commitments a poster signed for the
+    same ``as_of`` with **different** roots are a detected equivocation (:meth:`conflicts_with`).
+    The non-repudiable :class:`EquivocationProof` is then substantiated by :func:`prove_equivocation`
+    from the two *full* attestations, which re-derive their roots from the bytes — closing the gap
+    that a commitment alone, lacking the line items, cannot recompute its own hash.
+    """
+
+    poster: str
+    attestor: str
+    as_of: datetime = Field(default_factory=utcnow)
+    liabilities_root: str = ""
+    liabilities_usd: float = 0.0
+    liability_hash: str = ""
+    signature: SettlementSignature | None = None
+
+    @property
+    def consistency_key(self) -> tuple[str, str, str]:
+        """The ``(poster, attestor, as_of)`` key two roots must share to be an equivocation.
+
+        The ``as_of`` is the snapshot instant: two roots a poster signed *as of the same instant*
+        are a contradiction, while two roots for *different* instants are distinct snapshots (a
+        later one legitimately supersedes an earlier one) and the staleness horizon governs them.
+        """
+        return (self.poster, self.attestor, self.as_of.isoformat())
+
+    @property
+    def signed_by(self) -> list[str]:
+        """The party that signed the underlying attestation (the attestor), if any."""
+        return [self.signature.party] if self.signature is not None else []
+
+    def conflicts_with(self, other: RootCommitment) -> bool:
+        """Whether ``other`` is the same poster's root for the same ``as_of`` but a *different* root.
+
+        The detection predicate: a poster equivocates when it signs two different
+        ``liabilities_root`` values for the same ``(poster, attestor, as_of)`` — each creditor's
+        inclusion proof verifies against the root *it* was shown while the totals disagree across
+        the set. Confirm both commitments verify (the attestor really signed each) before treating
+        the conflict as proven, then build the :class:`EquivocationProof` from the full attestations.
+        """
+        return (
+            bool(self.liabilities_root)
+            and bool(other.liabilities_root)
+            and self.consistency_key == other.consistency_key
+            and self.liabilities_root != other.liabilities_root
+        )
+
+    def verify(self, verifier: ChainSigner | None = None) -> RootCommitmentVerification:
+        """Verify the commitment offline: it pins a root and the attestor's signature checks.
+
+        ``committed`` holds when the commitment pins a non-empty root and content hash;
+        ``verifier`` additionally checks the embedded attestor signature against the content hash,
+        so a forged signature (one not produced with the attestor's key) is refused. Without a
+        ``verifier`` the signature is taken as presented (the attestor named, unverified).
+        """
+        committed = bool(self.liabilities_root) and bool(self.liability_hash)
+        signed_ok = True
+        signed_by: list[str] = []
+        if self.signature is not None:
+            if verifier is not None:
+                if verifier.verify(self.liability_hash, self.signature.signature):
+                    signed_by = [self.signature.party]
+                else:
+                    signed_ok = False
+            else:
+                signed_by = [self.signature.party]
+        valid = committed and signed_ok
+        reason: str | None = None
+        if not valid:
+            reason = (
+                "commitment pins no root or content hash"
+                if not committed
+                else "embedded attestor signature does not verify"
+            )
+        return RootCommitmentVerification(
+            valid=valid,
+            committed=committed,
+            signed_ok=signed_ok,
+            signed_by=signed_by,
+            reason=reason,
+        )
+
+    def to_wire(self) -> dict[str, Any]:
+        """A JSON-safe projection for exchange or persistence."""
+        return to_jsonable(self.model_dump(mode="json"))
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> RootCommitment:
+        return cls.model_validate(data)
+
+
+class EquivocationProofVerification(BaseModel):
+    """The (non-raising) outcome of verifying a liability equivocation proof offline.
+
+    A proof is **valid** when its content hash recomputes (``hash_ok``), the two embedded
+    attestations each re-derive their root and total from the bytes — and, with a ``verifier``,
+    carry the attestor's signature (``attestations_ok`` / ``attestor_signed``) — and they share
+    one ``(poster, attestor, as_of)`` key while committing **different** roots (``conflict_ok``).
+    A forged conflicting root (one the attestor never signed) is refused with the verifier, and a
+    fabricated pairing of unrelated or identical attestations fails the conflict check.
+    """
+
+    valid: bool
+    hash_ok: bool
+    attestations_ok: bool
+    conflict_ok: bool
+    attestor_signed: bool = False
+    signatures_ok: bool = True
+    signed_by: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class EquivocationProof(BaseModel):
+    """A signed, offline-verifiable proof that a poster signed two conflicting liability roots.
+
+    Produced by :func:`prove_equivocation` (or
+    :meth:`~vincio.settlement.book.SettlementBook.check_root_consistency` /
+    :meth:`~vincio.core.app.ContextApp.check_root_consistency`): it folds the two *full*
+    :class:`LiabilityAttestation`\\ s a poster signed for the same ``(poster, attestor, as_of)``
+    with **different** ``liabilities_root`` values — a smaller total shown to one creditor, a
+    different one to another — into a pinpointed breach. Completeness (:func:`check_completeness`)
+    catches an omission only when the omitted creditor folds its *own* claim; equivocation hides
+    the omission by showing each creditor a root on which its own claim *is* present, and this is
+    what surfaces it: the two contradictory statements, each signed by the attestor.
+
+    Both attestations are embedded whole, so :meth:`verify` re-derives each root from its line
+    items (a mislabeled root cannot survive) and — with a ``verifier`` — checks the attestor's
+    signature on each (a forged conflicting root is refused, the forger lacking the attestor's
+    key). The two are stored in canonical content-hash order, so the same conflict yields the same
+    proof whichever way the inputs were supplied. The proof itself may be signed by the creditor /
+    coordinator that lodged it (provenance); its validity rests on the two embedded attestor
+    signatures, not the reporter's.
+    """
+
+    id: str = Field(default_factory=lambda: new_id("equivocation"))
+    poster: str
+    attestor: str
+    as_of: datetime = Field(default_factory=utcnow)
+
+    first: LiabilityAttestation
+    second: LiabilityAttestation
+    first_root: str = ""
+    second_root: str = ""
+    first_hash: str = ""
+    second_hash: str = ""
+    first_creditor: str = ""
+    second_creditor: str = ""
+
+    content_hash: str = ""
+    signatures: list[SettlementSignature] = Field(default_factory=list)
+    audit_id: str | None = None
+
+    # -- derived reads ------------------------------------------------------
+
+    @property
+    def roots(self) -> list[str]:
+        """The two conflicting roots the poster signed, in canonical order."""
+        return [self.first_root, self.second_root]
+
+    @property
+    def creditors(self) -> list[str]:
+        """The creditors each conflicting attestation was shown to (blank when unrecorded)."""
+        return [c for c in (self.first_creditor, self.second_creditor) if c]
+
+    @property
+    def liabilities_gap_usd(self) -> float:
+        """The absolute gap between the two totals the poster signed for the same instant."""
+        return _r6(abs(self.first.liabilities_usd - self.second.liabilities_usd))
+
+    # -- hashing ------------------------------------------------------------
+
+    def equivocation_facts(self) -> dict[str, Any]:
+        """The facts the content hash binds — the poster, the instant, and the two roots.
+
+        Binds each conflicting attestation by its signed content hash and root (in canonical
+        order) plus the creditor each was shown to, so the same conflict hashes identically
+        wherever it is recomputed. Excludes the id, signatures, and audit linkage (local metadata).
+        """
+        return {
+            "poster": self.poster,
+            "attestor": self.attestor,
+            "as_of": self.as_of.isoformat(),
+            "first_hash": self.first_hash,
+            "second_hash": self.second_hash,
+            "first_root": self.first_root,
+            "second_root": self.second_root,
+            "first_creditor": self.first_creditor,
+            "second_creditor": self.second_creditor,
+        }
+
+    def compute_hash(self) -> str:
+        """The content hash binding the poster, the instant, and the two conflicting roots."""
+        return stable_hash(self.equivocation_facts(), length=32)
+
+    def seal(self) -> EquivocationProof:
+        """Stamp the content hash from the current fields (idempotent)."""
+        self.content_hash = self.compute_hash()
+        return self
+
+    # -- signing ------------------------------------------------------------
+
+    @property
+    def signed_by(self) -> list[str]:
+        """The parties that have signed the proof, in signing order."""
+        return [s.party for s in self.signatures]
+
+    def sign(self, signer: ChainSigner, *, party: str) -> EquivocationProof:
+        """Add ``party``'s signature over the content hash (sealing first).
+
+        The proof is signed by the creditor or coordinator that detected and lodged the
+        equivocation — provenance of *who reported it*. Re-signing for the same party replaces its
+        prior signature. The non-repudiable evidence is the two embedded attestor signatures; the
+        reporter's signature is not required for :meth:`verify` to hold.
+        """
+        if not self.content_hash:
+            self.seal()
+        sig = SettlementSignature(
+            party=party,
+            signature=signer.sign(self.content_hash),
+            key_id=getattr(signer, "key_id", ""),
+        )
+        self.signatures = [s for s in self.signatures if s.party != party]
+        self.signatures.append(sig)
+        return self
+
+    # -- verification -------------------------------------------------------
+
+    def _attestation_ok(
+        self, attestation: LiabilityAttestation, verifier: ChainSigner | None
+    ) -> tuple[bool, bool]:
+        """Whether an embedded attestation re-derives, and (with a verifier) is attestor-signed."""
+        result = attestation.verify(verifier)
+        sound = result.hash_ok and result.liabilities_sound
+        attestor_signed = False
+        if verifier is not None:
+            if attestation.signatures and not result.signatures_ok:
+                sound = False
+            attestor_signed = attestation.attestor in result.signed_by
+        return sound, attestor_signed
+
+    def verify(
+        self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
+    ) -> EquivocationProofVerification:
+        """Verify the proof offline: the two embedded attestations conflict and re-derive.
+
+        Recomputes the content hash, re-derives each embedded attestation's root and total from
+        its line items, and confirms the two share one ``(poster, attestor, as_of)`` key while
+        committing different roots. With a ``verifier`` it additionally checks the attestor signed
+        each attestation (so a forged conflicting root is refused) and any reporter signatures on
+        the proof; ``require`` names reporter parties that must have a verified signature.
+        """
+        hash_ok = bool(self.content_hash) and self.content_hash == self.compute_hash()
+
+        first_sound, first_signed = self._attestation_ok(self.first, verifier)
+        second_sound, second_signed = self._attestation_ok(self.second, verifier)
+        attestor_signed = first_signed and second_signed
+        attestations_ok = first_sound and second_sound
+        if verifier is not None:
+            attestations_ok = attestations_ok and attestor_signed
+
+        same_key = (
+            self.first.poster == self.second.poster == self.poster
+            and self.first.attestor == self.second.attestor == self.attestor
+            and self.first.as_of == self.second.as_of == self.as_of
+        )
+        recorded_ok = (
+            self.first_hash == self.first.content_hash
+            and self.second_hash == self.second.content_hash
+            and self.first_root == self.first.liabilities_root
+            and self.second_root == self.second.liabilities_root
+        )
+        conflict = (
+            self.first.content_hash != self.second.content_hash
+            and self.first.liabilities_root != self.second.liabilities_root
+        )
+        conflict_ok = same_key and recorded_ok and conflict
+
+        verified: list[str] = []
+        signatures_ok = True
+        for sig in self.signatures:
+            if verifier is not None:
+                if verifier.verify(self.content_hash, sig.signature):
+                    verified.append(sig.party)
+                else:
+                    signatures_ok = False
+            else:
+                verified.append(sig.party)
+        missing = [p for p in (require or []) if p not in verified]
+        if missing:
+            signatures_ok = False
+
+        valid = hash_ok and attestations_ok and conflict_ok and signatures_ok
+        reason: str | None = None
+        if not valid:
+            if not self.content_hash:
+                reason = "equivocation proof is not sealed (no content hash)"
+            elif not hash_ok:
+                reason = "content hash does not match the equivocation facts"
+            elif not attestations_ok:
+                reason = "an embedded attestation does not re-derive or is not attestor-signed"
+            elif not conflict_ok:
+                reason = "the two attestations do not conflict on one (poster, attestor, as_of) key"
+            elif missing:
+                reason = f"missing/invalid reporter signatures for {missing}"
+            else:
+                reason = "reporter signature mismatch"
+        return EquivocationProofVerification(
+            valid=valid,
+            hash_ok=hash_ok,
+            attestations_ok=attestations_ok,
+            conflict_ok=conflict_ok,
+            attestor_signed=attestor_signed,
+            signatures_ok=signatures_ok,
+            signed_by=verified,
+            reason=reason,
+        )
+
+    def require_valid(
+        self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
+    ) -> EquivocationProof:
+        """Verify and raise :class:`SettlementError` if the equivocation proof is not valid."""
+        result = self.verify(verifier, require=require)
+        if not result.valid:
+            raise SettlementError(
+                f"equivocation proof {self.id} failed verification: {result.reason}",
+                details={"proof_id": self.id, "reason": result.reason},
+            )
+        return self
+
+    # -- serialization & reporting -----------------------------------------
+
+    def audit_details(self) -> dict[str, Any]:
+        """A compact, JSON-safe record of the equivocation for the audit chain."""
+        return to_jsonable(
+            {
+                "proof_id": self.id,
+                "poster": self.poster,
+                "attestor": self.attestor,
+                "as_of": self.as_of.isoformat(),
+                "first_hash": self.first_hash,
+                "second_hash": self.second_hash,
+                "first_root": self.first_root,
+                "second_root": self.second_root,
+                "first_creditor": self.first_creditor,
+                "second_creditor": self.second_creditor,
+                "liabilities_gap_usd": self.liabilities_gap_usd,
+                "content_hash": self.content_hash,
+                "signed_by": self.signed_by,
+            }
+        )
+
+    def to_wire(self) -> dict[str, Any]:
+        """A JSON-safe projection for exchange or persistence."""
+        return to_jsonable(self.model_dump(mode="json"))
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> EquivocationProof:
+        return cls.model_validate(data)
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        """Print the poster, the instant, and the two conflicting roots."""
+        print(
+            f"Equivocation proof ({self.poster}, attested by {self.attestor}) as of "
+            f"{self.as_of.isoformat()}: two signed roots disagree by "
+            f"${self.liabilities_gap_usd:,.2f}"
+        )
+        left = f" shown to {self.first_creditor}" if self.first_creditor else ""
+        right = f" shown to {self.second_creditor}" if self.second_creditor else ""
+        print(f"  root A {self.first_root[:16]}… (${self.first.liabilities_usd:,.2f}){left}")
+        print(f"  root B {self.second_root[:16]}… (${self.second.liabilities_usd:,.2f}){right}")
+
+
+class RootConsistencyReport(BaseModel):
+    """The outcome of comparing a set of liability roots for cross-creditor non-equivocation.
+
+    Produced by :func:`check_root_consistency` (or
+    :meth:`~vincio.settlement.book.SettlementBook.check_root_consistency` /
+    :meth:`~vincio.core.app.ContextApp.check_root_consistency`): it groups the attestations a set
+    of creditors hold by their ``(poster, attestor, as_of)`` key and surfaces every poster that
+    signed **different** roots for one key as an :class:`EquivocationProof`. ``consistent`` holds
+    when no poster equivocated; ``checked`` is how many attestations were considered (tampered or
+    unsigned ones are excluded as inadmissible evidence) and ``keys`` is how many distinct
+    snapshots they spanned.
+    """
+
+    consistent: bool
+    checked: int = 0
+    keys: int = 0
+    equivocations: list[EquivocationProof] = Field(default_factory=list)
+
+    @property
+    def equivocating_posters(self) -> list[str]:
+        """The posters a proven equivocation shows signed inconsistent roots, sorted and unique."""
+        return sorted({proof.poster for proof in self.equivocations})
+
+    def require_consistent(self) -> RootConsistencyReport:
+        """Raise :class:`SettlementError` if any poster signed inconsistent liability roots.
+
+        The strict-mode counterpart to inspecting :attr:`consistent`: a counterparty that signed
+        two different liability totals for the same instant cannot be taken at either, and this
+        pinpoints the equivocating posters.
+        """
+        if self.equivocations:
+            raise SettlementError(
+                f"liability roots are inconsistent: {self.equivocating_posters} signed conflicting "
+                "roots for the same instant",
+                details={
+                    "equivocating_posters": self.equivocating_posters,
+                    "equivocations": len(self.equivocations),
+                },
+            )
+        return self
+
+    def to_wire(self) -> dict[str, Any]:
+        """A JSON-safe projection for exchange or persistence."""
+        return to_jsonable(self.model_dump(mode="json"))
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> RootConsistencyReport:
+        return cls.model_validate(data)
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        """Print whether the roots are consistent and any equivocating posters."""
+        status = "consistent" if self.consistent else "EQUIVOCATION"
+        print(
+            f"Root-consistency check: {self.checked} attestation(s) across {self.keys} "
+            f"snapshot(s) — {status}"
+        )
+        for proof in self.equivocations:
+            proof.print_summary()
+
+
+def prove_equivocation(
+    first: LiabilityAttestation,
+    second: LiabilityAttestation,
+    *,
+    verifier: ChainSigner | None = None,
+    first_creditor: str = "",
+    second_creditor: str = "",
+) -> EquivocationProof:
+    """Fold two conflicting liability attestations into a non-repudiable :class:`EquivocationProof`.
+
+    The two must be the same poster's attestations (same ``attestor`` too) for the **same**
+    ``as_of`` but commit **different** ``liabilities_root`` values — the signature of an
+    equivocation, where a counterparty signs a smaller total for one creditor and a different one
+    for another. Refuses a tampered attestation (its total or root no longer re-deriving), and with
+    ``verifier`` an attestation not signed by its attestor (so a forged conflicting root cannot
+    found an accusation). Raises :class:`SettlementError` when the two are *not* an equivocation —
+    different posters / instants (distinct snapshots), or the same root (no conflict).
+
+    ``first_creditor`` / ``second_creditor`` record which creditor each attestation was shown to
+    (provenance). The result is canonicalized in content-hash order, so the same conflict yields the
+    same proof whichever way the inputs are supplied.
+    """
+    pairs = [(first, first_creditor), (second, second_creditor)]
+    for attestation, _ in pairs:
+        if not attestation.content_hash or not attestation.liabilities_root:
+            attestation.seal()
+        result = attestation.verify(verifier)
+        if not result.hash_ok or not result.liabilities_sound:
+            raise SettlementError(
+                f"liability attestation {attestation.id} is tampered ({result.reason}); refusing "
+                "to found an equivocation proof on it",
+                details={"attestation_id": attestation.id, "reason": result.reason},
+            )
+        if verifier is not None:
+            if attestation.signatures and not result.signatures_ok:
+                raise SettlementError(
+                    f"liability attestation {attestation.id} has an invalid attestor signature; "
+                    "refusing to found an equivocation proof on it",
+                    details={"attestation_id": attestation.id},
+                )
+            if attestation.attestor not in result.signed_by:
+                raise SettlementError(
+                    f"liability attestation {attestation.id} is not signed by its attestor "
+                    f"{attestation.attestor!r}; a forged conflicting root cannot found an "
+                    "equivocation proof",
+                    details={"attestation_id": attestation.id, "attestor": attestation.attestor},
+                )
+    if first.poster != second.poster or first.attestor != second.attestor:
+        raise SettlementError(
+            "the two attestations are not an equivocation: they attest different posters/attestors "
+            f"({first.poster!r}/{first.attestor!r} vs {second.poster!r}/{second.attestor!r})",
+            details={
+                "first": [first.poster, first.attestor],
+                "second": [second.poster, second.attestor],
+            },
+        )
+    if first.as_of != second.as_of:
+        raise SettlementError(
+            "the two attestations are not an equivocation: they are for different instants "
+            f"({first.as_of.isoformat()} vs {second.as_of.isoformat()}) — distinct snapshots, not "
+            "a contradiction",
+            details={
+                "first_as_of": first.as_of.isoformat(),
+                "second_as_of": second.as_of.isoformat(),
+            },
+        )
+    if first.liabilities_root == second.liabilities_root:
+        raise SettlementError(
+            f"the two attestations are not an equivocation: {first.poster!r} committed the same "
+            "root for the same instant",
+            details={"poster": first.poster, "root": first.liabilities_root},
+        )
+    (att_a, cred_a), (att_b, cred_b) = sorted(pairs, key=lambda pair: pair[0].content_hash)
+    proof = EquivocationProof(
+        poster=att_a.poster,
+        attestor=att_a.attestor,
+        as_of=att_a.as_of,
+        first=att_a,
+        second=att_b,
+        first_root=att_a.liabilities_root,
+        second_root=att_b.liabilities_root,
+        first_hash=att_a.content_hash,
+        second_hash=att_b.content_hash,
+        first_creditor=cred_a,
+        second_creditor=cred_b,
+    )
+    return proof.seal()
+
+
+def _coerce_attestation_views(attestations: Any) -> list[tuple[str, LiabilityAttestation]]:
+    """Normalize a set of attestations (optionally creditor-labelled) into ``(creditor, att)``.
+
+    Accepts an iterable of :class:`LiabilityAttestation`, ``(creditor, attestation)`` pairs, or
+    ``{"creditor": ..., "attestation": ...}`` dicts — so a caller can record which creditor was
+    shown each root. A bare attestation carries no creditor label.
+    """
+    views: list[tuple[str, LiabilityAttestation]] = []
+    for item in attestations:
+        if isinstance(item, LiabilityAttestation):
+            views.append(("", item))
+        elif isinstance(item, dict):
+            attestation = item.get("attestation")
+            if not isinstance(attestation, LiabilityAttestation):
+                raise SettlementError(
+                    "check_root_consistency dict items need an 'attestation' "
+                    f"LiabilityAttestation; got {attestation!r}",
+                    details={"item": repr(item)},
+                )
+            views.append((str(item.get("creditor", "")), attestation))
+        elif isinstance(item, (tuple, list)) and len(item) >= 2:
+            creditor, attestation = item[0], item[1]
+            if not isinstance(attestation, LiabilityAttestation):
+                raise SettlementError(
+                    "check_root_consistency (creditor, attestation) items need a "
+                    f"LiabilityAttestation; got {attestation!r}",
+                    details={"item": repr(item)},
+                )
+            views.append((str(creditor), attestation))
+        else:
+            raise SettlementError(
+                "check_root_consistency items must be LiabilityAttestation, "
+                f"(creditor, attestation), or {{creditor, attestation}}; got {item!r}",
+                details={"item": repr(item)},
+            )
+    return views
+
+
+def check_root_consistency(
+    attestations: Any, *, verifier: ChainSigner | None = None
+) -> RootConsistencyReport:
+    """Compare a set of liability attestations for cross-creditor root non-equivocation.
+
+    The set is what a group of creditors hold — each the attestation a poster signed for *it*.
+    Groups them by ``(poster, attestor, as_of)`` and surfaces every poster that signed **different**
+    roots for one key as an :class:`EquivocationProof`. Completeness (:func:`check_completeness`)
+    catches an omission only when the omitted creditor folds its own claim; this catches the
+    counterparty that equivocates across the set — showing each creditor a root on which its own
+    claim *is* present while the totals disagree.
+
+    Only attestations that re-derive are considered evidence (a tampered one is excluded); with a
+    ``verifier`` only those carrying a valid attestor signature are (a forged or unsigned root is
+    excluded, so it can never manufacture a false accusation). Each conflicting pair is folded by
+    :func:`prove_equivocation`, so every returned proof verifies from the bytes alone. ``attestations``
+    items may be bare attestations or ``(creditor, attestation)`` pairs to record provenance.
+    """
+    views = _coerce_attestation_views(attestations)
+    admissible: list[tuple[str, LiabilityAttestation]] = []
+    for creditor, attestation in views:
+        if not attestation.content_hash or not attestation.liabilities_root:
+            attestation.seal()
+        result = attestation.verify(verifier)
+        if not result.hash_ok or not result.liabilities_sound:
+            continue
+        if verifier is not None:
+            if attestation.signatures and not result.signatures_ok:
+                continue
+            if attestation.attestor not in result.signed_by:
+                continue
+        admissible.append((creditor, attestation))
+
+    groups: dict[tuple[str, str, str], list[tuple[str, LiabilityAttestation]]] = {}
+    for creditor, attestation in admissible:
+        key = (attestation.poster, attestation.attestor, attestation.as_of.isoformat())
+        groups.setdefault(key, []).append((creditor, attestation))
+
+    equivocations: list[EquivocationProof] = []
+    for members in groups.values():
+        representatives: dict[str, tuple[str, LiabilityAttestation]] = {}
+        for creditor, attestation in members:
+            representatives.setdefault(attestation.liabilities_root, (creditor, attestation))
+        if len(representatives) < 2:
+            continue
+        ordered = [representatives[root] for root in sorted(representatives)]
+        for (cred_a, att_a), (cred_b, att_b) in zip(ordered, ordered[1:], strict=False):
+            equivocations.append(
+                prove_equivocation(
+                    att_a,
+                    att_b,
+                    verifier=verifier,
+                    first_creditor=cred_a,
+                    second_creditor=cred_b,
+                )
+            )
+
+    return RootConsistencyReport(
+        consistent=not equivocations,
+        checked=len(admissible),
+        keys=len(groups),
+        equivocations=equivocations,
+    )

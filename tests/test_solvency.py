@@ -11,23 +11,30 @@ pinpointing an ``InsolvencyBreach`` when the liabilities exceed the reserves.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from vincio import (
     CollateralLedger,
     CompletenessProof,
     ContextApp,
+    EquivocationProof,
     InclusionProof,
     InsolvencyBreach,
     LiabilityAttestation,
     LiabilityLine,
     OmissionBreach,
+    RootCommitment,
+    RootConsistencyReport,
     SolvencyProof,
     attest_custody,
     attest_liabilities,
     check_completeness,
+    check_root_consistency,
     guard_collateral,
     post_collateral_pool,
+    prove_equivocation,
     prove_solvency,
 )
 from vincio.core.errors import SettlementError
@@ -36,6 +43,7 @@ from vincio.providers import MockProvider
 from vincio.security.audit import HMACSigner
 from vincio.settlement.solvency import (
     COMPLETENESS_ACTION,
+    EQUIVOCATION_ACTION,
     LIABILITY_ACTION,
     SOLVENCY_ACTION,
 )
@@ -1064,3 +1072,387 @@ def test_solvency_wire_roundtrip_preserves_completeness_fields():
     assert restored.completeness_adjusted
     assert restored.attested_liabilities_usd == pytest.approx(60.0)
     assert restored.verify().valid
+
+
+# == liability non-equivocation & root consistency ============================
+
+# A poster issues its liability attestation per relationship, so it can sign a *smaller* root for
+# one creditor and a different one for another — each creditor's inclusion proof verifying against
+# the root it was shown while the totals disagree. Completeness catches an omission only when the
+# omitted creditor folds its own claim; equivocation is caught by comparing the signed roots.
+
+_AS_OF = datetime(2026, 1, 1, tzinfo=UTC)
+_AS_OF2 = datetime(2026, 1, 2, tzinfo=UTC)
+
+
+def _signed(poster, liabilities, *, attestor="auditor", as_of=_AS_OF, signer=ATTESTOR):
+    att = attest_liabilities(poster, liabilities, attestor=attestor, as_of=as_of)
+    if signer is not None:
+        att.sign(signer)
+    return att
+
+
+# -- root commitments ---------------------------------------------------------
+
+
+def test_root_commitment_carries_signed_root_without_line_items():
+    att = _signed("vendor", {"acme": 60.0, "globex": 40.0})
+    commitment = att.root_commitment()
+    assert commitment.poster == "vendor"
+    assert commitment.attestor == "auditor"
+    assert commitment.liabilities_root == att.liabilities_root
+    assert commitment.liability_hash == att.content_hash
+    assert commitment.liabilities_usd == pytest.approx(100.0)
+    assert commitment.as_of == _AS_OF
+    # The commitment shares the root and total, never the per-creditor line items.
+    assert "acme" not in commitment.model_dump_json()
+    assert "globex" not in commitment.model_dump_json()
+
+
+def test_root_commitment_verifies_and_refuses_a_forged_signature():
+    att = _signed("vendor", {"acme": 60.0})
+    commitment = att.root_commitment()
+    assert commitment.verify(ATTESTOR).valid
+    assert commitment.verify(ATTESTOR).signed_by == ["auditor"]
+    # A signature minted with a different key over the same hash does not verify.
+    assert not commitment.verify(FORGER).valid
+    assert commitment.verify(FORGER).reason
+
+
+def test_unsigned_root_commitment_is_committed_but_unattributed():
+    att = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor").seal()
+    commitment = att.root_commitment()
+    assert commitment.signature is None
+    result = commitment.verify(ATTESTOR)
+    assert result.committed and result.valid
+    assert result.signed_by == []  # nothing attributed to the attestor
+
+
+def test_root_commitment_conflict_detection():
+    a = _signed("vendor", {"acme": 60.0}).root_commitment()
+    b = _signed("vendor", {"globex": 40.0}).root_commitment()
+    same = _signed("vendor", {"acme": 60.0}).root_commitment()
+    later = _signed("vendor", {"globex": 40.0}, as_of=_AS_OF2).root_commitment()
+    assert a.conflicts_with(b)  # same (poster, attestor, as_of), different root
+    assert b.conflicts_with(a)  # symmetric
+    assert not a.conflicts_with(same)  # identical root is not a conflict
+    assert not a.conflicts_with(later)  # a different instant is a distinct snapshot
+    assert a.consistency_key == ("vendor", "auditor", _AS_OF.isoformat())
+
+
+def test_root_commitment_wire_roundtrip():
+    commitment = _signed("vendor", {"acme": 60.0}).root_commitment()
+    restored = RootCommitment.from_wire(commitment.to_wire())
+    assert restored.verify(ATTESTOR).valid
+    assert restored.liabilities_root == commitment.liabilities_root
+
+
+# -- the equivocation proof ---------------------------------------------------
+
+
+def test_prove_equivocation_builds_a_valid_proof():
+    a = _signed("vendor", {"acme": 60.0})
+    b = _signed("vendor", {"globex": 40.0})
+    proof = prove_equivocation(
+        a, b, verifier=ATTESTOR, first_creditor="acme", second_creditor="globex"
+    )
+    result = proof.verify(ATTESTOR)
+    assert result.valid and result.attestor_signed and result.conflict_ok
+    assert proof.poster == "vendor"
+    assert proof.attestor == "auditor"
+    assert proof.as_of == _AS_OF
+    assert proof.liabilities_gap_usd == pytest.approx(20.0)
+    assert set(proof.roots) == {a.liabilities_root, b.liabilities_root}
+    assert set(proof.creditors) == {"acme", "globex"}
+
+
+def test_equivocation_proof_is_canonical_regardless_of_input_order():
+    a = _signed("vendor", {"acme": 60.0})
+    b = _signed("vendor", {"globex": 40.0})
+    one = prove_equivocation(
+        a, b, verifier=ATTESTOR, first_creditor="acme", second_creditor="globex"
+    )
+    two = prove_equivocation(
+        b, a, verifier=ATTESTOR, first_creditor="globex", second_creditor="acme"
+    )
+    # Canonical content-hash ordering means the same conflict yields the same proof either way.
+    assert one.content_hash == two.content_hash
+    assert one.first_hash == two.first_hash
+    assert one.first_creditor == two.first_creditor
+
+
+def test_equivocation_proof_without_verifier_is_valid_but_unattested():
+    a = _signed("vendor", {"acme": 60.0})
+    b = _signed("vendor", {"globex": 40.0})
+    proof = prove_equivocation(a, b)
+    result = proof.verify()  # no verifier — signatures not checked
+    assert result.valid and result.conflict_ok
+    assert not result.attestor_signed  # attribution requires the verifier
+
+
+def test_prove_equivocation_refuses_a_forged_conflicting_root():
+    honest = _signed("vendor", {"acme": 60.0})
+    forged = _signed("vendor", {"globex": 40.0}, signer=FORGER)  # signed with the wrong key
+    with pytest.raises(SettlementError, match="invalid attestor signature"):
+        prove_equivocation(honest, forged, verifier=ATTESTOR)
+
+
+def test_prove_equivocation_refuses_an_unsigned_root_with_a_verifier():
+    honest = _signed("vendor", {"acme": 60.0})
+    unsigned = attest_liabilities("vendor", {"globex": 40.0}, attestor="auditor").seal()
+    with pytest.raises(SettlementError, match="not signed by its attestor"):
+        prove_equivocation(honest, unsigned, verifier=ATTESTOR)
+
+
+def test_prove_equivocation_refuses_a_tampered_attestation():
+    honest = _signed("vendor", {"acme": 60.0})
+    tampered = _signed("vendor", {"globex": 40.0})
+    tampered.liabilities_usd = 1.0  # total no longer re-derives
+    with pytest.raises(SettlementError, match="tampered"):
+        prove_equivocation(honest, tampered, verifier=ATTESTOR)
+
+
+def test_prove_equivocation_refuses_different_posters():
+    a = _signed("vendor", {"acme": 60.0})
+    b = _signed("supplier", {"globex": 40.0})
+    with pytest.raises(SettlementError, match="different posters"):
+        prove_equivocation(a, b, verifier=ATTESTOR)
+
+
+def test_prove_equivocation_refuses_different_instants():
+    a = _signed("vendor", {"acme": 60.0}, as_of=_AS_OF)
+    b = _signed("vendor", {"globex": 40.0}, as_of=_AS_OF2)
+    with pytest.raises(SettlementError, match="different instants"):
+        prove_equivocation(a, b, verifier=ATTESTOR)
+
+
+def test_prove_equivocation_refuses_identical_roots():
+    a = _signed("vendor", {"acme": 60.0})
+    b = _signed("vendor", {"acme": 60.0})  # same lines → same root
+    with pytest.raises(SettlementError, match="same root"):
+        prove_equivocation(a, b, verifier=ATTESTOR)
+
+
+def test_equivocation_proof_hash_recomputes_and_catches_tamper():
+    proof = prove_equivocation(
+        _signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0})
+    )
+    assert proof.verify().hash_ok
+    proof.first_root = "deadbeef"  # tamper with a recorded root
+    result = proof.verify()
+    assert not result.valid
+    assert not result.hash_ok or not result.conflict_ok
+
+
+def test_equivocation_proof_reporter_signature():
+    # The reporter co-signs with the fabric verification secret (the shared-key convention the
+    # settlement records use), so one verifier checks both the attestor and reporter signatures.
+    reporter = HMACSigner("attestor-key", key_id="acme")
+    proof = prove_equivocation(
+        _signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0})
+    )
+    proof.sign(reporter, party="acme")  # the creditor lodging the accusation
+    assert proof.verify(ATTESTOR, require=["acme"]).valid
+    # Validity does not require the reporter's signature when none is demanded.
+    bare = prove_equivocation(
+        _signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0})
+    )
+    assert bare.verify(ATTESTOR).valid
+
+
+def test_equivocation_proof_require_valid_raises_on_tampered_pairing():
+    proof = prove_equivocation(
+        _signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0})
+    )
+    proof.second = proof.first  # collapse the conflict
+    with pytest.raises(SettlementError, match="failed verification"):
+        proof.require_valid()
+
+
+def test_equivocation_proof_wire_roundtrip():
+    proof = prove_equivocation(
+        _signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0}), verifier=ATTESTOR
+    )
+    restored = EquivocationProof.from_wire(proof.to_wire())
+    assert restored.verify(ATTESTOR).valid
+    assert restored.liabilities_gap_usd == pytest.approx(20.0)
+
+
+def test_equivocation_audit_details_are_json_safe():
+    import json
+
+    proof = prove_equivocation(
+        _signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0})
+    )
+    payload = proof.audit_details()
+    assert json.loads(json.dumps(payload))["poster"] == "vendor"
+    assert payload["liabilities_gap_usd"] == pytest.approx(20.0)
+
+
+def test_equivocation_summary_mentions_the_two_roots(capsys):
+    proof = prove_equivocation(
+        _signed("vendor", {"acme": 60.0}),
+        _signed("vendor", {"globex": 40.0}),
+        first_creditor="acme",
+        second_creditor="globex",
+    )
+    proof.print_summary()
+    out = capsys.readouterr().out
+    assert "vendor" in out and "root A" in out and "root B" in out
+
+
+# -- the root-consistency scan ------------------------------------------------
+
+
+def test_check_root_consistency_passes_an_honest_set():
+    a = _signed("vendor", {"acme": 60.0})
+    same = _signed("vendor", {"acme": 60.0})  # the same root shown to two creditors
+    report = check_root_consistency([("acme", a), ("globex", same)], verifier=ATTESTOR)
+    assert report.consistent
+    assert report.checked == 2
+    assert report.keys == 1
+    assert report.equivocations == []
+
+
+def test_check_root_consistency_surfaces_an_equivocation():
+    a = _signed("vendor", {"acme": 60.0})
+    b = _signed("vendor", {"globex": 40.0})
+    report = check_root_consistency([("acme", a), ("globex", b)], verifier=ATTESTOR)
+    assert not report.consistent
+    assert len(report.equivocations) == 1
+    assert report.equivocating_posters == ["vendor"]
+    assert report.equivocations[0].verify(ATTESTOR).valid
+
+
+def test_check_root_consistency_minimal_proofs_for_three_roots():
+    atts = [
+        ("acme", _signed("vendor", {"acme": 60.0})),
+        ("globex", _signed("vendor", {"globex": 40.0})),
+        ("initech", _signed("vendor", {"initech": 25.0})),
+    ]
+    report = check_root_consistency(atts, verifier=ATTESTOR)
+    # Three distinct roots for one (poster, attestor, as_of) → k−1 = 2 chaining proofs.
+    assert len(report.equivocations) == 2
+    assert all(p.verify(ATTESTOR).valid for p in report.equivocations)
+
+
+def test_check_root_consistency_excludes_forged_roots_from_evidence():
+    honest = _signed("vendor", {"acme": 60.0})
+    forged = _signed("vendor", {"globex": 40.0}, signer=FORGER)
+    # With the verifier the forged root is inadmissible, so no false accusation is raised.
+    report = check_root_consistency([("acme", honest), ("globex", forged)], verifier=ATTESTOR)
+    assert report.consistent
+    assert report.checked == 1  # only the honest one counted
+
+
+def test_check_root_consistency_excludes_tampered_roots():
+    honest = _signed("vendor", {"acme": 60.0})
+    tampered = _signed("vendor", {"globex": 40.0})
+    tampered.liabilities_usd = 999.0  # total no longer re-derives
+    report = check_root_consistency([honest, tampered], verifier=ATTESTOR)
+    assert report.consistent
+    assert report.checked == 1
+
+
+def test_check_root_consistency_separates_posters_and_instants():
+    atts = [
+        _signed("vendor", {"acme": 60.0}, as_of=_AS_OF),
+        _signed("vendor", {"globex": 40.0}, as_of=_AS_OF),  # equivocation for vendor@AS_OF
+        _signed("supplier", {"acme": 10.0}, as_of=_AS_OF),  # lone snapshot, no conflict
+        _signed("vendor", {"acme": 60.0}, as_of=_AS_OF2),  # later snapshot, no conflict
+    ]
+    report = check_root_consistency(atts, verifier=ATTESTOR)
+    assert report.equivocating_posters == ["vendor"]
+    assert len(report.equivocations) == 1
+    assert report.keys == 3  # vendor@1, supplier@1, vendor@2
+
+
+def test_require_consistent_raises_and_returns_self():
+    consistent = check_root_consistency([_signed("vendor", {"acme": 60.0})], verifier=ATTESTOR)
+    assert consistent.require_consistent() is consistent
+    bad = check_root_consistency(
+        [_signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0})], verifier=ATTESTOR
+    )
+    with pytest.raises(SettlementError, match="inconsistent"):
+        bad.require_consistent()
+
+
+def test_root_consistency_report_wire_roundtrip():
+    report = check_root_consistency(
+        [_signed("vendor", {"acme": 60.0}), _signed("vendor", {"globex": 40.0})], verifier=ATTESTOR
+    )
+    restored = RootConsistencyReport.from_wire(report.to_wire())
+    assert not restored.consistent
+    assert restored.equivocations[0].verify(ATTESTOR).valid
+
+
+def test_check_root_consistency_rejects_malformed_items():
+    with pytest.raises(SettlementError, match="must be LiabilityAttestation"):
+        check_root_consistency(["not-an-attestation"])
+
+
+# -- app / book wiring --------------------------------------------------------
+
+
+def test_app_check_root_consistency_audits_and_dings_reputation():
+    app = _app("auditor")
+    app.use_reputation_ledger()
+    a = app.attest_liabilities("vendor", {"acme": 60.0}, as_of=_AS_OF)
+    b = app.attest_liabilities("vendor", {"globex": 40.0}, as_of=_AS_OF)
+    report = app.check_root_consistency(
+        [("acme", a), ("globex", b)], verify_with=app.contract_signer
+    )
+    assert not report.consistent
+    assert len(app.audit.query(action=EQUIVOCATION_ACTION)) == 1
+    assert app.audit.verify_chain()
+    assert app.reputation_ledger.weight("vendor") < 1.0  # equivocation counts as a failure
+    assert report.equivocations[0].audit_id is not None
+
+
+def test_book_check_root_consistency_audits_and_dings_reputation():
+    from vincio.optimize.reputation import ReputationLedger
+    from vincio.security.audit import AuditLog
+    from vincio.settlement.book import SettlementBook
+
+    ledger = ReputationLedger()
+    book = SettlementBook(owner="auditor", signer=ATTESTOR, audit=AuditLog(), reputation=ledger)
+    a = book.attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=_AS_OF)
+    b = book.attest_liabilities("vendor", {"globex": 40.0}, attestor="auditor", as_of=_AS_OF)
+    report = book.check_root_consistency([("acme", a), ("globex", b)], verify_with=ATTESTOR)
+    assert not report.consistent
+    assert len(book.audit.query(action=EQUIVOCATION_ACTION)) == 1
+    assert ledger.weight("vendor") < 1.0
+
+
+def test_app_check_root_consistency_dings_each_poster_once():
+    # Three conflicting roots for one poster produce two pairwise proofs but a single
+    # reputation debit — three roots are one equivocating counterparty, audited per conflict.
+    app = _app("auditor")
+    app.use_reputation_ledger()
+    atts = [
+        ("acme", app.attest_liabilities("vendor", {"acme": 60.0}, as_of=_AS_OF)),
+        ("globex", app.attest_liabilities("vendor", {"globex": 40.0}, as_of=_AS_OF)),
+        ("initech", app.attest_liabilities("vendor", {"initech": 25.0}, as_of=_AS_OF)),
+    ]
+    report = app.check_root_consistency(atts, verify_with=app.contract_signer)
+    assert len(report.equivocations) == 2  # k − 1 pairwise proofs
+    assert len(app.audit.query(action=EQUIVOCATION_ACTION)) == 2  # every conflict audited
+    # A single failure recorded for the poster, not one per pairwise proof.
+    snapshot = app.reputation_ledger.snapshot("vendor")
+    assert snapshot.failures == pytest.approx(1.0)
+    assert snapshot.rounds == 1
+
+
+def test_app_check_root_consistency_can_skip_side_effects():
+    app = _app("auditor")
+    app.use_reputation_ledger()
+    a = app.attest_liabilities("vendor", {"acme": 60.0}, as_of=_AS_OF)
+    b = app.attest_liabilities("vendor", {"globex": 40.0}, as_of=_AS_OF)
+    report = app.check_root_consistency(
+        [a, b], verify_with=app.contract_signer, record_reputation=False, record_audit=False
+    )
+    assert not report.consistent
+    assert len(app.audit.query(action=EQUIVOCATION_ACTION)) == 0
+    assert app.reputation_ledger.weight("vendor") == pytest.approx(
+        app.reputation_ledger.weight("x")
+    )
