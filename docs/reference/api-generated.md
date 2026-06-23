@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**352** public symbols.
+**360** public symbols.
 
 ## Classes
 
@@ -506,6 +506,10 @@ Runs the trace → dataset → eval → optimize → promote cycle on an app.
 
 SQLite-backed, indexed trace + cost store with pre-aggregated rollups.
 
+### `InsolvencyBreach(**data)`
+
+A proven shortfall — the obligations owed exceed the reserves actually held.
+
 ### `Instruction(text=…, **data)`
 
 !!! abstract "Usage Documentation" [Models](../concepts/models.md)
@@ -561,6 +565,18 @@ Bounded, calibrated, auditable near-miss response cache.
 ### `LearningResult(**data)`
 
 The outcome of a :class:`TrajectoryOptimizer` run.
+
+### `LiabilityAttestation(**data)`
+
+A signed, offline-verifiable proof-of-liabilities over a poster's total obligations.
+
+### `LiabilityAttestationVerification(**data)`
+
+The (non-raising) outcome of verifying a liability attestation offline.
+
+### `LiabilityLine(**data)`
+
+One obligation owed, backing the poster's attested total liabilities.
 
 ### `LifecycleWatcher(registry=…, warn_within_days=…, events=…)`
 
@@ -1002,6 +1018,14 @@ Routes writes across shards and merges parallel reads (Index protocol).
 
 Base class for typed input → output signatures.
 
+### `SolvencyProof(**data)`
+
+A signed, offline-verifiable proof-of-solvency over a poster's reserves and liabilities.
+
+### `SolvencyProofVerification(**data)`
+
+The (non-raising) outcome of verifying a solvency proof offline.
+
 ### `SpeechProvider()`
 
 Helper class that provides a standard way to create an ABC using inheritance.
@@ -1200,6 +1224,10 @@ Adjudicate a disputed contract from the records its parties submit.
 
 Attest a poster's proven reserves into an (unsigned) :class:`CustodyAttestation`.
 
+### `attest_liabilities(poster, liabilities, attestor=…, as_of=…)`
+
+Attest a poster's total obligations into an (unsigned) :class:`LiabilityAttestation`.
+
 ### `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verify_with=…, horizon_days=…, note=…)`
 
 Issue an attestation of ``subject``'s earned standing from signed records.
@@ -1276,7 +1304,7 @@ Pull signed attestations and revocations from a bounded set of peers.
 
 Generate a tracked-change redline between two texts.
 
-### `guard_collateral(pools, poster=…, held=…, custody=…, verify_with=…)`
+### `guard_collateral(pools, poster=…, held=…, custody=…, solvency=…, verify_with=…)`
 
 Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
 
@@ -1335,6 +1363,10 @@ Post one stake backing many contracts into an (unsigned) :class:`CollateralPool`
 ### `post_escrow(contract, decision=…, fraction=…, amount=…, poster=…, beneficiary=…, config=…)`
 
 Post collateral against a contract into an (unsigned) :class:`Escrow`.
+
+### `prove_solvency(custody, liabilities, poster=…, as_of=…, verifier=…)`
+
+Fold a reserve proof against a liability proof into a proof-of-solvency.
 
 ### `provider_trainer(backend, registry=…, inherit_from=…, pricing=…, suffix=…, fmt=…, poll_interval_s=…, max_polls=…)`
 

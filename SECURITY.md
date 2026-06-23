@@ -826,9 +826,41 @@ the re-use bound. The under-reserved breach **re-derives from the bytes alone** 
 breach with no proof, or a hidden one re-sealed to match, is caught), the attestation is signed
 and lands on the hash-chained audit log (action `custody_attestation`, decision = `self_custody` /
 `custodied`), and an asserted `held=` figure can over-commit but never *under-reserves*, because
-nothing proves it — only a custody attestation can. Note this proves reserves *exist*, not that
-they exceed every liability the counterparty owes elsewhere; pledges are bounded against proven
-**held** capital, and a fresh attestation should be required for a current figure.
+nothing proves it — only a custody attestation can. A custody attestation proves reserves
+*exist*, not that they exceed every liability the counterparty owes elsewhere — that second half
+is the proof-of-solvency below; a fresh attestation should be required for a current figure.
+
+### Cross-org custody liability attestation & proof-of-solvency
+
+A solvency proof (`SolvencyProof` / `prove_solvency` / `app.prove_solvency` /
+`book.prove_solvency` in `vincio.settlement.solvency`) is a **signed, content-bound
+proof-of-solvency the rehypothecation guard reads as a solvency-adjusted held figure, never a
+hosted solvency auditor or a trusted third party**. It closes the orthogonal trust gap the
+reserve proof leaves open: proof-of-reserves bounds pledges against the capital a counterparty
+**holds**, but reserves are only one side of the ledger — a counterparty solvent against one
+buyer's pledges may be deeply under-water once *every* obligation it owes is counted, and could
+prove the same reserves against many buyers while quietly insolvent across all of them (the
+canonical proof-of-solvency gap, `reserves ≥ total liabilities`). A `LiabilityAttestation`
+(`attest_liabilities` / `app.attest_liabilities`) makes the liability side **evidence-backed**:
+a counterparty (or its auditor — self-attested when `attestor == poster`) attests the total
+obligations it owes, itemized into `LiabilityLine`s whose attested `liabilities_usd` total
+**re-derives from the line items on every verify**, so an under-stated total is caught even
+after re-sealing. It reads **only signed, content-bound artifacts and asserts nothing it cannot
+recompute**: `prove_solvency` verifies both attestations, **refuses** a tampered figure, a forged
+issuer (with the verifier), or a custody / liability pair for **different posters**, and folds
+them into a bounded solvency `margin_usd` (`reserves − liabilities`). When the proven liabilities
+exceed the proven reserves the shortfall surfaces as a bounded, pinpointed `InsolvencyBreach`
+(the custodian, the attestor, and the shortfall) and `require_solvent()` raises on it; otherwise
+`guard_collateral(..., solvency=)` reads the **solvency-adjusted** held figure (`max(0, reserves −
+liabilities)` — the unencumbered capital) so a pledge is bounded against capital **not already
+owed elsewhere** (`solvency_adjusted` / `insolvent` on the ledger). The margin and the insolvency
+breach **re-derive from the bytes alone** (a flipped verdict re-sealed to match is caught,
+`margin_sound`), every issuance and proof is signed and lands on the hash-chained audit log
+(action `liability_attestation`, decision = `self_attested` / `attested`; action `solvency_proof`,
+decision = `solvent` / `insolvent`), and the held figure the guard bounds against is now bounded
+by the counterparty's whole obligation set, not one buyer's view. The proof rests on the attestor
+including every creditor honestly — proving each creditor's claim is *included* in the total
+(completeness, not merely an internally-consistent sum) is the next scheduled reach.
 
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a

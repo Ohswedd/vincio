@@ -3437,6 +3437,102 @@ class ContextApp:
             attestation.audit_id = getattr(entry, "id", None)
         return attestation
 
+    def attest_liabilities(
+        self,
+        poster: str,
+        liabilities: Any,
+        *,
+        attestor: str | None = None,
+        as_of: Any | None = None,
+        sign: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Attest a poster's total obligations into a signed, content-bound proof-of-liabilities.
+
+        Issues a :class:`~vincio.settlement.LiabilityAttestation` over the obligations ``poster``
+        owes — itemized ``liabilities`` (a number, a mapping of ``creditor -> amount``, or
+        :class:`~vincio.settlement.LiabilityLine` items) whose total re-derives on every verify —
+        the liability side of a proof-of-solvency. ``attestor`` defaults to this app (a
+        third-party attestor vouching), and when it is also the ``poster`` the attestation is
+        self-attested. Signs it as the attestor and, unless ``record_audit`` is off, records the
+        issuance on the audit chain. Returns it::
+
+            owed = app.attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+            proof = app.prove_solvency(reserves_proof, owed)
+        """
+        from ..settlement import attest_liabilities as _attest
+
+        resolved_attestor = attestor or self.name
+        attestation = _attest(
+            poster, liabilities, attestor=resolved_attestor, as_of=as_of
+        )
+        if sign and self.name == attestation.attestor:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                attestation.sign(signer, party=attestation.attestor)
+        if record_audit and self.audit is not None:
+            from ..settlement.solvency import LIABILITY_ACTION
+
+            entry = self.audit.record(
+                LIABILITY_ACTION,
+                resource=attestation.poster,
+                decision="self_attested" if attestation.self_attested else "attested",
+                details=attestation.audit_details(),
+            )
+            attestation.audit_id = getattr(entry, "id", None)
+        return attestation
+
+    def prove_solvency(
+        self,
+        custody: Any,
+        liabilities: Any,
+        *,
+        poster: str | None = None,
+        as_of: Any | None = None,
+        sign: bool = True,
+        verify_with: Any | None = None,
+        record_audit: bool = True,
+    ) -> Any:
+        """Fold a reserve proof against a liability proof into a proof-of-solvency.
+
+        Reconciles a proven :class:`~vincio.settlement.CustodyAttestation` (reserves) against a
+        proven :class:`~vincio.settlement.LiabilityAttestation` (obligations) for the same poster
+        into a bounded :class:`~vincio.settlement.SolvencyProof` — the proof-of-solvency the
+        literature pairs with a proof-of-reserves (``reserves ≥ liabilities``). When the
+        liabilities exceed the reserves the shortfall surfaces as a pinpointed
+        :class:`~vincio.settlement.InsolvencyBreach`. Signs the proof as this app and, unless
+        ``record_audit`` is off, records it on the audit chain. A tampered or wrong-poster
+        attestation is refused (a forged signature too, with ``verify_with``). The proof's
+        solvency-adjusted held figure reads into :meth:`guard_collateral` (``solvency=``).
+        Returns the proof::
+
+            reserves = app.attest_custody("vendor", {"omnibus": 80.0})
+            owed = app.attest_liabilities("vendor", {"acme": 60.0})
+            proof = app.prove_solvency(reserves, owed)
+            ledger = app.guard_collateral([pool], solvency=proof)
+            proof.require_solvent()  # raises if liabilities exceed reserves
+        """
+        from ..settlement import prove_solvency as _prove
+
+        proof = _prove(
+            custody, liabilities, poster=poster, as_of=as_of, verifier=verify_with
+        )
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                proof.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.solvency import SOLVENCY_ACTION
+
+            entry = self.audit.record(
+                SOLVENCY_ACTION,
+                resource=proof.poster,
+                decision=proof.status,
+                details=proof.audit_details(),
+            )
+            proof.audit_id = getattr(entry, "id", None)
+        return proof
+
     def guard_collateral(
         self,
         pools: list[Any],
@@ -3444,6 +3540,7 @@ class ContextApp:
         poster: str | None = None,
         held: float | None = None,
         custody: Any | None = None,
+        solvency: Any | None = None,
         sign: bool = True,
         verify_with: Any | None = None,
         record_audit: bool = True,
@@ -3461,7 +3558,10 @@ class ContextApp:
         **refused** (with ``verify_with`` a forged pool signature is too) rather than folded
         silently.
 
-        The held figure comes from a ``custody``
+        The held figure comes from a ``solvency``
+        :class:`~vincio.settlement.SolvencyProof` (the solvency-adjusted ``max(0, reserves −
+        liabilities)``, bounding pledges against capital not already owed elsewhere and exposing
+        :attr:`~vincio.settlement.CollateralLedger.insolvent`), a ``custody``
         :class:`~vincio.settlement.CustodyAttestation` **proving** the reserves (a tampered or
         forged one is refused, and an :class:`~vincio.settlement.UnderReservedBreach` surfaces
         when the proven reserves fall below the pledges), an explicit *asserted* ``held``, or
@@ -3476,7 +3576,12 @@ class ContextApp:
         from ..settlement import guard_collateral as _guard
 
         ledger = _guard(
-            pools, poster=poster, held=held, custody=custody, verify_with=verify_with
+            pools,
+            poster=poster,
+            held=held,
+            custody=custody,
+            solvency=solvency,
+            verify_with=verify_with,
         )
         if sign:
             signer = self._resolve_contract_signer(None, True)
