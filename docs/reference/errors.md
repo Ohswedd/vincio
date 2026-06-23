@@ -159,6 +159,10 @@ without an entry here.
 
 **Sandbox isolation failure.** The isolation backend is unavailable or too weak for the requested level. Install/configure a real backend, or lower the isolation requirement only if you trust the code.
 
+### COMPUTER_USE_ERROR
+
+**Computer-use action plane failure.** A computer-use backend could not be driven: a missing optional driver (install `pip install "vincio[computer-use]"`), an unaddressable target selector, or an exhausted action budget. Check the backend and the action's stable selector against the perceived screen state.
+
 ### AGENT_ERROR
 
 **Agent execution error.** The agent loop failed. Inspect the trace span tree (`vincio trace show`) to find the failing step.

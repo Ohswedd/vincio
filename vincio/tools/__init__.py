@@ -1,5 +1,24 @@
 """Vincio tool engine."""
 
+from .computer_environment import (
+    AccessibilityScreen,
+    ActionDecision,
+    ActionOutcome,
+    ActionPolicy,
+    ComputerEnvironment,
+    ComputerRun,
+    ComputerTask,
+    MockScreen,
+    PlaywrightScreen,
+    RemoteDesktopScreen,
+    ScreenApp,
+    ScreenBackend,
+    ScreenSpec,
+    ScreenState,
+    UIAction,
+    UIElement,
+    make_web_checkout,
+)
 from .computer_use import (
     ComputerAction,
     ComputerObservation,
@@ -54,4 +73,22 @@ __all__ = [
     "PlaywrightComputerUse",
     "ProviderComputerUse",
     "computer_use_tools",
+    # computer-use action plane
+    "UIElement",
+    "ScreenState",
+    "UIAction",
+    "ActionOutcome",
+    "ActionDecision",
+    "ActionPolicy",
+    "ScreenBackend",
+    "ScreenSpec",
+    "ScreenApp",
+    "MockScreen",
+    "PlaywrightScreen",
+    "AccessibilityScreen",
+    "RemoteDesktopScreen",
+    "ComputerTask",
+    "ComputerRun",
+    "ComputerEnvironment",
+    "make_web_checkout",
 ]

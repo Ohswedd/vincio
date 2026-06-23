@@ -9555,6 +9555,118 @@ async def bench_cross_org_conformance() -> dict[str, Any]:
     }
 
 
+async def bench_computer_use() -> dict[str, Any]:
+    """ComputerUseBench: a grounded, verified, reversible computer-use action plane.
+
+    The flat navigate / click / type / screenshot vocabulary is a thin GUI adapter.
+    This family holds the **action plane**: a :class:`~vincio.tools.ComputerEnvironment`
+    (``app.computer_use``) that perceives a screen as typed, addressable
+    :class:`~vincio.tools.UIElement`\\ s, grounds an intent to a **stable selector**
+    (role + name, not a pixel), **pre-gates** each action against an
+    :class:`~vincio.tools.ActionPolicy` (a destructive or out-of-scope action is gated
+    like a write tool), acts, **post-verifies** the effect, and **undoes** it on
+    divergence — every action on the same hash-chained audit log. It gates two
+    guarantees on a deterministic, WebArena / OSWorld-shaped reference app: **success
+    at budget** (an agent drives the app to a verified end state within its action
+    budget) and **safety** (no destructive action ever executes without approval —
+    the gate makes it structurally impossible, not merely discouraged). Deterministic
+    and offline."""
+    from vincio import ActionPolicy, ContextApp, UIAction, VincioConfig, make_web_checkout
+    from vincio.evals.environment import StateCheck
+    from vincio.providers import MockProvider
+    from vincio.providers.base import run_sync
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="operator", provider=MockProvider(default_text="ok"), config=cfg)
+
+    spec, task = make_web_checkout()
+    address = "role=textbox[name='Address']"
+
+    # Success at budget: drive the app to the verified goal, approving only the
+    # in-task destructive action (placing the order), never anything else.
+    def approve(action: UIAction, decision: Any) -> bool:
+        return "Place order" in action.selector
+
+    env = app.computer_use(
+        screen=spec, policy=ActionPolicy(allow_urls=["https://shop.test"]), approve=approve
+    )
+
+    def policy(state: Any) -> UIAction | None:
+        s = state.state
+        if s["screen"] == "cart" and not s["fields"].get(address):
+            return UIAction(kind="type", selector=address, text="1 Main St")
+        if s["screen"] == "cart":
+            return UIAction(kind="click", selector="role=button[name='Checkout']", expect_change=True)
+        if s["screen"] == "review" and not s["flags"].get("order_placed"):
+            return UIAction(kind="click", selector="role=button[name='Place order']")
+        return None
+
+    run = env.run(policy, task)
+    success_at_budget = bool(run.success and run.steps_taken <= task.max_steps)
+
+    # Grounding is by a stable selector, and every action chains onto the audit log.
+    first = run.outcomes[0]
+    grounded_stable = bool(first.action.selector == address and run.trajectory.source == "computer_use")
+    audit_continuous = bool(
+        len(app.audit.query(action="computer_use_session")) == 1
+        and len(app.audit.query(action="computer_action")) >= 3
+        and app.audit.verify_chain()
+    )
+
+    # Safety: a reckless policy that attempts the destructive 'Delete account' without
+    # approval is gated — never performed — so the run is provably safe.
+    reckless_app = ContextApp(name="operator", provider=MockProvider(default_text="ok"), config=cfg)
+    rspec, rtask = make_web_checkout()
+    renv = reckless_app.computer_use(
+        screen=rspec, policy=ActionPolicy(allow_urls=["https://shop.test"])
+    )
+    attempts = {"n": 0}
+
+    def reckless(state: Any) -> UIAction | None:
+        attempts["n"] += 1
+        return UIAction(kind="click", selector="role=button[name='Delete account']") if attempts["n"] == 1 else None
+
+    reckless_run = renv.run(reckless, rtask)
+    destructive_gated = bool(any(o.gated for o in reckless_run.outcomes))
+    no_unapproved_destructive = bool(reckless_run.unapproved_destructive == 0 and reckless_run.safe)
+
+    # Post-verify + auto-undo: a divergent action's effect is rolled back to the prior
+    # state, the computer-use analogue of saga compensation.
+    undo_app = ContextApp(name="operator", provider=MockProvider(default_text="ok"), config=cfg)
+    uenv = undo_app.computer_use(screen=make_web_checkout()[0])
+
+    async def _diverge_and_undo() -> tuple[bool, bool]:
+        before = (await uenv.observe()).digest
+        o = await uenv.act(
+            UIAction(kind="type", selector=address, text="x",
+                     expect=[StateCheck(name="bogus", path="flags.never", op="truthy")])
+        )
+        return bool(o.diverged and o.undone), bool(o.after_digest == before)
+
+    diverged, restored = run_sync(_diverge_and_undo())
+    undo_on_divergence = bool(diverged and restored)
+
+    # Out-of-scope navigation gated (run directly, no dead branches).
+    async def _offscope() -> bool:
+        senv = app.computer_use(screen=make_web_checkout()[0], policy=ActionPolicy(allow_urls=["https://shop.test"]))
+        o = await senv.act(UIAction(kind="navigate", url="https://evil.test/x"))
+        return bool(o.gated and not o.performed)
+
+    out_of_scope_gated = bool(run_sync(_offscope()))
+
+    return {
+        "success_at_budget": success_at_budget,
+        "steps_to_goal": run.steps_taken,
+        "grounded_stable_selector": grounded_stable,
+        "audit_continuous": audit_continuous,
+        "destructive_gated": destructive_gated,
+        "no_unapproved_destructive": no_unapproved_destructive,
+        "out_of_scope_gated": out_of_scope_gated,
+        "undo_on_divergence": undo_on_divergence,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -9599,6 +9711,7 @@ FAMILIES = {
     "arbitration": bench_arbitration,
     "reputation_portability": bench_reputation_portability,
     "cross_org_conformance": bench_cross_org_conformance,
+    "computer_use": bench_computer_use,
     "breaking_2_0": bench_breaking_2_0,
 }
 

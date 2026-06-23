@@ -170,6 +170,23 @@ approval-gated, `external`-side-effecting tools on the same RBAC + audit + budge
 path, so a hosted capability is governed exactly like a local one. Write actions
 are idempotent and approval-gated.
 
+The computer-use **action plane** (`app.computer_use`) hardens this further for an
+agent driving a real screen. Every `UIAction` is **pre-gated** against an
+`ActionPolicy` before it runs: a destructive action (a deletion, a purchase, an
+irreversible submit — by explicit flag or a configurable keyword set) or an
+out-of-scope action (a navigation outside the permitted URL scope) is refused unless
+an approval callback grants it, exactly as a write tool is gated — so an unapproved
+destructive action is structurally *blocked*, not merely logged. After it runs, the
+action is **post-verified** against its expected effect, and on divergence it is
+**undone** (a synthesized inverse, falling back to a prior-state restore) — the
+computer-use analogue of a saga's compensation, so a drifting action does not leave
+the screen in an unexpected state. Every gate decision, action, divergence, and undo
+lands on the hash-chained audit log. The `no-unapproved-destructive-action` safety
+SLO holds that a reckless policy attempting a destructive action without approval
+performs zero such actions. Real screen drivers (browser / OS accessibility /
+remote-desktop) sit behind `vincio[computer-use]` and should run under
+`require_isolation=True`; the deterministic `MockScreen` is the offline default.
+
 An MCP server's mid-call **elicitation** request (a server asking the user for a
 structured value) is treated as an untrusted-input boundary, not a trusted one. The
 `ElicitationGate` gates it with the same approval and rail machinery a write tool

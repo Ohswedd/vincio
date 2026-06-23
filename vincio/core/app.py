@@ -2293,6 +2293,95 @@ class ContextApp:
         )
         return impl
 
+    def computer_use(
+        self,
+        backend: str = "mock",
+        *,
+        screen: Any = None,
+        policy: Any = None,
+        approve: Callable[..., bool] | None = None,
+        auto_undo: bool = True,
+        max_steps: int = 50,
+        isolation: str | None = None,
+        require_isolation: bool = False,
+        **backend_kwargs: Any,
+    ) -> Any:
+        """Open a grounded, verified, reversible computer-use **action plane**.
+
+        Returns a :class:`~vincio.tools.ComputerEnvironment` that perceives a screen
+        as typed, addressable :class:`~vincio.tools.UIElement`\\ s, grounds an intent
+        to a stable selector, **pre-gates** each action against an
+        :class:`~vincio.tools.ActionPolicy` (a destructive or out-of-scope action is
+        gated like a write tool, with an ``approve`` callback), acts, **post-verifies**
+        the effect, and **undoes** it on divergence — every action recorded on this
+        app's hash-chained audit log.
+
+        ``backend`` is ``"mock"`` (deterministic, offline; pass a
+        :class:`~vincio.tools.ScreenApp`/:class:`~vincio.tools.MockScreen` as
+        ``screen``), ``"playwright"`` (a real browser / CDP), ``"accessibility"`` (an
+        OS accessibility tree), or ``"remote_desktop"`` (a remote machine); the real
+        adapters need ``vincio[computer-use]``. With ``require_isolation=True`` the
+        workload must run behind a real
+        :class:`~vincio.tools.sandbox.IsolationBackend`::
+
+            app_spec, task = make_web_checkout()
+            env = app.computer_use(screen=app_spec, policy=ActionPolicy(allow_urls=["https://shop.test"]))
+            run = env.run(my_policy, task)
+            run.success and run.safe  # verified end-state, no unapproved destructive action
+        """
+        from ..tools.computer_environment import (
+            AccessibilityScreen,
+            ActionPolicy,
+            ComputerEnvironment,
+            MockScreen,
+            PlaywrightScreen,
+            RemoteDesktopScreen,
+            ScreenApp,
+            ScreenBackend,
+        )
+
+        if require_isolation:
+            from ..tools.sandbox import get_isolation_backend, require_real_isolation
+
+            require_real_isolation(get_isolation_backend(isolation or "subprocess"))
+
+        if isinstance(screen, ScreenBackend):
+            impl: ScreenBackend = screen
+        elif isinstance(screen, ScreenApp):
+            impl = MockScreen(screen)
+        elif backend == "playwright":
+            impl = PlaywrightScreen(**backend_kwargs)
+        elif backend == "accessibility":
+            impl = AccessibilityScreen(**backend_kwargs)
+        elif backend == "remote_desktop":
+            impl = RemoteDesktopScreen(**backend_kwargs)
+        elif isinstance(screen, dict):
+            impl = MockScreen(ScreenApp.model_validate(screen))
+        else:
+            raise ConfigError(
+                f"computer_use backend {backend!r} needs a ScreenApp/MockScreen via screen=; "
+                "the deterministic offline backend is 'mock'"
+            )
+
+        self.audit.record(
+            "computer_use_session",
+            decision="allow",
+            details={
+                "backend": getattr(impl, "name", backend),
+                "isolation": isolation,
+                "require_isolation": require_isolation,
+                "auto_undo": auto_undo,
+            },
+        )
+        return ComputerEnvironment(
+            impl,
+            app=self,
+            policy=policy if isinstance(policy, ActionPolicy) else (ActionPolicy(**policy) if isinstance(policy, dict) else None),
+            approve=approve,
+            auto_undo=auto_undo,
+            max_steps=max_steps,
+        )
+
     def use_hosted_tools(
         self, names: list[str] | None = None, *, namespace: str = "openai"
     ) -> ContextApp:

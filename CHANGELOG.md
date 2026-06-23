@@ -4,6 +4,48 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.45.0] - 2026-06-23
+
+Computer-use & embodied action plane. Computer-use and provider-hosted tools already shipped as a *capability* — a flat
+navigate / click / type / screenshot vocabulary behind a pluggable `IsolationBackend` — but as a thin GUI adapter, not a
+first-class, grounded, verified, reversible **action plane**. This release adds the rung above it: an agent that drives a
+screen *safely* by closing a perceive → ground → pre-gate → act → post-verify → undo-on-divergence loop under the same
+governance, budget, rails, and audit the rest of the platform enforces. Entirely additive and backward-compatible —
+`API_VERSION` stays `3.0`, the flat `enable_computer_use` / `use_hosted_tools` surface is unchanged, and the whole theme
+runs offline and deterministically.
+
+### Added
+
+- **Grounded perception & action (`vincio.tools.computer_environment`).** `app.computer_use(backend="mock", *, screen=,
+  policy=, approve=, auto_undo=True, max_steps=50, require_isolation=False)` returns a `ComputerEnvironment` over a
+  pluggable `ScreenBackend`. A backend turns a screenshot plus an accessibility tree into a typed `ScreenState` of
+  addressable `UIElement`s, and an intent into a typed `UIAction` (`navigate` / `click` / `type` / `scroll` / `drag` /
+  `key` / `wait`) bound to a target by a **stable selector** (role + accessible name), not a pixel — so an action is
+  replayable, auditable, and survives a layout shift. The deterministic `MockScreen` drives an in-process `ScreenApp` /
+  `ScreenSpec` offline; `PlaywrightScreen` (browser / CDP), `AccessibilityScreen` (an OS accessibility tree), and
+  `RemoteDesktopScreen` (a remote machine) ride a real driver behind `vincio[computer-use]`.
+- **Pre-gated, post-verified, reversible steps.** Every `env.act(action)` runs through an `ActionPolicy` pre-gate — a
+  destructive or out-of-scope action is gated like a write tool, behind an `approve` callback — then performs the effect,
+  **post-verifies** it against the action's declared expectation (a declarative `StateCheck` / `expect_change`), and on
+  divergence **undoes** it (a synthesized inverse, falling back to a prior-state restore) into a typed `ActionOutcome`
+  (`ActionDecision`). Every gate decision, action, divergence, and undo lands on the hash-chained audit log
+  (`computer_use_session` / `computer_action`).
+- **Task grounding & trajectory.** A `ComputerTask` carries a goal and a declarative verifier; `env.run(policy, task)` /
+  `env.arun` drive a policy to a verified end state and return a `ComputerRun` (`.success` from the end-state oracle,
+  `.safe` = no destructive action ran without approval, `.trajectory`) — projecting onto the same
+  `vincio.evals.trajectory.Trajectory` the existing trajectory metrics, test-time search, and world-model planner score,
+  with no new search machinery. `make_web_checkout()` is a deterministic, WebArena/OSWorld-shaped reference app.
+- **New error.** `ComputerUseError` (`COMPUTER_USE_ERROR`, a `ToolError`) for an undriveable backend, a missing optional
+  driver, an unaddressable target, or an exhausted action budget — with a catalog entry and remediation.
+- **Benchmark, SLOs, example & docs.** A `computer_use` VincioBench family gates success-at-budget, grounded-stable-selector,
+  continuous audit, destructive-gating, no-unapproved-destructive, out-of-scope-gating, and undo-on-divergence — held by a
+  `computer_use_success_at_budget` SLO and a `computer_use_no_unapproved_destructive` safety SLO.
+  `examples/89_computer_use_action_plane.py` drives the reference app to a verified goal; a new
+  [computer-use guide](docs/guides/computer-use.md), the [SLO reference](docs/reference/slo.md), README, ROADMAP, SECURITY,
+  `llms.txt`, and the agents concept doc all carry the action plane. The new public symbols (`ComputerEnvironment`,
+  `ComputerTask`, `ComputerRun`, `UIElement`, `ScreenState`, `UIAction`, `ActionOutcome`, `ActionPolicy`, `MockScreen`,
+  `ScreenApp`, `make_web_checkout`) are exported from `vincio` and `vincio.tools`.
+
 ## [3.44.0] - 2026-06-23
 
 Cross-org settlement fabric — unification, conformance & closure. Twenty consecutive minors (3.24–3.43) built the
