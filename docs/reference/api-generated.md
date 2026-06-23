@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**382** public symbols.
+**391** public symbols.
 
 ## Classes
 
@@ -314,6 +314,10 @@ In-process append-only ledger of attributed cost events.
 
 A concrete, minimal state that violates an invariant.
 
+### `CreditorRecovery(**data)`
+
+One creditor's outcome in an :class:`InsolvencyResolution` waterfall.
+
 ### `Crew(name=…, process=…, blackboard=…, tracer=…, manager_provider=…, manager_model=…, max_rounds=…, concurrency=…, cost_tracker=…, cost_ledger=…)`
 
 A multi-agent team that collaborates over a shared blackboard.
@@ -553,6 +557,14 @@ SQLite-backed, indexed trace + cost store with pre-aggregated rollups.
 ### `InsolvencyBreach(**data)`
 
 A proven shortfall — the obligations owed exceed the reserves actually held.
+
+### `InsolvencyResolution(**data)`
+
+A signed, offline-verifiable resolution distributing reserves across ranked liabilities.
+
+### `InsolvencyResolutionVerification(**data)`
+
+The (non-raising) outcome of verifying an insolvency resolution offline.
 
 ### `Instruction(text=…, **data)`
 
@@ -1062,6 +1074,18 @@ One probe for the cache gate: a query and its live (reference) answer.
 
 Dynamic fan-out instruction for map-reduce super-steps.
 
+### `SenioritySchedule(**data)`
+
+A signed, offline-verifiable ranking of a poster's obligations into priority tranches.
+
+### `SeniorityTranche(**data)`
+
+One priority rank of a :class:`SenioritySchedule` — the creditors paid at that level.
+
+### `SeniorityVerification(**data)`
+
+The (non-raising) outcome of verifying a seniority schedule offline.
+
 ### `SettlementBook(owner, signer=…, audit=…, events=…, store=…, reputation=…, book_id=…)`
 
 An org's durable, hash-chained, offline-verifiable ledger of settlements.
@@ -1258,6 +1282,10 @@ Emitted on first use of an :func:`experimental` API.
 
 A grounded, remembering, guarded voice session over a :class:`ContextApp`.
 
+### `WaterfallTranche(**data)`
+
+The per-tranche distribution summary of an :class:`InsolvencyResolution`.
+
 ### `WorkerPoolBackend(workers=…, store=…, coordinator=…, lease_ttl_s=…)`
 
 In-process reference distributed executor — lock-free, durable, fan-out.
@@ -1311,6 +1339,10 @@ Attribute a metric regression to the changed ``factors`` by Shapley counterfactu
 ### `available_packs()`
 
 Names of all packs that can be loaded (built-in + installed plugins + registered).
+
+### `build_seniority_schedule(poster, tranches, as_of=…)`
+
+Rank a poster's obligations into a sealed, unsigned :class:`SenioritySchedule`.
 
 ### `build_trust_model(attestations, base=…, config=…, attestation_config=…, verify_with=…)`
 
@@ -1467,6 +1499,10 @@ Tie two independently-produced settlement records out against each other.
 ### `record_transitions(env, action_sequences, include_failures=…)`
 
 Drive ``env`` through each action sequence, recording every tool step.
+
+### `resolve_insolvency(custody, liabilities, schedule=…, poster=…, completeness=…, solvency=…, as_of=…, verifier=…)`
+
+Distribute a poster's proven reserves across its ranked liabilities into a resolution.
 
 ### `retrieval_regression(search_fn, golden, config, store=…, metrics=…, gates=…, top_k=…, alpha=…, min_delta=…, k_values=…)`
 

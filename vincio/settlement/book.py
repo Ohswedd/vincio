@@ -61,6 +61,14 @@ from .solvency import (
     discharge_liability,
     prove_solvency,
 )
+from .waterfall import (
+    INSOLVENCY_ACTION,
+    SENIORITY_ACTION,
+    InsolvencyResolution,
+    SenioritySchedule,
+    build_seniority_schedule,
+    resolve_insolvency,
+)
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -973,6 +981,120 @@ class SettlementBook:
                 "proof_id": proof.id,
                 "attestor": proof.attestor,
                 "unexplained_usd": proof.unexplained_usd,
+            },
+        )
+
+    # -- insolvency resolution & seniority waterfall ------------------------
+
+    def build_seniority_schedule(
+        self,
+        poster: str,
+        tranches: Any,
+        *,
+        as_of: Any | None = None,
+        sign: bool = True,
+    ) -> SenioritySchedule:
+        """Rank a poster's obligations into a signed, audited seniority schedule.
+
+        Builds the :class:`~vincio.settlement.waterfall.SenioritySchedule`
+        (:func:`~vincio.settlement.waterfall.build_seniority_schedule`) ranking the creditors
+        ``poster`` owes into priority tranches — rank ``0`` most senior — an
+        :meth:`resolve_insolvency` waterfall pays out in. ``tranches`` is an ordered spec (a list
+        of creditor-name lists where position is priority, or
+        :class:`~vincio.settlement.waterfall.SeniorityTranche` items). Signs it as this book's
+        owner (the poster declaring its own subordination, or a creditor party to an inter-creditor
+        agreement) and records the issuance on the audit chain. Returns it.
+        """
+        schedule = build_seniority_schedule(poster, tranches, as_of=as_of)
+        if sign and self.signer is not None:
+            schedule.sign(self.signer, party=self.owner)
+        self._audit_seniority(schedule)
+        return schedule
+
+    def _audit_seniority(self, schedule: SenioritySchedule) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            SENIORITY_ACTION,
+            resource=schedule.poster,
+            decision="self_ranked" if schedule.poster == self.owner else "ranked",
+            details=schedule.audit_details(),
+        )
+        schedule.audit_id = getattr(entry, "id", None)
+
+    def resolve_insolvency(
+        self,
+        custody: CustodyAttestation,
+        liabilities: LiabilityAttestation,
+        schedule: SenioritySchedule | None = None,
+        *,
+        poster: str | None = None,
+        completeness: CompletenessProof | None = None,
+        solvency: SolvencyProof | None = None,
+        as_of: Any | None = None,
+        verify_with: ChainSigner | None = None,
+        sign: bool = True,
+        record_reputation: bool = True,
+    ) -> InsolvencyResolution:
+        """Distribute a poster's proven reserves across its ranked liabilities, signed and audited.
+
+        Builds the :class:`~vincio.settlement.waterfall.InsolvencyResolution`
+        (:func:`~vincio.settlement.waterfall.resolve_insolvency`) folding a proven
+        :class:`~vincio.settlement.custody.CustodyAttestation` against a proven
+        :class:`~vincio.settlement.solvency.LiabilityAttestation` and distributing the reserves
+        across the obligations **by seniority then pari-passu within a tranche** (``schedule``),
+        pinpointing each creditor's bounded :class:`~vincio.settlement.waterfall.CreditorRecovery`.
+        With no ``schedule`` the whole liability set is one pari-passu tranche; pass
+        ``completeness`` to distribute against the *completed* liability set. Reuses
+        :func:`~vincio.settlement.solvency.prove_solvency`, so a tampered, forged, or wrong-poster
+        attestation (or a malformed/wrong-poster schedule) is refused; with ``verify_with`` a
+        forged signature is too. Signs the resolution as this book's owner, records it on the audit
+        chain, and — unless ``record_reputation`` is off — credits a failure against the poster on
+        the bound reputation ledger when the reserves could not make every creditor whole. Returns
+        the resolution.
+        """
+        resolution = resolve_insolvency(
+            custody,
+            liabilities,
+            schedule,
+            poster=poster,
+            completeness=completeness,
+            solvency=solvency,
+            as_of=as_of,
+            verifier=verify_with,
+        )
+        if sign and self.signer is not None:
+            resolution.sign(self.signer, party=self.owner)
+        self._audit_insolvency(resolution)
+        if not resolution.solvent:
+            self._record_insolvency_reputation(resolution, record_reputation)
+        return resolution
+
+    def _audit_insolvency(self, resolution: InsolvencyResolution) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            INSOLVENCY_ACTION,
+            resource=resolution.poster,
+            decision=resolution.status,
+            details=resolution.audit_details(),
+        )
+        resolution.audit_id = getattr(entry, "id", None)
+
+    def _record_insolvency_reputation(
+        self, resolution: InsolvencyResolution, enabled: bool
+    ) -> None:
+        if not enabled or self.reputation is None:
+            return
+        self.reputation.record_outcome(
+            resolution.poster,
+            passed=False,
+            round_id=resolution.id,
+            details={
+                "kind": "insolvency_resolution",
+                "resolution_id": resolution.id,
+                "attestor": resolution.attestor,
+                "shortfall_usd": resolution.shortfall_usd,
             },
         )
 

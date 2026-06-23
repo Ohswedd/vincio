@@ -3760,6 +3760,122 @@ class ContextApp:
                 )
         return report
 
+    def build_seniority_schedule(
+        self,
+        poster: str,
+        tranches: Any,
+        *,
+        as_of: Any | None = None,
+        sign: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Rank a poster's obligations into a signed, content-bound seniority schedule.
+
+        Builds a :class:`~vincio.settlement.SenioritySchedule`
+        (:func:`~vincio.settlement.build_seniority_schedule`) ranking the creditors ``poster`` owes
+        into priority tranches — rank ``0`` most senior — an :meth:`resolve_insolvency` waterfall
+        pays out in. ``tranches`` is an ordered spec — its simplest form is a list of creditor-name
+        lists where **position is priority** (``[["bank"], ["acme", "globex"]]``) — or
+        :class:`~vincio.settlement.SeniorityTranche` items for explicit ranks and labels. Signs the
+        schedule as this app and, unless ``record_audit`` is off, records the issuance on the audit
+        chain. Returns it::
+
+            schedule = app.build_seniority_schedule("vendor", [["bank"], ["acme", "globex"]])
+            resolution = app.resolve_insolvency(reserves, owed, schedule)
+        """
+        from ..settlement import build_seniority_schedule as _build
+
+        schedule = _build(poster, tranches, as_of=as_of)
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                schedule.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.waterfall import SENIORITY_ACTION
+
+            entry = self.audit.record(
+                SENIORITY_ACTION,
+                resource=schedule.poster,
+                decision="self_ranked" if schedule.poster == self.name else "ranked",
+                details=schedule.audit_details(),
+            )
+            schedule.audit_id = getattr(entry, "id", None)
+        return schedule
+
+    def resolve_insolvency(
+        self,
+        custody: Any,
+        liabilities: Any,
+        schedule: Any | None = None,
+        *,
+        poster: str | None = None,
+        completeness: Any | None = None,
+        solvency: Any | None = None,
+        as_of: Any | None = None,
+        verify_with: Any | None = None,
+        sign: bool = True,
+        record_reputation: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Distribute a poster's proven reserves across its ranked liabilities into a resolution.
+
+        Folds a proven :class:`~vincio.settlement.CustodyAttestation` against a proven
+        :class:`~vincio.settlement.LiabilityAttestation` and distributes the reserves across the
+        obligations **by seniority then pari-passu within a tranche** (``schedule``) into a
+        content-bound :class:`~vincio.settlement.InsolvencyResolution`
+        (:func:`~vincio.settlement.resolve_insolvency`), pinpointing each creditor's bounded
+        :class:`~vincio.settlement.CreditorRecovery` and the shortfall it bears — so an insolvency a
+        :class:`~vincio.settlement.SolvencyProof` only *flagged* is *resolved* into who-gets-what.
+        With no ``schedule`` the whole liability set is one pari-passu tranche; pass
+        ``completeness`` to distribute against the *completed* liability set. Reuses
+        :func:`~vincio.settlement.prove_solvency`, so a tampered, forged, or wrong-poster
+        attestation (or a malformed/wrong-poster schedule) is refused (a forged signature too, with
+        ``verify_with``). Signs the resolution as this app; unless ``record_audit`` is off, records
+        it on the audit chain; unless ``record_reputation`` is off, credits a failure against the
+        poster on this app's reputation ledger (when one is attached) when the reserves could not
+        make every creditor whole. Returns the resolution::
+
+            owed = app.attest_liabilities("vendor", {"bank": 50.0, "acme": 50.0})
+            reserves = app.attest_custody("vendor", {"omnibus": 50.0})
+            schedule = app.build_seniority_schedule("vendor", [["bank"], ["acme"]])
+            resolution = app.resolve_insolvency(reserves, owed, schedule)
+            resolution.require_fully_recovered()  # raises: acme bears the $50 shortfall
+        """
+        from ..settlement import resolve_insolvency as _resolve
+
+        resolution = _resolve(
+            custody,
+            liabilities,
+            schedule,
+            poster=poster,
+            completeness=completeness,
+            solvency=solvency,
+            as_of=as_of,
+            verifier=verify_with,
+        )
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                resolution.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.waterfall import INSOLVENCY_ACTION
+
+            entry = self.audit.record(
+                INSOLVENCY_ACTION,
+                resource=resolution.poster,
+                decision=resolution.status,
+                details=resolution.audit_details(),
+            )
+            resolution.audit_id = getattr(entry, "id", None)
+        if record_reputation and self.reputation_ledger is not None and not resolution.solvent:
+            self.reputation_ledger.record_outcome(
+                resolution.poster,
+                passed=False,
+                round_id=resolution.id,
+                details={"kind": "insolvency_resolution", "attestor": resolution.attestor},
+            )
+        return resolution
+
     def guard_collateral(
         self,
         pools: list[Any],

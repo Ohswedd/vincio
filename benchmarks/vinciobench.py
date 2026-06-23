@@ -9165,6 +9165,80 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and h_app.reputation_ledger.weight("vendor") < 1.0  # a silent drop counts as a failure
     )
 
+    # 56. Insolvency resolution & seniority waterfall: a SolvencyProof *flags* an insolvency but says
+    #     nothing about which creditors the scarce reserves pay, or in what order. A signed
+    #     SenioritySchedule ranks the obligations into priority tranches and resolve_insolvency
+    #     distributes the proven reserves across them by seniority then pari-passu within a tranche,
+    #     pinpointing each creditor's bounded recovery and the shortfall it bears.
+    from vincio import (
+        InsolvencyResolution,
+        build_seniority_schedule,
+        resolve_insolvency,
+    )
+
+    w_reserves = attest_custody("vendor", {"omnibus": 60.0}, custodian="custodian")  # 60 held
+    w_owed = attest_liabilities(
+        "vendor", {"bank": 50.0, "acme": 30.0, "globex": 20.0}, attestor="auditor"
+    )  # 100 owed -> 40 short
+    w_schedule = build_seniority_schedule("vendor", [["bank"], ["acme", "globex"]])
+    w_res = resolve_insolvency(w_reserves, w_owed, w_schedule)
+    w_rec = {r.creditor: r for r in w_res.recoveries}
+    insolvency_resolution_distributes = bool(
+        w_res.insolvent
+        and abs(w_res.distributed_usd - 60.0) <= 1e-6
+        and abs(w_res.shortfall_usd - 40.0) <= 1e-6
+        and w_rec["bank"].made_whole  # senior tranche paid in full first
+        and abs(w_rec["acme"].recovery_usd - 6.0) <= 1e-6  # junior tranche pari-passu (20%)
+        and abs(w_rec["globex"].recovery_usd - 4.0) <= 1e-6
+        and w_res.shortfall_bearers == ["acme", "globex"]  # ordered by seniority
+        and w_res.verify().valid
+        and w_res.verify(schedule=w_schedule).valid  # binds the signed ranking
+        and InsolvencyResolution.from_wire(w_res.to_wire()).verify().valid
+    )
+
+    # With no schedule the whole set is one pari-passu tranche (the rehypothecation apportionment);
+    # a counterparty whose reserves cover every obligation makes each creditor whole.
+    w_pari = resolve_insolvency(w_reserves, w_owed)
+    w_solvent = resolve_insolvency(attest_custody("vendor", {"omnibus": 120.0}), w_owed)
+
+    # Auditable & offline: an over-stated recovery is refused even after re-sealing; a wrong-poster
+    # schedule is refused at fold time; the resolution lands on the chain and dings the unmade-whole
+    # poster's reputation.
+    w_app = ContextApp(name="auditor", provider=MockProvider(default_text="ok"), config=cfg)
+    w_app.use_settlement_book()
+    w_app.use_reputation_ledger()
+    w_app_reserves = w_app.attest_custody("vendor", {"omnibus": 60.0})
+    w_app_owed = w_app.attest_liabilities("vendor", {"bank": 50.0, "acme": 50.0})
+    w_app_sched = w_app.build_seniority_schedule("vendor", [["bank"], ["acme"]])
+    w_app_res = w_app.resolve_insolvency(
+        w_app_reserves, w_app_owed, w_app_sched, verify_with=w_app.contract_signer
+    )
+    w_inflated = resolve_insolvency(w_reserves, w_owed, w_schedule)
+    w_inflated.recoveries[0].recovery_usd += 100.0  # over-state a recovery
+    w_inflated.seal()  # re-seal the lie
+    try:
+        resolve_insolvency(w_reserves, w_owed, build_seniority_schedule("globex", [["bank"]]))
+        w_wrong_poster_refused = False
+    except SettlementError:
+        w_wrong_poster_refused = True
+    insolvency_resolution_auditable_offline = bool(
+        all(r.rank == 0 for r in w_pari.recoveries)  # no schedule -> one pari-passu tranche
+        and abs(w_pari.recovery_of("bank").recovery_usd - 30.0) <= 1e-6  # 60% of 50
+        and w_solvent.solvent
+        and w_solvent.fully_recovered  # reserves cover every obligation
+        and w_inflated.verify().hash_ok
+        and not w_inflated.verify().distribution_sound  # the over-stated recovery is caught
+        and w_wrong_poster_refused
+        and w_app_res.insolvent
+        and w_app_res.audit_id is not None
+        and len(w_app.audit.query(action="seniority_schedule")) == 1
+        and len(w_app.audit.query(action="insolvency_resolution")) == 1
+        and w_app.audit.verify_chain()
+        and w_app_res.verify(w_app.contract_signer).valid
+        # the poster that could not make its creditors whole is dinged below an unseen member
+        and w_app.reputation_ledger.weight("vendor") < w_app.reputation_ledger.weight("unseen")
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -9225,6 +9299,8 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "equivocation_auditable_offline": equivocation_auditable_offline,
         "history_detects_silent_drop": history_detects_silent_drop,
         "history_auditable_offline": history_auditable_offline,
+        "insolvency_resolution_distributes": insolvency_resolution_distributes,
+        "insolvency_resolution_auditable_offline": insolvency_resolution_auditable_offline,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

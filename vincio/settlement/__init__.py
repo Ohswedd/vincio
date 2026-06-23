@@ -111,11 +111,19 @@ evidence-backed too, and :func:`prove_solvency` folds the two proofs into a sign
 offline-verifiable :class:`SolvencyProof` (reserves − liabilities) that :func:`guard_collateral`
 reads (``solvency=``) as a *solvency-adjusted* held figure — bounding a pledge against capital
 not already owed elsewhere and pinpointing an :class:`InsolvencyBreach` when the proven
-liabilities exceed the reserves. Everything is dependency-free, deterministic, and offline —
+liabilities exceed the reserves. And because a flagged insolvency still left every creditor to
+assume it was made whole — nothing said *which* creditors the scarce reserves pay, and in what
+order — a :class:`SenioritySchedule` (:func:`build_seniority_schedule`) ranks the obligations into
+signed priority tranches and :func:`resolve_insolvency` distributes the proven reserves across them
+**by seniority then pari-passu within a tranche** into a content-bound, offline-verifiable
+:class:`InsolvencyResolution`, pinpointing each creditor's bounded :class:`CreditorRecovery` and the
+shortfall it bears — so an insolvency is *resolved* into who-gets-what rather than merely flagged,
+the resolution re-deriving the whole waterfall from the bytes and folding the unmade-whole poster
+into the reputation path. Everything is dependency-free, deterministic, and offline —
 never a hosted marketplace, a clearing house, an arbitration service, a reputation service, an
 underwriting service, an escrow custodian, a margin custodian, a rehypothecation registry, a
-proof-of-reserves auditor, a solvency auditor, or a payment processor, only a mechanical,
-verifiable reconciliation.
+proof-of-reserves auditor, a solvency auditor, a receiver, a bankruptcy court, or a payment
+processor, only a mechanical, verifiable reconciliation.
 """
 
 from __future__ import annotations
@@ -255,6 +263,17 @@ from .solvency import (
     prove_equivocation,
     prove_solvency,
 )
+from .waterfall import (
+    CreditorRecovery,
+    InsolvencyResolution,
+    InsolvencyResolutionVerification,
+    SenioritySchedule,
+    SeniorityTranche,
+    SeniorityVerification,
+    WaterfallTranche,
+    build_seniority_schedule,
+    resolve_insolvency,
+)
 
 __all__ = [
     # metering primitive
@@ -379,6 +398,16 @@ __all__ = [
     "HistoryConsistencyProofVerification",
     "HistoryConsistencyReport",
     "check_history_consistency",
+    # insolvency resolution & liability seniority waterfall
+    "SeniorityTranche",
+    "SeniorityVerification",
+    "SenioritySchedule",
+    "build_seniority_schedule",
+    "CreditorRecovery",
+    "WaterfallTranche",
+    "InsolvencyResolution",
+    "InsolvencyResolutionVerification",
+    "resolve_insolvency",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",
