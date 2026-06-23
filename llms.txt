@@ -1597,6 +1597,27 @@ app.run("export button 500s").output.label
   owed_usd=None, owing_usd=None, *, liabilities=None, references=None, as_of=None, verify_with=None, sign=True)` sign and
   record the statement (action `liability_set_off`, decision = the net direction). Offline — never a hosted clearing house
   or a bankruptcy court.
+- **Cross-org engagement lifecycle (capstone — fabric feature-complete & frozen).** `from vincio import
+  CrossOrgEngagement, EngagementNarrative, EngagementStage, EngagementSignature, EngagementVerification`. The capstone that
+  unifies the twenty cross-org rungs into one coherent, conformance-proven system. `app.cross_org_engagement(*, buyer="",
+  seller="", scope="", coordinator=None)` → a `CrossOrgEngagement` facade that threads the whole pipeline behind one
+  governed, audited call-path: `negotiate(*, buyer, seller, require_agreement=True, **kw)` →contract, `admit(subject=None,
+  **kw)`, `choreograph(saga, *, participants, **kw)` (pass `directory=` to discover), `settle(contract=None, **kw)` /
+  `settle_saga(result=None, *, contracts, **kw)`, `net(**kw)`, `arbitrate(records, **kw)`, `attest_reputation(subject=None,
+  **kw)` / `import_reputation(attestations, **kw)`, `post_escrow` / `post_collateral_pool` / `guard_collateral`,
+  `attest_custody` / `attest_liabilities` / `prove_solvency` / `check_completeness` / `check_root_consistency` /
+  `check_history_consistency`, and `resolve_insolvency(custody, liabilities, schedule=None, **kw)`. **Purely
+  compositional:** each method delegates to the *same* `app.*` primitive (unchanged and usable directly), captures the
+  artifact (exposed as `eng.contract`/`.delivery`/`.netting`/`.insolvency`/…), and records it as an `EngagementStage`.
+  `eng.record_stage(stage, artifact, **summary)` is an escape hatch for any other artifact. `eng.seal(*, sign=True,
+  record_audit=True)` → a content-bound, signed `EngagementNarrative` on the audit log (action `cross_org_engagement`);
+  each stage binds the verb, the artifact's own content hash, and a digest of its bytes into a hash-chained link.
+  `narrative.verify(verifier=None, *, require=None, artifacts=None)` recomputes the whole chain from the bytes alone
+  (`intact`/`head_ok`/`hash_ok`/`digests_ok`/`signatures_ok`/`broken_at`); `eng.verify(verifier=None, *, require=None)`
+  re-digests every captured live artifact too, so a re-ordered stage, an edited digest, an edited underlying artifact, or a
+  forged signature is caught. `narrative.to_wire`/`from_wire`, `require_valid`, `stage_names`, `print_summary`. With this
+  capstone the cross-org settlement & credit surface is **feature-complete and frozen** under the stability policy — no
+  further cross-org *primitive* is scheduled. Offline — never a hosted orchestration service or a managed control plane.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

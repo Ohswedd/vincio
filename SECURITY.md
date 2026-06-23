@@ -1031,6 +1031,28 @@ the netted resolution binds the statement hashes and re-derives every net claim 
 gross, so `verify(set_off=…)` catches a substituted or re-stated close-out. Each statement lands on the
 hash-chained audit log (action `liability_set_off`, decision = the net direction).
 
+### Cross-org engagement lifecycle (capstone — fabric feature-complete & frozen)
+
+A cross-org engagement (`CrossOrgEngagement` / `app.cross_org_engagement`, in `vincio.settlement.engagement`)
+is a **purely-compositional facade that threads the whole settlement & credit fabric behind one governed,
+audited call-path and seals it into one content-bound, signed `EngagementNarrative`, never a hosted
+orchestration service or a managed control plane**. It adds **no new economic logic and weakens no
+boundary**: every lifecycle method delegates to the *same* `app.*` primitive documented in the sections
+above — each with its own signing, verification, refusal, reputation, and audit behavior unchanged — so the
+engagement's security properties are exactly the union of the primitives it composes. The facade only
+**captures and narrates** them. **Trust model:** the narrative is content-bound and offline-verifiable the
+way a `SettlementRecord` is. Each `EngagementStage` binds the lifecycle verb, the captured artifact's own
+content hash, and a digest of its bytes into a hash-chained link; `EngagementNarrative.verify` recomputes
+the entire chain from the bytes alone — a re-ordered stage, an edited digest, a broken link, a tampered
+head or content hash, or a forged coordinator signature is caught (`broken_at` pinpoints the first failing
+stage) — and `eng.verify(verifier)` additionally re-digests the live captured artifacts against the bound
+digests, so a tamper to any *underlying* artifact is caught too. Sealing lands the engagement on the
+hash-chained audit log (action `cross_org_engagement`, decision `sealed`), one continuous signed narrative
+from the first offer to the final distribution. With this capstone the cross-org settlement & credit
+surface is **feature-complete and frozen** under the [stability policy](docs/reference/stability.md): no
+further cross-org *primitive* is scheduled, and subsequent cross-org work is bug-fix and standards-tracking
+only.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

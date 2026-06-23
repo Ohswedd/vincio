@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**395** public symbols.
+**400** public symbols.
 
 ## Classes
 
@@ -322,6 +322,10 @@ One creditor's outcome in an :class:`InsolvencyResolution` waterfall.
 
 A multi-agent team that collaborates over a shared blackboard.
 
+### `CrossOrgEngagement(app, buyer=…, seller=…, scope=…, coordinator=…)`
+
+A purely-compositional facade threading the whole cross-org fabric in one call-path.
+
 ### `CustodyAttestation(**data)`
 
 A signed, offline-verifiable proof-of-reserves over a poster's held capital.
@@ -413,6 +417,22 @@ Per-model energy intensity, in watt-hours per million tokens.
 ### `EnergyReport(**data)`
 
 Estimated energy + carbon rolled up by dimension.
+
+### `EngagementNarrative(**data)`
+
+A signed, content-bound, hash-chained narrative of a whole cross-org engagement.
+
+### `EngagementSignature(**data)`
+
+One party's signature over an engagement narrative's content hash.
+
+### `EngagementStage(**data)`
+
+One step of a cross-org engagement, bound into the narrative's hash chain.
+
+### `EngagementVerification(**data)`
+
+The (non-raising) outcome of verifying an engagement narrative offline.
 
 ### `Environment(*args, **kwargs)`
 
