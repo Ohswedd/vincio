@@ -51,6 +51,19 @@ into a bounded, offline-verifiable solvency margin the guard bounds pledges agai
   conflicting roots into an :class:`EquivocationProof`: a content-bound, offline-verifiable breach
   pinning the poster, the two signed roots, and the creditors each was shown, so a counterparty
   signing inconsistent totals is caught with non-repudiable evidence rather than merely suspected.
+* **History consistency & snapshot monotonicity.** Non-equivocation is scoped to one ``as_of``:
+  a counterparty can still issue a *later* snapshot that quietly **drops** a past obligation — a
+  debt committed at ``T`` simply absent from the root it signs at ``T'`` — each snapshot internally
+  sound, nothing tying one attestation to its predecessor. A :class:`LiabilityAttestation` now
+  carries an optional commitment to the prior snapshot's root (:meth:`LiabilityAttestation.link_to`,
+  ``attest_liabilities(..., prior=)``), bound into the signed hash, so a poster's attestations form a
+  hash-linked sequence a creditor walks, each ``as_of`` strictly succeeding the last (a back-dated
+  link is caught from the bytes). :func:`check_history_consistency` walks a poster's snapshots in
+  order and folds them into a signed :class:`HistoryConsistencyProof` that re-derives each
+  per-creditor obligation from the embedded snapshots: an obligation that **shrinks** between
+  snapshots is legitimate only when a signed, creditor-issued :class:`Discharge` (``discharge_liability``)
+  evidences the release, and any unexplained drop surfaces as a pinpointed :class:`MonotonicityBreach`
+  — so a debt cannot silently vanish between snapshots.
 * **Auditable & offline.** Both attestations read only signed, content-bound artifacts:
   :meth:`LiabilityAttestation.verify` recomputes the content hash and re-derives the
   liability total from the line items, so a tampered figure is caught even after re-sealing,
@@ -108,6 +121,14 @@ __all__ = [
     "RootConsistencyReport",
     "prove_equivocation",
     "check_root_consistency",
+    "DischargeVerification",
+    "Discharge",
+    "discharge_liability",
+    "MonotonicityBreach",
+    "HistoryConsistencyProofVerification",
+    "HistoryConsistencyProof",
+    "HistoryConsistencyReport",
+    "check_history_consistency",
 ]
 
 # The audit action a liability attestation is recorded under; the decision field carries
@@ -125,6 +146,14 @@ SOLVENCY_ACTION = "solvency_proof"
 # The audit action a root-consistency check is recorded under; the decision field carries whether
 # the poster's signed liability roots are mutually consistent (``consistent`` / ``equivocation``).
 EQUIVOCATION_ACTION = "liability_equivocation"
+
+# The audit action a history-consistency check is recorded under; the decision field carries whether
+# the poster's snapshot history is monotone (``consistent`` / ``inconsistent``).
+HISTORY_ACTION = "liability_history"
+
+# The audit action a liability discharge is recorded under; the decision field carries whether the
+# discharge is partial (``partial``) or releases nothing (``empty``).
+DISCHARGE_ACTION = "liability_discharge"
 
 _TOLERANCE = 1e-6
 
@@ -299,6 +328,14 @@ class LiabilityAttestation(BaseModel):
     liabilities_root: str = ""
 
     as_of: datetime = Field(default_factory=utcnow)
+    # -- linked liability history (optional predecessor commitment) ---------
+    # When set, these pin the immediately preceding snapshot this attestation succeeds, so a
+    # poster's attestations form a hash-linked sequence a creditor can walk. They are bound into
+    # the signed content hash *only when present* (see :meth:`attestation_facts`), so an
+    # attestation with no predecessor hashes exactly as before — the link is additive.
+    prior_hash: str = ""
+    prior_root: str = ""
+    prior_as_of: datetime | None = None
     content_hash: str = ""
     signatures: list[SettlementSignature] = Field(default_factory=list)
     audit_id: str | None = None
@@ -314,6 +351,11 @@ class LiabilityAttestation(BaseModel):
     def creditors(self) -> list[str]:
         """The creditors the obligations are owed to, sorted."""
         return sorted(line.creditor for line in self.liabilities)
+
+    @property
+    def has_prior(self) -> bool:
+        """Whether this attestation commits to a predecessor snapshot (a linked history)."""
+        return bool(self.prior_hash)
 
     def _sorted_lines(self) -> list[LiabilityLine]:
         """The line items in the canonical (creditor-sorted) order the commitment uses."""
@@ -352,7 +394,7 @@ class LiabilityAttestation(BaseModel):
         hashes identically wherever it is recomputed. Lines are sorted by creditor so the order
         they were listed in never changes the hash.
         """
-        return {
+        facts: dict[str, Any] = {
             "attestor": self.attestor,
             "poster": self.poster,
             "liabilities_usd": _r6(self.liabilities_usd),
@@ -360,6 +402,16 @@ class LiabilityAttestation(BaseModel):
             "as_of": self.as_of.isoformat(),
             "liabilities": [line.facts() for line in self._sorted_lines()],
         }
+        # The predecessor commitment is bound into the hash only when present, so an attestation
+        # with no prior snapshot hashes identically to one issued before linked history existed —
+        # the link is purely additive and never perturbs a standalone attestation's content hash.
+        if self.has_prior:
+            facts["prior"] = {
+                "prior_hash": self.prior_hash,
+                "prior_root": self.prior_root,
+                "prior_as_of": self.prior_as_of.isoformat() if self.prior_as_of else "",
+            }
+        return facts
 
     def compute_hash(self) -> str:
         """The content hash binding the attestor, the poster, the liabilities, and the root."""
@@ -370,6 +422,43 @@ class LiabilityAttestation(BaseModel):
         self.liabilities_root = self.compute_root()
         self.content_hash = self.compute_hash()
         return self
+
+    # -- linked liability history -------------------------------------------
+
+    def link_to(self, prior: LiabilityAttestation) -> LiabilityAttestation:
+        """Commit this attestation to its predecessor ``prior``, forming a hash-linked history.
+
+        Pins ``prior``'s content hash, root, and ``as_of`` into this attestation (re-sealing so
+        they bind the content hash), so a creditor walking the chain knows it has the contiguous
+        sequence and :func:`check_history_consistency` can verify each ``as_of`` strictly succeeds
+        the last. The predecessor must be the **same** ``(poster, attestor)`` and strictly earlier
+        in time; a different counterparty or a back-dated predecessor is refused. Seals ``prior``
+        first if needed. Returns ``self``.
+        """
+        if not prior.content_hash or not prior.liabilities_root:
+            prior.seal()
+        if prior.poster != self.poster or prior.attestor != self.attestor:
+            raise SettlementError(
+                f"cannot link liability attestation for {self.poster!r}/{self.attestor!r} to a "
+                f"predecessor for {prior.poster!r}/{prior.attestor!r}; a history is one "
+                "counterparty's sequence",
+                details={
+                    "poster": self.poster,
+                    "attestor": self.attestor,
+                    "prior_poster": prior.poster,
+                    "prior_attestor": prior.attestor,
+                },
+            )
+        if self.as_of <= prior.as_of:
+            raise SettlementError(
+                f"cannot link a snapshot as of {self.as_of.isoformat()} to a predecessor as of "
+                f"{prior.as_of.isoformat()}; a successor must be strictly later (no back-dating)",
+                details={"as_of": self.as_of.isoformat(), "prior_as_of": prior.as_of.isoformat()},
+            )
+        self.prior_hash = prior.content_hash
+        self.prior_root = prior.liabilities_root
+        self.prior_as_of = prior.as_of
+        return self.seal()
 
     # -- signing ------------------------------------------------------------
 
@@ -416,7 +505,24 @@ class LiabilityAttestation(BaseModel):
             return False
         if abs(self.liabilities_usd - self._liabilities_total()) > _TOLERANCE:
             return False
+        if not self._prior_link_sound():
+            return False
         return self.liabilities_root == self.compute_root()
+
+    def _prior_link_sound(self) -> bool:
+        """The predecessor commitment, when present, is well-formed and strictly in the past.
+
+        A linked snapshot must succeed its predecessor *in time*: ``as_of`` strictly later than
+        ``prior_as_of``. A back-dated link (a snapshot claiming to follow a *later* one) is caught
+        from the bytes alone, so a poster cannot re-order its own history. A partial link (a prior
+        hash without a prior root or instant, or vice versa) is malformed and refused.
+        """
+        present = (bool(self.prior_hash), bool(self.prior_root), self.prior_as_of is not None)
+        if not any(present):
+            return True
+        if not all(present):
+            return False
+        return self.prior_as_of is None or self.as_of > self.prior_as_of
 
     def verify(
         self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
@@ -601,6 +707,7 @@ class LiabilityAttestation(BaseModel):
                 "liabilities_usd": _r6(self.liabilities_usd),
                 "liabilities_root": self.liabilities_root,
                 "creditors": len(self.liabilities),
+                "prior_hash": self.prior_hash,
                 "content_hash": self.content_hash,
                 "signed_by": self.signed_by,
             }
@@ -671,6 +778,7 @@ def attest_liabilities(
     *,
     attestor: str | None = None,
     as_of: datetime | None = None,
+    prior: LiabilityAttestation | None = None,
 ) -> LiabilityAttestation:
     """Attest a poster's total obligations into an (unsigned) :class:`LiabilityAttestation`.
 
@@ -681,10 +789,16 @@ def attest_liabilities(
     amount``, or an iterable of :class:`LiabilityLine` / ``(creditor, amount)`` items; the
     attested ``liabilities_usd`` is their sum, re-derived on every verify.
 
+    Pass ``prior`` (the immediately preceding snapshot) to link this attestation into a
+    hash-linked history (:meth:`LiabilityAttestation.link_to`): its content hash, root, and
+    ``as_of`` are bound into this attestation's signed hash, so :func:`check_history_consistency`
+    can walk the sequence and catch a debt dropped between snapshots. ``prior`` must be the same
+    ``(poster, attestor)`` and strictly earlier in time.
+
     Returns a sealed, unsigned attestation — sign it with the attestor's key (or let a
     :class:`~vincio.settlement.book.SettlementBook` do it on
     :meth:`~vincio.settlement.book.SettlementBook.attest_liabilities`). Raises
-    :class:`SettlementError` when an obligation is negative.
+    :class:`SettlementError` when an obligation is negative or the ``prior`` link is invalid.
     """
     lines = _coerce_liabilities(liabilities)
     attestation = LiabilityAttestation(
@@ -694,7 +808,10 @@ def attest_liabilities(
         liabilities_usd=_r6(sum(line.amount_usd for line in lines)),
         as_of=as_of or utcnow(),
     )
-    return attestation.seal()
+    attestation.seal()
+    if prior is not None:
+        attestation.link_to(prior)
+    return attestation
 
 
 # -- liability inclusion proofs ----------------------------------------------
@@ -2525,4 +2642,915 @@ def check_root_consistency(
         checked=len(admissible),
         keys=len(groups),
         equivocations=equivocations,
+    )
+
+
+# -- liability history consistency & snapshot monotonicity --------------------
+#
+# Non-equivocation catches a counterparty signing *different* roots for the same instant. But it
+# is scoped to one ``as_of``: a counterparty can still issue a *later* snapshot that quietly
+# **drops** a past obligation, each snapshot internally sound. This closes that escape hatch with
+# a hash-linked history and a monotone-consistency proof — a debt committed at one snapshot must
+# persist into the next (or be released by a signed, creditor-issued discharge), so it cannot
+# silently vanish between snapshots.
+
+
+def _creditor_map(attestation: LiabilityAttestation) -> dict[str, float]:
+    """The per-creditor obligation map an attestation commits, summing duplicate line items."""
+    owed: dict[str, float] = {}
+    for line in attestation.liabilities:
+        owed[line.creditor] = _r6(owed.get(line.creditor, 0.0) + line.amount_usd)
+    return owed
+
+
+class DischargeVerification(BaseModel):
+    """The (non-raising) outcome of verifying a liability discharge offline.
+
+    A discharge is **valid** when its content hash recomputes (``hash_ok``), the released amount is
+    non-negative (``sound``), and — with a ``verifier`` — the creditor's signature checks
+    (``signatures_ok``). A discharge is the *creditor's* release of what a poster owes it, so a
+    legitimate one carries the creditor's signature; a poster cannot forge its own discharge.
+    """
+
+    valid: bool
+    hash_ok: bool
+    sound: bool
+    signatures_ok: bool = True
+    signed_by: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class Discharge(BaseModel):
+    """A signed, content-bound release of part of what a poster owes one creditor.
+
+    Produced by :func:`discharge_liability` (or
+    :meth:`~vincio.settlement.book.SettlementBook.discharge_liability` /
+    :meth:`~vincio.core.app.ContextApp.discharge_liability`): the **creditor** signs that ``poster``
+    has legitimately settled (or it has forgiven) ``amount_usd`` of the obligation owed to it, as of
+    ``as_of``. It is the evidence that lets a liability *shrink* between two snapshots without
+    tripping a :class:`MonotonicityBreach`: :func:`check_history_consistency` applies a discharge to
+    the transition whose window contains its ``as_of``, so the drop it covers is explained rather
+    than treated as a debt that silently vanished.
+
+    Because the release is the creditor's to make, only the creditor signs it (``party`` defaults to
+    the creditor; signing as anyone else is refused), so a poster cannot manufacture a discharge to
+    paper over a drop. :meth:`verify` recomputes the content hash and checks the creditor signature
+    from the bytes alone.
+    """
+
+    id: str = Field(default_factory=lambda: new_id("discharge"))
+    poster: str
+    creditor: str
+    amount_usd: float = 0.0
+    as_of: datetime = Field(default_factory=utcnow)
+    note: str = ""
+
+    content_hash: str = ""
+    signatures: list[SettlementSignature] = Field(default_factory=list)
+    audit_id: str | None = None
+
+    # -- derived reads ------------------------------------------------------
+
+    @property
+    def status(self) -> str:
+        """``partial`` (a positive release) or ``empty`` (nothing released)."""
+        return "partial" if self.amount_usd > _TOLERANCE else "empty"
+
+    # -- hashing ------------------------------------------------------------
+
+    def discharge_facts(self) -> dict[str, Any]:
+        """The facts the content hash binds — the poster, the creditor, the amount, the instant."""
+        return {
+            "poster": self.poster,
+            "creditor": self.creditor,
+            "amount_usd": _r6(self.amount_usd),
+            "as_of": self.as_of.isoformat(),
+            "note": self.note,
+        }
+
+    def compute_hash(self) -> str:
+        """The content hash binding the release."""
+        return stable_hash(self.discharge_facts(), length=32)
+
+    def seal(self) -> Discharge:
+        """Stamp the content hash from the current fields (idempotent)."""
+        self.content_hash = self.compute_hash()
+        return self
+
+    # -- signing ------------------------------------------------------------
+
+    @property
+    def signed_by(self) -> list[str]:
+        """The parties that have signed, in signing order."""
+        return [s.party for s in self.signatures]
+
+    def sign(self, signer: ChainSigner, *, party: str | None = None) -> Discharge:
+        """Add the creditor's signature over the content hash (sealing first).
+
+        A discharge is the creditor's release, so only the creditor signs it (``party`` defaults to
+        the creditor; passing a different party is refused). Re-signing replaces the prior
+        signature, so a discharge cannot accumulate stale ones.
+        """
+        resolved = party or self.creditor
+        if resolved != self.creditor:
+            raise SettlementError(
+                f"a liability discharge is signed by its creditor {self.creditor!r}, not "
+                f"{resolved!r}",
+                details={"discharge_id": self.id, "creditor": self.creditor, "party": resolved},
+            )
+        if not self.content_hash:
+            self.seal()
+        sig = SettlementSignature(
+            party=resolved,
+            signature=signer.sign(self.content_hash),
+            key_id=getattr(signer, "key_id", ""),
+        )
+        self.signatures = [s for s in self.signatures if s.party != resolved]
+        self.signatures.append(sig)
+        return self
+
+    # -- verification -------------------------------------------------------
+
+    def verify(
+        self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
+    ) -> DischargeVerification:
+        """Verify the discharge offline: the hash recomputes and the creditor signature checks.
+
+        ``verifier`` checks each signature against the content hash; ``require`` names parties that
+        must have a verified signature (defaults to none — pass ``[creditor]`` to demand the
+        creditor's signature). A negative release is unsound and refused.
+        """
+        hash_ok = bool(self.content_hash) and self.content_hash == self.compute_hash()
+        sound = self.amount_usd >= -_TOLERANCE
+        verified: list[str] = []
+        signatures_ok = True
+        for sig in self.signatures:
+            if verifier is not None:
+                if verifier.verify(self.content_hash, sig.signature):
+                    verified.append(sig.party)
+                else:
+                    signatures_ok = False
+            else:
+                verified.append(sig.party)
+        missing = [p for p in (require or []) if p not in verified]
+        if missing:
+            signatures_ok = False
+        valid = hash_ok and sound and signatures_ok
+        reason: str | None = None
+        if not valid:
+            if not self.content_hash:
+                reason = "discharge is not sealed (no content hash)"
+            elif not hash_ok:
+                reason = "content hash does not match the discharge facts"
+            elif not sound:
+                reason = "discharge releases a negative amount"
+            elif missing:
+                reason = f"missing/invalid signatures for {missing}"
+            else:
+                reason = "signature mismatch"
+        return DischargeVerification(
+            valid=valid,
+            hash_ok=hash_ok,
+            sound=sound,
+            signatures_ok=signatures_ok,
+            signed_by=verified,
+            reason=reason,
+        )
+
+    def require_valid(
+        self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
+    ) -> Discharge:
+        """Verify and raise :class:`SettlementError` if the discharge is not valid."""
+        result = self.verify(verifier, require=require)
+        if not result.valid:
+            raise SettlementError(
+                f"discharge {self.id} failed verification: {result.reason}",
+                details={"discharge_id": self.id, "reason": result.reason},
+            )
+        return self
+
+    def _applies_to(
+        self, poster: str, creditor: str, lo: datetime, hi: datetime, verifier: ChainSigner | None
+    ) -> bool:
+        """Whether this discharge explains a drop for ``creditor`` in the window ``(lo, hi]``.
+
+        A discharge applies to the transition between two snapshots when it is for the same poster
+        and creditor and its ``as_of`` falls in the half-open window after the earlier snapshot up
+        to and including the later one — so each release is consumed by exactly one transition. It
+        is only credited when it verifies and (with a ``verifier``) carries the creditor's
+        signature, so a forged or poster-signed discharge cannot explain a drop.
+        """
+        if self.poster != poster or self.creditor != creditor:
+            return False
+        if not (lo < self.as_of <= hi):
+            return False
+        result = self.verify(verifier)
+        if not result.hash_ok or not result.sound:
+            return False
+        if verifier is not None and self.creditor not in result.signed_by:
+            return False
+        return True
+
+    # -- serialization & reporting -----------------------------------------
+
+    def audit_details(self) -> dict[str, Any]:
+        """A compact, JSON-safe record of the discharge for the audit chain."""
+        return to_jsonable(
+            {
+                "discharge_id": self.id,
+                "poster": self.poster,
+                "creditor": self.creditor,
+                "amount_usd": _r6(self.amount_usd),
+                "as_of": self.as_of.isoformat(),
+                "status": self.status,
+                "content_hash": self.content_hash,
+                "signed_by": self.signed_by,
+            }
+        )
+
+    def to_wire(self) -> dict[str, Any]:
+        """A JSON-safe projection for exchange or persistence."""
+        return to_jsonable(self.model_dump(mode="json"))
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> Discharge:
+        return cls.model_validate(data)
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        """Print the released obligation."""
+        note = f" ({self.note})" if self.note else ""
+        print(
+            f"Discharge ({self.poster} → {self.creditor}): ${self.amount_usd:,.2f} released as of "
+            f"{self.as_of.isoformat()}{note}"
+        )
+
+
+def discharge_liability(
+    poster: str,
+    creditor: str,
+    amount_usd: float,
+    *,
+    as_of: datetime | None = None,
+    note: str = "",
+) -> Discharge:
+    """Build an (unsigned) :class:`Discharge` releasing part of what ``poster`` owes ``creditor``.
+
+    The evidence a creditor issues when an obligation is legitimately settled or forgiven, so the
+    matching drop in the poster's next liability snapshot is *explained* rather than treated as a
+    debt that silently vanished. Sign it with the creditor's key (or let a
+    :class:`~vincio.settlement.book.SettlementBook` do it on
+    :meth:`~vincio.settlement.book.SettlementBook.discharge_liability`). Raises
+    :class:`SettlementError` on a negative release.
+    """
+    if amount_usd < 0.0:
+        raise SettlementError(
+            f"discharge of {poster!r} → {creditor!r} releases a negative amount {amount_usd}",
+            details={"poster": poster, "creditor": creditor, "amount_usd": amount_usd},
+        )
+    return Discharge(
+        poster=poster,
+        creditor=creditor,
+        amount_usd=_r6(amount_usd),
+        as_of=as_of or utcnow(),
+        note=note,
+    ).seal()
+
+
+class MonotonicityBreach(BaseModel):
+    """A creditor's obligation that shrank between two snapshots without a backing discharge.
+
+    Surfaced by :func:`check_history_consistency` when a poster's later snapshot owes a creditor
+    *less* than an earlier one and no signed :class:`Discharge` covers the difference:
+    ``prior_usd`` is what the earlier snapshot (``prior_hash``) committed, ``next_usd`` what the
+    later one (``next_hash``) commits, ``dropped_usd`` the reduction, ``discharged_usd`` how much a
+    creditor-signed discharge legitimately released, and ``unexplained_usd`` the residue
+    (``dropped − discharged``) — the debt that silently vanished. Non-equivocation cannot catch
+    this: each snapshot is internally sound and they are for *different* instants.
+    """
+
+    poster: str
+    attestor: str = ""
+    creditor: str
+    prior_hash: str = ""
+    next_hash: str = ""
+    prior_as_of: datetime | None = None
+    next_as_of: datetime | None = None
+    prior_usd: float = 0.0
+    next_usd: float = 0.0
+    dropped_usd: float = 0.0
+    discharged_usd: float = 0.0
+    unexplained_usd: float = 0.0
+
+
+class HistoryConsistencyProofVerification(BaseModel):
+    """The (non-raising) outcome of verifying a liability history-consistency proof offline.
+
+    A proof is **valid** when its content hash recomputes (``hash_ok``), every embedded snapshot
+    re-derives its root and total and they share one ``(poster, attestor)`` in strictly increasing
+    ``as_of`` order — and, with a ``verifier``, each is attestor-signed (``snapshots_ok`` /
+    ``attestor_signed``), the recorded chain-link status re-derives (``chain_ok``), and the
+    monotonicity breaches re-derive from the embedded snapshots and discharges (``monotone_sound``).
+    A forged or back-dated snapshot, a dropped breach, or a poster-forged discharge is caught from
+    the bytes alone.
+    """
+
+    valid: bool
+    hash_ok: bool
+    snapshots_ok: bool
+    chain_ok: bool
+    monotone_sound: bool
+    attestor_signed: bool = False
+    signatures_ok: bool = True
+    signed_by: list[str] = Field(default_factory=list)
+    reason: str | None = None
+
+
+class HistoryConsistencyProof(BaseModel):
+    """A signed, offline-verifiable proof a poster's liability history is monotone over time.
+
+    Produced by :func:`check_history_consistency` (or
+    :meth:`~vincio.settlement.book.SettlementBook.check_history_consistency` /
+    :meth:`~vincio.core.app.ContextApp.check_history_consistency`): it embeds one poster's
+    :class:`LiabilityAttestation` snapshots in ``as_of`` order along with the :class:`Discharge`\\ s
+    that explain any legitimate reductions, and folds them into a per-creditor walk. Every creditor
+    obligation must **persist** from each snapshot into the next unless a signed, creditor-issued
+    discharge released it; an unexplained drop is pinpointed as a :class:`MonotonicityBreach`.
+
+    Both the snapshots and the discharges are embedded whole, so :meth:`verify` re-derives each
+    snapshot's root from its line items (a mislabeled or back-dated snapshot cannot survive), checks
+    they form a strictly increasing ``as_of`` sequence for one ``(poster, attestor)``, and re-derives
+    every breach from the bytes (a forged or poster-signed discharge does not count, so a hidden drop
+    resurfaces). ``chain_linked`` records whether every successor also commits to its predecessor's
+    root (:meth:`LiabilityAttestation.link_to`) — a contiguous, tamper-evident chain — though
+    monotonicity is checked on the sorted sequence regardless, so an unlinked legacy history is still
+    walked. The proof may be signed by the creditor / auditor that lodged it (provenance).
+    """
+
+    id: str = Field(default_factory=lambda: new_id("history"))
+    poster: str
+    attestor: str = ""
+
+    snapshots: list[LiabilityAttestation] = Field(default_factory=list)
+    discharges: list[Discharge] = Field(default_factory=list)
+    breaches: list[MonotonicityBreach] = Field(default_factory=list)
+
+    chain_linked: bool = False
+    head_hash: str = ""
+    span_from: datetime | None = None
+    span_to: datetime | None = None
+
+    content_hash: str = ""
+    signatures: list[SettlementSignature] = Field(default_factory=list)
+    audit_id: str | None = None
+
+    # -- derived reads ------------------------------------------------------
+
+    @property
+    def monotone(self) -> bool:
+        """Whether every committed obligation persisted (no unexplained drop between snapshots)."""
+        return not self.breaches
+
+    @property
+    def consistent(self) -> bool:
+        """Whether the history is monotone — the headline (a debt never silently vanished)."""
+        return self.monotone
+
+    @property
+    def linked(self) -> bool:
+        """Whether every successor commits to its predecessor's root (a contiguous chain)."""
+        return self.chain_linked
+
+    @property
+    def snapshot_count(self) -> int:
+        """How many snapshots the history spans."""
+        return len(self.snapshots)
+
+    @property
+    def status(self) -> str:
+        """``consistent`` (monotone history) or ``inconsistent`` (an unexplained drop)."""
+        return "consistent" if self.consistent else "inconsistent"
+
+    @property
+    def breaching_creditors(self) -> list[str]:
+        """The creditors whose obligation an unexplained drop shows vanished, sorted and unique."""
+        return sorted({breach.creditor for breach in self.breaches})
+
+    @property
+    def unexplained_usd(self) -> float:
+        """The total obligation that dropped between snapshots without a backing discharge."""
+        return _r6(sum(breach.unexplained_usd for breach in self.breaches))
+
+    def _ordered_snapshots(self) -> list[LiabilityAttestation]:
+        """The embedded snapshots in canonical (as_of, content-hash) order."""
+        return sorted(self.snapshots, key=lambda att: (att.as_of, att.content_hash))
+
+    # -- hashing ------------------------------------------------------------
+
+    def history_facts(self) -> dict[str, Any]:
+        """The facts the content hash binds — the poster, the snapshots, discharges, and breaches.
+
+        Binds each snapshot by its signed content hash (in ``as_of`` order), each applied discharge
+        by its content hash, and every breach, so a re-ordered, swapped, or dropped element is
+        caught even after re-sealing. Excludes the id, signatures, and audit linkage (local
+        metadata).
+        """
+        return {
+            "poster": self.poster,
+            "attestor": self.attestor,
+            "chain_linked": self.chain_linked,
+            "head_hash": self.head_hash,
+            "span_from": self.span_from.isoformat() if self.span_from else "",
+            "span_to": self.span_to.isoformat() if self.span_to else "",
+            "snapshots": [att.content_hash for att in self._ordered_snapshots()],
+            "discharges": sorted(d.content_hash for d in self.discharges),
+            "breaches": [
+                {
+                    "creditor": b.creditor,
+                    "prior_hash": b.prior_hash,
+                    "next_hash": b.next_hash,
+                    "prior_usd": _r6(b.prior_usd),
+                    "next_usd": _r6(b.next_usd),
+                    "dropped_usd": _r6(b.dropped_usd),
+                    "discharged_usd": _r6(b.discharged_usd),
+                    "unexplained_usd": _r6(b.unexplained_usd),
+                }
+                for b in sorted(self.breaches, key=lambda b: (b.next_hash, b.creditor))
+            ],
+        }
+
+    def compute_hash(self) -> str:
+        """The content hash binding the poster, the snapshots, the discharges, and the breaches."""
+        return stable_hash(self.history_facts(), length=32)
+
+    def seal(self) -> HistoryConsistencyProof:
+        """Stamp the content hash from the current fields (idempotent)."""
+        self.content_hash = self.compute_hash()
+        return self
+
+    # -- signing ------------------------------------------------------------
+
+    @property
+    def signed_by(self) -> list[str]:
+        """The parties that have signed the proof, in signing order."""
+        return [s.party for s in self.signatures]
+
+    def sign(self, signer: ChainSigner, *, party: str) -> HistoryConsistencyProof:
+        """Add ``party``'s signature over the content hash (sealing first).
+
+        Signed by the creditor or auditor that walked the history and lodged the finding —
+        provenance of *who reported it*. The non-repudiable evidence is the embedded attestor
+        signatures on each snapshot and the creditor signatures on each discharge; the reporter's
+        signature is not required for :meth:`verify` to hold. Re-signing replaces the prior one.
+        """
+        if not self.content_hash:
+            self.seal()
+        sig = SettlementSignature(
+            party=party,
+            signature=signer.sign(self.content_hash),
+            key_id=getattr(signer, "key_id", ""),
+        )
+        self.signatures = [s for s in self.signatures if s.party != party]
+        self.signatures.append(sig)
+        return self
+
+    # -- verification -------------------------------------------------------
+
+    def _snapshots_ok(self, verifier: ChainSigner | None) -> tuple[bool, bool]:
+        """Whether the embedded snapshots re-derive and form a strict one-poster sequence."""
+        ordered = self._ordered_snapshots()
+        if not ordered:
+            return False, False
+        attestor_signed = True
+        for att in ordered:
+            result = att.verify(verifier)
+            if not result.hash_ok or not result.liabilities_sound:
+                return False, False
+            if att.poster != self.poster or att.attestor != self.attestor:
+                return False, False
+            if verifier is not None:
+                if att.signatures and not result.signatures_ok:
+                    return False, False
+                if att.attestor not in result.signed_by:
+                    attestor_signed = False
+        # Strictly increasing instants — no two snapshots share an ``as_of`` (that is the domain of
+        # non-equivocation, not history) and none is back-dated.
+        for earlier, later in zip(ordered, ordered[1:], strict=False):
+            if later.as_of <= earlier.as_of:
+                return False, attestor_signed
+        head_ok = self.head_hash == ordered[-1].content_hash
+        span_ok = self.span_from == ordered[0].as_of and self.span_to == ordered[-1].as_of
+        return (head_ok and span_ok), attestor_signed
+
+    def _recompute_chain_linked(self) -> bool:
+        """Whether every successor commits to its predecessor's hash, root, and instant."""
+        ordered = self._ordered_snapshots()
+        if len(ordered) < 2:
+            return False
+        for earlier, later in zip(ordered, ordered[1:], strict=False):
+            if (
+                later.prior_hash != earlier.content_hash
+                or later.prior_root != earlier.liabilities_root
+                or later.prior_as_of != earlier.as_of
+            ):
+                return False
+        return True
+
+    def _walk(self, verifier: ChainSigner | None) -> tuple[list[MonotonicityBreach], set[str]]:
+        """Walk the snapshots, deriving each transition's breaches and the discharges they consume.
+
+        For every consecutive pair, each creditor's obligation that fell is covered by the signed,
+        in-window discharges available for it (each consumed by exactly one transition, so a single
+        release cannot explain two drops); the residue is a :class:`MonotonicityBreach`. Returns the
+        breaches and the set of discharge content hashes that explained a drop.
+        """
+        ordered = self._ordered_snapshots()
+        consumed: set[str] = set()
+        breaches: list[MonotonicityBreach] = []
+        for earlier, later in zip(ordered, ordered[1:], strict=False):
+            prior_map = _creditor_map(earlier)
+            next_map = _creditor_map(later)
+            for creditor in sorted(prior_map):
+                prior_usd = prior_map[creditor]
+                next_usd = _r6(next_map.get(creditor, 0.0))
+                dropped = _r6(max(0.0, prior_usd - next_usd))
+                if dropped <= _TOLERANCE:
+                    continue
+                discharged = 0.0
+                for discharge in self.discharges:
+                    if discharge.content_hash in consumed:
+                        continue
+                    if discharge._applies_to(
+                        self.poster, creditor, earlier.as_of, later.as_of, verifier
+                    ):
+                        discharged = _r6(discharged + discharge.amount_usd)
+                        consumed.add(discharge.content_hash)
+                unexplained = _r6(max(0.0, dropped - discharged))
+                if unexplained > _TOLERANCE:
+                    breaches.append(
+                        MonotonicityBreach(
+                            poster=self.poster,
+                            attestor=self.attestor,
+                            creditor=creditor,
+                            prior_hash=earlier.content_hash,
+                            next_hash=later.content_hash,
+                            prior_as_of=earlier.as_of,
+                            next_as_of=later.as_of,
+                            prior_usd=prior_usd,
+                            next_usd=next_usd,
+                            dropped_usd=dropped,
+                            discharged_usd=discharged,
+                            unexplained_usd=unexplained,
+                        )
+                    )
+        return breaches, consumed
+
+    def _recompute_breaches(self, verifier: ChainSigner | None) -> list[MonotonicityBreach]:
+        """Re-derive the monotonicity breaches from the embedded snapshots and discharges."""
+        return self._walk(verifier)[0]
+
+    @staticmethod
+    def _breach_key(breach: MonotonicityBreach) -> tuple[str, str, str]:
+        return (breach.next_hash, breach.creditor, breach.prior_hash)
+
+    def _monotone_sound(self, verifier: ChainSigner | None) -> bool:
+        """The recorded breaches re-derive exactly from the embedded snapshots and discharges."""
+        expected = self._recompute_breaches(verifier)
+        if len(expected) != len(self.breaches):
+            return False
+        for got, want in zip(
+            sorted(self.breaches, key=self._breach_key),
+            sorted(expected, key=self._breach_key),
+            strict=True,
+        ):
+            if self._breach_key(got) != self._breach_key(want):
+                return False
+            if abs(got.unexplained_usd - want.unexplained_usd) > _TOLERANCE:
+                return False
+            if abs(got.dropped_usd - want.dropped_usd) > _TOLERANCE:
+                return False
+            if abs(got.discharged_usd - want.discharged_usd) > _TOLERANCE:
+                return False
+        return True
+
+    def verify(
+        self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
+    ) -> HistoryConsistencyProofVerification:
+        """Verify the proof offline: the snapshots form a monotone history.
+
+        Recomputes the content hash, re-derives each embedded snapshot's root and total, confirms
+        they form a strictly increasing ``as_of`` sequence for one ``(poster, attestor)``, re-derives
+        the chain-link status and the monotonicity breaches from the embedded snapshots and
+        discharges, and (with a ``verifier``) checks each snapshot is attestor-signed and any reporter
+        signatures on the proof. ``require`` names reporter parties that must have a verified
+        signature. A forged or back-dated snapshot, a poster-forged discharge, or a dropped breach is
+        caught from the bytes alone.
+        """
+        hash_ok = bool(self.content_hash) and self.content_hash == self.compute_hash()
+        snapshots_ok, attestor_signed = self._snapshots_ok(verifier)
+        if verifier is not None:
+            snapshots_ok = snapshots_ok and attestor_signed
+        chain_ok = self.chain_linked == self._recompute_chain_linked()
+        monotone_sound = snapshots_ok and self._monotone_sound(verifier)
+
+        verified: list[str] = []
+        signatures_ok = True
+        for sig in self.signatures:
+            if verifier is not None:
+                if verifier.verify(self.content_hash, sig.signature):
+                    verified.append(sig.party)
+                else:
+                    signatures_ok = False
+            else:
+                verified.append(sig.party)
+        missing = [p for p in (require or []) if p not in verified]
+        if missing:
+            signatures_ok = False
+
+        valid = hash_ok and snapshots_ok and chain_ok and monotone_sound and signatures_ok
+        reason: str | None = None
+        if not valid:
+            if not self.content_hash:
+                reason = "history proof is not sealed (no content hash)"
+            elif not hash_ok:
+                reason = "content hash does not match the history facts"
+            elif not snapshots_ok:
+                reason = "an embedded snapshot does not re-derive, is mis-ordered, or is unsigned"
+            elif not chain_ok:
+                reason = "the recorded chain-link status does not re-derive from the snapshots"
+            elif not monotone_sound:
+                reason = "the monotonicity breaches do not re-derive from the snapshots/discharges"
+            elif missing:
+                reason = f"missing/invalid reporter signatures for {missing}"
+            else:
+                reason = "reporter signature mismatch"
+        return HistoryConsistencyProofVerification(
+            valid=valid,
+            hash_ok=hash_ok,
+            snapshots_ok=snapshots_ok,
+            chain_ok=chain_ok,
+            monotone_sound=monotone_sound,
+            attestor_signed=attestor_signed,
+            signatures_ok=signatures_ok,
+            signed_by=verified,
+            reason=reason,
+        )
+
+    def require_valid(
+        self, verifier: ChainSigner | None = None, *, require: list[str] | None = None
+    ) -> HistoryConsistencyProof:
+        """Verify and raise :class:`SettlementError` if the history proof is not valid."""
+        result = self.verify(verifier, require=require)
+        if not result.valid:
+            raise SettlementError(
+                f"history consistency proof {self.id} failed verification: {result.reason}",
+                details={"proof_id": self.id, "reason": result.reason},
+            )
+        return self
+
+    def require_monotone(self) -> HistoryConsistencyProof:
+        """Raise :class:`SettlementError` if any obligation dropped without a backing discharge.
+
+        The strict-mode counterpart to inspecting :attr:`monotone`: a counterparty that let a debt
+        vanish between snapshots cannot be taken at its latest figure, and this pinpoints the
+        creditors whose obligation silently dropped and by how much.
+        """
+        if self.breaches:
+            raise SettlementError(
+                f"liability history for {self.poster!r} is not monotone: "
+                f"${self.unexplained_usd:,.2f} owed to {self.breaching_creditors} dropped between "
+                "snapshots without a backing discharge",
+                details={
+                    "proof_id": self.id,
+                    "poster": self.poster,
+                    "unexplained_usd": self.unexplained_usd,
+                    "breaching_creditors": self.breaching_creditors,
+                },
+            )
+        return self
+
+    def require_linked(self) -> HistoryConsistencyProof:
+        """Raise :class:`SettlementError` if the snapshots are not a contiguous hash-linked chain.
+
+        Stricter than :meth:`require_monotone`: demands every successor commit to its predecessor's
+        root, so a creditor knows it holds the *complete* sequence with no snapshot spliced out.
+        """
+        if not self.chain_linked:
+            raise SettlementError(
+                f"liability history for {self.poster!r} is not a contiguous hash-linked chain; a "
+                "snapshot may be missing or unlinked",
+                details={"proof_id": self.id, "poster": self.poster},
+            )
+        return self
+
+    # -- serialization & reporting -----------------------------------------
+
+    def audit_details(self) -> dict[str, Any]:
+        """A compact, JSON-safe record of the history check for the audit chain."""
+        return to_jsonable(
+            {
+                "proof_id": self.id,
+                "poster": self.poster,
+                "attestor": self.attestor,
+                "status": self.status,
+                "snapshots": self.snapshot_count,
+                "chain_linked": self.chain_linked,
+                "span_from": self.span_from.isoformat() if self.span_from else None,
+                "span_to": self.span_to.isoformat() if self.span_to else None,
+                "discharges": len(self.discharges),
+                "unexplained_usd": self.unexplained_usd,
+                "breaching_creditors": self.breaching_creditors,
+                "content_hash": self.content_hash,
+                "signed_by": self.signed_by,
+            }
+        )
+
+    def to_wire(self) -> dict[str, Any]:
+        """A JSON-safe projection for exchange or persistence."""
+        return to_jsonable(self.model_dump(mode="json"))
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> HistoryConsistencyProof:
+        return cls.model_validate(data)
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        """Print the snapshot span and any unexplained drops."""
+        link = "linked" if self.chain_linked else "unlinked"
+        print(
+            f"History consistency ({self.poster}, attested by {self.attestor}): "
+            f"{self.snapshot_count} snapshot(s), {link} — {self.status}"
+        )
+        for breach in sorted(self.breaches, key=lambda b: b.creditor):
+            print(
+                f"  ! {breach.creditor}: dropped ${breach.dropped_usd:,.2f} "
+                f"(${breach.prior_usd:,.2f} → ${breach.next_usd:,.2f}), discharged "
+                f"${breach.discharged_usd:,.2f}, unexplained ${breach.unexplained_usd:,.2f}"
+            )
+
+
+class HistoryConsistencyReport(BaseModel):
+    """The outcome of walking a set of liability snapshots for cross-time monotonicity.
+
+    Produced by :func:`check_history_consistency` (or
+    :meth:`~vincio.settlement.book.SettlementBook.check_history_consistency` /
+    :meth:`~vincio.core.app.ContextApp.check_history_consistency`): it groups the attestations by
+    their ``(poster, attestor)`` key, walks each poster's snapshots in ``as_of`` order, and folds
+    every chain into a :class:`HistoryConsistencyProof`. ``consistent`` holds when no poster let an
+    obligation silently drop; ``checked`` is how many snapshots were admissible (tampered or unsigned
+    ones are excluded as inadmissible evidence) and ``chains`` is how many distinct posters' histories
+    were walked.
+    """
+
+    consistent: bool
+    checked: int = 0
+    chains: int = 0
+    proofs: list[HistoryConsistencyProof] = Field(default_factory=list)
+
+    @property
+    def breaching_posters(self) -> list[str]:
+        """The posters whose history dropped an obligation without a discharge, sorted and unique."""
+        return sorted({proof.poster for proof in self.proofs if not proof.monotone})
+
+    def require_consistent(self) -> HistoryConsistencyReport:
+        """Raise :class:`SettlementError` if any poster's liability history is not monotone."""
+        if self.breaching_posters:
+            raise SettlementError(
+                f"liability history is inconsistent: {self.breaching_posters} dropped an obligation "
+                "between snapshots without a backing discharge",
+                details={"breaching_posters": self.breaching_posters},
+            )
+        return self
+
+    def to_wire(self) -> dict[str, Any]:
+        """A JSON-safe projection for exchange or persistence."""
+        return to_jsonable(self.model_dump(mode="json"))
+
+    @classmethod
+    def from_wire(cls, data: dict[str, Any]) -> HistoryConsistencyReport:
+        return cls.model_validate(data)
+
+    def print_summary(self) -> None:  # pragma: no cover - cosmetic
+        """Print whether the histories are monotone and any breaching posters."""
+        status = "consistent" if self.consistent else "INCONSISTENT"
+        print(
+            f"History-consistency check: {self.checked} snapshot(s) across {self.chains} "
+            f"chain(s) — {status}"
+        )
+        for proof in self.proofs:
+            if not proof.monotone:
+                proof.print_summary()
+
+
+def _coerce_discharges(discharges: Any) -> list[Discharge]:
+    """Normalize a discharges spec into sealed :class:`Discharge`\\ s.
+
+    Accepts ``None`` (no discharges), a single :class:`Discharge`, or an iterable of
+    :class:`Discharge` / dict items. A dict is validated into a :class:`Discharge`. Each is sealed
+    if needed so its content hash is available for application and de-duplication.
+    """
+    if discharges is None:
+        return []
+    if isinstance(discharges, Discharge):
+        items: list[Any] = [discharges]
+    else:
+        items = list(discharges)
+    coerced: list[Discharge] = []
+    for item in items:
+        if isinstance(item, Discharge):
+            discharge = item
+        elif isinstance(item, dict):
+            discharge = Discharge.model_validate(item)
+        else:
+            raise SettlementError(
+                f"check_history_consistency discharges must be Discharge or dict items; got {item!r}",
+                details={"item": repr(item)},
+            )
+        if not discharge.content_hash:
+            discharge.seal()
+        coerced.append(discharge)
+    return coerced
+
+
+def check_history_consistency(
+    attestations: Any,
+    *,
+    discharges: Any | None = None,
+    verifier: ChainSigner | None = None,
+) -> HistoryConsistencyReport:
+    """Walk a set of liability snapshots for cross-time monotonicity (no debt silently dropped).
+
+    The companion to :func:`check_root_consistency`: where non-equivocation catches a counterparty
+    signing *different* roots for the **same** instant, this catches one issuing a *later* snapshot
+    that quietly **drops** a past obligation. Groups the ``attestations`` by ``(poster, attestor)``,
+    sorts each poster's snapshots by ``as_of``, and walks them: every creditor's obligation must
+    persist from each snapshot into the next unless a signed, creditor-issued :class:`Discharge`
+    (``discharges``) released it. An unexplained drop is pinpointed as a :class:`MonotonicityBreach`
+    in the chain's :class:`HistoryConsistencyProof`.
+
+    Only snapshots that re-derive are considered evidence (a tampered one is excluded); with a
+    ``verifier`` only those carrying a valid attestor signature are, and only discharges carrying a
+    valid creditor signature explain a drop (a poster-forged discharge cannot). ``attestations`` items
+    may be bare attestations or ``(creditor, attestation)`` pairs (the creditor label is ignored — a
+    history is one observer's sequence). A poster with fewer than two distinct snapshot instants has
+    no history to walk and yields no proof.
+    """
+    views = _coerce_attestation_views(attestations)
+    coerced_discharges = _coerce_discharges(discharges)
+
+    admissible: list[LiabilityAttestation] = []
+    for _creditor, attestation in views:
+        if not attestation.content_hash or not attestation.liabilities_root:
+            attestation.seal()
+        result = attestation.verify(verifier)
+        if not result.hash_ok or not result.liabilities_sound:
+            continue
+        if verifier is not None:
+            if attestation.signatures and not result.signatures_ok:
+                continue
+            if attestation.attestor not in result.signed_by:
+                continue
+        admissible.append(attestation)
+
+    groups: dict[tuple[str, str], list[LiabilityAttestation]] = {}
+    for attestation in admissible:
+        groups.setdefault((attestation.poster, attestation.attestor), []).append(attestation)
+
+    proofs: list[HistoryConsistencyProof] = []
+    for (poster, attestor), members in groups.items():
+        # One snapshot per instant: a history is a *linear* sequence over time. Two snapshots for the
+        # same ``as_of`` are the domain of non-equivocation (:func:`check_root_consistency`), not a
+        # cross-time transition; keep the first in canonical order so the walk stays strictly
+        # increasing and the proof always verifies.
+        by_instant: dict[datetime, LiabilityAttestation] = {}
+        for att in sorted(members, key=lambda att: (att.as_of, att.content_hash)):
+            by_instant.setdefault(att.as_of, att)
+        ordered = [by_instant[instant] for instant in sorted(by_instant)]
+        # A history needs at least two distinct instants to compare; a single snapshot has no
+        # cross-time transition to walk.
+        if len(ordered) < 2:
+            continue
+        relevant = [d for d in coerced_discharges if d.poster == poster]
+        proof = HistoryConsistencyProof(
+            poster=poster,
+            attestor=attestor,
+            snapshots=ordered,
+            discharges=relevant,
+            chain_linked=False,
+            head_hash=ordered[-1].content_hash,
+            span_from=ordered[0].as_of,
+            span_to=ordered[-1].as_of,
+        )
+        proof.chain_linked = proof._recompute_chain_linked()
+        # Walk once to derive the breaches and which discharges actually explained a drop; embed only
+        # those, so the proof carries exactly the evidence it rests on (an unrelated discharge does
+        # not bloat the content hash). Trimming to the consumed set leaves the breaches unchanged.
+        breaches, consumed = proof._walk(verifier)
+        proof.discharges = [d for d in relevant if d.content_hash in consumed]
+        proof.breaches = breaches
+        proofs.append(proof.seal())
+
+    return HistoryConsistencyReport(
+        consistent=all(proof.monotone for proof in proofs),
+        checked=len(admissible),
+        chains=len(proofs),
+        proofs=proofs,
     )

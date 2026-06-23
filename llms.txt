@@ -1512,6 +1512,34 @@ app.run("export button 500s").output.label
   record_reputation=True, record_audit=True)` / `book.check_root_consistency(...)` record each equivocation (action
   `liability_equivocation`, decision `equivocation`) on the audit log and ding the equivocating poster on the bound
   reputation ledger. Offline — never a hosted transparency log.
+- **Cross-org liability history consistency & snapshot monotonicity.** `from vincio import Discharge,
+  DischargeVerification, discharge_liability, MonotonicityBreach, HistoryConsistencyProof,
+  HistoryConsistencyProofVerification, HistoryConsistencyReport, check_history_consistency` (all also in
+  `vincio.settlement.__all__`). Non-equivocation is scoped to one `as_of`; a counterparty can still issue a *later*
+  snapshot that quietly drops a past obligation. A `LiabilityAttestation` now carries an optional commitment to the prior
+  snapshot (`.prior_hash`/`.prior_root`/`.prior_as_of`, `.has_prior`), bound into its signed hash, set via
+  `attest_liabilities(poster, liabilities, *, attestor=None, as_of=None, prior=None)` or `attestation.link_to(prior)`
+  (same `(poster, attestor)`, strictly later `as_of` — a back-dated link is refused and caught from the bytes). A
+  `Discharge` (`discharge_liability(poster, creditor, amount_usd, *, as_of=None, note="")`: `.poster`/`.creditor`/
+  `.amount_usd`/`.as_of`/`.status` (`partial`|`empty`), `.sign(signer, *, party=None)` — signed by the **creditor** only,
+  `.verify(verifier=None, *, require=None)` → `DischargeVerification(valid, hash_ok, sound, signatures_ok, signed_by,
+  reason)`, `.audit_details`/`.to_wire`/`.from_wire`) is the creditor's signed release that legitimizes a drop.
+  `check_history_consistency(attestations, *, discharges=None, verifier=None)` groups snapshots by `(poster, attestor)`,
+  walks each chain in `as_of` order, and folds it into a `HistoryConsistencyProof` (`.poster`/`.attestor`/`.snapshots`/
+  `.discharges`/`.breaches`/`.chain_linked`/`.head_hash`/`.span_from`/`.span_to`, `.monotone`/`.consistent`/`.linked`/
+  `.snapshot_count`/`.status`/`.breaching_creditors`/`.unexplained_usd`, `.verify(verifier=None, *, require=None)` →
+  `HistoryConsistencyProofVerification(valid, hash_ok, snapshots_ok, chain_ok, monotone_sound, attestor_signed,
+  signatures_ok, signed_by, reason)`, `.require_valid`/`.require_monotone`/`.require_linked`, `.sign(signer, *, party)`,
+  `.audit_details`/`.to_wire`/`.from_wire`). A creditor obligation that shrinks between snapshots without a signed,
+  in-window discharge is a `MonotonicityBreach` (`.poster`/`.attestor`/`.creditor`/`.prior_hash`/`.next_hash`/
+  `.prior_usd`/`.next_usd`/`.dropped_usd`/`.discharged_usd`/`.unexplained_usd`). The check returns a
+  `HistoryConsistencyReport` (`.consistent`/`.checked`/`.chains`/`.proofs`/`.breaching_posters`, `.require_consistent()`,
+  `.to_wire`/`.from_wire`); a tampered or (with a verifier) unsigned snapshot is excluded as inadmissible, and a forged or
+  poster-signed discharge does not explain a drop. `app.check_history_consistency(attestations, *, discharges=None,
+  verify_with=None, record_reputation=True, record_audit=True)` / `book.check_history_consistency(...)` record each
+  inconsistent history (action `liability_history`, decision `consistent`|`inconsistent`) and ding the breaching poster;
+  `app.discharge_liability(poster, amount_usd, *, creditor=None, as_of=None, note="")` / `book.discharge_liability(...)`
+  sign and record a discharge (action `liability_discharge`). Offline — never a hosted transparency log.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,

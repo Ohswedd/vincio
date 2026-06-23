@@ -4,6 +4,48 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.41.0] - 2026-06-23
+
+Cross-org liability history consistency & snapshot monotonicity. Non-equivocation (3.40) catches a counterparty signing
+**different** liability roots for the **same** instant, but it is scoped to one `as_of`: a counterparty can still issue a
+*later* snapshot that quietly **drops** a past obligation — a debt committed at `T` simply absent from the root it signs
+at `T'` — each snapshot internally sound, nothing tying one attestation to its predecessor. Equivocation is conflict
+*across creditors*; this is consistency *across time*. This release links a liability snapshot to its predecessor's root
+and walks the chain, pinpointing any debt that vanished without a signed, creditor-issued discharge. Entirely additive
+and backward-compatible — `API_VERSION` stays `3.0`, the predecessor commitment is bound into the signed hash only when
+present (so a standalone attestation hashes exactly as before), every existing custody, solvency, completeness,
+non-equivocation, escrow, pooling, rehypothecation, admission, and settlement path is unchanged, and the whole theme runs
+offline and deterministically.
+
+### Added
+
+- **Linked liability history (`vincio.settlement.solvency`).** `LiabilityAttestation` carries an optional
+  `prior_hash` / `prior_root` / `prior_as_of` commitment to the preceding snapshot (`has_prior`), bound into the signed
+  content hash **only when present**. `attest_liabilities(poster, liabilities, *, attestor=None, as_of=None, prior=None)`
+  and `LiabilityAttestation.link_to(prior)` set it, requiring the same `(poster, attestor)` and a strictly later `as_of` —
+  a back-dated or cross-counterparty link is refused, and a back-dated link is caught from the bytes (`verify`).
+- **Discharge.** `discharge_liability(poster, creditor, amount_usd, *, as_of=None, note="")` builds a `Discharge` — the
+  **creditor's** signed, content-bound release of part of what a poster owes it (only the creditor signs; a poster cannot
+  forge its own). `verify(verifier=None, *, require=None)` checks the hash and signature. `Discharge`,
+  `DischargeVerification`, `discharge_liability` are public.
+- **check_history_consistency.** `check_history_consistency(attestations, *, discharges=None, verifier=None)` groups
+  snapshots by `(poster, attestor)`, walks each chain in `as_of` order, and folds it into a `HistoryConsistencyProof`
+  (embedding the whole snapshots and the discharges that explained a drop). A creditor obligation that shrinks between
+  snapshots without a signed, in-window discharge is a pinpointed `MonotonicityBreach`; `verify` re-derives every breach
+  from the bytes (a dropped breach, a forged or poster-signed discharge, or a back-dated snapshot is caught), and a
+  tampered or unsigned snapshot is excluded as inadmissible. `monotone` / `consistent` / `chain_linked`,
+  `require_monotone()` / `require_linked()`. Returns a `HistoryConsistencyReport` (`consistent` / `checked` / `chains` /
+  `proofs` / `breaching_posters`, `require_consistent()`). `MonotonicityBreach`, `HistoryConsistencyProof`,
+  `HistoryConsistencyProofVerification`, `HistoryConsistencyReport`, `check_history_consistency` are public.
+- **App & book methods.** `app.check_history_consistency` / `book.check_history_consistency` record each inconsistent
+  history on the audit chain (action `liability_history`, decision `consistent` / `inconsistent`) and credit a failure
+  against the breaching poster on the bound `ReputationLedger`; `app.discharge_liability` / `book.discharge_liability`
+  sign and record a discharge (action `liability_discharge`). `attest_liabilities` on both gains `prior=`.
+- **VincioBench, SLO, example, docs.** The `reputation_portability` family gains `history_detects_silent_drop` and
+  `history_auditable_offline` with a published liability-history-consistency SLO and CI budgets; example
+  `85_cross_org_liability_history_consistency.py`; the settlement guide, README, llms.txt, SECURITY.md, ROADMAP, and the
+  generated API index are updated. The public surface grows from 375 to 383 symbols.
+
 ## [3.40.0] - 2026-06-23
 
 Cross-org liability non-equivocation & root consistency. Completeness (3.39) proves each creditor's claim is *included*

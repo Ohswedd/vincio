@@ -754,6 +754,42 @@ the equivocating poster on the bound reputation ledger. Non-equivocation is defi
 two roots a poster signed *as of the same instant* are a contradiction, while two roots for
 *different* instants are distinct snapshots a later one legitimately supersedes.
 
+## Walking a liability history over time
+
+Non-equivocation is scoped to one `as_of`. But a counterparty can still issue a *later* snapshot that
+quietly **drops** a past obligation — a debt committed at `T` simply absent from the root it signs at
+`T'` — each snapshot internally sound. Equivocation is conflict *across creditors*; this is
+consistency *across time*. Link each snapshot to its predecessor with `prior=` (so the attestations
+form a hash-linked sequence each `as_of` strictly succeeding the last) and `check_history_consistency`
+(`app.check_history_consistency` / `book.check_history_consistency`) walks them, pinpointing any debt
+that vanished without a signed, creditor-issued `Discharge` explaining it.
+
+```python
+t1 = datetime(2026, 1, 1, tzinfo=UTC)
+t2 = datetime(2026, 2, 1, tzinfo=UTC)
+s1 = auditor.attest_liabilities("vendor", {"acme": 100.0}, as_of=t1)
+s2 = auditor.attest_liabilities("vendor", {"acme": 30.0}, as_of=t2, prior=s1)  # acme dropped $70
+
+report = auditor.check_history_consistency([s1, s2])
+report.consistent              # False — acme's $70 vanished between snapshots
+report.proofs[0].breaches[0].unexplained_usd   # 70.0
+report.require_consistent()    # raises: vendor dropped an obligation without a discharge
+
+# A signed, creditor-issued discharge legitimizes the drop (acme was paid $70):
+settled = acme.discharge_liability("vendor", 70.0, as_of=t2)
+auditor.check_history_consistency([s1, s2], discharges=[settled]).consistent   # True
+```
+
+The discharge is the *creditor's* to issue, so a poster cannot forge its own — with the verifier a
+forged or poster-signed release does not explain a drop, and a release dated outside the transition
+window (or already consumed by another drop) does not apply. A back-dated link (a snapshot claiming to
+follow a *later* one) is refused, a tampered or unsigned snapshot is excluded as inadmissible, and a
+dropped `MonotonicityBreach` is caught by re-derivation. `app.check_history_consistency` records each
+inconsistent history (action `liability_history`, decision `consistent` / `inconsistent`) on the
+hash-chained audit log and dings the breaching poster on the reputation ledger; `require_monotone`
+raises on any unexplained drop and `require_linked` additionally demands a contiguous hash-linked
+chain.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -785,7 +821,10 @@ party's signed, verifiable proof that a creditor's claim is counted in the attes
 that the attested total omits nothing a creditor can prove, not a hosted attestation registry or a
 transparency log, and an equivocation proof is a non-repudiable fold of two conflicting liability
 roots one counterparty signed for the same instant, surfaced by creditors comparing the signed roots
-themselves, not a hosted transparency log or a trusted third party. Vincio gives you a verifiable
+themselves, not a hosted transparency log or a trusted third party, and a history-consistency proof is
+a non-repudiable walk of a counterparty's hash-linked liability snapshots that pinpoints a debt
+dropped between them without a signed, creditor-issued discharge, not a hosted transparency log or a
+trusted third party. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
@@ -794,6 +833,7 @@ standing justifies, a verifiable way to back that exposure with posted collatera
 verifiable way to pool that collateral across many concurrent deals, a verifiable way to
 bound its re-use across them, a verifiable proof that the capital backing it actually
 exists, a verifiable proof that it exceeds everything the counterparty owes, a verifiable
-proof that the liabilities counted against it are complete, and a verifiable proof that the
-counterparty signed one liability total per instant, not different ones to different creditors;
-how an obligation is paid is yours.
+proof that the liabilities counted against it are complete, a verifiable proof that the
+counterparty signed one liability total per instant, not different ones to different creditors, and a
+verifiable proof that its liabilities are monotone over time, not a debt quietly dropped between
+snapshots; how an obligation is paid is yours.

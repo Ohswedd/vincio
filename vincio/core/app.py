@@ -3442,6 +3442,7 @@ class ContextApp:
         *,
         attestor: str | None = None,
         as_of: Any | None = None,
+        prior: Any | None = None,
         sign: bool = True,
         record_audit: bool = True,
     ) -> Any:
@@ -3452,8 +3453,9 @@ class ContextApp:
         :class:`~vincio.settlement.LiabilityLine` items) whose total re-derives on every verify —
         the liability side of a proof-of-solvency. ``attestor`` defaults to this app (a
         third-party attestor vouching), and when it is also the ``poster`` the attestation is
-        self-attested. Signs it as the attestor and, unless ``record_audit`` is off, records the
-        issuance on the audit chain. Returns it::
+        self-attested. Pass ``prior`` (the preceding snapshot) to link it into a hash-linked history
+        :meth:`check_history_consistency` can walk. Signs it as the attestor and, unless
+        ``record_audit`` is off, records the issuance on the audit chain. Returns it::
 
             owed = app.attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
             proof = app.prove_solvency(reserves_proof, owed)
@@ -3461,7 +3463,9 @@ class ContextApp:
         from ..settlement import attest_liabilities as _attest
 
         resolved_attestor = attestor or self.name
-        attestation = _attest(poster, liabilities, attestor=resolved_attestor, as_of=as_of)
+        attestation = _attest(
+            poster, liabilities, attestor=resolved_attestor, as_of=as_of, prior=prior
+        )
         if sign and self.name == attestation.attestor:
             signer = self._resolve_contract_signer(None, True)
             if signer is not None:
@@ -3656,6 +3660,104 @@ class ContextApp:
                     details={"kind": "liability_equivocation", "attestor": proof.attestor},
                 )
                 dinged.add(proof.poster)
+        return report
+
+    def discharge_liability(
+        self,
+        poster: str,
+        amount_usd: float,
+        *,
+        creditor: str | None = None,
+        as_of: Any | None = None,
+        note: str = "",
+        sign: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Issue a signed, content-bound :class:`~vincio.settlement.Discharge` of what ``poster`` owes.
+
+        Releases ``amount_usd`` of the obligation ``poster`` owes this app — the **creditor** issues
+        the discharge, so ``creditor`` defaults to this app and it is signed with this app's key.
+        Folded into :meth:`check_history_consistency` (``discharges=``) to explain a legitimate
+        reduction in the poster's liabilities between two snapshots, so the matching drop is not
+        treated as a debt that silently vanished. Unless ``record_audit`` is off, records the
+        issuance on the audit chain. Returns it::
+
+            settled = acme.discharge_liability("vendor", 70.0)  # acme releases $70 of vendor's debt
+            report = auditor.check_history_consistency(snapshots, discharges=[settled])
+        """
+        from ..settlement import discharge_liability as _discharge
+
+        resolved_creditor = creditor or self.name
+        discharge = _discharge(poster, resolved_creditor, amount_usd, as_of=as_of, note=note)
+        if sign and self.name == discharge.creditor:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                discharge.sign(signer, party=discharge.creditor)
+        if record_audit and self.audit is not None:
+            from ..settlement.solvency import DISCHARGE_ACTION
+
+            entry = self.audit.record(
+                DISCHARGE_ACTION,
+                resource=discharge.poster,
+                decision=discharge.status,
+                details=discharge.audit_details(),
+            )
+            discharge.audit_id = getattr(entry, "id", None)
+        return discharge
+
+    def check_history_consistency(
+        self,
+        attestations: Any,
+        *,
+        discharges: Any | None = None,
+        verify_with: Any | None = None,
+        record_reputation: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Walk a poster's liability snapshots for cross-time monotonicity (no debt silently dropped).
+
+        Folds a set of liability snapshots into a
+        :class:`~vincio.settlement.HistoryConsistencyReport`
+        (:func:`~vincio.settlement.check_history_consistency`), surfacing every poster that let a
+        creditor's obligation **drop** between snapshots without a signed
+        :class:`~vincio.settlement.Discharge` (``discharges``) explaining the release as a pinpointed
+        :class:`~vincio.settlement.MonotonicityBreach`. Where :meth:`check_root_consistency` catches a
+        counterparty signing different roots for the *same* instant, this catches one quietly dropping
+        a past obligation in a *later* snapshot. With ``verify_with`` only attestor-signed snapshots
+        and creditor-signed discharges are admitted as evidence. Unless ``record_audit`` is off,
+        records each inconsistent history on the audit chain; unless ``record_reputation`` is off,
+        credits a failure against the breaching poster on this app's reputation ledger (when one is
+        attached). Returns the report::
+
+            s1 = vendor.attest_liabilities("vendor", {"acme": 100.0}, as_of=t1)
+            s2 = vendor.attest_liabilities("vendor", {"acme": 30.0}, as_of=t2, prior=s1)
+            report = auditor.check_history_consistency([s1, s2])
+            report.require_consistent()  # raises: $70 owed to acme vanished without a discharge
+        """
+        from ..settlement import check_history_consistency as _check
+
+        report = _check(attestations, discharges=discharges, verifier=verify_with)
+        signer = self._resolve_contract_signer(None, True)
+        for proof in report.proofs:
+            if signer is not None:
+                proof.sign(signer, party=self.name)
+            if record_audit and self.audit is not None:
+                from ..settlement.solvency import HISTORY_ACTION
+
+                entry = self.audit.record(
+                    HISTORY_ACTION,
+                    resource=proof.poster,
+                    decision=proof.status,
+                    details=proof.audit_details(),
+                )
+                proof.audit_id = getattr(entry, "id", None)
+            if record_reputation and self.reputation_ledger is not None and not proof.monotone:
+                self.reputation_ledger.record_outcome(
+                    proof.poster,
+                    passed=False,
+                    round_id=proof.id,
+                    details={"kind": "liability_history", "attestor": proof.attestor},
+                )
         return report
 
     def guard_collateral(

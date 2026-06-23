@@ -937,6 +937,42 @@ signature on each whole attestation; the `RootCommitment` is a privacy-preservin
 whose accusation is substantiated by those full attestations, since a commitment alone, lacking the
 line items, cannot recompute its own hash.
 
+### Cross-org liability history consistency & snapshot monotonicity
+
+A history-consistency check (`HistoryConsistencyProof` / `check_history_consistency` /
+`app.check_history_consistency` / `book.check_history_consistency`, with `Discharge` /
+`discharge_liability` and the `prior=` link on `attest_liabilities` / `LiabilityAttestation.link_to`,
+all in `vincio.settlement.solvency`) is a **signed, content-bound proof that a counterparty's
+liabilities are monotone over time — a debt committed in one snapshot does not silently vanish from a
+later one — never a hosted transparency log or a trusted third party**. It closes the gap
+non-equivocation leaves: non-equivocation is scoped to one `as_of` (two roots for the *same* instant
+are a contradiction), so a counterparty can still issue a *later* snapshot that quietly **drops** a
+past obligation, each snapshot internally sound and nothing tying one attestation to its predecessor.
+A `LiabilityAttestation` carries an optional commitment to the prior snapshot's root (`prior_hash` /
+`prior_root` / `prior_as_of`), **bound into its signed content hash**, so a poster's attestations form
+a **hash-linked** sequence each `as_of` strictly succeeding the last — a back-dated link (a successor
+claiming to follow a *later* snapshot) is caught from the bytes alone (`_prior_link_sound`), so a
+poster cannot re-order its own history. `check_history_consistency` groups the snapshots by
+`(poster, attestor)`, walks each poster's chain in `as_of` order, and folds it into a
+`HistoryConsistencyProof` that re-derives every per-creditor obligation from the **embedded whole
+snapshots**: a creditor's obligation that **shrinks** between two snapshots is legitimate only when a
+signed, **creditor-issued** `Discharge` evidences the release (`amount ≥` the drop, dated in the
+transition window, each discharge consumed by at most one transition so one release cannot explain
+two drops), and any unexplained drop surfaces as a pinpointed `MonotonicityBreach`. **Trust model:**
+the discharge is the *creditor's* to issue, so only the creditor signs it — a poster cannot forge its
+own discharge to paper over a drop, and with the verifier a forged or poster-signed release does not
+count (the drop stays a breach). The walk and the proof read only signed, content-bound artifacts: a
+tampered or unsigned snapshot is **excluded** as inadmissible (it cannot found a false breach), a
+forged or out-of-window discharge does not explain a drop, and a dropped `MonotonicityBreach` is
+caught by re-derivation (`HistoryConsistencyProof.verify` recomputes the breaches from the embedded
+snapshots and discharges from the bytes alone). The breaching poster is dinged on the **reputation
+path**, and every check lands on the hash-chained audit log (action `liability_history`, decision =
+`consistent` / `inconsistent`; a discharge issuance lands under `liability_discharge`).
+`require_monotone` raises on any unexplained drop, and `require_linked` additionally demands the
+snapshots be a contiguous hash-linked chain (no snapshot spliced out). Monotonicity is checked on the
+sorted sequence regardless of linking, so an unlinked legacy history is still walked; the link adds a
+tamper-evident guarantee that a creditor holds the *complete* sequence.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

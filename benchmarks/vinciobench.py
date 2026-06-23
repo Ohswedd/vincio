@@ -9024,9 +9024,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     # {globex: 40} — a smaller total each, for the *same* instant.
     eq_acme = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=eq_t)
     eq_globex = attest_liabilities("vendor", {"globex": 40.0}, attestor="auditor", as_of=eq_t)
-    eq_signer = ContextApp(
-        name="auditor", provider=MockProvider(default_text="ok")
-    ).contract_signer
+    eq_signer = ContextApp(name="auditor", provider=MockProvider(default_text="ok")).contract_signer
     eq_acme.sign(eq_signer, party="auditor")
     eq_globex.sign(eq_signer, party="auditor")
     # The privacy-preserving commitments detect the conflict without the line items.
@@ -9064,9 +9062,12 @@ async def bench_reputation_portability() -> dict[str, Any]:
     except SettlementError:
         eq_forged_refused = True
     eq_honest = check_root_consistency(
-        [eq_acme, attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=eq_t).sign(
-            eq_signer, party="auditor"
-        )],
+        [
+            eq_acme,
+            attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=eq_t).sign(
+                eq_signer, party="auditor"
+            ),
+        ],
         verifier=eq_signer,
     )
     eq_scan_forged = check_root_consistency([eq_acme, eq_forged], verifier=eq_signer)
@@ -9080,6 +9081,88 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and eq_forged_refused
         and eq_scan_forged.consistent  # the forged root cannot manufacture a false accusation
         and eq_honest.consistent  # the same root shown to every creditor is consistent
+    )
+
+    # 55. Liability history consistency: non-equivocation is scoped to one instant — a counterparty
+    #     can still issue a *later* snapshot that quietly drops a past obligation, each snapshot
+    #     internally sound. A LiabilityAttestation links to its predecessor's root (a hash-linked
+    #     history), and check_history_consistency walks the snapshots: an obligation that shrinks is
+    #     legitimate only when a signed, creditor-issued Discharge evidences the release; any
+    #     unexplained drop is a pinpointed MonotonicityBreach.
+    from vincio import (
+        HistoryConsistencyProof,
+        check_history_consistency,
+        discharge_liability,
+    )
+
+    h_t1 = _dt(2026, 1, 1, tzinfo=UTC)
+    h_t2 = _dt(2026, 2, 1, tzinfo=UTC)
+    h_t3 = _dt(2026, 3, 1, tzinfo=UTC)
+    # acme is owed $100 across two linked snapshots, then the vendor drops it to $30 with nothing
+    # behind it — a debt that silently vanished between snapshots.
+    h_s1 = attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=h_t1)
+    h_s1.sign(eq_signer, party="auditor")
+    h_s2 = attest_liabilities(
+        "vendor", {"acme": 100.0}, attestor="auditor", as_of=h_t2, prior=h_s1
+    ).sign(eq_signer, party="auditor")
+    h_drop = attest_liabilities(
+        "vendor", {"acme": 30.0}, attestor="auditor", as_of=h_t3, prior=h_s2
+    ).sign(eq_signer, party="auditor")
+    h_report = check_history_consistency([h_s1, h_s2, h_drop], verifier=eq_signer)
+    h_proof = h_report.proofs[0]
+    h_breach = h_proof.breaches[0] if h_proof.breaches else None
+    history_detects_silent_drop = bool(
+        h_s2.prior_hash == h_s1.content_hash  # the snapshots form a hash-linked chain
+        and h_proof.chain_linked
+        and not h_report.consistent
+        and h_report.breaching_posters == ["vendor"]
+        and h_breach is not None
+        and abs(h_breach.unexplained_usd - 70.0) <= 1e-6
+        and h_proof.verify(eq_signer).valid
+        and HistoryConsistencyProof.from_wire(h_proof.to_wire()).verify(eq_signer).valid
+    )
+
+    # Auditable & offline: a signed, creditor-issued discharge legitimately explains the drop (a
+    # forged one does not); a back-dated link is refused; the scan dings the breaching poster's
+    # reputation and lands on the audit chain; a dropped breach is caught from the bytes.
+    h_app = ContextApp(name="auditor", provider=MockProvider(default_text="ok"), config=cfg)
+    h_app.use_settlement_book()
+    h_app.use_reputation_ledger()
+    h_a1 = h_app.attest_liabilities("vendor", {"acme": 100.0}, as_of=h_t1)
+    h_a2 = h_app.attest_liabilities("vendor", {"acme": 30.0}, as_of=h_t2, prior=h_a1)
+    h_app_report = h_app.check_history_consistency([h_a1, h_a2], verify_with=h_app.contract_signer)
+    # The creditor signs its discharge with the shared fabric secret (party = its identity), so the
+    # one verifier checks the attestor's and the creditor's signatures alike; a forged release is
+    # signed with the wrong key.
+    h_settled = discharge_liability("vendor", "acme", 70.0, as_of=h_t3).sign(
+        eq_signer, party="acme"
+    )
+    h_forged = discharge_liability("vendor", "acme", 70.0, as_of=h_t3).sign(
+        HMACSigner("forger-key", key_id="acme"), party="acme"
+    )
+    h_explained = check_history_consistency(
+        [h_s1, h_s2, h_drop], discharges=[h_settled], verifier=eq_signer
+    )
+    h_still_bad = check_history_consistency(
+        [h_s1, h_s2, h_drop], discharges=[h_forged], verifier=eq_signer
+    )
+    try:
+        attest_liabilities("vendor", {"acme": 1.0}, attestor="auditor", as_of=h_t1, prior=h_s2)
+        h_backdate_refused = False
+    except SettlementError:
+        h_backdate_refused = True
+    h_tampered = check_history_consistency([h_s1, h_s2, h_drop], verifier=eq_signer).proofs[0]
+    h_tampered.breaches = []  # forge away the breach
+    history_auditable_offline = bool(
+        h_explained.consistent  # the creditor-signed discharge explains the drop
+        and not h_still_bad.consistent  # the forged release cannot paper over it
+        and h_backdate_refused
+        and not h_tampered.verify(eq_signer).valid  # a dropped breach is caught from the bytes
+        and not h_app_report.consistent
+        and h_app_report.proofs[0].audit_id is not None
+        and len(h_app.audit.query(action="liability_history")) == 1
+        and h_app.audit.verify_chain()
+        and h_app.reputation_ledger.weight("vendor") < 1.0  # a silent drop counts as a failure
     )
 
     return {
@@ -9140,6 +9223,8 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "completeness_auditable_offline": completeness_auditable_offline,
         "equivocation_detects_conflicting_roots": equivocation_detects_conflicting_roots,
         "equivocation_auditable_offline": equivocation_auditable_offline,
+        "history_detects_silent_drop": history_detects_silent_drop,
+        "history_auditable_offline": history_auditable_offline,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),
