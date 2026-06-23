@@ -790,6 +790,43 @@ hash-chained audit log and dings the breaching poster on the reputation ledger; 
 raises on any unexplained drop and `require_linked` additionally demands a contiguous hash-linked
 chain.
 
+## Resolving an insolvency
+
+A solvency proof *flags* an insolvency when proven liabilities exceed proven reserves — but it says
+nothing about **which** creditors the scarce capital pays, or in what order, so every creditor is left
+to assume it is made whole. Rank the obligations into a signed `SenioritySchedule`
+(`app.build_seniority_schedule` / `build_seniority_schedule`) — the simplest spec is a list of
+creditor-name lists where position is priority (rank `0` most senior) — and `resolve_insolvency`
+(`app.resolve_insolvency` / `book.resolve_insolvency`) distributes the proven reserves across the
+obligations **by seniority then pari-passu within a tranche**, into an `InsolvencyResolution` that
+pinpoints each creditor's bounded recovery and the shortfall it bears.
+
+```python
+reserves = vendor.attest_custody("vendor", {"omnibus": 60.0})       # $60 held
+owed = auditor.attest_liabilities(
+    "vendor", {"bank": 50.0, "acme": 30.0, "globex": 20.0}          # $100 owed -> $40 short
+)
+schedule = bank.build_seniority_schedule("vendor", [["bank"], ["acme", "globex"]])
+
+resolution = auditor.resolve_insolvency(reserves, owed, schedule)
+resolution.status                       # "resolved" (some creditor bears a shortfall)
+resolution.recovery_of("bank").recovery_usd     # 50.0 — senior tranche paid in full first
+resolution.recovery_of("acme").recovery_usd     # 6.0  — junior tranche pari-passu (20%)
+resolution.shortfall_bearers            # ["acme", "globex"] — ordered by seniority
+resolution.require_fully_recovered()    # raises: $40 unrecovered
+```
+
+With no schedule the whole set is one pari-passu tranche (exactly the rehypothecation guard's
+apportionment); a counterparty whose reserves cover every obligation is `solvent` and makes each
+creditor whole. `resolve_insolvency` reuses `prove_solvency`, so a tampered, forged, or wrong-poster
+attestation (or a malformed/wrong-poster schedule) is refused; pass `completeness=` to distribute
+against the *completed* liability set. `InsolvencyResolution.verify` re-derives the entire distribution
+from the recorded claims, ranks, and reserves — an over-stated recovery or a re-ordered tranche is
+caught from the bytes alone — and passing the `schedule` binds each creditor's rank to the one it
+signed. `app.resolve_insolvency` records the resolution (action `insolvency_resolution`, decision
+`solvent` / `resolved`) on the hash-chained audit log and dings a poster that could not make its
+creditors whole on the reputation ledger.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -824,7 +861,9 @@ roots one counterparty signed for the same instant, surfaced by creditors compar
 themselves, not a hosted transparency log or a trusted third party, and a history-consistency proof is
 a non-repudiable walk of a counterparty's hash-linked liability snapshots that pinpoints a debt
 dropped between them without a signed, creditor-issued discharge, not a hosted transparency log or a
-trusted third party. Vincio gives you a verifiable
+trusted third party, and an insolvency resolution is a verifiable distribution of a counterparty's
+proven reserves across the creditors it owes by seniority then pari-passu within a tranche, not a
+hosted receiver, a bankruptcy court, or a trusted third party. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
@@ -834,6 +873,7 @@ verifiable way to pool that collateral across many concurrent deals, a verifiabl
 bound its re-use across them, a verifiable proof that the capital backing it actually
 exists, a verifiable proof that it exceeds everything the counterparty owes, a verifiable
 proof that the liabilities counted against it are complete, a verifiable proof that the
-counterparty signed one liability total per instant, not different ones to different creditors, and a
+counterparty signed one liability total per instant, not different ones to different creditors, a
 verifiable proof that its liabilities are monotone over time, not a debt quietly dropped between
-snapshots; how an obligation is paid is yours.
+snapshots, and a verifiable resolution of an insolvency into who-gets-what by seniority, not a debt
+left to assume it is made whole; how an obligation is paid is yours.

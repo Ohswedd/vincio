@@ -973,6 +973,39 @@ snapshots be a contiguous hash-linked chain (no snapshot spliced out). Monotonic
 sorted sequence regardless of linking, so an unlinked legacy history is still walked; the link adds a
 tamper-evident guarantee that a creditor holds the *complete* sequence.
 
+### Cross-org insolvency resolution & liability seniority waterfall
+
+An insolvency resolution (`InsolvencyResolution` / `resolve_insolvency` / `app.resolve_insolvency` /
+`book.resolve_insolvency`, with `SenioritySchedule` / `build_seniority_schedule`, all in
+`vincio.settlement.waterfall`) is a **signed, content-bound resolution distributing a counterparty's
+proven reserves across the creditors it owes by seniority then pari-passu within a tranche, never a
+hosted receiver, a bankruptcy court, or a trusted third party**. It closes the gap the solvency proof
+leaves: a `SolvencyProof` *flags* an insolvency (proven liabilities exceed proven reserves) but says
+nothing about **which** creditors the scarce capital pays, or in what order — an insolvency was
+flagged, not resolved, and every creditor was left to assume it was made whole. A `SenioritySchedule`
+ranks the obligations into priority tranches (rank `0` most senior), **content-bound and signed** by
+the counterparty or its creditors, so the order capital is paid in is an auditable, non-repudiable
+artifact rather than one side's assertion; `SenioritySchedule.verify` refuses a re-ordered or
+malformed ranking (a duplicate rank, a creditor in two tranches) from the bytes, and an unlisted
+creditor falls to the most-junior residual rank (an incomplete schedule never silently promotes an
+omitted creditor). `resolve_insolvency` **reuses `prove_solvency`** for every tamper, forgery, and
+wrong-poster refusal, then distributes the proven reserves: a senior tranche is paid in full before
+any capital reaches a junior one, and a partly-funded tranche splits what is left proportionally to
+each claim (pari passu) — pinpointing each creditor's bounded `CreditorRecovery` (its recovery and the
+shortfall it bears). **Trust model:** the resolution asserts nothing it cannot recompute —
+`InsolvencyResolution.verify` re-derives the **entire** distribution from the recorded per-creditor
+claims, ranks, and reserves, so an over-stated recovery, a re-ordered tranche, or a junior creditor
+paid ahead of a senior one is caught from the bytes alone (even after re-sealing); passing the
+`schedule` additionally binds each creditor's rank to the one its creditors signed (a quiet re-ranking
+is refused), and the bound liability total must equal the sum of the per-creditor claims (a forged
+total is caught). A tampered or wrong-poster attestation, or a malformed/wrong-poster schedule, is
+**refused** at fold time. The poster that could not make its creditors whole is dinged on the
+**reputation path**, and every schedule and resolution lands on the hash-chained audit log (actions
+`seniority_schedule`, decision = `self_ranked` / `ranked`; `insolvency_resolution`, decision =
+`solvent` / `resolved`). With no schedule the whole set is one pari-passu tranche; a pre-built
+`SolvencyProof` passed as `solvency=` must verify and bind the supplied attestations (an unrelated or
+tampered proof is refused). `require_fully_recovered` raises when any creditor bears a shortfall.
+
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a
 `vincio.<kind>` entry point — treat plugins like any dependency and vet them

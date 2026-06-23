@@ -4,6 +4,49 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.42.0] - 2026-06-23
+
+Cross-org insolvency resolution & liability seniority waterfall. A `SolvencyProof` (3.38) *flags* an insolvency when a
+counterparty's proven liabilities exceed its proven reserves, and a history walk (3.41) pinpoints a debt that silently
+vanished — but when the reserves genuinely **cannot** cover every obligation, nothing yet said **which** creditors the
+available capital pays, and in what order. An insolvency was flagged, not resolved; every creditor was left to assume it
+was made whole. The rehypothecation guard already apportions a scarce stake across beneficiaries pari-passu; the liability
+side needed the same, plus the **seniority** real obligations carry. This release ranks the obligations into a signed
+priority schedule and distributes the proven reserves across them by seniority then pari-passu within a tranche, resolving
+an insolvency into who-gets-what. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, every existing
+custody, solvency, completeness, non-equivocation, history, escrow, pooling, rehypothecation, admission, and settlement
+path is unchanged, and the whole theme runs offline and deterministically.
+
+### Added
+
+- **Signed seniority schedule (`vincio.settlement.waterfall`).** `build_seniority_schedule(poster, tranches, *,
+  as_of=None)` ranks a poster's obligations into a sealed, unsigned `SenioritySchedule` of priority tranches (rank `0`
+  most senior) — `tranches` is an ordered spec: a list of creditor-name lists where position is priority, `SeniorityTranche`
+  items, or `{rank, creditors, label}` dicts. Signed by the poster or its creditors; `verify` recomputes the hash and
+  refuses a malformed ranking (a duplicate rank, a creditor in two tranches). An unlisted creditor falls to the
+  most-junior `residual_rank`. `SeniorityTranche`, `SeniorityVerification`, `SenioritySchedule`,
+  `build_seniority_schedule` are public.
+- **Insolvency waterfall.** `resolve_insolvency(custody, liabilities, schedule=None, *, poster=None, completeness=None,
+  solvency=None, as_of=None, verifier=None)` reuses `prove_solvency` (so a tampered/forged/wrong-poster attestation is
+  refused) and distributes the proven reserves across the obligations **by seniority then pari-passu within a tranche**
+  into an `InsolvencyResolution` — a senior tranche paid in full before a junior one, a partly-funded tranche split
+  proportionally — pinpointing each creditor's bounded `CreditorRecovery` (recovery + shortfall) and per-rank
+  `WaterfallTranche`. With no schedule the whole set is one pari-passu tranche; pass `completeness` to distribute against
+  the completed liability set. `verify(verifier=None, schedule=None, *, require=None)` re-derives the entire distribution
+  from the recorded claims/ranks/reserves (an over-stated recovery, a re-ordered tranche, or a junior creditor paid ahead
+  of a senior one is refused even after re-sealing) and binds the schedule by hash. `solvent` / `insolvent` /
+  `fully_recovered` / `shortfall_bearers` / `recovery_of`, `require_valid` / `require_fully_recovered`.
+  `CreditorRecovery`, `WaterfallTranche`, `InsolvencyResolution`, `InsolvencyResolutionVerification`, `resolve_insolvency`
+  are public.
+- **App & book methods.** `app.build_seniority_schedule` / `book.build_seniority_schedule` sign and record the schedule
+  (action `seniority_schedule`, decision `self_ranked` / `ranked`); `app.resolve_insolvency` / `book.resolve_insolvency`
+  sign and record the resolution (action `insolvency_resolution`, decision `solvent` / `resolved`) and credit a failure
+  against a poster that could not make its creditors whole on the bound `ReputationLedger`.
+- **VincioBench, SLO, example, docs.** The `reputation_portability` family gains `insolvency_resolution_distributes` and
+  `insolvency_resolution_auditable_offline` with a published insolvency-resolution SLO and CI budgets; example
+  `86_cross_org_insolvency_resolution.py`; the settlement guide, README, llms.txt, SECURITY.md, ROADMAP, and the
+  generated API index are updated. The public surface grows from 383 to 392 symbols.
+
 ## [3.41.0] - 2026-06-23
 
 Cross-org liability history consistency & snapshot monotonicity. Non-equivocation (3.40) catches a counterparty signing
