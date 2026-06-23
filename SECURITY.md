@@ -860,7 +860,44 @@ breach **re-derive from the bytes alone** (a flipped verdict re-sealed to match 
 decision = `solvent` / `insolvent`), and the held figure the guard bounds against is now bounded
 by the counterparty's whole obligation set, not one buyer's view. The proof rests on the attestor
 including every creditor honestly — proving each creditor's claim is *included* in the total
-(completeness, not merely an internally-consistent sum) is the next scheduled reach.
+(completeness, not merely an internally-consistent sum) is the trust gap the next section closes.
+
+### Cross-org liability inclusion proofs & completeness
+
+An inclusion proof and a completeness check (`InclusionProof` / `CompletenessProof` /
+`check_completeness` / `app.inclusion_proof` / `app.check_completeness` in
+`vincio.settlement.solvency`) are **signed, content-bound proofs that the liabilities a solvency
+proof folds are complete, not merely internally consistent — never a hosted attestation registry
+or a transparency log**. They close the residual gap the solvency proof leaves: the liability
+*total* is still the attestor's single number, so a counterparty could **under-state** what it
+owes by quietly omitting a creditor and still attest a sound, re-deriving total over the creditors
+it *did* list. A `LiabilityAttestation` now commits its line items into a **Merkle root**
+(`liabilities_root`) bound into the signed content hash — the total *and* the root **re-derive from
+the line items on every verify**, so a dropped or reordered line is caught even after re-sealing —
+and each creditor gets an `InclusionProof` that its claim is a leaf of that root. The proof reads
+**only signed, content-bound artifacts**: `InclusionProof.verify(attestation)` recomputes the
+creditor's leaf and folds it up the authentication path, **refusing** a tampered leaf or a forged
+root (the path no longer reconstructs the committed root) and, against the attestation, a root
+lifted from a *different* attestation or a leaf the attestation never committed to (with the
+verifier, a forged attestor signature too). Domain-separated leaf/interior hashes mean an interior
+node can never be presented as a leaf (the Merkle second-preimage guard), and the leaf binds the
+creditor's sorted position so a reordering cannot substitute one claim for another.
+`check_completeness` folds a set of creditor claims (a mapping, line items, settlement records, or
+a creditor's own settled records) against the attestation into a `CompletenessProof`, pinpointing
+every omitted or under-stated claim as an `OmissionBreach` and raising the attested figure to a
+**completed** total. It **refuses** a tampered attestation (and a forged attestor with the
+verifier); the completed total and the breaches **re-derive from the bytes alone**
+(`completeness_sound`) — a tampered completed total, or one dropped below the folded claims
+(`completed ≥ claimed`), is caught even after re-sealing. `prove_solvency(..., completeness=)` reads
+the completed total instead of the attestor's figure (refusing a check for a *different* poster or
+attestation), so the solvency margin — and the held figure the guard bounds pledges against — is
+bounded by the obligations creditors can **prove**, tipping a counterparty that looked solvent on
+the attestor's number into a pinpointed insolvency. Every check is signed and lands on the
+hash-chained audit log (action `liability_completeness`, decision = `complete` / `incomplete`).
+**Trust model:** a completeness check is the *creditor's* signed, non-repudiable claim — the
+security property is that an *omitted creditor* can produce and sign one (no third party can be
+forced to fold a claim it does not hold), not that any observer can reconstruct omissions from the
+attestation alone; tampering with a *given* signed check is what is caught from the bytes.
 
 **Third-party plugins execute in your process.** The `vincio.plugins` entry-point
 system imports and runs code from any installed distribution advertising a

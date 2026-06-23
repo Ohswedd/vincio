@@ -15,13 +15,17 @@ import pytest
 
 from vincio import (
     CollateralLedger,
+    CompletenessProof,
     ContextApp,
+    InclusionProof,
     InsolvencyBreach,
     LiabilityAttestation,
     LiabilityLine,
+    OmissionBreach,
     SolvencyProof,
     attest_custody,
     attest_liabilities,
+    check_completeness,
     guard_collateral,
     post_collateral_pool,
     prove_solvency,
@@ -30,7 +34,11 @@ from vincio.core.errors import SettlementError
 from vincio.negotiation import Contract, ContractTerms
 from vincio.providers import MockProvider
 from vincio.security.audit import HMACSigner
-from vincio.settlement.solvency import LIABILITY_ACTION, SOLVENCY_ACTION
+from vincio.settlement.solvency import (
+    COMPLETENESS_ACTION,
+    LIABILITY_ACTION,
+    SOLVENCY_ACTION,
+)
 
 ATTESTOR = HMACSigner("attestor-key", key_id="attestor")
 CUSTODIAN = HMACSigner("custodian-key", key_id="custodian")
@@ -659,3 +667,400 @@ def test_summary_mentions_insolvent(capsys):
     ledger.print_summary()
     out = capsys.readouterr().out
     assert "insolvent" in out
+
+
+# == liability inclusion proofs ===============================================
+
+# -- the attestation's Merkle commitment --------------------------------------
+
+
+def test_attestation_commits_a_merkle_root():
+    att = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+    assert att.liabilities_root
+    assert att.liabilities_root == att.compute_root()
+    assert att.verify().valid and att.verify().liabilities_sound
+
+
+def test_root_is_order_independent_but_content_dependent():
+    a = attest_liabilities("vendor", [("acme", 60.0), ("globex", 40.0)])
+    b = attest_liabilities("vendor", [("globex", 40.0), ("acme", 60.0)])
+    assert a.liabilities_root == b.liabilities_root  # canonical creditor-sorted order
+    c = attest_liabilities("vendor", {"acme": 60.0, "globex": 41.0})
+    assert c.liabilities_root != a.liabilities_root  # a changed amount changes the root
+
+
+def test_tampered_root_is_caught_even_after_reseal():
+    att = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+    att.liabilities_root = "0" * 32  # forge the commitment ...
+    att.content_hash = att.compute_hash()  # ... and re-seal the hash to match the lie
+    result = att.verify()
+    assert result.hash_ok  # the hash matches the forged facts
+    assert not result.liabilities_sound  # but the root no longer re-derives
+    assert not result.valid
+
+
+def test_empty_attestation_has_a_well_defined_root():
+    att = attest_liabilities("vendor", {})
+    assert att.liabilities_root and att.liabilities_root == att.compute_root()
+    assert att.verify().valid
+
+
+# -- inclusion proofs ---------------------------------------------------------
+
+
+def test_inclusion_proof_verifies_against_the_attestation():
+    att = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0, "initech": 25.0})
+    for creditor, amount in (("acme", 60.0), ("globex", 40.0), ("initech", 25.0)):
+        proof = att.inclusion_proof(creditor)
+        assert isinstance(proof, InclusionProof)
+        assert proof.creditor == creditor
+        assert proof.amount_usd == pytest.approx(amount)
+        assert proof.liability_hash == att.content_hash
+        assert proof.liabilities_root == att.liabilities_root
+        result = proof.verify(att)
+        assert result.valid and result.path_ok and result.bound_ok
+
+
+def test_inclusion_proof_path_verifies_standalone():
+    att = attest_liabilities("vendor", {"a": 1.0, "b": 2.0, "c": 3.0, "d": 4.0, "e": 5.0})
+    proof = att.inclusion_proof("c")
+    # The path alone reconstructs the committed root, without the attestation in hand.
+    assert proof.verify().path_ok
+
+
+def test_tampered_inclusion_leaf_is_caught():
+    att = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+    proof = att.inclusion_proof("acme")
+    forged = InclusionProof.from_wire(proof.to_wire())
+    forged.amount_usd = 9_999.0  # claim a bigger debt than the attested leaf
+    assert not forged.verify().path_ok  # the path no longer reconstructs the root
+    assert not forged.verify(att).valid
+
+
+def test_inclusion_proof_root_from_another_attestation_is_refused():
+    att = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+    other = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0, "extra": 1.0})
+    proof = att.inclusion_proof("acme")
+    lifted = InclusionProof.from_wire(proof.to_wire())
+    lifted.liabilities_root = other.liabilities_root  # forge the committed root
+    lifted.liability_hash = other.content_hash
+    # The path no longer reconstructs the (forged) root, and it isn't bound to `att`.
+    assert not lifted.verify(att).valid
+
+
+def test_inclusion_proof_for_unknown_creditor_is_refused():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    with pytest.raises(SettlementError):
+        att.inclusion_proof("nobody")
+
+
+def test_inclusion_proof_for_ambiguous_creditor_is_refused():
+    att = attest_liabilities("vendor", [("acme", 60.0), ("acme", 10.0)])
+    with pytest.raises(SettlementError):
+        att.inclusion_proof("acme")
+
+
+def test_inclusion_proofs_lists_every_line():
+    att = attest_liabilities("vendor", [("acme", 60.0), ("acme", 10.0), ("globex", 40.0)])
+    proofs = att.inclusion_proofs()
+    assert len(proofs) == 3
+    assert all(p.verify(att).valid for p in proofs)
+
+
+def test_forged_attestor_signature_invalidates_bound_inclusion_proof():
+    att = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor").sign(ATTESTOR)
+    proof = att.inclusion_proof("acme")
+    assert proof.verify(att, ATTESTOR).valid
+    assert not proof.verify(att, FORGER).valid  # the bound attestation fails signature check
+
+
+def test_inclusion_require_valid_raises_on_tamper():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    proof = att.inclusion_proof("acme")
+    proof.amount_usd = 1.0
+    with pytest.raises(SettlementError):
+        proof.require_valid()
+
+
+def test_app_and_book_inclusion_proof():
+    app = _app()
+    owed = app.attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+    proof = app.inclusion_proof(owed, "acme")
+    assert proof.verify(owed, app.contract_signer).valid
+    book_proof = app.settlement_book.inclusion_proof(owed, "globex")
+    assert book_proof.verify(owed).valid
+
+
+# == liability completeness ===================================================
+
+# -- the completeness check ---------------------------------------------------
+
+
+def test_complete_when_every_claim_is_attested():
+    att = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    assert check.complete and check.status == "complete"
+    assert not check.breaches
+    assert check.attested_usd == pytest.approx(100.0)
+    assert check.completed_usd == pytest.approx(100.0)
+    assert check.understated_usd == pytest.approx(0.0)
+    assert check.verify().valid
+
+
+def test_omitted_creditor_surfaces_an_omission_breach():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    assert not check.complete and check.status == "incomplete"
+    assert check.omitted_creditors == ["globex"]
+    (breach,) = check.breaches
+    assert isinstance(breach, OmissionBreach)
+    assert breach.creditor == "globex"
+    assert breach.omitted is True
+    assert breach.attested_usd == pytest.approx(0.0)
+    assert breach.claimed_usd == pytest.approx(40.0)
+    assert breach.understatement_usd == pytest.approx(40.0)
+    assert check.completed_usd == pytest.approx(100.0)
+    assert check.understated_usd == pytest.approx(40.0)
+
+
+def test_under_stated_creditor_surfaces_an_omission_breach():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 90.0})  # acme can prove it is owed 90, not 60
+    (breach,) = check.breaches
+    assert breach.omitted is False  # listed, but under-stated
+    assert breach.understatement_usd == pytest.approx(30.0)
+    assert check.completed_usd == pytest.approx(90.0)
+
+
+def test_completeness_accepts_liability_line_and_pair_claims():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(
+        att, [LiabilityLine(creditor="globex", amount_usd=40.0), ("zeta", 5.0)]
+    )
+    assert check.omitted_creditors == ["globex", "zeta"]
+    assert check.completed_usd == pytest.approx(105.0)
+
+
+def test_completeness_derives_claims_from_settlement_records():
+    # A creditor's own settled records back its claim: it delivered work it is owed for.
+    seller = _app("globex")
+    buyer_signer = HMACSigner("vendor-key", key_id="vendor")
+    contract = _contract("delivery", price=40.0, buyer="vendor", seller="globex")
+    record = seller.settle(contract, cost_usd=40.0)
+    record.sign(buyer_signer, party="vendor")
+    att = attest_liabilities("vendor", {"acme": 60.0})  # omits globex entirely
+    check = seller.settlement_book.check_completeness(att)  # claims derived from records
+    assert check.omitted_creditors == ["globex"]
+    assert check.completed_usd == pytest.approx(100.0)
+
+
+def test_negative_claim_is_refused():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    with pytest.raises(SettlementError):
+        check_completeness(att, {"acme": -1.0})
+
+
+def test_completeness_refuses_a_tampered_attestation():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    att.liabilities_usd = 1.0
+    att.seal()
+    with pytest.raises(SettlementError):
+        check_completeness(att, {"acme": 60.0})
+
+
+def test_completeness_forged_attestor_refused_with_verifier():
+    att = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor").sign(ATTESTOR)
+    att.signatures[0].signature = "deadbeef"  # forge the attestor signature
+    with pytest.raises(SettlementError):
+        check_completeness(att, {"acme": 60.0}, verifier=ATTESTOR)
+
+
+# -- offline verification of the completeness check ---------------------------
+
+
+def test_completeness_hash_recomputes_offline():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    restored = CompletenessProof.from_wire(check.to_wire())
+    assert restored.content_hash == check.content_hash
+    assert restored.verify().valid
+    assert restored.omitted_creditors == ["globex"]
+
+
+def test_hidden_omission_is_caught_even_after_reseal():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    check.breaches = []  # hide the omission ...
+    check.completed_usd = check.attested_usd  # ... and lower the completed total
+    check.seal()  # recompute the hash to match the lie
+    result = check.verify()
+    assert result.hash_ok  # the hash matches the forged facts
+    assert not result.completeness_sound  # but the completed total no longer re-derives
+    assert not result.valid
+
+
+def test_tampered_completed_total_is_caught():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    check.completed_usd = 9_999.0
+    check.seal()
+    assert not check.verify().completeness_sound
+
+
+def test_fabricated_breach_with_no_understatement_is_caught():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0})
+    assert check.complete
+    check.breaches = [
+        OmissionBreach(
+            poster="vendor",
+            attestor="vendor",
+            creditor="acme",
+            attested_usd=60.0,
+            claimed_usd=60.0,
+            understatement_usd=0.0,
+            omitted=False,
+        )
+    ]
+    check.seal()
+    assert not check.verify().completeness_sound  # a "breach" with no shortfall isn't real
+
+
+def test_require_complete_raises_on_omission():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    with pytest.raises(SettlementError):
+        check.require_complete()
+
+
+def test_require_complete_returns_self_when_complete():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0})
+    assert check.require_complete() is check
+
+
+def test_completeness_audit_details_are_json_safe():
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    details = check.audit_details()
+    import json
+
+    json.dumps(details)
+    assert details["status"] == "incomplete"
+    assert details["omitted_creditors"] == ["globex"]
+
+
+def test_completeness_summary_mentions_omission(capsys):
+    att = attest_liabilities("vendor", {"acme": 60.0})
+    check = check_completeness(att, {"acme": 60.0, "globex": 40.0})
+    check.print_summary()
+    out = capsys.readouterr().out
+    assert "globex" in out and "omitted" in out
+
+
+def test_app_check_completeness_signs_and_audits():
+    app = _app()
+    owed = app.attest_liabilities("vendor", {"acme": 60.0})
+    check = app.check_completeness(owed, {"acme": 60.0, "globex": 40.0})
+    assert check.audit_id is not None
+    assert len(app.audit.query(action=COMPLETENESS_ACTION)) == 1
+    assert check.verify(app.contract_signer, require=["auditor"]).valid
+
+
+# == completeness folded into proof-of-solvency ===============================
+
+
+def test_completeness_bounds_the_solvency_margin():
+    res, liab = _proofs(200.0, {"acme": 60.0})  # attestor lists only 60 owed
+    check = check_completeness(liab, {"acme": 60.0, "globex": 40.0})  # globex proves +40
+    proof = prove_solvency(res, liab, completeness=check)
+    assert proof.completeness_adjusted
+    assert proof.attested_liabilities_usd == pytest.approx(60.0)
+    assert proof.liabilities_usd == pytest.approx(100.0)  # completed total
+    assert proof.understated_usd == pytest.approx(40.0)
+    assert proof.margin_usd == pytest.approx(100.0)  # 200 − 100, not 200 − 60
+    assert proof.verify().valid
+
+
+def test_completeness_can_tip_a_proof_into_insolvency():
+    res, liab = _proofs(80.0, {"acme": 60.0})  # solvent on the attestor's figure (margin 20)
+    check = check_completeness(liab, {"acme": 60.0, "globex": 50.0})  # +50 hidden
+    proof = prove_solvency(res, liab, completeness=check)
+    assert proof.insolvent
+    assert proof.breach is not None
+    assert proof.breach.shortfall_usd == pytest.approx(30.0)  # 110 owed vs 80 held
+    assert proof.solvency_adjusted_held == pytest.approx(0.0)
+
+
+def test_complete_check_leaves_the_margin_unchanged():
+    res, liab = _proofs(200.0, {"acme": 60.0, "globex": 40.0})
+    check = check_completeness(liab, {"acme": 60.0, "globex": 40.0})  # nothing omitted
+    proof = prove_solvency(res, liab, completeness=check)
+    assert proof.completeness_adjusted  # the check was folded ...
+    assert proof.understated_usd == pytest.approx(0.0)  # ... but raised nothing
+    assert proof.liabilities_usd == pytest.approx(100.0)
+    assert proof.margin_usd == pytest.approx(100.0)
+
+
+def test_completeness_for_a_different_attestation_is_refused():
+    res, liab = _proofs(200.0, {"acme": 60.0})
+    other = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+    check = check_completeness(other, {"acme": 60.0})  # bound to `other`, not `liab`
+    with pytest.raises(SettlementError):
+        prove_solvency(res, liab, completeness=check)
+
+
+def test_completeness_for_a_different_poster_is_refused():
+    res = attest_custody("vendor", 200.0, custodian="custodian")
+    liab = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor")
+    other_poster = attest_liabilities("globex", {"acme": 60.0}, attestor="auditor")
+    check = check_completeness(other_poster, {"acme": 90.0})
+    with pytest.raises(SettlementError):
+        prove_solvency(res, liab, completeness=check)
+
+
+def test_tampered_completeness_is_refused_at_prove_solvency():
+    res, liab = _proofs(200.0, {"acme": 60.0})
+    check = check_completeness(liab, {"acme": 90.0})
+    check.completed_usd = 60.0  # hide the understatement ...
+    check.seal()  # ... and re-seal
+    with pytest.raises(SettlementError):
+        prove_solvency(res, liab, completeness=check)
+
+
+def test_solvency_completed_figure_cannot_drop_below_attested():
+    # The completed liabilities can only *raise* the attestor's figure. A forged proof that
+    # lowers the completed total below the attested figure no longer re-derives.
+    res, liab = _proofs(200.0, {"acme": 60.0})
+    check = check_completeness(liab, {"acme": 60.0, "globex": 40.0})
+    proof = prove_solvency(res, liab, completeness=check)
+    proof.liabilities_usd = 50.0  # below the attested 60 ...
+    proof.margin_usd = 150.0
+    proof.seal()  # ... and re-seal
+    assert not proof.verify().margin_sound
+
+
+def test_completeness_folds_through_app_and_guard():
+    app = _app()
+    res = app.attest_custody("vendor", 200.0)
+    owed = app.attest_liabilities("vendor", {"acme": 60.0})
+    check = app.check_completeness(owed, {"acme": 60.0, "globex": 40.0})
+    proof = app.prove_solvency(res, owed, completeness=check)
+    pool = post_collateral_pool([_contract("a", 100.0)], fraction=0.5)  # pledges 50
+    ledger = app.guard_collateral([pool], solvency=proof)
+    assert ledger.solvency_adjusted
+    assert ledger.held_usd == pytest.approx(100.0)  # 200 − 100 completed, not 200 − 60
+    assert ledger.liabilities_usd == pytest.approx(100.0)
+    assert ledger.gross_reserves_usd == pytest.approx(200.0)
+    assert ledger.verify(app.contract_signer).valid
+
+
+def test_solvency_wire_roundtrip_preserves_completeness_fields():
+    res, liab = _proofs(200.0, {"acme": 60.0})
+    check = check_completeness(liab, {"acme": 60.0, "globex": 40.0})
+    proof = prove_solvency(res, liab, completeness=check)
+    restored = SolvencyProof.from_wire(proof.to_wire())
+    assert restored.completeness_hash == check.content_hash
+    assert restored.completeness_adjusted
+    assert restored.attested_liabilities_usd == pytest.approx(60.0)
+    assert restored.verify().valid

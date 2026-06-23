@@ -1954,6 +1954,15 @@
     "families.reputation_portability.solvency_auditable_offline": {
       "eq": true
     },
+    "families.reputation_portability.inclusion_proof_detects_omission": {
+      "eq": true
+    },
+    "families.reputation_portability.completeness_bounds_solvency": {
+      "eq": true
+    },
+    "families.reputation_portability.completeness_auditable_offline": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

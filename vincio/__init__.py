@@ -308,20 +308,26 @@ from .settlement import (
     CollateralLedgerVerification,
     CollateralPool,
     CollateralPoolVerification,
+    CompletenessProof,
+    CompletenessVerification,
     CustodyAttestation,
     CustodyAttestationVerification,
     Escrow,
     EscrowConfig,
     EscrowVerification,
     GatheredReputation,
+    InclusionProof,
+    InclusionProofVerification,
     InsolvencyBreach,
     IssuerTrust,
     LiabilityAttestation,
     LiabilityAttestationVerification,
     LiabilityLine,
+    MerkleStep,
     Meter,
     MeterReading,
     NettingSet,
+    OmissionBreach,
     PooledContract,
     PortableReputation,
     Reconciliation,
@@ -346,6 +352,7 @@ from .settlement import (
     attest_reputation,
     attestation_a2a_server,
     build_trust_model,
+    check_completeness,
     combine_attestations,
     draw_pool,
     gather_reputation,
@@ -372,7 +379,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.38.0"
+__version__ = "3.39.0"
 
 __all__ = [
     "ContextApp",
@@ -579,6 +586,14 @@ __all__ = [
     "SolvencyProofVerification",
     "attest_liabilities",
     "prove_solvency",
+    # cross-org liability inclusion proofs & completeness
+    "MerkleStep",
+    "InclusionProof",
+    "InclusionProofVerification",
+    "OmissionBreach",
+    "CompletenessProof",
+    "CompletenessVerification",
+    "check_completeness",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

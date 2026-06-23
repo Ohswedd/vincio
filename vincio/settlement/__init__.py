@@ -224,13 +224,20 @@ from .rehypothecation import (
     guard_collateral,
 )
 from .solvency import (
+    CompletenessProof,
+    CompletenessVerification,
+    InclusionProof,
+    InclusionProofVerification,
     InsolvencyBreach,
     LiabilityAttestation,
     LiabilityAttestationVerification,
     LiabilityLine,
+    MerkleStep,
+    OmissionBreach,
     SolvencyProof,
     SolvencyProofVerification,
     attest_liabilities,
+    check_completeness,
     prove_solvency,
 )
 
@@ -333,6 +340,14 @@ __all__ = [
     "SolvencyProofVerification",
     "attest_liabilities",
     "prove_solvency",
+    # liability inclusion proofs & completeness
+    "MerkleStep",
+    "InclusionProof",
+    "InclusionProofVerification",
+    "OmissionBreach",
+    "CompletenessProof",
+    "CompletenessVerification",
+    "check_completeness",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",

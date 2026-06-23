@@ -8929,6 +8929,81 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and SolvencyProof.from_wire(sol_proof.to_wire()).verify().valid
     )
 
+    # 53. Liability inclusion & completeness: the liability total is still the attestor's single
+    #     number — a counterparty could under-state what it owes by omitting a creditor. The
+    #     attestation commits its lines into a Merkle root each creditor proves membership of, and
+    #     a completeness check folds creditors' own claims to pinpoint an omission and bound the
+    #     solvency margin by the *completed* liability total, not the attestor's figure.
+    from vincio import (
+        CompletenessProof,
+        InclusionProof,
+        check_completeness,
+    )
+
+    inc_owed = attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0}, attestor="auditor")
+    acme_proof = inc_owed.inclusion_proof("acme")
+    tampered_leaf = InclusionProof.from_wire(acme_proof.to_wire())
+    tampered_leaf.amount_usd = 9_999.0
+    try:
+        inc_owed.inclusion_proof("zeta")  # never attested
+        inc_unknown_refused = False
+    except SettlementError:
+        inc_unknown_refused = True
+    inclusion_proof_detects_omission = bool(
+        acme_proof.verify(inc_owed).valid
+        and acme_proof.verify().path_ok
+        and not tampered_leaf.verify(inc_owed).valid
+        and inc_unknown_refused
+        and InclusionProof.from_wire(acme_proof.to_wire()).verify(inc_owed).valid
+    )
+
+    # The attestor lists 60 owed to acme but omits globex (40) and under-states initech.
+    comp_reserves = attest_custody("vendor", {"omnibus": 80.0}, custodian="custodian")  # 80 held
+    comp_owed = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor")  # omits 40
+    comp_check = check_completeness(comp_owed, {"acme": 60.0, "globex": 40.0})
+    comp_proof = prove_solvency(comp_reserves, comp_owed, completeness=comp_check)
+    completeness_bounds_solvency = bool(
+        not comp_check.complete
+        and comp_check.omitted_creditors == ["globex"]
+        and abs(comp_check.completed_usd - 100.0) <= 1e-6
+        and comp_check.breaches[0].omitted
+        and comp_proof.completeness_adjusted
+        and abs(comp_proof.attested_liabilities_usd - 60.0) <= 1e-6
+        and abs(comp_proof.liabilities_usd - 100.0) <= 1e-6  # completed, not attested
+        and abs(comp_proof.margin_usd - (-20.0)) <= 1e-6  # 80 − 100, insolvent
+        and comp_proof.insolvent
+        and comp_proof.verify().valid
+    )
+
+    # Auditable & offline: a tampered leaf, a hidden omission, and a completeness check for a
+    # different attestation are each refused; the check lands on the chain and verifies offline.
+    comp_app = ContextApp(name="globex", provider=MockProvider(default_text="ok"), config=cfg)
+    comp_app.use_settlement_book()
+    app_check = comp_app.check_completeness(comp_owed, {"acme": 60.0, "globex": 40.0})
+    hidden = check_completeness(comp_owed, {"acme": 60.0, "globex": 40.0})
+    hidden.breaches = []
+    hidden.completed_usd = hidden.attested_usd  # drop the omission ...
+    hidden.seal()  # ... and re-seal the lie
+    wrong_att = check_completeness(
+        attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0}, attestor="auditor"),
+        {"acme": 90.0},
+    )
+    try:
+        prove_solvency(comp_reserves, comp_owed, completeness=wrong_att)
+        comp_wrong_refused = False
+    except SettlementError:
+        comp_wrong_refused = True
+    completeness_auditable_offline = bool(
+        app_check.audit_id is not None
+        and len(comp_app.audit.query(action="liability_completeness")) == 1
+        and comp_app.audit.verify_chain()
+        and app_check.verify(comp_app.contract_signer, require=["globex"]).valid
+        and hidden.verify().hash_ok
+        and not hidden.verify().completeness_sound  # the dropped omission is caught
+        and comp_wrong_refused
+        and CompletenessProof.from_wire(comp_check.to_wire()).verify().valid
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -8982,6 +9057,9 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "solvency_bounds_held": solvency_bounds_held,
         "insolvency_pinpoints": insolvency_pinpoints,
         "solvency_auditable_offline": solvency_auditable_offline,
+        "inclusion_proof_detects_omission": inclusion_proof_detects_omission,
+        "completeness_bounds_solvency": completeness_bounds_solvency,
+        "completeness_auditable_offline": completeness_auditable_offline,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

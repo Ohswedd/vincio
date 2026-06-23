@@ -1440,9 +1440,10 @@ app.run("export button 500s").output.label
   `.seal()`/`.sign(signer, *, party=None)` (only the attestor signs), `.verify(verifier=None, *, require=None)` →
   `LiabilityAttestationVerification(valid, hash_ok, liabilities_sound, signatures_ok, signed_by, reason)` re-derives the
   total from the line items so a tampered figure is caught even after re-sealing, `.require_valid()`,
-  `.audit_details`/`.to_wire`/`.from_wire`). `prove_solvency(custody, liabilities, *, poster=None, as_of=None,
-  verifier=None)` folds a proven `CustodyAttestation` against a proven `LiabilityAttestation` for the same poster
-  (refusing a tampered, forged, or wrong-poster attestation) → a sealed, unsigned `SolvencyProof` (`.poster`/`.custodian`/
+  `.audit_details`/`.to_wire`/`.from_wire`). `prove_solvency(custody, liabilities, *, poster=None, completeness=None,
+  as_of=None, verifier=None)` folds a proven `CustodyAttestation` against a proven `LiabilityAttestation` for the same
+  poster (refusing a tampered, forged, or wrong-poster attestation; pass `completeness=` a `CompletenessProof` to bound
+  the margin by the completed total) → a sealed, unsigned `SolvencyProof` (`.poster`/`.custodian`/
   `.attestor`/`.custody_hash`/`.liability_hash`/`.reserves_usd`/`.liabilities_usd`/`.margin_usd` (reserves − liabilities),
   `.solvent`/`.insolvent`/`.status` (`solvent`|`insolvent`), `.solvency_adjusted_held` (`max(0, margin)` — the
   unencumbered capital), `.breach` (`InsolvencyBreach`: `.poster`/`.custodian`/`.attestor`/`.custody_hash`/
@@ -1457,7 +1458,34 @@ app.run("export button 500s").output.label
   as_of=, sign=True, record_audit=True)` / `book.attest_liabilities(...)` sign it as the attestor (action
   `liability_attestation`, decision = `self_attested`|`attested`), and `app.prove_solvency(custody, liabilities, *,
   poster=, as_of=, verify_with=, sign=True, record_audit=True)` / `book.prove_solvency(...)` sign and record the proof
-  (action `solvency_proof`, decision = `solvent`|`insolvent`). Offline — never a hosted solvency auditor.
+  (action `solvency_proof`, decision = `solvent`|`insolvent`). When a completeness check is folded the proof carries
+  `.attested_liabilities_usd` (the attestor's figure), `.completeness_hash`, `.completeness_adjusted`, and
+  `.understated_usd`. Offline — never a hosted solvency auditor.
+- **Cross-org liability inclusion proofs & completeness.** `from vincio import MerkleStep, InclusionProof,
+  InclusionProofVerification, OmissionBreach, CompletenessProof, CompletenessVerification, check_completeness` (all also
+  in `vincio.settlement.__all__`). A `LiabilityAttestation`'s total is still one number — a counterparty could
+  under-state what it owes by omitting a creditor. The attestation now commits its line items into a Merkle root
+  (`.liabilities_root`, bound in the signed hash; the total *and* root re-derive on every verify), so each creditor gets
+  an `InclusionProof`: `attestation.inclusion_proof(creditor)` / `app.inclusion_proof(liabilities, creditor)` /
+  `book.inclusion_proof(...)` → `InclusionProof` (`.creditor`/`.amount_usd`/`.leaf_index`/`.leaf_count`/`.path`
+  (`MerkleStep`: `.sibling`/`.sibling_on_right`)/`.liabilities_root`/`.liability_hash`, `.verify(attestation=None,
+  verifier=None)` → `InclusionProofVerification(valid, path_ok, bound_ok, signed_by, reason)` reconstructs the root from
+  the leaf+path and, with the attestation, checks the leaf is really one it commits to; `.require_valid()`,
+  `.to_wire`/`.from_wire`); `attestation.inclusion_proofs()` lists one per line; an unknown or ambiguous creditor is
+  refused. `check_completeness(liabilities, claims, *, verifier=None, as_of=None)` / `app.check_completeness(...)` /
+  `book.check_completeness(liabilities, claims=None, ...)` (claims default to the book's own settled records against the
+  poster) folds creditor claims (a `{creditor: amount}` mapping, `LiabilityLine` / `SettlementRecord` /
+  `(creditor, amount)` items) against the attestation (refusing a tampered/forged attestation) → a sealed
+  `CompletenessProof` (`.poster`/`.attestor`/`.liability_hash`/`.liabilities_root`/`.attested_usd`/`.claimed_usd`/
+  `.completed_usd` (attested + proven understatements)/`.breaches` (`OmissionBreach`: `.creditor`/`.attested_usd`/
+  `.claimed_usd`/`.understatement_usd`/`.omitted`)/`.complete`/`.status`/`.understated_usd`/`.omitted_creditors`,
+  `.verify(verifier=None, *, require=None)` → `CompletenessVerification(valid, hash_ok, completeness_sound,
+  signatures_ok, signed_by, reason)` re-derives the completed total and breaches (a dropped omission caught by
+  `completed ≥ claimed`), `.require_valid()`, `.require_complete()` (raises on any omission), `.sign(signer, *, party)`,
+  `.audit_details`/`.to_wire`/`.from_wire`). `prove_solvency(..., completeness=)` reads `.completed_usd` instead of the
+  attestor's figure (refusing a check for a different poster/attestation), so the solvency margin is bounded by the
+  obligations creditors can prove. App/book sign and record the check (action `liability_completeness`, decision =
+  `complete`|`incomplete`). Offline — never a hosted attestation registry.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,
