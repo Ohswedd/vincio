@@ -4477,6 +4477,46 @@ class ContextApp:
         """Synchronous wrapper around :meth:`agather_reputation`."""
         return run_sync(self.agather_reputation(subject, **kwargs))
 
+    def cross_org_engagement(
+        self,
+        *,
+        buyer: str = "",
+        seller: str = "",
+        scope: str = "",
+        coordinator: str | None = None,
+    ) -> Any:
+        """Thread the whole cross-org settlement & credit fabric behind one call-path.
+
+        Returns a :class:`~vincio.settlement.CrossOrgEngagement` — the capstone facade
+        that composes the entire pipeline (discover → negotiate → contract →
+        choreograph delivery → meter → settle → net → arbitrate → attest and port
+        reputation → admit → post and pool collateral under a rehypothecation guard →
+        prove reserves, solvency, completeness, non-equivocation, and history → and, on
+        default, resolve the insolvency by seniority waterfall with close-out set-off)
+        into one governed, audited, hash-linked narrative. Each lifecycle method
+        delegates to the *same* entry point on this app a caller would use directly, so
+        the primitives stay unchanged and usable on their own; the facade only captures
+        and **narrates** them.
+
+        :meth:`~vincio.settlement.CrossOrgEngagement.seal` mints the content-bound,
+        signed :class:`~vincio.settlement.EngagementNarrative`, and
+        :meth:`~vincio.settlement.CrossOrgEngagement.verify` proves the whole chain —
+        and every captured artifact — verifies offline, so a tamper introduced anywhere
+        is caught::
+
+            eng = app.cross_org_engagement(buyer="acme", seller="vendor", scope="transcribe")
+            contract = eng.negotiate(buyer=buyer_pos, seller=seller_pos)
+            eng.choreograph(saga, participants=parts)
+            eng.settle_saga(contracts={contract.id: contract})
+            narrative = eng.seal()
+            narrative.verify(app.contract_signer).valid  # offline-verifiable
+        """
+        from ..settlement.engagement import CrossOrgEngagement
+
+        return CrossOrgEngagement(
+            self, buyer=buyer, seller=seller, scope=scope, coordinator=coordinator or self.name
+        )
+
     # -- evaluators / optimizers ----------------------------------------------------------------------
 
     def add_evaluator(self, name: str | Callable) -> ContextApp:

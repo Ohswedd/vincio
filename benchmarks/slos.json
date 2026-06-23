@@ -1771,6 +1771,26 @@
       "threshold": true,
       "enforced_by": "families.reputation_portability.set_off_nets_before_waterfall",
       "rationale": "The insolvency waterfall distributes a poster's reserves across the creditors it owes, but a creditor is often also a debtor of the same counterparty across a web of contracts, and the waterfall pays it on its gross claim while it still owes the estate the other side — real insolvency law resolves this first with set-off (close-out netting), and the fabric already nets bilateral settlements multilaterally but not the liability side before the waterfall. The budget gates that a mutually-signed SetOffStatement collapses the obligations running both ways to the poster's bounded net liability and resolve_insolvency(set_off=) reduces each creditor to its net claim before distributing — a creditor in debit recovers nothing and the distributable estate shrinks to the true net exposure; a companion budget gates that the close-out is auditable and offline — a netted resolution re-derives from the bytes (an inflated set-off caught even after re-sealing), a one-sided or over-stated set-off is refused, the statement is mutually-signed and derives from the existing LiabilityAttestation and SettlementRecords, the bound statements verify against the resolution, and the statement lands on the hash-chained audit log — so a creditor of an insolvent estate is paid on its true net exposure, never a hosted clearing house, a bankruptcy court, or a trusted third party."
+    },
+    {
+      "id": "cross_org_conformance_end_to_end",
+      "category": "reliability",
+      "statement": "The cross-org settlement & credit fabric composes end-to-end as one system, not a pile of primitives: a single CrossOrgEngagement (app.cross_org_engagement) threads the whole pipeline — negotiate → contract → choreograph delivery → settle → net → prove solvency — behind one governed, audited call-path and seals it into one content-bound, signed EngagementNarrative whose hash chain links every stage, recomputes from the bytes alone, binds each artifact's own content hash and a digest of its bytes, and re-verifies every captured artifact (the settlement records, the netting set, the solvency proof) offline; one continuous signed audit narrative runs from the first offer to the final proof on the same hash-chained log.",
+      "metric": "families.cross_org_conformance.conformance_verifies_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cross_org_conformance.conformance_verifies_offline",
+      "rationale": "Twenty rungs delivered the cross-org primitives, each signed, content-bound, and offline-verifiable on its own — but nothing presented the fabric as one coherent system or proved it composes end-to-end, so a caller still wired ~40 separate calls by hand with no single artifact attesting the whole. The budget gates that a complete engagement composes and seals into a narrative that verifies offline from the bytes alone (the chain links, the head and content hash recompute, the coordinator's signature checks); companion budgets gate that the lifecycle threads every stage in order (a discovered participant included), that every captured artifact verifies and re-digests against its bound digest, that the engagement and every rung land on one continuous hash-chained audit log that recomputes, and that the facade is purely compositional (every primitive stays usable directly, byte-for-byte the same) — so the fabric is proven a system, never a hosted orchestration service."
+    },
+    {
+      "id": "cross_org_conformance_tamper_evident",
+      "category": "security",
+      "statement": "A tamper introduced anywhere in a composed cross-org engagement is caught from the bytes alone: re-ordering a stage breaks the hash chain, editing a stage's digest or an underlying artifact's bytes fails the digest check, and a forged signature fails authentication — so the engagement narrative is an end-to-end integrity proof over the whole fabric, not merely a transcript.",
+      "metric": "families.cross_org_conformance.conformance_tamper_caught",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cross_org_conformance.conformance_tamper_caught",
+      "rationale": "Composing the fabric into one narrative is only meaningful if the narrative is tamper-evident: a transcript that cannot detect an edited stage or a swapped artifact proves nothing. The budget gates that a re-ordered stage, an edited stage digest, an edited underlying artifact, and a forged coordinator signature are each caught by verification; a companion budget gates that the whole engagement re-verifies offline with every artifact re-digested against its bound digest — so the engagement narrative is a mechanical, reconstructable integrity proof over every primitive it threaded, never a trusted-party attestation."
     }
   ]
 }

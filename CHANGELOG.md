@@ -4,6 +4,46 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.44.0] - 2026-06-23
+
+Cross-org settlement fabric — unification, conformance & closure. Twenty consecutive minors (3.24–3.43) built the
+cross-org settlement & credit **primitives** rung by rung — choreography, settlement, netting, arbitration, portable
+reputation, admission, collateral escrow / pooling / rehypothecation guards, proof-of-reserves and proof-of-solvency,
+liability completeness / non-equivocation / history, and insolvency resolution by seniority waterfall with close-out
+set-off — each signed, content-bound, and offline-verifiable on its own. This release is the **capstone**: it composes the
+whole fabric into one lifecycle object, proves it conforms as a system, and **freezes** the domain. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, every existing entry point is unchanged and still usable directly, and
+the whole theme runs offline and deterministically.
+
+### Added
+
+- **Unified engagement lifecycle (`vincio.settlement.engagement`).** `app.cross_org_engagement(*, buyer="", seller="",
+  scope="", coordinator=None)` returns a `CrossOrgEngagement` — a purely-compositional facade that threads the entire
+  pipeline behind one governed, audited call-path: `negotiate` → `admit` → `choreograph` (pass `directory=` to discover) →
+  `settle` / `settle_saga` → `net` → `arbitrate` → `attest_reputation` / `import_reputation` → `post_escrow` /
+  `post_collateral_pool` / `guard_collateral` → `attest_custody` / `attest_liabilities` / `prove_solvency` /
+  `check_completeness` / `check_root_consistency` / `check_history_consistency` → `resolve_insolvency`. Each lifecycle
+  method delegates to the *same* `app.*` primitive a caller would use directly (each unchanged), captures the artifact
+  (exposed as `eng.contract` / `.delivery` / `.netting` / `.insolvency` / …), and records it as a stage; `record_stage`
+  is an escape hatch for any other artifact. The facade adds no new economic logic.
+- **Content-bound engagement narrative.** `eng.seal(*, sign=True, record_audit=True)` mints an `EngagementNarrative`: an
+  ordered chain of `EngagementStage`s, each binding the lifecycle verb, the captured artifact's own content hash, and a
+  digest of its bytes into a hash-chained link, sealed into one content hash the coordinator signs and landed on the audit
+  log (action `cross_org_engagement`). `EngagementNarrative.verify(verifier=None, *, require=None, artifacts=None)`
+  recomputes the whole chain from the bytes alone (`intact` / `head_ok` / `hash_ok` / `digests_ok` / `signatures_ok` /
+  `broken_at`), and `eng.verify(verifier)` re-digests every captured live artifact against its bound digest — so a
+  re-ordered stage, an edited digest, a broken link, an edited underlying artifact, or a forged signature is caught.
+  `require_valid`, `stage_names`, `stage`, `to_wire` / `from_wire`, `print_summary`. `CrossOrgEngagement`,
+  `EngagementNarrative`, `EngagementStage`, `EngagementSignature`, `EngagementVerification` are public.
+- **End-to-end conformance bench.** A `cross_org_conformance` VincioBench family drives a complete engagement and gates
+  that the lifecycle threads every stage, the narrative chains and verifies offline, every captured artifact verifies, one
+  continuous hash-chained audit narrative recomputes, a tamper introduced anywhere is caught, and the facade is purely
+  compositional — held by a `cross_org_conformance_end_to_end` SLO and a `cross_org_conformance_tamper_evident` SLO.
+- **Example & docs.** `examples/88_cross_org_engagement_lifecycle.py` drives a full multi-org engagement to a verified
+  close; the [settlement guide](docs/guides/settlement.md), [SLO reference](docs/reference/slo.md), README, ROADMAP,
+  SECURITY, and `llms.txt` all carry the capstone, and declare the cross-org settlement & credit surface
+  **feature-complete and frozen** — no further cross-org *primitive* is scheduled.
+
 ## [3.43.0] - 2026-06-23
 
 Cross-org insolvency set-off & close-out netting. The insolvency waterfall (3.42) distributes a poster's reserves across

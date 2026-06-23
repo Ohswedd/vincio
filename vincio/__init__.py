@@ -311,10 +311,15 @@ from .settlement import (
     CompletenessProof,
     CompletenessVerification,
     CreditorRecovery,
+    CrossOrgEngagement,
     CustodyAttestation,
     CustodyAttestationVerification,
     Discharge,
     DischargeVerification,
+    EngagementNarrative,
+    EngagementSignature,
+    EngagementStage,
+    EngagementVerification,
     EquivocationProof,
     EquivocationProofVerification,
     Escrow,
@@ -407,7 +412,7 @@ from .stability import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.43.0"
+__version__ = "3.44.0"
 
 __all__ = [
     "ContextApp",
@@ -652,6 +657,12 @@ __all__ = [
     "SetOffVerification",
     "build_set_off_statement",
     "set_off_from_records",
+    # cross-org engagement lifecycle facade (capstone)
+    "CrossOrgEngagement",
+    "EngagementNarrative",
+    "EngagementStage",
+    "EngagementSignature",
+    "EngagementVerification",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

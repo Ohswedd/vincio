@@ -321,5 +321,19 @@ no-native-imports SLO holds, by a static scan, that the core path pulls nothing
 native at import time (NumPy stays behind its guarded pure-Python fallback), so
 the core is WASM-buildable.
 
+## Cross-org settlement fabric — end-to-end conformance
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| The cross-org settlement & credit fabric composes end-to-end as one system: a single `CrossOrgEngagement` threads the whole pipeline (negotiate → contract → choreograph delivery → settle → net → prove solvency) into one content-bound, signed `EngagementNarrative` that verifies offline from the bytes alone, with every captured artifact re-verified and one continuous hash-chained audit narrative. | true | `families.cross_org_conformance.conformance_verifies_offline` |
+| A tamper introduced anywhere in a composed engagement is caught from the bytes alone: a re-ordered stage breaks the hash chain, an edited stage digest or underlying artifact fails the digest check, and a forged signature fails authentication — so the engagement narrative is an end-to-end integrity proof, not merely a transcript. | true | `families.cross_org_conformance.conformance_tamper_caught` |
+
+The twenty cross-org rungs (negotiation, settlement, netting, arbitration,
+reputation portability, admission, collateral, solvency, insolvency) each publish
+their own SLO in [`benchmarks/slos.json`](https://github.com/Ohswedd/vincio/blob/main/benchmarks/slos.json);
+this capstone conformance family holds that they compose into one verifiable
+system. With it, the cross-org settlement & credit surface is feature-complete and
+frozen under the [stability policy](stability.md).
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

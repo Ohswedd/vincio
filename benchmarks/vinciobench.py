@@ -9405,6 +9405,156 @@ async def bench_reputation_portability() -> dict[str, Any]:
     }
 
 
+async def bench_cross_org_conformance() -> dict[str, Any]:
+    """CrossOrgConformanceBench: the cross-org settlement & credit fabric as one system.
+
+    Twenty rungs (3.24–3.43) delivered the cross-org *primitives*, each signed,
+    content-bound, and offline-verifiable on its own. This family holds the **capstone**:
+    a single :class:`~vincio.settlement.CrossOrgEngagement` (``app.cross_org_engagement``)
+    that threads the whole pipeline — negotiate → contract → choreograph delivery →
+    settle → net → prove solvency — behind one governed, audited call-path, and seals it
+    into one hash-linked, signed :class:`~vincio.settlement.EngagementNarrative`. It gates
+    two guarantees: **end-to-end conformance** (a complete engagement composes, every
+    artifact chains and verifies from the bytes alone, the narrative threads every stage,
+    and one continuous signed audit narrative runs from the first offer to the final
+    proof) and **conformance integrity** (a tamper introduced anywhere — a re-ordered
+    stage, an edited digest, an edited underlying artifact, or a forged signature — is
+    caught, and the facade is purely compositional so every primitive stays usable
+    directly). This is the proof that the fabric is a *system*, not a pile of primitives.
+    Deterministic and offline."""
+    from vincio import ContextApp, EngagementNarrative, VincioConfig
+    from vincio.choreography import Saga, StepOutcome
+    from vincio.negotiation import buyer_position, seller_position
+    from vincio.providers import MockProvider
+    from vincio.security.audit import HMACSigner
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+
+    app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+    eng = app.cross_org_engagement(buyer="acme", seller="vendor", scope="transcribe 1k calls")
+
+    # Thread the pipeline end to end: negotiate → choreograph (a discovered participant)
+    # → settle → net → prove solvency.
+    contract = eng.negotiate(
+        buyer=buyer_position(max_price_usd=0.12, max_sla_seconds=5.0),
+        seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.10),
+    )
+    directory = app.agent_directory(allow=["vendor*"])
+    from vincio.a2a.protocol import AgentCard, AgentSkill
+
+    directory.register(
+        AgentCard(
+            name="vendor",
+            description="vendor — performs transcription",
+            skills=[AgentSkill(id="run", name="run", description="transcription", tags=["transcription"])],
+        )
+    )
+    saga = Saga(name="fulfil").step(
+        "transcribe", action="run", capability="transcription", contract=contract
+    )
+    parts = {
+        "vendor": {
+            "run": lambda p: StepOutcome(
+                ok=True, cost_usd=0.05, latency_ms=1200, quality=0.95, output={"t": 1}
+            )
+        }
+    }
+    delivery = eng.choreograph(saga, participants=parts, directory=directory)
+    records = eng.settle_saga(contracts={contract.id: contract})
+    netting = eng.net()
+    reserves = eng.attest_custody("vendor", {"omnibus": 120.0})
+    owed = eng.attest_liabilities("vendor", {"acme": 40.0, "globex": 30.0})
+    solvency = eng.prove_solvency(reserves, owed)
+    narrative = eng.seal()
+
+    # The lifecycle threads every stage into the narrative, in order.
+    expected_stages = [
+        "negotiate",
+        "choreograph",
+        "settle_saga",
+        "net",
+        "attest_custody",
+        "attest_liabilities",
+        "prove_solvency",
+    ]
+    conformance_lifecycle_threads = bool(
+        eng.negotiation.status == "agreement"
+        and delivery.status == "completed"
+        and delivery.bindings["transcribe"].org == "vendor"  # discovered, not wired
+        and len(records) == 1
+        and narrative.stage_names == expected_stages
+    )
+
+    # The narrative is a content-bound, hash-linked chain that verifies offline.
+    verified = narrative.verify(app.contract_signer)
+    conformance_narrative_chains = bool(verified.intact and verified.head_ok and verified.hash_ok)
+    conformance_verifies_offline = bool(verified.valid and verified.signed_by == ["acme"])
+
+    # Every captured artifact verifies from the bytes alone, and the engagement re-digests
+    # all of them against the bound digests.
+    whole = eng.verify(app.contract_signer)
+    conformance_artifacts_verify = bool(
+        whole.valid
+        and whole.digests_ok
+        and netting.verify().valid
+        and solvency.verify().valid
+        and records[0].verify(app.contract_signer, require=["acme"]).valid
+    )
+
+    # One continuous signed audit narrative: the engagement and every rung land on the same
+    # hash-chained log, which recomputes offline.
+    conformance_audit_continuous = bool(
+        narrative.audit_id is not None
+        and len(app.audit.query(action="cross_org_engagement")) == 1
+        and len(app.audit.query(action="settlement")) >= 1
+        and len(app.audit.query(action="solvency_proof")) == 1
+        and app.audit.verify_chain()
+    )
+
+    # A tamper introduced anywhere is caught: a re-ordered stage, an edited digest, a forged
+    # signature, and an edited underlying artifact all fail verification.
+    reordered = EngagementNarrative.from_wire(narrative.to_wire())
+    reordered.stages[1], reordered.stages[2] = reordered.stages[2], reordered.stages[1]
+    edited = EngagementNarrative.from_wire(narrative.to_wire())
+    edited.stages[0].digest = "deadbeef"
+    stranger = HMACSigner("stranger-secret", key_id="stranger")
+    owed.liabilities_usd = 999.0  # tamper a captured artifact after sealing
+    conformance_tamper_caught = bool(
+        not reordered.verify().valid
+        and not edited.verify().valid
+        and edited.verify().broken_at == 0
+        and not narrative.verify(stranger).valid
+        and not eng.verify(app.contract_signer).digests_ok
+    )
+
+    # Purely compositional: every primitive stays usable directly, byte-for-byte the same.
+    direct_app = ContextApp(name="acme", provider=MockProvider(default_text="ok"), config=cfg)
+    direct_app.use_settlement_book(owner="acme")
+    direct_contract = direct_app.negotiate(
+        "transcribe 1k calls",
+        buyer=buyer_position(max_price_usd=0.12, max_sla_seconds=5.0),
+        seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.10),
+        buyer_id="acme",
+        seller_id="vendor",
+    ).contract
+    direct_record = direct_app.settle(direct_contract, cost_usd=0.05, latency_ms=1000, quality=0.95)
+    conformance_compositional = bool(
+        direct_record.verify(direct_app.contract_signer, require=["acme"]).valid
+    )
+
+    return {
+        "conformance_lifecycle_threads": conformance_lifecycle_threads,
+        "conformance_narrative_chains": conformance_narrative_chains,
+        "conformance_verifies_offline": conformance_verifies_offline,
+        "conformance_artifacts_verify": conformance_artifacts_verify,
+        "conformance_audit_continuous": conformance_audit_continuous,
+        "conformance_tamper_caught": conformance_tamper_caught,
+        "conformance_compositional": conformance_compositional,
+        "conformance_stages": len(narrative.stages),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -9448,6 +9598,7 @@ FAMILIES = {
     "netting": bench_netting,
     "arbitration": bench_arbitration,
     "reputation_portability": bench_reputation_portability,
+    "cross_org_conformance": bench_cross_org_conformance,
     "breaking_2_0": bench_breaking_2_0,
 }
 

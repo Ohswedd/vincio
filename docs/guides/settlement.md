@@ -860,6 +860,50 @@ caught even after re-sealing), and passing `set_off=` to `verify` binds the stat
 `app.build_set_off_statement` records the statement (action `liability_set_off`, decision
 `poster_owes` / `creditor_in_debit` / `eliminated`) on the hash-chained audit log.
 
+## Composing the whole fabric as one engagement
+
+Every section above is a *primitive* — signed, content-bound, offline-verifiable on its own.
+The capstone composes them. `app.cross_org_engagement(...)` returns a `CrossOrgEngagement`: a
+purely-compositional facade that threads the whole pipeline behind one governed, audited
+call-path and seals it into a single, hash-linked `EngagementNarrative`.
+
+```python
+app = ContextApp(name="acme", provider=MockProvider(default_text="ok"))
+eng = app.cross_org_engagement(buyer="acme", seller="vendor", scope="transcribe 1k calls")
+
+# Each lifecycle method delegates to the SAME app.* primitive you could call directly,
+# captures the artifact it produced, and records it as a stage in the narrative.
+contract = eng.negotiate(
+    buyer=buyer_position(max_price_usd=0.12, max_sla_seconds=5.0),
+    seller=seller_position(min_price_usd=0.04, ideal_price_usd=0.10),
+)
+eng.choreograph(saga, participants=parts, directory=directory)  # discover + deliver
+eng.settle_saga(contracts={contract.id: contract})              # meter + settle
+eng.net()                                                       # multilateral clearing
+reserves = eng.attest_custody("vendor", {"omnibus": 120.0})
+owed = eng.attest_liabilities("vendor", {"acme": 40.0, "globex": 30.0})
+eng.prove_solvency(reserves, owed)
+
+narrative = eng.seal()                       # one content-bound, signed narrative
+narrative.verify(app.contract_signer).valid  # True — recomputes the whole chain offline
+```
+
+The narrative is the proof the fabric is a *system*, not a pile of primitives. Each
+`EngagementStage` binds the verb, the captured artifact's own content hash, and a digest of
+its bytes into a link that chains to the previous one. `narrative.verify()` recomputes the
+whole chain from the bytes alone — a re-ordered stage, an edited digest, a broken link, or a
+forged signature is caught — and `eng.verify(app.contract_signer)` additionally re-digests
+the live artifacts against the bound digests, so a tamper to any *underlying* artifact is
+caught too. The facade adds no new economic logic: every primitive stays unchanged and usable
+on its own (the methods above are exactly the `app.*` calls documented in the preceding
+sections); the engagement only captures and **narrates** them. Sealing lands the engagement on
+the hash-chained audit log under `cross_org_engagement`, one continuous signed narrative from
+the first offer to the final distribution.
+
+With this capstone, the cross-org settlement & credit surface is **feature-complete and
+frozen** under the [stability policy](../reference/stability.md): no further cross-org
+*primitive* is scheduled, and subsequent cross-org work is bug-fix and standards-tracking only.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -899,7 +943,9 @@ proven reserves across the creditors it owes by seniority then pari-passu within
 hosted receiver, a bankruptcy court, or a trusted third party, and a set-off statement is a
 mutually-signed, verifiable close-out of the obligations running both ways between a poster and one
 creditor that the waterfall nets before distributing, not a hosted clearing house or a trusted third
-party. Vincio gives you a verifiable
+party, and a cross-org engagement is a verifiable, hash-linked narrative that composes those
+primitives and proves they chain end-to-end from the bytes alone, not a hosted orchestration service
+or a managed control plane. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by

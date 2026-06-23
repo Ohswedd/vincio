@@ -189,6 +189,13 @@ from .custody import (
     ReserveLine,
     attest_custody,
 )
+from .engagement import (
+    CrossOrgEngagement,
+    EngagementNarrative,
+    EngagementSignature,
+    EngagementStage,
+    EngagementVerification,
+)
 from .escrow import (
     Escrow,
     EscrowConfig,
@@ -425,6 +432,12 @@ __all__ = [
     "SetOffVerification",
     "build_set_off_statement",
     "set_off_from_records",
+    # cross-org engagement lifecycle facade (capstone)
+    "CrossOrgEngagement",
+    "EngagementNarrative",
+    "EngagementStage",
+    "EngagementSignature",
+    "EngagementVerification",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",
