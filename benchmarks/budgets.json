@@ -1969,6 +1969,12 @@
     "families.reputation_portability.equivocation_auditable_offline": {
       "eq": true
     },
+    "families.reputation_portability.history_detects_silent_drop": {
+      "eq": true
+    },
+    "families.reputation_portability.history_auditable_offline": {
+      "eq": true
+    },
     "families.reputation_portability.attestations_combined": {
       "gte": 2
     },

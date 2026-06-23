@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**374** public symbols.
+**382** public symbols.
 
 ## Classes
 
@@ -334,6 +334,14 @@ The (non-raising) outcome of verifying a custody attestation offline.
 
 Outcome of a canary-gated prompt/policy deployment.
 
+### `Discharge(**data)`
+
+A signed, content-bound release of part of what a poster owes one creditor.
+
+### `DischargeVerification(**data)`
+
+The (non-raising) outcome of verifying a liability discharge offline.
+
 ### `DistributedCheckpointer(store=…, coordinator=…, owner=…, lease_ttl_s=…)`
 
 A :class:`Checkpointer` that lease-guards and CAS-commits each super-step.
@@ -505,6 +513,18 @@ A library of operators and methods the planner decomposes against.
 ### `HealthAwareFailover(entries, guard_capabilities=…, registry=…)`
 
 Failover chain that tries healthy providers first.
+
+### `HistoryConsistencyProof(**data)`
+
+A signed, offline-verifiable proof a poster's liability history is monotone over time.
+
+### `HistoryConsistencyProofVerification(**data)`
+
+The (non-raising) outcome of verifying a liability history-consistency proof offline.
+
+### `HistoryConsistencyReport(**data)`
+
+The outcome of walking a set of liability snapshots for cross-time monotonicity.
 
 ### `ImageGenRequest(**data)`
 
@@ -697,6 +717,10 @@ Plan by searching imagined rollouts under a :class:`WorldModel` (MPC).
 ### `ModelRegistry(profiles=…, version=…)`
 
 A catalog of :class:`ModelProfile` keyed by exact model id.
+
+### `MonotonicityBreach(**data)`
+
+A creditor's obligation that shrank between two snapshots without a backing discharge.
 
 ### `Negotiation(buyer, seller, budget=…, signer=…, audit=…, events=…, clock=…)`
 
@@ -1268,7 +1292,7 @@ Adjudicate a disputed contract from the records its parties submit.
 
 Attest a poster's proven reserves into an (unsigned) :class:`CustodyAttestation`.
 
-### `attest_liabilities(poster, liabilities, attestor=…, as_of=…)`
+### `attest_liabilities(poster, liabilities, attestor=…, as_of=…, prior=…)`
 
 Attest a poster's total obligations into an (unsigned) :class:`LiabilityAttestation`.
 
@@ -1300,6 +1324,10 @@ Build a buyer position: wants low price, fast SLA, high quality.
 
 Fold a set of creditor claims against a liability attestation into a completeness check.
 
+### `check_history_consistency(attestations, discharges=…, verifier=…)`
+
+Walk a set of liability snapshots for cross-time monotonicity (no debt silently dropped).
+
 ### `check_root_consistency(attestations, verifier=…)`
 
 Compare a set of liability attestations for cross-creditor root non-equivocation.
@@ -1323,6 +1351,10 @@ Process-wide registry, seeded from the built-in catalog plus the ``VINCIO_MODEL_
 ### `deprecated(since, removed_in, alternative=…)`
 
 Mark a function or class as deprecated.
+
+### `discharge_liability(poster, creditor, amount_usd, as_of=…, note=…)`
+
+Build an (unsigned) :class:`Discharge` releasing part of what ``poster`` owes ``creditor``.
 
 ### `discover_plugins(groups=…, entry_points=…)`
 

@@ -19,7 +19,10 @@ from vincio import (
     CollateralLedger,
     CompletenessProof,
     ContextApp,
+    Discharge,
     EquivocationProof,
+    HistoryConsistencyProof,
+    HistoryConsistencyReport,
     InclusionProof,
     InsolvencyBreach,
     LiabilityAttestation,
@@ -31,7 +34,9 @@ from vincio import (
     attest_custody,
     attest_liabilities,
     check_completeness,
+    check_history_consistency,
     check_root_consistency,
+    discharge_liability,
     guard_collateral,
     post_collateral_pool,
     prove_equivocation,
@@ -43,7 +48,9 @@ from vincio.providers import MockProvider
 from vincio.security.audit import HMACSigner
 from vincio.settlement.solvency import (
     COMPLETENESS_ACTION,
+    DISCHARGE_ACTION,
     EQUIVOCATION_ACTION,
+    HISTORY_ACTION,
     LIABILITY_ACTION,
     SOLVENCY_ACTION,
 )
@@ -1456,3 +1463,440 @@ def test_app_check_root_consistency_can_skip_side_effects():
     assert app.reputation_ledger.weight("vendor") == pytest.approx(
         app.reputation_ledger.weight("x")
     )
+
+
+# == liability history consistency & snapshot monotonicity ====================
+
+# The cross-party signing convention the settlement records use: every party signs with the shared
+# fabric verification secret, distinguished only by ``key_id`` (its identity), so one verifier
+# checks the attestor's and the creditors' signatures alike.
+_AS_OF3 = datetime(2026, 1, 3, tzinfo=UTC)
+_ACME = HMACSigner("attestor-key", key_id="acme")
+_GLOBEX = HMACSigner("attestor-key", key_id="globex")
+
+
+def _history(poster="vendor", attestor="auditor"):
+    """A three-snapshot linked history where acme's $100 obligation is constant."""
+    s1 = _signed(poster, {"acme": 100.0, "globex": 40.0}, attestor=attestor, as_of=_AS_OF)
+    s2 = attest_liabilities(
+        poster, {"acme": 100.0, "globex": 40.0}, attestor=attestor, as_of=_AS_OF2, prior=s1
+    ).sign(ATTESTOR)
+    s3 = attest_liabilities(
+        poster, {"acme": 100.0, "globex": 40.0}, attestor=attestor, as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    return s1, s2, s3
+
+
+# -- linked liability history -------------------------------------------------
+
+
+def test_link_binds_prior_into_the_signed_hash():
+    s1 = _signed("vendor", {"acme": 100.0})
+    s2 = attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF2, prior=s1)
+    assert s2.has_prior
+    assert s2.prior_hash == s1.content_hash
+    assert s2.prior_root == s1.liabilities_root
+    assert s2.prior_as_of == s1.as_of
+    # The link is bound into the content hash: re-pointing the predecessor breaks verification.
+    s2.prior_hash = "deadbeef"
+    assert not s2.verify().hash_ok
+
+
+def test_no_prior_hashes_identically_to_an_unlinked_attestation():
+    # The link is additive: an attestation with no predecessor hashes exactly as one issued before
+    # linked history existed, so no stored hash or test vector shifts.
+    plain = attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF)
+    assert not plain.has_prior
+    assert "prior" not in plain.attestation_facts()
+    # Same facts, same hash as the equivalent attestation the non-equivocation tests build.
+    twin = attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF)
+    assert plain.content_hash == twin.content_hash
+
+
+def test_link_to_refuses_a_back_dated_predecessor():
+    later = _signed("vendor", {"acme": 100.0}, as_of=_AS_OF2)
+    with pytest.raises(SettlementError, match="strictly later"):
+        attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF, prior=later)
+
+
+def test_link_to_refuses_a_different_counterparty():
+    other = _signed("supplier", {"acme": 100.0})
+    with pytest.raises(SettlementError, match="one\n? *counterparty|one counterparty"):
+        attest_liabilities(
+            "vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF2, prior=other
+        )
+
+
+def test_back_dated_link_is_caught_from_the_bytes():
+    s1 = _signed("vendor", {"acme": 100.0}, as_of=_AS_OF)
+    s2 = attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF2, prior=s1)
+    # Tamper the successor's own as_of to before the predecessor's — re-seal to match the hash.
+    s2.as_of = datetime(2025, 12, 31, tzinfo=UTC)
+    s2.seal()
+    assert not s2.verify().liabilities_sound  # the back-dated link fails the soundness check
+
+
+def test_partial_prior_link_is_refused():
+    s = attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF2)
+    s.prior_hash = "abc"  # a hash without a root or instant is malformed
+    s.seal()
+    assert not s.verify().liabilities_sound
+
+
+# -- discharges ---------------------------------------------------------------
+
+
+def test_discharge_is_signed_by_the_creditor():
+    d = discharge_liability("vendor", "acme", 70.0, as_of=_AS_OF2).sign(_ACME)
+    assert d.creditor == "acme"
+    assert d.amount_usd == pytest.approx(70.0)
+    assert d.verify(ATTESTOR).valid
+    assert d.verify(ATTESTOR, require=["acme"]).valid
+
+
+def test_discharge_signing_as_non_creditor_is_refused():
+    d = discharge_liability("vendor", "acme", 70.0)
+    with pytest.raises(SettlementError, match="signed by its creditor"):
+        d.sign(ATTESTOR, party="vendor")
+
+
+def test_discharge_negative_amount_refused():
+    with pytest.raises(SettlementError, match="negative"):
+        discharge_liability("vendor", "acme", -1.0)
+
+
+def test_discharge_tamper_caught_even_after_reseal():
+    d = discharge_liability("vendor", "acme", 70.0).sign(_ACME)
+    d.amount_usd = 999.0
+    assert not d.verify().hash_ok
+    d.seal()  # recompute the hash to match the tampered amount
+    # The forged figure no longer carries the creditor's signature over it.
+    assert not d.verify(ATTESTOR).signatures_ok
+
+
+def test_discharge_wire_roundtrip():
+    d = discharge_liability("vendor", "acme", 70.0, as_of=_AS_OF2, note="invoice-7").sign(_ACME)
+    restored = Discharge.from_wire(d.to_wire())
+    assert restored.verify(ATTESTOR).valid
+    assert restored.amount_usd == pytest.approx(70.0)
+
+
+# -- monotonicity walk --------------------------------------------------------
+
+
+def test_constant_history_is_consistent():
+    report = check_history_consistency(list(_history()), verifier=ATTESTOR)
+    assert report.consistent
+    assert report.chains == 1
+    assert report.checked == 3
+    proof = report.proofs[0]
+    assert proof.monotone and proof.chain_linked
+    assert proof.verify(ATTESTOR).valid
+
+
+def test_increasing_obligation_is_monotone():
+    s1 = _signed("vendor", {"acme": 50.0}, as_of=_AS_OF)
+    s2 = attest_liabilities("vendor", {"acme": 90.0}, attestor="auditor", as_of=_AS_OF2, prior=s1)
+    s2.sign(ATTESTOR)
+    report = check_history_consistency([s1, s2], verifier=ATTESTOR)
+    assert report.consistent  # a debt growing is fine; only a silent drop is a breach
+
+
+def test_unexplained_drop_is_a_breach():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    report = check_history_consistency([s1, s2, s3], verifier=ATTESTOR)
+    assert not report.consistent
+    assert report.breaching_posters == ["vendor"]
+    proof = report.proofs[0]
+    assert proof.verify(ATTESTOR).valid
+    assert proof.breaching_creditors == ["acme"]
+    breach = proof.breaches[0]
+    assert breach.dropped_usd == pytest.approx(70.0)
+    assert breach.unexplained_usd == pytest.approx(70.0)
+    assert breach.prior_hash == s2.content_hash and breach.next_hash == s3.content_hash
+
+
+def test_a_signed_discharge_explains_a_drop():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    settled = discharge_liability("vendor", "acme", 70.0, as_of=_AS_OF3).sign(_ACME)
+    report = check_history_consistency([s1, s2, s3], discharges=[settled], verifier=ATTESTOR)
+    assert report.consistent
+    proof = report.proofs[0]
+    assert proof.monotone
+    assert len(proof.discharges) == 1  # only the discharge that explained a drop is embedded
+    assert proof.verify(ATTESTOR).valid
+
+
+def test_a_partial_discharge_leaves_a_residual_breach():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    settled = discharge_liability("vendor", "acme", 50.0, as_of=_AS_OF3).sign(_ACME)
+    report = check_history_consistency([s1, s2, s3], discharges=[settled], verifier=ATTESTOR)
+    assert not report.consistent
+    breach = report.proofs[0].breaches[0]
+    assert breach.discharged_usd == pytest.approx(50.0)
+    assert breach.unexplained_usd == pytest.approx(20.0)
+
+
+def test_a_forged_discharge_does_not_explain_a_drop():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    # The poster signs a "discharge" with the wrong secret while naming the creditor — refused.
+    forged = discharge_liability("vendor", "acme", 70.0, as_of=_AS_OF3).sign(
+        HMACSigner("forger-key", key_id="acme"), party="acme"
+    )
+    report = check_history_consistency([s1, s2, s3], discharges=[forged], verifier=ATTESTOR)
+    assert not report.consistent  # a forged release cannot paper over the drop
+    assert len(report.proofs[0].discharges) == 0
+
+
+def test_a_discharge_outside_the_window_does_not_apply():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    # The release is dated after the drop's snapshot window (_AS_OF2, _AS_OF3].
+    late = discharge_liability("vendor", "acme", 70.0, as_of=datetime(2026, 2, 1, tzinfo=UTC))
+    late.sign(_ACME)
+    report = check_history_consistency([s1, s2, s3], discharges=[late], verifier=ATTESTOR)
+    assert not report.consistent
+
+
+def test_one_discharge_cannot_explain_two_drops():
+    # acme drops 100→60 (t1→t2) and 60→20 (t2→t3); a single $40 release covers only one transition.
+    s1 = _signed("vendor", {"acme": 100.0}, as_of=_AS_OF)
+    s2 = attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=_AS_OF2, prior=s1)
+    s2.sign(ATTESTOR)
+    s3 = attest_liabilities("vendor", {"acme": 20.0}, attestor="auditor", as_of=_AS_OF3, prior=s2)
+    s3.sign(ATTESTOR)
+    d12 = discharge_liability("vendor", "acme", 40.0, as_of=_AS_OF2).sign(_ACME)
+    report = check_history_consistency([s1, s2, s3], discharges=[d12], verifier=ATTESTOR)
+    assert not report.consistent  # the second drop remains unexplained
+    assert len(report.proofs[0].breaches) == 1
+    assert report.proofs[0].breaches[0].next_hash == s3.content_hash
+
+
+def test_separate_posters_walk_independently():
+    s1, s2, s3 = _history("vendor")
+    o1 = _signed("supplier", {"acme": 50.0}, as_of=_AS_OF)
+    o2 = attest_liabilities("supplier", {"acme": 10.0}, attestor="auditor", as_of=_AS_OF2, prior=o1)
+    o2.sign(ATTESTOR)
+    report = check_history_consistency([s1, s2, s3, o1, o2], verifier=ATTESTOR)
+    assert report.chains == 2
+    assert report.breaching_posters == ["supplier"]  # only supplier dropped acme's debt
+
+
+def test_single_snapshot_yields_no_proof():
+    report = check_history_consistency([_signed("vendor", {"acme": 100.0})], verifier=ATTESTOR)
+    assert report.consistent
+    assert report.chains == 0
+
+
+def test_same_instant_snapshots_collapse_to_one_step():
+    # Two roots for one instant are the domain of non-equivocation, not history: the walk keeps one
+    # per instant so the proof stays a strictly increasing, verifiable sequence.
+    a = _signed("vendor", {"acme": 100.0}, as_of=_AS_OF)
+    b = _signed("vendor", {"globex": 40.0}, as_of=_AS_OF)  # same instant, different root
+    c = attest_liabilities(
+        "vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF2, prior=a
+    ).sign(ATTESTOR)
+    report = check_history_consistency([a, b, c], verifier=ATTESTOR)
+    assert report.chains == 1
+    proof = report.proofs[0]
+    assert proof.snapshot_count == 2  # one per instant
+    assert proof.verify(ATTESTOR).valid
+
+
+# -- inadmissible evidence ----------------------------------------------------
+
+
+def test_tampered_snapshot_is_excluded():
+    s1, s2, s3 = _history()
+    s2.liabilities_usd = 1.0  # total no longer re-derives
+    # Excluding the tampered middle snapshot still leaves a constant acme across s1, s3.
+    report = check_history_consistency([s1, s2, s3], verifier=ATTESTOR)
+    assert report.checked == 2
+    assert report.consistent
+
+
+def test_unsigned_snapshot_is_excluded_with_a_verifier():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    )  # never signed
+    report = check_history_consistency([s1, s2, s3], verifier=ATTESTOR)
+    assert report.checked == 2  # the unsigned drop is not admitted as evidence
+    assert report.consistent
+
+
+# -- proof verification & wire ------------------------------------------------
+
+
+def test_history_proof_dropped_breach_is_caught():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    proof = check_history_consistency([s1, s2, s3], verifier=ATTESTOR).proofs[0]
+    proof.breaches = []  # forge away the breach
+    result = proof.verify(ATTESTOR)
+    assert not result.valid
+    assert not result.hash_ok or not result.monotone_sound
+
+
+def test_history_proof_require_monotone_raises():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    proof = check_history_consistency([s1, s2, s3], verifier=ATTESTOR).proofs[0]
+    with pytest.raises(SettlementError, match="not monotone"):
+        proof.require_monotone()
+
+
+def test_history_require_linked_raises_on_unlinked_chain():
+    # Snapshots with no prior commitment are still walked, but are not a contiguous chain.
+    s1 = _signed("vendor", {"acme": 100.0}, as_of=_AS_OF)
+    s2 = _signed("vendor", {"acme": 100.0}, as_of=_AS_OF2)
+    proof = check_history_consistency([s1, s2], verifier=ATTESTOR).proofs[0]
+    assert proof.monotone and not proof.chain_linked
+    with pytest.raises(SettlementError, match="contiguous"):
+        proof.require_linked()
+
+
+def test_history_proof_wire_roundtrip_preserves_breach():
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    settled = discharge_liability("vendor", "acme", 20.0, as_of=_AS_OF3).sign(_ACME)
+    proof = check_history_consistency([s1, s2, s3], discharges=[settled], verifier=ATTESTOR).proofs[
+        0
+    ]
+    restored = HistoryConsistencyProof.from_wire(proof.to_wire())
+    assert restored.verify(ATTESTOR).valid
+    assert restored.breaches[0].unexplained_usd == pytest.approx(50.0)
+
+
+def test_history_proof_reporter_signature():
+    reporter = HMACSigner("attestor-key", key_id="auditor")
+    proof = check_history_consistency(list(_history()), verifier=ATTESTOR).proofs[0]
+    proof.sign(reporter, party="auditor")
+    assert proof.verify(ATTESTOR, require=["auditor"]).valid
+
+
+def test_history_report_wire_roundtrip():
+    report = check_history_consistency(list(_history()), verifier=ATTESTOR)
+    restored = HistoryConsistencyReport.from_wire(report.to_wire())
+    assert restored.consistent
+    assert restored.proofs[0].verify(ATTESTOR).valid
+
+
+def test_history_rejects_malformed_items():
+    with pytest.raises(SettlementError):
+        check_history_consistency(["not-an-attestation"])
+
+
+def test_history_rejects_malformed_discharges():
+    with pytest.raises(SettlementError, match="discharges must be"):
+        check_history_consistency(list(_history()), discharges=["nope"], verifier=ATTESTOR)
+
+
+def test_history_audit_details_are_json_safe():
+    import json
+
+    proof = check_history_consistency(list(_history()), verifier=ATTESTOR).proofs[0]
+    json.dumps(proof.audit_details())
+    d = discharge_liability("vendor", "acme", 70.0).sign(_ACME)
+    json.dumps(d.audit_details())
+
+
+def test_summary_mentions_unexplained_drop(capsys):
+    s1, s2, _ = _history()
+    s3 = attest_liabilities(
+        "vendor", {"acme": 30.0, "globex": 40.0}, attestor="auditor", as_of=_AS_OF3, prior=s2
+    ).sign(ATTESTOR)
+    proof = check_history_consistency([s1, s2, s3], verifier=ATTESTOR).proofs[0]
+    proof.print_summary()
+    out = capsys.readouterr().out
+    assert "inconsistent" in out and "acme" in out
+
+
+# -- app / book wiring --------------------------------------------------------
+
+
+def test_app_check_history_consistency_audits_and_dings_reputation():
+    app = _app("auditor")
+    app.use_reputation_ledger()
+    s1 = app.attest_liabilities("vendor", {"acme": 100.0}, as_of=_AS_OF)
+    s2 = app.attest_liabilities("vendor", {"acme": 30.0}, as_of=_AS_OF2, prior=s1)
+    report = app.check_history_consistency([s1, s2], verify_with=app.contract_signer)
+    assert not report.consistent
+    assert report.breaching_posters == ["vendor"]
+    assert app.reputation_ledger.weight("vendor") < 1.0
+    assert report.proofs[0].audit_id is not None
+    assert len(app.audit.query(action=HISTORY_ACTION)) == 1
+    assert report.proofs[0].verify(app.contract_signer).valid
+
+
+def test_app_check_history_consistency_can_skip_side_effects():
+    app = _app("auditor")
+    app.use_reputation_ledger()
+    s1 = app.attest_liabilities("vendor", {"acme": 100.0}, as_of=_AS_OF)
+    s2 = app.attest_liabilities("vendor", {"acme": 30.0}, as_of=_AS_OF2, prior=s1)
+    report = app.check_history_consistency(
+        [s1, s2], verify_with=app.contract_signer, record_reputation=False, record_audit=False
+    )
+    assert not report.consistent
+    assert len(app.audit.query(action=HISTORY_ACTION)) == 0
+    assert app.reputation_ledger.weight("vendor") == pytest.approx(
+        app.reputation_ledger.weight("x")
+    )
+
+
+def test_app_discharge_liability_signs_and_audits():
+    app = _app("acme")
+    discharge = app.discharge_liability("vendor", 70.0, as_of=_AS_OF2)
+    assert discharge.creditor == "acme"
+    assert discharge.verify(app.contract_signer).valid
+    assert discharge.audit_id is not None
+    assert len(app.audit.query(action=DISCHARGE_ACTION)) == 1
+
+
+def test_book_check_history_consistency_records_inconsistent():
+    from vincio.optimize.reputation import ReputationLedger
+    from vincio.security.audit import AuditLog
+    from vincio.settlement.book import SettlementBook
+
+    ledger = ReputationLedger()
+    book = SettlementBook(owner="auditor", signer=ATTESTOR, audit=AuditLog(), reputation=ledger)
+    s1 = book.attest_liabilities("vendor", {"acme": 100.0}, attestor="auditor", as_of=_AS_OF)
+    s2 = book.attest_liabilities(
+        "vendor", {"acme": 30.0}, attestor="auditor", as_of=_AS_OF2, prior=s1
+    )
+    report = book.check_history_consistency([s1, s2], verify_with=ATTESTOR)
+    assert not report.consistent
+    assert len(book.audit.query(action=HISTORY_ACTION)) == 1
+    assert ledger.weight("vendor") < 1.0
+    assert report.proofs[0].verify(ATTESTOR).valid
+
+
+def test_book_discharge_liability_signs_as_owner():
+    from vincio.security.audit import AuditLog
+    from vincio.settlement.book import SettlementBook
+
+    book = SettlementBook(owner="acme", signer=_ACME, audit=AuditLog())
+    discharge = book.discharge_liability("vendor", 70.0)
+    assert discharge.creditor == "acme"
+    assert discharge.verify(ATTESTOR).valid  # shared fabric secret verifies the owner's signature
+    assert len(book.audit.query(action=DISCHARGE_ACTION)) == 1
