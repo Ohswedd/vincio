@@ -299,6 +299,50 @@ raises `CheckpointConflictError`, never a double-write), and Redis-backed shared
 rate-limit / idempotency state enforces one coherent limit across a multi-worker
 fleet.
 
+### Agent identity, delegation & accountability
+
+The audit chain, contracts, and settlements are signed with a `ChainSigner`, but
+*who* a signing key belongs to was an out-of-band assumption (a `key_id` string).
+The identity substrate (`vincio.security.identity`) makes that binding cryptographic.
+An `AgentIdentity` (`app.identity(...)`) is built on an Ed25519 key whose **DID is
+derived from the public key** (`did:vincio:ed25519:<hex>`), so the verifying key
+resolves from the identifier alone, offline, with no registry, CA, or hosted identity
+provider — `public_key_from_did(did)` recovers it. Its `IdentityDocument` is
+content-bound and signed and `verify()`s from the bytes. A `Keyring` rotates keys
+along a **signed rotation chain** (each new key authorized by the one before it), so a
+signature is validated against the key that was current *at signing time*: a
+rotated-away or revoked key cannot sign new history (`verify_signature(msg, sig,
+at=...)` reports the signing key and whether it was active then), while signatures it
+made while current stay valid — modelling key compromise without invalidating
+legitimate past acts.
+
+Authority is delegated as a bounded `Grant` — a subset of capabilities, a budget cap,
+an expiry, an audience, and a re-delegation depth. A signed `Delegation` conveys it
+from a principal to an agent, an agent sub-delegates to a sub-agent, and the links
+compose into a `DelegationChain` that `verify`s **offline** under one structural
+invariant: **each link only attenuates its parent's grant, never amplifies it**. An
+over-reaching sub-delegation (a widened capability set, a raised cap, an extended
+expiry) or a tampered grant is **refused from the bytes** — `attenuation_ok == False`
+or a failed signature check — so an injected or compromised agent cannot escalate the
+authority it was granted, and `chain.require_permits(...)` gates a tool call, contract
+signature, or saga handoff on provable, in-bounds authority. When a link is signed
+with a rotated key it carries a compact `KeyAuthorization` proving that key descends
+from the issuer's genesis key, so the chain stays offline-verifiable without an
+external registry.
+
+A signed `AgentCredential` is a verifiable claim — *this agent is admitted to
+capability X*, *operated by org Y* — that an importer `verify`s offline and folds into
+the existing capability-gated admission path (`credential.admits(capability)`); a
+tampered claim or a forged issuer is caught from the bytes. Because an `AgentIdentity`
+satisfies the `ChainSigner` protocol (`key_id` is the DID), `app.use_identity(...)`
+binds every audit entry, contract, and settlement to the **DID** that produced it — so
+a forged or unauthorized action is refused and pinpointed, never merely logged.
+Ed25519 is implemented in pure Python (RFC 8032) for the dependency-free default path;
+the audited, constant-time `cryptography` backend is used automatically behind
+`vincio[crypto]`, producing byte-identical signatures. The pure-Python kernel is for
+deterministic, offline signing of content-bound artifacts and is not hardened against
+timing side channels — the `crypto` extra exists to make that trade where it matters.
+
 ### Provenance & generated media
 
 Every generated image, audio, and video asset auto-attaches a media-aware C2PA

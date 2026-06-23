@@ -2052,6 +2052,33 @@
     },
     "families.computer_use.undo_on_divergence": {
       "eq": true
+    },
+    "families.identity.identity_integrity": {
+      "eq": true
+    },
+    "families.identity.delegation_attenuation": {
+      "eq": true
+    },
+    "families.identity.did_self_certifying": {
+      "eq": true
+    },
+    "families.identity.rotation_keeps_old_valid": {
+      "eq": true
+    },
+    "families.identity.amplification_refused": {
+      "eq": true
+    },
+    "families.identity.tamper_detected": {
+      "eq": true
+    },
+    "families.identity.credential_verifies": {
+      "eq": true
+    },
+    "families.identity.audit_binds_identity": {
+      "eq": true
+    },
+    "families.identity.rfc8032_conformant": {
+      "eq": true
     }
   }
 }

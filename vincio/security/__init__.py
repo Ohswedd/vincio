@@ -30,6 +30,26 @@ from .capability import (
     verify_containment,
 )
 from .dualplane import DualPlaneExecutor, PlannedCall, QuarantineRef
+from .identity import (
+    AgentCredential,
+    AgentIdentity,
+    CredentialVerification,
+    Delegation,
+    DelegationChain,
+    DelegationChainVerification,
+    DelegationVerification,
+    Grant,
+    IdentityDocument,
+    IdentityVerification,
+    KeyAuthorization,
+    KeyRecord,
+    Keyring,
+    SignatureCheck,
+    did_from_public_key,
+    is_vincio_did,
+    key_fingerprint,
+    public_key_from_did,
+)
 from .injection import InjectionDetector, InjectionVerdict, wrap_untrusted
 from .locales import LocalePack, available_locales, get_locale_pack
 from .pii import PIIDetector, PIIMatch, redact
@@ -67,6 +87,25 @@ __all__ = [
     "DualPlaneExecutor",
     "QuarantineRef",
     "PlannedCall",
+    # agent identity, delegation & cryptographic accountability
+    "AgentIdentity",
+    "IdentityDocument",
+    "Keyring",
+    "KeyRecord",
+    "KeyAuthorization",
+    "Grant",
+    "Delegation",
+    "DelegationChain",
+    "AgentCredential",
+    "IdentityVerification",
+    "DelegationVerification",
+    "DelegationChainVerification",
+    "CredentialVerification",
+    "SignatureCheck",
+    "did_from_public_key",
+    "public_key_from_did",
+    "is_vincio_did",
+    "key_fingerprint",
     "LocalePack",
     "available_locales",
     "get_locale_pack",

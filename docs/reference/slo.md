@@ -357,5 +357,26 @@ so the plane is reversible and accountable by construction. The budgets gate a s
 success-at-budget win and zero unapproved-destructive actions, above the published
 promises.
 
+## Agent identity, delegation & cryptographic accountability
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| An agent identity is portable and self-certifying — its DID derives from its Ed25519 public key, its document verifies from the bytes, and keys rotate along a signed chain so a rotated-away or revoked key cannot forge new history while its past signatures stay valid. | true | `families.identity.identity_integrity` |
+| A signed delegation composes into a chain that verifies offline where each link only attenuates, never amplifies — so an over-reaching or tampered sub-delegation is refused from the bytes. | true | `families.identity.delegation_attenuation` |
+
+The platform signed every artifact, but *who* a key belonged to was an out-of-band
+`key_id` string — accountability was only as strong as that assumption. Identity
+(`app.identity`) makes the key first-class: a DID **derived from** the public key
+(self-certifying, offline-resolvable, no registry), a content-bound `IdentityDocument`,
+and a `Keyring` that rotates along a **signed chain** rather than a swap, so a
+compromised or superseded key cannot rewrite history while everything it legitimately
+signed stays valid. Authority is delegated as a bounded `Grant` that only ever
+attenuates: a `DelegationChain` verifies offline (each issuer's key resolves from its
+DID) and refuses any link that widens capabilities, the budget, or the expiry, so a
+tool call, contract, or saga handoff carries provenance of authority. Ed25519 runs in
+pure Python (RFC 8032), with the native `cryptography` backend used automatically
+behind `vincio[crypto]`. The budgets gate full identity integrity and delegation
+attenuation, above the published promises.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

@@ -90,6 +90,7 @@ and a runnable example.
 | **Edge / WASM in-process runtime** | The dependency-free core — the prompt and context compilers, the vectorized scorer with its pure-Python fallback, the deterministic rails, and the offline-first evidence path — packaged for constrained and browser/WASM targets, so the same compile → score → rail → pack pipeline runs at the edge and in the browser, not only on a server. An `EdgeRuntime` (`app.edge_runtime()`) turns an `EdgeRequest` into a bounded, slim packet and a rendered prompt behind a thin in-process boundary, with no provider, network, filesystem, or caller-owned event loop. An `EdgeProfile` is the constrained-target analogue of the per-app resident-memory budget: it bounds the compiled packet's resident footprint and token window and lowers directly to the *same* `ContextCompilerOptions` the server compiler reads, so the footprint stays under the cap as the candidate corpus grows 10×, held by the same slimming + eviction and an edge-scaling SLO. It is parity, not a fork: `verify_edge_parity` proves an edge compile is byte-identical to a direct server compile over the same inputs, and `edge_manifest` statically certifies that every module on the core path imports nothing native (NumPy stays behind its guarded pure-Python fallback) — so the edge build is WASM-buildable, exercised by the same offline test suite, and a capability can never silently diverge between server and edge. `edge_environment` / `is_wasm_runtime` detect a Pyodide/WASI host. |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
 | **Computer-use & embodied action plane** | The rung above the flat navigate / click / type / screenshot tools: a grounded, verified, reversible **action plane** for an agent that drives a screen *safely*. A `ComputerEnvironment` (`app.computer_use`) over a pluggable `ScreenBackend` (deterministic `MockScreen` offline; a Playwright/CDP browser, an OS accessibility tree, and a remote-desktop adapter behind `vincio[computer-use]`) turns a screenshot plus an accessibility tree into typed, addressable `UIElement`s, and an intent into a typed `UIAction` bound to a target by a **stable selector** (role + accessible name, not a pixel) — so an action is replayable, auditable, and survives a layout shift. Every action is **pre-gated** against an `ActionPolicy` (a destructive or out-of-scope action is gated like a write tool, behind an approval callback), performed, **post-verified** against its expected effect (a declarative end-state check / a salient-state change), and **undone on divergence** — the computer-use analogue of a saga's compensation and the record-replay divergence report — into a typed `ActionOutcome`, every step on the same hash-chained audit log. A `ComputerTask` carries a goal and a declarative verifier, so a run projects onto the same `Trajectory` the existing trajectory metrics, test-time search, and world-model planner already score — no new search machinery — and a deterministic in-repo `make_web_checkout` (WebArena / OSWorld-shaped) gates success-at-budget and safety offline. Held by a success-at-budget SLO and a no-unapproved-destructive-action safety SLO; the flat `enable_computer_use` / `use_hosted_tools` surface is unchanged. |
+| **Agent identity, delegation & cryptographic accountability** | The identity substrate beneath the tool permissions, the agent fabric, and the cross-org trust fabric — *who authorized this action, down what chain, within what bounds*. The platform signed every artifact, but *who* a key belonged to was an out-of-band `key_id` string; identity makes the key first-class and verifiable. An `AgentIdentity` (`app.identity`) is built on an Ed25519 key whose **DID is derived from the public key** (`did:vincio:ed25519:<hex>`), so the verifying key resolves from the identifier alone, offline, with no registry; its content-bound `IdentityDocument` (keys, advertised capabilities, rotation history) `verify`s from the bytes, and a `Keyring` rotates keys along a **signed rotation chain** so a signature is validated against the key current *at signing time* — a rotated-away or revoked key cannot forge new history, while its past signatures stay valid. A signed `Delegation` mints a bounded `Grant` (a subset of capabilities, a budget cap, an expiry, an audience) from a principal to an agent — and an agent sub-delegates to a sub-agent — composing into a `DelegationChain` that `verify`s offline where **each link only attenuates, never amplifies** (capabilities only shrink, the budget only tightens, the expiry only shortens), so a tool call, contract signature, or saga handoff carries *provenance of authority* and an over-reaching sub-delegation is **refused from the bytes**; a rotated-key link carries a compact `KeyAuthorization` so the chain stays registry-free. A signed `AgentCredential` is a verifiable claim (*admitted to capability X*, *operated by org Y*) an importer `verify`s offline and folds into the admission path. Because an `AgentIdentity` is a drop-in `ChainSigner` (`key_id` is the DID), `app.use_identity` binds every audit entry, contract, and settlement to the **DID** that produced it — accountability as a cryptographic fact, not a logged string. Ed25519 is pure-Python (RFC 8032) by default with the native, constant-time `cryptography` backend behind `vincio[crypto]` (byte-identical signatures); held by an identity-integrity SLO (rotation- and forgery-resistance) and a delegation-attenuation SLO. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
 
@@ -104,57 +105,28 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The **cross-org settlement & credit fabric** closed with its capstone (3.44), and the **computer-use & embodied action
-plane** (3.45) took the platform from an engine that *thinks and transacts* to one that **acts** on real interfaces: a
-`ComputerEnvironment` (`app.computer_use`) that perceives a screen as typed, addressable elements, grounds an intent to a
-stable selector, pre-gates and post-verifies every action, and undoes it on divergence — feature-complete and shipped
-above. The platform can now reason, retrieve, remember, generate, evaluate, optimize, govern, **transact across
-organizations**, and **act** on the interfaces built for humans — a remarkably complete base.
+The **cross-org settlement & credit fabric** closed with its capstone (3.44), the **computer-use & embodied action
+plane** (3.45) took the platform from an engine that *thinks and transacts* to one that **acts** on real interfaces, and
+**agent identity, delegation & cryptographic accountability** (3.46) made it **accountable for who acts**: an
+`AgentIdentity` (`app.identity`) on a self-certifying DID, a `Keyring` that rotates along a signed chain, and a
+`DelegationChain` whose every link only attenuates — feature-complete and shipped above. The platform can now reason,
+retrieve, remember, generate, evaluate, optimize, govern, **transact across organizations**, **act** on the interfaces
+built for humans, and prove **who authorized each action, down what chain, within what bounds** — a remarkably complete
+base.
 
-What remains to be a complete, state-of-the-art, production-ready platform is a coherent, **finite** arc — four
-new-domain themes (3.46–3.49) and one consolidation major (4.0), scheduled below. The four minors each open a **new
+What remains to be a complete, state-of-the-art, production-ready platform is a coherent, **finite** arc — three
+new-domain themes (3.47–3.49) and one consolidation major (4.0), scheduled below. The three minors each open a **new
 domain** on the same bar every shipped subsystem met — a real gap in the literature *and* in buyer demand, covered
 offline, held by VincioBench budgets and SLOs, demonstrated by a runnable example, additive on the frozen surface
-(`API_VERSION` stays `3.0` through them). Read as one story, they take the platform from an engine that thinks,
-transacts, and acts to one that is **accountable** for who acts (3.46), is **provably correct** in what it produces
-(3.47), **grows its own capability** safely (3.48), and is **continuously certified** fit for production (3.49). The 4.0
-major then **consolidates and hardens** that complete platform into a long-term-stable surface — the one announced
-breaking window, never for its own sake. This is the whole plan: after 4.0 the platform is production-complete and
-long-term-stable, there is **no standing backlog**, and *Exploring — later* is intentionally empty. Indicative version
-targets are given; cadence holds one coherent theme per release.
+(`API_VERSION` stays `3.0` through them). Read as one story, they take the platform — already **accountable** for who acts
+(3.46) — to one that is **provably correct** in what it produces (3.47), **grows its own capability** safely (3.48), and
+is **continuously certified** fit for production (3.49). The 4.0 major then **consolidates and hardens** that complete
+platform into a long-term-stable surface — the one announced breaking window, never for its own sake. This is the whole
+plan: after 4.0 the platform is production-complete and long-term-stable, there is **no standing backlog**, and
+*Exploring — later* is intentionally empty. Indicative version targets are given; cadence holds one coherent theme per
+release.
 
-### 1 · Agent identity, delegation & cryptographic accountability *(target 3.46)*
-
-The platform signs contracts, settlements, attestations, audit entries, and engagement narratives — but *who* a key
-belongs to has been an out-of-band assumption (a `key_id` string). For production multi-org and multi-agent deployments,
-identity itself must be first-class and verifiable: a stable, portable agent identity, a way to **delegate** bounded
-authority from a principal to an agent (and from an agent to a sub-agent) along a verifiable chain, and
-**rotation / revocation** so a compromised key cannot forge history. This is the identity substrate beneath the tool
-permissions, the agent fabric, and the whole cross-org trust fabric — the layer that answers *who authorized this action,
-down what chain, within what bounds*.
-
-- **Portable, self-certifying identity** — an `AgentIdentity` (`app.identity(...)`) built on a self-certifying key (a
-  DID-style identifier derived from the public key, offline-resolvable) with a signed, content-bound `IdentityDocument`
-  (keys, advertised capabilities, rotation history) that `verify`s from the bytes; a `Keyring` rotates keys along a
-  signed chain so a signature is validated against the key that was current *at signing time* — a rotated-away or revoked
-  key cannot forge new history, while old signatures stay valid.
-- **Delegation chains & attenuated authority** — a signed `Delegation` mints a bounded grant (a subset of capabilities, a
-  budget cap, an expiry, an audience) from a principal to an agent, composing into a `DelegationChain` that `verify`s
-  offline where **each link only attenuates, never amplifies** — so a tool call, a contract signature, or a saga handoff
-  carries *provenance of authority*, and an over-reaching sub-delegation is refused from the bytes.
-- **Verifiable credentials & accountable audit** — an org issues a signed `AgentCredential` (a verifiable claim — *this
-  agent is admitted to capability X*, *operated by org Y*) an importer verifies offline and folds into the existing
-  admission / registry path; every audit entry, contract, and settlement binds to the **identity and delegation chain**
-  that produced it, so accountability is mechanical — a forged or unauthorized action is refused and pinpointed, never
-  merely logged.
-
-*Ships as:* an `AgentIdentity` / `IdentityDocument` / `Keyring` (self-certifying, rotation-aware), a signed `Delegation` /
-`DelegationChain` with attenuated authority, a verifiable `AgentCredential` folding into admission / registry — all
-offline-verifiable and on the audit chain (pure-Python Ed25519/HMAC default, native crypto behind an extra); an
-`identity` VincioBench family with an identity-integrity SLO (rotation- and forgery-resistance) and a
-delegation-attenuation SLO; and a runnable example.
-
-### 2 · Verified reasoning & neuro-symbolic certificates *(target 3.47)*
+### 1 · Verified reasoning & neuro-symbolic certificates *(target 3.47)*
 
 The platform controls reasoning effort, searches trajectories, and grades outputs with judges, oracles, and a governance
 verifier — but the per-answer signals are *probabilistic*. The next reliability frontier is *certifiable* correctness: for
@@ -182,7 +154,7 @@ optional behind `vincio[verify]`), `BehaviorSpec` / `RuntimeMonitor` / `Shield` 
 condition contracts; `app.verify_reasoning` folding into self-correction and the rails; a `verified_reasoning` VincioBench
 family with a certificate-soundness SLO and a shield-prevents-violation SLO; and a runnable example.
 
-### 3 · Autonomous skill acquisition & open-ended curriculum *(target 3.48)*
+### 2 · Autonomous skill acquisition & open-ended curriculum *(target 3.48)*
 
 The closed self-improvement loop (trace → dataset → eval → optimize → promote), RLVR, the distillation flywheel, on-device
 LoRA, and the world-model all make an agent *better at known tasks*. The apex of that arc is **open-ended capability
@@ -208,7 +180,7 @@ proposer bounded by the rails and the governance verifier, an `app.cultivate` op
 no-regression / canary gates; a `skill_acquisition` VincioBench family with a capability-monotonicity SLO and a
 stay-in-policy safety SLO; and a runnable example over a deterministic environment.
 
-### 4 · Continuous assurance cases & production certification *(target 3.49 — the platform-completion capstone)*
+### 3 · Continuous assurance cases & production certification *(target 3.49 — the platform-completion capstone)*
 
 Vincio already *produces* the evidence a production AI system is judged on — evals and regression gates, the
 governance-invariant verifier, the containment proof, reasoning certificates and runtime monitors (3.47), identity and
@@ -243,7 +215,7 @@ certifying a full app; and a new assurance guide alongside ROADMAP / SECURITY no
 production-complete** — every subsystem composes into one continuously-verified safety argument — and the only remaining
 scheduled phase is the 4.0 consolidation major below.
 
-### 5 · 4.0 — Consolidation, hardening & the long-term-support major *(target 4.0 — the announced breaking window)*
+### 4 · 4.0 — Consolidation, hardening & the long-term-support major *(target 4.0 — the announced breaking window)*
 
 With the platform feature-complete after 3.49, 4.0 is the **one announced breaking window** — never for its own sake,
 only the changes the additive-only contract could not make — that consolidates the whole surface into a long-term-stable

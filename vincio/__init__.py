@@ -294,6 +294,26 @@ from .security.capability import (
     verify_containment,
 )
 from .security.dualplane import DualPlaneExecutor
+from .security.identity import (
+    AgentCredential,
+    AgentIdentity,
+    CredentialVerification,
+    Delegation,
+    DelegationChain,
+    DelegationChainVerification,
+    DelegationVerification,
+    Grant,
+    IdentityDocument,
+    IdentityVerification,
+    KeyAuthorization,
+    KeyRecord,
+    Keyring,
+    SignatureCheck,
+    did_from_public_key,
+    is_vincio_did,
+    key_fingerprint,
+    public_key_from_did,
+)
 from .security.poisoning import PoisoningDetector
 from .security.rails import Rail
 from .settlement import (
@@ -425,7 +445,7 @@ from .tools import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.45.0"
+__version__ = "3.46.0"
 
 __all__ = [
     "ContextApp",
@@ -712,6 +732,25 @@ __all__ = [
     "ContainmentMonitor",
     "ContainmentReport",
     "verify_containment",
+    # agent identity, delegation & cryptographic accountability
+    "AgentIdentity",
+    "IdentityDocument",
+    "Keyring",
+    "KeyRecord",
+    "KeyAuthorization",
+    "Grant",
+    "Delegation",
+    "DelegationChain",
+    "AgentCredential",
+    "IdentityVerification",
+    "DelegationVerification",
+    "DelegationChainVerification",
+    "CredentialVerification",
+    "SignatureCheck",
+    "did_from_public_key",
+    "public_key_from_did",
+    "is_vincio_did",
+    "key_fingerprint",
     "Workflow",
     "Pack",
     "load_pack",

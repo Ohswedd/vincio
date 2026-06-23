@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.46.0] - 2026-06-23
+
+Agent identity, delegation & cryptographic accountability. The platform signed contracts, settlements, attestations,
+audit entries, and engagement narratives — but *who* a signing key belonged to was an out-of-band assumption (a `key_id`
+string a verifier had to trust). This release makes identity itself first-class and verifiable: a portable,
+self-certifying agent identity, bounded delegation along a verifiable chain, and key rotation/revocation so a compromised
+key cannot forge history. It is the substrate beneath the tool permissions, the agent fabric, and the cross-org trust
+fabric — the layer that answers *who authorized this action, down what chain, within what bounds*. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the existing signing surface is unchanged, and the whole theme runs
+offline and deterministically (pure-Python RFC 8032 Ed25519 by default; the native `cryptography` backend behind
+`vincio[crypto]`).
+
+### Added
+
+- **Portable, self-certifying identity (`vincio.security.identity`).** `app.identity(name=None, *, controller="",
+  capabilities=None, seed=None, use=False)` mints an `AgentIdentity` built on an Ed25519 key whose **DID is derived from
+  the public key** (`did:vincio:ed25519:<hex>`), so the verifying key resolves from the identifier alone, offline, with no
+  registry (`public_key_from_did` / `did_from_public_key` / `is_vincio_did` / `key_fingerprint`). Its content-bound
+  `IdentityDocument` (keys, advertised capabilities, rotation history) `verify()`s from the bytes, and an `AgentIdentity`
+  satisfies the `ChainSigner` protocol (`key_id` is the DID) so it drops into every signing slot the platform exposes.
+- **Key rotation & revocation (`Keyring` / `KeyRecord`).** A `Keyring` rotates keys along a **signed rotation chain**
+  (each new key authorized by the one before it), so a signature is validated against the key current *at signing time*:
+  `document.verify_signature(message, signature, at=...)` reports the signing key and whether it was active then. A
+  rotated-away or revoked key cannot sign new history, while signatures it made while current stay valid — modelling key
+  compromise without invalidating legitimate past acts.
+- **Delegation chains & attenuated authority (`Delegation` / `DelegationChain` / `Grant`).** A signed `Delegation` mints a
+  bounded `Grant` (a subset of capabilities, a budget cap, an expiry, an audience, a re-delegation depth) from a principal
+  to an agent; `delegation.delegate(...)` sub-delegates to a sub-agent, composing into a `DelegationChain` that
+  `verify(root_issuer=...)`s **offline** under one invariant — **each link only attenuates its parent's grant, never
+  amplifies it**. `chain.permits(capability, budget_usd=, at=, audience=)` / `require_permits(...)` answer authorization;
+  an over-reaching sub-delegation or a tampered grant is **refused from the bytes**. A rotated-key link carries a compact
+  `KeyAuthorization` so the chain stays registry-free.
+- **Verifiable credentials (`AgentCredential`).** `app.issue_credential(subject, claims, *, as_identity=None,
+  not_after=None, expires_in=None)` issues a signed claim (*admitted to capability X*, *operated by org Y*) an importer
+  `verify()`s offline and folds into the capability-gated admission path (`credential.admits(capability)`); a tampered
+  claim or a forged issuer is caught from the bytes.
+- **Accountable audit binding.** `app.use_identity(identity)` binds an identity as the content / contract / audit signer,
+  so subsequent audit entries, negotiated contracts, and settlement records record the identity's **DID** as their
+  `key_id` — accountability as a cryptographic fact, not a logged string.
+- **New error.** `IdentityError` (a `SecurityError`, code `IDENTITY_VERIFICATION_FAILED`) is raised when a DID is
+  malformed, a document or rotation chain does not verify, a sub-delegation amplifies its parent, or a credential's
+  signature does not bind to its issuer DID.
+- **Crypto backend (`vincio.security._ed25519`, extra `vincio[crypto]`).** A pure-Python, RFC 8032-conformant Ed25519
+  (the dependency-free default) with an automatic switch to the native, constant-time `cryptography` backend when the
+  `crypto` extra is installed — byte-identical signatures, so artifacts interoperate across backends.
+- **Benchmark, SLOs, example & docs.** An `identity` VincioBench family gates identity integrity (self-certifying DID,
+  document verification, signed rotation chain, old-signature survival) and delegation attenuation (offline chain
+  verification, refusal of amplification and tampering), held by an identity-integrity SLO and a delegation-attenuation
+  SLO. New runnable example `examples/90_agent_identity_delegation.py`, an [identity guide](docs/guides/agent-identity.md),
+  and synchronized README / SECURITY / llms.txt / API reference / ROADMAP.
+
 ## [3.45.0] - 2026-06-23
 
 Computer-use & embodied action plane. Computer-use and provider-hosted tools already shipped as a *capability* — a flat
