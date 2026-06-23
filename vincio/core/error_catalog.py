@@ -492,6 +492,15 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "the leaked credential; set `security.egress_dlp: warn` only if the "
             "match is a false positive.",
         ),
+        _entry(
+            "IDENTITY_VERIFICATION_FAILED",
+            "Agent identity / delegation / credential failed verification",
+            "A DID, identity document, delegation chain, or credential did not "
+            "verify from the bytes. Check `.details` for the failing artifact: a "
+            "sub-delegation may amplify its parent's grant (only attenuation is "
+            "allowed), a signature may not bind to its issuer DID, or a key may "
+            "have been rotated/revoked. Re-issue the artifact with `app.identity(...)`.",
+        ),
         # --- governance ---
         _entry(
             "GOVERNANCE_ERROR",

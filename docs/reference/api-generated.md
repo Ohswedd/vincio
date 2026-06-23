@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**411** public symbols.
+**429** public symbols.
 
 ## Classes
 
@@ -62,9 +62,17 @@ A graduated-exposure policy over the standing the fabric already earns.
 
 The (non-raising) outcome of verifying an admission decision offline.
 
+### `AgentCredential(**data)`
+
+A signed, verifiable claim an org makes about an agent.
+
 ### `AgentDirectory(allow_list=…, audit=…, principal=…)`
 
 A governed, discoverable directory of agents across A2A / ACP / MCP.
+
+### `AgentIdentity(keyring, name=…)`
+
+A portable agent identity: a keyring, its document, and an accountable signer.
 
 ### `AgentRole(**data)`
 
@@ -334,6 +342,10 @@ In-process append-only ledger of attributed cost events.
 
 A concrete, minimal state that violates an invariant.
 
+### `CredentialVerification(**data)`
+
+The (non-raising) outcome of verifying an agent credential offline.
+
 ### `CreditorRecovery(**data)`
 
 One creditor's outcome in an :class:`InsolvencyResolution` waterfall.
@@ -357,6 +369,22 @@ The (non-raising) outcome of verifying a custody attestation offline.
 ### `Dataset(**data)`
 
 !!! abstract "Usage Documentation" [Models](../concepts/models.md)
+
+### `Delegation(**data)`
+
+A signed grant of bounded authority from one identity to another.
+
+### `DelegationChain(**data)`
+
+An ordered chain of delegations from a principal down to an acting agent.
+
+### `DelegationChainVerification(**data)`
+
+The (non-raising) outcome of verifying a delegation chain offline.
+
+### `DelegationVerification(**data)`
+
+The (non-raising) outcome of verifying one delegation offline.
 
 ### `DeployResult(**data)`
 
@@ -546,6 +574,10 @@ A held-out, *growing* golden regression set with per-case provenance.
 
 Proves governance invariants by exhaustive bounded model checking.
 
+### `Grant(**data)`
+
+A bounded grant of authority: the capabilities, budget, expiry, and audience.
+
 ### `GuardedBanditRouter(entries, bandit=…, safe_model=…, reward_fn=…, context_fn=…, epsilon=…, alpha=…, context_dim=…, seed=…, regret_budget=…, rollback_margin=…, store=…, app_name=…, events=…)`
 
 A live routing bandit with a safety floor, regret tracking, and auto-rollback.
@@ -569,6 +601,14 @@ The (non-raising) outcome of verifying a liability history-consistency proof off
 ### `HistoryConsistencyReport(**data)`
 
 The outcome of walking a set of liability snapshots for cross-time monotonicity.
+
+### `IdentityDocument(**data)`
+
+A signed, content-bound description of an agent identity.
+
+### `IdentityVerification(**data)`
+
+The (non-raising) outcome of verifying an identity document offline.
 
 ### `ImageGenRequest(**data)`
 
@@ -642,9 +682,21 @@ Score candidates with any :class:`~vincio.evals.judges.Judge` or :class:`~vincio
 
 Bounded tracker of cross-request shared stable-prefix KV reuse.
 
+### `KeyAuthorization(**data)`
+
+An offline proof that a signing key descends from an identity's genesis key.
+
 ### `KeyPool(providers, rpm=…, tpm=…, breaker=…, labels=…, max_attempts=…, base_backoff_s=…, max_backoff_s=…, seed=…, events=…, clock=…)`
 
 Round-robin pool over multiple keys/regions of one logical provider.
+
+### `KeyRecord(**data)`
+
+One public key in an identity's rotation history.
+
+### `Keyring(document, seeds)`
+
+Holds an identity's private keys and maintains its signed rotation chain.
 
 ### `LLMLinguaCompressor(scorer=…, min_keep_ratio=…, coarse_overshoot=…)`
 
@@ -1170,6 +1222,10 @@ Routes writes across shards and merges parallel reads (Index protocol).
 
 Base class for typed input → output signatures.
 
+### `SignatureCheck(**data)`
+
+Which key verified a signature and whether it was valid at a given time.
+
 ### `SolvencyProof(**data)`
 
 A signed, offline-verifiable proof-of-solvency over a poster's reserves and liabilities.
@@ -1456,6 +1512,10 @@ Process-wide registry, seeded from the built-in catalog plus the ``VINCIO_MODEL_
 
 Mark a function or class as deprecated.
 
+### `did_from_public_key(public_key)`
+
+Derive the self-certifying DID for an Ed25519 public key.
+
 ### `discharge_liability(poster, creditor, amount_usd, as_of=…, note=…)`
 
 Build an (unsigned) :class:`Discharge` releasing part of what ``poster`` owes ``creditor``.
@@ -1500,9 +1560,17 @@ Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use
 
 All installed Vincio plugins across every group (alias for discovery).
 
+### `is_vincio_did(did)`
+
+Whether ``did`` is a well-formed ``did:vincio:ed25519`` identifier.
+
 ### `is_wasm_runtime()`
 
 True when running on a WASM target (Emscripten/Pyodide or WASI).
+
+### `key_fingerprint(public_key)`
+
+A short, stable key id (``k<16 hex>``) for a public key — used as ``kid``.
 
 ### `load_benchmark(name, **kwargs)`
 
@@ -1567,6 +1635,10 @@ Fold a reserve proof against a liability proof into a proof-of-solvency.
 ### `provider_trainer(backend, registry=…, inherit_from=…, pricing=…, suffix=…, fmt=…, poll_interval_s=…, max_polls=…)`
 
 Build an *executed* :data:`StudentTrainer` over a fine-tune backend.
+
+### `public_key_from_did(did)`
+
+Recover the Ed25519 public key embedded in a ``did:vincio:ed25519`` DID.
 
 ### `reconcile(a, b, tolerance=…)`
 

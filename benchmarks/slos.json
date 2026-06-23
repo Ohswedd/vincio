@@ -325,12 +325,12 @@
     {
       "id": "judge_ensemble_calibration_gated",
       "category": "quality",
-      "statement": "A judge ensemble earns CI-gating weight only after its Cohen's κ against human labels clears the trust threshold.",
+      "statement": "A judge ensemble earns CI-gating weight only after its Cohen's \u03ba against human labels clears the trust threshold.",
       "metric": "families.agentic_evals.quality_frontier.judge_ensemble.calibration_gated",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.agentic_evals.quality_frontier.judge_ensemble.calibration_gated",
-      "rationale": "A panel can be confident and still be wrong; only κ-validation against people licenses it to block a release."
+      "rationale": "A panel can be confident and still be wrong; only \u03ba-validation against people licenses it to block a release."
     },
     {
       "id": "causal_regression_attribution",
@@ -340,7 +340,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.agentic_evals.quality_frontier.attribution.explained",
-      "rationale": "Explaining a regression — not just flagging it — requires the per-component credit to sum exactly to the observed delta."
+      "rationale": "Explaining a regression \u2014 not just flagging it \u2014 requires the per-component credit to sum exactly to the observed delta."
     },
     {
       "id": "adaptive_sampling_preserves_verdict",
@@ -350,7 +350,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.agentic_evals.quality_frontier.adaptive_sampling.verdict_preserved",
-      "rationale": "Spending the eval budget where the variance is must converge on the same decision — cheaper, never different."
+      "rationale": "Spending the eval budget where the variance is must converge on the same decision \u2014 cheaper, never different."
     },
     {
       "id": "batch_result_correctness",
@@ -1085,7 +1085,7 @@
     {
       "id": "test_time_compute_quality_per_budget",
       "category": "quality",
-      "statement": "At a fixed candidate budget, verifier-guided best-of-N delivers at least +0.1 quality over the single-shot draw — a Pareto improvement in quality per dollar.",
+      "statement": "At a fixed candidate budget, verifier-guided best-of-N delivers at least +0.1 quality over the single-shot draw \u2014 a Pareto improvement in quality per dollar.",
       "metric": "families.test_time_compute.pareto_quality_gain",
       "direction": "gte",
       "threshold": 0.1,
@@ -1115,17 +1115,17 @@
     {
       "id": "long_horizon_footprint_bounded",
       "category": "performance",
-      "statement": "At 10× horizon, the governed resident context footprint stays within a bounded multiple (≤ 2×) of the 1× footprint, so a long run does not grow context without bound.",
+      "statement": "At 10\u00d7 horizon, the governed resident context footprint stays within a bounded multiple (\u2264 2\u00d7) of the 1\u00d7 footprint, so a long run does not grow context without bound.",
       "metric": "families.long_horizon.footprint_growth_ratio",
       "direction": "lte",
       "threshold": 2.0,
       "enforced_by": "families.long_horizon.footprint_growth_ratio",
-      "rationale": "Naïve accumulation grows the footprint ~linearly with horizon (≈10×); the governor's decay + compaction keep it flat. The budget gates 1.5×, below the 2× promise."
+      "rationale": "Na\u00efve accumulation grows the footprint ~linearly with horizon (\u224810\u00d7); the governor's decay + compaction keep it flat. The budget gates 1.5\u00d7, below the 2\u00d7 promise."
     },
     {
       "id": "long_horizon_recall_preserved",
       "category": "quality",
-      "statement": "A fact compacted out of the live packet on a long run is still recalled at 10× horizon (recall ≥ 0.80) by paging it back from the content-addressed store.",
+      "statement": "A fact compacted out of the live packet on a long run is still recalled at 10\u00d7 horizon (recall \u2265 0.80) by paging it back from the content-addressed store.",
       "metric": "families.long_horizon.recall_at_horizon",
       "direction": "gte",
       "threshold": 0.8,
@@ -1135,7 +1135,7 @@
     {
       "id": "long_horizon_within_envelope",
       "category": "cost",
-      "statement": "A governed long run stays inside its declared context budget (tokens, residency, KV-cache) at 10× horizon.",
+      "statement": "A governed long run stays inside its declared context budget (tokens, residency, KV-cache) at 10\u00d7 horizon.",
       "metric": "families.long_horizon.within_budget_at_horizon",
       "direction": "eq",
       "threshold": true,
@@ -1180,7 +1180,7 @@
       "direction": "gte",
       "threshold": 1.0,
       "enforced_by": "families.record_replay.replay_faithful",
-      "rationale": "Replay is only a debugger if it reproduces the past run exactly; the budget gates byte-identical output, proving the recording — not the provider — drives the run."
+      "rationale": "Replay is only a debugger if it reproduces the past run exactly; the budget gates byte-identical output, proving the recording \u2014 not the provider \u2014 drives the run."
     },
     {
       "id": "record_replay_divergence_detected",
@@ -1215,7 +1215,7 @@
     {
       "id": "semantic_cache_below_bar_never_served",
       "category": "quality",
-      "statement": "A near-miss whose similarity is below the calibrated acceptance threshold is never served — the cache falls back to a live call rather than risk a wrong answer.",
+      "statement": "A near-miss whose similarity is below the calibrated acceptance threshold is never served \u2014 the cache falls back to a live call rather than risk a wrong answer.",
       "metric": "families.semantic_cache.below_bar_never_served",
       "direction": "eq",
       "threshold": true,
@@ -1225,7 +1225,7 @@
     {
       "id": "semantic_cache_gate_blocks_drift",
       "category": "quality",
-      "statement": "The eval-replay regression gate — the cache analogue of the model-swap gate — passes a faithful cache and blocks a drifted one whose near-misses no longer match the live answer.",
+      "statement": "The eval-replay regression gate \u2014 the cache analogue of the model-swap gate \u2014 passes a faithful cache and blocks a drifted one whose near-misses no longer match the live answer.",
       "metric": "families.semantic_cache.gate_blocks_drift",
       "direction": "eq",
       "threshold": true,
@@ -1255,7 +1255,7 @@
     {
       "id": "local_adaptation_regression_reversible",
       "category": "quality",
-      "statement": "A regressing on-device adapter is refused — never promoted, never applied, the registry head left on the last known-good version — so adaptation is bounded and reversible.",
+      "statement": "A regressing on-device adapter is refused \u2014 never promoted, never applied, the registry head left on the last known-good version \u2014 so adaptation is bounded and reversible.",
       "metric": "families.local_adaptation.regression_refused",
       "direction": "eq",
       "threshold": true,
@@ -1265,12 +1265,12 @@
     {
       "id": "federated_no_raw_traffic",
       "category": "privacy",
-      "statement": "A federated contribution shares what a member learned, never its raw traffic: the wire artifact carries only the numeric subspace scatter — no prompt and no response appears anywhere in it.",
+      "statement": "A federated contribution shares what a member learned, never its raw traffic: the wire artifact carries only the numeric subspace scatter \u2014 no prompt and no response appears anywhere in it.",
       "metric": "families.federated.no_raw_traffic",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.federated.no_raw_traffic",
-      "rationale": "Cross-org improvement is only acceptable if no member's traffic leaves its boundary; the budget gates that a serialized contribution contains none of the member's prompt or response text — companion budgets gate that the contribution's sensitivity is clipped to a bound."
+      "rationale": "Cross-org improvement is only acceptable if no member's traffic leaves its boundary; the budget gates that a serialized contribution contains none of the member's prompt or response text \u2014 companion budgets gate that the contribution's sensitivity is clipped to a bound."
     },
     {
       "id": "federated_secure_aggregation",
@@ -1285,7 +1285,7 @@
     {
       "id": "federated_no_regression",
       "category": "quality",
-      "statement": "A merged federated candidate is adopted only when the member's adapter re-fit against the shared subspace is at-least-as-good as its base on the held-out eval set — the same no-regression gate a local promotion and a hosted fine-tune job clear — and is refused and reversible otherwise.",
+      "statement": "A merged federated candidate is adopted only when the member's adapter re-fit against the shared subspace is at-least-as-good as its base on the held-out eval set \u2014 the same no-regression gate a local promotion and a hosted fine-tune job clear \u2014 and is refused and reversible otherwise.",
       "metric": "families.federated.at_least_as_good",
       "direction": "eq",
       "threshold": true,
@@ -1300,7 +1300,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation.discount_aligns_consensus",
-      "rationale": "Equal-weight aggregation lets an unreliable member pull the consensus as hard as a reliable one; reputation weighting must measurably discount it. The budget gates that the weighted merge aligns the consensus closer to the reliable member than the unweighted merge — companion budgets gate that the regressor's weight is the smaller, that a weight never leaves [floor, 1] (discounted, never zeroed), and that reputation is reconstructable from the audit chain."
+      "rationale": "Equal-weight aggregation lets an unreliable member pull the consensus as hard as a reliable one; reputation weighting must measurably discount it. The budget gates that the weighted merge aligns the consensus closer to the reliable member than the unweighted merge \u2014 companion budgets gate that the regressor's weight is the smaller, that a weight never leaves [floor, 1] (discounted, never zeroed), and that reputation is reconstructable from the audit chain."
     },
     {
       "id": "reputation_no_regression",
@@ -1310,27 +1310,27 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation.gate_not_bypassed",
-      "rationale": "Weighting changes which geometry the fleet converges toward when every candidate already clears the gate — it must never become a way around the gate. The budget gates that a regressing adapter from pristine-reputation contributors is still refused and reversible; companion budgets gate that the round adopts when at-least-as-good and records its verdict back to the ledger."
+      "rationale": "Weighting changes which geometry the fleet converges toward when every candidate already clears the gate \u2014 it must never become a way around the gate. The budget gates that a regressing adapter from pristine-reputation contributors is still refused and reversible; companion budgets gate that the round adopts when at-least-as-good and records its verdict back to the ledger."
     },
     {
       "id": "privacy_budget_composes",
       "category": "privacy",
-      "statement": "A subject's cumulative (ε, δ) privacy loss composes across every memory consolidation and learning round their data touches: the Rényi/moments accountant tracks the running budget across rounds and bounds it more tightly than naively summing each step's ε.",
+      "statement": "A subject's cumulative (\u03b5, \u03b4) privacy loss composes across every memory consolidation and learning round their data touches: the R\u00e9nyi/moments accountant tracks the running budget across rounds and bounds it more tightly than naively summing each step's \u03b5.",
       "metric": "families.privacy.composes_across_rounds",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.privacy.composes_across_rounds",
-      "rationale": "A per-round bound is not a per-subject guarantee; the accountant must compose across rounds. The budget gates that the cumulative ε grows with each round yet stays below the naive sum — companion budgets gate the exact Gaussian RDP and the monotonicity of the spend."
+      "rationale": "A per-round bound is not a per-subject guarantee; the accountant must compose across rounds. The budget gates that the cumulative \u03b5 grows with each round yet stays below the naive sum \u2014 companion budgets gate the exact Gaussian RDP and the monotonicity of the spend."
     },
     {
       "id": "privacy_budget_refuses",
       "category": "privacy",
-      "statement": "A memory consolidation or a federated contribution that would push a subject's cumulative (ε, δ) past their privacy budget is refused — the privacy analogue of a hard cost cap — or down-weighted to fit; an over-budget release never silently proceeds.",
+      "statement": "A memory consolidation or a federated contribution that would push a subject's cumulative (\u03b5, \u03b4) past their privacy budget is refused \u2014 the privacy analogue of a hard cost cap \u2014 or down-weighted to fit; an over-budget release never silently proceeds.",
       "metric": "families.privacy.budget_refused",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.privacy.budget_refused",
-      "rationale": "A budget that cannot refuse is advisory, not a guarantee. The budget gates that an over-budget step is refused — companion budgets gate that memory consolidation and federated contributions are both gated, that down-weighting keeps the release within the ceiling, and that one subject's spend never touches another's."
+      "rationale": "A budget that cannot refuse is advisory, not a guarantee. The budget gates that an over-budget step is refused \u2014 companion budgets gate that memory consolidation and federated contributions are both gated, that down-weighting keeps the release within the ceiling, and that one subject's spend never touches another's."
     },
     {
       "id": "privacy_budget_auditable",
@@ -1340,27 +1340,27 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.privacy.on_audit_chain",
-      "rationale": "A privacy guarantee must be provable, not asserted. The budget gates that spends and refusals land on the verifiable audit chain — a companion budget gates that the per-subject report exposes spent and remaining ε with operation and refusal counts."
+      "rationale": "A privacy guarantee must be provable, not asserted. The budget gates that spends and refusals land on the verifiable audit chain \u2014 a companion budget gates that the per-subject report exposes spent and remaining \u03b5 with operation and refusal counts."
     },
     {
       "id": "energy_per_run_estimate",
       "category": "cost",
-      "statement": "Every run yields a per-run energy (watt-hours) and carbon (grams CO₂e) estimate, accrued deterministically from the run's token accounting against a per-model (by-tier) intensity and a per-region grid factor — the energy analogue of the per-run dollar cost, on the same cost-report surface.",
+      "statement": "Every run yields a per-run energy (watt-hours) and carbon (grams CO\u2082e) estimate, accrued deterministically from the run's token accounting against a per-model (by-tier) intensity and a per-region grid factor \u2014 the energy analogue of the per-run dollar cost, on the same cost-report surface.",
       "metric": "families.energy.per_run_estimate",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.energy.per_run_estimate",
-      "rationale": "Sustainability disclosure needs a number, not a gesture: the estimate must be produced for every run and be mechanical. The budget gates that an enabled run reports a positive, reproducible estimate — companion budgets gate that decode dominates prefill, that a stronger tier draws more, that carbon tracks energy at the grid intensity, and that an unknown model still reports non-zero rather than a silent zero."
+      "rationale": "Sustainability disclosure needs a number, not a gesture: the estimate must be produced for every run and be mechanical. The budget gates that an enabled run reports a positive, reproducible estimate \u2014 companion budgets gate that decode dominates prefill, that a stronger tier draws more, that carbon tracks energy at the grid intensity, and that an unknown model still reports non-zero rather than a silent zero."
     },
     {
       "id": "energy_budget_refusal",
       "category": "cost",
-      "statement": "A run that would push a scope's accrued energy or carbon over its sustainability envelope is refused — the energy analogue of a hard cost cap; an over-budget run never silently proceeds.",
+      "statement": "A run that would push a scope's accrued energy or carbon over its sustainability envelope is refused \u2014 the energy analogue of a hard cost cap; an over-budget run never silently proceeds.",
       "metric": "families.energy.budget_refused",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.energy.budget_refused",
-      "rationale": "A budget that cannot refuse is advisory, not a guarantee. The budget gates that a carbon envelope refuses the over-budget run — a companion budget gates that an energy (watt-hour) ceiling refuses too, so either unit can cap a run."
+      "rationale": "A budget that cannot refuse is advisory, not a guarantee. The budget gates that a carbon envelope refuses the over-budget run \u2014 a companion budget gates that an energy (watt-hour) ceiling refuses too, so either unit can cap a run."
     },
     {
       "id": "energy_auditable_offline",
@@ -1370,37 +1370,37 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.energy.auditable_offline",
-      "rationale": "A sustainability figure auditors can trust must be reproducible and on the record, not a black-box service call. The budget gates that the per-run estimate and the refusal both land on the verifiable audit chain and the cost-report surface — companion budgets gate that the report matches the tracker and that accounting is off until explicitly enabled."
+      "rationale": "A sustainability figure auditors can trust must be reproducible and on the record, not a black-box service call. The budget gates that the per-run estimate and the refusal both land on the verifiable audit chain and the cost-report surface \u2014 companion budgets gate that the report matches the tracker and that accounting is off until explicitly enabled."
     },
     {
       "id": "governance_invariants_proven",
       "category": "security",
-      "statement": "The governance invariants — injection containment (untrusted ⇒ no unapproved capability), in-jurisdiction residency, the budget hard cap, and the erasure-proof content binding — are proven to hold across their whole bounded, typed state space by a deterministic in-process verifier, ahead of any run, with every holding invariant checked at every point of its domain (a proof, not a sample).",
+      "statement": "The governance invariants \u2014 injection containment (untrusted \u21d2 no unapproved capability), in-jurisdiction residency, the budget hard cap, and the erasure-proof content binding \u2014 are proven to hold across their whole bounded, typed state space by a deterministic in-process verifier, ahead of any run, with every holding invariant checked at every point of its domain (a proof, not a sample).",
       "metric": "families.verification.property_holds",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.verification.property_holds",
-      "rationale": "A governance guarantee checked by construction beats one observed after the fact. The budget gates that all four invariants hold — companion budgets gate that the check covers the whole domain (states_checked == domain_size), spans all four invariants, and is deterministically reproducible."
+      "rationale": "A governance guarantee checked by construction beats one observed after the fact. The budget gates that all four invariants hold \u2014 companion budgets gate that the check covers the whole domain (states_checked == domain_size), spans all four invariants, and is deterministically reproducible."
     },
     {
       "id": "governance_counterexample_on_violation",
       "category": "security",
-      "statement": "A violated governance invariant yields a concrete, delta-minimized counterexample — the input, the labels, the capability gap — rather than a bare verdict, so a governance regression is debuggable; demonstrated by a fail-open residency posture, a projection-blind budget cap, and a bypassed containment gate each exhibiting a minimal witness.",
+      "statement": "A violated governance invariant yields a concrete, delta-minimized counterexample \u2014 the input, the labels, the capability gap \u2014 rather than a bare verdict, so a governance regression is debuggable; demonstrated by a fail-open residency posture, a projection-blind budget cap, and a bypassed containment gate each exhibiting a minimal witness.",
       "metric": "families.verification.counterexample_on_violation",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.verification.counterexample_on_violation",
-      "rationale": "A verifier that only says 'failed' is not actionable. The budget gates that a violation in each of the residency, budget, and containment invariants produces a counterexample — a companion budget gates that the witness is delta-minimized to its simplest form."
+      "rationale": "A verifier that only says 'failed' is not actionable. The budget gates that a violation in each of the residency, budget, and containment invariants produces a counterexample \u2014 a companion budget gates that the witness is delta-minimized to its simplest form."
     },
     {
       "id": "governance_verification_auditable_offline",
       "category": "reliability",
-      "statement": "The verification verdict is a mechanical, offline, auditable artifact: a content-hashed report computed in-process with no external prover service, recorded on the hash-chained, verifiable audit log — a holding pass as an allow decision and a violating pass as a deny.",
+      "statement": "The verification verdict is a mechanical, offline, auditable artifact: a content-hashed report computed in-process with no external prover service, recorded on the hash-chained, verifiable audit log \u2014 a holding pass as an allow decision and a violating pass as a deny.",
       "metric": "families.verification.auditable_offline",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.verification.auditable_offline",
-      "rationale": "A proof auditors can trust must be reproducible and on the record. The budget gates that the verdict lands on the verifiable audit chain (allow when held, deny when a misconfigured app is flagged) — companion budgets gate that the report digest re-derives and that a fail-open posture is caught through the app surface."
+      "rationale": "A proof auditors can trust must be reproducible and on the record. The budget gates that the verdict lands on the verifiable audit chain (allow when held, deny when a misconfigured app is flagged) \u2014 companion budgets gate that the report digest re-derives and that a fail-open posture is caught through the app surface."
     },
     {
       "id": "video_temporal_grounding",
@@ -1415,7 +1415,7 @@
     {
       "id": "video_generation_provenance_bound",
       "category": "security",
-      "statement": "Every generated or edited video carries a C2PA manifest bound to its bytes; tampering fails verification — synthetic video is as tamper-evident as a generated image, audio clip, or text answer.",
+      "statement": "Every generated or edited video carries a C2PA manifest bound to its bytes; tampering fails verification \u2014 synthetic video is as tamper-evident as a generated image, audio clip, or text answer.",
       "metric": "families.video.provenance.video_provenance_verifies",
       "direction": "eq",
       "threshold": true,
@@ -1445,17 +1445,17 @@
     {
       "id": "edge_bounded_profile",
       "category": "performance",
-      "statement": "The edge runtime holds a bounded resident-memory profile: the compiled packet's footprint stays under the profile cap even as the candidate corpus grows 10×, held by slimming and evidence eviction the way the server's resident-memory budget is.",
+      "statement": "The edge runtime holds a bounded resident-memory profile: the compiled packet's footprint stays under the profile cap even as the candidate corpus grows 10\u00d7, held by slimming and evidence eviction the way the server's resident-memory budget is.",
       "metric": "families.edge.bounded_profile",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.edge.bounded_profile",
-      "rationale": "A constrained target needs a guaranteed footprint, not a hope. The budget gates that a 4× and a 40× corpus both compile inside the profile's resident and token caps; a companion budget gates that eviction actually fires under the 10× load (some evidence dropped) while the footprint still fits, proving the bound is enforced, not merely unexercised."
+      "rationale": "A constrained target needs a guaranteed footprint, not a hope. The budget gates that a 4\u00d7 and a 40\u00d7 corpus both compile inside the profile's resident and token caps; a companion budget gates that eviction actually fires under the 10\u00d7 load (some evidence dropped) while the footprint still fits, proving the bound is enforced, not merely unexercised."
     },
     {
       "id": "edge_core_no_native_imports",
       "category": "reliability",
-      "statement": "The edge core is WASM-buildable: every module on the compile/score/rail/pack path imports no native or optional dependency unconditionally — only the stdlib, pydantic, httpx, and other vincio modules — so the dependency-free core compiles for a browser or edge worker.",
+      "statement": "The edge core is WASM-buildable: every module on the compile/score/rail/pack path imports no native or optional dependency unconditionally \u2014 only the stdlib, pydantic, httpx, and other vincio modules \u2014 so the dependency-free core compiles for a browser or edge worker.",
       "metric": "families.edge.no_native_imports",
       "direction": "eq",
       "threshold": true,
@@ -1470,17 +1470,17 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.mcp_apps.ui_surfaced_through_agui",
-      "rationale": "MCP Apps must ride one streamed run, not open a new ungoverned UI path. The budget gates that a server's ui:// resource becomes an AG-UI mcp.ui event; companion budgets gate that the render carries an untrusted-external trust level, that an oversized render is budget-refused rather than streamed, and that every render lands on the audit chain — so server UI inherits the run's provenance, budget, and audit."
+      "rationale": "MCP Apps must ride one streamed run, not open a new ungoverned UI path. The budget gates that a server's ui:// resource becomes an AG-UI mcp.ui event; companion budgets gate that the render carries an untrusted-external trust level, that an oversized render is budget-refused rather than streamed, and that every render lands on the audit chain \u2014 so server UI inherits the run's provenance, budget, and audit."
     },
     {
       "id": "mcp_apps_elicitation_contained",
       "category": "security",
-      "statement": "A server's mid-call elicitation request is gated by the same approval and rail machinery that governs a write tool: an approval can deny the request before any value is collected, the collected value is screened through the input rails, and an accepted value is tainted untrusted — so a secret value is refused and an elicited value can never silently authorize a side effect.",
+      "statement": "A server's mid-call elicitation request is gated by the same approval and rail machinery that governs a write tool: an approval can deny the request before any value is collected, the collected value is screened through the input rails, and an accepted value is tainted untrusted \u2014 so a secret value is refused and an elicited value can never silently authorize a side effect.",
       "metric": "families.mcp_apps.elicit_secret_refused",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.mcp_apps.elicit_secret_refused",
-      "rationale": "An elicited value is untrusted input from a third-party server; treating it as trusted would reopen the containment hole the dual-plane executor closes. The budget gates that a secret elicited value is refused by the input rail; companion budgets gate that an accepted value is tainted untrusted (contained), that an approval gate denies the request before collection, and that the end-to-end server-tool path is contained — so elicitation inherits the write-tool approval + rail guarantees."
+      "rationale": "An elicited value is untrusted input from a third-party server; treating it as trusted would reopen the containment hole the dual-plane executor closes. The budget gates that a secret elicited value is refused by the input rail; companion budgets gate that an accepted value is tainted untrusted (contained), that an approval gate denies the request before collection, and that the end-to-end server-tool path is contained \u2014 so elicitation inherits the write-tool approval + rail guarantees."
     },
     {
       "id": "mcp_apps_spec_parity",
@@ -1495,7 +1495,7 @@
     {
       "id": "negotiation_terminates",
       "category": "reliability",
-      "statement": "A bounded agent negotiation always terminates within its round/deadline budget: a bargain whose parties' acceptable regions overlap reaches a contract, and one with no overlap ends in a clean no-deal — never an unbounded loop, and a wall-clock deadline returns a partial result.",
+      "statement": "A bounded agent negotiation always terminates within its round/deadline budget: a bargain whose parties' acceptable regions overlap reaches a contract, and one with no overlap ends in a clean no-deal \u2014 never an unbounded loop, and a wall-clock deadline returns a partial result.",
       "metric": "families.negotiation.terminates_within_budget",
       "direction": "eq",
       "threshold": true,
@@ -1510,17 +1510,17 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.negotiation.contract_verifies_offline",
-      "rationale": "A contract is only as good as its tamper-evidence. The budget gates that an agreed contract verifies offline; companion budgets gate that it is signed by both parties, that a tampered term fails verification, and that the terms lower to a budget the runtime enforces — so a contract is a mechanical, verifiable cap, never a self-asserted promise."
+      "rationale": "A contract is only as good as its tamper-evidence. The budget gates that an agreed contract verifies offline; companion budgets gate that it is signed by both parties, that a tampered term fails verification, and that the terms lower to a budget the runtime enforces \u2014 so a contract is a mechanical, verifiable cap, never a self-asserted promise."
     },
     {
       "id": "choreography_durability",
       "category": "reliability",
-      "statement": "A cross-org saga is durable and resumable: its journal is checkpointed after every step, so a fresh process resumes it by id and continues from the cursor — a completed step is never re-run — and the hash-chained journal verifies offline from the bytes alone, catching any tampered record.",
+      "statement": "A cross-org saga is durable and resumable: its journal is checkpointed after every step, so a fresh process resumes it by id and continues from the cursor \u2014 a completed step is never re-run \u2014 and the hash-chained journal verifies offline from the bytes alone, catching any tampered record.",
       "metric": "families.choreography.durable_resume_survives_restart",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.choreography.durable_resume_survives_restart",
-      "rationale": "Cross-org work is long-running; it must survive a restart the way an in-process durable graph does. The budget gates that an interrupted saga resumes on a fresh engine sharing the store without re-running a completed step; companion budgets gate that the journal verifies offline and that a tampered record is caught — so a half-finished cross-org transaction is recoverable and tamper-evident, never lost or forged."
+      "rationale": "Cross-org work is long-running; it must survive a restart the way an in-process durable graph does. The budget gates that an interrupted saga resumes on a fresh engine sharing the store without re-running a completed step; companion budgets gate that the journal verifies offline and that a tampered record is caught \u2014 so a half-finished cross-org transaction is recoverable and tamper-evident, never lost or forged."
     },
     {
       "id": "choreography_compensation",
@@ -1530,17 +1530,17 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.choreography.compensation_unwinds_in_reverse",
-      "rationale": "Without compensation a cross-org failure strands a partial transaction across trust boundaries. The budget gates that a failure compensates the completed steps in reverse order; companion budgets gate that a delivered contract breach also compensates and that each side audits its own steps on its own chain — so a saga is an all-or-nothing unit of cross-org work, governed per-org without a shared control plane."
+      "rationale": "Without compensation a cross-org failure strands a partial transaction across trust boundaries. The budget gates that a failure compensates the completed steps in reverse order; companion budgets gate that a delivered contract breach also compensates and that each side audits its own steps on its own chain \u2014 so a saga is an all-or-nothing unit of cross-org work, governed per-org without a shared control plane."
     },
     {
       "id": "settlement_metering_accuracy",
       "category": "reliability",
-      "statement": "Usage metered against a contract is total-preserving: a meter reading's cost, latency, and usage totals are exactly the sum of the accrued usage events — no double-count, no drop — so a settlement built from a reading is a faithful reconciliation of what was delivered, not an estimate.",
+      "statement": "Usage metered against a contract is total-preserving: a meter reading's cost, latency, and usage totals are exactly the sum of the accrued usage events \u2014 no double-count, no drop \u2014 so a settlement built from a reading is a faithful reconciliation of what was delivered, not an estimate.",
       "metric": "families.settlement.metering_accurate",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.settlement.metering_accurate",
-      "rationale": "Closing the books is only meaningful if the meter is faithful. The budget gates that a reading's totals equal the sum of its events (cost and latency summed, quality the weakest link held against a floor); companion budgets gate that the resulting settlement reconciles delivery against the agreed terms and that a whole saga's contracted steps settle from the durable journal — so a cross-org engagement reconciles the way a run closes its cost report."
+      "rationale": "Closing the books is only meaningful if the meter is faithful. The budget gates that a reading's totals equal the sum of its events (cost and latency summed, quality the weakest link held against a floor); companion budgets gate that the resulting settlement reconciles delivery against the agreed terms and that a whole saga's contracted steps settle from the durable journal \u2014 so a cross-org engagement reconciles the way a run closes its cost report."
     },
     {
       "id": "settlement_integrity",
@@ -1550,7 +1550,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.settlement.settlement_verifies_offline",
-      "rationale": "A settlement is only as good as its tamper-evidence. The budget gates that a signed settlement verifies offline; companion budgets gate that a tampered figure fails verification, that the hash-chained book recomputes and catches an edited record, that two orgs' records reconcile (and a disagreement is detected), and that the verdict lands on the audit chain — so a cross-org settlement is a mechanical, verifiable ledger of what was owed and delivered, never a self-asserted claim or a hosted clearing house."
+      "rationale": "A settlement is only as good as its tamper-evidence. The budget gates that a signed settlement verifies offline; companion budgets gate that a tampered figure fails verification, that the hash-chained book recomputes and catches an edited record, that two orgs' records reconcile (and a disagreement is detected), and that the verdict lands on the audit chain \u2014 so a cross-org settlement is a mechanical, verifiable ledger of what was owed and delivered, never a self-asserted claim or a hosted clearing house."
     },
     {
       "id": "discovery_binding_correctness",
@@ -1560,7 +1560,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.discovery.binds_highest_ranked",
-      "rationale": "Run-time discovery is only useful if it binds the right counterparty. The budget gates that the higher-reputation candidate outranks a regressing one; companion budgets gate that a capability step binds and completes, that the candidate set is surfaced for audit, and that a discovered step is contract-enforced, compensated at the bound org, durable across a restart, and A2A-portable exactly as a statically-wired one — so discovery changes who runs a step, never whether it is bound correctly."
+      "rationale": "Run-time discovery is only useful if it binds the right counterparty. The budget gates that the higher-reputation candidate outranks a regressing one; companion budgets gate that a capability step binds and completes, that the candidate set is surfaced for audit, and that a discovered step is contract-enforced, compensated at the bound org, durable across a restart, and A2A-portable exactly as a statically-wired one \u2014 so discovery changes who runs a step, never whether it is bound correctly."
     },
     {
       "id": "discovery_governance_preservation",
@@ -1570,17 +1570,17 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.discovery.governance_preserved",
-      "rationale": "Discovery resolves who, but must never bypass how. The budget gates that an unlisted candidate scores zero and is never bound while its resolution is audited; companion budgets gate that an unreachable candidate is rejected, that no eligible candidate raises rather than stalling, and that the binding decision itself is on the chain — so the agent fabric stays as accountable when the counterparty is discovered as when it is wired by id."
+      "rationale": "Discovery resolves who, but must never bypass how. The budget gates that an unlisted candidate scores zero and is never bound while its resolution is audited; companion budgets gate that an unreachable candidate is rejected, that no eligible candidate raises rather than stalling, and that the binding decision itself is on the chain \u2014 so the agent fabric stays as accountable when the counterparty is discovered as when it is wired by id."
     },
     {
       "id": "netting_correctness",
       "category": "reliability",
-      "statement": "Multilateral netting is conservative and minimal: a fleet's net positions sum to zero (every payable is a receivable), the cleared set of obligations reproduces every org's net position exactly, and a web of bilateral obligations clears to fewer transfers than the gross edges — at most one per party less one.",
+      "statement": "Multilateral netting is conservative and minimal: a fleet's net positions sum to zero (every payable is a receivable), the cleared set of obligations reproduces every org's net position exactly, and a web of bilateral obligations clears to fewer transfers than the gross edges \u2014 at most one per party less one.",
       "metric": "families.netting.netting_conserves",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.netting.netting_conserves",
-      "rationale": "Clearing is only safe if no value is created or lost. The budget gates that the net positions balance to zero and the cleared obligations reproduce them; companion budgets gate that a cycle clears to fewer transfers than its gross edges, that two opposing flows collapse to one bilateral figure, and that the same settlement seen from both books is deduped rather than double-counted — so an org that is both buyer and seller across many contracts closes its books once, with every position conserved."
+      "rationale": "Clearing is only safe if no value is created or lost. The budget gates that the net positions balance to zero and the cleared obligations reproduce them; companion budgets gate that a cycle clears to fewer transfers than its gross edges, that two opposing flows collapse to one bilateral figure, and that the same settlement seen from both books is deduped rather than double-counted \u2014 so an org that is both buyer and seller across many contracts closes its books once, with every position conserved."
     },
     {
       "id": "netting_integrity",
@@ -1590,7 +1590,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.netting.netting_verifies_offline",
-      "rationale": "A clearing is only as good as its tamper-evidence. The budget gates that a signed netting set verifies offline; companion budgets gate that a tampered obligation fails verification, that a tampered source record is refused outright, that two clearers reading the same records compute the same co-signable hash, that a disagreement is pinpointed as a dispute and excluded, and that the clearing lands on the audit chain — so a cleared balance is a mechanical, verifiable artifact, never a self-asserted claim or a hosted clearing house."
+      "rationale": "A clearing is only as good as its tamper-evidence. The budget gates that a signed netting set verifies offline; companion budgets gate that a tampered obligation fails verification, that a tampered source record is refused outright, that two clearers reading the same records compute the same co-signable hash, that a disagreement is pinpointed as a dispute and excluded, and that the clearing lands on the audit chain \u2014 so a cleared balance is a mechanical, verifiable artifact, never a self-asserted claim or a hosted clearing house."
     },
     {
       "id": "resolution_correctness",
@@ -1600,7 +1600,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.arbitration.arbitration_upholds_corroborated",
-      "rationale": "A resolution is only legitimate if it asserts nothing it cannot prove. The budget gates that a mutually co-signed figure is upheld with the correct balance; companion budgets gate that a contradicting unilateral claim is rejected and its claimant named, that a single uncontested claim stands, that a genuine standoff is left unresolved, and that a tampered or forged claim is marked inadmissible and pinpointed rather than dropped or raised — so a dispute closes the way a settlement does, on verifiable evidence, never on the arbiter's word."
+      "rationale": "A resolution is only legitimate if it asserts nothing it cannot prove. The budget gates that a mutually co-signed figure is upheld with the correct balance; companion budgets gate that a contradicting unilateral claim is rejected and its claimant named, that a single uncontested claim stands, that a genuine standoff is left unresolved, and that a tampered or forged claim is marked inadmissible and pinpointed rather than dropped or raised \u2014 so a dispute closes the way a settlement does, on verifiable evidence, never on the arbiter's word."
     },
     {
       "id": "resolution_integrity",
@@ -1610,17 +1610,17 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.arbitration.arbitration_verifies_offline",
-      "rationale": "A settled dispute is only as good as its tamper-evidence. The budget gates that a signed resolution verifies offline; companion budgets gate that a tampered verdict fails verification, that a flipped standing flag is caught even after re-sealing because the decision re-derives from the claims, that two arbiters compute the same co-signable hash, and that the adjudication is audited and debits the dissenter — so a resolution is a mechanical, verifiable artifact, never a self-asserted ruling or a hosted court of record."
+      "rationale": "A settled dispute is only as good as its tamper-evidence. The budget gates that a signed resolution verifies offline; companion budgets gate that a tampered verdict fails verification, that a flipped standing flag is caught even after re-sealing because the decision re-derives from the claims, that two arbiters compute the same co-signable hash, and that the adjudication is audited and debits the dissenter \u2014 so a resolution is a mechanical, verifiable artifact, never a self-asserted ruling or a hosted court of record."
     },
     {
       "id": "attestation_correctness",
       "category": "reliability",
-      "statement": "A portable reputation asserts only what it can recompute and combines without singling anyone out: an attestation summarizes the issuer's own signed settlement and arbitration outcomes (a fulfilled delivery a success, a breach or a dissent a failure), several issuers' evidence pools into one bounded, evidence-weighted prior rather than a single self-asserted number, an issuer that vouches for itself is refused, an issuer cannot stack its own pull, and the imported prior weights a negotiation against an unknown counterparty under the same [floor, 1] rule a local reputation does — discounting a regressor without zeroing or singling it out.",
+      "statement": "A portable reputation asserts only what it can recompute and combines without singling anyone out: an attestation summarizes the issuer's own signed settlement and arbitration outcomes (a fulfilled delivery a success, a breach or a dissent a failure), several issuers' evidence pools into one bounded, evidence-weighted prior rather than a single self-asserted number, an issuer that vouches for itself is refused, an issuer cannot stack its own pull, and the imported prior weights a negotiation against an unknown counterparty under the same [floor, 1] rule a local reputation does \u2014 discounting a regressor without zeroing or singling it out.",
       "metric": "families.reputation_portability.portability_combines_across_issuers",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.portability_combines_across_issuers",
-      "rationale": "Portable standing is only trustworthy if no one number can fabricate it. The budget gates that several issuers' attested evidence pools into one prior; companion budgets gate that an attestation summarizes the issuer's own earned outcomes, that more corroborating evidence raises the weight while a regressor stays above the floor, that a self-attestation and a stacked attestation are refused, that an unknown counterparty falls back to the benefit-of-the-doubt prior, and that the imported prior actually weights a negotiation — so reputation travels the fabric as an evidence-weighted prior, never a hosted reputation bureau or a self-asserted score."
+      "rationale": "Portable standing is only trustworthy if no one number can fabricate it. The budget gates that several issuers' attested evidence pools into one prior; companion budgets gate that an attestation summarizes the issuer's own earned outcomes, that more corroborating evidence raises the weight while a regressor stays above the floor, that a self-attestation and a stacked attestation are refused, that an unknown counterparty falls back to the benefit-of-the-doubt prior, and that the imported prior actually weights a negotiation \u2014 so reputation travels the fabric as an evidence-weighted prior, never a hosted reputation bureau or a self-asserted score."
     },
     {
       "id": "attestation_integrity",
@@ -1630,67 +1630,67 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.portability_attestation_verifies_offline",
-      "rationale": "A portable attestation is only as good as its tamper-evidence. The budget gates that a signed attestation verifies offline; companion budgets gate that a tampered score fails verification even after re-sealing because the reputation re-derives from the evidence, that a forged issuer is refused and pinpointed rather than silently dropped, that two importers compute the same standing, and that issuance is audited — so an attested standing is a mechanical, verifiable artifact a prospective counterparty trusts from the bytes alone, never a self-asserted claim or a hosted reputation service."
+      "rationale": "A portable attestation is only as good as its tamper-evidence. The budget gates that a signed attestation verifies offline; companion budgets gate that a tampered score fails verification even after re-sealing because the reputation re-derives from the evidence, that a forged issuer is refused and pinpointed rather than silently dropped, that two importers compute the same standing, and that issuance is audited \u2014 so an attested standing is a mechanical, verifiable artifact a prospective counterparty trusts from the bytes alone, never a self-asserted claim or a hosted reputation service."
     },
     {
       "id": "attestation_freshness_and_revocation",
       "category": "security",
-      "statement": "A portable reputation reflects current standing, not a frozen snapshot: an attestation carries an issuer-declared validity window, so against an as-of clock a stale attestation is excluded and pinpointed while an older one decays out of the pooled prior by a half-life rather than anchoring it forever; and an issuer withdraws a claim it can no longer stand behind with a content-bound, offline-verifiable revocation that excludes the attestation by its hash — pinpointed, never silently honored — and a forged revocation, or one naming another org's attestation, cannot cancel a claim.",
+      "statement": "A portable reputation reflects current standing, not a frozen snapshot: an attestation carries an issuer-declared validity window, so against an as-of clock a stale attestation is excluded and pinpointed while an older one decays out of the pooled prior by a half-life rather than anchoring it forever; and an issuer withdraws a claim it can no longer stand behind with a content-bound, offline-verifiable revocation that excludes the attestation by its hash \u2014 pinpointed, never silently honored \u2014 and a forged revocation, or one naming another org's attestation, cannot cancel a claim.",
       "metric": "families.reputation_portability.portability_revocation_excludes",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.portability_revocation_excludes",
-      "rationale": "A portable prior that trusts a signed attestation forever cannot track standing that changes. The budget gates that a revoked attestation is excluded and pinpointed; companion budgets gate that a stale attestation past its validity window is excluded against an as-of clock, that an older attestation decays out of the prior by a half-life, and that a forged revocation cannot cancel a claim — so the imported prior reflects current standing without a hosted revocation service, reading only the existing signed artifacts and folding into the same bounded [floor, 1] weighting."
+      "rationale": "A portable prior that trusts a signed attestation forever cannot track standing that changes. The budget gates that a revoked attestation is excluded and pinpointed; companion budgets gate that a stale attestation past its validity window is excluded against an as-of clock, that an older attestation decays out of the prior by a half-life, and that a forged revocation cannot cancel a claim \u2014 so the imported prior reflects current standing without a hosted revocation service, reading only the existing signed artifacts and folding into the same bounded [floor, 1] weighting."
     },
     {
       "id": "reputation_exchange",
       "category": "reliability",
-      "statement": "An importer assembles a current prior by discovery rather than out-of-band handoff: a bounded, pull-based exchange queries a governed set of peers for the signed attestations and revocations they hold about a subject, verifies every fetched artifact from the bytes, deduplicates by content hash, and folds the result into the same combination — so gossip changes only where the evidence comes from, never how it is weighed: a denied peer is skipped, the fan-out is bounded, a forged artifact is refused, a gossiped revocation excludes the withdrawn claim, and every peer visited and artifact fetched lands on the audit chain.",
+      "statement": "An importer assembles a current prior by discovery rather than out-of-band handoff: a bounded, pull-based exchange queries a governed set of peers for the signed attestations and revocations they hold about a subject, verifies every fetched artifact from the bytes, deduplicates by content hash, and folds the result into the same combination \u2014 so gossip changes only where the evidence comes from, never how it is weighed: a denied peer is skipped, the fan-out is bounded, a forged artifact is refused, a gossiped revocation excludes the withdrawn claim, and every peer visited and artifact fetched lands on the audit chain.",
       "metric": "families.reputation_portability.exchange_gathers_from_peers",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.exchange_gathers_from_peers",
-      "rationale": "Portable standing is only useful if an importer can find it without a hosted registry. The budget gates that a gather pools several peers' signed attestations into one prior; companion budgets gate that an allow-listed directory skips a denied peer and the fan-out is bounded, that a forged artifact a peer serves is refused (nothing trusted that does not verify from the bytes), that a revocation a peer gossips excludes the withdrawn claim, and that every peer and artifact is audited — so reputation is discovered over the fabric as a pull of verifiable artifacts, never pushed from or trusted on a central bulletin board."
+      "rationale": "Portable standing is only useful if an importer can find it without a hosted registry. The budget gates that a gather pools several peers' signed attestations into one prior; companion budgets gate that an allow-listed directory skips a denied peer and the fan-out is bounded, that a forged artifact a peer serves is refused (nothing trusted that does not verify from the bytes), that a revocation a peer gossips excludes the withdrawn claim, and that every peer and artifact is audited \u2014 so reputation is discovered over the fabric as a pull of verifiable artifacts, never pushed from or trusted on a central bulletin board."
     },
     {
       "id": "reputation_transitive_trust",
       "category": "reliability",
-      "statement": "An importer weighs an issuer's attested evidence by its own trust in that issuer, not by volume: each issuer's contributed mass is scaled by a bounded, transitive web-of-trust rooted in the importer's local ledger (an issuer it knows first-hand at full pull, an issuer a trusted one vouches for at most a hop away with decay, an unknown one floored, never zeroed), so corroboration from a trusted peer counts for more than volume from a stranger, a chain beyond the depth bound cannot manufacture standing, and a cluster of mutually-vouching unknown Sybil issuers cannot outvote a few trusted ones — pull follows earned trust, not issuer count, and the weighting is bounded, pinpointed, reversible, and strictly opt-in.",
+      "statement": "An importer weighs an issuer's attested evidence by its own trust in that issuer, not by volume: each issuer's contributed mass is scaled by a bounded, transitive web-of-trust rooted in the importer's local ledger (an issuer it knows first-hand at full pull, an issuer a trusted one vouches for at most a hop away with decay, an unknown one floored, never zeroed), so corroboration from a trusted peer counts for more than volume from a stranger, a chain beyond the depth bound cannot manufacture standing, and a cluster of mutually-vouching unknown Sybil issuers cannot outvote a few trusted ones \u2014 pull follows earned trust, not issuer count, and the weighting is bounded, pinpointed, reversible, and strictly opt-in.",
       "metric": "families.reputation_portability.trust_weights_by_issuer",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.trust_weights_by_issuer",
-      "rationale": "Pooling every issuer's evidence with equal pull lets a clutch of unknown peers out-evidence a few the importer has lived through, and an adversary can spin up Sybil issuers that all vouch the same way. The budget gates that a trusted issuer's evidence out-pulls an unknown one's with equal evidence; companion budgets gate that a Sybil cluster cannot outvote a trusted issuer (pull follows earned trust, not count), that trust composes at most a bounded hop with decay and a chain beyond the depth bound manufactures no standing, that an unknown issuer is floored rather than zeroed, and that the weighting is strictly opt-in (no trust source leaves pooling unchanged) — so reputation is weighed by earned trust through a deterministic, offline kernel, never an authority gate or a central trust service."
+      "rationale": "Pooling every issuer's evidence with equal pull lets a clutch of unknown peers out-evidence a few the importer has lived through, and an adversary can spin up Sybil issuers that all vouch the same way. The budget gates that a trusted issuer's evidence out-pulls an unknown one's with equal evidence; companion budgets gate that a Sybil cluster cannot outvote a trusted issuer (pull follows earned trust, not count), that trust composes at most a bounded hop with decay and a chain beyond the depth bound manufactures no standing, that an unknown issuer is floored rather than zeroed, and that the weighting is strictly opt-in (no trust source leaves pooling unchanged) \u2014 so reputation is weighed by earned trust through a deterministic, offline kernel, never an authority gate or a central trust service."
     },
     {
       "id": "reputation_gated_admission",
       "category": "reliability",
-      "statement": "A counterparty's weighted standing bounds its exposure, not merely its negotiation weight: an admission policy maps the standing (an imported PortableReputation or a local ReputationLedger) to a bounded, offline-verifiable exposure ceiling — a maximum contract value, a required escrow fraction, and an SLA-strictness factor — admitting a thin or low-trust standing on conservative terms rather than refusing it, ramping the ceiling toward parity as settled, corroborated history accrues and walking it back on a regression, and binding the standing it read and the terms it set onto a content hash that recomputes from the bytes alone and folds into the existing negotiation / contracting path.",
+      "statement": "A counterparty's weighted standing bounds its exposure, not merely its negotiation weight: an admission policy maps the standing (an imported PortableReputation or a local ReputationLedger) to a bounded, offline-verifiable exposure ceiling \u2014 a maximum contract value, a required escrow fraction, and an SLA-strictness factor \u2014 admitting a thin or low-trust standing on conservative terms rather than refusing it, ramping the ceiling toward parity as settled, corroborated history accrues and walking it back on a regression, and binding the standing it read and the terms it set onto a content hash that recomputes from the bytes alone and folds into the existing negotiation / contracting path.",
       "metric": "families.reputation_portability.admission_gates_by_reputation",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.admission_gates_by_reputation",
-      "rationale": "Reputation made portable, current, discoverable, and trust-weighted was still only consulted as a soft weight on a negotiation; nothing acted on a too-thin or too-low standing to bound how much a new counterparty was trusted with up front, so a regression was caught only after the fact. The budget gates that a thin or low standing earns a strictly lower ceiling than a corroborated one — both admitted (positive ceiling), never refused or singled out; companion budgets gate that the ceiling ramps toward parity as settled history accrues and a regression walks it back (bounded and reversible), that a brand-new counterparty is admitted conservatively below parity (safe onboarding by construction), that every decision recomputes from the bytes and lands on the hash-chained audit log, and that it folds into the existing negotiation / contracting path — so exposure is a mechanical, reconstructable number, never a hosted underwriting service."
+      "rationale": "Reputation made portable, current, discoverable, and trust-weighted was still only consulted as a soft weight on a negotiation; nothing acted on a too-thin or too-low standing to bound how much a new counterparty was trusted with up front, so a regression was caught only after the fact. The budget gates that a thin or low standing earns a strictly lower ceiling than a corroborated one \u2014 both admitted (positive ceiling), never refused or singled out; companion budgets gate that the ceiling ramps toward parity as settled history accrues and a regression walks it back (bounded and reversible), that a brand-new counterparty is admitted conservatively below parity (safe onboarding by construction), that every decision recomputes from the bytes and lands on the hash-chained audit log, and that it folds into the existing negotiation / contracting path \u2014 so exposure is a mechanical, reconstructable number, never a hosted underwriting service."
     },
     {
       "id": "escrow_settlement",
       "category": "reliability",
-      "statement": "Admission-required collateral is held against delivery, not merely stamped on the terms: a content-bound escrow binds the collateral amount to a specific contract and counterparty into a signed, offline-verifiable artifact whose held amount re-derives from the admission posture; settling the contract releases the whole stake on a fulfilled delivery and forfeits a bounded, pinpointed slice proportional to the measured shortfall on a breach — never the whole stake, never punitive, the remainder released — driven by the same settlement record verdict the books already close on; and every post, release, and forfeiture recomputes from the bytes alone (a tampered amount or forfeiture is caught even after re-sealing) and lands on the hash-chained audit log.",
+      "statement": "Admission-required collateral is held against delivery, not merely stamped on the terms: a content-bound escrow binds the collateral amount to a specific contract and counterparty into a signed, offline-verifiable artifact whose held amount re-derives from the admission posture; settling the contract releases the whole stake on a fulfilled delivery and forfeits a bounded, pinpointed slice proportional to the measured shortfall on a breach \u2014 never the whole stake, never punitive, the remainder released \u2014 driven by the same settlement record verdict the books already close on; and every post, release, and forfeiture recomputes from the bytes alone (a tampered amount or forfeiture is caught even after re-sealing) and lands on the hash-chained audit log.",
       "metric": "families.reputation_portability.escrow_forfeits_proportional_to_breach",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.escrow_forfeits_proportional_to_breach",
-      "rationale": "Admission set a required escrow fraction on a thin or low-trust counterparty's contract, but the fraction was only a number stamped on the terms; nothing held it, released it on a clean delivery, or forfeited a slice on a breach, so the escrow had no teeth and a breach was debited only to reputation after the fact. The budget gates that a breach forfeits a bounded slice proportional to the shortfall — between zero and the whole stake, never punitive, with the remainder released; companion budgets gate that an escrow posts the admission-required collateral against the specific contract (the held amount re-deriving from the posture), that a fulfilled delivery releases the whole stake, that the disposition recomputes from the bytes (a tampered forfeiture caught even after re-sealing) with every transition on the hash-chained audit log, and that it folds into the existing settlement path (resolved against the same record verdict, capped below the whole stake on demand) — so posted collateral is a mechanical, reconstructable artifact backing the conservative terms a thin standing is admitted on, never a hosted escrow custodian or a payment rail."
+      "rationale": "Admission set a required escrow fraction on a thin or low-trust counterparty's contract, but the fraction was only a number stamped on the terms; nothing held it, released it on a clean delivery, or forfeited a slice on a breach, so the escrow had no teeth and a breach was debited only to reputation after the fact. The budget gates that a breach forfeits a bounded slice proportional to the shortfall \u2014 between zero and the whole stake, never punitive, with the remainder released; companion budgets gate that an escrow posts the admission-required collateral against the specific contract (the held amount re-deriving from the posture), that a fulfilled delivery releases the whole stake, that the disposition recomputes from the bytes (a tampered forfeiture caught even after re-sealing) with every transition on the hash-chained audit log, and that it folds into the existing settlement path (resolved against the same record verdict, capped below the whole stake on demand) \u2014 so posted collateral is a mechanical, reconstructable artifact backing the conservative terms a thin standing is admitted on, never a hosted escrow custodian or a payment rail."
     },
     {
       "id": "collateral_pooling",
       "category": "reliability",
-      "statement": "A counterparty backs many concurrent contracts with one posted stake, not separate collateral per deal: a content-bound collateral pool binds a single posted stake to the set of contracts it backs and allocates each a per-contract share deterministically — proportional to its admission-required collateral — so what backs each deal re-derives from the bytes; settling a contract draws a bounded, pinpointed forfeiture from the shared stake on a breach (the same proportional slice the settlement verdict measures) and releases the rest of its requirement back to the available balance on a clean delivery, so a clean delivery frees capital for the next contract and a breach is covered from the shared stake; a pool committed below the collateral its open contracts require surfaces a bounded, pinpointed top-up obligation rather than silently over-committing; and every post, draw, release, and top-up recomputes from the bytes alone (the allocations re-derive and the balance reconciles, a tampered allocation caught even after re-sealing) and lands on the hash-chained audit log.",
+      "statement": "A counterparty backs many concurrent contracts with one posted stake, not separate collateral per deal: a content-bound collateral pool binds a single posted stake to the set of contracts it backs and allocates each a per-contract share deterministically \u2014 proportional to its admission-required collateral \u2014 so what backs each deal re-derives from the bytes; settling a contract draws a bounded, pinpointed forfeiture from the shared stake on a breach (the same proportional slice the settlement verdict measures) and releases the rest of its requirement back to the available balance on a clean delivery, so a clean delivery frees capital for the next contract and a breach is covered from the shared stake; a pool committed below the collateral its open contracts require surfaces a bounded, pinpointed top-up obligation rather than silently over-committing; and every post, draw, release, and top-up recomputes from the bytes alone (the allocations re-derive and the balance reconciles, a tampered allocation caught even after re-sealing) and lands on the hash-chained audit log.",
       "metric": "families.reputation_portability.pool_draws_and_frees",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.pool_draws_and_frees",
-      "rationale": "An escrow backed one contract with collateral held against its delivery, but a counterparty running many concurrent contracts had to lock separate collateral per deal even though its breaches and clean deliveries net out — capital stranded contract-by-contract the way bilateral settlements were stranded book-by-book before netting folded them. The budget gates that settling a backed contract draws a bounded slice proportional to the measured shortfall from the shared stake on a breach and frees the rest back to the available balance on a clean delivery (capital reused, not stranded); companion budgets gate that the pool allocates each contract a share proportional to its admission-required collateral (the collateral analogue of a NettingSet's net positions), that a pool committed below its open contracts' requirement surfaces a bounded top-up obligation that a top-up clears, that every transition recomputes from the bytes (a tampered allocation caught even after re-sealing) with each post / draw / top-up on the hash-chained audit log, and that the pool is content-bound and order-independent — so a counterparty's margin account is a mechanical, reconstructable artifact over the existing escrow / admission / settlement machinery, never a hosted clearing house, a margin custodian, or a payment rail."
+      "rationale": "An escrow backed one contract with collateral held against its delivery, but a counterparty running many concurrent contracts had to lock separate collateral per deal even though its breaches and clean deliveries net out \u2014 capital stranded contract-by-contract the way bilateral settlements were stranded book-by-book before netting folded them. The budget gates that settling a backed contract draws a bounded slice proportional to the measured shortfall from the shared stake on a breach and frees the rest back to the available balance on a clean delivery (capital reused, not stranded); companion budgets gate that the pool allocates each contract a share proportional to its admission-required collateral (the collateral analogue of a NettingSet's net positions), that a pool committed below its open contracts' requirement surfaces a bounded top-up obligation that a top-up clears, that every transition recomputes from the bytes (a tampered allocation caught even after re-sealing) with each post / draw / top-up on the hash-chained audit log, and that the pool is content-bound and order-independent \u2014 so a counterparty's margin account is a mechanical, reconstructable artifact over the existing escrow / admission / settlement machinery, never a hosted clearing house, a margin custodian, or a payment rail."
     },
     {
       "id": "rehypothecation_guard",
@@ -1700,97 +1700,97 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.reuse_bound_pinpoints",
-      "rationale": "A collateral pool let a counterparty back many contracts with one posted stake, but a pool only ever re-allocates capital within itself — nothing bounded a counterparty that pledged the same stake across more than one pool, double-counting what actually backs each deal the way a settlement record was double-counted before netting deduplicated it. The budget gates that the ledger pinpoints the same capital pledged twice (a re-pledged contract) as a bounded re-use breach and reconciles the total pledged against the held capital; companion budgets gate that each beneficiary's claim is bounded to its deterministic pari-passu share so a scarce stake is apportioned by priority rather than over-promised, that a tampered pool is refused at fold time while a re-use breach lands on the audit chain and the bound re-derives from the bytes even after re-sealing, and that two folders reading the same pools compute the same co-signable ledger hash — so a rehypothecation guard is a mechanical, reconstructable re-use bound over the collateral the fabric already pools, never a hosted custodian or a trusted third party."
+      "rationale": "A collateral pool let a counterparty back many contracts with one posted stake, but a pool only ever re-allocates capital within itself \u2014 nothing bounded a counterparty that pledged the same stake across more than one pool, double-counting what actually backs each deal the way a settlement record was double-counted before netting deduplicated it. The budget gates that the ledger pinpoints the same capital pledged twice (a re-pledged contract) as a bounded re-use breach and reconciles the total pledged against the held capital; companion budgets gate that each beneficiary's claim is bounded to its deterministic pari-passu share so a scarce stake is apportioned by priority rather than over-promised, that a tampered pool is refused at fold time while a re-use breach lands on the audit chain and the bound re-derives from the bytes even after re-sealing, and that two folders reading the same pools compute the same co-signable ledger hash \u2014 so a rehypothecation guard is a mechanical, reconstructable re-use bound over the collateral the fabric already pools, never a hosted custodian or a trusted third party."
     },
     {
       "id": "proof_of_reserves",
       "category": "security",
-      "statement": "The capital the rehypothecation guard bounds pledges against is evidence-backed, not asserted: a custodian (or the poster's own signed reserve record) issues a content-bound CustodyAttestation over the reserves actually held — itemized into reserve lines whose total re-derives on every verify — and guard_collateral(custody=) reads its proven total as the held figure instead of the asserted default; when the proven reserves fall below what the pools pledge the shortfall surfaces as a bounded, pinpointed under-reserved breach rather than passing on an inflated holdings claim; and the attestation reads only signed, content-bound artifacts, verifies from the bytes alone (a tampered reserve figure caught even after re-sealing, a forged custodian refused with the verifier, an attestation for a different poster refused), and folds into the existing guard and audit path.",
+      "statement": "The capital the rehypothecation guard bounds pledges against is evidence-backed, not asserted: a custodian (or the poster's own signed reserve record) issues a content-bound CustodyAttestation over the reserves actually held \u2014 itemized into reserve lines whose total re-derives on every verify \u2014 and guard_collateral(custody=) reads its proven total as the held figure instead of the asserted default; when the proven reserves fall below what the pools pledge the shortfall surfaces as a bounded, pinpointed under-reserved breach rather than passing on an inflated holdings claim; and the attestation reads only signed, content-bound artifacts, verifies from the bytes alone (a tampered reserve figure caught even after re-sealing, a forged custodian refused with the verifier, an attestation for a different poster refused), and folds into the existing guard and audit path.",
       "metric": "families.reputation_portability.proof_of_reserves_bounds_held",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.proof_of_reserves_bounds_held",
-      "rationale": "The rehypothecation guard bounded a counterparty's pledges against the capital it held, but that holdings figure was the one input the guard trusted — asserted, not proven — so a counterparty over-stating its real reserves still passed, the way a self-asserted reputation score passed before attestation made standing verifiable. The budget gates that a signed proof-of-reserves is read as the held figure (the guard bounding pledges against proven capital rather than a self-reported number); companion budgets gate that a proven shortfall surfaces as a bounded, pinpointed under-reserved breach, and that the proof is auditable and offline — a tampered reserve figure is refused (the total re-deriving from the line items even after re-sealing), a forged custodian is refused with the verifier, an attestation for a different poster is refused, the under-reserved breach re-derives from the bytes even after re-sealing, and the guard lands on the hash-chained audit log — so the held capital is a mechanical, reconstructable, evidence-backed figure, never a custodian's say-so, a hosted proof-of-reserves auditor, or a trusted third party."
+      "rationale": "The rehypothecation guard bounded a counterparty's pledges against the capital it held, but that holdings figure was the one input the guard trusted \u2014 asserted, not proven \u2014 so a counterparty over-stating its real reserves still passed, the way a self-asserted reputation score passed before attestation made standing verifiable. The budget gates that a signed proof-of-reserves is read as the held figure (the guard bounding pledges against proven capital rather than a self-reported number); companion budgets gate that a proven shortfall surfaces as a bounded, pinpointed under-reserved breach, and that the proof is auditable and offline \u2014 a tampered reserve figure is refused (the total re-deriving from the line items even after re-sealing), a forged custodian is refused with the verifier, an attestation for a different poster is refused, the under-reserved breach re-derives from the bytes even after re-sealing, and the guard lands on the hash-chained audit log \u2014 so the held capital is a mechanical, reconstructable, evidence-backed figure, never a custodian's say-so, a hosted proof-of-reserves auditor, or a trusted third party."
     },
     {
       "id": "proof_of_solvency",
       "category": "security",
-      "statement": "The capital the rehypothecation guard bounds pledges against is bounded by the counterparty's whole obligation set, not one buyer's view: a counterparty (or its auditor) issues a content-bound LiabilityAttestation over the total obligations it owes — itemized into liability lines whose total re-derives on every verify — and prove_solvency folds it against a proven CustodyAttestation into a bounded, offline-verifiable solvency margin (reserves − liabilities); when the proven liabilities exceed the proven reserves the shortfall surfaces as a bounded, pinpointed insolvency breach, and guard_collateral(solvency=) reads the solvency-adjusted held figure (max(0, reserves − liabilities)) as the held figure, so a pledge is bounded against capital not already owed elsewhere; and both attestations read only signed, content-bound artifacts, verify from the bytes alone (a tampered liability figure caught even after re-sealing, a forged issuer refused with the verifier, a custody / liability pair for different posters refused), and fold into the existing guard and audit path.",
+      "statement": "The capital the rehypothecation guard bounds pledges against is bounded by the counterparty's whole obligation set, not one buyer's view: a counterparty (or its auditor) issues a content-bound LiabilityAttestation over the total obligations it owes \u2014 itemized into liability lines whose total re-derives on every verify \u2014 and prove_solvency folds it against a proven CustodyAttestation into a bounded, offline-verifiable solvency margin (reserves \u2212 liabilities); when the proven liabilities exceed the proven reserves the shortfall surfaces as a bounded, pinpointed insolvency breach, and guard_collateral(solvency=) reads the solvency-adjusted held figure (max(0, reserves \u2212 liabilities)) as the held figure, so a pledge is bounded against capital not already owed elsewhere; and both attestations read only signed, content-bound artifacts, verify from the bytes alone (a tampered liability figure caught even after re-sealing, a forged issuer refused with the verifier, a custody / liability pair for different posters refused), and fold into the existing guard and audit path.",
       "metric": "families.reputation_portability.solvency_bounds_held",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.solvency_bounds_held",
-      "rationale": "Proof-of-reserves bounds a counterparty's pledges against a proven holdings figure, but reserves are only one side of the ledger — a counterparty solvent against one buyer's pledges may be deeply under-water once every obligation it owes is counted, and could prove the same reserves against many buyers while quietly insolvent across all of them, the canonical gap the proof-of-reserves literature closes next with a proof-of-solvency (reserves ≥ total liabilities). The budget gates that a signed liability attestation folds against the reserve proof into a solvency margin the guard reads as a solvency-adjusted held figure (bounding pledges against capital not already owed elsewhere rather than against the gross reserves); companion budgets gate that a proven insolvency surfaces as a bounded, pinpointed breach with zero free capital behind the pledges, and that the proof is auditable and offline — a tampered liability figure is refused (the total re-deriving from the line items even after re-sealing), a forged issuer is refused with the verifier, a custody / liability pair for different posters is refused, a flipped solvency verdict re-derives from the bytes even after re-sealing, and the proof lands on the hash-chained audit log — so the held capital is a mechanical, reconstructable, solvency-bounded figure, never a one-sided reserve claim, a hosted solvency auditor, or a trusted third party."
+      "rationale": "Proof-of-reserves bounds a counterparty's pledges against a proven holdings figure, but reserves are only one side of the ledger \u2014 a counterparty solvent against one buyer's pledges may be deeply under-water once every obligation it owes is counted, and could prove the same reserves against many buyers while quietly insolvent across all of them, the canonical gap the proof-of-reserves literature closes next with a proof-of-solvency (reserves \u2265 total liabilities). The budget gates that a signed liability attestation folds against the reserve proof into a solvency margin the guard reads as a solvency-adjusted held figure (bounding pledges against capital not already owed elsewhere rather than against the gross reserves); companion budgets gate that a proven insolvency surfaces as a bounded, pinpointed breach with zero free capital behind the pledges, and that the proof is auditable and offline \u2014 a tampered liability figure is refused (the total re-deriving from the line items even after re-sealing), a forged issuer is refused with the verifier, a custody / liability pair for different posters is refused, a flipped solvency verdict re-derives from the bytes even after re-sealing, and the proof lands on the hash-chained audit log \u2014 so the held capital is a mechanical, reconstructable, solvency-bounded figure, never a one-sided reserve claim, a hosted solvency auditor, or a trusted third party."
     },
     {
       "id": "liability_completeness",
       "category": "security",
-      "statement": "The liabilities a proof-of-solvency folds are provably complete, not merely internally consistent: a LiabilityAttestation commits its line items into a Merkle root bound in its signed content hash, each creditor gets an offline-verifiable InclusionProof that its claim is a leaf of that root (so a poster cannot drop a creditor without the omitted party detecting it), and check_completeness folds creditors' own proven claims against the attestation into a signed CompletenessProof that pinpoints every omitted or under-stated obligation as an OmissionBreach and raises the attested figure to a completed total prove_solvency(completeness=) reads instead of the attestor's single number — so the solvency margin is bounded by the obligations creditors can prove, not only the ones the attestor chose to list; and the inclusion and completeness proofs read only signed, content-bound artifacts, verify from the bytes alone (a tampered leaf or a forged root is caught, a dropped omission breach is caught by completed ≥ claimed), and fold into the existing solvency and audit path.",
+      "statement": "The liabilities a proof-of-solvency folds are provably complete, not merely internally consistent: a LiabilityAttestation commits its line items into a Merkle root bound in its signed content hash, each creditor gets an offline-verifiable InclusionProof that its claim is a leaf of that root (so a poster cannot drop a creditor without the omitted party detecting it), and check_completeness folds creditors' own proven claims against the attestation into a signed CompletenessProof that pinpoints every omitted or under-stated obligation as an OmissionBreach and raises the attested figure to a completed total prove_solvency(completeness=) reads instead of the attestor's single number \u2014 so the solvency margin is bounded by the obligations creditors can prove, not only the ones the attestor chose to list; and the inclusion and completeness proofs read only signed, content-bound artifacts, verify from the bytes alone (a tampered leaf or a forged root is caught, a dropped omission breach is caught by completed \u2265 claimed), and fold into the existing solvency and audit path.",
       "metric": "families.reputation_portability.completeness_bounds_solvency",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.completeness_bounds_solvency",
-      "rationale": "Proof-of-solvency folds a proven liability total against the proven reserves, but the total is still the attestor's single number: a counterparty could under-state what it owes by quietly omitting a creditor and still attest a sound, re-deriving total over the creditors it did list — the canonical second half of a proof-of-liabilities, where each creditor proves its own claim is included in the attested total so the total is provably complete. The budget gates that an inclusion proof verifies a creditor's claim against the attestation's signed Merkle root and detects an omission (a tampered leaf refused, an unknown creditor refused); a companion budget gates that a completeness check pinpoints an omitted creditor and bounds the solvency margin by the completed liability total (tipping a counterparty that looked solvent on the attestor's figure into a pinpointed insolvency); and a third gates that the proofs are auditable and offline — a tampered leaf and a dropped omission breach are refused (the completed total re-deriving and never sitting below the folded claims), a completeness check for a different attestation is refused, and the check lands on the hash-chained audit log — so the liability side a solvency proof folds is a mechanical, reconstructable, complete figure, never the attestor's say-so, a hosted attestation registry, or a trusted third party."
+      "rationale": "Proof-of-solvency folds a proven liability total against the proven reserves, but the total is still the attestor's single number: a counterparty could under-state what it owes by quietly omitting a creditor and still attest a sound, re-deriving total over the creditors it did list \u2014 the canonical second half of a proof-of-liabilities, where each creditor proves its own claim is included in the attested total so the total is provably complete. The budget gates that an inclusion proof verifies a creditor's claim against the attestation's signed Merkle root and detects an omission (a tampered leaf refused, an unknown creditor refused); a companion budget gates that a completeness check pinpoints an omitted creditor and bounds the solvency margin by the completed liability total (tipping a counterparty that looked solvent on the attestor's figure into a pinpointed insolvency); and a third gates that the proofs are auditable and offline \u2014 a tampered leaf and a dropped omission breach are refused (the completed total re-deriving and never sitting below the folded claims), a completeness check for a different attestation is refused, and the check lands on the hash-chained audit log \u2014 so the liability side a solvency proof folds is a mechanical, reconstructable, complete figure, never the attestor's say-so, a hosted attestation registry, or a trusted third party."
     },
     {
       "id": "liability_non_equivocation",
       "category": "security",
-      "statement": "A counterparty cannot present different liability roots to different creditors: a LiabilityAttestation exposes a signed RootCommitment (the liabilities_root and as_of the attestor signed, without the line items) that creditors compare over the attestation exchange, and check_root_consistency groups a set of held attestations by their (poster, attestor, as_of) key and folds any two conflicting roots a poster signed for one instant into a content-bound, offline-verifiable EquivocationProof — pinning the poster, the two signed roots, and the creditors each was shown — so a counterparty that signs inconsistent totals is caught with non-repudiable evidence rather than merely suspected; and the comparison and the proof read only signed, content-bound artifacts, verify from the bytes alone (a forged conflicting root is refused with the attestor's verifier and excluded from a scan, so it cannot manufacture a false accusation), credit a failure against the equivocating poster on the reputation path, and land on the hash-chained audit log.",
+      "statement": "A counterparty cannot present different liability roots to different creditors: a LiabilityAttestation exposes a signed RootCommitment (the liabilities_root and as_of the attestor signed, without the line items) that creditors compare over the attestation exchange, and check_root_consistency groups a set of held attestations by their (poster, attestor, as_of) key and folds any two conflicting roots a poster signed for one instant into a content-bound, offline-verifiable EquivocationProof \u2014 pinning the poster, the two signed roots, and the creditors each was shown \u2014 so a counterparty that signs inconsistent totals is caught with non-repudiable evidence rather than merely suspected; and the comparison and the proof read only signed, content-bound artifacts, verify from the bytes alone (a forged conflicting root is refused with the attestor's verifier and excluded from a scan, so it cannot manufacture a false accusation), credit a failure against the equivocating poster on the reputation path, and land on the hash-chained audit log.",
       "metric": "families.reputation_portability.equivocation_detects_conflicting_roots",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.equivocation_detects_conflicting_roots",
-      "rationale": "Completeness proves each creditor's claim is included in the attested liabilities, but a counterparty issues its liability attestation per relationship: nothing stops it presenting different liability roots — a smaller total — to different creditors, so each creditor's inclusion proof verifies against the root it was shown while the counterparty equivocates across the set. Completeness catches an omission only when the omitted creditor folds its own claim; equivocation hides the omission by showing each creditor a root on which its own claim is present. The budget gates that creditors comparing the signed roots over the exchange surface two roots a poster signed for one instant (the privacy-preserving commitment leaking no line items) and fold them into a non-repudiable EquivocationProof that re-derives each root from the bytes and pins the poster, the two roots, and the creditors; a companion budget gates that the comparison and the proof are auditable and offline — a forged conflicting root is refused with the attestor's verifier and excluded from a scan (so it cannot found a false accusation), an honest set showing every creditor the same root is consistent, the equivocating poster is dinged on the reputation path, and the check lands on the hash-chained audit log — so a counterparty signing inconsistent totals is caught with non-repudiable evidence, never a hosted transparency log or a trusted third party."
+      "rationale": "Completeness proves each creditor's claim is included in the attested liabilities, but a counterparty issues its liability attestation per relationship: nothing stops it presenting different liability roots \u2014 a smaller total \u2014 to different creditors, so each creditor's inclusion proof verifies against the root it was shown while the counterparty equivocates across the set. Completeness catches an omission only when the omitted creditor folds its own claim; equivocation hides the omission by showing each creditor a root on which its own claim is present. The budget gates that creditors comparing the signed roots over the exchange surface two roots a poster signed for one instant (the privacy-preserving commitment leaking no line items) and fold them into a non-repudiable EquivocationProof that re-derives each root from the bytes and pins the poster, the two roots, and the creditors; a companion budget gates that the comparison and the proof are auditable and offline \u2014 a forged conflicting root is refused with the attestor's verifier and excluded from a scan (so it cannot found a false accusation), an honest set showing every creditor the same root is consistent, the equivocating poster is dinged on the reputation path, and the check lands on the hash-chained audit log \u2014 so a counterparty signing inconsistent totals is caught with non-repudiable evidence, never a hosted transparency log or a trusted third party."
     },
     {
       "id": "liability_history_consistency",
       "category": "security",
-      "statement": "A counterparty cannot quietly drop a past liability in a later snapshot: a LiabilityAttestation carries an optional commitment to the prior snapshot's root (link_to / attest_liabilities(prior=)) bound into its signed hash, so a poster's attestations form a hash-linked sequence each as_of strictly succeeding the last (a back-dated link is caught from the bytes), and check_history_consistency walks a poster's snapshots and folds them into a content-bound, offline-verifiable HistoryConsistencyProof — every creditor's committed obligation must persist into the next snapshot unless a signed, creditor-issued Discharge evidences the release, and any unexplained drop is pinpointed as a MonotonicityBreach — so a debt that silently vanishes between snapshots is caught with non-repudiable evidence rather than merely suspected; and the walk and the proof read only signed, content-bound artifacts, verify from the bytes alone (a forged or out-of-window discharge does not explain a drop, a dropped breach is caught by re-derivation, a tampered or unsigned snapshot is excluded as inadmissible), credit a failure against the breaching poster on the reputation path, and land on the hash-chained audit log.",
+      "statement": "A counterparty cannot quietly drop a past liability in a later snapshot: a LiabilityAttestation carries an optional commitment to the prior snapshot's root (link_to / attest_liabilities(prior=)) bound into its signed hash, so a poster's attestations form a hash-linked sequence each as_of strictly succeeding the last (a back-dated link is caught from the bytes), and check_history_consistency walks a poster's snapshots and folds them into a content-bound, offline-verifiable HistoryConsistencyProof \u2014 every creditor's committed obligation must persist into the next snapshot unless a signed, creditor-issued Discharge evidences the release, and any unexplained drop is pinpointed as a MonotonicityBreach \u2014 so a debt that silently vanishes between snapshots is caught with non-repudiable evidence rather than merely suspected; and the walk and the proof read only signed, content-bound artifacts, verify from the bytes alone (a forged or out-of-window discharge does not explain a drop, a dropped breach is caught by re-derivation, a tampered or unsigned snapshot is excluded as inadmissible), credit a failure against the breaching poster on the reputation path, and land on the hash-chained audit log.",
       "metric": "families.reputation_portability.history_detects_silent_drop",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.history_detects_silent_drop",
-      "rationale": "Non-equivocation catches a counterparty signing different liability roots for the same instant, but it is deliberately scoped to one as_of: a counterparty can still issue a later snapshot that quietly drops a past obligation — a debt committed at T simply absent from the root it signs at T' — and each snapshot is internally sound, so nothing yet ties one attestation to its predecessor. Equivocation is conflict across creditors; this is consistency across time. The budget gates that a LiabilityAttestation links to its predecessor's root (a hash-linked history a creditor can walk) and that check_history_consistency walks a poster's snapshots and pinpoints a creditor obligation that dropped between snapshots without a backing discharge as a MonotonicityBreach in a proof that re-derives from the bytes; a companion budget gates that the walk and the proof are auditable and offline — a signed, creditor-issued discharge legitimately explains a drop while a forged or out-of-window one does not, a back-dated link is refused, a dropped breach is caught by re-derivation, the breaching poster is dinged on the reputation path, and the check lands on the hash-chained audit log — so a debt that silently vanishes between snapshots is caught with non-repudiable evidence, never a hosted transparency log or a trusted third party."
+      "rationale": "Non-equivocation catches a counterparty signing different liability roots for the same instant, but it is deliberately scoped to one as_of: a counterparty can still issue a later snapshot that quietly drops a past obligation \u2014 a debt committed at T simply absent from the root it signs at T' \u2014 and each snapshot is internally sound, so nothing yet ties one attestation to its predecessor. Equivocation is conflict across creditors; this is consistency across time. The budget gates that a LiabilityAttestation links to its predecessor's root (a hash-linked history a creditor can walk) and that check_history_consistency walks a poster's snapshots and pinpoints a creditor obligation that dropped between snapshots without a backing discharge as a MonotonicityBreach in a proof that re-derives from the bytes; a companion budget gates that the walk and the proof are auditable and offline \u2014 a signed, creditor-issued discharge legitimately explains a drop while a forged or out-of-window one does not, a back-dated link is refused, a dropped breach is caught by re-derivation, the breaching poster is dinged on the reputation path, and the check lands on the hash-chained audit log \u2014 so a debt that silently vanishes between snapshots is caught with non-repudiable evidence, never a hosted transparency log or a trusted third party."
     },
     {
       "id": "insolvency_resolution",
       "category": "security",
-      "statement": "When a counterparty's proven reserves cannot cover every obligation it owes, the insolvency is resolved into who-gets-what rather than merely flagged: a content-bound SenioritySchedule (build_seniority_schedule) ranks the obligations into signed priority tranches (rank 0 most senior), and resolve_insolvency folds a proven CustodyAttestation against a proven LiabilityAttestation (reusing prove_solvency for every tamper/forgery/wrong-poster refusal) and distributes the proven reserves across the obligations by seniority then pari-passu within a tranche into a content-bound, offline-verifiable InsolvencyResolution — a senior tranche paid in full before any capital reaches a junior one, a partly-funded tranche split proportionally to each claim, pinpointing each creditor's bounded CreditorRecovery and the shortfall it bears; and the schedule and the waterfall read only signed, content-bound artifacts, verify from the bytes alone (an over-stated recovery, a re-ordered tranche, or a junior creditor paid ahead of a senior one is refused, the schedule bound by hash), credit a failure against a poster that could not make its creditors whole on the reputation path, and land on the hash-chained audit log.",
+      "statement": "When a counterparty's proven reserves cannot cover every obligation it owes, the insolvency is resolved into who-gets-what rather than merely flagged: a content-bound SenioritySchedule (build_seniority_schedule) ranks the obligations into signed priority tranches (rank 0 most senior), and resolve_insolvency folds a proven CustodyAttestation against a proven LiabilityAttestation (reusing prove_solvency for every tamper/forgery/wrong-poster refusal) and distributes the proven reserves across the obligations by seniority then pari-passu within a tranche into a content-bound, offline-verifiable InsolvencyResolution \u2014 a senior tranche paid in full before any capital reaches a junior one, a partly-funded tranche split proportionally to each claim, pinpointing each creditor's bounded CreditorRecovery and the shortfall it bears; and the schedule and the waterfall read only signed, content-bound artifacts, verify from the bytes alone (an over-stated recovery, a re-ordered tranche, or a junior creditor paid ahead of a senior one is refused, the schedule bound by hash), credit a failure against a poster that could not make its creditors whole on the reputation path, and land on the hash-chained audit log.",
       "metric": "families.reputation_portability.insolvency_resolution_distributes",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.insolvency_resolution_distributes",
-      "rationale": "A SolvencyProof surfaces an InsolvencyBreach when proven liabilities exceed proven reserves, and a history walk pinpoints a debt that silently vanished — but when the reserves genuinely cannot cover every obligation, nothing yet says which creditors the available capital pays, and in what order: an insolvency is flagged, not resolved, and every creditor is left to assume it is made whole. The rehypothecation guard already apportions a scarce stake across beneficiaries pari-passu; the liability side needs the same, plus the seniority real obligations carry. The budget gates that a signed SenioritySchedule ranks the obligations into priority tranches and resolve_insolvency distributes the proven reserves across them by seniority then pari-passu within a tranche — a senior tranche paid in full before a junior one, a partly-funded tranche split proportionally — pinpointing each creditor's bounded recovery and the shortfall it bears in a resolution that re-derives the whole waterfall from the bytes; a companion budget gates that the schedule and the waterfall are auditable and offline — with no schedule the whole set is one pari-passu tranche and a solvent counterparty makes every creditor whole, an over-stated recovery or a re-ordered tranche is refused even after re-sealing, a wrong-poster schedule is refused at fold time, the unmade-whole poster is dinged on the reputation path, and the resolution lands on the hash-chained audit log — so an insolvency is resolved into who-gets-what, never a hosted receiver, a bankruptcy court, or a trusted third party."
+      "rationale": "A SolvencyProof surfaces an InsolvencyBreach when proven liabilities exceed proven reserves, and a history walk pinpoints a debt that silently vanished \u2014 but when the reserves genuinely cannot cover every obligation, nothing yet says which creditors the available capital pays, and in what order: an insolvency is flagged, not resolved, and every creditor is left to assume it is made whole. The rehypothecation guard already apportions a scarce stake across beneficiaries pari-passu; the liability side needs the same, plus the seniority real obligations carry. The budget gates that a signed SenioritySchedule ranks the obligations into priority tranches and resolve_insolvency distributes the proven reserves across them by seniority then pari-passu within a tranche \u2014 a senior tranche paid in full before a junior one, a partly-funded tranche split proportionally \u2014 pinpointing each creditor's bounded recovery and the shortfall it bears in a resolution that re-derives the whole waterfall from the bytes; a companion budget gates that the schedule and the waterfall are auditable and offline \u2014 with no schedule the whole set is one pari-passu tranche and a solvent counterparty makes every creditor whole, an over-stated recovery or a re-ordered tranche is refused even after re-sealing, a wrong-poster schedule is refused at fold time, the unmade-whole poster is dinged on the reputation path, and the resolution lands on the hash-chained audit log \u2014 so an insolvency is resolved into who-gets-what, never a hosted receiver, a bankruptcy court, or a trusted third party."
     },
     {
       "id": "insolvency_set_off",
       "category": "security",
-      "statement": "Before the insolvency waterfall distributes a counterparty's reserves, mutual obligations between the estate and a creditor are closed out so the creditor recovers only its net position: a content-bound SetOffStatement (build_set_off_statement / set_off_from_records) states the obligations running both ways between a poster and one creditor — what the poster owes and what the creditor owes back — collapsed to the poster's bounded net liability (max(0, owed − owing)), signed by both parties (a mutually-agreed close-out), and resolve_insolvency(set_off=) reduces each creditor's proven liability to its net claim before distributing — a creditor in debit recovers nothing, and the estate's distributable claims shrink to the true net exposure; and the statements read only signed, content-bound artifacts (the existing LiabilityAttestation and SettlementRecords), verify from the bytes alone (an over-stated set-off claiming a different gross than the attestation, a one-sided statement only one party signed, or a tampered net is refused), are bound into the resolution by hash so the netted waterfall re-derives every net claim from the recorded gross, and land on the hash-chained audit log.",
+      "statement": "Before the insolvency waterfall distributes a counterparty's reserves, mutual obligations between the estate and a creditor are closed out so the creditor recovers only its net position: a content-bound SetOffStatement (build_set_off_statement / set_off_from_records) states the obligations running both ways between a poster and one creditor \u2014 what the poster owes and what the creditor owes back \u2014 collapsed to the poster's bounded net liability (max(0, owed \u2212 owing)), signed by both parties (a mutually-agreed close-out), and resolve_insolvency(set_off=) reduces each creditor's proven liability to its net claim before distributing \u2014 a creditor in debit recovers nothing, and the estate's distributable claims shrink to the true net exposure; and the statements read only signed, content-bound artifacts (the existing LiabilityAttestation and SettlementRecords), verify from the bytes alone (an over-stated set-off claiming a different gross than the attestation, a one-sided statement only one party signed, or a tampered net is refused), are bound into the resolution by hash so the netted waterfall re-derives every net claim from the recorded gross, and land on the hash-chained audit log.",
       "metric": "families.reputation_portability.set_off_nets_before_waterfall",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.reputation_portability.set_off_nets_before_waterfall",
-      "rationale": "The insolvency waterfall distributes a poster's reserves across the creditors it owes, but a creditor is often also a debtor of the same counterparty across a web of contracts, and the waterfall pays it on its gross claim while it still owes the estate the other side — real insolvency law resolves this first with set-off (close-out netting), and the fabric already nets bilateral settlements multilaterally but not the liability side before the waterfall. The budget gates that a mutually-signed SetOffStatement collapses the obligations running both ways to the poster's bounded net liability and resolve_insolvency(set_off=) reduces each creditor to its net claim before distributing — a creditor in debit recovers nothing and the distributable estate shrinks to the true net exposure; a companion budget gates that the close-out is auditable and offline — a netted resolution re-derives from the bytes (an inflated set-off caught even after re-sealing), a one-sided or over-stated set-off is refused, the statement is mutually-signed and derives from the existing LiabilityAttestation and SettlementRecords, the bound statements verify against the resolution, and the statement lands on the hash-chained audit log — so a creditor of an insolvent estate is paid on its true net exposure, never a hosted clearing house, a bankruptcy court, or a trusted third party."
+      "rationale": "The insolvency waterfall distributes a poster's reserves across the creditors it owes, but a creditor is often also a debtor of the same counterparty across a web of contracts, and the waterfall pays it on its gross claim while it still owes the estate the other side \u2014 real insolvency law resolves this first with set-off (close-out netting), and the fabric already nets bilateral settlements multilaterally but not the liability side before the waterfall. The budget gates that a mutually-signed SetOffStatement collapses the obligations running both ways to the poster's bounded net liability and resolve_insolvency(set_off=) reduces each creditor to its net claim before distributing \u2014 a creditor in debit recovers nothing and the distributable estate shrinks to the true net exposure; a companion budget gates that the close-out is auditable and offline \u2014 a netted resolution re-derives from the bytes (an inflated set-off caught even after re-sealing), a one-sided or over-stated set-off is refused, the statement is mutually-signed and derives from the existing LiabilityAttestation and SettlementRecords, the bound statements verify against the resolution, and the statement lands on the hash-chained audit log \u2014 so a creditor of an insolvent estate is paid on its true net exposure, never a hosted clearing house, a bankruptcy court, or a trusted third party."
     },
     {
       "id": "cross_org_conformance_end_to_end",
       "category": "reliability",
-      "statement": "The cross-org settlement & credit fabric composes end-to-end as one system, not a pile of primitives: a single CrossOrgEngagement (app.cross_org_engagement) threads the whole pipeline — negotiate → contract → choreograph delivery → settle → net → prove solvency — behind one governed, audited call-path and seals it into one content-bound, signed EngagementNarrative whose hash chain links every stage, recomputes from the bytes alone, binds each artifact's own content hash and a digest of its bytes, and re-verifies every captured artifact (the settlement records, the netting set, the solvency proof) offline; one continuous signed audit narrative runs from the first offer to the final proof on the same hash-chained log.",
+      "statement": "The cross-org settlement & credit fabric composes end-to-end as one system, not a pile of primitives: a single CrossOrgEngagement (app.cross_org_engagement) threads the whole pipeline \u2014 negotiate \u2192 contract \u2192 choreograph delivery \u2192 settle \u2192 net \u2192 prove solvency \u2014 behind one governed, audited call-path and seals it into one content-bound, signed EngagementNarrative whose hash chain links every stage, recomputes from the bytes alone, binds each artifact's own content hash and a digest of its bytes, and re-verifies every captured artifact (the settlement records, the netting set, the solvency proof) offline; one continuous signed audit narrative runs from the first offer to the final proof on the same hash-chained log.",
       "metric": "families.cross_org_conformance.conformance_verifies_offline",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.cross_org_conformance.conformance_verifies_offline",
-      "rationale": "Twenty rungs delivered the cross-org primitives, each signed, content-bound, and offline-verifiable on its own — but nothing presented the fabric as one coherent system or proved it composes end-to-end, so a caller still wired ~40 separate calls by hand with no single artifact attesting the whole. The budget gates that a complete engagement composes and seals into a narrative that verifies offline from the bytes alone (the chain links, the head and content hash recompute, the coordinator's signature checks); companion budgets gate that the lifecycle threads every stage in order (a discovered participant included), that every captured artifact verifies and re-digests against its bound digest, that the engagement and every rung land on one continuous hash-chained audit log that recomputes, and that the facade is purely compositional (every primitive stays usable directly, byte-for-byte the same) — so the fabric is proven a system, never a hosted orchestration service."
+      "rationale": "Twenty rungs delivered the cross-org primitives, each signed, content-bound, and offline-verifiable on its own \u2014 but nothing presented the fabric as one coherent system or proved it composes end-to-end, so a caller still wired ~40 separate calls by hand with no single artifact attesting the whole. The budget gates that a complete engagement composes and seals into a narrative that verifies offline from the bytes alone (the chain links, the head and content hash recompute, the coordinator's signature checks); companion budgets gate that the lifecycle threads every stage in order (a discovered participant included), that every captured artifact verifies and re-digests against its bound digest, that the engagement and every rung land on one continuous hash-chained audit log that recomputes, and that the facade is purely compositional (every primitive stays usable directly, byte-for-byte the same) \u2014 so the fabric is proven a system, never a hosted orchestration service."
     },
     {
       "id": "cross_org_conformance_tamper_evident",
       "category": "security",
-      "statement": "A tamper introduced anywhere in a composed cross-org engagement is caught from the bytes alone: re-ordering a stage breaks the hash chain, editing a stage's digest or an underlying artifact's bytes fails the digest check, and a forged signature fails authentication — so the engagement narrative is an end-to-end integrity proof over the whole fabric, not merely a transcript.",
+      "statement": "A tamper introduced anywhere in a composed cross-org engagement is caught from the bytes alone: re-ordering a stage breaks the hash chain, editing a stage's digest or an underlying artifact's bytes fails the digest check, and a forged signature fails authentication \u2014 so the engagement narrative is an end-to-end integrity proof over the whole fabric, not merely a transcript.",
       "metric": "families.cross_org_conformance.conformance_tamper_caught",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.cross_org_conformance.conformance_tamper_caught",
-      "rationale": "Composing the fabric into one narrative is only meaningful if the narrative is tamper-evident: a transcript that cannot detect an edited stage or a swapped artifact proves nothing. The budget gates that a re-ordered stage, an edited stage digest, an edited underlying artifact, and a forged coordinator signature are each caught by verification; a companion budget gates that the whole engagement re-verifies offline with every artifact re-digested against its bound digest — so the engagement narrative is a mechanical, reconstructable integrity proof over every primitive it threaded, never a trusted-party attestation."
+      "rationale": "Composing the fabric into one narrative is only meaningful if the narrative is tamper-evident: a transcript that cannot detect an edited stage or a swapped artifact proves nothing. The budget gates that a re-ordered stage, an edited stage digest, an edited underlying artifact, and a forged coordinator signature are each caught by verification; a companion budget gates that the whole engagement re-verifies offline with every artifact re-digested against its bound digest \u2014 so the engagement narrative is a mechanical, reconstructable integrity proof over every primitive it threaded, never a trusted-party attestation."
     },
     {
       "id": "computer_use_success_at_budget",
@@ -1800,17 +1800,37 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.computer_use.success_at_budget",
-      "rationale": "Computer-use and provider-hosted tools already shipped as a capability, but as a thin GUI adapter, not a grounded, verified action plane: an agent that acts on brittle coordinates cannot replay, cannot survive a layout shift, and cannot tell whether its action had the intended effect. The action plane binds every action to a stable selector and closes a perceive → ground → act → post-verify loop, so success is a reconstructable end-state the same trajectory metrics and test-time search already score — here the budget gates that the agent reaches the verified goal within its action budget, the success-at-budget bar the agentic leaderboards judge on, held offline."
+      "rationale": "Computer-use and provider-hosted tools already shipped as a capability, but as a thin GUI adapter, not a grounded, verified action plane: an agent that acts on brittle coordinates cannot replay, cannot survive a layout shift, and cannot tell whether its action had the intended effect. The action plane binds every action to a stable selector and closes a perceive \u2192 ground \u2192 act \u2192 post-verify loop, so success is a reconstructable end-state the same trajectory metrics and test-time search already score \u2014 here the budget gates that the agent reaches the verified goal within its action budget, the success-at-budget bar the agentic leaderboards judge on, held offline."
     },
     {
       "id": "computer_use_no_unapproved_destructive",
       "category": "security",
-      "statement": "No destructive computer-use action ever executes without approval: a destructive or out-of-scope action (a deletion, a purchase, a navigation outside the permitted scope) is pre-gated like a write tool and refused unless an approval callback grants it, so an agent that attempts one is blocked rather than merely logged — the gate makes an unapproved destructive action structurally impossible, not discouraged, and a divergent action is rolled back to the prior state.",
+      "statement": "No destructive computer-use action ever executes without approval: a destructive or out-of-scope action (a deletion, a purchase, a navigation outside the permitted scope) is pre-gated like a write tool and refused unless an approval callback grants it, so an agent that attempts one is blocked rather than merely logged \u2014 the gate makes an unapproved destructive action structurally impossible, not discouraged, and a divergent action is rolled back to the prior state.",
       "metric": "families.computer_use.no_unapproved_destructive",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.computer_use.no_unapproved_destructive",
-      "rationale": "An agent that drives a real screen can do real, irreversible harm — delete an account, place an order, leave the permitted scope — so the safety bar is not best-effort: every action runs through the same permission and rail policy a write tool does, a destructive or out-of-scope action is refused unless explicitly approved, and on a post-verify divergence the effect is undone (the computer-use analogue of saga compensation). The budget gates that a reckless policy attempting a destructive action without approval performs zero such actions — the gate blocks it — and companion budgets gate that out-of-scope navigation is refused and a divergent action is rolled back, so the action plane is reversible and accountable by construction, not by audit after the fact."
+      "rationale": "An agent that drives a real screen can do real, irreversible harm \u2014 delete an account, place an order, leave the permitted scope \u2014 so the safety bar is not best-effort: every action runs through the same permission and rail policy a write tool does, a destructive or out-of-scope action is refused unless explicitly approved, and on a post-verify divergence the effect is undone (the computer-use analogue of saga compensation). The budget gates that a reckless policy attempting a destructive action without approval performs zero such actions \u2014 the gate blocks it \u2014 and companion budgets gate that out-of-scope navigation is refused and a divergent action is rolled back, so the action plane is reversible and accountable by construction, not by audit after the fact."
+    },
+    {
+      "id": "identity_integrity",
+      "category": "security",
+      "statement": "An agent identity is portable and self-certifying \u2014 its DID is derived from its Ed25519 public key, so the verifying key resolves from the identifier alone, offline, with no registry \u2014 and its identity document verifies from the bytes. Keys rotate along a signed rotation chain: a signature is validated against the key that was current at signing time, so a rotated-away or revoked key cannot forge new identity history, while signatures it made while current stay valid.",
+      "metric": "families.identity.identity_integrity",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.identity.identity_integrity",
+      "rationale": "The platform signed every artifact, but who a key belonged to was an out-of-band key_id string \u2014 accountability was only as strong as that assumption. Identity makes the key first-class: the DID is the key (self-certifying, offline-resolvable), the document is content-bound, and rotation is a signed chain rather than a swap, so a compromised or superseded key cannot rewrite history. The budget gates that a fresh identity's DID resolves to its key, its document verifies, its rotation chain checks, an old signature survives a rotation, the new key signs new history, and a rotated key cannot pass as current \u2014 identity integrity by construction, not by trust."
+    },
+    {
+      "id": "delegation_attenuation",
+      "category": "security",
+      "statement": "A signed delegation mints a bounded grant (a subset of capabilities, a budget cap, an expiry, an audience) from a principal to an agent, composing into a delegation chain that verifies offline \u2014 each issuer's key resolves from its DID \u2014 where every link only attenuates, never amplifies: capabilities only shrink, the budget only tightens, the expiry only shortens. So a tool call, contract signature, or saga handoff carries provenance of authority, and an over-reaching sub-delegation (or a tampered grant) is refused from the bytes.",
+      "metric": "families.identity.delegation_attenuation",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.identity.delegation_attenuation",
+      "rationale": "Production multi-agent and multi-org systems delegate authority down a chain (principal to agent to sub-agent); without a structural guarantee, a sub-delegation could quietly grant more than it received, and an injected or compromised agent could escalate. Delegation models authority as negative space and checks attenuation as a structural invariant: the budget gates that a valid chain verifies and permits an in-bounds action, refuses an attenuated-away capability and an over-budget request, refuses an over-reaching sub-delegation that amplifies its parent, and catches a tampered grant offline \u2014 so authority flows downward with provenance, never sideways or upward, and the guarantee holds from the bytes alone."
     }
   ]
 }

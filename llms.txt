@@ -492,6 +492,30 @@ app.run("export button 500s").output.label
   projecting onto the existing trajectory metrics / test-time search. `make_web_checkout`
   is a deterministic WebArena/OSWorld-shaped app gating success-at-budget + safety.
   The flat `enable_computer_use` surface is unchanged.
+- **Agent identity, delegation & cryptographic accountability.** `from vincio import
+  AgentIdentity, IdentityDocument, Keyring, Delegation, DelegationChain, AgentCredential,
+  Grant, did_from_public_key, public_key_from_did` (also `vincio.security.identity`).
+  The identity substrate beneath the tool permissions, the agent fabric, and the
+  cross-org trust fabric — *who authorized this action, down what chain, within what
+  bounds*. `app.identity(name, *, capabilities=, controller=, seed=, use=False)` mints a
+  portable, **self-certifying** `AgentIdentity` whose DID is *derived from* its Ed25519
+  public key (`did:vincio:ed25519:<hex>`, offline-resolvable with `public_key_from_did`,
+  no registry); its content-bound `IdentityDocument` `verify()`s from the bytes, and a
+  `Keyring` `rotate()`s keys along a **signed chain** so a signature is validated against
+  the key current at signing time — a rotated/revoked key cannot forge new history while
+  its past signatures stay valid (`document.verify_signature(msg, sig, at=)`). A signed
+  `Delegation` mints a bounded `Grant` (capabilities ⊆, budget ≤, expiry ≤, audience,
+  `max_delegations`) from a principal to an agent; `delegation.delegate(...)` sub-delegates,
+  and a `DelegationChain` `verify(root_issuer=)`s **offline** where **each link only
+  attenuates, never amplifies** — `chain.permits(capability, budget_usd=, at=)` /
+  `require_permits(...)` answer authorization, and an over-reaching or tampered link is
+  refused from the bytes. A signed `AgentCredential` (`app.issue_credential(subject,
+  claims)`) is a verifiable claim that `verify()`s offline and `admits(capability)` folds
+  into the admission path. `AgentIdentity` is a drop-in `ChainSigner` (`key_id` is the
+  DID): `app.use_identity(id)` binds every audit entry, contract, and settlement to the
+  DID. Ed25519 is pure-Python (RFC 8032) by default; the native `cryptography` backend is
+  used automatically behind `vincio[crypto]` (byte-identical signatures). Offline,
+  deterministic, dependency-free. See the [identity guide](docs/guides/agent-identity.md).
 
 ## Use-case coverage: verticals, Assistant, voice
 

@@ -9667,6 +9667,124 @@ async def bench_computer_use() -> dict[str, Any]:
     }
 
 
+async def bench_identity() -> dict[str, Any]:
+    """IdentityBench: portable, self-certifying identity, delegation & accountability.
+
+    The platform signed every artifact, but *who* a key belonged to was an
+    out-of-band ``key_id`` string. This family holds the identity substrate beneath
+    the tool permissions, the agent fabric, and the cross-org trust fabric — it
+    answers *who authorized this action, down what chain, within what bounds*. It
+    gates two guarantees. **Identity integrity:** an :class:`~vincio.security.AgentIdentity`
+    is built on an Ed25519 key whose DID is *derived from* the public key
+    (self-certifying, offline-resolvable), its :class:`~vincio.security.IdentityDocument`
+    verifies from the bytes, and a :class:`~vincio.security.Keyring` rotates keys along
+    a **signed chain** — a rotated-away or revoked key cannot forge new history while
+    its past signatures stay valid. **Delegation attenuation:** a signed
+    :class:`~vincio.security.Delegation` composes into a
+    :class:`~vincio.security.DelegationChain` that verifies offline where **each link
+    only attenuates, never amplifies**, so an over-reaching sub-delegation is refused
+    from the bytes. Dependency-free (pure-Python RFC 8032 Ed25519), deterministic,
+    and offline."""
+    from vincio import (
+        AgentIdentity,
+        ContextApp,
+        DelegationChain,
+        Grant,
+        VincioConfig,
+        public_key_from_did,
+    )
+    from vincio.providers import MockProvider
+    from vincio.security import _ed25519 as ed
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="operator", provider=MockProvider(default_text="ok"), config=cfg)
+
+    # -- Identity integrity ------------------------------------------------
+    principal = app.identity("principal", capabilities=["retrieve", "summarize"], use=True)
+    # The DID is self-certifying: the verifying key resolves from the identifier alone.
+    did_self_certifying = public_key_from_did(principal.did) == principal.keyring.active_public()
+    document_verifies = principal.document.verify().valid
+
+    # Rotation: a signature made under the old key stays valid; the new key signs new
+    # history; a signature the rotated-away key makes *after* rotation cannot pass as
+    # current — identity history cannot be forged by a superseded key.
+    legacy = principal.sign("legacy")
+    old_seed_pub = principal.keyring.active_public()
+    principal.rotate()
+    rotation_chain_ok = principal.document.verify().rotation_chain_ok
+    old_signature_still_valid = principal.verify("legacy", legacy)
+    new_key_signs = principal.verify("fresh", principal.sign("fresh"))
+    rotated_key_differs = principal.keyring.active_public() != old_seed_pub
+
+    # Revocation: the audit entry binding the identity is on the hash-chained log.
+    audit_binds_identity = any(e.action == "identity" for e in app.audit.entries)
+
+    identity_integrity = bool(
+        did_self_certifying
+        and document_verifies
+        and rotation_chain_ok
+        and old_signature_still_valid
+        and new_key_signs
+        and rotated_key_differs
+    )
+
+    # -- Delegation attenuation --------------------------------------------
+    agent = AgentIdentity.generate("agent", seed=b"\x42" * 32)
+    sub = AgentIdentity.generate("subagent", seed=b"\x43" * 32)
+    root = principal.delegate(
+        agent, capabilities=["retrieve", "summarize"], budget_usd=100.0, max_delegations=2
+    )
+    child = root.delegate(agent, sub, capabilities=["retrieve"], budget_usd=40.0)
+    chain = DelegationChain(links=[root, child])
+    chain_verifies = chain.verify(root_issuer=principal.did).valid
+    permits_in_bounds = chain.permits("retrieve", budget_usd=30.0)
+    refuses_attenuated_capability = not chain.permits("summarize")
+    refuses_over_budget = not chain.permits("retrieve", budget_usd=80.0)
+
+    # An over-reaching sub-delegation (adds a capability the parent never had) is
+    # refused from the bytes — the core attenuation invariant.
+    forged = root.delegate(agent, sub, grant=Grant(capabilities=["retrieve", "write"], budget_usd=40.0))
+    forged_chain = DelegationChain(links=[root, forged])
+    amplification_refused = not forged_chain.verify(root_issuer=principal.did).valid
+
+    # A tampered delegation signature is caught offline.
+    tampered = child.model_copy(deep=True)
+    tampered.grant.budget_usd = 9999.0
+    tamper_detected = not tampered.verify().valid
+
+    delegation_attenuation = bool(
+        chain_verifies
+        and permits_in_bounds
+        and refuses_attenuated_capability
+        and refuses_over_budget
+        and amplification_refused
+        and tamper_detected
+    )
+
+    # -- Verifiable credentials fold into admission ------------------------
+    app.identity("org-acme", use=True)
+    cred = app.issue_credential(agent, {"admitted_capability": "retrieve", "operated_by": "org-acme"})
+    credential_verifies = cred.verify().valid and cred.admits("retrieve") and not cred.admits("write")
+
+    # The Ed25519 kernel is RFC 8032 conformant (vector 2, TEST with msg 0x72).
+    rfc_seed = bytes.fromhex("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
+    rfc_sig = "92a009a9f0d4cab8720e820b5f642540a2b27b5416503f8fb3762223ebdb69da085ac1e43e15996e458f3613d0f11d8c387b2eaeb4302aeeb00d291612bb0c00"
+    rfc8032_conformant = ed.sign(rfc_seed, bytes.fromhex("72")).hex() == rfc_sig
+
+    return {
+        "identity_integrity": identity_integrity,
+        "delegation_attenuation": delegation_attenuation,
+        "did_self_certifying": bool(did_self_certifying),
+        "rotation_keeps_old_valid": bool(old_signature_still_valid and new_key_signs),
+        "amplification_refused": bool(amplification_refused),
+        "tamper_detected": bool(tamper_detected),
+        "credential_verifies": bool(credential_verifies),
+        "audit_binds_identity": bool(audit_binds_identity),
+        "rfc8032_conformant": bool(rfc8032_conformant),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -9712,6 +9830,7 @@ FAMILIES = {
     "reputation_portability": bench_reputation_portability,
     "cross_org_conformance": bench_cross_org_conformance,
     "computer_use": bench_computer_use,
+    "identity": bench_identity,
     "breaking_2_0": bench_breaking_2_0,
 }
 

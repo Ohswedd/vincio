@@ -306,6 +306,11 @@ class ContextApp:
         # set it to cryptographically sign every marked output *and* every
         # erasure proof.
         self.content_signer: Any = None
+        # Bound agent identity: opt-in, empty by default. When set via
+        # ``app.identity(..., use=True)`` / ``app.use_identity(...)`` it becomes the
+        # app's signer, so every audit entry, contract, and settlement binds to its
+        # DID — accountability as a cryptographic fact, not a logged ``key_id`` string.
+        self._identity: Any = None
         # Consent ledger: opt-in, empty by default. When configured via
         # ``app.use_consent_ledger(...)`` it binds data to a GDPR purpose/lawful
         # basis and is consulted by access decisions and memory recall.
@@ -3477,6 +3482,134 @@ class ContextApp:
         return self._settlement_book().draw_pool(
             pool, record, config=config, party=party, sign=sign
         )
+
+    def identity(
+        self,
+        name: str | None = None,
+        *,
+        controller: str = "",
+        capabilities: Any | None = None,
+        seed: Any | None = None,
+        use: bool = False,
+        record_audit: bool = True,
+    ) -> Any:
+        """Mint a portable, self-certifying :class:`~vincio.security.AgentIdentity`.
+
+        The identity is built on an Ed25519 key whose **DID is derived from the public
+        key** (``did:vincio:ed25519:<hex>``), so the identifier resolves to the
+        verifying key offline with no registry. ``name`` labels it (defaults to this
+        app's name), ``controller`` names the operating org, ``capabilities`` are the
+        capabilities it advertises, and ``seed`` (32 bytes) makes the key deterministic
+        for tests. With ``use=True`` the identity also becomes this app's signer (see
+        :meth:`use_identity`). Unless ``record_audit`` is off, the issuance lands on the
+        hash-chained audit log. The identity satisfies the
+        :class:`~vincio.security.audit.ChainSigner` protocol, so it drops into every
+        signing slot the platform already exposes::
+
+            agent = app.identity("billing-agent", capabilities=["retrieve", "summarize"])
+            grant = agent.delegate("did:vincio:ed25519:...", capabilities=["retrieve"])
+        """
+        from ..security.identity import AgentIdentity
+
+        identity = AgentIdentity.generate(
+            name or self.name,
+            controller=controller,
+            capabilities=list(capabilities) if capabilities else None,
+            seed=seed,
+        )
+        # Bind first (when requested) so the identity adopts the audit signer before
+        # the mint entry is recorded — the mint then lands signed by its own DID.
+        if use:
+            self.use_identity(identity, record_audit=False)
+        if record_audit and self.audit is not None:
+            from ..security.identity import IDENTITY_ACTION
+
+            entry = self.audit.record(
+                IDENTITY_ACTION,
+                resource=identity.did,
+                decision="minted",
+                details=identity.document.audit_details(),
+            )
+            identity.document.audit_id = getattr(entry, "id", None)
+        return identity
+
+    def use_identity(self, identity: Any, *, record_audit: bool = True) -> Any:
+        """Bind ``identity`` as this app's signer so every artifact carries its DID.
+
+        Sets the identity as the content signer and the contract/settlement signer —
+        and, when the audit log has not yet recorded anything, as the audit-chain
+        signer too — so subsequent audit entries, negotiated contracts, settlement
+        records, and signed manifests all record the identity's **DID** as their
+        ``key_id``. Accountability becomes mechanical: a verifier resolves the signer
+        from the DID and checks the signature from the bytes, rather than trusting an
+        out-of-band ``key_id`` string. Returns the identity.
+        """
+        self._identity = identity
+        self.content_signer = identity
+        self._contract_signer = identity
+        # Adopt the audit signer only on a fresh log, so the chain stays verifiable
+        # under one key (mixing signers mid-chain would break offline verification).
+        if self.audit is not None and not self.audit.entries:
+            self.audit.signer = identity
+        if record_audit and self.audit is not None:
+            from ..security.identity import IDENTITY_ACTION
+
+            self.audit.record(
+                IDENTITY_ACTION,
+                resource=getattr(identity, "did", None),
+                decision="bound",
+                details={"did": getattr(identity, "did", None), "name": getattr(identity, "name", "")},
+            )
+        return identity
+
+    def issue_credential(
+        self,
+        subject: Any,
+        claims: dict[str, str],
+        *,
+        as_identity: Any | None = None,
+        not_after: Any | None = None,
+        expires_in: Any | None = None,
+        record_audit: bool = True,
+    ) -> Any:
+        """Issue a signed, offline-verifiable :class:`~vincio.security.AgentCredential`.
+
+        The issuer signs a verifiable claim about ``subject`` (an agent DID or
+        :class:`~vincio.security.AgentIdentity`) — e.g.
+        ``{"admitted_capability": "retrieve", "operated_by": "org-acme"}`` — that an
+        importer verifies offline and folds into the admission / registry path
+        (:meth:`~vincio.security.AgentCredential.admits`). The issuer is ``as_identity``
+        or this app's bound identity (:meth:`use_identity`); raises
+        :class:`~vincio.core.errors.IdentityError` if neither is set. Records the
+        issuance on the audit chain unless ``record_audit`` is off. Returns the
+        credential::
+
+            org = app.identity("org-acme", use=True)
+            cred = app.issue_credential(agent, {"admitted_capability": "retrieve"})
+            cred.verify().valid  # True, from the bytes alone
+        """
+        from ..core.errors import IdentityError
+
+        issuer = as_identity or self._identity
+        if issuer is None:
+            raise IdentityError(
+                "no issuing identity: pass as_identity= or bind one with app.use_identity(...)",
+                details={"app": self.name},
+            )
+        credential = issuer.issue_credential(
+            subject, claims, not_after=not_after, expires_in=expires_in
+        )
+        if record_audit and self.audit is not None:
+            from ..security.identity import CREDENTIAL_ACTION
+
+            entry = self.audit.record(
+                CREDENTIAL_ACTION,
+                resource=credential.subject,
+                decision="issued",
+                details=credential.audit_details(),
+            )
+            credential.audit_id = getattr(entry, "id", None)
+        return credential
 
     def attest_custody(
         self,

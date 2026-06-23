@@ -606,6 +606,20 @@ class EgressBlockedError(SecurityError):
     code = "EGRESS_BLOCKED"
 
 
+class IdentityError(SecurityError):
+    """An agent identity, delegation, or credential failed verification.
+
+    Raised by the identity substrate (:mod:`vincio.security.identity`) when a DID is
+    malformed, an identity document or rotation chain does not verify, a delegation
+    over-reaches its parent's authority (an amplification, not an attenuation), a
+    sub-delegation is signed by someone other than the delegate, or a credential's
+    signature does not bind to its issuer DID. Identity refuses the artifact rather
+    than trusting an unverifiable claim of authority.
+    """
+
+    code = "IDENTITY_VERIFICATION_FAILED"
+
+
 # --- governance & compliance -------------------------------------------------
 
 
