@@ -4,6 +4,51 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.39.0] - 2026-06-23
+
+Cross-org liability inclusion proofs & completeness. Proof-of-solvency (3.38) folds a proven liability *total* against
+the proven reserves, but that total is still the attestor's single number: a counterparty could **under-state** what it
+owes by quietly omitting a creditor and still attest a sound, re-deriving total over the creditors it *did* list — the
+canonical second half of a proof-of-liabilities, where each creditor proves its own claim is **included** so the total
+is provably **complete**, not merely internally consistent. This release commits the liability line items into a Merkle
+root, gives each creditor an offline-verifiable inclusion proof, and folds a completeness check into the proof-of-solvency
+path so the solvency margin is bounded by the obligations creditors can prove. Entirely additive and backward-compatible
+— `API_VERSION` stays `3.0`, the existing custody, solvency, escrow, pooling, rehypothecation, admission, and settlement
+paths are unchanged (`prove_solvency` without `completeness=` behaves exactly as before), and the whole theme runs offline
+and deterministically.
+
+### Added
+
+- **Merkle commitment over liability line items (`vincio.settlement.solvency`).** `LiabilityAttestation` now commits its
+  line items into a `liabilities_root` bound into the signed `content_hash`. The total *and* the root re-derive from the
+  line items on every verify, so a tampered, dropped, or reordered line is caught even after re-sealing. Leaf and interior
+  hashes are domain-separated (the Merkle second-preimage guard) and each leaf binds the creditor's sorted position.
+- **InclusionProof.** `LiabilityAttestation.inclusion_proof(creditor)` (and `inclusion_proofs()` for all lines) builds an
+  offline-verifiable `InclusionProof` that a creditor's claim is a leaf of the attested root. `verify(attestation=None,
+  verifier=None)` reconstructs the root from the leaf and authentication path (`MerkleStep` list) and, against the
+  attestation, checks the cited root and leaf belong to the signed attestation — refusing a tampered leaf, a forged root,
+  or a root lifted from a different attestation. `MerkleStep`, `InclusionProof`, `InclusionProofVerification` are public.
+- **CompletenessProof.** `check_completeness(liabilities, claims, *, verifier=None, as_of=None)` folds creditor claims (a
+  `{creditor: amount}` mapping, or `LiabilityLine` / `SettlementRecord` / `(creditor, amount)` items) against a
+  `LiabilityAttestation` into a sealed, content-bound `CompletenessProof`, pinpointing every omitted or under-stated claim
+  as an `OmissionBreach` and raising the attested figure to a `completed_usd` total. It refuses a tampered attestation (a
+  forged attestor too, with the verifier); `verify` re-derives the completed total and the breaches (a dropped omission
+  caught by `completed ≥ claimed`, a hidden breach caught on re-seal). `OmissionBreach`, `CompletenessProof`,
+  `CompletenessVerification`, `check_completeness` are public.
+- **Proof-of-solvency wiring.** `prove_solvency(custody, liabilities, *, poster=None, completeness=None, as_of=None,
+  verifier=None)` reads a folded `CompletenessProof`'s completed total instead of the attestor's figure (refusing a check
+  for a different poster or attestation), bounding the solvency margin by the obligations creditors can prove. `SolvencyProof`
+  gains `attested_liabilities_usd`, `completeness_hash`, `completeness_adjusted`, and `understated_usd`.
+- **App & book methods.** `app.inclusion_proof` / `book.inclusion_proof`, `app.check_completeness` / `book.check_completeness`
+  (the book derives claims from its owner's own settled records against the poster when `claims` is omitted, via
+  `book.claims_against(poster)`), and a `completeness=` parameter on `app.prove_solvency` / `book.prove_solvency`. The
+  completeness check is signed and recorded on the audit chain (action `liability_completeness`, decision
+  `complete` / `incomplete`).
+- **VincioBench, SLO, example, docs.** The `reputation_portability` family gains `inclusion_proof_detects_omission`,
+  `completeness_bounds_solvency`, and `completeness_auditable_offline` with a published liability-completeness SLO and CI
+  budgets; example `83_cross_org_liability_completeness.py`; the settlement guide, README, llms.txt, SECURITY.md, and the
+  generated API index are updated. The public surface grows from 360 to 367 symbols.
+
 ## [3.38.0] - 2026-06-23
 
 Cross-org custody liability attestation & proof-of-solvency. Proof-of-reserves (3.37) proves the capital a

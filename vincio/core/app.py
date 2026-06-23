@@ -3418,9 +3418,7 @@ class ContextApp:
         from ..settlement import attest_custody as _attest
 
         resolved_custodian = custodian or self.name
-        attestation = _attest(
-            poster, reserves, custodian=resolved_custodian, as_of=as_of
-        )
+        attestation = _attest(poster, reserves, custodian=resolved_custodian, as_of=as_of)
         if sign and self.name == attestation.custodian:
             signer = self._resolve_contract_signer(None, True)
             if signer is not None:
@@ -3463,9 +3461,7 @@ class ContextApp:
         from ..settlement import attest_liabilities as _attest
 
         resolved_attestor = attestor or self.name
-        attestation = _attest(
-            poster, liabilities, attestor=resolved_attestor, as_of=as_of
-        )
+        attestation = _attest(poster, liabilities, attestor=resolved_attestor, as_of=as_of)
         if sign and self.name == attestation.attestor:
             signer = self._resolve_contract_signer(None, True)
             if signer is not None:
@@ -3482,12 +3478,72 @@ class ContextApp:
             attestation.audit_id = getattr(entry, "id", None)
         return attestation
 
+    def inclusion_proof(self, liabilities: Any, creditor: str) -> Any:
+        """Build an offline-verifiable inclusion proof for one creditor's liability claim.
+
+        Thin wrapper over :meth:`~vincio.settlement.LiabilityAttestation.inclusion_proof`: the
+        :class:`~vincio.settlement.InclusionProof` shows ``creditor``'s obligation is a leaf of
+        the attestation's signed Merkle root, so the creditor confirms its claim was counted in
+        the attested total and a poster cannot quietly drop it. Returns it::
+
+            owed = app.attest_liabilities("vendor", {"acme": 60.0, "globex": 40.0})
+            proof = app.inclusion_proof(owed, "acme")
+            proof.verify(owed).valid  # True
+        """
+        return liabilities.inclusion_proof(creditor)
+
+    def check_completeness(
+        self,
+        liabilities: Any,
+        claims: Any,
+        *,
+        as_of: Any | None = None,
+        sign: bool = True,
+        verify_with: Any | None = None,
+        record_audit: bool = True,
+    ) -> Any:
+        """Fold creditor claims against a liability attestation into a completeness check.
+
+        Issues a :class:`~vincio.settlement.CompletenessProof`
+        (:func:`~vincio.settlement.check_completeness`) folding what creditors can prove they are
+        owed (``claims`` — a ``creditor -> amount`` mapping, or
+        :class:`~vincio.settlement.LiabilityLine` / settlement-record / ``(creditor, amount)``
+        items) against the attestation, pinpointing every omitted or under-stated claim as an
+        :class:`~vincio.settlement.OmissionBreach` and raising the attested figure to a completed
+        total :meth:`prove_solvency` reads (``completeness=``). Signs the check as this app and,
+        unless ``record_audit`` is off, records it on the audit chain. A tampered attestation is
+        refused (a forged attestor signature too, with ``verify_with``). Returns it::
+
+            owed = app.attest_liabilities("vendor", {"acme": 60.0})
+            check = app.check_completeness(owed, {"acme": 60.0, "globex": 40.0})
+            check.require_complete()  # raises: globex is omitted
+        """
+        from ..settlement import check_completeness as _check
+
+        proof = _check(liabilities, claims, verifier=verify_with, as_of=as_of)
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                proof.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.solvency import COMPLETENESS_ACTION
+
+            entry = self.audit.record(
+                COMPLETENESS_ACTION,
+                resource=proof.poster,
+                decision=proof.status,
+                details=proof.audit_details(),
+            )
+            proof.audit_id = getattr(entry, "id", None)
+        return proof
+
     def prove_solvency(
         self,
         custody: Any,
         liabilities: Any,
         *,
         poster: str | None = None,
+        completeness: Any | None = None,
         as_of: Any | None = None,
         sign: bool = True,
         verify_with: Any | None = None,
@@ -3500,11 +3556,14 @@ class ContextApp:
         into a bounded :class:`~vincio.settlement.SolvencyProof` — the proof-of-solvency the
         literature pairs with a proof-of-reserves (``reserves ≥ liabilities``). When the
         liabilities exceed the reserves the shortfall surfaces as a pinpointed
-        :class:`~vincio.settlement.InsolvencyBreach`. Signs the proof as this app and, unless
-        ``record_audit`` is off, records it on the audit chain. A tampered or wrong-poster
-        attestation is refused (a forged signature too, with ``verify_with``). The proof's
-        solvency-adjusted held figure reads into :meth:`guard_collateral` (``solvency=``).
-        Returns the proof::
+        :class:`~vincio.settlement.InsolvencyBreach`. Pass ``completeness`` (a
+        :class:`~vincio.settlement.CompletenessProof` over this attestation) to bound the margin
+        against the *completed* liability total — the attestor's figure raised by every
+        obligation a creditor proved it omitted, not just the creditors the attestor listed.
+        Signs the proof as this app and, unless ``record_audit`` is off, records it on the audit
+        chain. A tampered or wrong-poster attestation (or completeness check) is refused (a
+        forged signature too, with ``verify_with``). The proof's solvency-adjusted held figure
+        reads into :meth:`guard_collateral` (``solvency=``). Returns the proof::
 
             reserves = app.attest_custody("vendor", {"omnibus": 80.0})
             owed = app.attest_liabilities("vendor", {"acme": 60.0})
@@ -3515,7 +3574,12 @@ class ContextApp:
         from ..settlement import prove_solvency as _prove
 
         proof = _prove(
-            custody, liabilities, poster=poster, as_of=as_of, verifier=verify_with
+            custody,
+            liabilities,
+            poster=poster,
+            completeness=completeness,
+            as_of=as_of,
+            verifier=verify_with,
         )
         if sign:
             signer = self._resolve_contract_signer(None, True)

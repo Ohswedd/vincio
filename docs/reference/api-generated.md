@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**360** public symbols.
+**367** public symbols.
 
 ## Classes
 
@@ -209,6 +209,14 @@ The (non-raising) outcome of verifying a collateral pool offline.
 ### `CommunityRegistry(allow_list=…, audit=…, signer=…, principal=…, require_signature=…, index=…)`
 
 A governed, signed, audited index of community packs and skills.
+
+### `CompletenessProof(**data)`
+
+A signed, offline-verifiable completeness check over a liability attestation.
+
+### `CompletenessVerification(**data)`
+
+The (non-raising) outcome of verifying a completeness check offline.
 
 ### `ComplianceFramework(*args, **kwds)`
 
@@ -502,6 +510,14 @@ Abstract image generation/editing provider.
 
 Runs the trace → dataset → eval → optimize → promote cycle on an app.
 
+### `InclusionProof(**data)`
+
+An offline-verifiable proof that one creditor's claim is in a liability attestation.
+
+### `InclusionProofVerification(**data)`
+
+The (non-raising) outcome of verifying a liability inclusion proof offline.
+
 ### `IndexedTraceStore(path=…, percentile_window=…)`
 
 SQLite-backed, indexed trace + cost store with pre-aggregated rollups.
@@ -634,6 +650,10 @@ Enum where members are also (and must be) strings
 
 Enum where members are also (and must be) strings
 
+### `MerkleStep(**data)`
+
+One step of an :class:`InclusionProof`'s authentication path.
+
 ### `Meter(contract_id, run_id=…)`
 
 Accumulates the usage of work delivered under one contract.
@@ -697,6 +717,10 @@ What the application is trying to accomplish.
 ### `Offer(**data)`
 
 One move in a negotiation: a proposal, an acceptance, or a walk-away.
+
+### `OmissionBreach(**data)`
+
+A creditor's proven claim the attested liabilities omit or under-state.
 
 ### `OpenAIFineTuneBackend(provider)`
 
@@ -1252,6 +1276,10 @@ Build the importer's bounded, transitive trust over a set of issuers.
 
 Build a buyer position: wants low price, fast SLA, high quality.
 
+### `check_completeness(liabilities, claims, verifier=…, as_of=…)`
+
+Fold a set of creditor claims against a liability attestation into a completeness check.
+
 ### `choreography_a2a_server(handlers, org_id=…, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)`
 
 Expose a local org's choreography handlers over A2A.
@@ -1364,7 +1392,7 @@ Post one stake backing many contracts into an (unsigned) :class:`CollateralPool`
 
 Post collateral against a contract into an (unsigned) :class:`Escrow`.
 
-### `prove_solvency(custody, liabilities, poster=…, as_of=…, verifier=…)`
+### `prove_solvency(custody, liabilities, poster=…, completeness=…, as_of=…, verifier=…)`
 
 Fold a reserve proof against a liability proof into a proof-of-solvency.
 

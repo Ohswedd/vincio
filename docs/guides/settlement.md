@@ -674,6 +674,47 @@ records the proof (action `solvency_proof`, decision `solvent` / `insolvent`) on
 audit log. The proof bounds the guard's held figure by the counterparty's whole obligation set,
 not one buyer's view.
 
+## Proving the liabilities are complete
+
+A solvency proof folds the attestor's liability *total*, but that total is still one number: a
+counterparty could **under-state** what it owes by quietly omitting a creditor and still attest a
+sound, re-deriving total over the creditors it *did* list. The second half of a proof-of-liabilities
+makes the total provably **complete**. A `LiabilityAttestation` now commits its line items into a
+Merkle root (bound in its signed hash — the total *and* the root re-derive on every verify), so each
+creditor gets an offline-verifiable `InclusionProof` (`app.inclusion_proof` / `attestation.inclusion_proof`)
+that its claim is a leaf of that root — a poster cannot drop a creditor without the omitted party
+detecting it. `check_completeness` (`app.check_completeness`) folds creditors' own proven claims
+against the attestation, pinpointing every omitted or under-stated claim and raising the attested
+figure to a **completed** total `prove_solvency` reads.
+
+```python
+owed = auditor.attest_liabilities("vendor", {"acme": 60.0})   # quietly omits globex
+
+acme_proof = auditor.inclusion_proof(owed, "acme")            # acme proves its claim is counted
+acme_proof.verify(owed).valid                                  # True — a leaf of the signed root
+
+# globex folds its own $40 claim — it is not in the attestation, so the check is incomplete
+check = globex.check_completeness(owed, {"globex": 40.0})
+check.complete                 # False
+check.omitted_creditors        # ["globex"]
+check.completed_usd            # 100.0 — attested 60 + the proven 40 omission
+
+reserves = custodian.attest_custody("vendor", {"omnibus": 80.0})  # 80 held
+proof = auditor.prove_solvency(reserves, owed, completeness=check)  # margin uses 100, not 60
+proof.insolvent                # True — the hidden $40 tips 80 − 100 into a shortfall
+proof.understated_usd          # 40.0 — how far the completed total exceeds the attestor's figure
+check.require_complete()       # raises: globex is omitted
+```
+
+The inclusion and completeness proofs read only signed, content-bound artifacts: a tampered leaf or
+a forged root fails to reconstruct the committed root, an under-stated completed total is caught from
+the bytes alone (the completed total never sits below the folded claims, and the breaches re-derive),
+and a completeness check for a **different** attestation or poster is **refused** at fold time.
+`app.check_completeness` signs the check and records it (action `liability_completeness`, decision
+`complete` / `incomplete`) on the hash-chained audit log. When `claims` is omitted, the book derives
+them from its owner's own settled records against the attestation's poster — what the creditor
+delivered against and is owed.
+
 ## What it is not
 
 This is a library capability inside your process, not a payment rail or a hosted
@@ -700,7 +741,10 @@ custodian or a rehypothecation registry, a custody attestation is one party's si
 verifiable proof-of-reserves that the guard reads as the held figure, not a hosted proof-of-reserves
 auditor or a trusted third party, and a solvency proof is a verifiable fold of a counterparty's
 proven reserves against its proven liabilities that the guard reads as a solvency-adjusted held
-figure, not a hosted solvency auditor. Vincio gives you a verifiable
+figure, not a hosted solvency auditor, and an inclusion proof and a completeness check are one
+party's signed, verifiable proof that a creditor's claim is counted in the attested liabilities and
+that the attested total omits nothing a creditor can prove, not a hosted attestation registry or a
+transparency log. Vincio gives you a verifiable
 reconciliation of what was owed and delivered, a verifiable netting of it across a fleet, a
 verifiable resolution when two books disagree, a portable, verifiable attestation of earned
 standing, a verifiable way to discover it across the fabric, a verifiable way to weigh it by
@@ -708,5 +752,5 @@ your own earned trust, a verifiable way to bound a counterparty's exposure to wh
 standing justifies, a verifiable way to back that exposure with posted collateral, a
 verifiable way to pool that collateral across many concurrent deals, a verifiable way to
 bound its re-use across them, a verifiable proof that the capital backing it actually
-exists, and a verifiable proof that it exceeds everything the counterparty owes; how an
-obligation is paid is yours.
+exists, a verifiable proof that it exceeds everything the counterparty owes, and a verifiable
+proof that the liabilities counted against it are complete; how an obligation is paid is yours.

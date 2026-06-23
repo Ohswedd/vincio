@@ -39,11 +39,15 @@ from .record import (
 )
 from .rehypothecation import REHYPOTHECATION_ACTION, CollateralLedger, guard_collateral
 from .solvency import (
+    COMPLETENESS_ACTION,
     LIABILITY_ACTION,
     SOLVENCY_ACTION,
+    CompletenessProof,
+    InclusionProof,
     LiabilityAttestation,
     SolvencyProof,
     attest_liabilities,
+    check_completeness,
     prove_solvency,
 )
 
@@ -686,12 +690,75 @@ class SettlementBook:
         )
         attestation.audit_id = getattr(entry, "id", None)
 
+    def inclusion_proof(self, liabilities: LiabilityAttestation, creditor: str) -> InclusionProof:
+        """Build an offline-verifiable inclusion proof for one creditor's claim.
+
+        Thin wrapper over :meth:`~vincio.settlement.solvency.LiabilityAttestation.inclusion_proof`:
+        the proof shows ``creditor``'s obligation is a leaf of the attestation's signed Merkle
+        root, so the creditor confirms its claim was counted in the attested total. Returns it.
+        """
+        return liabilities.inclusion_proof(creditor)
+
+    def check_completeness(
+        self,
+        liabilities: LiabilityAttestation,
+        claims: Any | None = None,
+        *,
+        verify_with: ChainSigner | None = None,
+        as_of: Any | None = None,
+        sign: bool = True,
+    ) -> CompletenessProof:
+        """Fold creditor claims against a liability attestation into a signed completeness check.
+
+        Builds the :class:`~vincio.settlement.solvency.CompletenessProof`
+        (:func:`~vincio.settlement.solvency.check_completeness`), pinpointing every claim the
+        attestation omits or under-states as an
+        :class:`~vincio.settlement.solvency.OmissionBreach` and raising the attested figure to a
+        completed total :meth:`prove_solvency` reads (``completeness=``). When ``claims`` is
+        omitted they are derived from this book's own settled records against the attestation's
+        poster — what this book's owner, as a creditor, can prove it is owed. Signs the check as
+        this book's owner and records it on the audit chain. A tampered attestation is refused;
+        with ``verify_with`` a forged attestor signature is too. Returns the check.
+        """
+        resolved_claims = self.claims_against(liabilities.poster) if claims is None else claims
+        proof = check_completeness(liabilities, resolved_claims, verifier=verify_with, as_of=as_of)
+        if sign and self.signer is not None:
+            proof.sign(self.signer, party=self.owner)
+        self._audit_completeness(proof)
+        return proof
+
+    def claims_against(self, poster: str) -> dict[str, float]:
+        """What this book's owner, as a creditor, can prove ``poster`` owes it from its records.
+
+        Sums ``amount_owed_usd`` over every settled record where this book's owner is the seller
+        and ``poster`` is the buyer — the obligations the owner delivered against and is owed.
+        Folded by :meth:`check_completeness` to detect a liability attestation that omits or
+        under-states what this creditor is owed.
+        """
+        owed = 0.0
+        for record in self.records:
+            if record.seller == self.owner and record.buyer == poster:
+                owed += float(record.amount_owed_usd)
+        return {self.owner: round(owed, 6)} if owed > 0.0 else {}
+
+    def _audit_completeness(self, proof: CompletenessProof) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            COMPLETENESS_ACTION,
+            resource=proof.poster,
+            decision=proof.status,
+            details=proof.audit_details(),
+        )
+        proof.audit_id = getattr(entry, "id", None)
+
     def prove_solvency(
         self,
         custody: CustodyAttestation,
         liabilities: LiabilityAttestation,
         *,
         poster: str | None = None,
+        completeness: CompletenessProof | None = None,
         as_of: Any | None = None,
         verify_with: ChainSigner | None = None,
         sign: bool = True,
@@ -702,13 +769,22 @@ class SettlementBook:
         (:func:`~vincio.settlement.solvency.prove_solvency`) reconciling the proven reserves
         against the proven liabilities into a bounded solvency margin, pinpointing an
         :class:`~vincio.settlement.solvency.InsolvencyBreach` when the liabilities exceed the
-        reserves. Signs the proof as this book's owner and records it on the audit chain. A
-        tampered or wrong-poster attestation is refused; with ``verify_with`` a forged signature
-        is too. The proof's solvency-adjusted held figure reads into
-        :meth:`guard_collateral` (``solvency=``). Returns the proof.
+        reserves. Pass ``completeness`` (a
+        :class:`~vincio.settlement.solvency.CompletenessProof` over this attestation) to bound
+        the margin against the *completed* liability total — the attestor's figure raised by
+        every obligation a creditor proved it omitted. Signs the proof as this book's owner and
+        records it on the audit chain. A tampered or wrong-poster attestation (or completeness
+        check) is refused; with ``verify_with`` a forged signature is too. The proof's
+        solvency-adjusted held figure reads into :meth:`guard_collateral` (``solvency=``).
+        Returns the proof.
         """
         proof = prove_solvency(
-            custody, liabilities, poster=poster, as_of=as_of, verifier=verify_with
+            custody,
+            liabilities,
+            poster=poster,
+            completeness=completeness,
+            as_of=as_of,
+            verifier=verify_with,
         )
         if sign and self.signer is not None:
             proof.sign(self.signer, party=self.owner)
