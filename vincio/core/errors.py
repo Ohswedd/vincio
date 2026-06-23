@@ -46,6 +46,7 @@ __all__ = [
     "ToolTimeoutError",
     "ToolApprovalRequiredError",
     "SandboxError",
+    "ComputerUseError",
     "AgentEngineError",
     "AgentStepError",
     "AgentBudgetExhaustedError",
@@ -396,6 +397,13 @@ class SandboxError(ToolError):
     """Isolation/sandbox failure: backend unavailable or isolation too weak."""
 
     code = "SANDBOX_ERROR"
+
+
+class ComputerUseError(ToolError):
+    """Computer-use action plane failure: an undriveable backend, a missing
+    optional driver, an unaddressable target, or an exhausted action budget."""
+
+    code = "COMPUTER_USE_ERROR"
 
 
 # --- agents -----------------------------------------------------------------

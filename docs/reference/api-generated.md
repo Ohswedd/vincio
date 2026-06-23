@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**400** public symbols.
+**411** public symbols.
 
 ## Classes
 
@@ -17,6 +17,14 @@ A negotiating :class:`Party` whose moves are made by a remote A2A agent.
 ### `AIBOM(**data)`
 
 An AI bill of materials, serializable as CycloneDX 1.6 JSON.
+
+### `ActionOutcome(**data)`
+
+The result of one full perceive → gate → act → verify → undo cycle.
+
+### `ActionPolicy(**data)`
+
+The pre-gate rail: what is in scope and what needs approval.
 
 ### `AdaptationResult(**data)`
 
@@ -225,6 +233,18 @@ A governance framework whose controls Vincio maps onto.
 ### `ComplianceReport(**data)`
 
 A coverage matrix across the mapped frameworks.
+
+### `ComputerEnvironment(backend, app=…, policy=…, approve=…, auto_undo=…, max_steps=…)`
+
+A grounded, verified, reversible computer-use action plane.
+
+### `ComputerRun(**data)`
+
+The outcome of driving a policy through the action plane to a goal.
+
+### `ComputerTask(**data)`
+
+A computer-use goal: a natural-language instruction plus a declarative end-state verifier and an action budget. The verifier reads the same :class:`~vincio.evals.environment.StateCheck` paths an environment oracle does, so a run's success is verifiable end-state, not turn-by-turn plausibility.
 
 ### `ConsentLedger(store=…, audit=…, default_allow=…)`
 
@@ -726,6 +746,10 @@ The deterministic roll-up of a meter's accrued usage for one contract.
 
 Deterministic offline image provider.
 
+### `MockScreen(app)`
+
+Deterministic in-process screen over a :class:`ScreenApp` — no browser, no network. Tracks the current screen, typed field values, and durable flags, and re-derives a stable :class:`ScreenState` from them, so a run is reproducible and CI-golden. Supports exact snapshot restore as an undo fallback.
+
 ### `MockSpeechProvider(sample_rate=…)`
 
 Deterministic offline TTS: a real WAV whose length scales with the text.
@@ -1058,6 +1082,14 @@ Routes a run (or a piece of structured data) to one of several schemas.
 
 Mem0-style handle bound to one owner: ``engine.for_user("u1")``.
 
+### `ScreenApp(**data)`
+
+A deterministic, in-process app a :class:`MockScreen` drives — the offline, WebArena / OSWorld-shaped harness: named screens, form fields, click-driven transitions, and effects that set durable flags.
+
+### `ScreenState(**data)`
+
+A perceived snapshot of the UI — the *observe* half of the loop.
+
 ### `SearchBudget(**data)`
 
 Bounds one search: candidate cap, optional cost cap, optional deadline.
@@ -1253,6 +1285,14 @@ The importer's bounded, transitive trust in each issuer — the Sybil-resistant 
 ### `TwoStageIndex(embedder=…, coarse_dims=…, quantization=…, rerank_factor=…)`
 
 Matryoshka + quantized coarse search, full-precision exact rerank.
+
+### `UIAction(**data)`
+
+A typed action bound to a target by a stable selector, not a coordinate.
+
+### `UIElement(**data)`
+
+A typed, addressable element grounded from the screen + accessibility tree.
 
 ### `UnderReservedBreach(**data)`
 
@@ -1487,6 +1527,10 @@ Build the right fine-tune backend for a provider instance.
 ### `make_retail_environment(task_id=…)`
 
 A τ-bench-style retail world: orders mutated by tools, verified by end state.
+
+### `make_web_checkout()`
+
+A deterministic, in-process checkout app and its goal — the offline, WebArena / OSWorld-shaped reference scenario.
 
 ### `model_swap_regression(app, dataset, baseline_model=…, candidate_model, metrics=…, quality_metric=…, alpha=…, repeats=…, flake_quarantine=…, flake_threshold=…, slice_prefix=…)`
 

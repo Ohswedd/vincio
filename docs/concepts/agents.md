@@ -289,6 +289,21 @@ boundaries, enforced by `require_real_isolation` for code-executing and
 computer-use workloads). See
 [`examples/34_self_improving_loop_and_agents.py`](../../examples/34_self_improving_loop_and_agents.py).
 
+The rung above the flat tools is the **action plane**: `app.computer_use(...)`
+returns a `ComputerEnvironment` for an agent that drives a screen *safely*. Over a
+pluggable `ScreenBackend` (deterministic `MockScreen` offline; browser / OS
+accessibility / remote-desktop adapters behind `vincio[computer-use]`) it perceives
+the UI as typed, addressable `UIElement`s and grounds an intent to a `UIAction` bound
+by a **stable selector** (role + accessible name, not a pixel). Every action is
+**pre-gated** against an `ActionPolicy` (a destructive or out-of-scope action is gated
+like a write tool, behind an approval callback), performed, **post-verified** against
+its expected effect, and **undone on divergence** — the computer-use analogue of a
+saga's compensation — into a typed `ActionOutcome`, every step on the same
+hash-chained audit log. A `ComputerTask` carries a goal and a declarative verifier, so
+a run projects onto the same `Trajectory` the trajectory metrics and test-time search
+already score. See the [computer-use guide](../guides/computer-use.md) and
+[`examples/89_computer_use_action_plane.py`](../../examples/89_computer_use_action_plane.py).
+
 ## World-model / simulation-based planning
 
 The bounded planners and the stateful-environment harness let an agent *act on* and

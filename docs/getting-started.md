@@ -119,6 +119,7 @@ vincio eval run golden/basic.jsonl --app app.py \
 - [Guide: run evals](guides/run-evals.md)
 - [Guide: test LLM apps with pytest](guides/test-llm-apps.md)
 - [Guide: orchestrate multi-agent systems](guides/orchestrate-agents.md)
+- [Guide: computer-use action plane](guides/computer-use.md)
 - [Concepts: observability](concepts/observability.md)
 - [Guide: performance & streaming](guides/performance.md)
 - [Guide: verify governance invariants](guides/governance-verification.md)

@@ -410,9 +410,22 @@ from .stability import (
     experimental,
     stability_of,
 )
+from .tools import (
+    ActionOutcome,
+    ActionPolicy,
+    ComputerEnvironment,
+    ComputerRun,
+    ComputerTask,
+    MockScreen,
+    ScreenApp,
+    ScreenState,
+    UIAction,
+    UIElement,
+    make_web_checkout,
+)
 from .workflows.engine import Workflow
 
-__version__ = "3.44.0"
+__version__ = "3.45.0"
 
 __all__ = [
     "ContextApp",
@@ -832,6 +845,18 @@ __all__ = [
     "make_retail_environment",
     "BenchmarkAdapter",
     "load_benchmark",
+    # computer-use action plane
+    "ComputerEnvironment",
+    "ComputerTask",
+    "ComputerRun",
+    "UIElement",
+    "ScreenState",
+    "UIAction",
+    "ActionOutcome",
+    "ActionPolicy",
+    "MockScreen",
+    "ScreenApp",
+    "make_web_checkout",
     # evaluation & quality frontier
     "JudgeEnsemble",
     "CausalAttributor",

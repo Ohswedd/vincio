@@ -290,6 +290,14 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "level. Install/configure a real backend, or lower the isolation "
             "requirement only if you trust the code.",
         ),
+        _entry(
+            "COMPUTER_USE_ERROR",
+            "Computer-use action plane failure",
+            "A computer-use backend could not be driven: a missing optional driver "
+            '(install `pip install "vincio[computer-use]"`), an unaddressable target '
+            "selector, or an exhausted action budget. Check the backend and the "
+            "action's stable selector against the perceived screen state.",
+        ),
         # --- agents ---
         _entry(
             "AGENT_ERROR",

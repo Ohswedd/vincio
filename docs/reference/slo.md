@@ -335,5 +335,27 @@ this capstone conformance family holds that they compose into one verifiable
 system. With it, the cross-org settlement & credit surface is feature-complete and
 frozen under the [stability policy](stability.md).
 
+## Computer-use & embodied action plane
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| A computer-use agent driving the grounded action plane reaches a verified end state within its action budget — perceiving a screen as typed, addressable elements, grounding each intent to a stable role+name selector (never a brittle pixel), acting, and post-verifying the effect. | true | `families.computer_use.success_at_budget` |
+| No destructive computer-use action ever executes without approval: a destructive or out-of-scope action is pre-gated like a write tool and refused unless explicitly approved, and a divergent action is rolled back. | true | `families.computer_use.no_unapproved_destructive` |
+
+Computer-use and provider-hosted tools already shipped as a thin GUI adapter — an
+agent acting on brittle pixel coordinates that cannot replay, cannot survive a
+layout shift, and cannot tell whether its action took effect. The action plane
+(`app.computer_use`) binds every action to a stable selector and closes a perceive →
+ground → pre-gate → act → post-verify → undo loop, so success is a reconstructable
+end-state the same trajectory metrics and test-time search already score — the
+success-at-budget bar the agentic leaderboards judge on, held offline on a
+deterministic WebArena/OSWorld-shaped app. The safety bar is structural, not
+best-effort: a destructive or out-of-scope action is refused unless approved (the
+gate makes an unapproved destructive action impossible, not discouraged), and a
+post-verify divergence is undone — the computer-use analogue of saga compensation —
+so the plane is reversible and accountable by construction. The budgets gate a strict
+success-at-budget win and zero unapproved-destructive actions, above the published
+promises.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

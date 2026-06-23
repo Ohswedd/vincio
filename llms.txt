@@ -478,6 +478,20 @@ app.run("export button 500s").output.label
   code). `app.use_hosted_tools(["web_search","file_search","code_interpreter",
   "computer_use"])` surfaces OpenAI Responses built-ins as namespaced tools.
   Extra `vincio[computer-use]`.
+- **Computer-use action plane.** `app.computer_use(screen=, policy=, approve=)`
+  returns a `ComputerEnvironment` over a pluggable `ScreenBackend` (deterministic
+  `MockScreen` offline; `PlaywrightScreen`/`AccessibilityScreen`/`RemoteDesktopScreen`
+  behind `vincio[computer-use]`). It perceives the UI as typed, addressable
+  `UIElement`s (`ScreenState`), grounds an intent to a `UIAction` bound by a **stable
+  selector** (role+name, not a pixel), then for each action: **pre-gates** it against
+  an `ActionPolicy` (a destructive/out-of-scope action gated like a write tool, behind
+  an `approve` callback), performs it, **post-verifies** the effect (declarative
+  `StateCheck` / `expect_change`), and **undoes** it on divergence — into a typed
+  `ActionOutcome`, every step audited. A `ComputerTask` (goal + verifier) drives
+  `env.run(policy, task)` → `ComputerRun` (`.success`, `.safe`, `.trajectory`),
+  projecting onto the existing trajectory metrics / test-time search. `make_web_checkout`
+  is a deterministic WebArena/OSWorld-shaped app gating success-at-budget + safety.
+  The flat `enable_computer_use` surface is unchanged.
 
 ## Use-case coverage: verticals, Assistant, voice
 

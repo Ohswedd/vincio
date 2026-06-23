@@ -89,6 +89,7 @@ and a runnable example.
 | **Energy & carbon accounting** | A per-run energy (watt-hours) and estimated carbon (grams CO₂e) figure on the existing cost-report surface — the sustainability analogue of the dollar budget, never a new plane. `app.use_energy_accounting(region=)` turns it on; every run then accrues a deterministic estimate from its own token accounting against a per-model intensity (by tier, from the `ModelRegistry`) and a per-region grid factor, surfaced on `result.energy_wh` / `result.co2e_grams`, `app.cost_tracker.summary()`, and `app.energy_report()` (rolled up by model/tenant/feature from the same attributed events the cost report uses). Budgeted like a dollar: `app.set_energy_budget(limit_wh= / limit_co2e_grams=)` refuses a run that would exceed its sustainability envelope, the way a hard cost cap refuses spend. Auditable and offline: the estimate is computed in-process from a built-in intensity table (no external service), and both the per-run number and every refusal land on the hash-chained audit log. Held by a per-run-estimate SLO, a budget-refusal SLO, and an auditable-offline SLO. |
 | **Edge / WASM in-process runtime** | The dependency-free core — the prompt and context compilers, the vectorized scorer with its pure-Python fallback, the deterministic rails, and the offline-first evidence path — packaged for constrained and browser/WASM targets, so the same compile → score → rail → pack pipeline runs at the edge and in the browser, not only on a server. An `EdgeRuntime` (`app.edge_runtime()`) turns an `EdgeRequest` into a bounded, slim packet and a rendered prompt behind a thin in-process boundary, with no provider, network, filesystem, or caller-owned event loop. An `EdgeProfile` is the constrained-target analogue of the per-app resident-memory budget: it bounds the compiled packet's resident footprint and token window and lowers directly to the *same* `ContextCompilerOptions` the server compiler reads, so the footprint stays under the cap as the candidate corpus grows 10×, held by the same slimming + eviction and an edge-scaling SLO. It is parity, not a fork: `verify_edge_parity` proves an edge compile is byte-identical to a direct server compile over the same inputs, and `edge_manifest` statically certifies that every module on the core path imports nothing native (NumPy stays behind its guarded pure-Python fallback) — so the edge build is WASM-buildable, exercised by the same offline test suite, and a capability can never silently diverge between server and edge. `edge_environment` / `is_wasm_runtime` detect a Pyodide/WASI host. |
 | **Professionalism & API ergonomics** | A docstring-driven, completeness-gated public API reference (`vincio._apiref`); `py.typed` shipped with a graduated, CI-enforced `mypy --strict` ladder; versioned, automatic `vincio.yaml` migrations (`vincio config migrate`, in-memory upgrade on load); a deprecation-aware `vincio doctor` driven by the same `stability_of` metadata; and an internationalizable, completeness-gated error catalog — every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url`. |
+| **Computer-use & embodied action plane** | The rung above the flat navigate / click / type / screenshot tools: a grounded, verified, reversible **action plane** for an agent that drives a screen *safely*. A `ComputerEnvironment` (`app.computer_use`) over a pluggable `ScreenBackend` (deterministic `MockScreen` offline; a Playwright/CDP browser, an OS accessibility tree, and a remote-desktop adapter behind `vincio[computer-use]`) turns a screenshot plus an accessibility tree into typed, addressable `UIElement`s, and an intent into a typed `UIAction` bound to a target by a **stable selector** (role + accessible name, not a pixel) — so an action is replayable, auditable, and survives a layout shift. Every action is **pre-gated** against an `ActionPolicy` (a destructive or out-of-scope action is gated like a write tool, behind an approval callback), performed, **post-verified** against its expected effect (a declarative end-state check / a salient-state change), and **undone on divergence** — the computer-use analogue of a saga's compensation and the record-replay divergence report — into a typed `ActionOutcome`, every step on the same hash-chained audit log. A `ComputerTask` carries a goal and a declarative verifier, so a run projects onto the same `Trajectory` the existing trajectory metrics, test-time search, and world-model planner already score — no new search machinery — and a deterministic in-repo `make_web_checkout` (WebArena / OSWorld-shaped) gates success-at-budget and safety offline. Held by a success-at-budget SLO and a no-unapproved-destructive-action safety SLO; the flat `enable_computer_use` / `use_hosted_tools` surface is unchanged. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
 
@@ -103,50 +104,187 @@ keeps the dependency-free offline path as the default, and ships with a determin
 for every model or external call so the whole theme is testable offline. Breaking changes are reserved
 for an announced major window and never shipped for their own sake.
 
-The **cross-org settlement & credit fabric** was built rung by rung across twenty consecutive minors (3.24–3.43):
-cross-org workflow choreography; metered settlement, multilateral netting, and arbitration; portable, revocable,
-trust-weighted reputation and reputation-gated admission; collateral escrow, pooling, rehypothecation guards, and
-proof-of-reserves; proof-of-solvency, liability completeness, non-equivocation, and history consistency; and finally
-insolvency resolution by seniority waterfall and close-out set-off. The capstone (**Cross-org settlement fabric —
-unification, conformance & closure**) has now landed: a single `CrossOrgEngagement` (`app.cross_org_engagement`) composes
-the whole pipeline into one content-bound, conformance-proven narrative, and with it the cross-org settlement & credit
-surface is **feature-complete and frozen** (see the row in *What ships today*). The arc that kept adding one primitive at
-a time has reached its natural end.
+The **cross-org settlement & credit fabric** closed with its capstone (3.44), and the **computer-use & embodied action
+plane** (3.45) took the platform from an engine that *thinks and transacts* to one that **acts** on real interfaces: a
+`ComputerEnvironment` (`app.computer_use`) that perceives a screen as typed, addressable elements, grounds an intent to a
+stable selector, pre-gates and post-verifies every action, and undoes it on divergence — feature-complete and shipped
+above. The platform can now reason, retrieve, remember, generate, evaluate, optimize, govern, **transact across
+organizations**, and **act** on the interfaces built for humans — a remarkably complete base.
 
-With the cross-org domain closed, the remaining cross-org refinements live in *Exploring — later* as demand-pulled (not
-cadence-driving), and the one-theme-per-minor cadence now opens onto a **new domain** of the platform's frontier — chosen
-on the same bar every shipped subsystem met (a real gap in the literature and in buyer demand, covered offline, held by
-VincioBench budgets and SLOs, demonstrated by a runnable example). The next scheduled theme is announced when it is set.
+What remains to be a complete, state-of-the-art, production-ready platform is a coherent, **finite** arc — four
+new-domain themes (3.46–3.49) and one consolidation major (4.0), scheduled below. The four minors each open a **new
+domain** on the same bar every shipped subsystem met — a real gap in the literature *and* in buyer demand, covered
+offline, held by VincioBench budgets and SLOs, demonstrated by a runnable example, additive on the frozen surface
+(`API_VERSION` stays `3.0` through them). Read as one story, they take the platform from an engine that thinks,
+transacts, and acts to one that is **accountable** for who acts (3.46), is **provably correct** in what it produces
+(3.47), **grows its own capability** safely (3.48), and is **continuously certified** fit for production (3.49). The 4.0
+major then **consolidates and hardens** that complete platform into a long-term-stable surface — the one announced
+breaking window, never for its own sake. This is the whole plan: after 4.0 the platform is production-complete and
+long-term-stable, there is **no standing backlog**, and *Exploring — later* is intentionally empty. Indicative version
+targets are given; cadence holds one coherent theme per release.
+
+### 1 · Agent identity, delegation & cryptographic accountability *(target 3.46)*
+
+The platform signs contracts, settlements, attestations, audit entries, and engagement narratives — but *who* a key
+belongs to has been an out-of-band assumption (a `key_id` string). For production multi-org and multi-agent deployments,
+identity itself must be first-class and verifiable: a stable, portable agent identity, a way to **delegate** bounded
+authority from a principal to an agent (and from an agent to a sub-agent) along a verifiable chain, and
+**rotation / revocation** so a compromised key cannot forge history. This is the identity substrate beneath the tool
+permissions, the agent fabric, and the whole cross-org trust fabric — the layer that answers *who authorized this action,
+down what chain, within what bounds*.
+
+- **Portable, self-certifying identity** — an `AgentIdentity` (`app.identity(...)`) built on a self-certifying key (a
+  DID-style identifier derived from the public key, offline-resolvable) with a signed, content-bound `IdentityDocument`
+  (keys, advertised capabilities, rotation history) that `verify`s from the bytes; a `Keyring` rotates keys along a
+  signed chain so a signature is validated against the key that was current *at signing time* — a rotated-away or revoked
+  key cannot forge new history, while old signatures stay valid.
+- **Delegation chains & attenuated authority** — a signed `Delegation` mints a bounded grant (a subset of capabilities, a
+  budget cap, an expiry, an audience) from a principal to an agent, composing into a `DelegationChain` that `verify`s
+  offline where **each link only attenuates, never amplifies** — so a tool call, a contract signature, or a saga handoff
+  carries *provenance of authority*, and an over-reaching sub-delegation is refused from the bytes.
+- **Verifiable credentials & accountable audit** — an org issues a signed `AgentCredential` (a verifiable claim — *this
+  agent is admitted to capability X*, *operated by org Y*) an importer verifies offline and folds into the existing
+  admission / registry path; every audit entry, contract, and settlement binds to the **identity and delegation chain**
+  that produced it, so accountability is mechanical — a forged or unauthorized action is refused and pinpointed, never
+  merely logged.
+
+*Ships as:* an `AgentIdentity` / `IdentityDocument` / `Keyring` (self-certifying, rotation-aware), a signed `Delegation` /
+`DelegationChain` with attenuated authority, a verifiable `AgentCredential` folding into admission / registry — all
+offline-verifiable and on the audit chain (pure-Python Ed25519/HMAC default, native crypto behind an extra); an
+`identity` VincioBench family with an identity-integrity SLO (rotation- and forgery-resistance) and a
+delegation-attenuation SLO; and a runnable example.
+
+### 2 · Verified reasoning & neuro-symbolic certificates *(target 3.47)*
+
+The platform controls reasoning effort, searches trajectories, and grades outputs with judges, oracles, and a governance
+verifier — but the per-answer signals are *probabilistic*. The next reliability frontier is *certifiable* correctness: for
+the classes of question where it is possible, an answer should carry a **checkable certificate** a deterministic verifier
+confirms independently of the model. Arithmetic, units, dates, constraint satisfaction, schema and logical consistency,
+citation entailment, and code properties are all checkable — turning *the judge thinks it is right* into *here is a proof
+you can verify*, the output-side analogue of the governance verifier's machine-checked invariants.
+
+- **Proof-carrying answers** — a `VerifiedAnswer` wraps a result with a typed `Certificate` produced by a pluggable
+  `ReasoningVerifier` (deterministic offline kernels — arithmetic / units / temporal consistency, a constraint / SAT-style
+  checker, schema + citation entailment; optional SMT / CAS behind `vincio[verify]`); `app.verify_reasoning(...)` attaches
+  and checks it, and a failed certificate drives the *existing* bounded self-correction loop — so the orchestrator can
+  **refuse to emit** an answer whose certificate does not check.
+- **Runtime verification & shielding** — a `BehaviorSpec` states a temporal-logic / invariant property over an agent's
+  plan or tool trajectory (*never call a write tool before approval*, *always cite before claiming*, *stay within
+  residency*), a `RuntimeMonitor` checks it step-by-step as the agent runs, and a `Shield` blocks or repairs a violating
+  action *before* it executes — the behavioral, online, per-step analogue of the ahead-of-run governance verifier.
+- **Verified tool use & synthesized programs** — a tool declares pre- and post-conditions the runtime checks against the
+  actual arguments and result (a contract on the tool, not merely its schema), and a `synthesize` path emits a small,
+  *verified* program (e.g. a data transform) whose properties are checked before it runs — bringing proof-carrying code
+  into the tool plane, deterministic and offline.
+
+*Ships as:* a `VerifiedAnswer` / `Certificate` / `ReasoningVerifier` with deterministic offline kernels (SMT / CAS
+optional behind `vincio[verify]`), `BehaviorSpec` / `RuntimeMonitor` / `Shield` runtime verification, and tool pre/post-
+condition contracts; `app.verify_reasoning` folding into self-correction and the rails; a `verified_reasoning` VincioBench
+family with a certificate-soundness SLO and a shield-prevents-violation SLO; and a runnable example.
+
+### 3 · Autonomous skill acquisition & open-ended curriculum *(target 3.48)*
+
+The closed self-improvement loop (trace → dataset → eval → optimize → promote), RLVR, the distillation flywheel, on-device
+LoRA, and the world-model all make an agent *better at known tasks*. The apex of that arc is **open-ended capability
+growth**: an agent that proposes its own tasks at the edge of its competence, distills successful trajectories into a
+**reusable, versioned skill library**, and bootstraps — Voyager / ADAS-shaped — under the *same* no-regression and canary
+gates a promotion already clears, so growth is safe and reversible rather than unbounded drift.
+
+- **Reusable skill library** — a `SkillLibrary` of verified, content-addressed, versioned `LearnedSkill`s (a named, typed,
+  tool-using procedure with a precondition, a verifier, and provenance) distilled from successful trajectories; skills are
+  retrieved like memory and tools, **deduplicated and composed** (a new skill can call existing ones), and every promotion
+  clears a no-regression gate — a skill that stops paying its way is demoted, never silently kept.
+- **Self-proposed, bounded curriculum** — an `AutoCurriculum` proposes the next task at the frontier of current competence
+  (grounded by the world-model's calibration and the eval harness's difficulty estimate), with the existing rails and
+  **governance verifier gating every proposed objective**, so it never proposes an unsafe or out-of-policy task — autonomy
+  that stays inside the guardrails.
+- **Bootstrapped capability, gated** — `app.cultivate(...)` runs propose → attempt (with test-time search + the skill
+  library) → verify → distill → promote, so capability compounds across runs; held by a capability-monotonicity SLO (the
+  agent is at-least-as-good after a cycle as before, on a held-out frontier set) and a stay-in-policy safety SLO, offline
+  and reproducible against deterministic environments.
+
+*Ships as:* a `SkillLibrary` / `LearnedSkill` (verified, versioned, composable, retrievable), an `AutoCurriculum` task
+proposer bounded by the rails and the governance verifier, an `app.cultivate` open-ended loop reusing the
+no-regression / canary gates; a `skill_acquisition` VincioBench family with a capability-monotonicity SLO and a
+stay-in-policy safety SLO; and a runnable example over a deterministic environment.
+
+### 4 · Continuous assurance cases & production certification *(target 3.49 — the platform-completion capstone)*
+
+Vincio already *produces* the evidence a production AI system is judged on — evals and regression gates, the
+governance-invariant verifier, the containment proof, reasoning certificates and runtime monitors (3.47), identity and
+delegation provenance (3.46), the signed audit chain, C2PA media provenance, SBOM / SLSA build attestations, privacy
+budgets, and the EU AI Act conformity pack. What it has never done is **assemble that evidence into one structured,
+machine-checkable argument that the system is safe and fit for purpose, and keep that argument continuously valid as the
+system changes**. That is the assurance-case discipline (GSN / CAE) the safety and regulatory frontier now demands — and
+it is the natural capstone that ties every subsystem together and declares the platform complete.
+
+- **Structured, content-bound assurance case** — an `AssuranceCase` (`app.assurance_case(...)`) is an argument tree: a top
+  `Claim` (*this app is fit for purpose X under context Y*) decomposed into sub-claims, each discharged by **evidence the
+  platform already emits** — an eval gate verdict, a `GovernanceVerifier` proof, a reasoning `Certificate`, an audit-chain
+  segment, an identity / delegation chain, an SBOM attestation — bound by hash, so the whole case `verify`s offline and a
+  missing or stale piece of evidence is pinpointed. A machine-checkable artifact, never a slide deck.
+- **Continuous assurance & regression** — the case is **re-checked on every change** (a model swap, a prompt edit, a
+  dependency bump, a new deployment): the same gate machinery that blocks a quality regression now blocks an *assurance*
+  regression, a piece of evidence that no longer holds invalidates its sub-claim and fails the build, and each evidence
+  item carries a freshness horizon so a stale proof expires — assurance as a living, CI-gated invariant, not a
+  point-in-time audit.
+- **Incident response & safety-case learning** — a signed `Incident` ties an observed failure to the sub-claim it
+  falsified, the case **learns** (a new sub-claim and its required evidence are demanded before it re-validates), and
+  `app.certify(...)` emits a portable, offline-verifiable **certification report** (the case, its discharged evidence, the
+  residual risks, the SBOM / SLSA provenance) a downstream operator or auditor checks from the bytes — closing the loop
+  from a production incident back into a stronger, re-verified safety argument.
+
+*Ships as:* an `AssuranceCase` / `Claim` / `Evidence` argument tree binding the platform's existing evals, verifier
+proofs, certificates, audit chain, identity, and provenance into one offline-verifiable artifact; continuous re-checking
+on the existing gate machinery, a signed `Incident` + safety-case learning loop, and `app.certify` emitting a portable
+certification report; an `assurance` VincioBench family with an assurance-soundness SLO (no claim stands on missing or
+stale evidence) and an assurance-regression SLO (a falsified claim fails the build); a runnable example assembling and
+certifying a full app; and a new assurance guide alongside ROADMAP / SECURITY notes. **With it, the platform is declared
+production-complete** — every subsystem composes into one continuously-verified safety argument — and the only remaining
+scheduled phase is the 4.0 consolidation major below.
+
+### 5 · 4.0 — Consolidation, hardening & the long-term-support major *(target 4.0 — the announced breaking window)*
+
+With the platform feature-complete after 3.49, 4.0 is the **one announced breaking window** — never for its own sake,
+only the changes the additive-only contract could not make — that consolidates the whole surface into a long-term-stable
+major. Everything shipped 1.0 → 3.49 was additive on a frozen surface; this is where the deprecation runway is finally
+collected and the surface is re-frozen for the long term. A clean 3.x → 4.0 upgrade is mechanical, not a rewrite.
+
+- **Deprecation sweep & a doctor-clean upgrade** — remove every API the mechanical [deprecation policy](docs/reference/stability.md)
+  has carried past its declared `removed_in` (the `@deprecated` / `stability_of` runway), so a project that fixed every
+  warning on 3.x upgrades with **zero** code changes and `vincio doctor` reports a clean tree on 4.0.
+- **Surface consolidation & automated migration** — unify the few entry points the additive-only constraint forced to be
+  awkward (any duplicated or sync/async-asymmetric APIs, naming drift accumulated across 40+ themes), each behind a
+  one-shot, mechanical codemod (`vincio migrate 4.0`) and a `MIGRATION.md` that names every rename with its rewrite — the
+  config-migration discipline (`vincio config migrate`) extended to the code surface. No capability is removed, only
+  consolidated.
+- **The 4.0 long-term-support contract** — promote `API_VERSION` to `4.0` and re-freeze the public surface under
+  SemVer, carrying forward every guarantee unchanged: the published SLOs held by at-least-as-strict VincioBench budgets,
+  the CycloneDX SBOM + SLSA build-provenance on every release, the strict-typing ladder, and the completeness-gated error
+  and API references. The last additive cross-org refinements that real demand has pulled — claim assignment &
+  subrogation, avoidance / clawback, triangular & cross-currency set-off — ship in the 4.x line *if and only if* that
+  demand has surfaced (otherwise the cross-org surface stands complete as frozen); genuinely new domains beyond this plan
+  (e.g. confidential-computing / TEE attestation, decentralized agent markets, embodied control loops) are deliberately
+  **out of this horizon** and would be proposed and gated afresh, not carried as a backlog.
+
+*Ships as:* a `MIGRATION.md` and a `vincio migrate 4.0` codemod, the deprecation sweep, `API_VERSION` → `4.0` and a
+re-frozen public surface, with the full VincioBench suite and the professionalism family (zero deprecated usage, a clean
+`vincio doctor`) green on the new major. After it, the platform enters **long-term support**: bug-fix, security, and
+standards-tracking releases on a stable 4.x surface.
+
+This is the complete, finite plan. After 4.0 there is **no standing backlog** and *Exploring — later* is intentionally
+empty — these are the final scheduled phases, and any work beyond them would be proposed and scheduled afresh on the same
+bar, never carried as an open-ended commitment.
 
 ---
 
 ## 🔭 Exploring — later
 
-Candidates that are real but not yet scheduled — pulled forward when demand and the standards settle.
-Grouped by where they would land.
-
-**New domains** — once the cross-org capstone closes the settlement & credit fabric, the next *scheduled*
-theme opens a new area of the platform's frontier rather than extending cross-org. Candidate domains are
-evaluated on the same bar every shipped subsystem met — a real gap in the literature and in buyer demand,
-covered offline, held by VincioBench budgets and SLOs, and demonstrated by a runnable example — and the
-specific one is chosen when the capstone lands.
-
-**Cross-org refinements (post-closure, demand-pulled only)** — the settlement & credit fabric is
-feature-complete after the capstone; these remain in the literature but are pulled forward *only* on
-concrete demand, never to drive the cadence:
-
-- 🔭 **Claim assignment & subrogation** — a signed, mutually-agreed transfer of a proven, ranked claim to an
-  assignee (claims trading), or a guarantor subrogated to a creditor's place at the same rank, redirecting the
-  waterfall's recovery without a hosted claims registry.
-- 🔭 **Avoidance & clawback actions** — pinpointing a preferential transfer made to one creditor in the suspect
-  period before insolvency and reversing it back into the estate, verifiably and from the bytes.
-- 🔭 **Triangular & cross-currency set-off** — extending close-out netting beyond the bilateral pair to a
-  netting group, and across denominations at an attested rate.
-
-**Breaking window**
-
-- 🔭 **A future breaking window** — reserved, as always, only for changes the frozen surface cannot
-  make additively, shipped with the same mechanical deprecation runway and never for its own sake.
+*Intentionally empty.* The plan above (3.46 → 4.0) is the complete, finite roadmap to a production-complete,
+long-term-stable platform. There is no standing backlog: once 4.0 lands, future work is bug-fix, security, and
+standards-tracking on the stable surface, and any genuinely new domain would be proposed and gated from scratch — a real
+gap in the literature *and* in buyer demand, covered offline, held by VincioBench budgets and SLOs, demonstrated by a
+runnable example — rather than pulled from a backlog here.
 
 ---
 
