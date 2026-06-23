@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**391** public symbols.
+**395** public symbols.
 
 ## Classes
 
@@ -1086,6 +1086,14 @@ One priority rank of a :class:`SenioritySchedule` — the creditors paid at that
 
 The (non-raising) outcome of verifying a seniority schedule offline.
 
+### `SetOffStatement(**data)`
+
+A signed, offline-verifiable statement of the obligations running both ways.
+
+### `SetOffVerification(**data)`
+
+The (non-raising) outcome of verifying a set-off statement offline.
+
 ### `SettlementBook(owner, signer=…, audit=…, events=…, store=…, reputation=…, book_id=…)`
 
 An org's durable, hash-chained, offline-verifiable ledger of settlements.
@@ -1344,6 +1352,10 @@ Names of all packs that can be loaded (built-in + installed plugins + registered
 
 Rank a poster's obligations into a sealed, unsigned :class:`SenioritySchedule`.
 
+### `build_set_off_statement(poster, creditor, owed_usd, owing_usd, references=…, as_of=…)`
+
+Collapse the mutual obligations between a poster and one creditor into a statement.
+
 ### `build_trust_model(attestations, base=…, config=…, attestation_config=…, verify_with=…)`
 
 Build the importer's bounded, transitive trust over a set of issuers.
@@ -1500,7 +1512,7 @@ Tie two independently-produced settlement records out against each other.
 
 Drive ``env`` through each action sequence, recording every tool step.
 
-### `resolve_insolvency(custody, liabilities, schedule=…, poster=…, completeness=…, solvency=…, as_of=…, verifier=…)`
+### `resolve_insolvency(custody, liabilities, schedule=…, poster=…, completeness=…, solvency=…, set_off=…, as_of=…, verifier=…)`
 
 Distribute a poster's proven reserves across its ranked liabilities into a resolution.
 
@@ -1523,6 +1535,10 @@ Build a seller position: wants high price, a loose SLA, a low quality floor.
 ### `serve_viewer(store, host=…, port=…)`
 
 Start the served observability plane over ``store`` (opt-in, self-hosted).
+
+### `set_off_from_records(poster, creditor, liabilities, records, as_of=…, verifier=…)`
+
+Derive a set-off statement straight from the existing signed, content-bound artifacts.
 
 ### `settle_contract(contract, reading=…, cost_usd=…, latency_ms=…, quality=…, run_id=…, saga_id=…)`
 

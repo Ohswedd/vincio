@@ -9239,6 +9239,99 @@ async def bench_reputation_portability() -> dict[str, Any]:
         and w_app.reputation_ledger.weight("vendor") < w_app.reputation_ledger.weight("unseen")
     )
 
+    # 57. Insolvency set-off & close-out netting: a creditor of an insolvent estate is often also a
+    #     debtor of it, paid on its gross claim while it still owes the other side. A mutually-signed
+    #     SetOffStatement collapses the obligations running both ways to the poster's net liability,
+    #     and resolve_insolvency(set_off=) reduces each creditor to its net claim before the
+    #     waterfall — a creditor in debit recovers nothing, and the distributable estate shrinks.
+    from vincio import SetOffStatement, build_set_off_statement, set_off_from_records
+    from vincio.settlement.record import SettlementRecord
+
+    # A shared fabric secret so one verifier checks both counterparties' signatures alike.
+    FABRIC_SECRET = "set-off-fabric-secret"
+
+    def _co_sign(statement: SetOffStatement) -> SetOffStatement:
+        statement.sign(HMACSigner(FABRIC_SECRET, key_id=statement.poster), party=statement.poster)
+        statement.sign(
+            HMACSigner(FABRIC_SECRET, key_id=statement.creditor), party=statement.creditor
+        )
+        return statement
+
+    so_owed = attest_liabilities("vendor", {"bank": 50.0, "acme": 30.0}, attestor="auditor")
+    # acme owes vendor $12 back -> its $30 gross claim nets to $18; the estate shrinks 80 -> 68.
+    so_acme = _co_sign(build_set_off_statement("vendor", "acme", 30.0, 12.0))
+    so_res = resolve_insolvency(
+        attest_custody("vendor", {"omnibus": 68.0}), so_owed, set_off=[so_acme]
+    )
+    # A creditor in debit (owes more than it is owed) recovers nothing.
+    so_debit = _co_sign(build_set_off_statement("vendor", "acme", 30.0, 40.0))
+    so_debit_res = resolve_insolvency(
+        attest_custody("vendor", {"omnibus": 60.0}), so_owed, set_off=[so_debit]
+    )
+    set_off_nets_before_waterfall = bool(
+        abs(so_res.gross_liabilities_usd - 80.0) <= 1e-6
+        and abs(so_res.liabilities_usd - 68.0) <= 1e-6  # acme netted 30 -> 18
+        and abs(so_res.set_off_usd - 12.0) <= 1e-6
+        and abs(so_res.recovery_of("acme").claim_usd - 18.0) <= 1e-6
+        and so_res.solvent  # 68 reserves cover the 68 net exposure
+        and abs(so_debit_res.recovery_of("acme").claim_usd) <= 1e-6  # in debit -> no net claim
+        and abs(so_debit_res.recovery_of("acme").recovery_usd) <= 1e-6  # recovers nothing
+        and so_debit.creditor_in_debit
+        and abs(so_debit_res.liabilities_usd - 50.0) <= 1e-6  # only the bank is distributable
+    )
+
+    # Auditable & offline: a netted resolution re-derives from the bytes (an inflated set-off
+    # caught even after re-sealing); a one-sided or over-stated set-off is refused; the statement
+    # is mutually-signed, derives from the existing artifacts, and lands on the audit chain.
+    so_inflated = resolve_insolvency(
+        attest_custody("vendor", {"omnibus": 68.0}), so_owed, set_off=[so_acme]
+    )
+    so_inflated.recovery_of("acme").set_off_usd = 25.0  # claim more was netted than really was
+    so_inflated.seal()
+    so_one_sided = build_set_off_statement("vendor", "acme", 30.0, 12.0)
+    so_one_sided.sign(HMACSigner(FABRIC_SECRET, key_id="vendor"), party="vendor")  # only one side
+    try:
+        resolve_insolvency(
+            attest_custody("vendor", {"omnibus": 60.0}),
+            so_owed,
+            set_off=[so_one_sided],
+            verifier=HMACSigner(FABRIC_SECRET, key_id="any"),
+        )
+        so_one_sided_refused = False
+    except SettlementError:
+        so_one_sided_refused = True
+    try:
+        # claims vendor owes acme $40 but the attestation shows $30
+        resolve_insolvency(
+            attest_custody("vendor", {"omnibus": 60.0}),
+            so_owed,
+            set_off=[_co_sign(build_set_off_statement("vendor", "acme", 40.0, 12.0))],
+        )
+        so_over_stated_refused = False
+    except SettlementError:
+        so_over_stated_refused = True
+    so_app = ContextApp(name="vendor", provider=MockProvider(default_text="ok"), config=cfg)
+    so_app.use_settlement_book(owner="vendor")
+    so_app_st = so_app.build_set_off_statement("vendor", "acme", 30.0, 12.0)
+    so_record = SettlementRecord(
+        contract_id="c1", buyer="acme", seller="vendor", amount_owed_usd=12.0
+    )
+    so_record.seal()
+    so_from_records = set_off_from_records("vendor", "acme", so_owed, [so_record])
+    set_off_auditable_offline = bool(
+        so_res.verify().valid
+        and so_res.verify(set_off=[so_acme]).set_off_bound  # binds the mutually-signed statement
+        and so_inflated.verify().hash_ok
+        and not so_inflated.verify().distribution_sound  # the inflated set-off is caught
+        and so_one_sided_refused
+        and so_over_stated_refused
+        and so_acme.verify(HMACSigner(FABRIC_SECRET, key_id="any"), require_mutual=True).valid
+        and abs(so_from_records.owing_usd - 12.0) <= 1e-6  # derived from the existing records
+        and so_app_st.verify(so_app.contract_signer).valid
+        and len(so_app.audit.query(action="liability_set_off")) == 1
+        and so_app.audit.verify_chain()
+    )
+
     return {
         "portability_attests_earned_standing": portability_attests_earned_standing,
         "portability_combines_across_issuers": portability_combines_across_issuers,
@@ -9301,6 +9394,8 @@ async def bench_reputation_portability() -> dict[str, Any]:
         "history_auditable_offline": history_auditable_offline,
         "insolvency_resolution_distributes": insolvency_resolution_distributes,
         "insolvency_resolution_auditable_offline": insolvency_resolution_auditable_offline,
+        "set_off_nets_before_waterfall": set_off_nets_before_waterfall,
+        "set_off_auditable_offline": set_off_auditable_offline,
         "attestations_combined": standing.attestations,
         "refused_attestations": len(forged_prior.refused),
         "stale_excluded": len(freshness_prior.stale),

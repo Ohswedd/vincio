@@ -38,6 +38,12 @@ from .record import (
     reconcile,
 )
 from .rehypothecation import REHYPOTHECATION_ACTION, CollateralLedger, guard_collateral
+from .setoff import (
+    SETOFF_ACTION,
+    SetOffStatement,
+    build_set_off_statement,
+    set_off_from_records,
+)
 from .solvency import (
     COMPLETENESS_ACTION,
     DISCHARGE_ACTION,
@@ -986,6 +992,66 @@ class SettlementBook:
 
     # -- insolvency resolution & seniority waterfall ------------------------
 
+    def build_set_off_statement(
+        self,
+        poster: str,
+        creditor: str,
+        owed_usd: float | None = None,
+        owing_usd: float | None = None,
+        *,
+        liabilities: LiabilityAttestation | None = None,
+        references: Any | None = None,
+        as_of: Any | None = None,
+        verify_with: ChainSigner | None = None,
+        sign: bool = True,
+    ) -> SetOffStatement:
+        """Collapse the mutual obligations between a poster and one creditor, signed and audited.
+
+        Builds the :class:`~vincio.settlement.setoff.SetOffStatement`
+        (:func:`~vincio.settlement.setoff.build_set_off_statement`) stating the obligations running
+        *both ways* between ``poster`` and ``creditor`` — what the poster owes the creditor and what
+        the creditor owes back — and computing the poster's bounded net liability. Pass explicit
+        ``owed_usd`` / ``owing_usd`` figures, or pass a ``liabilities`` attestation to derive the
+        statement straight from the signed artifacts (:func:`~vincio.settlement.setoff.set_off_from_records`):
+        ``owed_usd`` is read from the attestation's lines for the creditor and ``owing_usd`` from
+        this book's own settlement records where the poster is the seller and the creditor the
+        buyer. Signs it as this book's owner (one side of the mutually-agreed close-out — the
+        counterparty co-signs its copy) and records the issuance on the audit chain. Returns it.
+        """
+        if liabilities is not None:
+            statement = set_off_from_records(
+                poster,
+                creditor,
+                liabilities,
+                self.records,
+                as_of=as_of,
+                verifier=verify_with,
+            )
+        else:
+            statement = build_set_off_statement(
+                poster,
+                creditor,
+                owed_usd or 0.0,
+                owing_usd or 0.0,
+                references=references,
+                as_of=as_of,
+            )
+        if sign and self.signer is not None:
+            statement.sign(self.signer, party=self.owner)
+        self._audit_setoff(statement)
+        return statement
+
+    def _audit_setoff(self, statement: SetOffStatement) -> None:
+        if self.audit is None:
+            return
+        entry = self.audit.record(
+            SETOFF_ACTION,
+            resource=statement.poster,
+            decision=statement.direction,
+            details=statement.audit_details(),
+        )
+        statement.audit_id = getattr(entry, "id", None)
+
     def build_seniority_schedule(
         self,
         poster: str,
@@ -1031,6 +1097,7 @@ class SettlementBook:
         poster: str | None = None,
         completeness: CompletenessProof | None = None,
         solvency: SolvencyProof | None = None,
+        set_off: list[SetOffStatement] | None = None,
         as_of: Any | None = None,
         verify_with: ChainSigner | None = None,
         sign: bool = True,
@@ -1045,13 +1112,15 @@ class SettlementBook:
         across the obligations **by seniority then pari-passu within a tranche** (``schedule``),
         pinpointing each creditor's bounded :class:`~vincio.settlement.waterfall.CreditorRecovery`.
         With no ``schedule`` the whole liability set is one pari-passu tranche; pass
-        ``completeness`` to distribute against the *completed* liability set. Reuses
+        ``completeness`` to distribute against the *completed* liability set, and ``set_off`` (a
+        list of mutually-signed :class:`~vincio.settlement.setoff.SetOffStatement`\\ s) to
+        **close-out net** each creditor to its net claim before the waterfall. Reuses
         :func:`~vincio.settlement.solvency.prove_solvency`, so a tampered, forged, or wrong-poster
-        attestation (or a malformed/wrong-poster schedule) is refused; with ``verify_with`` a
-        forged signature is too. Signs the resolution as this book's owner, records it on the audit
-        chain, and — unless ``record_reputation`` is off — credits a failure against the poster on
-        the bound reputation ledger when the reserves could not make every creditor whole. Returns
-        the resolution.
+        attestation (or a malformed/wrong-poster schedule, or a one-sided/over-stated set-off) is
+        refused; with ``verify_with`` a forged signature is too. Signs the resolution as this book's
+        owner, records it on the audit chain, and — unless ``record_reputation`` is off — credits a
+        failure against the poster on the bound reputation ledger when the reserves could not make
+        every creditor whole. Returns the resolution.
         """
         resolution = resolve_insolvency(
             custody,
@@ -1060,6 +1129,7 @@ class SettlementBook:
             poster=poster,
             completeness=completeness,
             solvency=solvency,
+            set_off=set_off,
             as_of=as_of,
             verifier=verify_with,
         )

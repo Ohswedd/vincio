@@ -3760,6 +3760,52 @@ class ContextApp:
                 )
         return report
 
+    def build_set_off_statement(
+        self,
+        poster: str,
+        creditor: str,
+        owed_usd: float,
+        owing_usd: float,
+        *,
+        references: Any | None = None,
+        as_of: Any | None = None,
+        sign: bool = True,
+        record_audit: bool = True,
+    ) -> Any:
+        """Collapse the mutual obligations between a poster and one creditor into a statement.
+
+        Builds a :class:`~vincio.settlement.SetOffStatement`
+        (:func:`~vincio.settlement.build_set_off_statement`) stating the obligations running *both
+        ways* between ``poster`` and ``creditor`` — ``owed_usd`` the poster owes the creditor,
+        ``owing_usd`` the creditor owes the poster back — and computing the poster's bounded net
+        liability (``max(0, owed − owing)``). Signs it as this app (one side of the mutually-agreed
+        close-out — the counterparty co-signs its copy) and, unless ``record_audit`` is off, records
+        the issuance on the audit chain. Returns it::
+
+            statement = vendor.build_set_off_statement("vendor", "acme", 30.0, 12.0)
+            resolution = auditor.resolve_insolvency(reserves, owed, set_off=[statement])
+        """
+        from ..settlement import build_set_off_statement as _build
+
+        statement = _build(
+            poster, creditor, owed_usd, owing_usd, references=references, as_of=as_of
+        )
+        if sign:
+            signer = self._resolve_contract_signer(None, True)
+            if signer is not None:
+                statement.sign(signer, party=self.name)
+        if record_audit and self.audit is not None:
+            from ..settlement.setoff import SETOFF_ACTION
+
+            entry = self.audit.record(
+                SETOFF_ACTION,
+                resource=statement.poster,
+                decision=statement.direction,
+                details=statement.audit_details(),
+            )
+            statement.audit_id = getattr(entry, "id", None)
+        return statement
+
     def build_seniority_schedule(
         self,
         poster: str,
@@ -3811,6 +3857,7 @@ class ContextApp:
         poster: str | None = None,
         completeness: Any | None = None,
         solvency: Any | None = None,
+        set_off: Any | None = None,
         as_of: Any | None = None,
         verify_with: Any | None = None,
         sign: bool = True,
@@ -3827,13 +3874,15 @@ class ContextApp:
         :class:`~vincio.settlement.CreditorRecovery` and the shortfall it bears — so an insolvency a
         :class:`~vincio.settlement.SolvencyProof` only *flagged* is *resolved* into who-gets-what.
         With no ``schedule`` the whole liability set is one pari-passu tranche; pass
-        ``completeness`` to distribute against the *completed* liability set. Reuses
+        ``completeness`` to distribute against the *completed* liability set, and ``set_off`` (a list
+        of mutually-signed :class:`~vincio.settlement.SetOffStatement`\\ s) to **close-out net** each
+        creditor to its net claim before the waterfall. Reuses
         :func:`~vincio.settlement.prove_solvency`, so a tampered, forged, or wrong-poster
-        attestation (or a malformed/wrong-poster schedule) is refused (a forged signature too, with
-        ``verify_with``). Signs the resolution as this app; unless ``record_audit`` is off, records
-        it on the audit chain; unless ``record_reputation`` is off, credits a failure against the
-        poster on this app's reputation ledger (when one is attached) when the reserves could not
-        make every creditor whole. Returns the resolution::
+        attestation (or a malformed/wrong-poster schedule, or a one-sided/over-stated set-off) is
+        refused (a forged signature too, with ``verify_with``). Signs the resolution as this app;
+        unless ``record_audit`` is off, records it on the audit chain; unless ``record_reputation``
+        is off, credits a failure against the poster on this app's reputation ledger (when one is
+        attached) when the reserves could not make every creditor whole. Returns the resolution::
 
             owed = app.attest_liabilities("vendor", {"bank": 50.0, "acme": 50.0})
             reserves = app.attest_custody("vendor", {"omnibus": 50.0})
@@ -3850,6 +3899,7 @@ class ContextApp:
             poster=poster,
             completeness=completeness,
             solvency=solvency,
+            set_off=set_off,
             as_of=as_of,
             verifier=verify_with,
         )

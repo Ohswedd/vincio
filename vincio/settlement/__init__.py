@@ -119,7 +119,13 @@ signed priority tranches and :func:`resolve_insolvency` distributes the proven r
 :class:`InsolvencyResolution`, pinpointing each creditor's bounded :class:`CreditorRecovery` and the
 shortfall it bears — so an insolvency is *resolved* into who-gets-what rather than merely flagged,
 the resolution re-deriving the whole waterfall from the bytes and folding the unmade-whole poster
-into the reputation path. Everything is dependency-free, deterministic, and offline —
+into the reputation path. And because a creditor of an insolvent estate is often *also* a debtor of
+it — paid on its gross claim while it still owes the other side — a :class:`SetOffStatement`
+(:func:`build_set_off_statement` / :func:`set_off_from_records`) is a mutually-signed close-out of
+the obligations running *both ways* between a poster and one creditor, which :func:`resolve_insolvency`
+folds (``set_off=``) to reduce each creditor to its **net** claim *before* the waterfall — a creditor
+in debit recovers nothing and the distributable claims shrink to the true net exposure, bound into the
+resolution by hash. Everything is dependency-free, deterministic, and offline —
 never a hosted marketplace, a clearing house, an arbitration service, a reputation service, an
 underwriting service, an escrow custodian, a margin custodian, a rehypothecation registry, a
 proof-of-reserves auditor, a solvency auditor, a receiver, a bankruptcy court, or a payment
@@ -230,6 +236,12 @@ from .rehypothecation import (
     ReuseBreach,
     UnderReservedBreach,
     guard_collateral,
+)
+from .setoff import (
+    SetOffStatement,
+    SetOffVerification,
+    build_set_off_statement,
+    set_off_from_records,
 )
 from .solvency import (
     CompletenessProof,
@@ -408,6 +420,11 @@ __all__ = [
     "InsolvencyResolution",
     "InsolvencyResolutionVerification",
     "resolve_insolvency",
+    # insolvency set-off & close-out netting
+    "SetOffStatement",
+    "SetOffVerification",
+    "build_set_off_statement",
+    "set_off_from_records",
     # reputation gossip & attestation exchange
     "ReputationBundle",
     "PeerVisit",
