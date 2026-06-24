@@ -94,6 +94,22 @@ from .core.types import (
     TaskType,
     UserInput,
 )
+from .cultivate import (
+    AutoCurriculum,
+    CultivationResult,
+    Cultivator,
+    CurriculumProposal,
+    CurriculumTask,
+    CycleReport,
+    FrontierEstimate,
+    LearnedSkill,
+    LearnedSkillLibrary,
+    SkillProvenance,
+    SkillSearch,
+    SkillStep,
+    Solution,
+    library_capability,
+)
 from .edge import (
     EdgeEnvironment,
     EdgeManifest,
@@ -475,7 +491,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.47.0"
+__version__ = "3.48.0"
 
 __all__ = [
     "ContextApp",
@@ -974,5 +990,20 @@ __all__ = [
     "ProgramSpec",
     "SynthesizedProgram",
     "synthesize",
+    # autonomous skill acquisition & open-ended curriculum
+    "LearnedSkill",
+    "LearnedSkillLibrary",
+    "SkillProvenance",
+    "SkillStep",
+    "CurriculumTask",
+    "FrontierEstimate",
+    "CurriculumProposal",
+    "AutoCurriculum",
+    "SkillSearch",
+    "Solution",
+    "library_capability",
+    "Cultivator",
+    "CultivationResult",
+    "CycleReport",
     "__version__",
 ]

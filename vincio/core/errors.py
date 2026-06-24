@@ -95,6 +95,7 @@ __all__ = [
     "ChoreographyError",
     "CompensationError",
     "SettlementError",
+    "CultivationError",
 ]
 
 
@@ -866,3 +867,25 @@ class SettlementError(VincioError):
     """
 
     code = "SETTLEMENT_ERROR"
+
+
+# --- skill acquisition ------------------------------------------------------
+
+
+class CultivationError(VincioError):
+    """An autonomous skill-acquisition operation could not proceed.
+
+    Raised when a learned skill or curriculum cannot be built, composed, or
+    verified — a :class:`~vincio.cultivate.LearnedSkill` whose content hash no
+    longer recomputes (a tampered procedure), a composition that references a
+    missing sub-skill or forms a cycle, a
+    :class:`~vincio.cultivate.CurriculumTask` proposed without an environment
+    factory, or a :class:`~vincio.cultivate.CultivationResult` /
+    :class:`~vincio.cultivate.LearnedSkillLibrary` that fails offline
+    verification. A proposed objective that is simply *refused* by the rails or
+    the governance verifier does **not** raise — it is pinpointed on the
+    :class:`~vincio.cultivate.CurriculumProposal` and never attempted; refusal
+    is the safe outcome the curriculum is designed to produce, not an error.
+    """
+
+    code = "CULTIVATION_ERROR"

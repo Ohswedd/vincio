@@ -92,6 +92,7 @@ and a runnable example.
 | **Computer-use & embodied action plane** | The rung above the flat navigate / click / type / screenshot tools: a grounded, verified, reversible **action plane** for an agent that drives a screen *safely*. A `ComputerEnvironment` (`app.computer_use`) over a pluggable `ScreenBackend` (deterministic `MockScreen` offline; a Playwright/CDP browser, an OS accessibility tree, and a remote-desktop adapter behind `vincio[computer-use]`) turns a screenshot plus an accessibility tree into typed, addressable `UIElement`s, and an intent into a typed `UIAction` bound to a target by a **stable selector** (role + accessible name, not a pixel) — so an action is replayable, auditable, and survives a layout shift. Every action is **pre-gated** against an `ActionPolicy` (a destructive or out-of-scope action is gated like a write tool, behind an approval callback), performed, **post-verified** against its expected effect (a declarative end-state check / a salient-state change), and **undone on divergence** — the computer-use analogue of a saga's compensation and the record-replay divergence report — into a typed `ActionOutcome`, every step on the same hash-chained audit log. A `ComputerTask` carries a goal and a declarative verifier, so a run projects onto the same `Trajectory` the existing trajectory metrics, test-time search, and world-model planner already score — no new search machinery — and a deterministic in-repo `make_web_checkout` (WebArena / OSWorld-shaped) gates success-at-budget and safety offline. Held by a success-at-budget SLO and a no-unapproved-destructive-action safety SLO; the flat `enable_computer_use` / `use_hosted_tools` surface is unchanged. |
 | **Agent identity, delegation & cryptographic accountability** | The identity substrate beneath the tool permissions, the agent fabric, and the cross-org trust fabric — *who authorized this action, down what chain, within what bounds*. The platform signed every artifact, but *who* a key belonged to was an out-of-band `key_id` string; identity makes the key first-class and verifiable. An `AgentIdentity` (`app.identity`) is built on an Ed25519 key whose **DID is derived from the public key** (`did:vincio:ed25519:<hex>`), so the verifying key resolves from the identifier alone, offline, with no registry; its content-bound `IdentityDocument` (keys, advertised capabilities, rotation history) `verify`s from the bytes, and a `Keyring` rotates keys along a **signed rotation chain** so a signature is validated against the key current *at signing time* — a rotated-away or revoked key cannot forge new history, while its past signatures stay valid. A signed `Delegation` mints a bounded `Grant` (a subset of capabilities, a budget cap, an expiry, an audience) from a principal to an agent — and an agent sub-delegates to a sub-agent — composing into a `DelegationChain` that `verify`s offline where **each link only attenuates, never amplifies** (capabilities only shrink, the budget only tightens, the expiry only shortens), so a tool call, contract signature, or saga handoff carries *provenance of authority* and an over-reaching sub-delegation is **refused from the bytes**; a rotated-key link carries a compact `KeyAuthorization` so the chain stays registry-free. A signed `AgentCredential` is a verifiable claim (*admitted to capability X*, *operated by org Y*) an importer `verify`s offline and folds into the admission path. Because an `AgentIdentity` is a drop-in `ChainSigner` (`key_id` is the DID), `app.use_identity` binds every audit entry, contract, and settlement to the **DID** that produced it — accountability as a cryptographic fact, not a logged string. Ed25519 is pure-Python (RFC 8032) by default with the native, constant-time `cryptography` backend behind `vincio[crypto]` (byte-identical signatures); held by an identity-integrity SLO (rotation- and forgery-resistance) and a delegation-attenuation SLO. |
 | **Verified reasoning & neuro-symbolic certificates** | The reliability frontier above probabilistic grading: for the classes of question where it is possible, an answer carries a **checkable certificate** a deterministic verifier confirms independently of the model — the output-side analogue of the governance verifier's machine-checked invariants. `app.verify_reasoning(...)` runs a set of offline kernels — arithmetic, units, temporal consistency, schema, constraint satisfaction, citation entailment — over an answer into a content-bound `Certificate` (`VerifiedAnswer`) that is `verified` only when a kernel **recomputed** a claim and it held, `refuted` when a recomputation disagreed (a *proof the answer is wrong*), and `inapplicable` when no checkable claim of that kind exists; the certificate **re-derives its verdict from the bytes**, so a flipped status is caught. A refuted certificate **refuses to emit**, and a `regenerate` callback drives the *existing* bounded self-correction loop to repair it — the refuse-or-repair discipline structured output uses, now over *reasoning*. The behavioural, online analogue is runtime verification: a `BehaviorSpec` states a temporal-logic-lite property over an agent's trajectory (*never call a write tool before approval*, *retrieve before claiming*, *stay within residency*), a `RuntimeMonitor` checks it step-by-step, and a `Shield` (`app.shield` / `app.use_shield`) **blocks or repairs a violating action *before* it executes** — wired into the tool runtime so a policy-violating tool call is structurally refused, the per-step counterpart of the ahead-of-run governance verifier. Verified tool use closes it: a `ToolContract` declares pre/post-conditions the runtime enforces against the actual arguments and result (`app.add_tool(..., contract=…)`), and `synthesize` (`app.synthesize_program`) emits a small, *verified* data-transform program (a `SynthesizedProgram`) whose declared properties are proven into the same `Certificate` before it runs — proof-carrying code in the tool plane. The deterministic kernels are dependency-free; optional SMT / CAS backends sit behind `vincio[verify]`. Held by a certificate-soundness SLO and a shield-prevents-violation SLO. |
+| **Autonomous skill acquisition & open-ended curriculum** | The apex of the self-improvement arc: an agent that **grows its own capability** safely rather than only getting better at known tasks. `app.cultivate(...)` runs an open-ended loop — propose → attempt → verify → distill → promote — across cycles, so capability compounds. An `AutoCurriculum` proposes the next task at the **frontier of current competence** (solvable by a bounded, library-composing test-time search, but not yet by retrieving an existing skill), and **gates every proposed objective before it is attempted**: the instruction is screened by the programmable rails and the `GovernanceVerifier` must prove the app's controls (containment, residency, budget, erasure) still hold — so an unsafe or out-of-policy task is pinpointed and *refused, never run*, a `CurriculumProposal` whose content hash catches a refused objective relabelled as proposed. A winning, oracle-verified trajectory is distilled into a `LearnedSkill` — a named, typed, tool-using procedure with a precondition, an ordered list of steps (primitive `EnvAction`s *and* calls to existing skills, so skills **compose**), a verifier, and provenance — held in a `LearnedSkillLibrary` that is **content-addressed** (a byte-for-byte duplicate dedups; a changed procedure versions), retrieved like memory and tools (it projects to a `Skill` for the same progressive-disclosure path), and offline-verifiable (each skill recomputes its hash; a tampered procedure is caught). A skill is **promoted only through the same no-regression gate** a prompt or policy deploy clears (capability on a held-out frontier set must not fall), and one that stops paying its way is **demoted, never silently kept** — so growth is reversible, not unbounded drift. The whole run is content-bound: `CultivationResult.verify` re-derives the monotonicity and stay-in-policy verdicts from the bytes, and every cultivation lands on the hash-chained audit log. Deterministic and offline against the reference environments — never a hosted trainer or a managed curriculum; held by a capability-monotonicity SLO and a stay-in-policy safety SLO. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
 
@@ -113,49 +114,27 @@ plane** (3.45) took the platform from an engine that *thinks and transacts* to o
 `DelegationChain` whose every link only attenuates. **Verified reasoning & neuro-symbolic certificates** (3.47) then made
 it **provably correct in what it produces**: `app.verify_reasoning` attaches a checkable `Certificate` to an answer and
 refuses to emit a refuted one, a `Shield` blocks a policy-violating action before it executes, and tool contracts and
-`synthesize` carry proofs into the tool plane — feature-complete and shipped above. The platform can now reason, retrieve,
+`synthesize` carry proofs into the tool plane. **Autonomous skill acquisition & open-ended curriculum** (3.48) then made
+it **able to grow its own capability** safely: `app.cultivate` runs an `AutoCurriculum` whose every proposed objective is
+gated by the rails and the governance verifier through a propose → attempt → verify → distill → promote loop, distilling
+oracle-verified trajectories into a verified, content-addressed `LearnedSkillLibrary` and promoting a skill only through the
+same no-regression gate a deploy clears — feature-complete and shipped above. The platform can now reason, retrieve,
 remember, generate, evaluate, optimize, govern, **transact across organizations**, **act** on the interfaces built for
-humans, prove **who authorized each action, down what chain, within what bounds**, and **certify what it produces** — a
-remarkably complete base.
+humans, prove **who authorized each action, down what chain, within what bounds**, **certify what it produces**, and
+**grow its own capability** within the guardrails — a remarkably complete base.
 
-What remains to be a complete, state-of-the-art, production-ready platform is a coherent, **finite** arc — two
-new-domain themes (3.48–3.49) and one consolidation major (4.0), scheduled below. The two minors each open a **new
+What remains to be a complete, state-of-the-art, production-ready platform is a coherent, **finite** arc — one
+new-domain theme (3.49) and one consolidation major (4.0), scheduled below. The remaining minor opens a **new
 domain** on the same bar every shipped subsystem met — a real gap in the literature *and* in buyer demand, covered
 offline, held by VincioBench budgets and SLOs, demonstrated by a runnable example, additive on the frozen surface
-(`API_VERSION` stays `3.0` through them). Read as one story, they take the platform — already **provably correct** in what
-it produces (3.47) — to one that **grows its own capability** safely (3.48) and is **continuously certified** fit for
-production (3.49). The 4.0 major then **consolidates and hardens** that complete platform into a long-term-stable surface
-— the one announced breaking window, never for its own sake. This is the whole plan: after 4.0 the platform is
+(`API_VERSION` stays `3.0` through it). Read as one story, it takes the platform — already **provably correct** in what
+it produces (3.47) and able to **grow its own capability** safely (3.48) — to one that is **continuously certified** fit
+for production (3.49). The 4.0 major then **consolidates and hardens** that complete platform into a long-term-stable
+surface — the one announced breaking window, never for its own sake. This is the whole plan: after 4.0 the platform is
 production-complete and long-term-stable, there is **no standing backlog**, and *Exploring — later* is intentionally
 empty. Indicative version targets are given; cadence holds one coherent theme per release.
 
-### 1 · Autonomous skill acquisition & open-ended curriculum *(target 3.48)*
-
-The closed self-improvement loop (trace → dataset → eval → optimize → promote), RLVR, the distillation flywheel, on-device
-LoRA, and the world-model all make an agent *better at known tasks*. The apex of that arc is **open-ended capability
-growth**: an agent that proposes its own tasks at the edge of its competence, distills successful trajectories into a
-**reusable, versioned skill library**, and bootstraps — Voyager / ADAS-shaped — under the *same* no-regression and canary
-gates a promotion already clears, so growth is safe and reversible rather than unbounded drift.
-
-- **Reusable skill library** — a `SkillLibrary` of verified, content-addressed, versioned `LearnedSkill`s (a named, typed,
-  tool-using procedure with a precondition, a verifier, and provenance) distilled from successful trajectories; skills are
-  retrieved like memory and tools, **deduplicated and composed** (a new skill can call existing ones), and every promotion
-  clears a no-regression gate — a skill that stops paying its way is demoted, never silently kept.
-- **Self-proposed, bounded curriculum** — an `AutoCurriculum` proposes the next task at the frontier of current competence
-  (grounded by the world-model's calibration and the eval harness's difficulty estimate), with the existing rails and
-  **governance verifier gating every proposed objective**, so it never proposes an unsafe or out-of-policy task — autonomy
-  that stays inside the guardrails.
-- **Bootstrapped capability, gated** — `app.cultivate(...)` runs propose → attempt (with test-time search + the skill
-  library) → verify → distill → promote, so capability compounds across runs; held by a capability-monotonicity SLO (the
-  agent is at-least-as-good after a cycle as before, on a held-out frontier set) and a stay-in-policy safety SLO, offline
-  and reproducible against deterministic environments.
-
-*Ships as:* a `SkillLibrary` / `LearnedSkill` (verified, versioned, composable, retrievable), an `AutoCurriculum` task
-proposer bounded by the rails and the governance verifier, an `app.cultivate` open-ended loop reusing the
-no-regression / canary gates; a `skill_acquisition` VincioBench family with a capability-monotonicity SLO and a
-stay-in-policy safety SLO; and a runnable example over a deterministic environment.
-
-### 2 · Continuous assurance cases & production certification *(target 3.49 — the platform-completion capstone)*
+### 1 · Continuous assurance cases & production certification *(target 3.49 — the platform-completion capstone)*
 
 Vincio already *produces* the evidence a production AI system is judged on — evals and regression gates, the
 governance-invariant verifier, the containment proof, reasoning certificates and runtime monitors (3.47), identity and
@@ -190,7 +169,7 @@ certifying a full app; and a new assurance guide alongside ROADMAP / SECURITY no
 production-complete** — every subsystem composes into one continuously-verified safety argument — and the only remaining
 scheduled phase is the 4.0 consolidation major below.
 
-### 3 · 4.0 — Consolidation, hardening & the long-term-support major *(target 4.0 — the announced breaking window)*
+### 2 · 4.0 — Consolidation, hardening & the long-term-support major *(target 4.0 — the announced breaking window)*
 
 With the platform feature-complete after 3.49, 4.0 is the **one announced breaking window** — never for its own sake,
 only the changes the additive-only contract could not make — that consolidates the whole surface into a long-term-stable

@@ -6142,6 +6142,63 @@ class ContextApp:
         )
         return result
 
+    def cultivate(
+        self,
+        curriculum: Any,
+        *,
+        library: Any | None = None,
+        held_out: list[Any] | None = None,
+        cycles: int = 3,
+        rails: Any | None = None,
+        governance: Any | None = None,
+        search: Any | None = None,
+        min_capability_gain: float = 0.0,
+        prune: bool = True,
+        record: bool = True,
+    ) -> Any:
+        """Grow capability open-endedly: propose → attempt → verify → distill → promote.
+
+        Closes the open-ended-learning loop on a *skill library*, not just a
+        prompt or a policy. ``curriculum`` is an
+        :class:`~vincio.cultivate.AutoCurriculum` (or a list of
+        :class:`~vincio.cultivate.CurriculumTask`); each cycle proposes the tasks
+        at the **frontier of current competence** — gating every objective through
+        this app's rails and its :meth:`verify_governance` invariants, so an unsafe
+        or out-of-policy task is refused and never attempted — attempts each with a
+        library-composing test-time search, verifies the result against the
+        task-success oracle, distills a winning trajectory into a verified,
+        content-addressed :class:`~vincio.cultivate.LearnedSkill`, and promotes it
+        only through the **same no-regression gate** a prompt deploy clears
+        (capability on a held-out frontier set must not fall). A skill that stops
+        paying its way is demoted, never silently kept::
+
+            from vincio.cultivate import AutoCurriculum, CurriculumTask
+            result = app.cultivate(AutoCurriculum(tasks))
+            result.capability_after >= result.capability_before  # monotone
+            result.stayed_in_policy  # no refused objective was attempted
+
+        The decision lands on the shared audit chain (``skill_cultivation``) and
+        event bus (``cultivation.completed``). Returns a content-bound
+        :class:`~vincio.cultivate.CultivationResult` whose ``verify`` re-derives the
+        monotonicity and stay-in-policy verdicts from the bytes, with the grown
+        :class:`~vincio.cultivate.LearnedSkillLibrary` on ``result.library``.
+        """
+        from ..cultivate import Cultivator
+
+        cultivator = Cultivator(
+            self,
+            curriculum=curriculum,
+            library=library,
+            held_out=held_out,
+            rails=rails if rails is not None else self.rail_engine,
+            governance=governance,
+            search=search,
+            min_capability_gain=min_capability_gain,
+            prune=prune,
+            record=record,
+        )
+        return cultivator.run(cycles=cycles)
+
     def use_bandit_router(
         self, models: list[str], *, bandit: str = "epsilon_greedy", **kwargs: Any
     ) -> ContextApp:

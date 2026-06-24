@@ -378,5 +378,25 @@ pure Python (RFC 8032), with the native `cryptography` backend used automaticall
 behind `vincio[crypto]`. The budgets gate full identity integrity and delegation
 attenuation, above the published promises.
 
+## Autonomous skill acquisition & open-ended curriculum
+
+| Promise | Target | VincioBench metric |
+|---|---|---|
+| A full propose → attempt → verify → distill → promote cultivation run ends **at least as capable** as it began — capability on a held-out frontier set never falls, each promotion clears the same gated no-regression check a deploy uses, dead weight is demoted, and a tampered capability number is caught from the bytes. | true | `families.skill_acquisition.capability_monotonicity` |
+| Every self-proposed objective is gated **before** it is attempted: an objective a safety rail blocks — or any objective when the governance invariants do not hold — is refused and never run, and the proposal's content hash catches a refused objective relabelled as proposed. | true | `families.skill_acquisition.stay_in_policy_safety` |
+
+The self-improvement loop, RLVR, and the distillation flywheel make an agent better
+at *known* tasks; open-ended capability growth (Voyager / ADAS-shaped) is the apex of
+that arc, and its risk is unbounded drift. `app.cultivate` proposes tasks at the
+frontier of current competence, attempts each with a library-composing test-time
+search, verifies against the task-success oracle, distills a winning trajectory into a
+verified, content-addressed `LearnedSkill`, and promotes it only through the **same
+no-regression gate** a prompt or policy promotion clears — so growth is reversible, not
+runaway, and a skill that stops paying its way is demoted rather than silently kept.
+The `AutoCurriculum` gates every proposed objective through the rails and the
+governance verifier, so the autonomy stays inside the controls the platform already
+enforces. The budgets gate full capability monotonicity and stay-in-policy safety,
+offline against the deterministic reference environments.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

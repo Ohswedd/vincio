@@ -374,3 +374,7 @@ without an entry here.
 ### SETTLEMENT_ERROR
 
 **Settlement could not proceed.** Meter non-negative usage, sign a settlement only as its buyer or seller, and supply the contract terms a saga's steps ran under when settling it. A settlement whose delivered work breaches the agreed terms does not raise — it reconciles to a SettlementRecord with `status='breached'` (see `.breaches`); re-verify a record or book with the signer the parties used.
+
+### CULTIVATION_ERROR
+
+**Skill acquisition could not proceed.** Give every `CurriculumTask` an `environment` factory before cultivating it, set exactly one of `action`/`skill` on a `SkillStep`, and ensure a skill's `requires` resolve to active library skills without a cycle. A proposed objective the rails or the governance verifier reject does not raise — it is pinpointed on the `CurriculumProposal` (`.refused`) and never attempted; re-verify a `LearnedSkill`, `LearnedSkillLibrary`, or `CultivationResult` with its own `verify()`.

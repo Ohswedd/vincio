@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**457** public symbols.
+**471** public symbols.
 
 ## Classes
 
@@ -121,6 +121,10 @@ A peer reached over A2A that an importer pulls signed artifacts from.
 ### `AttestationRevocation(**data)`
 
 A signed, offline-verifiable withdrawal of a prior attestation by its hash.
+
+### `AutoCurriculum(tasks, rails=…, governance=…, world_model=…, search=…, max_tasks=…)`
+
+Propose the next frontier tasks, gated by rails and the governance verifier.
 
 ### `BatchRunner(backend, price_table=…, tracer=…, discount=…, poll_interval_s=…, timeout_s=…, clock=…)`
 
@@ -390,6 +394,22 @@ A multi-agent team that collaborates over a shared blackboard.
 
 A purely-compositional facade threading the whole cross-org fabric in one call-path.
 
+### `CultivationResult(**data)`
+
+The content-bound, offline-verifiable outcome of a cultivation run.
+
+### `Cultivator(app=…, curriculum, library=…, held_out=…, rails=…, governance=…, search=…, min_capability_gain=…, tolerance=…, prune=…, record=…)`
+
+Drive the cultivation loop over a :class:`LearnedSkillLibrary`.
+
+### `CurriculumProposal(**data)`
+
+A content-bound, offline-verifiable curriculum round.
+
+### `CurriculumTask(**data)`
+
+A candidate objective: a deterministic environment plus its success oracle.
+
 ### `CustodyAttestation(**data)`
 
 A signed, offline-verifiable proof-of-reserves over a poster's held capital.
@@ -397,6 +417,10 @@ A signed, offline-verifiable proof-of-reserves over a poster's held capital.
 ### `CustodyAttestationVerification(**data)`
 
 The (non-raising) outcome of verifying a custody attestation offline.
+
+### `CycleReport(**data)`
+
+What one cultivation cycle proposed, learned, promoted, and demoted.
 
 ### `Dataset(**data)`
 
@@ -594,6 +618,10 @@ The fleet-consensus low-rank subspace distilled from a secure aggregation.
 
 Track tokens-per-word per language to surface the non-English token tax.
 
+### `FrontierEstimate(**data)`
+
+Where a task sits relative to current competence.
+
 ### `GGUFProvider(model_path=…, llama=…, n_ctx=…, embedding=…, lora_path=…, lora_scale=…, **kwargs)`
 
 Native in-process GGUF / llama.cpp provider with on-device embedding.
@@ -745,6 +773,14 @@ GDPR Article 6(1) lawful bases for processing.
 ### `LearnedSemanticCache(embedder, policy=…, calibration=…, clock=…)`
 
 Bounded, calibrated, auditable near-miss response cache.
+
+### `LearnedSkill(**data)`
+
+A verified, content-addressed, versioned, composable learned procedure.
+
+### `LearnedSkillLibrary(skills=…)`
+
+A content-addressed library of learned skills with versioning and dedup.
 
 ### `LearningResult(**data)`
 
@@ -1298,6 +1334,22 @@ Base class for typed input → output signatures.
 
 Which key verified a signature and whether it was valid at a given time.
 
+### `SkillProvenance(**data)`
+
+Where a learned skill came from — the audit trail of its acquisition.
+
+### `SkillSearch(beam_width=…, max_depth=…)`
+
+Bounded, deterministic beam search that composes the skill library.
+
+### `SkillStep(**data)`
+
+One step of a learned procedure: a primitive action **or** a sub-skill call.
+
+### `Solution(**data)`
+
+The outcome of searching for (or retrieving) a procedure for a task.
+
 ### `SolvencyProof(**data)`
 
 A signed, offline-verifiable proof-of-solvency over a poster's reserves and liabilities.
@@ -1679,6 +1731,10 @@ True when running on a WASM target (Emscripten/Pyodide or WASI).
 ### `key_fingerprint(public_key)`
 
 A short, stable key id (``k<16 hex>``) for a public key — used as ``kid``.
+
+### `library_capability(library, tasks, search=…)`
+
+Fraction of *tasks* the library solves by applying an existing skill.
 
 ### `load_benchmark(name, **kwargs)`
 
