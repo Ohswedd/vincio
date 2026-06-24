@@ -270,7 +270,7 @@ scope gate **team-shared memory** — `engine.for_team("eng").remember(..., acl=
 surfaces only to listed readers. The VincioBench `governance` family gates
 erasure-proof verification, tamper detection, and consent enforcement; the
 `memory` family gates as-of recall and per-memory ACLs. See
-[`38_self_improvement_and_erasure.py`](../../examples/38_self_improvement_and_erasure.py).
+[`38_self_improvement_and_erasure.py`](../../examples/08_optimization_self_improvement.py).
 
 ## How it interconnects
 
@@ -281,4 +281,4 @@ burden. Residency and erasure are `PolicyViolation`s and audit entries on the
 same hash-chained path as every other decision. See the
 [threat model](../security/threat-model.md) for the trust boundaries these
 controls operate within, and the runnable
-[`30_governance_compliance.py`](../../examples/30_governance_compliance.py) example.
+[`30_governance_compliance.py`](../../examples/09_security_governance.py) example.

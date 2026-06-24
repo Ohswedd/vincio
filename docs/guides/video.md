@@ -107,7 +107,7 @@ the hash-chained audit log with the provenance binding.
 
 ## See also
 
-- `examples/64_video_understanding_and_generation.py` — a fully offline walkthrough.
+- `examples/02_retrieval_rag.py` — a fully offline walkthrough.
 - [Generate documents & media](generate-documents.md) — the image / speech / document
   output modalities video sits beside.
 - The `video` VincioBench family and its SLOs (`video_temporal_grounding`,

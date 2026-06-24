@@ -157,4 +157,4 @@ The classification is **advisory** — the operator makes the final call. ISO/IE
 42001 controls join the `ComplianceMapper` family; the pack is recorded as a
 `conformity_doc` audit event.
 
-See `examples/33_documents_and_media_out.py` for an end-to-end, offline run.
+See `examples/09_security_governance.py` for an end-to-end, offline run.

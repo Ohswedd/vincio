@@ -125,5 +125,5 @@ deterministic reference environments:
 | **Stay-in-policy safety** | An objective a rail blocks — or any objective when the governance invariants do not hold — is refused and never attempted; the proposal's hash catches a refused objective relabelled as proposed. |
 
 It is **a library capability inside your process** — never a hosted training service,
-a managed curriculum, or a network dependency. See `examples/92_skill_acquisition.py`
+a managed curriculum, or a network dependency. See `examples/08_optimization_self_improvement.py`
 for a runnable end-to-end walk-through.

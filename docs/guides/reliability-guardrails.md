@@ -145,7 +145,7 @@ if not result.intact:
 
 Or from the shell: `vincio audit verify .vincio/audit/audit.jsonl` (exit 1 on a
 broken chain). See the [threat model](../security/threat-model.md) for the full
-picture, and [`examples/21_security_governance.py`](../../examples/21_security_governance.py)
+picture, and [`examples/09_security_governance.py`](../../examples/09_security_governance.py)
 for a runnable demo of PII/secret redaction, injection defense, access control,
 rails, and audit verification.
 

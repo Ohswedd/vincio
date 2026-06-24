@@ -9,18 +9,18 @@ run, not just described. Point any of them at a real model with
 
 | Recipe | Task | Builds on |
 |---|---|---|
-| [Contract redlining](../../examples/45_recipe_contract_redlining.py) | Review a clause and emit a tracked-change redline | `legal` pack + `generate_redline` |
-| [Incident triage](../../examples/46_recipe_incident_triage.py) | Turn an alert + runbooks into a typed, grounded triage decision | typed output + grounding |
-| [Data-room Q&A](../../examples/47_recipe_data_room_qa.py) | Diligence Q&A over a virtual data room with citations | hybrid RAG + citation policy |
-| [Multimodal RAG over slides & PDFs](../../examples/48_recipe_multimodal_rag.py) | Answer from text, a table, and a slide image in one packet | multimodal context packet |
+| [Contract redlining](../../examples/09_security_governance.py) | Review a clause and emit a tracked-change redline | `legal` pack + `generate_redline` |
+| [Incident triage](../../examples/04_agents_and_tools.py) | Turn an alert + runbooks into a typed, grounded triage decision | typed output + grounding |
+| [Data-room Q&A](../../examples/02_retrieval_rag.py) | Diligence Q&A over a virtual data room with citations | hybrid RAG + citation policy |
+| [Multimodal RAG over slides & PDFs](../../examples/02_retrieval_rag.py) | Answer from text, a table, and a slide image in one packet | multimodal context packet |
 
 The capability examples that the recipes lean on:
 
 | Example | Shows |
 |---|---|
-| [Vertical packs](../../examples/42_vertical_packs.py) | a regulated domain configured in one `use_pack` — see [vertical packs](vertical-packs.md) |
-| [The Assistant](../../examples/43_assistant.py) | a multi-turn chat product with tool approvals — see [the Assistant](assistant.md) |
-| [The voice agent](../../examples/44_voice_agent.py) | a grounded, guarded spoken assistant — see [voice & realtime](realtime.md) |
+| [Vertical packs](../../examples/10_interop_and_protocols.py) | a regulated domain configured in one `use_pack` — see [vertical packs](vertical-packs.md) |
+| [The Assistant](../../examples/01_quickstart.py) | a multi-turn chat product with tool approvals — see [the Assistant](assistant.md) |
+| [The voice agent](../../examples/01_quickstart.py) | a grounded, guarded spoken assistant — see [voice & realtime](realtime.md) |
 
 ## Contract redlining
 

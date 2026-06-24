@@ -331,6 +331,6 @@ object that guards live generations and that the optimizer maximizes. Offline an
 deterministic by default (mock provider, seed-deterministic simulator and
 environments), with no hosted dependency. See the [evaluation concepts](../concepts/evals.md)
 and the [run evals guide](run-evals.md), and run
-[`examples/26_agentic_eval.py`](../../examples/26_agentic_eval.py) and
-[`examples/37_benchmarks_and_agent_fabric.py`](../../examples/37_benchmarks_and_agent_fabric.py)
+[`examples/07_evaluation_observability.py`](../../examples/07_evaluation_observability.py) and
+[`examples/07_evaluation_observability.py`](../../examples/07_evaluation_observability.py)
 end to end.

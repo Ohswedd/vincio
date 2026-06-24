@@ -207,5 +207,5 @@ Two VincioBench SLOs hold the action plane (see the [SLO reference](../reference
   action without approval performs zero such actions; the gate blocks it, an
   out-of-scope navigation is refused, and a divergent action is rolled back.
 
-See [`examples/89_computer_use_action_plane.py`](../../examples/89_computer_use_action_plane.py)
+See [`examples/04_agents_and_tools.py`](../../examples/04_agents_and_tools.py)
 for the full runnable walkthrough.

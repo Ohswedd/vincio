@@ -540,4 +540,4 @@ result = app.deploy(
 directly when you want to wire one organ on its own. The `loop` family's
 `self_improvement` checks gate the streaming cycle, meta-optimization, and the
 canary-gated deploy. See
-[`38_self_improvement_and_erasure.py`](../../examples/38_self_improvement_and_erasure.py).
+[`38_self_improvement_and_erasure.py`](../../examples/08_optimization_self_improvement.py).

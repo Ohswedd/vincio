@@ -234,6 +234,6 @@ client = connect_in_process(server)
 assert await client.call_tool("add", {"a": 2, "b": 3}) == "5"
 ```
 
-See [`examples/22_mcp_tools_and_resources.py`](../../examples/22_mcp_tools_and_resources.py),
-[`examples/66_mcp_apps_and_elicitation.py`](../../examples/66_mcp_apps_and_elicitation.py),
+See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py),
+[`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py),
 and the [threat model](../security/threat-model.md) for the MCP trust boundary.

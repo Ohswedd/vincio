@@ -95,6 +95,6 @@ convo = Simulator(seed=7).simulate(
 case = convo.to_eval_case(id="sim_billing")   # score with the conversational metrics
 ```
 
-See [`examples/43_assistant.py`](../../examples/43_assistant.py) for a runnable
+See [`examples/01_quickstart.py`](../../examples/01_quickstart.py) for a runnable
 end-to-end version, and [agentic evaluation](agentic-eval.md) for the multi-turn
 metrics.

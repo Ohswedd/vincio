@@ -151,4 +151,4 @@ dependency-free default. Bring the edge result back to a server (or call a model
 from the host environment) to generate; the packet and prompt are portable.
 
 The runnable example is
-[`examples/65_edge_wasm_runtime.py`](https://github.com/Ohswedd/vincio/blob/main/examples/65_edge_wasm_runtime.py).
+[`examples/11_advanced_context.py`](https://github.com/Ohswedd/vincio/blob/main/examples/11_advanced_context.py).

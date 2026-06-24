@@ -106,4 +106,4 @@ duality the MCP and A2A clients already use.
   infrastructure — never a hosted control plane.
 
 See the [API reference](../reference/api.md) (`vincio.registry`) and the runnable
-[`37_benchmarks_and_agent_fabric.py`](../../examples/37_benchmarks_and_agent_fabric.py) example.
+[`37_benchmarks_and_agent_fabric.py`](../../examples/07_evaluation_observability.py) example.

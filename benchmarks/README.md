@@ -13,6 +13,73 @@ python benchmarks/vinciobench.py rag cost    # selected families
 
 Results are printed as JSON and saved to `benchmarks/results/`.
 
+## Three kinds of benchmark
+
+| Suite | File | Compares against | Question it answers |
+|---|---|---|---|
+| **VincioBench** | `vinciobench.py` | a *naive in-house baseline* (stuff-everything, `json.loads`, single-index BM25, …) | does each Vincio mechanism do what it claims, deterministically? |
+| **Competitive** | `competitive.py` | the *actual third-party library* a team would otherwise use (tiktoken, rank_bm25, LangChain, LlamaIndex, …) | where Vincio meets or beats a specialist library head-to-head |
+| **Orchestrator uplift** | `quality_uplift.py` | calling the *same model directly* (no Vincio layer) | what routing a model through Vincio adds: output quality, token usage, context-rot resistance |
+
+```bash
+python benchmarks/competitive.py             # all head-to-head comparisons
+python benchmarks/quality_uplift.py          # what the orchestration layer adds
+pip install tiktoken rank-bm25 json-repair jinja2 langchain-core \
+            langchain-text-splitters llama-index-core   # the competitors
+```
+
+### Competitive — head-to-head vs. real libraries
+
+`competitive.py` runs Vincio against the real libraries on the operations where
+an apples-to-apples comparison genuinely exists. **Every number it prints is
+measured on your machine from a live run of both sides** — nothing is
+hand-written, a missing competitor is reported as `skipped` rather than assumed,
+and the report states it plainly where a specialist library wins on its own
+narrow axis. Representative results (Apple Silicon, Python 3.13 — *ratios*, not
+wall-clock, are the portable signal):
+
+| Operation | Vincio | Competitor | Result |
+|---|---|---|--|
+| **BM25 query** @ 20k docs, selective queries | `BM25Index` | `rank_bm25` | **~32× faster**, 100% identical top-1 ranking |
+| **BM25 query** @ 2k docs | `BM25Index` | `rank_bm25` | **~18× faster**, identical ranking |
+| **Context assembly** — tokens sent for the same retrieved set | context compiler | LangChain `stuff` / LlamaIndex `compact` | **~60% fewer tokens**, answer retained (scores + dedups + budgets) |
+| **Text chunking** a 24k-word doc | `chunk_document` | LangChain / LlamaIndex splitters | **fastest**, and chunks carry provenance the string-splitters don't |
+| **Token counting** (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.5× faster**, zero-dependency, conservative (+~25%) |
+| **Malformed-JSON recovery** | lenient parser | stdlib `json.loads` | **4/8 vs 1/8** (a dedicated repair lib recovers more, by guessing) |
+| **Template render w/ a missing var** | `PromptSpec.substitute` | `jinja2` | raises a typed error vs silently rendering empty |
+
+Why BM25 wins by so much: `rank_bm25` rescans *every* document on every query
+(O(N) per query); Vincio's inverted postings only scan documents that contain a
+query term, so the gap widens with corpus size. `rank_bm25`'s NumPy rescan can
+win on a few hundred docs — the report shows both regimes. The honest takeaway is
+not "every component beats every specialist": a dedicated repair library recovers
+more malformed JSON than Vincio (by guessing, which is unsafe for typed
+extraction). Vincio's edge is an *integrated, correct, governed* pipeline — one
+BM25 mode fused beside dense/sparse/late-interaction, with provenance, tenant
+scoping, and a token budget — not a pile of specialist libraries you wire
+together yourself.
+
+### Orchestrator uplift — Vincio vs. the raw model
+
+`quality_uplift.py` asks the question the micro-benchmarks don't: take the *same
+model* and call it directly (the way an agent harness or a web chat does) versus
+through Vincio's pipeline — what changes? It keeps two regimes strictly separate
+so nothing is overstated:
+
+- **Deterministic (real numbers, below):** contributions that hold for *any*
+  model because they are mechanical, measured offline on the deterministic mock.
+- **Frontier-model quality (harness only):** the absolute lift in answer
+  correctness needs a real model — the suite ships the harness and prints the
+  exact `VINCIO_PROVIDER=…` command, and **does not print a quality number it did
+  not measure.**
+
+| Metric (same model, direct vs. via Vincio) | Direct | Via Vincio |
+|---|--|--|
+| Schema-valid object from realistic model outputs | 1/6 | **5/6** (structure-only repair) |
+| Prompt-injection exfiltration via a tool call | compromised | **contained** (taint + capability token) |
+| Context tokens to retain an early fact at 80 turns | 640 (needle falls out of window) | **33, needle retained** (bounded recall) |
+| Grounded + cited answers (deterministic illustration) | 0/3 | **3/3** — real-model delta needs a provider key |
+
 ## Families
 
 | Family | Measures | Baseline |
