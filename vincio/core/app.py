@@ -1379,6 +1379,172 @@ class ContextApp:
             signer=signer or self.content_signer,
         )
 
+    # -- verified reasoning & neuro-symbolic certificates --------------
+
+    def verify_reasoning(
+        self,
+        answer: Any,
+        *,
+        verifiers: Any | None = None,
+        evidence: Any | None = None,
+        schema: dict[str, Any] | None = None,
+        constraints: Any | None = None,
+        facts: dict[str, Any] | None = None,
+        now: Any | None = None,
+        regenerate: Any | None = None,
+        max_cycles: int = 2,
+        raise_on_refute: bool = False,
+        record: bool = True,
+    ) -> Any:
+        """Attach and check a deterministic :class:`~vincio.verify.Certificate` to an answer.
+
+        Runs a set of offline kernels (arithmetic, units, temporal, schema,
+        constraints, citation entailment — the default
+        :func:`~vincio.verify.default_verifiers`) over ``answer`` and returns a
+        :class:`~vincio.verify.VerifiedAnswer` whose certificate is **verified**,
+        **refuted**, or **inapplicable**. A refuted certificate is a *proof the
+        answer is wrong* (a recomputation disagreed), so the orchestrator refuses
+        to emit it: :attr:`VerifiedAnswer.holds` is ``False`` and ``refused`` is set.
+
+        When a refuted answer can be repaired, pass a ``regenerate`` callable
+        ``(answer, critique) -> new_answer`` to drive the bounded self-correction
+        loop: the deterministic refutations become a critique, the callable
+        produces a fresh answer, and it is re-certified, up to ``max_cycles`` — the
+        same refuse-or-repair discipline structured output already uses, now over
+        *reasoning* rather than *structure*. Ground the kernels with ``evidence``
+        (citation entailment), ``schema`` (structural conformance), ``constraints``
+        (constraint satisfaction), ``facts`` and ``now``. The verdict lands on the
+        hash-chained audit log as a ``reasoning_verification`` decision unless
+        ``record`` is off; set ``raise_on_refute`` to raise
+        :class:`~vincio.core.errors.CertificateRefutedError` instead.
+        """
+        from ..core.errors import CertificateRefutedError
+        from ..verify import CompositeVerifier, VerificationContext, VerifiedAnswer
+        from ..verify.kernels import default_verifiers
+
+        verifier = CompositeVerifier(list(verifiers) if verifiers is not None else default_verifiers())
+        context = VerificationContext(
+            evidence=list(evidence) if evidence else [],
+            schema=schema,
+            constraints=list(constraints) if constraints else [],
+            facts=facts or {},
+            now=now,
+        )
+        current = answer
+        certificate = verifier.certify(current, context)
+        attempts = 1
+        while certificate.refuted and regenerate is not None and attempts <= max_cycles:
+            critique = "The previous answer failed verification:\n" + "\n".join(
+                f"- {c.name}: {c.detail}" for c in certificate.refutations
+            )
+            repaired = regenerate(current, critique)
+            if repaired is None or repaired == current:
+                break
+            current = repaired
+            certificate = verifier.certify(current, context)
+            attempts += 1
+
+        refused = certificate.refuted
+        verified = VerifiedAnswer(
+            answer=current,
+            certificate=certificate,
+            attempts=attempts,
+            refused=refused,
+            stopped_reason=(
+                "refused" if refused else certificate.status
+            ),
+        )
+        if record and self.audit is not None:
+            self.audit.record(
+                "reasoning_verification",
+                resource=certificate.subject_hash,
+                decision=certificate.status,
+                details={
+                    "kinds": certificate.kinds,
+                    "refutations": [c.name for c in certificate.refutations],
+                    "attempts": attempts,
+                    "certificate_hash": certificate.certificate_hash,
+                },
+            )
+        if raise_on_refute and refused:
+            raise CertificateRefutedError(
+                "answer certificate refuted: "
+                + "; ".join(c.detail for c in certificate.refutations),
+                details={"refutations": [c.name for c in certificate.refutations]},
+            )
+        return verified
+
+    def behavior_monitor(self, specs: Any) -> Any:
+        """Build a :class:`~vincio.verify.RuntimeMonitor` over one or more
+        :class:`~vincio.verify.BehaviorSpec`\\ s.
+
+        The monitor checks a property over an agent's trajectory step-by-step:
+        feed it :class:`~vincio.verify.BehaviorEvent`\\ s via ``observe`` as the
+        agent runs, or a recorded list via ``check_trajectory``. It is the online,
+        per-step, behavioural analogue of the ahead-of-run governance verifier.
+        """
+        from ..verify import RuntimeMonitor
+
+        return RuntimeMonitor(specs)
+
+    def shield(self, specs: Any, *, mode: str = "block", repair: Any | None = None, use: bool = False) -> Any:
+        """Build a :class:`~vincio.verify.Shield` that prevents a behavioural violation.
+
+        A shield wraps a monitor and, before an action executes, **blocks** it
+        (``mode='block'``), **repairs** it to a safe alternative (``mode='repair'``
+        with a ``repair`` callback), or merely records it (``mode='monitor'``). With
+        ``use=True`` the shield is installed on this app's tool runtime, so a
+        policy-violating tool call (a write before approval, a tool outside scope)
+        is structurally refused — the per-step, online counterpart of the rails.
+        """
+        from ..verify import Shield
+
+        built = Shield(specs, mode=mode, repair=repair)  # type: ignore[arg-type]
+        if use:
+            self.use_shield(built)
+        return built
+
+    def use_shield(self, shield: Any | None) -> Any:
+        """Install (or clear, with ``None``) a behavioural shield on the tool runtime.
+
+        Once installed, every tool call is checked against the shield's
+        :class:`~vincio.verify.BehaviorSpec`\\ s *before* it executes; a blocked
+        call returns a denied result like a failed permission check. Returns the
+        shield.
+        """
+        self.tool_runtime.shield = shield
+        return shield
+
+    def synthesize_program(
+        self, spec: Any, examples: Any, *, require: bool = True, record: bool = True
+    ) -> Any:
+        """Synthesize and verify a small data-transform program.
+
+        Runs ``spec``'s whitelisted op pipeline on representative ``examples``,
+        checks its declared properties (schema conformance, row-count relations,
+        field invariants), and returns a
+        :class:`~vincio.verify.SynthesizedProgram` carrying the
+        :class:`~vincio.verify.Certificate` that proves them — proof-carrying code
+        in the tool plane. With ``require`` (the default) a refuted program raises
+        :class:`~vincio.core.errors.ProgramSynthesisError` rather than returning;
+        the verdict lands on the audit log as a ``program_synthesis`` decision.
+        """
+        from ..verify import synthesize
+
+        program = synthesize(spec, list(examples), require=require)
+        if record and self.audit is not None:
+            self.audit.record(
+                "program_synthesis",
+                resource=program.certificate.subject_hash,
+                decision=program.certificate.status,
+                details={
+                    "name": getattr(spec, "name", ""),
+                    "properties": [c.name for c in program.certificate.checks],
+                    "certificate_hash": program.certificate.certificate_hash,
+                },
+            )
+        return program
+
     # -- documents & media flow OUT ------------------------------------
 
     def build_document(

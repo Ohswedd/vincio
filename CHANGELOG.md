@@ -4,6 +4,56 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.47.0] - 2026-06-24
+
+Verified reasoning & neuro-symbolic certificates. The platform graded outputs with judges, oracles, and a governance
+verifier — but those per-answer signals are *probabilistic*. This release adds the certifiable frontier: for the classes
+of question where it is possible, an answer carries a **checkable certificate** a deterministic verifier confirms
+independently of the model — the output-side analogue of the governance verifier's machine-checked invariants. It ships
+three planes of deterministic, offline verification: proof-carrying answers, runtime verification & shielding, and
+verified tool use. Entirely additive and backward-compatible — `API_VERSION` stays `3.0`, the existing surface is
+unchanged, the dependency-free kernels are the default (optional SMT / CAS behind `vincio[verify]`), and the whole theme
+runs offline and deterministically.
+
+### Added
+
+- **Proof-carrying answers (`vincio.verify`).** `app.verify_reasoning(answer, *, verifiers=None, evidence=None,
+  schema=None, constraints=None, facts=None, now=None, regenerate=None, max_cycles=2, raise_on_refute=False)` runs a set
+  of deterministic kernels over an answer and returns a `VerifiedAnswer` whose content-bound `Certificate` is `verified`
+  only when a kernel **recomputed** a claim and it held, `refuted` when a recomputation disagreed (a proof the answer is
+  wrong), or `inapplicable` when no checkable claim of that kind exists. The certificate **re-derives its verdict from the
+  bytes** (`certificate.verify()`), so a flipped status is caught. A refuted certificate **refuses to emit**, and a
+  `regenerate` callback drives the existing bounded self-correction loop to repair it — the refuse-or-repair discipline
+  structured output uses, now over *reasoning*.
+- **Deterministic kernels.** A pluggable `ReasoningVerifier` protocol and a `CompositeVerifier` over `ArithmeticVerifier`,
+  `UnitVerifier` (refuses a dimensional mismatch), `TemporalVerifier` (real-calendar date math), `ConstraintVerifier`
+  (constraint satisfaction over a typed `Constraint`), `SchemaVerifier`, and `CitationVerifier` (strict entailment with
+  number checking) — `default_verifiers()`, all pure and offline. A safe `safe_eval_arithmetic` recursive-descent
+  evaluator (never `eval`).
+- **Runtime verification & shielding.** A `BehaviorSpec` (`forbid` / `require_before` / `invariant`, via `EventPattern`)
+  states a temporal-logic-lite property over an agent's trajectory; a `RuntimeMonitor` (`app.behavior_monitor`) checks it
+  step-by-step; and a `Shield` (`app.shield(specs, *, mode="block"|"repair"|"monitor", use=False)` / `app.use_shield`)
+  **blocks or repairs a violating action *before* it executes**. Wired into the tool runtime (`ToolRuntime(shield=...)`),
+  so a policy-violating tool call (an unapproved write) is structurally refused — the per-step, online counterpart of the
+  ahead-of-run governance verifier.
+- **Verified tool use & synthesized programs.** A `ToolContract` (`ToolClause`, `requires_that` / `ensures_that`) declares
+  pre/post-conditions the runtime checks against the actual arguments and result (`app.add_tool(..., contract=...)` /
+  `registry.register(..., contract=...)`); a breach raises `ToolContractError`. `synthesize` (`app.synthesize_program`)
+  emits a `SynthesizedProgram` from a `ProgramSpec` / `ProgramOp` / `ProgramProperty` whose declared properties are proven
+  into a `Certificate` before it runs and re-checked on every use — proof-carrying code in the tool plane.
+- **New errors.** `ReasoningVerificationError` (code `REASONING_VERIFICATION_ERROR`) and its subclasses
+  `CertificateRefutedError`, `BehaviorViolationError` (code `BEHAVIOR_VIOLATION`), `ProgramSynthesisError` (code
+  `PROGRAM_SYNTHESIS_FAILED`); and `ToolContractError` (a `ToolError`, code `TOOL_CONTRACT_VIOLATION`).
+- **Optional SMT / CAS backends (`vincio.verify.smt`, extra `vincio[verify]`).** `SmtConstraintVerifier` (Z3, proves a
+  constraint system consistent) and `CasArithmeticVerifier` (SymPy, exact rational arithmetic) with `smt_available()` /
+  `cas_available()` — strictly opt-in; nothing on the offline path imports them.
+- **Benchmark, SLOs, example & docs.** A `verified_reasoning` VincioBench family gates certificate soundness (a wrong
+  sum, a dimensional mismatch, an off-by-one duration, a violated constraint, and an uncited number are each refuted; a
+  tampered verdict is caught) and shield-prevents-violation (an unapproved write is blocked, an approved one proceeds),
+  held by a certificate-soundness SLO and a shield-prevents-violation SLO. New runnable example
+  `examples/91_verified_reasoning.py`, a [verified-reasoning guide](docs/guides/verified-reasoning.md), and synchronized
+  README / SECURITY / llms.txt / API reference / ROADMAP.
+
 ## [3.46.0] - 2026-06-23
 
 Agent identity, delegation & cryptographic accountability. The platform signed contracts, settlements, attestations,

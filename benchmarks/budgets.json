@@ -2079,6 +2079,30 @@
     },
     "families.identity.rfc8032_conformant": {
       "eq": true
+    },
+    "families.verified_reasoning.certificate_soundness": {
+      "eq": true
+    },
+    "families.verified_reasoning.shield_prevents_violation": {
+      "eq": true
+    },
+    "families.verified_reasoning.refuse_to_emit": {
+      "eq": true
+    },
+    "families.verified_reasoning.self_correction_repairs": {
+      "eq": true
+    },
+    "families.verified_reasoning.verdict_audited": {
+      "eq": true
+    },
+    "families.verified_reasoning.contract_enforced": {
+      "eq": true
+    },
+    "families.verified_reasoning.program_proof_carrying": {
+      "eq": true
+    },
+    "families.verified_reasoning.tamper_caught": {
+      "eq": true
     }
   }
 }

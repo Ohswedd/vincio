@@ -298,6 +298,15 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "selector, or an exhausted action budget. Check the backend and the "
             "action's stable selector against the perceived screen state.",
         ),
+        _entry(
+            "TOOL_CONTRACT_VIOLATION",
+            "Tool call breached its contract",
+            "A tool declared pre/post-conditions and the actual call broke one: an "
+            "argument failed a `requires` clause, or the result failed an `ensures` "
+            "clause. Fix the arguments to meet the precondition, or treat a "
+            "post-condition breach as a bug in the tool — the runtime refuses an "
+            "out-of-contract result rather than returning it.",
+        ),
         # --- agents ---
         _entry(
             "AGENT_ERROR",
@@ -594,6 +603,33 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "Give the `EdgeRequest` a `task` or `objective`; under `strict=True`, "
             "raise the `EdgeProfile`'s `max_resident_bytes` / `max_input_tokens` "
             "or trim the request's evidence so the packet fits the edge profile.",
+        ),
+        # --- verified reasoning & neuro-symbolic certificates ---
+        _entry(
+            "REASONING_VERIFICATION_ERROR",
+            "Answer certificate did not check",
+            "A deterministic verifier refuted the answer (an arithmetic, unit, "
+            "temporal, schema, constraint, or citation check failed) and "
+            "`app.verify_reasoning(..., raise_on_refute=True)` was asked to raise. "
+            "Inspect `VerifiedAnswer.certificate.refutations`, fix the refuted "
+            "claim, or run with self-correction so the orchestrator repairs it.",
+        ),
+        _entry(
+            "BEHAVIOR_VIOLATION",
+            "Agent trajectory violated a behavior spec",
+            "A `RuntimeMonitor` / `Shield` found a `BehaviorSpec` property breached "
+            "— a forbidden action, a missing precondition (e.g. a write before "
+            "approval, a claim before retrieval), or a violated invariant. Use a "
+            "shield in `block`/`repair` mode to prevent the action, or correct the "
+            "plan so the property holds.",
+        ),
+        _entry(
+            "PROGRAM_SYNTHESIS_FAILED",
+            "Synthesized program failed verification",
+            "A `synthesize(...)` program failed to run on its examples or a declared "
+            "property (schema, row-count, field-range) was refuted. Inspect "
+            "`SynthesizedProgram.certificate.refutations`, fix the op pipeline or "
+            "the property, and re-synthesize — a refuted program is never run.",
         ),
         # --- agent negotiation & contracting ---
         _entry(

@@ -54,6 +54,10 @@ class RegisteredTool(BaseModel):
     handler: Callable
     input_model: Any = None  # type[BaseModel] | None
     output_model: Any = None
+    # Optional behavioural contract (pre/post-conditions) the runtime enforces
+    # against the actual arguments and result — a ``ToolContract`` from
+    # :mod:`vincio.verify.programs`, duck-typed to keep tools independent of verify.
+    contract: Any = None
 
     @property
     def is_async(self) -> bool:
@@ -90,11 +94,15 @@ class ToolRegistry:
         approval_required: bool = False,
         cacheable: bool | None = None,
         idempotent: bool = False,
+        contract: Any = None,
     ):
         """Register a tool. Usable directly or as a decorator::
 
             @registry.register(permissions=["crm:read"])
             def crm_lookup(customer_id: str) -> dict: ...
+
+        Pass a ``contract`` (a :class:`~vincio.verify.programs.ToolContract`) to
+        enforce pre/post-conditions against the actual arguments and result.
         """
 
         def wrap(fn: Callable) -> Callable:
@@ -122,6 +130,7 @@ class ToolRegistry:
                 handler=fn,
                 input_model=input_schema if isinstance(input_schema, type) else None,
                 output_model=output_schema if isinstance(output_schema, type) else None,
+                contract=contract,
             )
             self.stats.setdefault(
                 tool_name,

@@ -343,6 +343,41 @@ the audited, constant-time `cryptography` backend is used automatically behind
 deterministic, offline signing of content-bound artifacts and is not hardened against
 timing side channels — the `crypto` extra exists to make that trade where it matters.
 
+### Verified reasoning, runtime shielding & tool contracts
+
+The governance verifier proves controls ahead of a run; the rails screen input and
+output. Neither *certifies a specific answer* nor *stops a specific unsafe action
+mid-trajectory*. Verified reasoning (`vincio.verify`) adds both, deterministically and
+offline.
+
+`app.verify_reasoning(answer, ...)` attaches a content-bound `Certificate` produced by
+deterministic kernels (arithmetic, units, temporal consistency, schema, constraint
+satisfaction, citation entailment). The certificate is **sound by construction**: a
+kernel emits `verified` only when it *recomputed* the claim and the recomputation
+matched, so a wrong answer the relevant kernel can see is `refuted`, never silently
+passed. The certificate re-derives its verdict from the recorded checks and binds it
+into a content hash (`certificate.verify()`), so a verdict flipped to `verified` after
+the fact is caught from the bytes alone. A refuted certificate **refuses to emit** the
+answer, and a `regenerate` callback drives the existing bounded self-correction loop to
+repair it — the refuse-or-repair discipline applied to *reasoning*.
+
+A `Shield` is the per-step, online counterpart of the ahead-of-run governance verifier.
+A `BehaviorSpec` states a property over an agent's trajectory (*never call a write tool
+before approval*, *retrieve before claiming*, *stay within residency*); a `RuntimeMonitor`
+checks it step-by-step; and a `Shield` (`app.shield(..., use=True)`), wired into the tool
+runtime, **blocks or repairs a violating action before it executes** — a policy-violating
+tool call returns a denied result, structurally refused rather than logged after the
+fact. Guarding is non-committing: a blocked action is rolled out of the monitor's history
+so it cannot poison the precedence state of later actions.
+
+A `ToolContract` declares pre- and post-conditions the runtime checks against the
+*actual* arguments and result; a breach raises `ToolContractError`, so a tool that
+returns an out-of-contract value is refused at the boundary, not propagated. `synthesize`
+emits a verified data-transform program from a whitelisted, deterministic op set (no
+`eval`, no I/O) whose declared properties are proven into a `Certificate` before it runs
+and re-checked on every use. Every verdict lands on the hash-chained audit log; the
+kernels are dependency-free, with optional SMT / CAS backends behind `vincio[verify]`.
+
 ### Provenance & generated media
 
 Every generated image, audio, and video asset auto-attaches a media-aware C2PA

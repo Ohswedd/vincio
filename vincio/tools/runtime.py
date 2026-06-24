@@ -13,6 +13,7 @@ from typing import Any
 
 from ..core.errors import (
     ToolApprovalRequiredError,
+    ToolContractError,
     ToolTimeoutError,
     ToolValidationError,
 )
@@ -108,6 +109,7 @@ class ToolRuntime:
         injection_detector: InjectionDetector | None = None,
         secret_scanner: SecretScanner | None = None,
         content_policy: Any = None,
+        shield: Any = None,
     ) -> None:
         self.registry = registry
         self.permissions = permission_checker or ToolPermissionChecker()
@@ -124,6 +126,10 @@ class ToolRuntime:
         # ``ContentCapturePolicy(capture=False)`` redacts/truncates — or drops —
         # tool output before it ever lands on a span the exporters read.
         self.content_policy = content_policy
+        # optional behavioural shield (``vincio.verify.Shield``, duck-typed). When
+        # set, a tool call is checked against the shield's ``BehaviorSpec``\\ s
+        # *before* it executes; a blocked call is refused like a denied permission.
+        self.shield = shield
 
     # -- caching -----------------------------------------------------
 
@@ -189,6 +195,17 @@ class ToolRuntime:
                     f"invalid arguments for {call.tool_name}: {errors}", tool=call.tool_name
                 )
 
+            # 1b. pre-condition contract (a contract on behaviour, not just schema)
+            if tool.contract is not None:
+                pre_breaches = tool.contract.check_pre(call.arguments)
+                if pre_breaches:
+                    span.add_event("contract_pre_failed", breaches=pre_breaches)
+                    raise ToolContractError(
+                        f"tool {call.tool_name} precondition breached: {pre_breaches}",
+                        tool=call.tool_name,
+                        details={"breaches": pre_breaches},
+                    )
+
             # 2. permissions
             decision = self.permissions.check(
                 spec, call.arguments, principal, resource_tenant_id=resource_tenant_id,
@@ -201,6 +218,24 @@ class ToolRuntime:
                     call_id=call.id, tool_name=call.tool_name, status="denied", error=decision.reason
                 )
                 return result
+
+            # 2b. behavioural shield — block a policy-violating action before it runs.
+            # ``approved`` is the caller's explicit approval flag, so a spec that
+            # forbids an unapproved write is enforced even for a tool the permission
+            # layer would not have gated on its own.
+            if self.shield is not None:
+                shield_decision = self.shield.guard_tool_call(
+                    call.tool_name,
+                    side_effects=spec.side_effects,
+                    approved=approved,
+                    arguments=call.arguments,
+                )
+                if not shield_decision.allowed:
+                    span.add_event("shield_blocked", reason=shield_decision.reason)
+                    return ToolResult(
+                        call_id=call.id, tool_name=call.tool_name, status="denied",
+                        error=f"blocked by shield: {shield_decision.reason}",
+                    )
 
             # 3. approval gate
             idempotency_key = self.permissions.idempotency_key(spec, call.arguments, principal)
@@ -280,6 +315,18 @@ class ToolRuntime:
                     )
             if hasattr(output, "model_dump"):
                 output = output.model_dump(mode="json")
+
+            # 5b. post-condition contract — refuse an out-of-contract result
+            if tool.contract is not None:
+                post_breaches = tool.contract.check_post(call.arguments, output)
+                if post_breaches:
+                    self.registry.record_call(call.tool_name, success=False, duration_ms=duration_ms)
+                    span.add_event("contract_post_failed", breaches=post_breaches)
+                    raise ToolContractError(
+                        f"tool {call.tool_name} postcondition breached: {post_breaches}",
+                        tool=call.tool_name,
+                        details={"breaches": post_breaches},
+                    )
 
             # 6. sanitize
             output, sanitize_notes = self._sanitize_output(output, call.tool_name)
