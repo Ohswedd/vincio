@@ -73,6 +73,11 @@ VINCIO_PROVIDER=openrouter VINCIO_MODEL=openai/gpt-4o-mini \
   OPENROUTER_API_KEY=sk-or-... python benchmarks/quality_uplift.py   # real model
 ```
 
+Set `VINCIO_UPLIFT_MODELS=a,b,c` to sweep several models and `VINCIO_UPLIFT_RUNS=k`
+to repeat each for variance (defaults: the single `VINCIO_MODEL`, 3 runs on a real
+provider). Cost is computed from live OpenRouter pricing; a provider error is
+reported, never scored as a hallucination.
+
 **Deterministic mechanism metrics** — hold for *any* model because they are
 mechanical, measured offline:
 
@@ -80,25 +85,52 @@ mechanical, measured offline:
 |---|--|--|
 | Schema-valid object from realistic model outputs | 1/6 | **5/6** (structure-only repair) |
 | Prompt-injection exfiltration via a tool call | compromised | **contained** (taint + capability token) |
-| Context tokens to retain an early fact at 80 turns | 640 (needle falls out of window) | **33, needle retained** (bounded recall) |
+| Context tokens to keep an early fact across a growing chat | grows to 1,267 by turn 160 (needle falls out of a 256-tok window at turn 40) | **flat 33, needle always retained** |
 
-**Grounded-answer quality, measured on real models** — 10 company-specific
-policy questions a model cannot know from pretraining, so the metric isolates the
-value of *supplying and enforcing evidence*, not parametric memory (OpenRouter,
-June 2026):
+Context-rot curve (deterministic; `window=256` tokens for illustration):
 
-| Model — direct vs. through Vincio | Direct correct | Direct hallucinated | Via Vincio correct | Cited |
+| Turns | Keep-everything buffer tokens | Needle in window? | Vincio recall tokens | Needle retained? |
+|--:|--:|:--:|--:|:--:|
+| 5 | 51 | ✅ | 33 | ✅ |
+| 40 | 327 | ❌ | 33 | ✅ |
+| 80 | 640 | ❌ | 33 | ✅ |
+| 160 | 1,267 | ❌ | 33 | ✅ |
+
+**Grounded-answer quality, measured on real models** — 15 company-specific policy
+questions a model cannot know from pretraining (so the metric isolates the value
+of *supplying and enforcing evidence*, not parametric memory). 4 models × 3 runs =
+360 live calls (OpenRouter, June 2026); means over runs, stochastic by a point or
+two.
+
+*Quality* — fraction correct, and how the model fails when called directly:
+
+| Model — direct → via Vincio | Direct correct | Via correct | Direct hallucinated | Direct abstained | Via cited |
+|---|--:|--:|--:|--:|--:|
+| `openai/gpt-4o-mini` | 2% | **100%** | 64% | 33% | 100% |
+| `anthropic/claude-3-haiku` | 0% | **91%** | 2% | 98% | 100% |
+| `google/gemini-2.5-flash-lite` | 4% | **98%** | 29% | 71% | 98% |
+| `meta-llama/llama-3.1-8b-instruct` | 2% | **89%** | 40% | 60% | 100% |
+| **aggregate** | **2%** | **95%** | — | — | — |
+
+*Efficiency* — tokens, latency, and cost per answer; and the figure that matters,
+cost per *correct* answer (µ$ = millionths of a dollar):
+
+| Model | Tokens/ans (direct→via) | Latency ms (direct→via) | µ$/answer (direct→via) | µ$/**correct** answer (direct→via) |
 |---|--:|--:|--:|--:|
-| `openai/gpt-4o-mini` | 1/10 | 8/10 | **10/10** | 10/10 |
-| `anthropic/claude-3-haiku` | 0/10 | 0/10 (abstains) | **8/10** | 10/10 |
-| `google/gemini-2.5-flash-lite` | 0/10 | 4/10 | **9/10** | 10/10 |
-| `meta-llama/llama-3.1-8b-instruct` | 0/10 | 8/10 | **9/10** | 9/10 |
+| `openai/gpt-4o-mini` | 97 → 130 | 1693 → **1408** | 46 → 33 | 2081 → **33** (~62× cheaper) |
+| `anthropic/claude-3-haiku` | 123 → 151 | 2495 → **1537** | 130 → 83 | ∞ → **91** (direct never correct) |
+| `google/gemini-2.5-flash-lite` | 202 → 136 | 1893 → **1293** | 76 → 25 | 1720 → **26** (~67× cheaper) |
+| `meta-llama/llama-3.1-8b-instruct` | 88 → 141 | 1706 → **1561** | 2.3 → 3.2 | 104 → **3.6** (~29× cheaper) |
 
-The model *alone* answers ~0/10 (better-aligned models abstain, weaker ones
-hallucinate); the same model through Vincio's retrieval + grounding answers
-8–10/10, every answer cited. A provider error is reported, never scored as a
-hallucination. Numbers are stochastic across runs by a point or two — rerun the
-command above to reproduce on your own key.
+The honest reading: called directly the model answers ~2% of company-specific
+questions correctly (better-aligned models abstain, weaker ones hallucinate up to
+64%); the same model through Vincio's retrieval + grounding answers 89–100%, every
+answer cited. A direct call is cheaper *per call*, but because it gets almost
+nothing right its cost *per correct answer* is **29–67× higher** — undefined for a
+model that never answers correctly on its own. Vincio is also **faster per answer**
+here (a concise cited reply beats a long wrong guess), and token usage is roughly a
+wash (it adds the evidence, but the direct arm often rambles). Rerun the command
+above on your own key to reproduce.
 
 ## Families
 

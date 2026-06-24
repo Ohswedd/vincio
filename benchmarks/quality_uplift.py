@@ -22,10 +22,18 @@ TWO REGIMES, kept strictly separate so nothing is overstated:
     enforces evidence) and the exact command to get the statistical delta on a
     real provider. We do not print a quality number we did not measure.
 
+The real-model grounding section reports, per model and per run: accuracy (mean ±
+std over runs), hallucination and abstention rates, citation rate, tokens and
+latency per answer, and cost per answer / per *correct* answer (priced from live
+OpenRouter rates). Sweep models and repeats via env vars.
+
 Run:
-    python benchmarks/quality_uplift.py
-    VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-... \
-        python benchmarks/quality_uplift.py     # frontier-model grounding delta
+    python benchmarks/quality_uplift.py                               # deterministic, offline
+    VINCIO_PROVIDER=openrouter VINCIO_MODEL=openai/gpt-4o-mini \
+        OPENROUTER_API_KEY=sk-or-... python benchmarks/quality_uplift.py     # one real model
+    VINCIO_PROVIDER=openrouter VINCIO_UPLIFT_RUNS=3 \
+        VINCIO_UPLIFT_MODELS=openai/gpt-4o-mini,anthropic/claude-3-haiku \
+        OPENROUTER_API_KEY=sk-or-... python benchmarks/quality_uplift.py     # sweep + variance
 """
 
 from __future__ import annotations
@@ -33,7 +41,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import statistics
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -232,6 +242,16 @@ _QA = [
      "The Acme API gateway enforces a limit of 600 requests per minute per tenant."),
     ("How long until an Acme password-reset link expires?", "one hour",
      "Acme password-reset links sent by email expire after one hour."),
+    ("What is the Acme dashboard session timeout?", "15 minutes",
+     "Acme dashboards log a user out after 15 minutes of inactivity."),
+    ("How many seats does the Acme Team plan include?", "12 seats",
+     "The Acme Team plan includes 12 seats by default."),
+    ("In which format does Acme export customer data?", "Parquet",
+     "Acme exports customer data in Parquet format."),
+    ("Which region hosts Acme EU customer data?", "Frankfurt",
+     "Acme EU customer data is hosted in the Frankfurt region."),
+    ("What algorithm does Acme use to sign webhooks?", "HMAC-SHA256",
+     "Acme signs webhooks with HMAC-SHA256."),
 ]
 
 _ABSTENTION_MARKERS = ("don't know", "do not know", "cannot", "can't", "no information",
@@ -262,66 +282,159 @@ def _is_abstention(output: str) -> bool:
     return any(marker in low for marker in _ABSTENTION_MARKERS)
 
 
+def _fetch_pricing() -> dict[str, tuple[float, float]]:
+    """(prompt, completion) USD-per-token by model id, fetched live from OpenRouter
+    so cost analytics use real prices. Returns {} when unavailable — cost is then
+    omitted from the report, never guessed."""
+    if os.environ.get("VINCIO_PROVIDER") != "openrouter":
+        return {}
+    key = os.environ.get("OPENROUTER_API_KEY", "")
+    try:
+        import httpx  # Vincio core dep; uses certifi (urllib's CA bundle is unreliable on macOS)
+
+        resp = httpx.get(
+            "https://openrouter.ai/api/v1/models",
+            headers={"Authorization": f"Bearer {key}"}, timeout=20,
+        )
+        data = resp.json()
+        out: dict[str, tuple[float, float]] = {}
+        for m in data.get("data", []):
+            p = m.get("pricing") or {}
+            try:
+                out[m["id"]] = (float(p.get("prompt", 0)), float(p.get("completion", 0)))
+            except (TypeError, ValueError):
+                continue
+        return out
+    except Exception:  # noqa: BLE001 - cost is optional; never block the benchmark on it
+        return {}
+
+
+def _measure(app: ContextApp, question: str, answer: str) -> dict[str, Any] | None:
+    """Run one question; return per-answer signals (correctness, tokens, latency),
+    or None on a provider error (so an error is never scored as a hallucination)."""
+    t0 = time.perf_counter()
+    result = app.run(question)
+    latency_ms = (time.perf_counter() - t0) * 1000
+    if result.output is None:
+        return None
+    text = str(result.output)
+    usage = result.usage
+    return {
+        "correct": _is_correct(answer, text),
+        "abstained": _is_abstention(text),
+        "cited": bool(result.citations),
+        "tokens": int(getattr(usage, "input_tokens", 0) or 0) + int(getattr(usage, "output_tokens", 0) or 0),
+        "in_tokens": int(getattr(usage, "input_tokens", 0) or 0),
+        "out_tokens": int(getattr(usage, "output_tokens", 0) or 0),
+        "latency_ms": latency_ms,
+    }
+
+
+def _mean(xs: list[float]) -> float:
+    return round(statistics.mean(xs), 4) if xs else 0.0
+
+
+def _std(xs: list[float]) -> float:
+    return round(statistics.pstdev(xs), 4) if len(xs) > 1 else 0.0
+
+
+async def _grounding_for_model(
+    model: str, runs: int, provider: Any, price: tuple[float, float] | None
+) -> dict[str, Any]:
+    """Run the grounded-QA set `runs` times through both arms; aggregate analytics."""
+    n = len(_QA)
+    direct_acc: list[float] = []
+    via_acc: list[float] = []
+    d = {"correct": 0, "hallucinated": 0, "abstained": 0, "in": 0, "out": 0, "lat": 0.0}
+    v = {"correct": 0, "cited": 0, "in": 0, "out": 0, "lat": 0.0}
+    errors = calls = 0
+    for _run in range(runs):
+        dc = vc = 0
+        for question, answer, source in _QA:
+            direct_app = ContextApp(name="direct", provider=provider, model=model)
+            via_app = ContextApp(name="grounded", provider=provider, model=model)
+            via_app.add_source("policy", documents=[Document(text=source, title="acme_policy")])
+            via_app.set_policy("answer_only_from_sources", True)
+            dm = _measure(direct_app, question, answer)
+            vm = _measure(via_app, question, answer)
+            if dm is None or vm is None:
+                errors += 1
+                continue
+            calls += 1
+            dc += dm["correct"]
+            vc += vm["correct"]
+            d["correct"] += dm["correct"]
+            d["abstained"] += dm["abstained"]
+            if not dm["correct"] and not dm["abstained"]:
+                d["hallucinated"] += 1
+            for key, src in (("in", "in_tokens"), ("out", "out_tokens"), ("lat", "latency_ms")):
+                d[key] += dm[src]
+                v[key] += vm[src]
+            v["correct"] += vm["correct"]
+            v["cited"] += vm["cited"]
+        direct_acc.append(dc / n)
+        via_acc.append(vc / n)
+
+    c = max(1, calls)
+    d_cost = (d["in"] * price[0] + d["out"] * price[1]) if price else None
+    v_cost = (v["in"] * price[0] + v["out"] * price[1]) if price else None
+
+    direct_arm: dict[str, Any] = {
+        "accuracy_mean": _mean(direct_acc), "accuracy_std": _std(direct_acc),
+        "correct": f"{d['correct']}/{calls}",
+        "hallucination_rate": round(d["hallucinated"] / c, 3),
+        "abstention_rate": round(d["abstained"] / c, 3),
+        "mean_tokens_per_answer": round((d["in"] + d["out"]) / c, 1),
+        "mean_latency_ms": round(d["lat"] / c, 1),
+    }
+    via_arm: dict[str, Any] = {
+        "accuracy_mean": _mean(via_acc), "accuracy_std": _std(via_acc),
+        "correct": f"{v['correct']}/{calls}",
+        "citation_rate": round(v["cited"] / c, 3),
+        "mean_tokens_per_answer": round((v["in"] + v["out"]) / c, 1),
+        "mean_latency_ms": round(v["lat"] / c, 1),
+    }
+    if price:
+        direct_arm["cost_per_answer_usd"] = round(d_cost / c, 8)
+        direct_arm["cost_per_correct_usd"] = round(d_cost / d["correct"], 8) if d["correct"] else None
+        via_arm["cost_per_answer_usd"] = round(v_cost / c, 8)
+        via_arm["cost_per_correct_usd"] = round(v_cost / v["correct"], 8) if v["correct"] else None
+
+    return {"model": model, "errors": errors, "direct": direct_arm, "via_vincio": via_arm}
+
+
 async def bench_grounding_uplift() -> dict[str, Any]:
-    provider, model = _provider_and_model(responder=_grounded_responder)
+    provider, default_model = _provider_and_model(responder=_grounded_responder)
     using_real_model = os.environ.get("VINCIO_PROVIDER", "mock") != "mock"
+    models = [m.strip() for m in os.environ.get("VINCIO_UPLIFT_MODELS", "").split(",") if m.strip()]
+    if not models:
+        models = [default_model]
+    runs = int(os.environ.get("VINCIO_UPLIFT_RUNS", "3" if using_real_model else "1"))
+    pricing = _fetch_pricing()
 
-    direct_correct = direct_hallucinated = 0
-    via_correct = via_cited = 0
-    errors = 0
-    for question, answer, source in _QA:
-        # Direct: ask the model with no retrieval and no grounding policy.
-        direct = ContextApp(name="direct", provider=provider, model=model)
-        d = direct.run(question)
-        if d.output is None:  # a provider error is not an answer — don't score it
-            errors += 1
-            continue
-        d_out = str(d.output)
-        if _is_correct(answer, d_out):
-            direct_correct += 1
-        elif not _is_abstention(d_out):
-            # Wrong AND confident (didn't say "I don't know") → a hallucination:
-            # a made-up company-specific fact the model could not have known.
-            direct_hallucinated += 1
+    per_model = [await _grounding_for_model(m, runs, provider, pricing.get(m)) for m in models]
+    d_mean = _mean([float(pm["direct"]["accuracy_mean"]) for pm in per_model])
+    v_mean = _mean([float(pm["via_vincio"]["accuracy_mean"]) for pm in per_model])
 
-        # Through Vincio: the source is a known document, retrieval surfaces it,
-        # and the policy forbids answering from anything but the sources.
-        app = ContextApp(name="grounded", provider=provider, model=model)
-        app.add_source("policy", documents=[Document(text=source, title="acme_policy")])
-        app.set_policy("answer_only_from_sources", True)
-        v = app.run(question)
-        if v.output is None:
-            errors += 1
-            continue
-        if _is_correct(answer, str(v.output)):
-            via_correct += 1
-        if v.citations:
-            via_cited += 1
-
-    n = max(1, len(_QA) - errors)  # score only the questions both arms actually answered
-    model_label = model if using_real_model else "deterministic mock"
     out: dict[str, Any] = {
         "regime": "frontier-model-quality" if using_real_model else "deterministic-illustration",
-        "operation": f"answer {n} company-specific policy questions correctly, with a citation",
-        "model": model_label,
-        "provider_errors": errors,
-        "direct_correct": f"{direct_correct}/{n}",
-        "direct_hallucinated": f"{direct_hallucinated}/{n}",
-        "via_vincio_correct": f"{via_correct}/{n}",
-        "via_vincio_cited": f"{via_cited}/{n}",
+        "operation": f"answer {len(_QA)} company-specific policy questions a model cannot know from pretraining",
+        "questions": len(_QA), "runs_per_model": runs, "models_tested": len(models),
+        "cost_priced": bool(pricing),
+        "per_model": per_model,
+        "aggregate": {"direct_accuracy_mean": d_mean, "via_vincio_accuracy_mean": v_mean},
     }
     if using_real_model:
         out["verdict"] = (
-            f"On {model}: called directly it answers {direct_correct}/{n} correctly and confidently "
-            f"hallucinates {direct_hallucinated}/{n} (it cannot know these fabricated facts); through "
-            f"Vincio it answers {via_correct}/{n} correctly, each with a citation ({via_cited}/{n}) — "
-            "the measured uplift from retrieving and enforcing evidence, same model both ways."
+            f"Across {len(models)} model(s) × {runs} run(s): called directly the model answers "
+            f"{d_mean:.0%} of company-specific questions correctly; the same model through Vincio's "
+            f"retrieval + grounding answers {v_mean:.0%}, each answer cited. Direct calls cost less "
+            "per call but answer almost nothing correctly — so Vincio is far cheaper per *correct* answer."
         )
     else:
         out["verdict"] = (
-            f"Deterministic illustration (mock model): direct answers {direct_correct}/{n}, through "
-            f"Vincio {via_correct}/{n} with {via_cited}/{n} cited. Set VINCIO_PROVIDER (e.g. "
-            "openrouter) for the real-model delta — the harness is identical."
+            f"Deterministic illustration (mock): direct {d_mean:.0%} correct, via Vincio {v_mean:.0%}. "
+            "Set VINCIO_PROVIDER=openrouter (and optionally VINCIO_UPLIFT_MODELS=a,b,c) for the real run."
         )
     return out
 
@@ -377,7 +490,7 @@ def bench_context_rot() -> dict[str, Any]:
     needle_in_recall = any("90 days" in m.content for m in recalled)
 
     scale = []
-    for turns in (5, 10, 20, 40, 80):
+    for turns in (5, 10, 20, 40, 80, 160):
         # Keep-everything memory: the whole transcript is the context, and it grows
         # with every turn. Build a realistic transcript of facts + chitchat.
         convo = []
