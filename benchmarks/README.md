@@ -40,11 +40,11 @@ wall-clock, are the portable signal):
 
 | Operation | Vincio | Competitor | Result |
 |---|---|---|--|
-| **BM25 query** @ 20k docs, selective queries | `BM25Index` | `rank_bm25` | **~32× faster**, 100% identical top-1 ranking |
-| **BM25 query** @ 2k docs | `BM25Index` | `rank_bm25` | **~18× faster**, identical ranking |
+| **BM25 query** @ 20k docs, selective queries | `BM25Index` | `rank_bm25` | **~30–40× faster**, 100% identical top-1 ranking |
+| **BM25 query** @ 2k docs | `BM25Index` | `rank_bm25` | **~18–22× faster**, identical ranking |
 | **Context assembly** — tokens sent for the same retrieved set | context compiler | LangChain `stuff` / LlamaIndex `compact` | **~60% fewer tokens**, answer retained (scores + dedups + budgets) |
 | **Text chunking** a 24k-word doc | `chunk_document` | LangChain / LlamaIndex splitters | **fastest**, and chunks carry provenance the string-splitters don't |
-| **Token counting** (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.5× faster**, zero-dependency, conservative (+~25%) |
+| **Token counting** (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.4–1.8× faster**, zero-dependency, conservative (+~25%) |
 | **Malformed-JSON recovery** | lenient parser | stdlib `json.loads` | **4/8 vs 1/8** (a dedicated repair lib recovers more, by guessing) |
 | **Template render w/ a missing var** | `PromptSpec.substitute` | `jinja2` | raises a typed error vs silently rendering empty |
 
@@ -113,7 +113,7 @@ command above to reproduce on your own key.
 | **ReliabilityBench (0.7)** | strict-schema closure for constrained decoding; mid-stream invalid detection + abort savings; self-correction recovery within cycle bounds; rail catch rate + false positives; signature prediction validity + optimizer variants; schema routing/classification accuracy | validate-at-end / unguarded output |
 | **CostBench** | evidence-token reduction from the context compiler | stuff-everything context |
 | **SecurityBench** | injection detection rate, false-positive rate, PII coverage | — |
-| **EvalBench** | metric agreement on labeled examples; red-team judging (guarded vs naive target, detector coverage); synthetic-data determinism and coverage; A/B significance machinery; session grouping; HTML viewer self-containment; trace→dataset; G-Eval calibration | naive target (85% attack success) |
+| **EvalBench** | metric agreement on labeled examples; red-team judging (guarded vs naive target, detector coverage); synthetic-data determinism and coverage; A/B significance machinery; session grouping; HTML viewer self-containment; trace→dataset; G-Eval calibration | an unguarded target where attacks succeed |
 | **AgenticEvalsBench (1.2)** | trajectory & tool-use metric agreement with labeled traces; trajectory eval flags runs that output-only eval passes; user-simulator determinism; drift sensitivity/specificity; Cohen's-κ judge-agreement tracking; (2.2) stateful-environment task-success oracle (verifies the end state, rejects policy violations) + deterministic replay of the nine benchmark adapters with hash-pinned task sets; judge ensembles whose disagreement is an uncertainty signal and whose calibration is κ-gated, Shapley causal regression attribution, and verdict-preserving adaptive sampling (`families.agentic_evals.environment_eval` / `families.agentic_evals.quality_frontier`) | output-only evaluation / no drift detector / un-attributed regressions |
 | **LoopBench (0.8)** | the closed loop end to end: promotion fires, decisions are deterministic, gates block regressions, the registry version is tagged + eval-linked; grounded auto-memory precision (grounded written, ungrounded excluded); retrieval-feedback improvement + gating; Pareto frontier correctness (dominated excluded, knee balanced); learned-budget promotion; guided-search budget bounds | ungated / single-score optimization |
 | **ProtocolsBench (1.1)** | MCP tool schema-fidelity + round-trip through the permissioned runtime + resource provenance (`origin: mcp:<server>`); A2A budget-bounded crew delegation terminates; Agent-Skill progressive-disclosure savings (off-topic bodies stay out of budget, index always present); (2.2) the governed agent fabric — allow-list-gated + audited resolution, capability discovery, AGNTCY/ACP roundtrip + discovery, and MCP-registry discovery with unlisted servers denied (`families.protocols.fabric`) | thin protocol adapter (no permissions/provenance/budget) |
@@ -167,7 +167,23 @@ python benchmarks/profile_stages.py --cprofile vincio.prof
 
 ## A note on claims
 
-Vincio's design targets are stated as improvement *hypotheses* (e.g. a 20–40%
-token reduction through context compression). VincioBench measures them — the
-report states whether each hypothesis was met on the benchmark corpus. Do not
-market numbers beyond what a benchmark run on your own data shows.
+Three honesty rules this suite holds itself to:
+
+1. **VincioBench numbers are mechanism checks, not performance claims.** Its
+   corpus is small and synthetic, built to exercise each engine, so its scores
+   *saturate* — e.g. recall@3 = 1.00 and 100% injection detection are perfect
+   scores on a handful of cases (retrieval n=5, the bundled attack corpus n=6)
+   against a naive in-house baseline. They prove the mechanism is intact and
+   guard against regressions; they are **not** evidence of real-world quality.
+   The load-bearing performance evidence is `competitive.py` (real libraries) and
+   `quality_uplift.py` (real models). Context compression measures ~81% against a
+   *stuff-everything strawman*; the figure to quote is the ~60% reduction vs. real
+   assemblers (LangChain/LlamaIndex) in the competitive suite — the 20–40% design
+   target is a conservative floor, not a ceiling.
+2. **Competitive ratios vary by machine and run** (BM25 ~30–40×, token counting
+   ~1.4–1.8× across runs here). The README quotes ranges; rerun on your hardware.
+3. **Real-model rows are a dated external run** (OpenRouter, June 2026) — they are
+   not reproducible from the bundled offline benchmarks, only from a live
+   provider key. The offline harness ships a deterministic illustration.
+
+Do not market numbers beyond what a benchmark run on your own data shows.

@@ -197,10 +197,10 @@ portable signal, not wall-clock):
 
 | Operation | Vincio | Competitor | Result |
 |---|---|---|---|
-| BM25 query @ **20k docs** | `BM25Index` | `rank_bm25` | **~32× faster**, identical top-1 ranking |
+| BM25 query @ **20k docs** | `BM25Index` | `rank_bm25` | **~30–40× faster**, identical top-1 ranking |
 | **Context assembly** — tokens sent for the same retrieved set | context compiler | LangChain `stuff` / LlamaIndex `compact` | **~60% fewer tokens**, answer retained |
 | Text chunking a 24k-word doc | `chunk_document` | LangChain / LlamaIndex splitters | **fastest**, chunks carry provenance |
-| Token counting (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.5× faster**, zero-dependency, conservative |
+| Token counting (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.4–1.8× faster**, zero-dependency, conservative |
 | Malformed-JSON recovery | lenient parser | stdlib `json.loads` | **4/8 vs 1/8** recovered |
 | Render with a missing variable | `PromptSpec.substitute` | `jinja2` | typed error vs. silently-empty render |
 
@@ -244,21 +244,18 @@ the same mechanism that sends ~60% fewer tokens for the same retrieved set, on e
 `VINCIO_PROVIDER=openrouter VINCIO_MODEL=openai/gpt-4o-mini OPENROUTER_API_KEY=… python
 benchmarks/quality_uplift.py`.
 
-### Mechanism benchmarks (VincioBench)
+### VincioBench — the internal regression suite
 
-[`vinciobench.py`](benchmarks/vinciobench.py) measures each Vincio mechanism against a naive in-house
-baseline, fully offline and deterministically. A sample of the bundled reference corpus:
-
-| What | Vincio | Naive baseline |
-|---|--:|--:|
-| Context compression — evidence tokens for the same task | **177** | 950 (stuff-everything) |
-| Malformed model outputs successfully parsed | **5 / 5** | 3 / 5 (`json.loads`) |
-| Prompt-injection detection rate / false positives | **100% / 0%** | — |
-| Retrieval recall@3 / MRR (known-answer corpus) | **1.00 / 1.00** | — |
-
-> **Honest by design.** These come from a small synthetic offline corpus to demonstrate the
-> mechanisms, not to be quoted as universal gains. Run `python benchmarks/vinciobench.py` against
-> your own corpus and trust only what it prints. See [`benchmarks/README.md`](benchmarks/README.md).
+[`vinciobench.py`](benchmarks/vinciobench.py) is the third suite, but it is **not a competitive
+claim** — it is the deterministic mechanism suite that gates CI. Its families assert that each engine
+still *works* on a bundled synthetic corpus (the context compiler reduces tokens, the injection
+detector fires, retrieval returns the known answer), so a regression fails the build. Because that
+corpus is small and built to exercise each mechanism, the scores saturate — perfect recall, full
+detection on a handful of cases against a naive baseline — which proves *the mechanism is intact*,
+not real-world performance. **The credible performance evidence is the two sections above** (real
+libraries, and real models). Run `python benchmarks/vinciobench.py` against your own corpus and trust
+only what it prints; [`benchmarks/README.md`](benchmarks/README.md) documents what each family
+measures and on what corpus size.
 
 ## How Vincio compares
 
