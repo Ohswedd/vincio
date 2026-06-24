@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import tomllib
 import warnings
+from pathlib import Path
 
 import pytest
 
@@ -25,6 +27,20 @@ def test_version_and_api_contract():
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package patch level.
     assert API_VERSION == "3.0"
+
+
+def test_package_version_matches_dunder_version():
+    """The built package version (pyproject) must match ``vincio.__version__``.
+
+    These two are bumped together every release; the build publishes the
+    ``pyproject`` version while the runtime reports ``__version__``, so a
+    divergence ships a package whose metadata lies about its contents (and, for a
+    stale bump, collides with an already-published file on PyPI). This guard fails
+    the build the moment they drift.
+    """
+    pyproject = Path(__file__).resolve().parent.parent / "pyproject.toml"
+    data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    assert data["project"]["version"] == vincio.__version__
 
 
 def test_public_api_is_stable_surface():
