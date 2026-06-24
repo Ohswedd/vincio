@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-3.34.0-B98B2E" alt="Vincio 3.34.0"></a>
+  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-4.0.0-B98B2E" alt="Vincio 4.0.0"></a>
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
@@ -290,8 +290,8 @@ for any engine directly. Everything below is implemented, tested offline, and do
 | **Plugins & ecosystem** | An entry-point **plugin contract** (`vincio plugins list`) so third-party providers, embedders, stores, connectors, chunkers, rerankers, judges, metrics, and packs register themselves on install, gated by a versioned plugin API; a signed, allow-list-gated, audited **`CommunityRegistry`** of opt-in domain packs and `SKILL.md` bundles (content-bound SHA-256 + HMAC/Ed25519 signatures, resolution as an audited access decision); and an **MCP-server marketplace bridge** (`app.add_mcp_from_registry`) that discovers a server from a registry, governs reachability, and lands its tools in the permissioned runtime in one call. |
 | **Use-case coverage & verticals** | Go from primitives to a working app in one file. **Vertical packs** (`healthcare` / `ediscovery` / `kyc` / `customer_support` / `code_review`) preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set in one `use_pack`, on top of the existing pack contract. A higher-level **`Assistant`** layer over `ContextApp` threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval — a chat product in a few lines. An end-to-end **`VoiceAgent`** wires a realtime session to the deep-research agent, the memory OS, and the rails, so a spoken assistant inherits the same grounding, budget, and audit guarantees. A **cookbook** of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) ships as runnable, offline-gated examples. |
 | **Integrations & DX** | LangChain + LlamaIndex + **Haystack + DSPy** interop (`vincio.interop`) for tools, retrievers, loaders, embedders, components, and compiled DSPy modules — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
-| **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a frozen public surface (`vincio.__all__`) with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
-| **A trustworthy surface** | The public API is held to the same bar as the internals. Every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url` from a completeness-gated, internationalizable [error catalog](docs/reference/errors.md). The package ships [`py.typed`](docs/reference/typing.md) with a CI-enforced `mypy --strict` ladder, and a docstring-coverage gate keeps every public symbol documented. `vincio.yaml` files migrate forward automatically (`vincio config migrate`, in-memory upgrade on load), and `vincio doctor` reports any deprecated API a project still uses — its replacement and removal version straight from `stability_of`. |
+| **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a public surface (`vincio.__all__`) **re-frozen for the 4.0 long-term-support major** and pinned mechanically against silent drift, with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
+| **A trustworthy surface** | The public API is held to the same bar as the internals. Every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url` from a completeness-gated, internationalizable [error catalog](docs/reference/errors.md). The package ships [`py.typed`](docs/reference/typing.md) with a CI-enforced `mypy --strict` ladder, and a docstring-coverage gate keeps every public symbol documented. `vincio.yaml` files migrate forward automatically (`vincio config migrate`, in-memory upgrade on load), `vincio doctor` reports any deprecated API a project still uses — its replacement and removal version straight from `stability_of` — and `vincio migrate <major>` is a static, `ast`-based codemod that rewrites a project's source for a major-version upgrade. |
 
 Every extension point — providers, metrics, chunkers, rerankers, judges, validators, tools — accepts
 your own implementation via a registry.
@@ -480,6 +480,7 @@ vincio init my-project --template rag  # scaffold config + app + golden set (min
 vincio config schema --output vincio.schema.json  # typed JSON Schema for editor completion
 vincio config migrate            # upgrade vincio.yaml to the current schema (--check for CI)
 vincio doctor                    # report deprecated-API usage and config schema drift
+vincio migrate 4.0               # codemod a project's source for a major-version upgrade
 vincio packs list                # opt-in domain packs (support/engineering/finance/legal)
 vincio tui                       # interactive inspector for runs, traces, and memory
 vincio run app.py --input "..."  # run an app
@@ -540,7 +541,8 @@ versioned event catalog. See [`AGENTS.md`](AGENTS.md) for the package layout and
 ## Roadmap
 
 Every subsystem above is implemented, tested offline, documented, and demonstrated by a runnable
-example. The public API is frozen under [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
+example. The platform is **feature-complete and in long-term support**: the public API is re-frozen
+for the **4.0 LTS major** under [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 with a mechanical [deprecation policy](docs/reference/stability.md); performance and quality targets
 are [published as SLOs](docs/reference/slo.md) and gated by VincioBench; the
 [threat model](docs/security/threat-model.md) is documented with offline audit-chain verification and
@@ -551,8 +553,8 @@ opt-in extra. Vincio adopts the ecosystem's standards — the MCP, A2A, and Agen
 the OWASP LLM / OWASP Agentic / NIST AI RMF / MITRE ATLAS governance frameworks — *in your process*; it
 never becomes a hosted service to do so.
 
-See **[ROADMAP.md](ROADMAP.md)** for what ships today, what is planned next, and what is intentionally
-out of scope.
+See **[ROADMAP.md](ROADMAP.md)** for the complete, finished plan and what is intentionally out of
+scope, and **[MIGRATION.md](MIGRATION.md)** for the clean 3.x → 4.0 upgrade.
 
 Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
 retention, tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own
@@ -595,7 +597,8 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [CLI](docs/reference/cli.md) · [config](docs/reference/config.md) ·
   [errors](docs/reference/errors.md) · [typing](docs/reference/typing.md) ·
   [API stability & deprecation policy](docs/reference/stability.md) ·
-  [performance & quality SLOs](docs/reference/slo.md)
+  [performance & quality SLOs](docs/reference/slo.md) ·
+  [4.0 migration guide](MIGRATION.md)
 - **Security & governance** — [threat model](docs/security/threat-model.md) ·
   [security policy](SECURITY.md) · [governance & compliance](docs/guides/governance.md) ·
   [differential privacy](docs/guides/differential-privacy.md)

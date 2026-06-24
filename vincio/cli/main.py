@@ -8,6 +8,7 @@ Commands::
     vincio config show
     vincio config migrate [vincio.yaml] [--check] [--dry-run]   # versioned schema upgrade
     vincio doctor [path] [--json]                               # deprecated-API & config drift
+    vincio migrate 4.0 [path] [--write] [--check]               # major-version source codemod
     vincio packs list
     vincio packs show support
     vincio plugins list
@@ -376,6 +377,73 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         print(f"      fix: {finding.remediation}")
     print(f"\n{len(report.findings)} issue(s) found")
     return 1
+
+
+def cmd_migrate(args: argparse.Namespace) -> int:
+    from .migrate import SUPPORTED_TARGETS, renames_for, run_migrate
+
+    target = args.target
+    if target not in SUPPORTED_TARGETS:
+        return _fail(
+            f"unknown migration target {target!r}; supported: {', '.join(SUPPORTED_TARGETS)}"
+        )
+
+    write = bool(args.write) and not args.check
+    report = run_migrate(args.path, target=target, write=write)
+
+    if args.json:
+        print(
+            json_dumps(
+                {
+                    "target": report.target,
+                    "ok": report.ok,
+                    "files_scanned": report.files_scanned,
+                    "files_written": report.files_written,
+                    "rewrites": [
+                        {
+                            "file": rw.file,
+                            "line": rw.line,
+                            "col": rw.col + 1,
+                            "old": rw.old,
+                            "new": rw.new,
+                        }
+                        for rw in report.rewrites
+                    ],
+                }
+            )
+        )
+        return 1 if (args.check and not report.ok) else 0
+
+    if report.ok:
+        # An empty rename table (e.g. the clean 3.x → 4.0 upgrade) or an
+        # already-migrated project both land here.
+        if not renames_for(target):
+            print(
+                f"vincio migrate {target}: no source changes are required for this "
+                f"release ({report.files_scanned} file(s) scanned)"
+            )
+        else:
+            print(
+                f"vincio migrate {target}: scanned {report.files_scanned} file(s); "
+                f"already migrated"
+            )
+        return 0
+
+    verb = "rewrote" if write else "would rewrite"
+    print(
+        f"vincio migrate {target}: {verb} {len(report.rewrites)} reference(s) "
+        f"across {report.files_affected} file(s)"
+    )
+    for rw in report.rewrites:
+        print(f"  {rw.describe()}")
+    if write:
+        print(f"\nwrote {report.files_written} file(s)")
+        return 0
+    if args.check:
+        print("\n(--check) migration available; no files written")
+        return 1
+    print("\nre-run with --write to apply these changes")
+    return 0
 
 
 def cmd_packs_list(args: argparse.Namespace) -> int:
@@ -1584,6 +1652,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_doctor.add_argument("path", nargs="?", default=".", help="project directory or file to scan")
     p_doctor.add_argument("--json", action="store_true", help="emit findings as JSON")
     p_doctor.set_defaults(fn=cmd_doctor)
+
+    from .migrate import SUPPORTED_TARGETS as _MIGRATE_TARGETS
+
+    p_migrate = sub.add_parser(
+        "migrate", help="rewrite a project's source for a major-version upgrade"
+    )
+    p_migrate.add_argument(
+        "target", choices=_MIGRATE_TARGETS, help="the major version to migrate to (e.g. 4.0)"
+    )
+    p_migrate.add_argument("path", nargs="?", default=".", help="project directory or file to scan")
+    p_migrate.add_argument(
+        "--write", action="store_true", help="apply the rewrites in place (default: dry run)"
+    )
+    p_migrate.add_argument(
+        "--check", action="store_true",
+        help="exit non-zero if a migration is available, without writing (CI gate)",
+    )
+    p_migrate.add_argument("--json", action="store_true", help="emit the plan as JSON")
+    p_migrate.set_defaults(fn=cmd_migrate)
 
     p_tui = sub.add_parser("tui", help="interactive inspector for runs, traces, and memory")
     p_tui.add_argument("--traces-dir", default=".vincio/traces")

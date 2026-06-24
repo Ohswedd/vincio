@@ -42,6 +42,7 @@ Currently graduated to `--strict`:
 | `vincio.core.config_migrations` | versioned config migrations |
 | `vincio._apiref` | docstring-driven API reference generator |
 | `vincio.cli.doctor` | the `vincio doctor` engine |
+| `vincio.cli.migrate` | the `vincio migrate` source codemod |
 
 This is a one-way ratchet: modules move onto the ladder, never off it.
 

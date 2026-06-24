@@ -23,10 +23,11 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "3.49.0"
+    assert vincio.__version__ == "4.0.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
-    # release, independent of the package patch level.
-    assert API_VERSION == "3.0"
+    # release, independent of the package patch level. 4.0 is the long-term-support
+    # major: the public surface re-frozen for the 4.x line.
+    assert API_VERSION == "4.0"
 
 
 def test_package_version_matches_dunder_version():
@@ -53,6 +54,28 @@ def test_public_api_is_stable_surface():
     # Every advertised name is actually importable from the package.
     for name in names:
         assert hasattr(vincio, name), name
+
+
+def test_public_surface_is_frozen():
+    """The live ``__all__`` must match the committed 4.0 LTS frozen surface.
+
+    This is the mechanical re-freeze: any addition, removal, or rename of a
+    public symbol must be a deliberate edit to ``docs/reference/public-surface.txt``
+    (regenerate with ``python -m vincio._apiref --freeze``). A SemVer-significant
+    surface change cannot land silently.
+    """
+    from vincio._apiref import load_frozen_surface, render_frozen_surface
+
+    frozen = load_frozen_surface()
+    live = sorted(vincio.__all__)
+    assert frozen == live, (
+        "public surface drifted from the frozen manifest; if intentional, "
+        "regenerate with `python -m vincio._apiref --freeze` and review the diff. "
+        f"added={sorted(set(live) - set(frozen))} removed={sorted(set(frozen) - set(live))}"
+    )
+    # The manifest renders deterministically from the live surface.
+    surface_path = Path(__file__).resolve().parent.parent / "docs" / "reference" / "public-surface.txt"
+    assert surface_path.read_text(encoding="utf-8") == render_frozen_surface()
 
 
 def test_deprecated_function_warns_and_forwards():
