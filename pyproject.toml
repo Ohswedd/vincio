@@ -148,6 +148,10 @@ module = [
   "vincio._apiref",
   "vincio.cli.doctor",
   "vincio.context.longhorizon",
+  "vincio.cultivate.skill",
+  "vincio.cultivate.search",
+  "vincio.cultivate.curriculum",
+  "vincio.cultivate.cultivator",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true

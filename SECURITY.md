@@ -226,6 +226,31 @@ significance swap gate, so the distillation flywheel cannot silently ship a
 regression. The self-editing memory OS exposes memory mutation only as
 permissioned, audited tools over the guarded write pipeline.
 
+**Autonomous skill acquisition** (`app.cultivate`) applies that same gated,
+reversible discipline to *open-ended capability growth* — an agent that proposes
+its own tasks and learns new skills, which is only safe if it cannot grow its way
+out of the guardrails or regress what it already does. Two invariants enforce
+this. **Stay-in-policy:** an `AutoCurriculum` gates **every proposed objective
+before it is ever attempted** — the instruction is screened by the same
+programmable rails that screen a user request, and the `GovernanceVerifier` must
+prove the app's controls (containment, residency, budget, erasure) still hold for
+the round; an objective a rail blocks, or any objective when the invariants do not
+hold, is pinpointed and **refused, never run**, and a failing verifier *fails
+closed*. The `CurriculumProposal` is content-bound, so `verify()` catches a refused
+objective slipped into the proposed set — the autonomous-growth analogue of the
+shield's prevention-by-construction. **Capability monotonicity:** a learned skill
+is distilled only from an oracle-**verified** trajectory and **promoted only
+through the same no-regression gate** a prompt or policy deploy clears (capability
+on a held-out frontier set must not fall), and a skill that stops paying its way is
+**demoted, never silently kept** — so growth is reversible rather than unbounded
+drift. A `LearnedSkill` is content-addressed and offline-verifiable (a tampered
+procedure is caught from the bytes), composition refuses a cycle or a missing
+sub-skill rather than executing a malformed procedure, and `CultivationResult.verify`
+re-derives the monotonicity and stay-in-policy verdicts from the bytes; every
+cultivation lands on the hash-chained audit log (`skill_cultivation`). It runs
+offline against deterministic environments — never a hosted trainer or a managed
+curriculum.
+
 **On-device adaptation** keeps the same discipline without a network round-trip.
 The `LocalLoRATrainer` fits a LoRA-class adapter **in your process** from the
 flywheel's grounded data — no training traffic leaves the machine, so an

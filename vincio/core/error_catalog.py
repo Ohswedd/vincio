@@ -683,6 +683,18 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "`status='breached'` (see `.breaches`); re-verify a record or book with "
             "the signer the parties used.",
         ),
+        # --- autonomous skill acquisition & open-ended curriculum ---
+        _entry(
+            "CULTIVATION_ERROR",
+            "Skill acquisition could not proceed",
+            "Give every `CurriculumTask` an `environment` factory before cultivating "
+            "it, set exactly one of `action`/`skill` on a `SkillStep`, and ensure a "
+            "skill's `requires` resolve to active library skills without a cycle. A "
+            "proposed objective the rails or the governance verifier reject does not "
+            "raise — it is pinpointed on the `CurriculumProposal` (`.refused`) and "
+            "never attempted; re-verify a `LearnedSkill`, `LearnedSkillLibrary`, or "
+            "`CultivationResult` with its own `verify()`.",
+        ),
     )
 }
 

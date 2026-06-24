@@ -4,6 +4,51 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.48.0] - 2026-06-24
+
+Autonomous skill acquisition & open-ended curriculum. The closed self-improvement loop, RLVR, and the distillation
+flywheel make an agent *better at known tasks*; this release adds the apex of that arc — **open-ended capability growth**.
+An agent proposes its own tasks at the edge of its competence, distills successful trajectories into a reusable, versioned
+skill library, and bootstraps (Voyager / ADAS-shaped) under the *same* no-regression gate a promotion already clears, so
+growth is safe and reversible rather than unbounded drift, and the rails + the governance verifier gate every proposed
+objective so the autonomy stays inside the guardrails. Entirely additive and backward-compatible — `API_VERSION` stays
+`3.0`, the existing surface is unchanged, no new dependency, and the whole theme runs offline and deterministically against
+the reference environments.
+
+### Added
+
+- **Reusable, content-addressed skill library (`vincio.cultivate`).** A `LearnedSkill` is a named, typed, tool-using
+  procedure distilled from a successful trajectory — an objective, a precondition, an ordered list of `SkillStep`s (each a
+  primitive `EnvAction` **or** a call to an existing skill, so skills **compose**), a verifier, and `SkillProvenance`. A
+  `LearnedSkillLibrary` is content-addressed: a byte-for-byte-duplicate procedure **deduplicates**, a changed procedure
+  under an existing name **versions**, `compose()` flattens a procedure (refusing a cycle or a missing sub-skill), a skill
+  is retrieved like memory and tools (`relevant` / `evidence_for`, via a `to_skill()` projection onto the same
+  progressive-disclosure path as `vincio.skills.Skill`), and the whole library is offline-verifiable (`verify()` recomputes
+  every skill's content hash; `library_hash` binds the active set; a tampered procedure is caught from the bytes). This is
+  distinct from `vincio.skills.SkillLibrary`, which holds human-authored `SKILL.md` knowledge.
+- **Self-proposed, bounded curriculum.** An `AutoCurriculum` proposes the next task at the **frontier of current
+  competence** — solvable by a bounded, library-composing test-time search (`SkillSearch`) but not yet by retrieving an
+  existing skill — and **gates every proposed objective before it is attempted**: the instruction is screened by the
+  programmable `RailEngine` and the `GovernanceVerifier` must prove the app's controls hold, so an unsafe or out-of-policy
+  objective is pinpointed and refused (a `CurriculumProposal` whose content hash catches a refused objective relabelled as
+  proposed). `library_capability` measures the fraction of a held-out frontier set the library solves by applying a known
+  skill — the monotonic quantity the gate protects.
+- **The cultivation loop (`app.cultivate`).** `app.cultivate(curriculum, *, library=None, held_out=None, cycles=3,
+  rails=None, governance=None, min_capability_gain=0.0, prune=True, record=True)` runs propose → attempt → verify →
+  distill → promote across cycles. A winning, oracle-verified trajectory is distilled into a `LearnedSkill` and **promoted
+  only through the same `no_regression_gate`** a prompt or policy deploy clears (capability on the held-out set must not
+  fall, surfaced as the same `CanaryVerdict`); a skill that stops paying its way is **demoted, never silently kept**.
+  Returns a content-bound `CultivationResult` whose `verify()` re-derives the monotonicity and stay-in-policy verdicts from
+  the bytes, with the grown library on `result.library`; every cultivation lands on the hash-chained audit log
+  (`skill_cultivation`) and the event bus (`cultivation.completed`). A `Cultivator` and a free `cultivate(...)` function
+  expose the same loop without an app. New `CultivationError` for a tampered or malformed skill / curriculum.
+- **Benchmark, SLOs, example & docs.** A `skill_acquisition` VincioBench family gates capability monotonicity (a full
+  cultivation run ends at least as capable as it began, composes learned skills, demotes dead weight, and catches a
+  tampered capability number) and stay-in-policy safety (a rail-blocked or governance-failing objective is refused and
+  never attempted), held by a capability-monotonicity SLO and a stay-in-policy safety SLO. New runnable example
+  `examples/92_skill_acquisition.py`, a [skill-acquisition guide](docs/guides/skill-acquisition.md), and synchronized
+  README / SECURITY / llms.txt / API reference / ROADMAP.
+
 ## [3.47.0] - 2026-06-24
 
 Verified reasoning & neuro-symbolic certificates. The platform graded outputs with judges, oracles, and a governance

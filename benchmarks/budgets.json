@@ -2103,6 +2103,30 @@
     },
     "families.verified_reasoning.tamper_caught": {
       "eq": true
+    },
+    "families.skill_acquisition.capability_monotonicity": {
+      "eq": true
+    },
+    "families.skill_acquisition.stay_in_policy_safety": {
+      "eq": true
+    },
+    "families.skill_acquisition.governance_gates": {
+      "eq": true
+    },
+    "families.skill_acquisition.skill_composes": {
+      "eq": true
+    },
+    "families.skill_acquisition.skill_dedup_version": {
+      "eq": true
+    },
+    "families.skill_acquisition.tamper_caught": {
+      "eq": true
+    },
+    "families.skill_acquisition.dead_weight_demoted": {
+      "eq": true
+    },
+    "families.skill_acquisition.cultivation_audited": {
+      "eq": true
     }
   }
 }

@@ -547,6 +547,35 @@ app.run("export button 500s").output.label
   behind `vincio[verify]`. Offline, deterministic. See the
   [verified-reasoning guide](docs/guides/verified-reasoning.md).
 
+- **Autonomous skill acquisition & open-ended curriculum.** `from vincio import LearnedSkill,
+  LearnedSkillLibrary, SkillProvenance, SkillStep, CurriculumTask, FrontierEstimate,
+  CurriculumProposal, AutoCurriculum, SkillSearch, Solution, library_capability, Cultivator,
+  CultivationResult, CycleReport` (also `vincio.cultivate`, plus a free `cultivate(...)`). The
+  apex of the self-improvement arc: an agent that **grows its own capability** safely. This is
+  distinct from `vincio.skills.SkillLibrary` (human-authored `SKILL.md` knowledge); a
+  `LearnedSkill` is *acquired* by the agent and `to_skill()`-projects onto the same retrieval
+  path. `app.cultivate(curriculum, *, library=None, held_out=None, cycles=3, rails=None,
+  governance=None, min_capability_gain=0.0, prune=True, record=True)` runs propose → attempt →
+  verify → distill → promote across cycles. An `AutoCurriculum(tasks, *, rails=, governance=,
+  world_model=, search=, max_tasks=4)` proposes the next task at the **frontier of current
+  competence** (solvable by a bounded, library-composing `SkillSearch`, not yet by retrieving a
+  known skill) and **gates every objective before it is attempted** — the rails screen the
+  instruction and the `GovernanceVerifier` must prove the app's controls hold, else the
+  objective (or the whole round) is refused; a `CurriculumProposal.verify()` catches a refused
+  objective relabelled as proposed (`stayed_in_policy`). A winning, oracle-verified trajectory
+  is distilled into a `LearnedSkill` (objective, precondition, ordered `SkillStep`s — each a
+  primitive `EnvAction` **or** a sub-skill call, so skills **compose** via `compose()`),
+  verifier, `SkillProvenance`. A `LearnedSkillLibrary` is content-addressed (`add` dedups a
+  byte-identical procedure, versions a changed one), retrieved like memory/tools (`relevant` /
+  `evidence_for`), and offline-verifiable (`verify()` / `library_hash`; a tampered procedure is
+  caught). A skill is promoted **only through the same `no_regression_gate`** a deploy clears
+  (capability — `library_capability` over a held-out frontier set — must not fall, a
+  `CanaryVerdict`), and a dead-weight skill is demoted. `CultivationResult.verify()` re-derives
+  the monotonicity and stay-in-policy verdicts from the bytes; every run lands on the audit
+  chain (`skill_cultivation`) and event bus (`cultivation.completed`). Error: `CultivationError`.
+  No new dependency; offline, deterministic against the reference environments. See the
+  [skill-acquisition guide](docs/guides/skill-acquisition.md).
+
 ## Use-case coverage: verticals, Assistant, voice
 
 - **Vertical packs.** `app.use_pack("healthcare|ediscovery|kyc|customer_support|
@@ -996,6 +1025,16 @@ app.run("export button 500s").output.label
   tool pre/post-conditions (`ToolContractError`). VincioBench `verified_reasoning` family
   + 2 SLOs (certificate-soundness, shield-prevents-violation); optional SMT/CAS behind
   `vincio[verify]`. See the [verified-reasoning guide](docs/guides/verified-reasoning.md).
+- **Autonomous skill acquisition (gated open-ended growth).** `app.cultivate(curriculum, ...)`
+  → `CultivationResult` runs an `AutoCurriculum` through propose → attempt → verify → distill →
+  promote: it proposes only frontier tasks, **gates every objective through the rails + the
+  `GovernanceVerifier` before attempting** (an unsafe/out-of-policy task is refused, never run —
+  `stayed_in_policy`), distills oracle-verified trajectories into a content-addressed, composable
+  `LearnedSkillLibrary`, and **promotes a skill only through the same `no_regression_gate`** a
+  deploy clears (capability never falls; dead weight is demoted). `CultivationResult.verify()`
+  re-derives monotonicity and stay-in-policy from the bytes; audited as `skill_cultivation`.
+  VincioBench `skill_acquisition` family + 2 SLOs (capability-monotonicity, stay-in-policy-safety);
+  no new dependency. See the [skill-acquisition guide](docs/guides/skill-acquisition.md).
 - **Compliance evidence (generated, no hosted dependency).** `app.model_card()` /
   `system_card()` (`CardFormat` vincio|open_model_card|ai_card);
   `app.compliance_report()` / `ComplianceMapper().map(redteam=, eval_report=,
