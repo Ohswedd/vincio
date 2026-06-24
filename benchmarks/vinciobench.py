@@ -9447,7 +9447,11 @@ async def bench_cross_org_conformance() -> dict[str, Any]:
         AgentCard(
             name="vendor",
             description="vendor — performs transcription",
-            skills=[AgentSkill(id="run", name="run", description="transcription", tags=["transcription"])],
+            skills=[
+                AgentSkill(
+                    id="run", name="run", description="transcription", tags=["transcription"]
+                )
+            ],
         )
     )
     saga = Saga(name="fulfil").step(
@@ -9597,7 +9601,9 @@ async def bench_computer_use() -> dict[str, Any]:
         if s["screen"] == "cart" and not s["fields"].get(address):
             return UIAction(kind="type", selector=address, text="1 Main St")
         if s["screen"] == "cart":
-            return UIAction(kind="click", selector="role=button[name='Checkout']", expect_change=True)
+            return UIAction(
+                kind="click", selector="role=button[name='Checkout']", expect_change=True
+            )
         if s["screen"] == "review" and not s["flags"].get("order_placed"):
             return UIAction(kind="click", selector="role=button[name='Place order']")
         return None
@@ -9607,7 +9613,9 @@ async def bench_computer_use() -> dict[str, Any]:
 
     # Grounding is by a stable selector, and every action chains onto the audit log.
     first = run.outcomes[0]
-    grounded_stable = bool(first.action.selector == address and run.trajectory.source == "computer_use")
+    grounded_stable = bool(
+        first.action.selector == address and run.trajectory.source == "computer_use"
+    )
     audit_continuous = bool(
         len(app.audit.query(action="computer_use_session")) == 1
         and len(app.audit.query(action="computer_action")) >= 3
@@ -9625,7 +9633,11 @@ async def bench_computer_use() -> dict[str, Any]:
 
     def reckless(state: Any) -> UIAction | None:
         attempts["n"] += 1
-        return UIAction(kind="click", selector="role=button[name='Delete account']") if attempts["n"] == 1 else None
+        return (
+            UIAction(kind="click", selector="role=button[name='Delete account']")
+            if attempts["n"] == 1
+            else None
+        )
 
     reckless_run = renv.run(reckless, rtask)
     destructive_gated = bool(any(o.gated for o in reckless_run.outcomes))
@@ -9639,8 +9651,12 @@ async def bench_computer_use() -> dict[str, Any]:
     async def _diverge_and_undo() -> tuple[bool, bool]:
         before = (await uenv.observe()).digest
         o = await uenv.act(
-            UIAction(kind="type", selector=address, text="x",
-                     expect=[StateCheck(name="bogus", path="flags.never", op="truthy")])
+            UIAction(
+                kind="type",
+                selector=address,
+                text="x",
+                expect=[StateCheck(name="bogus", path="flags.never", op="truthy")],
+            )
         )
         return bool(o.diverged and o.undone), bool(o.after_digest == before)
 
@@ -9649,7 +9665,9 @@ async def bench_computer_use() -> dict[str, Any]:
 
     # Out-of-scope navigation gated (run directly, no dead branches).
     async def _offscope() -> bool:
-        senv = app.computer_use(screen=make_web_checkout()[0], policy=ActionPolicy(allow_urls=["https://shop.test"]))
+        senv = app.computer_use(
+            screen=make_web_checkout()[0], policy=ActionPolicy(allow_urls=["https://shop.test"])
+        )
         o = await senv.act(UIAction(kind="navigate", url="https://evil.test/x"))
         return bool(o.gated and not o.performed)
 
@@ -9744,7 +9762,9 @@ async def bench_identity() -> dict[str, Any]:
 
     # An over-reaching sub-delegation (adds a capability the parent never had) is
     # refused from the bytes — the core attenuation invariant.
-    forged = root.delegate(agent, sub, grant=Grant(capabilities=["retrieve", "write"], budget_usd=40.0))
+    forged = root.delegate(
+        agent, sub, grant=Grant(capabilities=["retrieve", "write"], budget_usd=40.0)
+    )
     forged_chain = DelegationChain(links=[root, forged])
     amplification_refused = not forged_chain.verify(root_issuer=principal.did).valid
 
@@ -9764,8 +9784,12 @@ async def bench_identity() -> dict[str, Any]:
 
     # -- Verifiable credentials fold into admission ------------------------
     app.identity("org-acme", use=True)
-    cred = app.issue_credential(agent, {"admitted_capability": "retrieve", "operated_by": "org-acme"})
-    credential_verifies = cred.verify().valid and cred.admits("retrieve") and not cred.admits("write")
+    cred = app.issue_credential(
+        agent, {"admitted_capability": "retrieve", "operated_by": "org-acme"}
+    )
+    credential_verifies = (
+        cred.verify().valid and cred.admits("retrieve") and not cred.admits("write")
+    )
 
     # The Ed25519 kernel is RFC 8032 conformant (vector 2, TEST with msg 0x72).
     rfc_seed = bytes.fromhex("4ccd089b28ff96da9db6c346ec114e0f5b8a319f35aba624da8cf6ed4fb8a6fb")
@@ -9826,18 +9850,33 @@ async def bench_verified_reasoning() -> dict[str, Any]:
     # -- Certificate soundness ---------------------------------------------
     cv = CompositeVerifier(default_verifiers())
     refutes_bad_arithmetic = cv.certify("So 2 + 2 = 5.").status == "refuted"
-    verifies_good_arithmetic = cv.certify("We get 12 * 3 = 36 and 10% of 200 is 20.").status == "verified"
-    refutes_dimension = CompositeVerifier([UnitVerifier()]).certify("5 km = 5000 kg").status == "refuted"
+    verifies_good_arithmetic = (
+        cv.certify("We get 12 * 3 = 36 and 10% of 200 is 20.").status == "verified"
+    )
+    refutes_dimension = (
+        CompositeVerifier([UnitVerifier()]).certify("5 km = 5000 kg").status == "refuted"
+    )
     refutes_bad_date = cv.certify("from 2024-01-01 to 2024-01-08 is 5 days").status == "refuted"
     constraint_ctx = VerificationContext(
         constraints=[Constraint.compare("x", "<=", 10), Constraint.compare("x", ">", 0)]
     )
-    refutes_constraint = CompositeVerifier([ConstraintVerifier()]).certify(
-        {"x": 50}, constraint_ctx).status == "refuted"
+    refutes_constraint = (
+        CompositeVerifier([ConstraintVerifier()]).certify({"x": 50}, constraint_ctx).status
+        == "refuted"
+    )
     evidence = [EvidenceItem(source_id="D1", text="The refund window is 30 days.")]
-    refutes_uncited = CompositeVerifier(
-        [__import__("vincio.verify.kernels", fromlist=["CitationVerifier"]).CitationVerifier(evidence)]
-    ).certify("The refund window is 90 days.").status == "refuted"
+    refutes_uncited = (
+        CompositeVerifier(
+            [
+                __import__("vincio.verify.kernels", fromlist=["CitationVerifier"]).CitationVerifier(
+                    evidence
+                )
+            ]
+        )
+        .certify("The refund window is 90 days.")
+        .status
+        == "refuted"
+    )
     # Content-binding: a flipped verdict is caught from the bytes.
     cert = CompositeVerifier([ArithmeticVerifier()]).certify("2 + 2 = 5")
     verify_before_tamper = cert.verify()
@@ -9871,17 +9910,22 @@ async def bench_verified_reasoning() -> dict[str, Any]:
 
     sapp.add_tool(delete_account, side_effects="write")
     sapp.shield(
-        BehaviorSpec(name="no-unapproved-write", forbid=[EventPattern(
-            kind="tool_call", where={"side_effects": "write", "approved": False})]),
+        BehaviorSpec(
+            name="no-unapproved-write",
+            forbid=[
+                EventPattern(kind="tool_call", where={"side_effects": "write", "approved": False})
+            ],
+        ),
         use=True,
     )
     blocked = await sapp.tool_runtime.execute(
-        ToolCall(tool_name="delete_account", arguments={"account_id": "a1"}))
+        ToolCall(tool_name="delete_account", arguments={"account_id": "a1"})
+    )
     allowed = await sapp.tool_runtime.execute(
-        ToolCall(tool_name="delete_account", arguments={"account_id": "a1"}), approved=True)
+        ToolCall(tool_name="delete_account", arguments={"account_id": "a1"}), approved=True
+    )
     shield_prevents_violation = bool(
-        blocked.status == "denied" and "shield" in (blocked.error or "")
-        and allowed.status == "ok"
+        blocked.status == "denied" and "shield" in (blocked.error or "") and allowed.status == "ok"
     )
 
     # -- Verified tool contracts -------------------------------------------
@@ -9891,13 +9935,15 @@ async def bench_verified_reasoning() -> dict[str, Any]:
         return {"amount": amount}
 
     capp.add_tool(
-        charge, side_effects="write",
+        charge,
+        side_effects="write",
         contract=ToolContract().requires_that("amount > 0", lambda a: a["amount"] > 0),
     )
     contract_enforced = False
     try:
         await capp.tool_runtime.execute(
-            ToolCall(tool_name="charge", arguments={"amount": -1}), approved=True)
+            ToolCall(tool_name="charge", arguments={"amount": -1}), approved=True
+        )
     except ToolContractError:
         contract_enforced = True
 
@@ -9944,8 +9990,8 @@ async def bench_skill_acquisition() -> dict[str, Any]:
     from vincio import (
         AutoCurriculum,
         ContextApp,
-        CurriculumTask,
         Cultivator,
+        CurriculumTask,
         LearnedSkill,
         LearnedSkillLibrary,
         SkillStep,
@@ -9954,7 +10000,9 @@ async def bench_skill_acquisition() -> dict[str, Any]:
     from vincio.evals.environment import EnvAction, make_counter_environment, make_vault_environment
     from vincio.providers import MockProvider
 
-    def counter(target: int, *, id: str | None = None, objective: str | None = None) -> CurriculumTask:
+    def counter(
+        target: int, *, id: str | None = None, objective: str | None = None
+    ) -> CurriculumTask:
         return CurriculumTask(
             id=id or f"counter-{target}",
             objective=objective or f"increment counter to {target}",
@@ -9992,7 +10040,9 @@ async def bench_skill_acquisition() -> dict[str, Any]:
         environment=lambda: make_counter_environment(target=2),
     )
     res2 = app.cultivate(AutoCurriculum([counter(2, id="ok"), unsafe]), cycles=1)
-    rails_refused = [r["task_id"] for c in res2.cycles for r in c.proposal.refused if r["stage"] == "rails"]
+    rails_refused = [
+        r["task_id"] for c in res2.cycles for r in c.proposal.refused if r["stage"] == "rails"
+    ]
     attempted = [t for c in res2.cycles for t in c.attempted]
     stay_in_policy_safety = bool(
         "unsafe" in rails_refused and "unsafe" not in attempted and res2.stayed_in_policy
@@ -10024,16 +10074,25 @@ async def bench_skill_acquisition() -> dict[str, Any]:
 
     # -- Content-addressed dedup & versioning ------------------------------
     lib3 = LearnedSkillLibrary()
-    a = lib3.add(LearnedSkill(name="s", objective="o", steps=[SkillStep(action=EnvAction(tool="increment"))]))
-    b = lib3.add(LearnedSkill(name="s", objective="o", steps=[SkillStep(action=EnvAction(tool="increment"))]))
+    a = lib3.add(
+        LearnedSkill(name="s", objective="o", steps=[SkillStep(action=EnvAction(tool="increment"))])
+    )
+    b = lib3.add(
+        LearnedSkill(name="s", objective="o", steps=[SkillStep(action=EnvAction(tool="increment"))])
+    )
     c = lib3.add(
         LearnedSkill(
             name="s",
             objective="o2",
-            steps=[SkillStep(action=EnvAction(tool="increment")), SkillStep(action=EnvAction(tool="increment"))],
+            steps=[
+                SkillStep(action=EnvAction(tool="increment")),
+                SkillStep(action=EnvAction(tool="increment")),
+            ],
         )
     )
-    skill_dedup_version = bool(a.skill_hash == b.skill_hash and len(lib3.all_versions("s")) == 2 and c.version == 2)
+    skill_dedup_version = bool(
+        a.skill_hash == b.skill_hash and len(lib3.all_versions("s")) == 2 and c.version == 2
+    )
 
     # -- Tampered procedure caught from the bytes --------------------------
     victim = lib2.skills[0]
@@ -10044,9 +10103,15 @@ async def bench_skill_acquisition() -> dict[str, Any]:
     # -- Dead-weight skill demoted -----------------------------------------
     lib4 = LearnedSkillLibrary()
     lib4.add(
-        LearnedSkill(name="useless", objective="does nothing useful", steps=[SkillStep(action=EnvAction(tool="reset_counter"))])
+        LearnedSkill(
+            name="useless",
+            objective="does nothing useful",
+            steps=[SkillStep(action=EnvAction(tool="reset_counter"))],
+        )
     )
-    dres = Cultivator(curriculum=AutoCurriculum([counter(3)]), library=lib4, held_out=[counter(3)]).run(cycles=1)
+    dres = Cultivator(
+        curriculum=AutoCurriculum([counter(3)]), library=lib4, held_out=[counter(3)]
+    ).run(cycles=1)
     dead_weight_demoted = bool(
         "useless" in [d["name"] for c in dres.cycles for d in c.demoted] and "useless" not in lib4
     )
@@ -10062,6 +10127,146 @@ async def bench_skill_acquisition() -> dict[str, Any]:
         "tamper_caught": tamper_caught,
         "dead_weight_demoted": dead_weight_demoted,
         "cultivation_audited": cultivation_audited,
+    }
+
+
+async def bench_assurance() -> dict[str, Any]:
+    """AssuranceBench: one continuously-checked safety argument over the platform.
+
+    The platform *produces* the evidence a production system is judged on — eval
+    gates, the governance verifier, reasoning certificates, the signed audit chain,
+    SBOM / SLSA provenance; this family holds the capstone that **assembles that
+    evidence into one structured, machine-checkable argument** and keeps it valid as
+    the system changes. **Assurance soundness:** an ``app.assurance_case`` is an
+    argument tree whose leaves are discharged by that existing evidence, bound by
+    hash, so the whole case verifies offline — and **no claim stands on missing or
+    stale evidence**: a leaf whose required evidence is absent, expired past its
+    freshness horizon, or falsified is pinpointed and the case does not hold, while a
+    fully-discharged case does. **Assurance regression:** the case is re-checked on
+    every change and ``assurance_regression_gate`` turns a claim that *held* before
+    but is now falsified into a **build failure**. Plus a signed incident +
+    safety-case learning loop and a portable, offline-verifiable certification report.
+    Deterministic and offline."""
+    from datetime import timedelta
+
+    from vincio import (
+        Claim,
+        ContextApp,
+        Evidence,
+        Incident,
+        VincioConfig,
+        assurance_regression_gate,
+    )
+    from vincio.core.utils import utcnow
+    from vincio.providers import MockProvider
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="certify", provider=MockProvider(default_text="ok"), config=cfg)
+
+    def gov_ev(**kw: Any) -> Evidence:
+        return Evidence.from_governance(app.verify_governance(record=False), **kw)
+
+    # -- Assurance soundness ------------------------------------------------
+    full = app.assurance_case(
+        "The assistant is fit for production",
+        subclaims=[
+            Claim(id="governance", statement="Controls hold", evidence=[gov_ev()]),
+            Claim(id="quality", statement="Quality bar met", evidence=[Evidence.from_gate(True)]),
+        ],
+    )
+    full_report = full.check()
+    full_holds = bool(full_report.holds and full_report.verify() and full.verify())
+
+    missing = app.assurance_case(
+        "needs a gate",
+        subclaims=[Claim(id="quality", statement="q", required_evidence=["eval_gate"])],
+    )
+    missing_report = missing.check()
+    missing_pinpointed = bool(
+        not missing_report.holds and "quality:eval_gate" in missing_report.missing
+    )
+
+    stale = app.assurance_case(
+        "stale proof",
+        subclaims=[
+            Claim(
+                id="governance",
+                statement="controls",
+                evidence=[gov_ev(horizon_days=30, recorded_at=utcnow() - timedelta(days=40))],
+            )
+        ],
+    )
+    stale_report = stale.check()
+    stale_pinpointed = bool(
+        not stale_report.holds and "governance:governance_proof" in stale_report.stale
+    )
+
+    falsified = app.assurance_case(
+        "failing gate",
+        subclaims=[Claim(id="quality", statement="q", evidence=[Evidence.from_gate(False)])],
+    )
+    falsified_holds = falsified.check().holds
+
+    assurance_soundness = bool(
+        full_holds and missing_pinpointed and stale_pinpointed and not falsified_holds
+    )
+
+    # -- Assurance regression -----------------------------------------------
+    before = full.check()
+    # Re-check after a change that falsifies a previously-discharged claim.
+    full.goal.find("quality").evidence[0].supports = False
+    after = full.check()
+    passed, _ = assurance_regression_gate(before, after)
+    no_regression_passes, _ = assurance_regression_gate(before, before)
+    assurance_regression = bool(not passed and no_regression_passes and not after.holds)
+
+    # -- Supporting properties ----------------------------------------------
+    ev = gov_ev()
+    evidence_bound = bool(ev.verify() and ev.source_hash and ev.supports)
+
+    stale_evidence_pinpointed = stale_pinpointed
+
+    learn = app.assurance_case(
+        "learns",
+        subclaims=[Claim(id="reasoning", statement="r", evidence=[Evidence.from_gate(True)])],
+    )
+    learn.learn_from(
+        Incident(id="inc", falsified_claim="reasoning", required_evidence=["eval_gate"]).seal()
+    )
+    learned_demands = not learn.check().holds
+    remediation = learn.goal.find("reasoning").subclaims[-1]
+    learn.discharge(remediation.id, Evidence.from_gate(True))
+    incident_learning = bool(learned_demands and learn.check().holds)
+
+    cert = app.certify(
+        app.assurance_case(
+            "ship", subclaims=[Claim(id="q", statement="q", evidence=[Evidence.from_gate(True)])]
+        )
+    )
+    forged = cert.model_copy(deep=True)
+    forged.certified = False
+    certification_portable = bool(cert.certified and cert.verify() and not forged.verify())
+
+    flip = Evidence.from_gate(True)
+    before_flip = flip.verify()
+    flip.supports = False
+    tamper_caught = bool(before_flip and not flip.verify())
+
+    assurance_audited = bool(
+        any(e.action == "assurance_case" for e in app.audit.entries)
+        and any(e.action == "assurance_certification" for e in app.audit.entries)
+    )
+
+    return {
+        "assurance_soundness": assurance_soundness,
+        "assurance_regression": assurance_regression,
+        "evidence_bound": evidence_bound,
+        "stale_evidence_pinpointed": stale_evidence_pinpointed,
+        "incident_learning": incident_learning,
+        "certification_portable": certification_portable,
+        "tamper_caught": tamper_caught,
+        "assurance_audited": assurance_audited,
     }
 
 
@@ -10113,6 +10318,7 @@ FAMILIES = {
     "identity": bench_identity,
     "verified_reasoning": bench_verified_reasoning,
     "skill_acquisition": bench_skill_acquisition,
+    "assurance": bench_assurance,
     "breaking_2_0": bench_breaking_2_0,
 }
 

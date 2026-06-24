@@ -4,6 +4,51 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.49.0] - 2026-06-24
+
+Continuous assurance cases & production certification — the platform-completion capstone. The platform already *produces*
+the evidence a production AI system is judged on — eval and regression gates, the governance-invariant verifier, reasoning
+certificates and runtime monitors, identity and delegation provenance, the signed audit chain, C2PA media provenance, and
+SBOM / SLSA build attestations. This release adds the capstone that **assembles that evidence into one structured,
+machine-checkable argument** that the system is fit for purpose, and keeps that argument **continuously valid as the system
+changes** — the assurance-case discipline (GSN / CAE) the safety and regulatory frontier demands. With it, every subsystem
+composes into one continuously-verified safety argument and the platform is **production-complete**. Entirely additive and
+backward-compatible — `API_VERSION` stays `3.0`, the existing surface is unchanged, no new dependency, and the whole theme
+runs offline and deterministically.
+
+### Added
+
+- **Structured, content-bound assurance case (`vincio.assurance`).** An `AssuranceCase` (`app.assurance_case`) is an
+  argument tree: a top `Claim` (*this app is fit for purpose X under context Y*) decomposed into sub-claims (combined `all`
+  or `any`), each leaf discharged by `Evidence` the platform **already emits** — `Evidence.from_gate` (a `CanaryVerdict` /
+  eval gate), `from_governance` (a `GovernanceVerifier` report), `from_certificate` (a reasoning `Certificate`),
+  `from_audit` (an `AuditLog` segment), `from_identity` (an identity / delegation chain), `from_sbom` (an `AIBOM`), and
+  `asserted` (external) — each **bound by hash** and carrying a freshness `horizon_days`. The whole case `verify`s offline
+  (a tampered argument tree is caught), and `case.check(as_of=)` re-derives the verdict into an `AssuranceReport` that
+  **pinpoints** every claim whose evidence is `missing`, `stale`, or `falsified` — no claim stands on missing or stale
+  evidence.
+- **Continuous assurance & the regression gate.** The case is re-checked on every change; `assurance_regression_gate(before,
+  after)` turns a claim that held before but is no longer discharged into a **build failure**, the same gate machinery that
+  blocks a quality regression. Each `Evidence` re-derives its content hash, so a flipped verdict or a tampered support is
+  caught from the bytes; the `AssuranceReport` is content-bound, so an edited verdict is caught on re-verification.
+- **Incident response & safety-case learning.** A signed `Incident` ties an observed production failure to the sub-claim it
+  falsified; `case.learn_from(incident)` adds a remediation sub-claim that **demands fresh evidence** before the case
+  re-validates, and `case.discharge(claim_id, *evidence)` closes it once the fix is proven — closing the loop from a
+  production incident back into a stronger, re-verified safety argument.
+- **Portable certification (`app.certify`).** `app.certify(case, *, residual_risks=None, aibom=True, sign=True,
+  record=True)` emits a `CertificationReport` (the case, its discharged evidence verdict, the residual risks, and the build
+  provenance — the `vincio` version, a CycloneDX AI-BOM, an SLSA note), signed with the app's identity. Its `verify()`
+  recomputes the report hash *and re-runs the case's own check from the bytes*, so a report certifying a case that does not
+  hold is caught offline. Every verdict lands on the hash-chained audit log (`assurance_case` / `assurance_certification`).
+  A free `certify(...)` function exposes the same without an app. New `AssuranceError` for a tampered or malformed case /
+  certification.
+- **Benchmark, SLOs, example & docs.** An `assurance` VincioBench family gates assurance soundness (a fully-evidenced case
+  holds and verifies offline while a claim resting on missing, stale, or falsified evidence is pinpointed and fails) and
+  assurance regression (a previously-discharged claim now falsified fails the build, a signed incident makes the case demand
+  a remediation proof, and a certification report verifies from the bytes), held by an assurance-soundness SLO and an
+  assurance-regression SLO. New runnable example `examples/93_assurance.py`, an [assurance guide](docs/guides/assurance.md),
+  and synchronized README / SECURITY / llms.txt / API reference / ROADMAP.
+
 ## [3.48.0] - 2026-06-24
 
 Autonomous skill acquisition & open-ended curriculum. The closed self-improvement loop, RLVR, and the distillation

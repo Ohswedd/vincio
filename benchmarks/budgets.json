@@ -2127,6 +2127,30 @@
     },
     "families.skill_acquisition.cultivation_audited": {
       "eq": true
+    },
+    "families.assurance.assurance_soundness": {
+      "eq": true
+    },
+    "families.assurance.assurance_regression": {
+      "eq": true
+    },
+    "families.assurance.evidence_bound": {
+      "eq": true
+    },
+    "families.assurance.stale_evidence_pinpointed": {
+      "eq": true
+    },
+    "families.assurance.incident_learning": {
+      "eq": true
+    },
+    "families.assurance.certification_portable": {
+      "eq": true
+    },
+    "families.assurance.tamper_caught": {
+      "eq": true
+    },
+    "families.assurance.assurance_audited": {
+      "eq": true
     }
   }
 }

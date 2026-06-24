@@ -251,6 +251,31 @@ cultivation lands on the hash-chained audit log (`skill_cultivation`). It runs
 offline against deterministic environments — never a hosted trainer or a managed
 curriculum.
 
+**Continuous assurance & production certification** (`app.assurance_case` /
+`app.certify`) is the capstone that turns the platform's scattered security
+evidence into one structured, continuously-checked argument. An `AssuranceCase` is
+an argument tree whose leaves are discharged by the evidence the platform **already
+emits** — an eval / no-regression gate verdict, a `GovernanceVerifier` proof, a
+reasoning `Certificate`, an audit-chain segment, an identity / delegation chain, an
+SBOM / AI-BOM — each piece **bound by hash**, so the whole case `verify()`s offline.
+The soundness property is the security guarantee: **no claim stands on missing or
+stale evidence**. A leaf whose required evidence is absent, whose proof has expired
+past its freshness horizon, or whose verdict no longer supports it is *pinpointed*
+on the `AssuranceReport` (`.missing` / `.stale` / `.falsified`) and the case fails
+closed — a falsified or tampered piece of evidence is caught from the bytes because
+each `Evidence` re-derives its content hash, and an edited argument tree is caught
+because the case re-derives its own. The case is **re-checked on every change** and
+`assurance_regression_gate` turns a claim that held before but is now falsified into
+a *build failure*, the same gate machinery that blocks a quality regression. A
+signed `Incident` ties a production failure to the sub-claim it falsified and the
+case **learns** — a remediation sub-claim demands fresh evidence before it
+re-validates — closing the loop from an incident back into a stronger argument.
+`app.certify` emits a `CertificationReport` whose `verify()` recomputes the report
+hash *and re-runs the case's own check from the bytes*, so a report certifying a
+case that does not hold is rejected; it is signed with the app's identity and lands
+on the hash-chained audit log (`assurance_case` / `assurance_certification`). It is
+deterministic and offline — never a hosted certification authority or control plane.
+
 **On-device adaptation** keeps the same discipline without a network round-trip.
 The `LocalLoRATrainer` fits a LoRA-class adapter **in your process** from the
 flywheel's grounded data — no training traffic leaves the machine, so an

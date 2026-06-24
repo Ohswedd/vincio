@@ -6199,6 +6199,145 @@ class ContextApp:
         )
         return cultivator.run(cycles=cycles)
 
+    # -- continuous assurance & production certification ----------------
+
+    def assurance_case(
+        self,
+        statement: str,
+        *,
+        context: str = "",
+        subclaims: list[Any] | None = None,
+        evidence: list[Any] | None = None,
+        subject: str | None = None,
+        sign: bool = True,
+        signer: Any | None = None,
+        record: bool = True,
+    ) -> Any:
+        """Assemble the platform's evidence into one continuously-checkable safety argument.
+
+        Builds a content-bound :class:`~vincio.assurance.AssuranceCase`: a top
+        :class:`~vincio.assurance.Claim` (*this app is fit for purpose X under
+        context Y*) decomposed into ``subclaims``, each discharged by
+        :class:`~vincio.assurance.Evidence` the platform **already emits** — an eval
+        gate verdict, a :meth:`verify_governance` proof, a reasoning
+        :class:`~vincio.verify.Certificate`, an audit-chain segment, an
+        identity/delegation chain, or an AI-BOM — bound by hash so the whole case
+        :meth:`~vincio.assurance.AssuranceCase.verify`\\s offline and a missing,
+        stale, or falsified piece of evidence is pinpointed::
+
+            from vincio.assurance import Claim, Evidence
+            case = app.assurance_case(
+                "The assistant is fit for production",
+                context="EU deployment",
+                subclaims=[Claim(id="governance", statement="Controls hold",
+                                 evidence=[Evidence.from_governance(app.verify_governance())])],
+            )
+            report = case.check()  # re-derives the verdict from the bytes
+
+        Re-check the case on every change (a model swap, a prompt edit, a dependency
+        bump) with :meth:`~vincio.assurance.AssuranceCase.check` and gate the build
+        with :func:`~vincio.assurance.assurance_regression_gate`. The case is signed
+        with the app's identity unless ``sign`` is off, and (when ``record``) the
+        verdict lands on the hash-chained audit log as an ``assurance_case``
+        decision. Returns the sealed :class:`~vincio.assurance.AssuranceCase`.
+        """
+        from ..assurance import AssuranceCase, Claim
+
+        goal = Claim(
+            id="goal",
+            statement=statement,
+            context=context,
+            subclaims=list(subclaims or []),
+            evidence=list(evidence or []),
+        )
+        case = AssuranceCase(subject=subject or self.name, goal=goal).seal()
+        chain_signer = self._resolve_contract_signer(signer, sign)
+        if chain_signer is not None:
+            case.sign(chain_signer)
+        if record and self.audit is not None:
+            report = case.check()
+            self.audit.record(
+                "assurance_case",
+                resource=case.case_hash,
+                decision="allow" if report.holds else "deny",
+                details={
+                    "statement": statement,
+                    "holds": report.holds,
+                    "claims": len(report.root.walk()),
+                    "failing_claims": report.failing_claims,
+                    "missing": report.missing,
+                    "stale": report.stale,
+                    "falsified": report.falsified,
+                },
+            )
+        return case
+
+    def certify(
+        self,
+        case: Any,
+        *,
+        residual_risks: list[str] | None = None,
+        provenance: dict[str, Any] | None = None,
+        aibom: bool = True,
+        sign: bool = True,
+        signer: Any | None = None,
+        record: bool = True,
+        as_of: Any | None = None,
+    ) -> Any:
+        """Emit a portable, offline-verifiable production-certification report.
+
+        Checks the :class:`~vincio.assurance.AssuranceCase`, records the residual
+        risks (any undischarged claim, plus any passed in), stamps the build
+        provenance (the ``vincio`` version and, unless ``aibom`` is off, a CycloneDX
+        AI-BOM of the live configuration), and signs the report with the app's
+        identity. Returns a :class:`~vincio.assurance.CertificationReport` a
+        downstream operator or auditor checks **from the bytes**::
+
+            report = app.certify(case)
+            assert report.verify()                 # re-runs the case's own check
+            assert report.certified                # the case holds
+
+        :meth:`~vincio.assurance.CertificationReport.verify` recomputes the report
+        hash, re-verifies the embedded case, and re-runs its evidence check, so a
+        report certifying a case that does not hold is caught. The verdict lands on
+        the hash-chained audit log as an ``assurance_certification`` decision unless
+        ``record`` is off.
+        """
+        from ..assurance import certify as _certify
+
+        prov: dict[str, Any] = dict(provenance or {})
+        if aibom and "sbom" not in prov:
+            try:
+                from ..governance.aibom import generate_aibom
+
+                bom = generate_aibom(self)
+                prov.setdefault("vincio_version", bom.vincio_version)
+                prov["sbom"] = bom.to_cyclonedx()
+            except Exception:  # pragma: no cover - provenance is best-effort
+                pass
+        prov.setdefault("slsa", "SLSA build provenance attested by the release pipeline")
+        chain_signer = self._resolve_contract_signer(signer, sign)
+        report = _certify(
+            case,
+            signer=chain_signer,
+            residual_risks=residual_risks,
+            provenance=prov,
+            as_of=as_of,
+        )
+        if record and self.audit is not None:
+            self.audit.record(
+                "assurance_certification",
+                resource=report.report_hash,
+                decision="allow" if report.certified else "deny",
+                details={
+                    "statement": report.statement,
+                    "certified": report.certified,
+                    "residual_risks": report.residual_risks,
+                    "case_hash": case.case_hash,
+                },
+            )
+        return report
+
     def use_bandit_router(
         self, models: list[str], *, bandit: str = "epsilon_greedy", **kwargs: Any
     ) -> ContextApp:
