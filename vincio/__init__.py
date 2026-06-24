@@ -502,7 +502,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.49.0"
+__version__ = "4.0.0"
 
 __all__ = [
     "ContextApp",

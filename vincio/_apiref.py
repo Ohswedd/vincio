@@ -11,6 +11,7 @@ docstring-coverage gate that keeps every public symbol documented.
 from __future__ import annotations
 
 import inspect
+import os.path
 from typing import Any
 
 __all__ = [
@@ -145,3 +146,55 @@ def render_api_index() -> str:
             lines.append(summary if summary else "_(undocumented)_")
             lines.append("")
     return "\n".join(lines).rstrip() + "\n"
+
+
+# --- Frozen public surface (the 4.0 LTS re-freeze) -------------------------
+
+_SURFACE_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(__file__)),
+    "docs",
+    "reference",
+    "public-surface.txt",
+)
+
+_SURFACE_HEADER = (
+    "# Vincio 4.0 LTS frozen public surface.\n"
+    "# The exact set of names SemVer is applied against (vincio.__all__), one per line,\n"
+    "# sorted. Re-freeze deliberately: regenerate with `python -m vincio._apiref --freeze`\n"
+    "# and review the diff. Guarded by tests/test_stability.py::test_public_surface_is_frozen.\n"
+)
+
+
+def render_frozen_surface() -> str:
+    """Render the frozen public-surface manifest from the live ``__all__``."""
+    import vincio
+
+    return _SURFACE_HEADER + "\n".join(sorted(vincio.__all__)) + "\n"
+
+
+def load_frozen_surface(path: str | None = None) -> list[str]:
+    """Read the committed frozen surface (sorted names, comments stripped)."""
+    target = path or _SURFACE_FILE
+    names: list[str] = []
+    with open(target, encoding="utf-8") as fh:
+        for line in fh:
+            stripped = line.strip()
+            if stripped and not stripped.startswith("#"):
+                names.append(stripped)
+    return names
+
+
+def _freeze(path: str | None = None) -> None:  # pragma: no cover - dev tool
+    target = path or _SURFACE_FILE
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(render_frozen_surface())
+
+
+if __name__ == "__main__":  # pragma: no cover - dev tool
+    import sys
+
+    if "--freeze" in sys.argv[1:]:
+        _freeze()
+        print(f"froze {len(load_frozen_surface())} public symbols → {_SURFACE_FILE}")
+    else:
+        print(render_api_index())

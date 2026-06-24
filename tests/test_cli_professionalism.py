@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from vincio.cli.doctor import (
     Deprecation,
     collect_deprecations,
@@ -24,6 +26,16 @@ def test_collect_deprecations_is_empty_on_a_clean_surface():
     # The public surface ships no deprecated APIs today; the collector must wire
     # up and return an empty map (not error).
     assert collect_deprecations() == {}
+
+
+def test_vincio_package_is_doctor_clean_on_this_major():
+    # The professionalism gate the 4.0 LTS major ships on: the library's own
+    # source uses no deprecated public API and carries no config drift.
+    import vincio
+
+    pkg_root = Path(vincio.__file__).resolve().parent
+    report = run_doctor(pkg_root)
+    assert report.ok, [f.message for f in report.findings]
 
 
 def test_scan_source_flags_deprecated_import_and_use(tmp_path):

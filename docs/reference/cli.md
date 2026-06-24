@@ -30,6 +30,17 @@ vincio doctor [PATH] [--json]
     replacement and removal version) and for a vincio.yaml behind the current
     schema. Exits non-zero if any actionable issue is found.
 
+vincio migrate TARGET [PATH] [--write] [--check] [--json]
+    Rewrite a project's source for a major-version upgrade (the code-surface
+    analogue of `config migrate`). A static, ast-based codemod — it never
+    imports or runs your code — driven by a declarative per-major rename table,
+    rewriting only the exact identifier tokens a rename touches. Default is a dry
+    run that prints the plan; --write applies the rewrites in place; --check
+    exits non-zero if a migration is available (CI gate) without writing; --json
+    emits the plan as JSON. TARGET is the major to migrate to (e.g. 4.0). The 4.0
+    table is empty — a clean 3.x → 4.0 upgrade needs no source changes; see
+    MIGRATION.md.
+
 vincio packs list
     List the available domain packs (support, engineering, finance, legal).
 

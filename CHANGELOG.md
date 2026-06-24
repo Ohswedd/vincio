@@ -4,6 +4,45 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.0.0] - 2026-06-24
+
+Consolidation, hardening & the long-term-support major. 4.0 is the one announced breaking window — and it breaks nothing.
+Every release from 1.0 through 3.49 was additive on a frozen public surface, the mechanical deprecation policy was followed
+across 40+ themes, and **no public API ever reached its `removed_in` runway**, so the deprecation sweep removes nothing and a
+project that tracked 3.x cleanly upgrades with **zero source changes**. This release promotes the contract version, re-freezes
+the public surface for the 4.x line behind a mechanical drift gate, and ships the source-codemod machinery and migration guide
+that make a major upgrade a one-shot, mechanical operation. After it, the platform enters long-term support: bug-fix, security,
+and standards-tracking releases on a stable 4.x surface. Entirely backward-compatible — the 481-name public surface is
+unchanged, no dependency is added, and the whole release runs offline and deterministically.
+
+### Changed
+
+- **`API_VERSION` promoted to `"4.0"`** and the package version to `4.0.0`. `API_VERSION` is the public-API contract version
+  SemVer is applied against; it bumps only on a major. No symbol was removed or renamed — the surface re-frozen for 4.x is
+  byte-for-byte the 3.49 surface.
+
+### Added
+
+- **`vincio migrate <target>` — the source codemod (`vincio.cli.migrate`).** The code-surface analogue of
+  `vincio config migrate`: a static, `ast`-based codemod (it parses project source, never imports or runs it) driven by a
+  declarative, per-major `RENAMES` rename table. It rewrites only the exact identifier tokens a rename touches — imports,
+  attribute access (`vincio.old`), and bound-name uses, honoring `import ... as` aliases — leaving formatting and unrelated
+  code intact. Modes: dry-run (default), `--write` (apply in place), `--check` (CI gate, exits non-zero if a migration is
+  available), `--json`. The `"4.0"` table is intentionally empty, so it truthfully reports "no source changes required"; it is
+  the mechanism through which any future 4.x consolidation or 5.0 removal is delivered.
+- **A mechanical public-surface freeze.** `docs/reference/public-surface.txt` pins the exact public surface
+  (`sorted(vincio.__all__)`), regenerable with `python -m vincio._apiref --freeze` (`render_frozen_surface` /
+  `load_frozen_surface`). A new `test_public_surface_is_frozen` fails the build if the live surface drifts from the manifest,
+  so no SemVer-significant change to the surface can land silently.
+- **`MIGRATION.md`** — the 3.x → 4.0 upgrade guide: the (empty) rename table, why there are no renames, the codemod usage,
+  and the 4.0 long-term-support contract.
+
+### Documentation
+
+- `ROADMAP.md` marks 4.0 shipped and the plan complete; `README.md`, `llms.txt`, `SECURITY.md` (supported versions → 4.x),
+  `docs/reference/stability.md` (the 4.0 LTS contract + the codemod), and `docs/reference/cli.md` (the `migrate` command)
+  updated.
+
 ## [3.49.0] - 2026-06-24
 
 Continuous assurance cases & production certification — the platform-completion capstone. The platform already *produces*

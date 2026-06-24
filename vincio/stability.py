@@ -49,7 +49,7 @@ __all__ = [
 # promise SemVer is applied against, independent of the package patch level.
 # The public surface is frozen and evolves only under the mechanical
 # deprecation runway described above.
-API_VERSION = "3.0"
+API_VERSION = "4.0"
 
 _STABILITY_ATTR = "__vincio_stability__"
 
