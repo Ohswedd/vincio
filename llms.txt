@@ -575,6 +575,29 @@ app.run("export button 500s").output.label
   chain (`skill_cultivation`) and event bus (`cultivation.completed`). Error: `CultivationError`.
   No new dependency; offline, deterministic against the reference environments. See the
   [skill-acquisition guide](docs/guides/skill-acquisition.md).
+- **Continuous assurance cases & production certification.** `from vincio import Evidence, Claim,
+  ClaimStatus, AssuranceCase, AssuranceReport, assurance_regression_gate, Incident,
+  CertificationReport, certify` (also `vincio.assurance`). The capstone that ties every subsystem
+  into one continuously-verified safety argument (the GSN / CAE assurance-case discipline).
+  `app.assurance_case(statement, *, context="", subclaims=None, evidence=None, subject=None,
+  sign=True, record=True)` builds a content-bound `Claim` tree: a top claim decomposed into
+  sub-claims, each leaf discharged by `Evidence` the platform **already emits** — `Evidence.from_gate`
+  (a `CanaryVerdict` / eval gate), `from_governance` (a `GovernanceVerifier` report), `from_certificate`
+  (a reasoning `Certificate`), `from_audit` (an `AuditLog` segment), `from_identity` (a delegation
+  chain), `from_sbom` (an `AIBOM`), or `asserted` (external) — **bound by hash**, each carrying a
+  freshness `horizon_days`. `case.check(as_of=)` re-evaluates the tree into an `AssuranceReport`
+  (`holds`, `missing`, `stale`, `falsified`, `failing_claims`) and **no claim stands on missing or
+  stale evidence**: a leaf whose required evidence is absent, expired, or falsified is pinpointed and
+  the case fails. `assurance_regression_gate(before, after)` turns a previously-discharged claim now
+  falsified into a build failure (the same gate machinery a quality regression clears). A signed
+  `Incident(falsified_claim=, required_evidence=)` + `case.learn_from(incident)` makes the case demand
+  a remediation proof (`case.discharge(claim_id, *evidence)`) before it re-validates. `app.certify(case,
+  *, residual_risks=None, aibom=True, sign=True, record=True)` emits a portable `CertificationReport`
+  (case + evidence + residual risks + `vincio` version / SBOM / SLSA provenance) whose `verify()`
+  recomputes the hash AND re-runs the case's own check from the bytes — a report certifying a case that
+  does not hold is caught. Every verdict lands on the audit chain (`assurance_case` /
+  `assurance_certification`). Error: `AssuranceError`. No new dependency; offline and deterministic.
+  See the [assurance guide](docs/guides/assurance.md).
 
 ## Use-case coverage: verticals, Assistant, voice
 
@@ -1035,6 +1058,20 @@ app.run("export button 500s").output.label
   re-derives monotonicity and stay-in-policy from the bytes; audited as `skill_cultivation`.
   VincioBench `skill_acquisition` family + 2 SLOs (capability-monotonicity, stay-in-policy-safety);
   no new dependency. See the [skill-acquisition guide](docs/guides/skill-acquisition.md).
+- **Continuous assurance & production certification (the capstone).** `app.assurance_case(statement,
+  *, context=, subclaims=, evidence=, sign=True, record=True)` → `AssuranceCase` assembles the
+  evidence the platform **already emits** into a content-bound `Claim` tree, each leaf discharged by
+  `Evidence.from_gate/from_governance/from_certificate/from_audit/from_identity/from_sbom` bound by
+  hash and carrying a freshness horizon. `case.check()` → `AssuranceReport` re-derives the verdict
+  from the bytes and **pinpoints** any missing, stale, or falsified evidence; `assurance_regression_gate`
+  fails the build on a previously-discharged claim now falsified. A signed `Incident` +
+  `case.learn_from(...)` makes the case demand a remediation proof before it re-validates.
+  `app.certify(case, *, residual_risks=, aibom=True, sign=True, record=True)` → `CertificationReport`
+  (case + evidence + residual risks + SBOM/SLSA provenance) whose `verify()` re-runs the case's own
+  check from the bytes — a report certifying a non-holding case is caught. Audited as `assurance_case`
+  / `assurance_certification`; error `AssuranceError`. VincioBench `assurance` family + 2 SLOs
+  (assurance-soundness, assurance-regression); no new dependency. See the
+  [assurance guide](docs/guides/assurance.md).
 - **Compliance evidence (generated, no hosted dependency).** `app.model_card()` /
   `system_card()` (`CardFormat` vincio|open_model_card|ai_card);
   `app.compliance_report()` / `ComplianceMapper().map(redteam=, eval_report=,

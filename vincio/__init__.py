@@ -40,6 +40,17 @@ from .agents import (
     wait_for_event,
 )
 from .assistant import ApprovalRecord, Assistant, AssistantTurn
+from .assurance import (
+    AssuranceCase,
+    AssuranceReport,
+    CertificationReport,
+    Claim,
+    ClaimStatus,
+    Evidence,
+    Incident,
+    assurance_regression_gate,
+    certify,
+)
 from .caching import (
     CalibrationExample,
     KVPrefixPool,
@@ -491,7 +502,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "3.48.0"
+__version__ = "3.49.0"
 
 __all__ = [
     "ContextApp",
@@ -1005,5 +1016,15 @@ __all__ = [
     "Cultivator",
     "CultivationResult",
     "CycleReport",
+    # continuous assurance cases & production certification
+    "Evidence",
+    "Claim",
+    "ClaimStatus",
+    "AssuranceCase",
+    "AssuranceReport",
+    "assurance_regression_gate",
+    "Incident",
+    "CertificationReport",
+    "certify",
     "__version__",
 ]

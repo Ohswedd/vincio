@@ -96,6 +96,7 @@ __all__ = [
     "CompensationError",
     "SettlementError",
     "CultivationError",
+    "AssuranceError",
 ]
 
 
@@ -889,3 +890,26 @@ class CultivationError(VincioError):
     """
 
     code = "CULTIVATION_ERROR"
+
+
+# --- continuous assurance & production certification ------------------------
+
+
+class AssuranceError(VincioError):
+    """A continuous-assurance or certification operation could not proceed.
+
+    Raised when an assurance case or certification report cannot be built,
+    discharged, or verified — an :class:`~vincio.assurance.AssuranceCase` whose
+    content hash no longer recomputes (a tampered argument tree), a
+    :class:`~vincio.assurance.Claim` referenced by an
+    :class:`~vincio.assurance.Incident` that does not exist in the case, an
+    :class:`~vincio.assurance.Evidence` item bound to an artifact that exposes no
+    verifiable support, or a :class:`~vincio.assurance.CertificationReport` that
+    fails offline verification. A claim that is simply **undischarged** — its
+    evidence missing, stale, or falsified — does **not** raise: it is pinpointed
+    on the :class:`~vincio.assurance.AssuranceReport` (``.missing`` / ``.stale`` /
+    ``.falsified``) and the case ``holds`` is ``False``; a failing assurance
+    argument is the verdict the case is designed to produce, not an error.
+    """
+
+    code = "ASSURANCE_ERROR"

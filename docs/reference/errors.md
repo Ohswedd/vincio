@@ -378,3 +378,7 @@ without an entry here.
 ### CULTIVATION_ERROR
 
 **Skill acquisition could not proceed.** Give every `CurriculumTask` an `environment` factory before cultivating it, set exactly one of `action`/`skill` on a `SkillStep`, and ensure a skill's `requires` resolve to active library skills without a cycle. A proposed objective the rails or the governance verifier reject does not raise — it is pinpointed on the `CurriculumProposal` (`.refused`) and never attempted; re-verify a `LearnedSkill`, `LearnedSkillLibrary`, or `CultivationResult` with its own `verify()`.
+
+### ASSURANCE_ERROR
+
+**Assurance case or certification could not proceed.** Give every leaf `Claim` at least one `Evidence` item (or list the kinds it demands on `required_evidence`), bind each `Evidence` to an artifact that exposes a verifiable verdict (an eval gate, a `GovernanceVerifier` report, a reasoning `Certificate`, an audit log, an identity/delegation chain, or an AI-BOM), and reference an `Incident` only to a claim that exists in the case. A claim whose evidence is missing, stale, or falsified does not raise — it is pinpointed on the `AssuranceReport` and the case `holds` is False; re-verify an `AssuranceCase` or `CertificationReport` with its own `verify()`.

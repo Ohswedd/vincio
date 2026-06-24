@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**471** public symbols.
+**480** public symbols.
 
 ## Classes
 
@@ -114,6 +114,14 @@ A multi-turn conversational session over a :class:`ContextApp`.
 
 The outcome of one conversational turn.
 
+### `AssuranceCase(**data)`
+
+A signed, content-bound assurance argument the platform keeps continuously valid.
+
+### `AssuranceReport(**data)`
+
+The content-bound outcome of re-checking a case against current evidence.
+
 ### `AttestationExchange(client, peer_id=…)`
 
 A peer reached over A2A that an importer pulls signed artifacts from.
@@ -210,6 +218,10 @@ Attribute a metric delta to the components a release changed, by Shapley counter
 
 A typed, content-bound, offline-verifiable proof over an answer.
 
+### `CertificationReport(**data)`
+
+The signed, content-bound certificate that an app is fit for production.
+
 ### `Check(**data)`
 
 One kernel's verdict on an answer.
@@ -233,6 +245,14 @@ Checks every verifiable claim in an answer is entailed by cited evidence.
 ### `CitedReportBuilder(entailment=…, audit_log=…, tenant_id=…)`
 
 Resolve citations, verify per-claim support, render a cited report.
+
+### `Claim(**data)`
+
+A node in the assurance argument: a statement, its decomposition, its evidence.
+
+### `ClaimStatus(**data)`
+
+The re-derived verdict for one claim and its subtree.
 
 ### `CollateralLedger(**data)`
 
@@ -578,6 +598,10 @@ The (non-raising) outcome of verifying an escrow offline.
 
 A predicate that matches a :class:`BehaviorEvent`.
 
+### `Evidence(**data)`
+
+A platform verdict bound by hash to discharge one sub-claim.
+
 ### `EvidenceItem(**data)`
 
 A provenance-aware unit of evidence (text, image, or table).
@@ -685,6 +709,10 @@ Abstract image generation/editing provider.
 ### `ImprovementLoop(app, registry=…, tracker=…, metrics=…, weights=…, gates=…, max_cost_per_case=…, experiment=…, prompt_name=…, concurrency=…, optimizer=…, strategy=…, reflector=…, golden_suite=…)`
 
 Runs the trace → dataset → eval → optimize → promote cycle on an app.
+
+### `Incident(**data)`
+
+A signed observation that a sub-claim no longer holds in production.
 
 ### `InclusionProof(**data)`
 
@@ -1596,6 +1624,10 @@ Decide a counterparty's admitted exposure from its standing.
 
 Adjudicate a disputed contract from the records its parties submit.
 
+### `assurance_regression_gate(before, after)`
+
+Block a build when a previously-discharged claim is no longer discharged.
+
 ### `attest_custody(poster, reserves, custodian=…, as_of=…)`
 
 Attest a poster's proven reserves into an (unsigned) :class:`CustodyAttestation`.
@@ -1635,6 +1667,10 @@ Build the importer's bounded, transitive trust over a set of issuers.
 ### `buyer_position(max_price_usd, ideal_price_usd=…, max_sla_seconds, ideal_sla_seconds=…, min_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)`
 
 Build a buyer position: wants low price, fast SLA, high quality.
+
+### `certify(case, signer=…, residual_risks=…, provenance=…, as_of=…)`
+
+Build a :class:`CertificationReport` from a checked assurance case.
 
 ### `check_completeness(liabilities, claims, verifier=…, as_of=…)`
 

@@ -1871,6 +1871,26 @@
       "threshold": true,
       "enforced_by": "families.skill_acquisition.stay_in_policy_safety",
       "rationale": "Autonomy that proposes its own tasks is only safe if it cannot propose its way out of the guardrails. The same rails that screen a user request and the same governance verifier that proves containment ahead of a run gate every self-proposed objective, so the autonomy stays inside the controls the platform already enforces rather than around them. The budget gates that an objective tripping a secrets rail is refused and never attempted, that a failing governance verifier refuses the whole round, and that the proposal's content hash catches a refused objective slipped into the proposed set \u2014 the autonomous-growth analogue of the shield's prevention-by-construction, held offline."
+    },
+    {
+      "id": "assurance_soundness",
+      "category": "quality",
+      "statement": "An app's fitness for production is argued, not asserted: app.assurance_case assembles the evidence the platform already emits \u2014 eval and regression gates, the governance verifier, reasoning certificates, the signed audit chain, identity and delegation provenance, SBOM / SLSA attestations \u2014 into a content-bound argument tree whose top claim decomposes into sub-claims, each discharged by a hash-bound piece of that evidence. No claim stands on missing or stale evidence: a leaf whose required evidence is absent, expired past its freshness horizon, or falsified is pinpointed and the case does not hold, while a fully-discharged case does, and the whole case re-derives its verdict from the bytes so a flipped verdict or an edited argument tree is caught offline.",
+      "metric": "families.assurance.assurance_soundness",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.assurance.assurance_soundness",
+      "rationale": "The platform emits abundant evidence \u2014 verifier proofs, certificates, gate verdicts, provenance \u2014 but never assembled it into one machine-checkable argument that the system is fit for purpose, the assurance-case discipline (GSN / CAE) the safety and regulatory frontier demands. Soundness is the whole value: an assurance case that calls a system fit on evidence that is missing, stale, or false proves nothing. The budget gates that a fully-evidenced case holds and verifies offline, that a leaf demanding evidence it lacks is pinpointed and the case fails, that a proof past its freshness horizon expires and fails its claim, and that a falsified verdict fails its claim \u2014 turning 'we believe it is safe' into 'here is a structured proof you can check from the bytes', the capstone that ties every subsystem into one continuously-verified safety argument, held offline."
+    },
+    {
+      "id": "assurance_regression",
+      "category": "reliability",
+      "statement": "An assurance case is a living, CI-gated invariant, not a point-in-time audit: it is re-checked on every change (a model swap, a prompt edit, a dependency bump, a new deployment), and assurance_regression_gate turns a claim that was discharged before but is no longer \u2014 its evidence now falsified, stale, or missing \u2014 into a build failure, exactly as a no-regression gate blocks a quality regression. A signed incident ties an observed production failure to the sub-claim it falsified and the case learns, demanding fresh evidence before it re-validates.",
+      "metric": "families.assurance.assurance_regression",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.assurance.assurance_regression",
+      "rationale": "An assurance argument that is checked once and filed away rots silently as the system changes around it; the value of a continuous assurance case is that a regression in any piece of its evidence fails the build before the change ships. The gate reuses the same machinery that blocks a quality regression, now over the safety argument itself. The budget gates that re-checking an unchanged case passes, that a claim falsified by a change is caught and fails the gate, that the regressed after-case does not hold, and that a signed incident makes the case demand a remediation proof before it re-validates \u2014 closing the loop from a production incident back into a stronger, re-verified safety argument, held offline."
     }
   ]
 }
