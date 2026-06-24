@@ -516,6 +516,36 @@ app.run("export button 500s").output.label
   DID. Ed25519 is pure-Python (RFC 8032) by default; the native `cryptography` backend is
   used automatically behind `vincio[crypto]` (byte-identical signatures). Offline,
   deterministic, dependency-free. See the [identity guide](docs/guides/agent-identity.md).
+- **Verified reasoning & neuro-symbolic certificates.** `from vincio import VerifiedAnswer,
+  Certificate, Check, CompositeVerifier, ArithmeticVerifier, UnitVerifier, TemporalVerifier,
+  ConstraintVerifier, SchemaVerifier, CitationVerifier, default_verifiers, BehaviorSpec,
+  EventPattern, RuntimeMonitor, Shield, ToolContract, ProgramSpec, ProgramOp,
+  ProgramProperty, SynthesizedProgram, synthesize` (also `vincio.verify`; `Constraint` and
+  `VerificationContext` live in `vincio.verify`). The certifiable frontier above
+  probabilistic grading: for the classes of question where it is possible, an answer carries
+  a checkable certificate a deterministic verifier confirms independently of the model.
+  `app.verify_reasoning(answer, *, verifiers=, evidence=, schema=, constraints=, facts=,
+  now=, regenerate=, max_cycles=2, raise_on_refute=False)` runs offline kernels (arithmetic,
+  units, temporal, schema, constraint satisfaction, citation entailment) into a content-bound
+  `Certificate` that is `verified` only when a kernel **recomputed** a claim and it held,
+  `refuted` when a recomputation disagreed (a proof the answer is wrong), or `inapplicable`;
+  it **re-derives its verdict from the bytes** (`certificate.verify()`), so a flipped status
+  is caught. A refuted answer **refuses to emit**, and a `regenerate(answer, critique)`
+  callback drives the existing bounded self-correction loop. A `BehaviorSpec` (`forbid` /
+  `require_before` / `invariant`) states a temporal-logic property over an agent's
+  trajectory, a `RuntimeMonitor` (`app.behavior_monitor`) checks it step-by-step, and a
+  `Shield` (`app.shield(specs, *, mode="block"|"repair"|"monitor", use=False)` /
+  `app.use_shield`) **blocks or repairs a violating action before it executes** — wired into
+  the tool runtime so a policy-violating tool call (an unapproved write) is structurally
+  refused. A `ToolContract` (`requires_that` / `ensures_that`) enforces pre/post-conditions
+  against the actual call (`app.add_tool(..., contract=)`, `ToolContractError` on breach),
+  and `synthesize` (`app.synthesize_program(spec, examples)`) emits a `SynthesizedProgram`
+  whose declared properties are proven into a `Certificate` before it runs. Errors:
+  `ReasoningVerificationError` / `CertificateRefutedError` / `BehaviorViolationError` /
+  `ProgramSynthesisError` / `ToolContractError`. Deterministic kernels are dependency-free;
+  optional SMT / CAS (`SmtConstraintVerifier` / `CasArithmeticVerifier`, `vincio.verify.smt`)
+  behind `vincio[verify]`. Offline, deterministic. See the
+  [verified-reasoning guide](docs/guides/verified-reasoning.md).
 
 ## Use-case coverage: verticals, Assistant, voice
 
@@ -956,6 +986,16 @@ app.run("export button 500s").output.label
   containment_invariant, residency_invariant, budget_invariant, erasure_invariant,
   within_budget`; `raise_on_violation=True` raises `GovernanceVerificationError`.
   VincioBench `verification` family + 3 SLOs.
+- **Verified reasoning (output-side, per-answer).** `app.verify_reasoning(answer, ...)`
+  → `VerifiedAnswer` attaches a deterministic, content-bound `Certificate` (offline
+  kernels: arithmetic / units / temporal / schema / constraint satisfaction / citation
+  entailment) that `verified` only on a recomputed-and-matched claim, `refuted` on a
+  disagreement; a refuted answer **refuses to emit** and a `regenerate=` callback drives
+  self-correction. A `Shield` (`app.shield(..., use=True)`) wired into the tool runtime
+  **blocks a policy-violating action before it executes**; a `ToolContract` enforces
+  tool pre/post-conditions (`ToolContractError`). VincioBench `verified_reasoning` family
+  + 2 SLOs (certificate-soundness, shield-prevents-violation); optional SMT/CAS behind
+  `vincio[verify]`. See the [verified-reasoning guide](docs/guides/verified-reasoning.md).
 - **Compliance evidence (generated, no hosted dependency).** `app.model_card()` /
   `system_card()` (`CardFormat` vincio|open_model_card|ai_card);
   `app.compliance_report()` / `ComplianceMapper().map(redteam=, eval_report=,

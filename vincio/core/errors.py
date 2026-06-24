@@ -45,6 +45,7 @@ __all__ = [
     "ToolValidationError",
     "ToolTimeoutError",
     "ToolApprovalRequiredError",
+    "ToolContractError",
     "SandboxError",
     "ComputerUseError",
     "AgentEngineError",
@@ -85,6 +86,10 @@ __all__ = [
     "ReplayDivergenceError",
     "EnergyBudgetError",
     "EdgeError",
+    "ReasoningVerificationError",
+    "CertificateRefutedError",
+    "BehaviorViolationError",
+    "ProgramSynthesisError",
     "NegotiationError",
     "ContractError",
     "ChoreographyError",
@@ -404,6 +409,14 @@ class ComputerUseError(ToolError):
     optional driver, an unaddressable target, or an exhausted action budget."""
 
     code = "COMPUTER_USE_ERROR"
+
+
+class ToolContractError(ToolError):
+    """A tool call breached its declared pre- or post-condition contract: the
+    arguments failed a ``requires`` clause, or the result failed an ``ensures``
+    clause checked against the actual return value."""
+
+    code = "TOOL_CONTRACT_VIOLATION"
 
 
 # --- agents -----------------------------------------------------------------
@@ -728,6 +741,42 @@ class EdgeError(VincioError):
     """
 
     code = "EDGE_ERROR"
+
+
+# --- verified reasoning & neuro-symbolic certificates ------------------------
+
+
+class ReasoningVerificationError(VincioError):
+    """A verified-reasoning operation could not produce or pass a certificate.
+
+    The base of the verify family: raised when ``app.verify_reasoning`` is asked to
+    refuse an answer whose certificate did not check, or by a verifier kernel that
+    cannot run.
+    """
+
+    code = "REASONING_VERIFICATION_ERROR"
+
+
+class CertificateRefutedError(ReasoningVerificationError):
+    """An answer's certificate was refuted and the orchestrator was asked to
+    raise rather than return a refused :class:`~vincio.verify.VerifiedAnswer`."""
+
+    code = "REASONING_VERIFICATION_ERROR"
+
+
+class BehaviorViolationError(ReasoningVerificationError):
+    """A runtime monitor or shield found a :class:`~vincio.verify.BehaviorSpec`
+    property breached — a forbidden action, a missing precondition, or a violated
+    invariant — and was asked to raise rather than block-and-continue."""
+
+    code = "BEHAVIOR_VIOLATION"
+
+
+class ProgramSynthesisError(ReasoningVerificationError):
+    """A synthesized program failed to run on its examples, or one of its declared
+    properties was refuted at synthesis or run time."""
+
+    code = "PROGRAM_SYNTHESIS_FAILED"
 
 
 # --- agent negotiation & contracting -----------------------------------------

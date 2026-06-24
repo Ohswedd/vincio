@@ -1831,6 +1831,26 @@
       "threshold": true,
       "enforced_by": "families.identity.delegation_attenuation",
       "rationale": "Production multi-agent and multi-org systems delegate authority down a chain (principal to agent to sub-agent); without a structural guarantee, a sub-delegation could quietly grant more than it received, and an injected or compromised agent could escalate. Delegation models authority as negative space and checks attenuation as a structural invariant: the budget gates that a valid chain verifies and permits an in-bounds action, refuses an attenuated-away capability and an over-budget request, refuses an over-reaching sub-delegation that amplifies its parent, and catches a tampered grant offline \u2014 so authority flows downward with provenance, never sideways or upward, and the guarantee holds from the bytes alone."
+    },
+    {
+      "id": "certificate_soundness",
+      "category": "quality",
+      "statement": "An answer carries a checkable certificate a deterministic verifier confirms independently of the model: a kernel set (arithmetic, units, temporal, schema, constraint satisfaction, citation entailment) emits a content-bound certificate that is verified only when it recomputed a claim and it held, and refuted when a recomputation disagreed \u2014 so a wrong answer the relevant kernel can see is refused rather than silently emitted. The certificate re-derives its verdict from the recorded checks and binds it into a content hash, so a verdict flipped to verified after the fact is caught from the bytes alone.",
+      "metric": "families.verified_reasoning.certificate_soundness",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.verified_reasoning.certificate_soundness",
+      "rationale": "Judges, oracles, and the governance verifier give probabilistic per-answer signals; for the classes of question where it is possible, correctness can instead be certifiable. Soundness is the whole value: a certificate that can call a wrong answer verified proves nothing. The budget gates that the kernels refute a wrong sum, a dimensional mismatch (5 km = 5000 kg), an off-by-one duration, a violated constraint, and an uncited numeric claim, verify a correct one, and that a tampered verdict is caught on re-verification \u2014 turning 'the judge thinks it is right' into 'here is a proof you can check', the output-side analogue of the governance verifier's machine-checked invariants, held offline."
+    },
+    {
+      "id": "shield_prevents_violation",
+      "category": "security",
+      "statement": "A behavior spec states a temporal-logic property over an agent's tool trajectory (never call a write tool before approval), a runtime monitor checks it step-by-step, and a shield wired into the tool runtime blocks a violating action before it executes \u2014 so an unapproved write returns a denied result rather than running, while an approved one proceeds. The shield makes a policy-violating action structurally impossible, not merely logged after the fact.",
+      "metric": "families.verified_reasoning.shield_prevents_violation",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.verified_reasoning.shield_prevents_violation",
+      "rationale": "The governance verifier proves controls ahead of a run and the rails screen input/output, but neither stops a specific unsafe action mid-trajectory. The shield is the per-step, online counterpart: it observes each proposed action and refuses or repairs a violating one before the effect, the behavioral analogue of the ahead-of-run proof. The budget gates that a shield forbidding an unapproved write blocks the call (a denied result) while letting an approved write through \u2014 prevention by construction at the action boundary, held offline against a deterministic tool runtime."
     }
   ]
 }

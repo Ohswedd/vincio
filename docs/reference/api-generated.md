@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**429** public symbols.
+**457** public symbols.
 
 ## Classes
 
@@ -102,6 +102,10 @@ Render EU AI Act **Annex IV** technical documentation as a cited document.
 
 A tool-approval decision made during a turn.
 
+### `ArithmeticVerifier()`
+
+Recomputes arithmetic equalities stated in an answer.
+
 ### `Assistant(app, user_id=…, tenant_id=…, session_id=…, memory_writeback=…, auto_approve=…, on_approval=…, feature=…)`
 
 A multi-turn conversational session over a :class:`ContextApp`.
@@ -121,6 +125,14 @@ A signed, offline-verifiable withdrawal of a prior attestation by its hash.
 ### `BatchRunner(backend, price_table=…, tracer=…, discount=…, poll_interval_s=…, timeout_s=…, clock=…)`
 
 Submit a batch, poll it to completion, reconcile, and cost-track.
+
+### `BehaviorEvent(**data)`
+
+One observable step in an agent's trajectory.
+
+### `BehaviorSpec(**data)`
+
+A temporal-logic-lite property over an event trajectory, as plain data.
 
 ### `BenchmarkAdapter(tasks=…, fixture_path=…)`
 
@@ -190,6 +202,14 @@ An unforgeable, capability-scoped grant minted from the user's request.
 
 Attribute a metric delta to the components a release changed, by Shapley counterfactual replay over the dataset.
 
+### `Certificate(**data)`
+
+A typed, content-bound, offline-verifiable proof over an answer.
+
+### `Check(**data)`
+
+One kernel's verdict on an answer.
+
 ### `Choreography(saga, participants, coordinator=…, store=…, audit=…, events=…, signer=…, binder=…, clock=…, raise_on_compensation_failure=…)`
 
 Drives a :class:`~vincio.choreography.saga.Saga` across organizations.
@@ -201,6 +221,10 @@ Per-provider circuit breaker with half-open probing.
 ### `CitationContract(**data)`
 
 Field/claim-level citation requirements for a cited report.
+
+### `CitationVerifier(evidence=…)`
+
+Checks every verifiable claim in an answer is entailed by cited evidence.
 
 ### `CitedReportBuilder(entailment=…, audit_log=…, tenant_id=…)`
 
@@ -242,6 +266,10 @@ A governance framework whose controls Vincio maps onto.
 
 A coverage matrix across the mapped frameworks.
 
+### `CompositeVerifier(verifiers)`
+
+Runs an ordered set of verifiers and folds their checks into one certificate.
+
 ### `ComputerEnvironment(backend, app=…, policy=…, approve=…, auto_undo=…, max_steps=…)`
 
 A grounded, verified, reversible computer-use action plane.
@@ -261,6 +289,10 @@ Records and checks consent, binding data to a purpose + lawful basis.
 ### `Constraint(text=…, **data)`
 
 !!! abstract "Usage Documentation" [Models](../concepts/models.md)
+
+### `ConstraintVerifier(constraints=…)`
+
+Checks a candidate assignment satisfies a set of typed constraints.
 
 ### `ContainmentMonitor()`
 
@@ -517,6 +549,10 @@ How a breach's measured shortfall maps to a bounded forfeiture.
 ### `EscrowVerification(**data)`
 
 The (non-raising) outcome of verifying an escrow offline.
+
+### `EventPattern(**data)`
+
+A predicate that matches a :class:`BehaviorEvent`.
 
 ### `EvidenceItem(**data)`
 
@@ -826,6 +862,10 @@ Plan by searching imagined rollouts under a :class:`WorldModel` (MPC).
 
 A catalog of :class:`ModelProfile` keyed by exact model id.
 
+### `MonitorVerdict(**data)`
+
+The outcome of checking one event (or a whole trajectory).
+
 ### `MonotonicityBreach(**data)`
 
 A creditor's obligation that shrank between two snapshots without a backing discharge.
@@ -942,6 +982,18 @@ Per-subject DP budget roll-up — the privacy analogue of the cost report.
 
 One accounted privacy release for a subject — a row on the audit chain.
 
+### `ProgramOp(**data)`
+
+One whitelisted transform step over a list of record dicts.
+
+### `ProgramProperty(**data)`
+
+A declarative property a synthesized program must satisfy.
+
+### `ProgramSpec(**data)`
+
+The declaration of a verified transform: its ops and the properties it must hold.
+
 ### `PrometheusExporter(namespace=…)`
 
 Scrape-friendly Prometheus metrics for the served plane.
@@ -985,6 +1037,10 @@ One cached reasoning trace: how much thinking a warm prefix already cost.
 ### `ReasoningTraceCache(max_entries=…, max_resident_bytes=…)`
 
 Bounded LRU of reasoning traces under a resident-memory budget.
+
+### `ReasoningVerifier(*args, **kwargs)`
+
+A pluggable, deterministic checker that turns an answer into checks.
 
 ### `Reconciliation(**data)`
 
@@ -1106,6 +1162,10 @@ Result of a ContextApp run.
 
 Event emitted by the streaming run flow (``ContextApp.astream``).
 
+### `RuntimeMonitor(specs)`
+
+Checks a :class:`BehaviorSpec` set against a trajectory, step-by-step.
+
 ### `Saga(**data)`
 
 A cross-org compensating workflow: an ordered list of steps.
@@ -1129,6 +1189,10 @@ The aggregate result of one scheduling pass.
 ### `SchemaRouter(default=…)`
 
 Routes a run (or a piece of structured data) to one of several schemas.
+
+### `SchemaVerifier(schema=…)`
+
+Checks an answer structurally conforms to a JSON schema.
 
 ### `ScopedMemory(engine, scope, owner_id)`
 
@@ -1218,6 +1282,14 @@ Return the primary's answer; dual-dispatch the candidate for offline diff.
 
 Routes writes across shards and merges parallel reads (Index protocol).
 
+### `Shield(specs, mode=…, repair=…)`
+
+Prevents a behavioural violation before the action executes.
+
+### `ShieldDecision(**data)`
+
+A shield's ruling on a proposed event.
+
 ### `Signature(**data)`
 
 Base class for typed input → output signatures.
@@ -1282,6 +1354,10 @@ Gate a model/provider change on replayed golden traces + an eval/cost/ latency/b
 
 PASS / FAIL verdict for promoting a model into the live path.
 
+### `SynthesizedProgram(**data)`
+
+A verified transform paired with the certificate proving its properties.
+
 ### `SystemCard(**data)`
 
 Documentation for the whole system: model + retrieval + memory + safety.
@@ -1294,6 +1370,10 @@ A value carried together with its :class:`TrustLabel` and provenance.
 
 Task taxonomy used by the input router.
 
+### `TemporalVerifier()`
+
+Checks date ordering and duration claims against a real calendar.
+
 ### `TestTimeSearch(generate, verifier=…, budget=…)`
 
 Verifier-guided test-time search bounded by a :class:`SearchBudget`.
@@ -1305,6 +1385,14 @@ Fit a calibrated acceptance threshold from labelled near-miss examples.
 ### `TimerService(graph, clock=…)`
 
 Resumes due timers and delivers events for one compiled graph.
+
+### `ToolClause(**data)`
+
+One named pre- or post-condition over a tool call.
+
+### `ToolContract(**data)`
+
+Pre- and post-conditions checked against a tool's actual call and result.
 
 ### `ToolEnvironment(name, initial_state, tools, task, instructions=…)`
 
@@ -1354,6 +1442,10 @@ A typed, addressable element grounded from the screen + accessibility tree.
 
 A proven-reserves shortfall — the pools pledge more than the custodian attests.
 
+### `UnitVerifier()`
+
+Checks unit conversions and refuses a dimensional mismatch.
+
 ### `UsageEvent(**data)`
 
 One unit of delivered usage accrued against a contract.
@@ -1366,9 +1458,17 @@ Structured task input.
 
 Base contract: map a :class:`RewardSample` to a :class:`RewardSignal`.
 
+### `VerificationContext(**data)`
+
+The grounding a verifier may consult while certifying an answer.
+
 ### `VerificationReport(**data)`
 
 The verdict of a governance-verification pass over all invariants.
+
+### `VerifiedAnswer(**data)`
+
+An answer paired with the certificate a deterministic verifier produced.
 
 ### `Verifier(*args, **kwargs)`
 
@@ -1401,6 +1501,10 @@ Base class for all Vincio errors.
 ### `VincioExperimentalWarning(*args, **kwargs)`
 
 Emitted on first use of an :func:`experimental` API.
+
+### `Violation(**data)`
+
+A single property breach pinned to the event that caused it.
 
 ### `VoiceAgent(app, backend=…, config=…, research=…, memory_os=…, rails=…, owner_id=…, research_tool=…, **backend_kwargs)`
 
@@ -1507,6 +1611,10 @@ Compose steps left to right: ``compose(a, b) == compose(a) | b``.
 ### `default_model_registry()`
 
 Process-wide registry, seeded from the built-in catalog plus the ``VINCIO_MODEL_REGISTRY`` overlay (if set). Constructed lazily and cached.
+
+### `default_verifiers()`
+
+The default offline kernel set behind ``app.verify_reasoning``.
 
 ### `deprecated(since, removed_in, alternative=…)`
 
@@ -1703,6 +1811,10 @@ Pause the graph until ``when`` (a datetime or ISO string), durably.
 ### `stability_of(obj)`
 
 Return the stability record for ``obj``.
+
+### `synthesize(spec, examples, require=…)`
+
+Verify ``spec``'s properties on ``examples`` and emit a proof-carrying program.
 
 ### `task_goal_value(checks)`
 

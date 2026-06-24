@@ -9785,6 +9785,145 @@ async def bench_identity() -> dict[str, Any]:
     }
 
 
+async def bench_verified_reasoning() -> dict[str, Any]:
+    """VerifiedReasoningBench: proof-carrying answers, shielding & verified tools.
+
+    The platform's per-answer quality signals were probabilistic; this family holds
+    the certifiable frontier. **Certificate soundness:** a deterministic kernel set
+    (arithmetic, units, temporal, schema, constraints, citation entailment) emits a
+    content-bound :class:`~vincio.verify.Certificate` that is ``verified`` only when
+    it recomputed a claim and it held, ``refuted`` when a recomputation disagreed —
+    so a wrong answer the relevant kernel can see is *refused*, never silently
+    passed — and the certificate re-derives its verdict from the bytes, catching a
+    flipped status. **Shield prevents violation:** a :class:`~vincio.verify.Shield`
+    wired into the tool runtime structurally blocks a policy-violating action (an
+    unapproved write) *before* it executes. Plus refuse-or-repair self-correction,
+    enforced tool contracts, and proof-carrying synthesized programs. Deterministic
+    and offline."""
+    from vincio import (
+        ArithmeticVerifier,
+        BehaviorSpec,
+        CompositeVerifier,
+        ContextApp,
+        EventPattern,
+        ProgramOp,
+        ProgramProperty,
+        ProgramSpec,
+        ToolContract,
+        UnitVerifier,
+        VincioConfig,
+    )
+    from vincio.core.errors import ToolContractError
+    from vincio.core.types import EvidenceItem, ToolCall
+    from vincio.providers import MockProvider
+    from vincio.verify import Constraint, VerificationContext
+    from vincio.verify.kernels import ConstraintVerifier, default_verifiers
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="solver", provider=MockProvider(default_text="ok"), config=cfg)
+
+    # -- Certificate soundness ---------------------------------------------
+    cv = CompositeVerifier(default_verifiers())
+    refutes_bad_arithmetic = cv.certify("So 2 + 2 = 5.").status == "refuted"
+    verifies_good_arithmetic = cv.certify("We get 12 * 3 = 36 and 10% of 200 is 20.").status == "verified"
+    refutes_dimension = CompositeVerifier([UnitVerifier()]).certify("5 km = 5000 kg").status == "refuted"
+    refutes_bad_date = cv.certify("from 2024-01-01 to 2024-01-08 is 5 days").status == "refuted"
+    constraint_ctx = VerificationContext(
+        constraints=[Constraint.compare("x", "<=", 10), Constraint.compare("x", ">", 0)]
+    )
+    refutes_constraint = CompositeVerifier([ConstraintVerifier()]).certify(
+        {"x": 50}, constraint_ctx).status == "refuted"
+    evidence = [EvidenceItem(source_id="D1", text="The refund window is 30 days.")]
+    refutes_uncited = CompositeVerifier(
+        [__import__("vincio.verify.kernels", fromlist=["CitationVerifier"]).CitationVerifier(evidence)]
+    ).certify("The refund window is 90 days.").status == "refuted"
+    # Content-binding: a flipped verdict is caught from the bytes.
+    cert = CompositeVerifier([ArithmeticVerifier()]).certify("2 + 2 = 5")
+    verify_before_tamper = cert.verify()
+    cert.checks[0].status = "verified"
+    cert.status = "verified"
+    tamper_caught = not cert.verify()
+
+    certificate_soundness = bool(
+        refutes_bad_arithmetic
+        and verifies_good_arithmetic
+        and refutes_dimension
+        and refutes_bad_date
+        and refutes_constraint
+        and refutes_uncited
+        and verify_before_tamper
+        and tamper_caught
+    )
+
+    # -- Refuse-or-repair self-correction ----------------------------------
+    refused = app.verify_reasoning("The total is 2 + 2 = 5.")
+    refuse_to_emit = refused.refused and not refused.holds
+    repaired = app.verify_reasoning("2 + 2 = 5", regenerate=lambda a, c: "2 + 2 = 4")
+    self_correction_repairs = repaired.holds and repaired.attempts == 2
+    verdict_audited = any(e.action == "reasoning_verification" for e in app.audit.entries)
+
+    # -- Shield prevents violation -----------------------------------------
+    sapp = ContextApp(name="acting", provider=MockProvider(default_text="ok"), config=cfg)
+
+    def delete_account(account_id: str) -> dict:
+        return {"deleted": account_id}
+
+    sapp.add_tool(delete_account, side_effects="write")
+    sapp.shield(
+        BehaviorSpec(name="no-unapproved-write", forbid=[EventPattern(
+            kind="tool_call", where={"side_effects": "write", "approved": False})]),
+        use=True,
+    )
+    blocked = await sapp.tool_runtime.execute(
+        ToolCall(tool_name="delete_account", arguments={"account_id": "a1"}))
+    allowed = await sapp.tool_runtime.execute(
+        ToolCall(tool_name="delete_account", arguments={"account_id": "a1"}), approved=True)
+    shield_prevents_violation = bool(
+        blocked.status == "denied" and "shield" in (blocked.error or "")
+        and allowed.status == "ok"
+    )
+
+    # -- Verified tool contracts -------------------------------------------
+    capp = ContextApp(name="contract", provider=MockProvider(default_text="ok"), config=cfg)
+
+    def charge(amount: float) -> dict:
+        return {"amount": amount}
+
+    capp.add_tool(
+        charge, side_effects="write",
+        contract=ToolContract().requires_that("amount > 0", lambda a: a["amount"] > 0),
+    )
+    contract_enforced = False
+    try:
+        await capp.tool_runtime.execute(
+            ToolCall(tool_name="charge", arguments={"amount": -1}), approved=True)
+    except ToolContractError:
+        contract_enforced = True
+
+    # -- Proof-carrying synthesized program --------------------------------
+    program = app.synthesize_program(
+        ProgramSpec(
+            name="line-total",
+            ops=[ProgramOp(op="derive", field="total", expr="price * qty")],
+            properties=[ProgramProperty(kind="field_nonnegative", field="total")],
+        ),
+        [{"price": 3.0, "qty": 2}],
+    )
+    program_proof_carrying = program.holds and program.certificate.verify()
+
+    return {
+        "certificate_soundness": certificate_soundness,
+        "shield_prevents_violation": shield_prevents_violation,
+        "refuse_to_emit": bool(refuse_to_emit),
+        "self_correction_repairs": bool(self_correction_repairs),
+        "verdict_audited": bool(verdict_audited),
+        "contract_enforced": bool(contract_enforced),
+        "program_proof_carrying": bool(program_proof_carrying),
+        "tamper_caught": bool(tamper_caught),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -9831,6 +9970,7 @@ FAMILIES = {
     "cross_org_conformance": bench_cross_org_conformance,
     "computer_use": bench_computer_use,
     "identity": bench_identity,
+    "verified_reasoning": bench_verified_reasoning,
     "breaking_2_0": bench_breaking_2_0,
 }
 
