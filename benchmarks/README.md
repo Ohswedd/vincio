@@ -63,22 +63,42 @@ together yourself.
 
 `quality_uplift.py` asks the question the micro-benchmarks don't: take the *same
 model* and call it directly (the way an agent harness or a web chat does) versus
-through Vincio's pipeline — what changes? It keeps two regimes strictly separate
-so nothing is overstated:
+through Vincio's pipeline — what changes? Like every example and test, it runs
+**deterministic on the mock and against a real model when a provider is
+configured**:
 
-- **Deterministic (real numbers, below):** contributions that hold for *any*
-  model because they are mechanical, measured offline on the deterministic mock.
-- **Frontier-model quality (harness only):** the absolute lift in answer
-  correctness needs a real model — the suite ships the harness and prints the
-  exact `VINCIO_PROVIDER=…` command, and **does not print a quality number it did
-  not measure.**
+```bash
+python benchmarks/quality_uplift.py                            # deterministic, offline
+VINCIO_PROVIDER=openrouter VINCIO_MODEL=openai/gpt-4o-mini \
+  OPENROUTER_API_KEY=sk-or-... python benchmarks/quality_uplift.py   # real model
+```
+
+**Deterministic mechanism metrics** — hold for *any* model because they are
+mechanical, measured offline:
 
 | Metric (same model, direct vs. via Vincio) | Direct | Via Vincio |
 |---|--|--|
 | Schema-valid object from realistic model outputs | 1/6 | **5/6** (structure-only repair) |
 | Prompt-injection exfiltration via a tool call | compromised | **contained** (taint + capability token) |
 | Context tokens to retain an early fact at 80 turns | 640 (needle falls out of window) | **33, needle retained** (bounded recall) |
-| Grounded + cited answers (deterministic illustration) | 0/3 | **3/3** — real-model delta needs a provider key |
+
+**Grounded-answer quality, measured on real models** — 10 company-specific
+policy questions a model cannot know from pretraining, so the metric isolates the
+value of *supplying and enforcing evidence*, not parametric memory (OpenRouter,
+June 2026):
+
+| Model — direct vs. through Vincio | Direct correct | Direct hallucinated | Via Vincio correct | Cited |
+|---|--:|--:|--:|--:|
+| `openai/gpt-4o-mini` | 1/10 | 8/10 | **10/10** | 10/10 |
+| `anthropic/claude-3-haiku` | 0/10 | 0/10 (abstains) | **8/10** | 10/10 |
+| `google/gemini-2.5-flash-lite` | 0/10 | 4/10 | **9/10** | 10/10 |
+| `meta-llama/llama-3.1-8b-instruct` | 0/10 | 8/10 | **9/10** | 9/10 |
+
+The model *alone* answers ~0/10 (better-aligned models abstain, weaker ones
+hallucinate); the same model through Vincio's retrieval + grounding answers
+8–10/10, every answer cited. A provider error is reported, never scored as a
+hallucination. Numbers are stochastic across runs by a point or two — rerun the
+command above to reproduce on your own key.
 
 ## Families
 
