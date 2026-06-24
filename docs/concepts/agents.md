@@ -203,7 +203,7 @@ TimerService(compiled_graph).deliver(thread_id, "approved", payload={...})  # wa
 
 `pending_timers` / `due_timers` / `resume_due_timers` / `deliver_event` are the
 module-level forms. See
-[`examples/40_orchestrator_planner_depth.py`](../../examples/40_orchestrator_planner_depth.py).
+[`examples/04_agents_and_tools.py`](../../examples/04_agents_and_tools.py).
 
 ## Declarative composition
 
@@ -287,7 +287,7 @@ pluggable `IsolationBackend` in `tools/sandbox.py` (subprocess is the zero-dep
 default but not a security boundary; container / microVM / gVisor / WASM are real
 boundaries, enforced by `require_real_isolation` for code-executing and
 computer-use workloads). See
-[`examples/34_self_improving_loop_and_agents.py`](../../examples/34_self_improving_loop_and_agents.py).
+[`examples/08_optimization_self_improvement.py`](../../examples/08_optimization_self_improvement.py).
 
 The rung above the flat tools is the **action plane**: `app.computer_use(...)`
 returns a `ComputerEnvironment` for an agent that drives a screen *safely*. Over a
@@ -302,7 +302,7 @@ saga's compensation — into a typed `ActionOutcome`, every step on the same
 hash-chained audit log. A `ComputerTask` carries a goal and a declarative verifier, so
 a run projects onto the same `Trajectory` the trajectory metrics and test-time search
 already score. See the [computer-use guide](../guides/computer-use.md) and
-[`examples/89_computer_use_action_plane.py`](../../examples/89_computer_use_action_plane.py).
+[`examples/04_agents_and_tools.py`](../../examples/04_agents_and_tools.py).
 
 ## World-model / simulation-based planning
 
@@ -328,4 +328,4 @@ rollouts before acting so a wrong move costs a simulated step, not a live one.
   At a fixed action budget it matches or beats reactive (one-step) planning: on the
   `make_vault_environment` trap world it opens the vault a reactive planner is
   trapped short of. See
-  [`examples/55_world_model_planning.py`](../../examples/55_world_model_planning.py).
+  [`examples/11_advanced_context.py`](../../examples/11_advanced_context.py).

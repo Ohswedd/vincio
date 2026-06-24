@@ -76,4 +76,4 @@ task = await client.send("Explain the refund trend")
 assert task.status.state == "completed"
 ```
 
-See [`examples/23_a2a_delegation.py`](../../examples/23_a2a_delegation.py).
+See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py).

@@ -141,7 +141,7 @@ Pass `research=False`, `memory_os=False`, or `rails=False` to opt out of any one
 `backend="openai"` / `"gemini"` switch to the hosted wire. Tool calls (including
 `research` and the memory ops) route through the app's permissioned, sandboxed,
 budgeted, audited runtime — a voice turn cannot do anything a text turn could
-not. See [`examples/44_voice_agent.py`](../../examples/44_voice_agent.py) for a
+not. See [`examples/01_quickstart.py`](../../examples/01_quickstart.py) for a
 runnable, offline end-to-end version.
 
 ## Scope

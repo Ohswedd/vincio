@@ -47,4 +47,4 @@ provider = build_provider("openai_responses", api_key="…")
 app = ContextApp(name="x", provider=provider, model="gpt-5.2")
 ```
 
-See [`examples/25_reasoning_control.py`](../../examples/25_reasoning_control.py).
+See [`examples/11_advanced_context.py`](../../examples/11_advanced_context.py).

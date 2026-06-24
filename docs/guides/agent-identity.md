@@ -127,6 +127,6 @@ under one key; bind the identity at startup.)
 
 ## See also
 
-- The runnable example: [`examples/90_agent_identity_delegation.py`](../../examples/90_agent_identity_delegation.py)
+- The runnable example: [`examples/09_security_governance.py`](../../examples/09_security_governance.py)
 - [SLOs](../reference/slo.md#agent-identity-delegation--cryptographic-accountability) — the identity-integrity and delegation-attenuation budgets
 - [Audit integrity](../../SECURITY.md) — how the identity binds to the hash-chained audit log

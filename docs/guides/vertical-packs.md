@@ -102,6 +102,6 @@ register_pack(Pack(
 ))
 ```
 
-See [`examples/42_vertical_packs.py`](../../examples/42_vertical_packs.py) for a
+See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py) for a
 runnable tour, and the [cookbook](cookbook.md) for task-shaped recipes built on
 these packs.

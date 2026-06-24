@@ -11,69 +11,53 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-2665%20passing-2ea44f" alt="2665 tests passing">
-  <img src="https://img.shields.io/badge/lint-ruff-D7FF64" alt="Ruff">
-  <img src="https://img.shields.io/badge/typed-pydantic%20v2-E92063" alt="Pydantic v2">
+  <img src="https://img.shields.io/badge/tests-3288%20passing-2ea44f" alt="3288 tests passing">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
 </p>
 
 ---
 
-**Vincio** is a Python platform for building **context-engineered** AI applications. It compiles
-prompts, memory, retrieval, tools, schemas, and policies into optimized, testable, observable,
-provider-neutral **context packets** — then validates and evaluates every output.
+**Vincio is a Python platform for building AI applications that you can trust in production.**
+It takes everything that goes *into* a model — prompts, memory, retrieved evidence, tools, schemas,
+and policies — and compiles it into an optimized, validated, observable **context packet**; then it
+checks, measures, and traces everything that comes *out*.
 
-Most frameworks help you *call* a model. Vincio governs the **boundary** between your application
-state and the model: what evidence is selected, how it is scored and budgeted, how it is rendered
-for cache reuse, and how the result is validated, measured, and traced. Named for **Leonardo da
-Vinci** — engineering and craft in equal measure.
+Most libraries help you *call* a model. Vincio governs the **boundary** between your application and
+the model: what evidence is selected, how it is scored and budgeted, how the result is validated,
+and what it cost. Named for **Leonardo da Vinci** — engineering and craft in equal measure.
 
 ```text
-Raw Input → Normalization → Objective Detection → Memory Selection
-→ Retrieval Planning → Evidence Retrieval → Ranking + Distillation
-→ Tool Planning → Context Compilation → Model Execution
-→ Parsing + Validation → Evaluation + Guardrails → Trace + Learning Loop
+Raw input → normalize → retrieve & rank evidence → compile context (score · dedupe · budget)
+→ call model → parse & validate → evaluate & guard → trace & cost → learn
 ```
 
-## Contents
+**Why you'd reach for it**
 
-[Why Vincio](#why-vincio) · [Install](#install) · [Quickstart](#quickstart) ·
-[Features](#features) · [Benchmarks](#benchmarks) · [Comparison](#how-vincio-compares) ·
-[Use cases](#use-cases) · [CLI](#command-line) · [Architecture](#architecture) ·
-[Roadmap](#roadmap) · [Documentation](#documentation)
-
-## Why Vincio
-
-Teams ship a prompt, watch it work, then spend months fighting everything around it: context that
-overflows the window, retrieved chunks that contradict each other, outputs that fail to parse,
-silent quality regressions, untraceable costs, and prompt-injection risk. These are not model
-problems — they are **context** problems.
-
-Vincio treats context as a compiled artifact with a clear contract:
-
-- **Deterministic where it matters.** Security, permissions, and validation are enforced in code —
+- **Runs offline, for real.** No API key needed — a deterministic mock provider emits schema-valid
+  output, so your whole pipeline (retrieval, validation, evals, traces) runs in CI without network.
+- **Deterministic where it counts.** Security, permissions, and validation are enforced in code,
   never gated on model output. The same input compiles to the same packet.
 - **Measured, not asserted.** Every run is traced and costed; every change can be gated by an eval
   suite before it ships.
-- **Provider-neutral.** OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, or a
-  deterministic offline mock — behind one interface.
-- **One coherent model** from input to output, instead of a bag of loosely-coupled utilities.
+- **One coherent system** from input to output — not a bag of utilities you wire together yourself.
+
+## Contents
+
+[Install](#install) · [Quickstart](#quickstart) · [What you can build](#what-you-can-build) ·
+[Features](#features) · [Benchmarks](#benchmarks) · [How Vincio compares](#how-vincio-compares) ·
+[Examples](#examples) · [CLI](#command-line) · [Architecture](#architecture) ·
+[Docs](#documentation)
 
 ## Install
 
 ```bash
 pip install vincio                  # core — runs fully offline with the mock provider
-pip install "vincio[openai]"        # + OpenAI provider
-pip install "vincio[anthropic]"     # + Anthropic provider
-pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, postgres,
-                                    #   weaviate, milvus, elasticsearch, opensearch, vespa)
-pip install "vincio[realtime]"      # + voice/realtime sessions (OpenAI Realtime, Gemini Live)
-pip install "vincio[langchain]"     # + framework interop export (also: llamaindex, haystack, dspy)
-pip install "vincio[snowflake]"     # + a warehouse connector (also: bigquery)
+pip install "vincio[openai]"        # + OpenAI    (also: anthropic, google, mistral)
+pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, pgvector, …)
 pip install "vincio[all]"           # every optional integration
 ```
 
-Python 3.11+. Core dependencies are just `pydantic`, `httpx`, `pyyaml`, and `typing-extensions`;
+Python 3.11+. The core depends only on `pydantic`, `httpx`, `pyyaml`, and `typing-extensions`;
 every heavy integration (vector stores, OCR, server, OpenTelemetry, …) is an opt-in extra.
 
 ## Quickstart
@@ -87,426 +71,248 @@ app.set_policy("answer_only_from_sources", True)
 
 result = app.run("How do I configure SSO?")
 print(result.output)      # the grounded answer
-print(result.citations)   # evidence the answer actually cited
+print(result.citations)   # the evidence it actually cited
 print(result.trace_id)    # every run produces a full trace
 print(result.cost_usd)    # …and a cost
 ```
 
-No API key? It runs offline out of the box on a deterministic mock provider that emits
-schema-valid output — so your whole pipeline (retrieval, validation, evals, traces) runs for real
-in CI.
+No API key? It runs offline out of the box on a deterministic mock provider that emits schema-valid
+output — so the whole pipeline runs for real in CI.
 
-### Typed output
+## What you can build
+
+**Typed output you can rely on** — declare a Pydantic schema, get a validated instance back:
 
 ```python
 from pydantic import BaseModel
 from vincio import ContextApp
 
-class TicketClassification(BaseModel):
+class Triage(BaseModel):
     label: str
     confidence: float
-    reason: str
 
-app = ContextApp(name="triage", output_schema=TicketClassification)
-result = app.run("The dashboard crashes after login")
-
-result.output.label        # → a validated TicketClassification instance
+app = ContextApp(name="triage", output_schema=Triage)
+app.run("The dashboard crashes after login").output.label   # → a validated Triage
 ```
 
-### Agents with tools and memory
+**Agents with tools, memory, and hard budgets** — permissioned tools, approval-gated writes, and a
+loop that cannot run away:
 
 ```python
-app = ContextApp(name="support_refunds", output_schema=RefundDecision)
+app = ContextApp(name="support", output_schema=RefundDecision)
 app.add_memory(scope="user", strategy="semantic")
-app.add_tool("billing_lookup", permissions=["billing:read"])
-app.add_tool("refund_create", permissions=["billing:write"], approval_required=True)
-
-agent = app.agent(max_steps=6)
-result = agent.run("Customer asks for a refund on invoice INV-123.")
+app.add_tool(lookup_order, permissions=["orders:read"])
+app.add_tool(issue_refund, permissions=["refunds:write"], approval_required=True)
+app.run("Refund my duplicate charge")
 ```
 
-### Multi-agent crews and durable graphs
+**Evaluation as a CI gate** — measure quality and block a regression before it ships:
 
 ```python
-from vincio.agents import interrupt
+from vincio import Dataset
+from vincio.evals import EvalCase, EvalRunner
 
-crew = app.crew(members=[
-    {"name": "researcher", "goal": "gather the numbers", "keywords": ["find"]},
-    {"name": "writer", "goal": "draft the recommendation"},
-])
-result = crew.run("Explain the Q3 refund trend")   # bounded, traced, blackboard-shared
-
-graph = app.graph("review")                        # checkpointed in your own store
-graph.add_node("analyze", analyze)
-graph.add_node("approve", lambda s: {"ok": interrupt(s, "proceed?")})
-graph.add_edge("analyze", "approve")
-flow = graph.compile()
-paused = flow.invoke({"doc": "msa.pdf"})           # pauses at the human gate
-done = flow.resume(paused.thread_id, value=True)   # later — even after a restart
+dataset = Dataset(name="golden", cases=[EvalCase(id="c1", input="…", expected="…")])
+runner = EvalRunner(app, metrics=["groundedness", "citation_accuracy"],
+                    gates={"groundedness": ">= 0.8"})
+report = runner.run(dataset)
+assert all(g["passed"] for g in report.gates.values())   # fail the build on a regression
 ```
 
-### Reliability as a guarantee
-
-```python
-from vincio import Signature, InputField, OutputField
-
-class Triage(Signature):
-    """Classify a support ticket."""
-    ticket: str = InputField(desc="the raw ticket text")
-    label: str = OutputField(desc="bug | billing | feature | other")
-    confidence: float = OutputField()
-
-result = app.predictor(Triage)(ticket="The export button 500s")  # typed + validated
-
-app.add_rail(name="no_leaks", kind="safety", detectors=["pii", "secrets"], action="redact")
-app.add_rail(name="on_topic", kind="topic", direction="input", blocked_topics=["legal advice"])
-app.enable_self_correction(max_cycles=2, max_cost_usd=0.05)      # facts never invented
-app.add_output_schema(BugReport, keywords=["bug", "crash"])       # multi-schema routing
-
-async for event in app.astream("Extract the invoice"):
-    if event.type == "partial_output" and event.valid_prefix is False:
-        break   # streaming validation: stop paying for a doomed answer
-```
-
-### Evaluation as a gate
-
-```python
-from vincio.evals import Dataset, EvalRunner
-
-dataset = Dataset.load("golden/support_triage.jsonl")
-report = EvalRunner(app).run(dataset)
-report.print_summary()     # groundedness, citation accuracy, schema validity, cost — with CI exit codes
-```
-
-### Self-improvement as a contract
-
-```python
-from vincio.optimize import SelfImprovementPolicy
-
-# One declarative policy composes scheduling, autonomous proposal, online updates,
-# meta-optimization, active-learning labels, and canary-gated promotion/rollback.
-controller = app.self_improvement(SelfImprovementPolicy(), dataset=golden)
-async for ev in controller.astream():
-    print(ev.phase, ev.reason)   # observe → proposal → meta → canary → promote/rollback
-
-# Promote a candidate live only if it clears a no-regression canary verdict.
-app.deploy(candidate, dataset=golden)
-
-# On-policy reinforcement from verifiable rewards: improve a policy from the
-# task-success oracle and benchmark scorers, behind a KL clamp + no-regression gate.
-from vincio.optimize import OracleReward, RewardModel
-result = app.learn(tasks, reward=RewardModel([OracleReward()]))
-result.promoted, result.reward_delta, result.kl_to_reference
-```
-
-### Interoperate: MCP, A2A, Skills
-
-```python
-# Consume an MCP server — its tools run through the permissioned, sandboxed,
-# audited runtime; its resources become cited evidence.
-app.add_mcp_server("weather", command=["python", "weather_server.py"])
-
-# Load portable SKILL.md procedural knowledge (progressive disclosure).
-app.add_skill("skills/pdf-invoice")
-
-# Expose your app over the protocols — one ContextApp, both consumer and provider.
-mcp_server = app.serve_mcp()                       # serve tools/resources/prompts
-a2a_server = app.serve_a2a(crew, name="research")  # Agent Card + task lifecycle
-
-# One portable reasoning knob across providers (thinking tokens are billed).
-from vincio.core.types import RunConfig
-app.run("Plan the migration", config=RunConfig(reasoning_effort="high"))
-```
+See **[Examples](#examples)** for twelve complete, runnable programs that cover the whole platform.
 
 ## Features
 
-Vincio is organized into composable subsystems. Use the high-level `ContextApp` runtime, or reach
-for any engine directly. Everything below is implemented, tested offline, and documented.
+Everything below is implemented, tested offline, and demonstrated by a runnable example. Use the
+high-level `ContextApp`, or reach for any engine directly.
 
-| Subsystem | What it does |
-|---|---|
-| **Prompt compiler** | Typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, diffing, variant generation. |
-| **Context compiler** | Scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget — with an *excluded-context report* explaining every omission. Image, table, video, and text evidence are first-class candidates in **one scored packet**, with modality-aware token cost and slim packets that `materialize()` cross-process from a content-addressed evidence store. Video clips are sampled and segmented into typed evidence whose **time range is preserved through to the citation**, so a clip-grounded answer points at the moment it came from. |
-| **Retrieval (RAG)** | BM25 + dense + learned-sparse (SPLADE-style) + late-interaction (ColBERT-style MaxSim with PLAID-style compression) fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition, step-back); sentence-window, parent-document/auto-merging, and contextual chunking; GraphRAG with community summaries and global/local routing; live indexes (upsert/TTL/migrations); entity-graph, multi-hop, and reasoning retrieval; Matryoshka (MRL) dimension truncation, contextual (Voyage context-3) and unified text+image multimodal (Cohere v4 / Voyage) embedders behind one `build_embedder`; a structured **`FilterSpec`** (`eq`/`in`/`range`/`and`/`or`) that pushes down to each backend's native filter with tenant scope enforced in the engine. |
-| **Memory** | Layered (session → episodic → semantic → tenant → graph) with a guarded write pipeline, confidence decay, contradiction resolution, and privacy scoping; `remember`/`recall` personalization over user/agent/session/team scopes, hybrid vector+graph recall, episodic→semantic consolidation with provenance, TTL + importance-weighted retention, audited GDPR-style edit/forget/export/erase, and a CI-gated memory eval harness. Memory is **bi-temporal** (`valid_from`/`valid_to` + as-of recall, `correct()` that preserves history) with **per-memory ACLs** and a `TEAM` scope. |
-| **Tools** | Permissioned registry (RBAC scopes + ABAC rules), schema derivation from type hints, a resource-limited sandbox (timeout, output caps, scrubbed env, POSIX CPU/memory/fd `setrlimit`), reliability scoring, idempotent write-action guardrails with approval callbacks; **computer-use** and provider-native **hosted tools** behind a pluggable `IsolationBackend` (container / microVM / gVisor / WASM); a grounded, verified, reversible computer-use **action plane** (`ComputerEnvironment`) that grounds an intent to a stable selector, pre-gates a destructive or out-of-scope action like a write tool, post-verifies the effect, and undoes it on divergence. |
-| **Agents** | Bounded DAG execution with planners (direct / static / dynamic / ReAct / plan-and-execute / **hierarchical HTN**), critics, validators, human gates, and hard budget enforcement; **in-place plan repair** (re-bind / substitute / reorder / drop on a tool failure, contradiction, or budget shock — recorded as a trajectory event, not a restart); **cost-aware action selection** that reads `ModelRegistry` pricing and the live budget to spend the cheapest capable model per step, escalating only on low confidence; a budgeted, citation-gated **deep-research agent** (`app.research`) that loops search → read → reflect → verify → synthesize into a cited report; a self-editing **memory OS** (`app.enable_memory_os`) exposing memory ops as audited tools with a context-pressure pager. |
-| **Orchestration** | Multi-agent crews — roles, delegation, and a shared versioned blackboard — with per-agent budget shares and guaranteed termination; durable stateful graphs with checkpoints on your storage, resume, edit-and-resume, and time-travel forks; first-class human-in-the-loop interrupts; a declarative `compose`/pipe API with streaming node events. A **distributed durable-execution backend** runs the same graph/workflow across a worker pool with a TTL lease + checkpoint-version CAS so two workers never double-execute a step, with BSP parallel super-steps, a `Send` map-reduce primitive, and LangGraph / OpenAI Agents SDK / Ray / Temporal export adapters. A **work-stealing sub-graph scheduler** runs independent sub-graphs concurrently across the pool under one fair-share budget with an SLA deadline that returns a partial result, and **durable timers** (`sleep_until` / `wait_for_event`) pause a graph for a delay, a webhook, or an approval — surviving a restart without holding a worker. |
-| **Workflows** | Deterministic DAGs with retries, branching, parallelism, compensation, and approval gates that pause the run and resume without re-executing finished steps. |
-| **Structured output** | Pydantic output contracts, provider-native constrained decoding with strict schema sanitization (robust-parser fallback everywhere else), streaming validation with mid-stream early abort, DSPy-style typed signatures (`Signature` / `Predict`) that feed the optimizer, bounded self-correcting loops with cost ceilings, multi-schema routing by task or content, and **principled repair that fixes structure only — never invents facts**. |
-| **Evaluation** | Golden JSONL datasets, 30+ task / grounding / quality / safety / conversational / trajectory & tool-use / retrieval / operational metrics, deterministic / model / G-Eval judges with calibration, synthetic dataset generation with provenance, red-teaming judged by the security detectors, experiment tracking with statistical significance, regression gates, and baseline-diff reports — plus a `pytest` plugin (`assert_eval` / `assert_grounded`, packet/trace snapshots). A **stateful-environment harness** (`Environment` reset/step/observe/verify with a task-success oracle) scores the verifiable end state of a mutable world, and nine **agentic benchmark adapters** (SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL, AgentBench, ToolBench, LiveCodeBench, MMLU-Pro) run inside VincioBench behind one contract — replayed offline or solved live, scored either way by the benchmark's own scorer. A **retrieval-eval harness** (recall@k / nDCG / MRR / context-precision) records versioned index-regression artifacts keyed on `(embedder, chunker, corpus hash)` and gates a regression on the same significance test as a model swap. When a gate does regress, a **`CausalAttributor`** attributes the drop to the component that caused it (prompt / retrieval / model / budget) by Shapley counterfactual replay — so a failure names its cause instead of just its score — and an **`AdaptiveSampler`** spends the eval budget where the variance is, converging a noisy gate on the same verdict as the exhaustive run for far fewer samples. |
-| **Agentic eval & continuous quality** | Score *how* a run reached its answer: trajectory & tool-use metrics over a `Trajectory` projected from any crew / graph / trace (no re-instrumentation); a deterministic multi-turn `Simulator`; **online evaluation** on a sampled slice of live traffic (restart-safe, worker-aggregatable, off the hot path); **drift detection** — score, embedding-distribution, KS / PSI / MMD distributional, and a streaming CUSUM changepoint — raising a `drift.detected` event; human annotation with Cohen's-κ judge calibration; **judge ensembles** (`JudgeEnsemble`) that turn a panel's disagreement into an uncertainty signal — flagging split cases for review and earning CI-gating weight only once the panel's κ against human labels clears the bar; production A/B with cost + significance per variant. Every metric doubles as a runtime guardrail (`add_metric_rail`) and optimizer fitness term. |
-| **Optimization & the closed loop** | One continuous, reproducible cycle — trace → dataset → eval → optimize → promote (`ImprovementLoop` / `vincio loop run`): production traces become datasets, the gated optimizer searches, and the winner lands in the prompt registry tagged, eval-linked, applied live, and audited — with safety-gated promotion that blocks any candidate regressing schema validity or safety. Plus grounded auto-memory from runs, eval-driven retrieval feedback, cost/quality Pareto frontiers with knee-point selection, and learned per-task budget allocation. |
-| **Self-improvement** | One declarative **`SelfImprovementPolicy`** composes scheduling, autonomous proposal, online updates, meta-optimization (learned fitness weights + successive-halving), active-learning label acquisition, and canary/rollback; `app.self_improvement(policy).astream()` drives the organs as one streaming controller — `observe → proposal → meta → reeval → canary → promote/rollback`. **`app.deploy`** promotes a prompt/policy live only on a no-regression canary verdict — an offline gated comparison *or* a live-traffic canary that ramps a fraction of real runs and auto-rolls-back a regression. Every promotion passes the same significance + safety + golden gates. |
-| **Reflective optimization & the flywheel** | A GEPA-style `ReflectiveOptimizer` that reads eval failures, reflects on why a prompt lost, and proposes targeted edits, evolving a Pareto frontier under a hard rollout budget (plus MIPRO joint instruction+example proposal); a **distillation flywheel** (`app.export_training_set` / `vincio distill`) that curates grounded production traces into provider-ready fine-tuning JSONL and gates a cheaper student into the routing cascade only when it holds quality, with executed fine-tune jobs (OpenAI/Gemini/Anthropic); **learned prompt compression** (`LLMLinguaCompressor`) as a faithfulness-gated compiler pass; and reflective calibration of the optimizer's own LLM judge against κ-validated labels. |
-| **On-policy reinforcement (RLVR)** | The learning loop closed on a *policy*, not just a prompt. A **`RewardModel`** turns the signals the platform already computes — the stateful-environment task-success oracle, the nine benchmark scorers, and a judge ensemble whose **disagreement down-weights itself** — into a verifiable reward; a **`TrajectoryAdvantage`** assigns step-level credit by Shapley counterfactual replay (the same kernel as causal regression attribution); and a GRPO-style **`TrajectoryOptimizer`** (**`app.learn`**) runs a group-relative update behind a **KL-to-reference clamp** and a **monotonic no-regression gate** — the served policy never regresses the baseline reward — emitting a fine-tune job through the existing flywheel under the same canary verdict a prompt deploy produces. The offline path runs a deterministic mock policy so the optimizer's math is fully tested without a GPU. |
-| **Test-time compute & reasoning** | Thinking budgets and parallel search as a first-class, budgeted dimension of the run. A **`ReasoningController`** (`app.use_reasoning_controller`) sets thinking effort and a thinking-token budget per step from the task classification and the live budget, under a **hard reasoning-token ceiling** so a hard task cannot silently exhaust the run; a warm thinking prefix in the byte-budgeted **`ReasoningTraceCache`** steps the effort down. **`TestTimeSearch`** (`app.test_time_search`) runs verifier-guided **best-of-N**, **self-consistency**, and **beam search** over tool-use trajectories — scored by the platform's *existing* judge ensembles and verifiable rewards through one `Verifier` protocol (a split panel's disagreement lowers its confidence) — and **early-exits** the instant the verifier clears the bar or the majority is locked, bounded by a candidate / cost / deadline budget. |
-| **Long-horizon context engineering** | Million-token, multi-day, multi-session runs stay bounded where naïve accumulation rots quality and blows the budget. A per-run **`ContextGovernor`** (`app.use_context_governor`) holds a **`ContextBudget`** — live tokens, residency, and KV-cache footprint — the way the cost report holds a dollar budget, and surfaces it via `app.context_budget_report()`. **`RelevanceDecay`** applies the memory subsystem's decay *within a single run* so stale spans lose weight before they crowd out fresh signal, surfaced in the excluded-context report. A provenance-preserving **`ContextCompactor`** folds cold spans into hierarchical summaries in the memory OS and **pages their full text back on demand** from the content-addressed store — so detail is moved, never lost. A horizon-scaling SLO holds quality and footprint bounded as a run grows 10×. |
-| **World-model / simulation-based planning** | An agent that **learns a model of its tools and plans against it** — searching imagined rollouts before acting, so a wrong move costs a simulated step, not a live one. A **`WorldModel`** is fit offline from recorded reset/step `Transition`s (`record_transitions`); it learns each tool's *parameterized* effect under a learned *precondition*, so it predicts a refund fails on a processing order but succeeds on a cancelled one — and generalizes a cancel it only ever saw on one order to another. A **`CalibrationReport`** (`WorldModel.calibrate`) earns the model planning weight only once its predictions track the real environment within tolerance, the way a judge ensemble earns gating weight. A **`ModelPredictivePlanner`** searches imagined rollouts with the test-time-search beam, commits the best first action, observes, and re-plans — and at a fixed action budget matches or beats reactive planning, opening a vault a one-step planner is trapped short of. |
-| **Causal record-replay debugger** | A past run becomes something you can step, inspect, and branch — not a one-shot you can only read about. A **`Recorder`** captures every non-deterministic edge of a run — model responses, tool outputs, retrieval hits, the negotiated capabilities, and the clock/seed — keyed to its trace spans into a portable, content-addressed, verifiable **`Recording`**. A deterministic **`Replayer`** serves each edge back so a recorded run replays **byte-for-byte** (the recording, not the live provider, drives the run), with a step/inspect surface over the span tree and a **`Divergence`** report the moment live code no longer matches. **Branch-and-edit** (`BranchEdit`) forks a recording, changes an edge or the input, and re-executes **only the affected suffix** while the unchanged prefix is still served from the recording — so a fix is validated against the exact failing run. |
-| **Learned semantic cache & near-miss KV reuse** | Exact-match caching serves a byte-identical request for free; this serves the rung above it — a request that is *semantically equivalent* (not byte-identical) to a recent one, answered straight from cache. A **`LearnedSemanticCache`** (`app.use_semantic_cache`) serves a near-miss **only above a calibrated acceptance threshold**: a **`ThresholdCalibrator`** fits the bar from labelled trace pairs so accepted near-misses clear a precision target — and falls back to off rather than guess when the target is unreachable, so the cache never serves below the bar. Every accepted hit is **auditable and reversible**, and a **`SemanticCacheGate`** catches a drifted cache with the same eval-replay no-regression check that gates a model swap. A **`KVPrefixPool`** (`app.use_kv_prefix_reuse`) reuses a shared stable-prefix KV footprint across a family of requests that share a head, reporting the serving-engine KV the shared head avoids recomputing. Savings surface as $0-billed calls in the cost report and via `app.semantic_cache_report()`; both layers stay under the resident-memory budget, held by a hit-quality SLO (an accepted near-miss is at-least-as-good as a live answer at a fixed budget). |
-| **On-device fine-tuning & continual local adaptation** | The flywheel turns traces into *hosted* fine-tune jobs and the in-process GGUF provider runs a model air-gapped; this closes the loop with **local adaptation** — the model improving on its own traffic with no hosted training round-trip. A **`LocalLoRATrainer`** fits a parameter-efficient, **low-rank `LocalAdapter`** on-device from the flywheel's grounded dataset — pure-Python and deterministic by default, with a `NativeLoRABackend` hook for a real GGUF/LoRA. An **`AdaptedProvider`** applies it to **any** provider (the in-process model, the mock, a hosted endpoint) so an in-distribution request is answered the way it was taught while everything else falls through to the base model unchanged — the adapter is **bounded**, never reshaping traffic it has not seen. A **`ContinualAdaptation`** loop (`app.adapt_locally` / `app.local_adaptation`) promotes a new adapter version only when the locally-adapted model is **at-least-as-good** as its base on a held-out set — the same no-regression gate a hosted fine-tune job clears — and an **`AdapterRegistry`** versions every adapter and **rolls it back** on regression. Apply or unload one live with `app.use_local_adapter`; the run never leaves the process, held by a no-regression SLO. |
-| **Federated / cross-org self-improvement** | The platform learns from its own traffic within one trust boundary three ways; this adds the rung that lets a **fleet improve together without sharing the raw traffic**. Each member builds a numeric, raw-text-free **`Contribution`** — the **clipped, masked** subspace scatter of its local adapter geometry, never a prompt or a response — behind the **consent ledger** (TRAINING purpose) and the **residency** posture (`app.contribute_federated`). A **`SecureAggregator`** merges the fleet's contributions into a shared **`FederatedSubspace`**: the pairwise masks cancel exactly, so the aggregator recovers the fleet geometry **without ever seeing one member's update**, refuses a round below the **k-anonymity** contributor floor, and supports a **differential-privacy** Gaussian mechanism via **`PrivacyConfig`**. The adopting member re-fits its **own** adapter against the shared subspace (`app.adopt_federated` / `app.federated_improvement`) — the fleet's geometry, the member's own grounded answers — and adopts it only when **at-least-as-good** as its base on a held-out set, the same no-regression gate a local promotion clears, versioned in the **`AdapterRegistry`** and **rolled back** on regression. Only numeric, masked, bounded-sensitivity aggregates ever cross a trust boundary; held by a privacy SLO and a no-regression SLO. |
-| **Differential-privacy memory & training** | A federated round bounds one member's *per-round* influence; this adds the **end-to-end privacy accountant** the platform lacked — a **per-subject `(ε, δ)` budget** that composes every memory consolidation and learning round a subject's data touches and **refuses once it is spent**. `app.use_privacy_accountant(...)` attaches a Rényi/moments **`PrivacyAccountant`** that tracks the cumulative `(ε, δ)` a subject has spent (composing across rounds far more tightly than naively summing each step), and a **`PrivacyBudget`** gates a learning step the way the cost report gates a dollar: a consolidation or contribution that would exceed the budget is **refused** (a hard cap) or **down-weighted** (clipped harder so its sensitivity, and so its privacy cost, fits). It wires into **memory consolidation** and **federated contributions** automatically, and **`app.privacy_report()`** rolls up each subject's spent / remaining `ε` next to the cost report — every spend and refusal on the hash-chained audit log, so the guarantee is a mechanical, auditable number, not a policy doc — see the [differential-privacy guide](docs/guides/differential-privacy.md). |
-| **Cross-fleet reputation & weighting** | A federated round merges every member with equal weight; this adds a per-member **reputation** that discounts an unreliable or adversarial member's pull on the shared consensus — earned only from how each contribution fared against the no-regression gate, never from raw traffic. `app.use_reputation_ledger(...)` attaches a **`ReputationLedger`** that keeps each member's reliability as a **Beta-Bernoulli posterior** over gate outcomes (a robust generalization of the existing reliability scoring): a newcomer earns the benefit of the doubt from a prior, a repeatedly-regressing member decays toward a floor, a reformed member recovers. The **`SecureAggregator`** weights a member's contribution by its reputation before distilling the consensus subspace — folded in **before** the secure-aggregation masks so they still cancel exactly — so a regressor is discounted **without being singled out**. The discount is **bounded and reversible**: a weight never leaves `[floor, 1]` (only lowering pull, never zeroing it or bypassing the quality bar), and adoption still clears the same **no-regression** and **canary** gates a local promotion does. Every update lands on the signed audit chain and **replays from it** (`ReputationLedger.from_audit`), and **`app.reputation_report()`** rolls up each member's standing next to the cost and privacy reports; held by a discount-the-regressor SLO and a no-regression SLO. |
-| **Energy & carbon accounting** | The cost report makes a run's dollar spend an auditable number; this adds the sustainability figure beside it — a per-run **energy** (watt-hours) and **carbon** (grams CO₂e) estimate, on the *same* cost-report surface, never a new plane. `app.use_energy_accounting(...)` turns it on; every run then accrues a **deterministic** estimate from its own token accounting against a per-model intensity (by tier, from the **`ModelRegistry`**) and a per-region grid factor — `result.energy_wh` / `result.co2e_grams`, with **`app.energy_report(...)`** rolling it up by model/tenant/feature on the same attributed events the cost report uses. It is **budgeted like a dollar**: `app.set_energy_budget(...)` sets an energy or carbon envelope and a run that would exceed it is **refused** the way a hard cost cap refuses spend. And it is **auditable and offline** — the estimate is computed in-process from a built-in intensity table (no external service), and both the per-run number and every refusal land on the hash-chained audit log, so the sustainability figure is mechanical, not a claim. |
-| **Edge / WASM in-process runtime** | "Runs in your process" extends to a WASM process. The dependency-free core — the prompt and context compilers, the vectorized scorer with its pure-Python fallback, the deterministic rails, and the offline-first evidence path — runs at the edge and in the browser through a thin in-process boundary. An **`EdgeRuntime`** (`app.edge_runtime()`) turns an `EdgeRequest` into a bounded, slim packet and a rendered prompt with **no provider, network, filesystem, or caller-owned event loop** — the same compile → score → rail → pack pipeline, offline. An **`EdgeProfile`** bounds the compiled packet's resident footprint and token window for a constrained target; the footprint stays under the cap as the candidate corpus grows 10×, held by the same slimming + eviction the server's resident-memory budget uses. The deterministic rails run unchanged, so a secret leaking from evidence into the assembled context is refused at the edge exactly as on the server. It is **parity, not a fork**: `verify_edge_parity` proves an edge compile is byte-identical to a direct server compile over the same inputs, and `edge_manifest` statically certifies the core imports nothing native (NumPy stays behind its guarded fallback), so the edge build is WASM-buildable and a capability can never silently diverge between server and edge — held by an edge-scaling SLO and exercised by the same offline test suite. |
-| **Observability** | Every run yields a full trace span tree with sessions, threaded runs, user feedback, and eval scores on spans; JSONL and OpenTelemetry exporters (GenAI semantic conventions, including agentic spans); a local viewer (TUI + self-contained static HTML export + visual trace diff); traces become eval datasets in one command; a versioned prompt registry with tags, diffs, rollback, and eval links; per-run cost tracking. A **served, self-hosted observability & alerting plane** — an indexed trace/cost store with rollups, a stdlib dashboard (`serve_viewer`), and a rule engine (threshold / EWMA-anomaly / SRE burn-rate) over webhook/Slack/PagerDuty/Prometheus sinks — replaces O(n) JSONL scans, with prompt/completion content off by default at the export boundary. |
-| **Security** | Deterministic PII / secret detection and redaction (with non-English locale packs for France/Germany/Spain/India/Singapore/Brazil/UK), prompt-injection defense, authority/provenance RAG-poisoning detection on retrieved evidence, and **provable injection containment** — a typed `TrustLabel` and `TaintedValue` that propagate taint from untrusted documents, a `DualPlaneExecutor` whose privileged planner sees only schema-validated extractions, and unforgeable `CapabilityToken`s minted from the user's request so an injected instruction provably cannot escalate to an unauthorized side effect; programmable input/output rails (topic / format / safety / custom) in the deterministic policy engine, RBAC / ABAC, tenant isolation, and a hash-chained, signed Merkle-checkpointed audit log with offline tamper verification (`vincio audit verify`) — all documented in a [threat model](docs/security/threat-model.md) and shipped with SBOM + SLSA provenance attestations. |
-| **Agent identity, delegation & accountability** | The identity substrate beneath the tool permissions, the agent fabric, and the cross-org trust fabric — it answers *who authorized this action, down what chain, within what bounds*. **`app.identity(...)`** mints a portable, **self-certifying** **`AgentIdentity`** whose DID is *derived from* its Ed25519 public key (`did:vincio:ed25519:<hex>`), so a verifier resolves the verifying key from the identifier alone, offline, with no registry; its content-bound **`IdentityDocument`** **`verify`**s from the bytes, and a **`Keyring`** **rotates** keys along a **signed chain** so a signature is validated against the key current *at signing time* — a rotated-away or revoked key cannot forge new history, while its past signatures stay valid. A signed **`Delegation`** mints a bounded **`Grant`** (a subset of capabilities, a budget cap, an expiry, an audience) from a principal to an agent — and an agent **sub-delegates** to a sub-agent — composing into a **`DelegationChain`** that **`verify`**s offline where **each link only attenuates, never amplifies**, so a tool call, contract signature, or saga handoff carries *provenance of authority* and an over-reaching sub-delegation is **refused from the bytes**. A signed **`AgentCredential`** is a verifiable claim (*admitted to capability X*, *operated by org Y*) an importer **`verify`**s offline and folds into the admission path. Because an **`AgentIdentity`** is a drop-in **`ChainSigner`**, **`app.use_identity(...)`** binds every audit entry, contract, and settlement to its **DID** — accountability as a cryptographic fact, not a logged string. Ed25519 runs in pure Python (RFC 8032) by default, the native backend behind `vincio[crypto]`; never a hosted identity provider or a CA — see the [identity guide](docs/guides/agent-identity.md). |
-| **Verified reasoning & neuro-symbolic certificates** | The reliability frontier above probabilistic grading: for the classes of question where it is possible, an answer carries a **checkable certificate** a deterministic verifier confirms independently of the model. **`app.verify_reasoning(...)`** runs offline kernels — arithmetic, units, temporal consistency, schema, constraint satisfaction, citation entailment — over an answer into a content-bound **`Certificate`** that is `verified` only when a kernel **recomputed** a claim and it held and `refuted` when a recomputation disagreed, so the orchestrator **refuses to emit** a refuted answer and a `regenerate` callback drives the **bounded self-correction loop** to repair it (the same refuse-or-repair discipline structured output uses, now over *reasoning*); the certificate re-derives its verdict from the bytes, so a flipped status is caught. A **`BehaviorSpec`** states a temporal-logic property over an agent's trajectory, a **`RuntimeMonitor`** checks it step-by-step, and a **`Shield`** (`app.shield(..., use=True)`) **blocks or repairs a policy-violating action *before* it executes** — an unapproved write returns a denied result, the per-step, online counterpart of the ahead-of-run governance verifier. A **`ToolContract`** enforces pre/post-conditions against the *actual* arguments and result (`app.add_tool(..., contract=…)`), and **`app.synthesize_program(...)`** emits a proof-carrying **`SynthesizedProgram`** whose declared properties are **proven before it runs** — every verdict on the hash-chained audit log, the dependency-free kernels default with optional SMT/CAS behind `vincio[verify]`, never a hosted prover — see the [verified-reasoning guide](docs/guides/verified-reasoning.md). |
-| **Autonomous skill acquisition & open-ended curriculum** | The apex of the self-improvement arc: an agent that **grows its own capability** safely, not just gets better at known tasks. **`app.cultivate(...)`** runs an open-ended loop — propose → attempt → verify → distill → promote — across cycles. An **`AutoCurriculum`** proposes the next task at the **frontier of current competence** (solvable by a bounded, library-composing **`SkillSearch`** but not yet by retrieving a known skill) and **gates every proposed objective before it is attempted**: the instruction is screened by the rails and the **`GovernanceVerifier`** must prove the app's controls still hold, so an unsafe or out-of-policy task is **refused, never run**. A winning, oracle-verified trajectory is distilled into a **`LearnedSkill`** — a typed, tool-using procedure whose steps are primitive actions *and calls to existing skills*, so skills **compose** — held in a **content-addressed `LearnedSkillLibrary`** (a duplicate dedups, a changed procedure versions, each skill verifies offline, retrieved like memory and tools). A skill is **promoted only through the same no-regression gate** a deploy clears (capability on a held-out frontier set must not fall) and **demoted when it stops paying its way** — so growth is reversible, not drift. The whole run is content-bound (**`CultivationResult.verify`** re-derives the monotonicity and stay-in-policy verdicts from the bytes) and audited; never a hosted trainer or a managed curriculum — see the [skill-acquisition guide](docs/guides/skill-acquisition.md). |
-| **Continuous assurance cases & production certification** | The capstone that ties every subsystem into one continuously-verified safety argument. **`app.assurance_case(...)`** assembles the evidence the platform **already emits** — eval and regression gates, the **`GovernanceVerifier`** proof, a reasoning **`Certificate`**, an audit-chain segment, an identity / delegation chain, an SBOM / AI-BOM — into a structured **`Claim`** tree (the assurance-case / GSN discipline): a top claim *this app is fit for purpose X under context Y* decomposed into sub-claims, each discharged by **`Evidence`** **bound by hash**, so the whole case **verifies offline** and a **missing, stale, or falsified** piece is **pinpointed** (each evidence item carries a freshness horizon, so a stale proof expires). The case is **re-checked on every change** — **`case.check()`** re-derives the verdict from the bytes and **`assurance_regression_gate(...)`** turns a previously-discharged claim now falsified into a **build failure**, the same gate machinery that blocks a quality regression. A signed **`Incident`** ties a production failure to the sub-claim it falsified and the case **learns** (a remediation sub-claim demands fresh evidence before it re-validates), and **`app.certify(...)`** emits a portable, offline-verifiable **`CertificationReport`** (the case, its evidence, residual risks, SBOM / SLSA provenance) a downstream operator or auditor checks from the bytes; deterministic and offline, never a hosted certification service — see the [assurance guide](docs/guides/assurance.md). |
-| **Governance & compliance** | Evidence generated from the running system, as files you own: machine-readable **model & system cards**, a **compliance coverage matrix** across OWASP LLM Top 10 (2025) / OWASP Agentic / NIST AI RMF / MITRE ATLAS / ISO IEC 42001 backed by red-team and eval evidence, an **AI-BOM** with SHA-256 model-hash verification, EU AI Act **synthetic-content marking** (media-aware, optionally signed + verifiable), an **EU AI Act conformity pack** (risk-tier + cited Annex IV + Article 27 FRIA), **provable erasure** (`app.erase_source` emits a signed, content-bound `ErasureProof` over the exact removed-id set across indexes, memory, and generated artifacts, anchored to the audit chain's Merkle root and verifiable offline), a **`ConsentLedger`** binding data to a GDPR purpose + lawful basis that access and recall enforce, **data lineage**, **data-residency-aware** egress refusal, **formal invariant verification** (`app.verify_governance` *proves* containment, residency, the budget cap, and the erasure-proof binding hold across their whole bounded, typed state space ahead of any run — a deterministic, offline, content-hashed verdict on the audit chain that returns a minimal counterexample on violation), and the non-English **token tax** surfaced per language/tenant — see the [governance guide](docs/guides/governance.md) and the [verification guide](docs/guides/governance-verification.md). |
-| **Documents & media out (generation)** | The deliverable comes out under the same guarantees as text in. A `DocumentBuilder` renders a *validated* result into **cited DOCX/PDF/PPTX/HTML/Markdown**, structurally validated against a `DocumentContract` with formatting-only repair, plus template/form filling and tracked-change **redlines**. A `CitedReportBuilder` resolves `[E1]` markers to **footnotes + a bibliography** with sentence-level citation coverage and per-claim entailment. **Image generation/editing**, **TTS**, and **video generation/editing** (Sora / Veo / a generic adapter) are first-class output modalities where every asset is **C2PA-provenance-stamped, budget-metered, and audited**. Inputs get richer too: OCR auto-fallback for scanned PDFs, audio transcript ingestion, **video understanding** (deterministic frame sampling + temporal segmentation into time-stamped, citable evidence), new-format loaders (PPTX/EPUB/RTF/ODT/Parquet/mbox), a real-parser HTML/JSON/YAML path, and offline forms/KYC extraction — see the [generation guide](docs/guides/generate-documents.md) and the [video guide](docs/guides/video.md). |
-| **Storage** | Pluggable metadata (in-memory / SQLite / Postgres, async-first with a psycopg3 pool), blob, analytics (DuckDB), vector (Qdrant / pgvector / Chroma / Pinecone / LanceDB / Weaviate / Milvus / Elasticsearch / OpenSearch / Vespa behind one `build_vector_index` factory), and graph (Neo4j) backends. Redis-backed shared state + a first-class `vincio serve` keep multi-worker deployments coherent. |
-| **Providers** | OpenAI (Chat Completions + Responses API), Anthropic, Google, Mistral, any OpenAI-compatible endpoint (with hosted-gateway presets: groq, together, fireworks, openrouter, deepseek, perplexity, xai, nvidia), enterprise endpoints (**AWS Bedrock** SigV4, **Google Vertex**, **Azure OpenAI**) behind a pluggable `AuthStrategy` in the same registry, and a deterministic offline mock — all async-first with sync wrappers, pooled transport, retries, and **capability-aware failover**, with in-flight request coalescing. A data-driven `ModelRegistry` (capabilities, pricing, lifecycle) is the single source the cost table, capability guards, and rotation read from. Unified reasoning control (`reasoning_effort` / thinking budget) maps across OpenAI/Anthropic/Gemini, with thinking tokens recorded and billed. Opt-in **voice/realtime** sessions (OpenAI Realtime, Gemini Live) via `vincio.realtime`. Batteries-included **local neural models** (fastembed, SPLADE, ColBERT, a cross-encoder, and a llama.cpp **GGUF** in-process provider) give air-gapped/edge deployments true offline inference behind the same interfaces. |
-| **Protocols & interoperability** | Speaks the standards in-process: **MCP** client *and* server (stdio / Streamable HTTP / in-process) — MCP tools run through the permissioned, sandboxed, audited, budgeted runtime; resources become cited evidence. **A2A** agent-to-agent — expose a crew/graph as an Agent Card + task lifecycle, and reach remote agents as bounded, traced crew delegates. **Agent Skills** — `SKILL.md` with progressive disclosure, bundled scripts as sandboxed tools. A governed **agent fabric** (`AgentDirectory` over A2A Agent Cards, AGNTCY/ACP, and the MCP Registry) resolves agents behind an `AllowListGate`, every resolution an audited access decision; the same gate governs a signed **community pack & skill registry** and a one-call **MCP-server marketplace bridge** that lands a discovered server's tools in the permissioned runtime. **Generative UI** streams a run as AG-UI events so an interactive frontend inherits the run's provenance, budget, and audit. **MCP Apps** land the spec's newer surface in that same channel: a server's `ui://` UI resource is surfaced as a governed `mcp.ui` AG-UI event (`app.mcp_app(...)` / `MCPAppBridge`) — untrusted-external provenance, token-metered against the run budget, audited — and a typed **elicitation** request (`ElicitationGate`) for mid-call user input is gated by the same approval + rail machinery a write tool passes, so an accepted value is screened and tainted untrusted. Protocol-version negotiation and a stateless-core transport mode keep a peer pinned to an older stable revision interoperable. |
-| **Agent negotiation & contracting** | Bounded negotiation and contracting between agents in a multi-org crew, in the same governed, audited, budgeted runtime — never a hosted marketplace. A `Negotiation` runs a typed offer/counter-offer bargain between a buyer and a seller party with **guaranteed termination** (the analogue of a bounded crew round): a deal when the parties' acceptable regions overlap, a clean no-deal when they do not, a partial result on a deadline. The agreement is a typed **`Contract`** over **price / SLA / scope / quality** that both parties sign, that `verify` checks **offline** from the bytes alone (a tampered term or forged signature is caught), and that `to_budget` / `check` (`app.enforce_contract`) enforce **like any other budget**. The counterparty's `ReputationLedger` standing **weights its offers**, so a repeatedly-regressing agent is discounted without being singled out (a bounded, reversible risk premium), and `select_offer` picks the reputation-weighted best deal among competing sellers; a breached contract debits the seller, closing the loop. The bargain runs offline against deterministic local parties or **over the A2A fabric** against a remote counterparty (`A2ANegotiator` / `app.serve_negotiation`) byte-for-byte the same, every outcome on the hash-chained audit log (`app.negotiate`) — see the [negotiation guide](docs/guides/negotiation.md). |
-| **Cross-org workflow choreography** | The durable work agents coordinate once they can negotiate and contract: a long-running, compensating workflow spanning more than one organization's agent fabric — the choreography analogue of the in-process durable graph, now crossing trust boundaries. A **`Saga`** is an ordered list of steps, each dispatching a typed `StepRequest` to a participant org under a negotiated **`Contract`** and declaring the compensation that undoes it; a **`Choreography`** (`app.choreograph`) drives it with **per-org self-governance** — the coordinator audits the dispatched handoff on its own chain while each `Participant` runs and audits the step on its own, so no shared control plane crosses a trust boundary, only the typed contract and the audited handoff. The **`SagaJournal`** is checkpointed to the metadata store after every step, so a saga **survives a restart** — a fresh engine resumes it by id and never re-runs a completed step (`app.resume_choreography`) — and is **hash-chained**, so `verify()` recomputes it offline and catches any tampered record. A forward step that fails, raises, or **breaches its step contract** triggers deterministic **compensation** of the completed steps in reverse order, so a half-completed cross-org transaction unwinds cleanly. A `LocalParticipant` runs an org's handlers in-process and a `RemoteParticipant` / `app.serve_choreography` dispatches a step to a remote org **over the A2A fabric**, byte-for-byte the same — see the [choreography guide](docs/guides/choreography.md). |
-| **Agent-to-agent settlement & metering** | Closing the books on contracted cross-org work — a metered, auditable settlement record reconciling delivery against a negotiated **`Contract`**, the way a run closes its cost report; never a payment rail, only a verifiable ledger of what was owed and delivered. A **`Meter`** accrues the **usage** of delivered work against the agreed price as a saga's steps complete — each unit a `UsageEvent` attributed to the contract and the run — into a deterministic, total-preserving **`MeterReading`** (the cross-org analogue of the cost report). A **`SettlementRecord`** reconciles that delivery against the agreed price / SLA / quality into a typed, **signed, offline-verifiable** record: both parties sign one reconciliation hash binding the economic facts, `verify` checks it from the bytes alone (a tampered figure or forged signature is caught), and `reconcile` ties two orgs' independently-produced records out — a dispute is pinpointed, not merely flagged. A **`SettlementBook`** keeps an org's durable, **hash-chained** ledger of those records — the settlement analogue of the `SagaJournal` — that `verify`s offline and `report`s per counterparty; `settle_contract` settles one contract and `settle_saga` settles every contract a saga ran under, straight from its journal (`app.meter` / `app.settle` / `app.settle_saga` / `app.use_settlement_book`). Closing the books also **closes the reputation loop**: a settled overrun or shortfall debits the seller, so reliability earned in delivery weights the next negotiation — see the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org workflow discovery & dynamic choreography** | The next reach once cross-org sagas are negotiated, contracted, and settled: **who** runs each step, resolved at run time rather than wired by org id. A saga step declares the **capability** it needs (`capability="transcription"`) and the engine resolves the participant at dispatch time from the governed **`AgentDirectory`** (`app.choreograph(..., directory=)`) — so a choreography binds the best-available counterparty for each step, never a hosted matching service. A **`CapabilityBinder`** ranks the candidates that advertise the capability: among those the directory's allow-list permits and that are reachable, it prefers the one whose **`ReputationLedger`** standing and prior **`SettlementBook`** record best fit the step's **`Contract`** (a regressing vendor is discounted without being singled out; ties break deterministically), and records the decision as a **`StepBinding`** on the saga journal (`result.bindings`). Discovery changes *who*, never *how*: every candidate's governed resolution is audited (`agent_resolve`), the binding lands on the coordinator's chain (`choreography_bind`), a capability no allowed, reachable candidate advertises is **refused** rather than dropped, and the bound step is contract-enforced, **compensated at the org it was bound to**, durable across a restart, and dispatched **over the A2A fabric** byte-for-byte the same as a statically-wired one — see the [choreography guide](docs/guides/choreography.md). |
-| **Cross-org settlement netting & multilateral clearing** | The reach once settlements are signed, reconciled, and reputation-closing: **netting** them. An org is often both a buyer and a seller across a web of contracts; **`net_settlements`** / **`net_books`** fold a fleet's many bilateral **`SettlementBook`** balances into a single minimal set of net obligations, so the books close once — a library-side clearing *calculation*, never a hosted clearing house or a payment rail. Each settled contract is a directed payable (the buyer owes the seller the agreed price for the scope); the directed obligations aggregate per pair, collapse to one **`BilateralNet`** figure per counterparty, and clear to the minimal set of **`NetObligation`** transfers — at most `N − 1` for `N` parties, net-debtors paying net-creditors, deterministically. The resulting **`NettingSet`** is **content-bound and offline-verifiable** the way a record is: `verify` recomputes the netting hash from the bytes alone, confirms the **`NetPosition`**s balance to zero, and confirms the cleared transfers reproduce every position. Netting reads only signed, hash-chained records and asserts nothing it cannot recompute — a tampered source record is **refused**, and two books that disagree on a contract are pinpointed as a **`NettingDispute`**, excluded rather than silently absorbed (`app.clear_settlements` / `book.net()`) — see the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org dispute resolution & arbitration** | The reach once a disagreement is *pinpointed*: **resolving** it. Each party submits its signed **`SettlementRecord`**s for the disputed contract and the deterministic **`arbitrate`** (`app.arbitrate` / `book.arbitrate`) decides which figure stands — reading only the existing signed records and asserting nothing it cannot recompute, a library-side protocol, never a hosted arbitration service or a court of record. The decision rests on verifiable evidence: a reconciliation hash **both** the buyer and the seller signed (each on their own record, co-signing one figure exactly as `reconcile` describes) is mutually corroborated and **upheld**; a unilateral claim contradicting it is **rejected** and its claimant pinpointed; a single uncontested figure stands on its own; and when neither side's figure is corroborated the dispute is honestly left **unresolved** rather than decided by fiat. Unlike netting, which *refuses* to clear over a tampered book, arbitration is the venue where a bad claim is adjudicated: a tampered or forged claim is marked **inadmissible** and pinpointed (**`ClaimVerdict`**), never silently dropped. The resulting **`Resolution`** is **content-bound and offline-verifiable** the way a record is: `verify` recomputes the resolution hash from the bytes alone and **re-derives the whole decision from the recorded claims**, so a flipped verdict is caught even after re-sealing and two arbiters compute the same co-signable hash. A settled dispute also **closes the reputation loop**: the party whose claim did not stand is debited, so a bad-faith revision weights the next negotiation — see the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org reputation attestation & portability** | The last reach once standing is earned everywhere: making it **portable**. Settlement, netting, and arbitration all close the reputation loop, but the standing they earn lives inside one org's own ledger — a *new* counterparty has no way to trust it without a hosted reputation bureau. An org issues a signed **`ReputationAttestation`** over a counterparty's earned standing (`app.attest_reputation` / `book.attest`), derived only from its own **`SettlementBook`** records and arbitration **`Resolution`**s — a fulfilled delivery a success, a breach or a dissent a failure — and signs it with the same `ChainSigner` a contract uses. The attestation is **content-bound and offline-verifiable** the way a record is: `verify` recomputes the hash from the bytes alone and **re-derives the attested reputation from the evidence counts**, so a tampered score is caught even after re-sealing and a forged issuer is refused. Several issuers' attestations **`combine_attestations`** (`app.import_reputation`) into a bounded, evidence-weighted **`PortableReputation`** prior — because a Beta-Bernoulli posterior is conjugate, combining is *pooling the evidence*, never a single self-asserted number: an issuer that vouches for itself is refused, a tampered or forged attestation is pinpointed and excluded, and the importer's own prior anchors the pooled posterior. The prior exposes `weight(member_id)`, so it drops into the *existing* negotiation/discovery path unchanged — a regressor is discounted under the same bounded `[floor, 1]` rule a local reputation is, never zeroed, never singled out — and an unknown counterparty is weighted by what its past counterparties attest, while one the importer already knows keeps its own earned standing. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org attestation revocation & freshness** | Keeping a portable prior **current**, not a frozen snapshot. An attestation carries an issuer-declared validity window (**`horizon_days`**) bound into its signed hash, so against an as-of clock a **stale** attestation is excluded and pinpointed while an older one within its window **decays** out of the pooled prior by an importer **`half_life_days`** — its evidence mass halved each half-life, its attested ratio preserved — rather than anchoring it forever. An issuer signs a content-bound **`AttestationRevocation`** (`app.revoke_attestation` / `book.revoke`) that withdraws or supersedes a prior attestation **by its hash**, offline-verifiable the way the attestation is, so the withdrawn claim is **excluded and pinpointed** (`AttestationVerdict.revoked` / `.stale`), never silently honored — and a forged revocation, or one naming another org's attestation, **cannot cancel a claim** (only the issuer can withdraw its own). Freshness and revocation read only the existing signed artifacts and fold into the *same* bounded `[floor, 1]` weighting — `combine_attestations(..., revocations=, as_of=)` / `app.import_reputation` — never a central revocation service. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org reputation gossip & attestation exchange** | Making portable standing **discoverable** — an importer could be *handed* a bundle, but had no way to find who has attested a counterparty without a hosted registry. A bounded, **pull-based** exchange of the existing signed artifacts over the A2A fabric closes that gap. An org exposes its book as a queryable peer (**`app.serve_attestations`**) that — *pull, never push* — answers a subject query with its *own* signed artifacts: the current attestation it can issue from its `SettlementBook` records plus the revocations it has signed. An importer with no local history pulls a **bounded**, `AgentDirectory`-governed set of peers (**`app.gather_reputation`** / a remote **`AttestationExchange`**), **verifies** every fetched artifact from the bytes, **deduplicates** by content hash, and folds the result into the *same* **`combine_attestations`** under the same freshness, revocation, and `[floor, 1]` discipline — so gossip changes only *where the evidence comes from*, never *how it is weighed*: a directory-denied peer is **skipped and pinpointed**, the fan-out is bounded by `max_peers`, a forged artifact a peer serves is **refused**, a revocation a peer gossips **excludes** the withdrawn claim, and every peer visited and artifact fetched lands on the **hash-chained audit log**. It runs byte-for-byte the same against deterministic in-process peers as over the live fabric — never a hosted reputation registry or a push-based gossip bus. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org transitive trust & Sybil-resistant weighting** | Weighing portable standing by **trust in the issuer**, not by volume — every counted issuer's evidence had pooled with equal pull, so a clutch of unknown peers could out-evidence a few you've lived through and an adversary could spin up **Sybil** issuers that all vouch the same way. A **`TrustModel`** (**`build_trust_model`**, opt-in via `combine_attestations(..., trust_config=)` / `app.import_reputation` / `app.gather_reputation`) scales each issuer's contributed evidence **mass** by your **own trust in that issuer** — a bounded, transitive web-of-trust rooted in your local **`ReputationLedger`**: an issuer you know first-hand counts at its earned weight, trust **composes at most a bounded hop** outward (a trusted issuer lends weight to the issuers *it* attests, attenuated by a per-hop decay) under a hard depth bound, and an unknown one is **floored, never zeroed**. Trust is lent only *outward from a trusted root*, so a cluster of mutually-vouching unknown issuers is never reached and stays at the floor — **pull follows earned trust, not issuer count**, so corroboration from a few trusted peers cannot be outvoted by volume. Every multiplier is bounded `[floor, 1]`, **pinpointed** (`SubjectStanding.issuer_trust` / `AttestationVerdict.trust` / `IssuerTrust`), reversible, and **strictly opt-in** — with no trust source the combination pools with equal pull exactly as before — and the weighted prior still exposes `weight(member_id)` for the negotiation path. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org reputation-gated admission & progressive exposure** | Making the weighted standing **act**, not merely be consulted — a portable, current, discoverable, trust-weighted reputation still only *softened* a negotiation; nothing bounded how much a too-thin or too-low counterparty was trusted with up front, so a regression was caught only after the fact. An **`AdmissionPolicy`** (**`app.admit`** / **`admit`**) maps the standing the fabric already earns — an imported **`PortableReputation`** or a local **`ReputationLedger`** — to a bounded, offline-verifiable **`AdmissionDecision`**: a maximum contract value (the exposure ceiling), a required **escrow/collateral fraction**, and an **SLA-strictness factor**. Exposure is the product of two bounded signals — *how good* the standing is (its posterior-mean reputation) and *how much corroborated, settled history* stands behind it — so a thin or low-trust standing is admitted on **conservative terms rather than refused** (discounted exposure, never a hard gate, never singled out), and as the counterparty accrues settled deliveries its ceiling **ramps** deterministically toward parity, a regression walking it back — exposure unlocked the way a credit line builds, **bounded and reversible**. Local first-hand evidence wins over what others attest, exactly as the negotiation weight resolves it. Every decision **binds the standing it read and the terms it set** onto a content hash that **recomputes from the bytes alone** (`AdmissionDecision.verify` re-derives the terms, so a tampered ceiling is caught even after re-sealing) and lands on the **hash-chained audit log**, and folds into the *existing* negotiation/contracting path (`AdmissionDecision.bound_position` clamps a buyer's position to the ceiling, `apply_to_terms` caps and stamps the terms) — a mechanical, reconstructable number, never a hosted underwriting service. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org collateralized settlement & escrow** | Giving the admission-required collateral **teeth** — the required escrow fraction was still only a *number stamped on the terms*; nothing **held** it, released it on a clean delivery, or forfeited a slice on a breach, so a thin counterparty admitted on conservative terms posted no actual collateral. An **`Escrow`** (**`app.post_escrow`** / **`post_escrow`**) binds the admission-required collateral to a *specific* **`Contract`** and counterparty into a signed, offline-verifiable artifact — the escrow analogue of a **`SettlementRecord`** — with the held amount **re-deriving from the admission posture** (an `AdmissionDecision`, an explicit fraction/amount, or the posture `apply_to_terms` stamped onto the contract). Settling the contract resolves it deterministically: a fulfilled delivery **releases** the whole stake back to the poster, and a breach **forfeits** a bounded, pinpointed slice **proportional to the shortfall** the settlement measured (**never the whole stake, never punitive**, the remainder released, the missed term pinpointed) — driven by the *same* `SettlementRecord` verdict the books already close on (**`app.settle(escrow=…)`** / **`settle_escrow`**), so the collateral closes the same loop the settlement does rather than judging delivery twice. Every post, release, and forfeiture **binds the contract, the amount, and the verdict** onto a content hash that **recomputes from the bytes alone** (`Escrow.verify` catches a tampered amount or forfeiture even after re-sealing) and lands on the **hash-chained audit log** — a mechanical, reconstructable artifact, never a hosted escrow custodian or a payment rail. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org collateral pooling & cross-contract margin** | **Pooling** the collateral — an `Escrow` backs one contract, but a counterparty running many concurrent contracts had to lock *separate* collateral per deal even though its breaches and clean deliveries net out, stranding capital contract-by-contract the way bilateral settlements were stranded book-by-book before netting. A **`CollateralPool`** (**`app.post_collateral_pool`** / **`post_collateral_pool`**) is a **bounded margin account** a counterparty posts once that backs many contracts at a deterministic, offline-verifiable allocation — the collateral analogue of a **`NettingSet`**. It binds a single posted stake to the set of contracts it backs and allocates each a per-contract share **proportional to its admission-required collateral** (re-deriving from its `AdmissionDecision` posture, an explicit fraction, or the posture stamped onto the contract). Settling a contract **draws** a bounded, pinpointed forfeiture from the **shared stake** on a breach (the *same* proportional slice the `SettlementRecord` verdict measures — **never the whole stake, never punitive**) and **releases** the rest of its requirement back to the **available balance** on a clean delivery (**`app.settle(pool=…)`** / **`draw_pool`**), so a clean delivery **frees capital** for the next contract and a breach is **covered from the shared stake**. A pool committed below the collateral its open contracts require surfaces a bounded, pinpointed **top-up** obligation (`pool.top_up`) rather than silently over-committing. Every post, draw, release, and top-up **binds the pool, the contracts, and the balances** onto a content hash that **recomputes from the bytes alone** (`CollateralPool.verify` re-derives the allocations and reconciles the balance, catching a tampered allocation even after re-sealing) and lands on the **hash-chained audit log** — a mechanical, reconstructable artifact, never a hosted clearing house, a margin custodian, or a payment rail. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org collateral rehypothecation guards & re-use bounds** | **Bounding the re-use** — a `CollateralPool` only re-allocates capital *within itself*, so nothing bounded a counterparty that pledged the **same** stake across more than one pool (or re-pledged collateral a beneficiary already had a claim on), double-counting what actually backs each deal — the collateral analogue of a settlement record double-counted before netting deduplicated it. A **`CollateralLedger`** (**`app.guard_collateral`** / **`guard_collateral`**) is the **rehypothecation guard**: it folds a counterparty's pools into one view and reconciles what they collectively pledge against the capital it actually **holds**, surfacing the same capital pledged twice as a bounded, pinpointed **`ReuseBreach`** (a re-pledged contract, with the double-pledged excess) rather than silently over-stating coverage. When a stake backs deals for more than one beneficiary, each **`BeneficiaryClaim`** is bounded to its deterministic **pari-passu share** of the held capital, so a forfeiture cannot pay one beneficiary out of capital another has first claim on. The ledger reads only the existing signed, content-bound pools and asserts nothing it cannot recompute: a tampered pool is **refused** at fold time, and `CollateralLedger.verify` re-derives the re-use bound and the beneficiary apportionment **from the bytes alone** (a tampered figure caught even after re-sealing), with every guard signed and landed on the **hash-chained audit log** — a mechanical, reconstructable re-use bound over the collateral the fabric already pools, never a hosted custodian or a clearing house. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org collateral custody attestation & proof-of-reserves** | **Proving the reserves** — the rehypothecation guard bounds a counterparty's pledges against the capital it `held`, but that holdings figure was the one input the guard **trusted**: it was *asserted*, not proven, so a counterparty over-stating its real reserves still passed, the way a self-asserted reputation score passed before attestation made standing verifiable. A **`CustodyAttestation`** (**`app.attest_custody`** / **`attest_custody`**) is the **proof-of-reserves**: a custodian (or the poster's own signed reserve record) issues a signed, content-bound claim over the capital actually held, itemized into **`ReserveLine`**s whose attested total **re-derives** from the components on every verify (a tampered figure caught even after re-sealing), and **`guard_collateral`** reads it (**`custody=`**) as the held figure instead of the asserted default — a pledge bounded against **proven** reserves. When the proven reserves fall below what the pools pledge, the shortfall surfaces as a bounded, pinpointed **`UnderReservedBreach`** (the custodian, the attestation hash, the shortfall), and `require_reserved` raises on it. The attestation reads only signed, content-bound artifacts and asserts nothing it cannot recompute: a tampered reserve figure, a forged custodian (with a verifier), or an attestation for a **different poster** is **refused**, the breach re-derives **from the bytes alone**, and every issuance and guard is signed and landed on the **hash-chained audit log** — a mechanical, reconstructable proof-of-reserves over the collateral the fabric already pools, never a hosted custodian or a proof-of-reserves auditor. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org custody liability attestation & proof-of-solvency** | **Proving solvency** — proof-of-reserves proves the capital a counterparty *holds*, but reserves are only one side of the ledger: a counterparty solvent against one buyer's pledges may be deeply **under-water** once *every* obligation it owes is counted, and could prove the same reserves against many buyers while quietly insolvent across all of them. A **`LiabilityAttestation`** (**`app.attest_liabilities`** / **`attest_liabilities`**) makes the liability side evidence-backed too — a counterparty (or its auditor) issues a signed, content-bound claim over the total obligations it owes, itemized into **`LiabilityLine`**s whose attested total **re-derives** on every verify — and **`prove_solvency`** (**`app.prove_solvency`**) folds it against a proven `CustodyAttestation` into a signed, offline-verifiable **`SolvencyProof`**: a bounded solvency margin (**`reserves − liabilities`**). When the proven liabilities exceed the proven reserves the shortfall surfaces as a pinpointed **`InsolvencyBreach`** (the custodian, the attestor, the shortfall) and `require_solvent` raises on it; otherwise the proof exposes a **solvency-adjusted** held figure (`max(0, reserves − liabilities)` — the unencumbered capital) that **`guard_collateral`** reads (**`solvency=`**) as the held figure, so a pledge is bounded against capital **not already owed elsewhere** and the ledger surfaces **`insolvent`** when the obligations swamp the reserves. Both attestations read only signed, content-bound artifacts: a tampered liability figure, a forged issuer (with a verifier), or a custody / liability pair for a **different poster** is **refused**, the margin and breach re-derive **from the bytes alone**, and every issuance and proof is signed and landed on the **hash-chained audit log** — a mechanical, reconstructable proof-of-solvency over the obligations and reserves the fabric already attests, never a hosted solvency auditor. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org liability inclusion proofs & completeness** | **Proving the liabilities are complete** — a proof-of-solvency folds the attestor's liability *total*, but that total is still one number: a counterparty could **under-state** what it owes by quietly omitting a creditor and still attest a sound, re-deriving total over the creditors it *did* list. A **`LiabilityAttestation`** now commits its line items into a **Merkle root** bound in its signed hash (the total *and* the root re-derive on every verify), and each creditor gets an offline-verifiable **`InclusionProof`** (**`app.inclusion_proof`** / **`attestation.inclusion_proof`**) that its claim is a leaf of that root — a poster cannot drop a creditor without the omitted party detecting it. **`check_completeness`** (**`app.check_completeness`**) folds creditors' own proven claims (a mapping, line items, or a creditor's own settled records) against the attestation into a signed, content-bound **`CompletenessProof`**, pinpointing every omitted or under-stated claim as an **`OmissionBreach`** and raising the attested figure to a **completed** total; **`prove_solvency`** reads it (**`completeness=`**) so the solvency margin — and the held figure the guard bounds pledges against — is bounded by the obligations creditors can **prove**, tipping a counterparty that looked solvent on the attestor's figure into a pinpointed insolvency. The proofs read only signed, content-bound artifacts: a tampered leaf or forged root fails to reconstruct the committed root, an under-stated completed total is caught **from the bytes alone**, a check for a **different attestation** is **refused**, and every check is signed and landed on the **hash-chained audit log** — a mechanical, reconstructable proof-of-completeness, never a hosted attestation registry. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org liability non-equivocation & root consistency** | **Stopping a counterparty showing different totals to different creditors** — completeness catches an omission only when the omitted creditor folds its own claim, but a counterparty issues its attestation **per relationship**, so it can **equivocate**: sign a *smaller* root for one creditor and a different one for another, each creditor's `InclusionProof` verifying against the root *it* was shown while the totals disagree. A **`LiabilityAttestation`** exposes a signed, privacy-preserving **`RootCommitment`** (**`attestation.root_commitment`**) — the root and `as_of` the attestor signed, **without** the line items — that creditors compare over the exchange (**`commitment.conflicts_with`**), and **`check_root_consistency`** (**`app.check_root_consistency`** / **`book.check_root_consistency`**) groups a set of held attestations by their **`(poster, attestor, as_of)`** key and folds any two conflicting roots a poster signed for one instant into a content-bound, offline-verifiable **`EquivocationProof`** (**`prove_equivocation`**) — pinning the poster, the two signed roots, and the creditor each was shown, so a counterparty that signs inconsistent totals is caught with **non-repudiable evidence**. Each embedded attestation re-derives its root **from the bytes**, a **forged conflicting root** is **refused** with the attestor's verifier and excluded from a scan (so it cannot manufacture a false accusation), an honest set showing every creditor the same root is **consistent**, the equivocating poster is dinged on the **reputation path**, and every check is landed on the **hash-chained audit log** — never a hosted transparency log. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org liability history consistency & snapshot monotonicity** | **Stopping a counterparty quietly dropping a past debt in a later snapshot** — non-equivocation catches different roots for the *same* instant, but a counterparty can still issue a *later* snapshot with a debt committed at `T` simply absent from the root it signs at `T'`, each snapshot internally sound. A **`LiabilityAttestation`** now carries an optional commitment to the prior snapshot's root (**`attest_liabilities(..., prior=…)`** / **`attestation.link_to`**), so a poster's attestations form a **hash-linked** sequence each `as_of` strictly succeeding the last (a back-dated link is caught **from the bytes**). **`check_history_consistency`** (**`app.check_history_consistency`** / **`book.check_history_consistency`**) walks a poster's snapshots and folds them into a content-bound, offline-verifiable **`HistoryConsistencyProof`**: every creditor's committed obligation must **persist** into the next snapshot unless a signed, creditor-issued **`Discharge`** (**`discharge_liability`** / **`app.discharge_liability`**) evidences the release, and any unexplained drop surfaces as a pinpointed **`MonotonicityBreach`** — so a debt cannot silently vanish between snapshots. A **forged or out-of-window discharge** does not explain a drop, a dropped breach is caught by **re-derivation**, a tampered or unsigned snapshot is **excluded** as inadmissible, the breaching poster is dinged on the **reputation path**, and every check is landed on the **hash-chained audit log** — never a hosted transparency log. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org insolvency resolution & liability seniority waterfall** | **Resolving an insolvency into who-gets-what** — a `SolvencyProof` *flags* an insolvency when proven liabilities exceed proven reserves, but says nothing about **which** creditors the scarce capital pays, or in what order; every creditor is left to assume it is made whole. A **`SenioritySchedule`** (**`build_seniority_schedule`** / **`app.build_seniority_schedule`**) ranks a poster's obligations into signed priority tranches (rank `0` most senior; the simplest spec is a list of creditor-name lists where position is priority), so the order capital is paid in is an auditable, non-repudiable artifact — `SenioritySchedule.verify` refuses a re-ordered or malformed ranking, and an unlisted creditor falls to the most-junior residual rank. **`resolve_insolvency`** (**`app.resolve_insolvency`** / **`book.resolve_insolvency`**) folds a proven **`CustodyAttestation`** against a proven **`LiabilityAttestation`** — reusing `prove_solvency` for every tamper/forgery/wrong-poster refusal, and folding a `CompletenessProof` to distribute against the *completed* set — and distributes the proven reserves across the obligations **by seniority then pari-passu within a tranche**: a senior tranche paid in full before any capital reaches a junior one, a partly-funded tranche split proportionally, pinpointing each creditor's bounded **`CreditorRecovery`** (its recovery and the shortfall it bears) into a content-bound **`InsolvencyResolution`**. With no schedule the whole set is one pari-passu tranche. **`InsolvencyResolution.verify`** re-derives the **entire** distribution **from the bytes alone** — an over-stated recovery, a re-ordered tranche, or a junior creditor paid ahead of a senior one is **refused** even after re-sealing — and binds the schedule by hash; a tampered or wrong-poster attestation, or a malformed/wrong-poster schedule, is **refused** at fold time, the poster that could not make its creditors whole is dinged on the **reputation path**, and every schedule and resolution is landed on the **hash-chained audit log** — never a hosted receiver or a bankruptcy court. See the [settlement guide](docs/guides/settlement.md). |
-| **Cross-org settlement fabric — one system** | **The capstone that unifies the whole cross-org settlement & credit fabric.** Twenty rungs delivered the cross-org *primitives*, each signed, content-bound, and offline-verifiable on its own — but a caller still wired ~40 separate calls by hand, and nothing presented the fabric as one coherent system or proved it composes. A single **`CrossOrgEngagement`** (**`app.cross_org_engagement`**) threads the entire pipeline — discover → negotiate → contract → choreograph delivery → settle → net → arbitrate → attest and port reputation → admit → post and pool collateral under a rehypothecation guard → prove reserves, solvency, completeness, non-equivocation, and history → resolve the insolvency by seniority waterfall with close-out set-off — behind one governed, audited call-path. It is **purely compositional**: every lifecycle method delegates to the *same* `app.*` entry point you could call directly, so every primitive stays unchanged and usable on its own; the facade only captures and **narrates** them into one content-bound, signed **`EngagementNarrative`** whose hash chain links every stage. **`narrative.verify`** recomputes the whole chain **from the bytes alone** and re-digests every captured artifact, so a tamper introduced anywhere — a re-ordered stage, an edited digest, an edited underlying artifact, or a forged signature — is **caught**; one continuous signed audit narrative runs from the first offer to the final distribution. With this, the cross-org settlement & credit surface is **feature-complete and frozen** under the [stability policy](docs/reference/stability.md). See the [settlement guide](docs/guides/settlement.md). |
-| **Performance** | End-to-end streaming (`astream` + SSE) with incremental partial-JSON output and genuine provider token deltas, concurrent retrieval/memory/tool fan-out with cancellation propagation and hard latency deadlines, content-addressed compile/chunk/embedding caches, and zero-copy (slim) context packets. The compile hot path is **single-pass and allocation-light**: a vectorized candidate scorer (NumPy-optional, pure-Python fallback), a compiled-prompt render program and a warm candidate arena that reuse the stable prefix and prepared candidate set so a warm compile is dominated by scoring not allocation, streaming-first compilation that emits the prefix before scoring, speculative retrieval prefetch that warms the query embedding from the task classification, and a per-app resident-memory budget held by slim packets and evidence eviction. Quantized two-stage retrieval, a sub-millisecond warm compile, and a footprint regression gate — all held by CI-gated VincioBench performance budgets. |
-| **Cost & reliability (FinOps)** | Production-traffic resilience in-process, not a proxy hop: **batch execution** at ~50% cost (OpenAI Batch + Anthropic Message Batches + Google/Vertex batch), **circuit breaking** + **health-aware failover** and **key pooling** with RPM+TPM rate limiting, **runtime model cascades** (start cheap, escalate on low confidence), **cost attribution** by tenant/feature with enforced **budget SLOs** (cap / degrade / queue-to-batch + `cost.anomaly`), provider-aware **prompt caching** with TTL choice and cache-hit telemetry, and **incremental** (content-hash) + **sharded** indexing at scale. |
-| **Provider/model rotation & swap regression** | The migration safety net for the riskiest production change. A registry-backed **`Router`** picks the cheapest / fastest / least-busy *capable* model per request. A **`SwapGate`** replays golden traces and runs an eval + cost + latency + behavioral diff with statistical significance, PASS/FAILing the swap; **model-swap regression** swaps *only* the model and reports per-metric significance, the cost/latency trade, and the worst-regressed slices, with flake quarantine. A **shadow provider** and a capped **canary** qualify a candidate on live traffic with automatic rollback, and a **lifecycle watcher** proposes migrations off deprecated models. |
-| **Connectors** | Pluggable data connectors — web, GitHub, SQL, S3, GCS, Notion, Confluence, Slack, **Jira, Linear, Google Drive, SharePoint, Salesforce, Zendesk, BigQuery, Snowflake**, plus custom via `register_connector` — feeding the document engine with full provenance: `app.add_source("kb", connector=connect("github", repo="acme/handbook"))`. The REST connectors ride the core `httpx` dependency; all accept an injected client so they round-trip offline. |
-| **Plugins & ecosystem** | An entry-point **plugin contract** (`vincio plugins list`) so third-party providers, embedders, stores, connectors, chunkers, rerankers, judges, metrics, and packs register themselves on install, gated by a versioned plugin API; a signed, allow-list-gated, audited **`CommunityRegistry`** of opt-in domain packs and `SKILL.md` bundles (content-bound SHA-256 + HMAC/Ed25519 signatures, resolution as an audited access decision); and an **MCP-server marketplace bridge** (`app.add_mcp_from_registry`) that discovers a server from a registry, governs reachability, and lands its tools in the permissioned runtime in one call. |
-| **Use-case coverage & verticals** | Go from primitives to a working app in one file. **Vertical packs** (`healthcare` / `ediscovery` / `kyc` / `customer_support` / `code_review`) preconfigure retrieval, scoped memory, deterministic rails, domain metrics, a data-residency posture, and a golden eval set in one `use_pack`, on top of the existing pack contract. A higher-level **`Assistant`** layer over `ContextApp` threads turns into a session, carries multi-turn state via memory write-back, and gates write tools behind an approval — a chat product in a few lines. An end-to-end **`VoiceAgent`** wires a realtime session to the deep-research agent, the memory OS, and the rails, so a spoken assistant inherits the same grounding, budget, and audit guarantees. A **cookbook** of task-shaped recipes (contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs) ships as runnable, offline-gated examples. |
-| **Integrations & DX** | LangChain + LlamaIndex + **Haystack + DSPy** interop (`vincio.interop`) for tools, retrievers, loaders, embedders, components, and compiled DSPy modules — both directions, duck-typed `from_*` (no heavy import); hosted rerankers/embedders (Cohere/Jina/Voyage, httpx-only) behind `build_reranker`/`build_embedder`; opt-in domain packs (support, engineering, finance, legal) via `app.use_pack(...)`; `vincio init` templates (rag/agent/eval) with a typed `vincio.yaml` JSON Schema for editor completion; notebook reprs (`enable_rich_reprs`) and an interactive `vincio tui` inspector. |
-| **Stability & guarantees** | [Semantic Versioning](https://semver.org/spec/v2.0.0.html) on a public surface (`vincio.__all__`) **re-frozen for the 4.0 long-term-support major** and pinned mechanically against silent drift, with a mechanical [deprecation policy](docs/reference/stability.md) (`@deprecated` / `stability_of`); published performance & quality [SLOs](docs/reference/slo.md) held by at-least-as-strict VincioBench budgets; CycloneDX SBOM + SLSA build-provenance attestations on every release. |
-| **A trustworthy surface** | The public API is held to the same bar as the internals. Every `VincioError` carries a stable `.code`, a `.remediation` hint, and a `.docs_url` from a completeness-gated, internationalizable [error catalog](docs/reference/errors.md). The package ships [`py.typed`](docs/reference/typing.md) with a CI-enforced `mypy --strict` ladder, and a docstring-coverage gate keeps every public symbol documented. `vincio.yaml` files migrate forward automatically (`vincio config migrate`, in-memory upgrade on load), `vincio doctor` reports any deprecated API a project still uses — its replacement and removal version straight from `stability_of` — and `vincio migrate <major>` is a static, `ast`-based codemod that rewrites a project's source for a major-version upgrade. |
+**Context & prompts**
+- Prompt compiler — typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix
+  layout, versioning, hashing, and diffing.
+- Context compiler — scores every candidate (relevance, novelty, authority, freshness, provenance,
+  token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token
+  budget, with an *excluded-context report* explaining every omission.
 
-Every extension point — providers, metrics, chunkers, rerankers, judges, validators, tools — accepts
-your own implementation via a registry.
+**Retrieval & memory**
+- Hybrid RAG — BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query
+  understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking;
+  GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as
+  first-class scored candidates.
+- Layered memory — session → episodic → semantic → tenant → graph, with a guarded write pipeline,
+  confidence decay, contradiction resolution, bi-temporal recall, per-memory ACLs, and audited
+  GDPR-style edit/forget/export.
+
+**Agents & orchestration**
+- Tools — permissioned registry (RBAC + ABAC), schema-from-typehints, a resource-limited sandbox,
+  idempotent write guardrails with approval callbacks, and a grounded computer-use action plane.
+- Agents — bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN),
+  in-place plan repair, cost-aware action selection, and a budgeted deep-research agent.
+- Orchestration — multi-agent crews with a shared blackboard, durable stateful graphs
+  (checkpoint / resume / time-travel / human-in-the-loop), deterministic workflows, and a
+  distributed durable-execution backend.
+
+**Output, evaluation & observability**
+- Structured output — Pydantic contracts, constrained decoding, streaming validation with early
+  abort, bounded self-correction that repairs structure only (never invents facts), and DSPy-style
+  typed signatures.
+- Evaluation — golden datasets, 30+ metrics, deterministic / model / G-Eval judges, synthetic data,
+  red-teaming, trajectory & tool-use scoring, drift detection, regression gates, and a `pytest`
+  plugin.
+- Observability — full trace span trees, OpenTelemetry export, a local trace viewer, a versioned
+  prompt registry, and per-run cost tracking — no account or hosted backend required.
+
+**The closed loop**
+- Optimization — one reproducible cycle (trace → dataset → eval → optimize → promote): a reflective
+  GEPA/MIPRO optimizer, a distillation flywheel, on-policy reinforcement from verifiable rewards,
+  and gated deploy with canary + rollback. No promotion ships without clearing the gates.
+
+**Security & governance**
+- Security — deterministic PII / secret redaction (multilingual), prompt-injection defense and
+  provable containment (taint tracking + capability tokens), RBAC / ABAC, tenant isolation, and a
+  hash-chained, signed audit log with offline tamper verification.
+- Governance — model / system cards, an OWASP / NIST / MITRE / ISO compliance matrix, an AI-BOM,
+  provable erasure, a consent ledger, data-residency enforcement, formal invariant verification,
+  agent identity & delegation, verified-reasoning certificates, and continuous assurance cases.
+
+**Interop**
+- Protocols — MCP (client *and* server), A2A agent-to-agent, and Agent Skills, all in-process.
+- Ecosystem — import/export LangChain, LlamaIndex, Haystack, and DSPy assets; first-party data
+  connectors; and any OpenAI-compatible model or vector store you already run.
+
+> Reach further: a cross-organization agent economy (negotiation, contracts, durable sagas,
+> metering, settlement, arbitration, reputation, collateral & solvency proofs), an edge / WASM
+> in-process runtime, on-device LoRA adaptation, federated learning with a differential-privacy
+> accountant, and per-run energy / carbon accounting. See [`ROADMAP.md`](ROADMAP.md).
 
 ## Benchmarks
 
-**VincioBench** ships in `benchmarks/` and runs fully offline (deterministic provider + deterministic
-metrics) so results are reproducible. Each family compares the Vincio pipeline against a naive
-baseline. Representative results on the bundled reference corpus:
+Three suites ship in [`benchmarks/`](benchmarks), all reproducible on your own machine.
 
-| Family | Metric | Vincio | Naive baseline |
-|---|---|--:|--:|
-| **Context compression** | evidence tokens for the same task | **216** | 1,175 (stuff-everything) |
-| | → token reduction | **−81.6%** | — |
-| **Output recovery** | malformed model outputs successfully parsed | **5 / 5** | 3 / 5 (`json.loads`) |
-| **Security** | prompt-injection detection rate | **100%** | — |
-| | injection false-positive rate | **0%** | — |
-| | PII coverage | **100%** | — |
-| **Containment** | injection escalation rate (adversarial corpus) | **0** | — |
-| **Governance proof** | invariants proven across their state space (containment · residency · budget · erasure) | **4 / 4** | — |
-| **Edge / WASM** | edge compile vs server compile (same inputs) · resident footprint under cap at 10× corpus · native imports on the core path | **byte-identical · held · 0** | — |
-| **MCP Apps** | server UI surfaced through AG-UI (provenance · budget-refused · audited) · elicited secret refused · spec-revision negotiated | **pass** | — |
-| **Negotiation** | bargain terminates within budget · no-overlap ends in no-deal · contract verifies offline · tamper caught · regressor discounted · A2A parity | **pass** | unbounded haggle / unverifiable deal |
-| **Choreography** | cross-org saga completes in order · failure compensates in reverse · contract breach compensates · journal resumes after restart · journal verifies offline · tamper caught · per-org chains | **pass** | dangling half-done transaction |
-| **Discovery** | capability binds best-ranked allowed candidate · unlisted/unreachable never bound · no-candidate refused · binding audited · compensated at bound org · durable resume re-binds pending only · A2A parity | **pass** | discovery bypassing governance |
-| **Retrieval** | recall@3 / MRR (known-answer corpus) | **1.00 / 1.00** | — |
-| | per-mode recall@3 (sparse · late-interaction · PLAID · hybrid_full) | **1.00 each** | — |
-| **Memory** | preference recall · contradiction supersede · tenant isolation | **pass** | — |
-| **Tools** | runtime overhead, p50 | **0.02 ms** | — |
-| **Agents** | adversarial infinite-loop model | **bounded** (budget) | unbounded |
-| **Orchestration** | crew over-budget termination · delegation recorded | **pass** | — |
-| | graph interrupt→resume and fork-replay vs straight run | **identical state** | — |
-| | plan repair recovers a tool failure / contradiction / budget shock | **pass** | restart / dead-end |
-| | cost-aware action selection vs always-strong | **−57%** | always-strong |
-| | parallel sub-graph speedup over serial (4 workers) | **4.0×** | 1× (serial) |
-| | durable timer survives restart → resumes when due | **pass** | timer lost |
-| **Evals** | metric agreement on labeled examples | **100%** | — |
-| | red-team detector coverage · guarded attack success | **100% · 0%** | naive target: 85% attacks succeed |
-| | A/B significance (real shift detected / null ignored) | **pass** | — |
-| **Reliability** | invalid output detected mid-stream → tokens saved | **98%** | 0% (validate at end) |
-| | self-correction recovery rate (bounded cycles) | **3 / 3** | — |
-| | rail catch rate · false positives on clean text | **100% · 0** | — |
-| | schema routing / classification accuracy | **100%** | — |
-| **Closed loop** | loop promotion fires · deterministic · gates block regressions | **pass** | — |
-| | grounded facts written · ungrounded excluded | **pass** | — |
-| | Pareto front excludes dominated · knee balanced · learned budgets promote | **pass** | — |
-| **Cost & reliability** | prompt-cache hit rate · cost-attribution accuracy | **72% · 100%** | — |
-| | cascade savings vs always-strong (escalate on low confidence) | **−70%** | — |
-| | canary auto-rolls-back under load → serves primary after | **pass** | serves the regression |
-| **Rotation & swap** | router picks cheapest capable · capability guard skips incapable failover | **pass** | routes to incapable/pricier |
-| | swap gate blocks a regression · passes a safe swap (significance) | **pass** | swap on one noisy run |
-| **Governance** | card/AI-BOM completeness · framework-mapping coverage | **pass · 79%** | — |
-| | erasure correctness (removed = lineage) · audited · proof verifies | **pass** | — |
-| | multilingual PII recall · RAG-poisoning detection (FP rate) | **100% · 100% (0%)** | English-only |
+### Head-to-head vs. real libraries
 
-> **Honest by design.** These numbers come from a small, synthetic offline corpus and are meant to
-> demonstrate the mechanisms, not to be quoted as universal gains. The context-compression
-> hypothesis (a 20–40% reduction target) is *measured* per run, and VincioBench reports whether it
-> was met on your data. Run `python benchmarks/vinciobench.py` against your own corpus — and trust
-> only what that prints. See [`benchmarks/README.md`](benchmarks/README.md).
+[`competitive.py`](benchmarks/competitive.py) runs Vincio against the *actual* library a team would
+otherwise use. **Every number is measured live from both sides** — a missing competitor is reported
+as skipped, never assumed. Representative results (Apple Silicon, Python 3.13; *ratios* are the
+portable signal, not wall-clock):
+
+| Operation | Vincio | Competitor | Result |
+|---|---|---|---|
+| BM25 query @ **20k docs** | `BM25Index` | `rank_bm25` | **~32× faster**, identical top-1 ranking |
+| **Context assembly** — tokens sent for the same retrieved set | context compiler | LangChain `stuff` / LlamaIndex `compact` | **~60% fewer tokens**, answer retained |
+| Text chunking a 24k-word doc | `chunk_document` | LangChain / LlamaIndex splitters | **fastest**, chunks carry provenance |
+| Token counting (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.5× faster**, zero-dependency, conservative |
+| Malformed-JSON recovery | lenient parser | stdlib `json.loads` | **4/8 vs 1/8** recovered |
+| Render with a missing variable | `PromptSpec.substitute` | `jinja2` | typed error vs. silently-empty render |
+
+`rank_bm25` rescans every document per query; Vincio's inverted index only scans documents
+containing a query term, so its lead grows with corpus size. The point isn't that every component
+beats every specialist — a dedicated JSON-repair library recovers more than Vincio (by guessing,
+which is unsafe for typed extraction). Vincio's edge is an **integrated, correct, governed**
+pipeline, not a pile of single-purpose libraries.
+
+### Orchestrator uplift — the same model, through Vincio
+
+[`quality_uplift.py`](benchmarks/quality_uplift.py) measures what routing a model *through* Vincio
+adds versus calling it directly. The metrics below are **deterministic** — they hold for any model
+because they are mechanical, so they are measured offline. (Absolute answer-quality lift on a
+frontier model needs a real key; the suite ships that harness and prints the exact command rather
+than fabricating a number.)
+
+| Same model — direct vs. via Vincio | Direct | Via Vincio |
+|---|--:|--:|
+| Schema-valid object from realistic model outputs | 1/6 | **5/6** |
+| Prompt-injection exfiltration via a tool call | compromised | **contained** |
+| Context tokens to retain an early fact at 80 turns | 640 (lost) | **33 (retained)** |
+| Grounded + cited answers *(deterministic illustration)* | 0/3 | **3/3** |
+
+The token-usage and context-rot results are the heart of it: a keep-everything agent grows its
+context linearly until the early fact falls out of the window, while Vincio's budgeted compiler and
+bounded recall hold the footprint flat and keep the relevant evidence in view — the same mechanism
+that sends ~60% fewer tokens for the same retrieved set, on every call.
+
+### Mechanism benchmarks (VincioBench)
+
+[`vinciobench.py`](benchmarks/vinciobench.py) measures each Vincio mechanism against a naive in-house
+baseline, fully offline and deterministically. A sample of the bundled reference corpus:
+
+| What | Vincio | Naive baseline |
+|---|--:|--:|
+| Context compression — evidence tokens for the same task | **177** | 950 (stuff-everything) |
+| Malformed model outputs successfully parsed | **5 / 5** | 3 / 5 (`json.loads`) |
+| Prompt-injection detection rate / false positives | **100% / 0%** | — |
+| Retrieval recall@3 / MRR (known-answer corpus) | **1.00 / 1.00** | — |
+
+> **Honest by design.** These come from a small synthetic offline corpus to demonstrate the
+> mechanisms, not to be quoted as universal gains. Run `python benchmarks/vinciobench.py` against
+> your own corpus and trust only what it prints. See [`benchmarks/README.md`](benchmarks/README.md).
 
 ## How Vincio compares
 
-Each ecosystem below is broad and capable in its own focus area. The table reflects **built-in,
-in-library** capabilities — not what is reachable by bolting on a separate product or SaaS.
+Each ecosystem below is strong in its focus area. This reflects **built-in, in-library**
+capability — not what's reachable by adding a separate product or SaaS.
 
 | Capability | **Vincio** | LangChain | LlamaIndex | DSPy | Ragas |
 |---|:--:|:--:|:--:|:--:|:--:|
 | Scored, budgeted **context compiler** | ✅ | ➖ | ➖ | ❌ | ❌ |
-| Typed prompt **AST + lint + cache layout** | ✅ | ❌ | ❌ | ➖ | ❌ |
-| Hybrid (BM25 + dense) **RAG** | ✅ | ✅ | ✅ | ❌ | ❌ |
 | **Sparse + late-interaction + GraphRAG** in one fusion | ✅ | ➖ | ➖ | ❌ | ❌ |
-| Layered **memory** (decay, conflicts, scopes, bi-temporal) | ✅ | ➖ | ➖ | ❌ | ❌ |
+| Layered **memory** (decay, conflicts, bi-temporal) | ✅ | ➖ | ➖ | ❌ | ❌ |
 | **Permissioned** tool registry (RBAC/ABAC) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| Bounded **agents** + deterministic workflows | ✅ | ✅ | ➖ | ➖ | ❌ |
-| **Durable graphs** (checkpoint / resume / time-travel) + bounded crews | ✅ | ➖ | ❌ | ❌ | ❌ |
+| **Durable graphs** + bounded crews | ✅ | ➖ | ❌ | ❌ | ❌ |
 | Structured output + **structure-only repair** | ✅ | ➖ | ➖ | ✅ | ❌ |
 | Built-in **evals + CI gates** | ✅ | ➖ | ➖ | ➖ | ✅ |
-| **pytest assertions + red-teaming + synthetic data** | ✅ | ❌ | ❌ | ❌ | ➖ |
 | Eval-driven **optimization** (gated promotion) | ✅ | ❌ | ❌ | ✅ | ❌ |
-| Native **tracing + cost**, no account needed | ✅ | ➖ | ➖ | ❌ | ❌ |
-| **Sessions, feedback, prompt registry, trace viewer** in-process | ✅ | ➖ | ❌ | ❌ | ❌ |
+| Native **tracing + cost**, no account | ✅ | ➖ | ➖ | ❌ | ❌ |
 | **Deterministic security** (PII / injection / audit) | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **MCP** client *and* server + **A2A** + **Agent Skills** | ✅ | ➖ | ➖ | ➖ | ❌ |
-| **In-process FinOps**: batch · circuit-break · cascades · cost attribution + budgets | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **Capability-aware rotation + gated swap regression** | ✅ | ➖ | ❌ | ❌ | ❌ |
-| **Governance evidence**: cards · framework mapping · AI-BOM · provable erasure · residency | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **MCP** client *and* server + **A2A** + **Skills** | ✅ | ➖ | ➖ | ➖ | ❌ |
+| **Governance evidence** (cards · AI-BOM · erasure · residency) | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-<sub>✅ first-class in-library · ➖ partial or via a separate add-on/SaaS · ❌ not a focus. Ecosystems
-evolve. Vincio is built to *interoperate* — it speaks MCP (client *and* server), A2A, and Agent Skills
-in-process, `vincio.interop` brings LangChain, LlamaIndex, Haystack, and DSPy tools, retrievers,
-loaders, embedders, components, and compiled modules in (and hands Vincio's back), first-party
-connectors and an entry-point plugin system meet your data and tools where they live, and you can
-point at any OpenAI-compatible model and the vector store you already run. See the [migration guides](docs/guides/migrate-from-langchain.md), the
-[integrations guide](docs/guides/integrations.md), and the in-depth write-ups in
+<sub>✅ first-class in-library · ➖ partial or via an add-on/SaaS · ❌ not a focus. Ecosystems evolve,
+and Vincio is built to *interoperate* — `vincio.interop` brings LangChain, LlamaIndex, Haystack, and
+DSPy assets in (and hands Vincio's back). See the in-depth write-ups in
 [`docs/comparisons/`](docs/comparisons).</sub>
 
-## Use cases
+## Examples
 
-| You want to… | Reach for | Example |
-|---|---|---|
-| Classify and route support tickets into typed labels | typed output | [`01_support_triage.py`](examples/01_support_triage.py) |
-| Answer questions over your docs with real citations | hybrid RAG + grounding policy | [`02_document_qa.py`](examples/02_document_qa.py) |
-| Review contracts clause-by-clause | end-to-end context app | [`03_contract_review.py`](examples/03_contract_review.py) |
-| Extract structured fields from invoices | structured extraction + F1 eval | [`04_invoice_extraction.py`](examples/04_invoice_extraction.py) |
-| Build a research agent with bounded budgets | ReAct agent + tools | [`05_research_agent.py`](examples/05_research_agent.py) |
-| Automate a CRM agent with approval-gated writes | memory + permissioned tools | [`06_crm_agent.py`](examples/06_crm_agent.py) |
-| Ask questions over a codebase | code-aware chunking + import graph | [`07_codebase_qa.py`](examples/07_codebase_qa.py) |
-| Analyze spreadsheets with schema awareness | table chunking + quality checks | [`08_spreadsheet_analysis.py`](examples/08_spreadsheet_analysis.py) |
-| Gate quality in CI | datasets, gates, baseline diff | [`09_eval_pipeline.py`](examples/09_eval_pipeline.py) |
-| Tune prompts/context against an eval suite | optimization + gated promotion | [`10_optimization_run.py`](examples/10_optimization_run.py) |
-| Stream answers token-by-token through the full pipeline | `astream` + partial-JSON + compile caches | [`11_streaming_performance.py`](examples/11_streaming_performance.py) |
-| Push retrieval quality with the full toolkit | sparse+late-interaction fusion, HyDE, auto-merge, GraphRAG, connectors | [`12_advanced_rag.py`](examples/12_advanced_rag.py) |
-| Personalize an app with governed memory | scoped remember/recall, consolidation, hygiene, memory evals | [`13_memory_personalization.py`](examples/13_memory_personalization.py) |
-| Evaluate, test, and observe without a platform | quality metrics, synthetic data, red-teaming, experiments, prompt registry, sessions + trace viewer | [`14_evaluation_observability.py`](examples/14_evaluation_observability.py) |
-| Run a multi-agent team with roles and delegation | crews + shared blackboard + budget guarantees | [`15_multi_agent_crew.py`](examples/15_multi_agent_crew.py) |
-| Build an interruptible, auditable, resumable process | durable graphs + human gates + time-travel | [`16_durable_graph.py`](examples/16_durable_graph.py) |
-| Guarantee output shape and guard every generation | signatures, constrained decoding, streaming validation, rails, self-correction, schema routing | [`17_reliable_structured_output.py`](examples/17_reliable_structured_output.py) |
-| Improve the app from its own production traffic | the closed loop: traces→dataset→eval→optimize→promote, auto-memory, retrieval feedback, Pareto, learned budgets | [`18_closed_loop.py`](examples/18_closed_loop.py) |
-| Reuse LangChain/LlamaIndex assets and any OpenAI-compatible model | framework interop + provider/vector-store breadth | [`19_framework_interop.py`](examples/19_framework_interop.py) |
-| Configure an app for a domain in one line | opt-in domain packs (support/engineering/finance/legal) | [`20_domain_pack.py`](examples/20_domain_pack.py) |
-| Govern PII, injection, access, and audit integrity | deterministic security primitives + tamper-evident audit | [`21_security_governance.py`](examples/21_security_governance.py) |
-| Use MCP servers as tools/resources, or expose your app as one | MCP client + server | [`22_mcp_tools_and_resources.py`](examples/22_mcp_tools_and_resources.py) |
-| Surface a server's UI and govern a mid-call input request | MCP Apps over AG-UI + elicitation gated by approval + rails | [`66_mcp_apps_and_elicitation.py`](examples/66_mcp_apps_and_elicitation.py) |
-| Negotiate a price/SLA/scope contract between agents | bounded negotiation + signed contract + reputation-weighted, over A2A | [`67_agent_negotiation_and_contracting.py`](examples/67_agent_negotiation_and_contracting.py) |
-| Run a durable, compensating workflow across organizations | cross-org saga + reverse-order compensation + restart-survivable journal, over A2A | [`68_cross_org_workflow_choreography.py`](examples/68_cross_org_workflow_choreography.py) |
-| Bind the best counterparty for a saga step at run time | capability discovery over the governed directory, reputation/settlement-ranked, governance-preserving | [`70_cross_org_workflow_discovery.py`](examples/70_cross_org_workflow_discovery.py) |
-| Resolve a cross-org dispute over which figure stands | deterministic arbitration over signed records — co-signed upheld, contradicting claim rejected, content-bound `Resolution` verifies offline | [`72_cross_org_dispute_arbitration.py`](examples/72_cross_org_dispute_arbitration.py) |
-| Port a counterparty's earned reputation across orgs | signed `ReputationAttestation` from own settlement records, several issuers `combine_attestations` into a bounded prior weighting negotiation | [`73_cross_org_reputation_attestation.py`](examples/73_cross_org_reputation_attestation.py) |
-| Keep a ported reputation current — expire and revoke | `horizon_days` validity window + `half_life_days` decay, and a signed `AttestationRevocation` (`app.revoke_attestation`) excluded from `combine_attestations(..., revocations=, as_of=)` | [`74_cross_org_attestation_revocation_freshness.py`](examples/74_cross_org_attestation_revocation_freshness.py) |
-| Discover who has attested a counterparty, without a registry | bounded, pull-based `app.serve_attestations` / `app.gather_reputation` exchange over A2A, governed and audited | [`75_cross_org_reputation_gossip.py`](examples/75_cross_org_reputation_gossip.py) |
-| Weigh attested evidence by trust in the issuer (Sybil-resistant) | bounded, transitive `build_trust_model` / `TrustConfig`, opt-in via `combine_attestations(..., trust_config=)` — a Sybil cluster can't outvote a few trusted peers | [`76_cross_org_transitive_trust.py`](examples/76_cross_org_transitive_trust.py) |
-| Bound a new counterparty's exposure to its earned standing | `AdmissionPolicy` / `app.admit` maps a `PortableReputation` / `ReputationLedger` to an offline-verifiable exposure ceiling, escrow, and SLA strictness — conservative not refused, ramping to parity as settled history accrues | [`77_cross_org_reputation_gated_admission.py`](examples/77_cross_org_reputation_gated_admission.py) |
-| Back the collateral with a posted, offline-verifiable escrow | `app.post_escrow` binds the admission-required collateral to a contract; `app.settle(escrow=…)` releases the whole stake on a clean delivery or forfeits a bounded slice proportional to the breach — driven by the same settlement verdict | [`78_cross_org_collateralized_escrow.py`](examples/78_cross_org_collateralized_escrow.py) |
-| Back many concurrent contracts with one pooled stake (margin) | `app.post_collateral_pool` posts one stake allocated per-contract by required collateral; `app.settle(pool=…)` draws a bounded slice from the shared stake on a breach and frees the rest for the next deal — a top-up obligation surfaces if the pool over-commits | [`79_cross_org_collateral_pooling.py`](examples/79_cross_org_collateral_pooling.py) |
-| Bound collateral re-use across pools (rehypothecation guard) | `app.guard_collateral` folds a counterparty's pools and reconciles what they pledge against what it holds — the same capital pledged twice surfaces as a bounded `ReuseBreach`, and each beneficiary's claim is bounded to its pari-passu share of the held capital | [`80_cross_org_collateral_rehypothecation.py`](examples/80_cross_org_collateral_rehypothecation.py) |
-| Bound pledges against proven reserves (proof-of-reserves) | `app.attest_custody` issues a signed `CustodyAttestation` over the capital a counterparty actually holds; `app.guard_collateral(custody=…)` reads it as the held figure and surfaces a bounded `UnderReservedBreach` when the proven reserves fall below the pledges — a tampered figure, a forged custodian, or a wrong-poster attestation is refused | [`81_cross_org_custody_proof_of_reserves.py`](examples/81_cross_org_custody_proof_of_reserves.py) |
-| Bound pledges against proven solvency (proof-of-solvency) | `app.attest_liabilities` issues a signed `LiabilityAttestation` over the obligations a counterparty owes; `app.prove_solvency` folds it against the reserves into a `SolvencyProof`, and `app.guard_collateral(solvency=…)` reads its solvency-adjusted margin as the held figure — pinpointing an `InsolvencyBreach` when the liabilities exceed the reserves; a tampered figure or a wrong-poster pair is refused | [`82_cross_org_proof_of_solvency.py`](examples/82_cross_org_proof_of_solvency.py) |
-| Prove the liabilities are complete (inclusion & completeness) | a `LiabilityAttestation` commits its line items into a Merkle root, so `app.inclusion_proof` gives each creditor a proof its claim is counted; `app.check_completeness` folds creditors' proven claims to pinpoint an `OmissionBreach`, and `app.prove_solvency(completeness=…)` bounds the margin by the *completed* liability total — so an omitted creditor is detected and a tampered leaf or wrong-attestation check is refused | [`83_cross_org_liability_completeness.py`](examples/83_cross_org_liability_completeness.py) |
-| Catch a counterparty signing different totals to different creditors (non-equivocation) | each creditor shares its `LiabilityAttestation`'s signed `attestation.root_commitment()` (root + `as_of`, no line items); `app.check_root_consistency` groups them by `(poster, attestor, as_of)` and folds any two conflicting roots into a non-repudiable `EquivocationProof` (`prove_equivocation`) — a forged conflicting root is refused and the equivocating poster is dinged on the reputation path | [`84_cross_org_liability_non_equivocation.py`](examples/84_cross_org_liability_non_equivocation.py) |
-| Catch a counterparty dropping a past debt in a later snapshot (history monotonicity) | `app.attest_liabilities(..., prior=…)` links each snapshot to its predecessor's root (a hash-linked history); `app.check_history_consistency` walks a poster's snapshots and pinpoints a creditor obligation that shrank without a signed, creditor-issued `Discharge` (`discharge_liability`) as a `MonotonicityBreach` — a forged or out-of-window release does not explain it, and the breaching poster is dinged on the reputation path | [`85_cross_org_liability_history_consistency.py`](examples/85_cross_org_liability_history_consistency.py) |
-| Resolve an insolvency into who-gets-what (seniority waterfall) | `app.build_seniority_schedule` ranks a poster's obligations into signed priority tranches; `app.resolve_insolvency` distributes the proven reserves across them by seniority then pari-passu within a tranche into an `InsolvencyResolution`, pinpointing each creditor's bounded `CreditorRecovery` and the shortfall it bears — the whole waterfall re-derives from the bytes, an over-stated recovery or wrong-poster schedule is refused, and the unmade-whole poster is dinged on the reputation path | [`86_cross_org_insolvency_resolution.py`](examples/86_cross_org_insolvency_resolution.py) |
-| Net a creditor that is also a debtor before the waterfall (close-out set-off) | `app.build_set_off_statement` / `set_off_from_records` state the obligations running both ways between a poster and one creditor into a mutually-signed `SetOffStatement`; `app.resolve_insolvency(set_off=…)` reduces each creditor to its net claim before distributing — a creditor in debit recovers nothing and the distributable estate shrinks to the true net exposure, an over-stated or one-sided set-off is refused, and the statements bind into the resolution by hash | [`87_cross_org_insolvency_set_off.py`](examples/87_cross_org_insolvency_set_off.py) |
-| Thread the whole cross-org fabric in one call-path and prove it composes | `app.cross_org_engagement` returns a `CrossOrgEngagement` that delegates each lifecycle stage (negotiate → choreograph → settle → net → prove solvency → resolve insolvency) to the same `app.*` primitive and narrates it into one content-bound, signed `EngagementNarrative`; `narrative.verify` recomputes the whole hash chain and re-digests every captured artifact from the bytes alone, so a tamper introduced anywhere is caught — the proof the fabric is one system, not a pile of primitives | [`88_cross_org_engagement_lifecycle.py`](examples/88_cross_org_engagement_lifecycle.py) |
-| Drive a screen safely with a grounded, reversible action plane | `app.computer_use` returns a `ComputerEnvironment` that perceives the UI as typed, addressable `UIElement`s, grounds an intent to a `UIAction` bound by a stable selector, then **pre-gates** each action against an `ActionPolicy` (a destructive or out-of-scope action gated like a write tool, behind an approval callback), **post-verifies** the effect, and **undoes** it on divergence; a `ComputerTask` (goal + verifier) drives `env.run` to a verified end state, projecting onto the same trajectory metrics, with success-at-budget and a no-unapproved-destructive-action safety guarantee gated offline | [`89_computer_use_action_plane.py`](examples/89_computer_use_action_plane.py) |
-| Give agents a portable identity and delegate bounded authority | `app.identity` mints a self-certifying `AgentIdentity` (DID derived from its Ed25519 key); a signed `Delegation` mints a bounded `Grant` from a principal to an agent that sub-delegates into a `DelegationChain` verifying offline where **each link only attenuates, never amplifies**; a `Keyring` rotates keys along a signed chain; a verifiable `AgentCredential` folds into admission; `app.use_identity` binds every audit entry, contract, and settlement to the DID | [`90_agent_identity_delegation.py`](examples/90_agent_identity_delegation.py) |
-| Attach a checkable certificate to an answer and shield an agent's actions | `app.verify_reasoning` runs deterministic kernels (arithmetic, units, temporal, schema, constraints, citation entailment) into a content-bound `Certificate`, **refuses to emit** a refuted answer, and drives self-correction to repair it; a `BehaviorSpec` + `Shield` (`app.shield(..., use=True)`) **blocks a policy-violating tool call before it runs**; a `ToolContract` enforces pre/post-conditions and `app.synthesize_program` emits a proof-carrying transform | [`91_verified_reasoning.py`](examples/91_verified_reasoning.py) |
-| Grow capability open-endedly without drifting out of policy | `app.cultivate` runs an `AutoCurriculum` (propose → attempt → verify → distill → promote): it proposes frontier tasks, **gates every objective through the rails + governance verifier** before attempting, distills oracle-verified trajectories into a content-addressed, composable `LearnedSkillLibrary`, and **promotes a skill only through the same no-regression gate** a deploy clears (capability never falls) — demoting dead weight; `CultivationResult.verify` re-derives the monotonicity and stay-in-policy verdicts from the bytes | [`92_skill_acquisition.py`](examples/92_skill_acquisition.py) |
-| Expose a crew over A2A and delegate across vendor agents | A2A agent card + task lifecycle + remote delegate | [`23_a2a_delegation.py`](examples/23_a2a_delegation.py) |
-| Drop in portable `SKILL.md` knowledge with budgeting | Agent Skills + progressive disclosure | [`24_agent_skills.py`](examples/24_agent_skills.py) |
-| Control reasoning effort across providers with honest cost | unified reasoning control + Responses API | [`25_reasoning_control.py`](examples/25_reasoning_control.py) |
-| Score agents over their trajectory and live traffic | trajectory & tool-use metrics, multi-turn simulator, online eval + drift, annotation, A/B | [`26_agentic_eval.py`](examples/26_agentic_eval.py) |
-| Survive outages and account for every dollar at scale | batch execution, circuit breaking + failover, key pooling, model cascades, cost attribution + budgets, prompt caching, sharded indexing | [`27_cost_and_reliability.py`](examples/27_cost_and_reliability.py) |
-| Optimize prompts reflectively and distill traces into a cheaper model | GEPA/MIPRO reflective optimizer, distillation flywheel, learned compression, optimizer-judge calibration | [`28_reflective_optimization.py`](examples/28_reflective_optimization.py) |
-| Shrink embeddings, retrieve across text+image, and add stores | Matryoshka truncation, contextual & multimodal embedders, new vector stores, layout-aware extraction, voice/realtime | [`29_multimodal_retrieval.py`](examples/29_multimodal_retrieval.py) |
-| Generate compliance evidence and satisfy a data-erasure request | model/system cards, framework mapping, AI-BOM, lineage + erasure, residency, multilingual PII | [`30_governance_compliance.py`](examples/30_governance_compliance.py) |
-| Prove the governance invariants hold ahead of any run | `app.verify_governance` / `GovernanceVerifier` — bounded model checking of containment/residency/budget/erasure with a minimal counterexample on violation | [`63_governance_invariant_verification.py`](examples/63_governance_invariant_verification.py) |
-| Enforce the honest, fast spine | hard budgets, the `ModelRegistry`, semantic scoring, cancellation, significance-gated promotion + replay | [`31_honest_fast_spine.py`](examples/31_honest_fast_spine.py) |
-| Rotate providers/models safely | router, `SwapGate`, swap regression with quarantine, shadow + canary, lifecycle migrations | [`32_swap_regression.py`](examples/32_swap_regression.py) |
-| Let documents and images flow out under the same guarantees | `DocumentBuilder` + `DocumentContract`, `CitedReportBuilder`, redlines, image/TTS with C2PA, richer inputs, EU AI Act pack | [`33_documents_and_media_out.py`](examples/33_documents_and_media_out.py) |
-| Run a self-improving loop with agentic capabilities | online controller, GEPA reflector, experiment proposer, golden non-regression guard, deep-research agent, memory OS, computer-use + isolation | [`34_self_improving_loop_and_agents.py`](examples/34_self_improving_loop_and_agents.py) |
-| Work with the multimodal-native packet and capability facades | facades, multimodal packet + cross-process materialize, structured `FilterSpec` pushdown + tenant scope, typed event catalog, enterprise endpoints, egress DLP + signed audit chain | [`35_multimodal_packet_and_facades.py`](examples/35_multimodal_packet_and_facades.py) |
-| Scale out across workers, train a cheaper model, and serve a dashboard | distributed durable execution (lease/CAS + worker pool + `Send` map-reduce), swap-gated distillation, served observability + burn-rate alerting, quantized two-stage retrieval, in-process GGUF | [`36_distributed_scale_and_finetune.py`](examples/36_distributed_scale_and_finetune.py) |
-| Score on the leaderboards, govern a fabric, and stream a UI | stateful-environment eval with a task-success oracle, the nine benchmark adapters, retrieval-eval + index regression, the `AgentDirectory` under an `AllowListGate`, AG-UI streaming | [`37_benchmarks_and_agent_fabric.py`](examples/37_benchmarks_and_agent_fabric.py) |
-| Run continual self-improvement and prove a data-erasure request | one `SelfImprovementPolicy` (streaming proposal→meta→canary→promote/rollback), canary-gated `app.deploy`, signed & verifiable `ErasureProof`, a GDPR `ConsentLedger`, bi-temporal memory | [`38_self_improvement_and_erasure.py`](examples/38_self_improvement_and_erasure.py) |
-| Plan deeper, recover from failure, and schedule fairly at scale | HTN hierarchical planning, in-place plan repair, cost-aware action selection, parallel sub-graph scheduling, durable timers | [`40_orchestrator_planner_depth.py`](examples/40_orchestrator_planner_depth.py) |
-| Meet teams where their data and tools live | first-party connectors (Jira/Linear/Drive/SharePoint/Salesforce/Zendesk/BigQuery/Snowflake), the entry-point plugin system, a signed community pack/skill registry, Haystack + DSPy interop, the MCP-server marketplace bridge | [`41_ecosystem_and_integration.py`](examples/41_ecosystem_and_integration.py) |
-| Configure a regulated domain in one line | full-stack vertical packs (healthcare/e-discovery/KYC-AML/support/code-review) with retrieval, memory, rails, metrics, residency, and a golden set | [`42_vertical_packs.py`](examples/42_vertical_packs.py) |
-| Build a multi-turn chat product | the `Assistant` — session threading, memory write-back, tool approvals | [`43_assistant.py`](examples/43_assistant.py) |
-| Ship a grounded, guarded voice assistant | the `VoiceAgent` — realtime wired to deep research, the memory OS, and rails | [`44_voice_agent.py`](examples/44_voice_agent.py) |
-| Follow a task-shaped recipe | the cookbook — contract redlining, incident triage, data-room Q&A, multimodal RAG over slides/PDFs | [`45`](examples/45_recipe_contract_redlining.py) · [`46`](examples/46_recipe_incident_triage.py) · [`47`](examples/47_recipe_data_room_qa.py) · [`48`](examples/48_recipe_multimodal_rag.py) |
-| Spend test-time compute where it pays off | the `ReasoningController` (auto effort under a hard token ceiling), reasoning-trace caching, and verifier-guided `TestTimeSearch` (best-of-N / self-consistency / beam) with early-exit | [`53_test_time_compute.py`](examples/53_test_time_compute.py) |
+Twelve complete, heavily-commented programs in [`examples/`](examples) — each runs **fully offline**
+and teaches a whole theme end to end.
 
-All examples in [`examples/`](examples) run **fully offline** with no API keys. Point them at a real
-model with environment variables:
+| # | Example | What it covers |
+|--|---|---|
+| 01 | [`quickstart`](examples/01_quickstart.py) | typed output · grounded QA with citations · trace & cost · a short conversation |
+| 02 | [`retrieval_rag`](examples/02_retrieval_rag.py) | hybrid + sparse + late-interaction fusion · query understanding · GraphRAG · multimodal evidence |
+| 03 | [`memory`](examples/03_memory.py) | scoped remember/recall · bi-temporal · decay & contradictions · GDPR forget/export |
+| 04 | [`agents_and_tools`](examples/04_agents_and_tools.py) | permissioned tools · sandbox · planners · plan repair · deep research · computer-use |
+| 05 | [`orchestration`](examples/05_orchestration.py) | crews + blackboard · durable graphs · workflows · distributed execution |
+| 06 | [`structured_output`](examples/06_structured_output.py) | contracts · constrained decoding · streaming validation · self-correction · signatures |
+| 07 | [`evaluation_observability`](examples/07_evaluation_observability.py) | datasets · metrics · judges · red-team · drift · tracing · prompt registry |
+| 08 | [`optimization_self_improvement`](examples/08_optimization_self_improvement.py) | the closed loop · reflective optimizer · RLVR · canary deploy · local & federated adaptation |
+| 09 | [`security_governance`](examples/09_security_governance.py) | PII/injection/containment · audit · governance evidence · identity · verified reasoning · assurance |
+| 10 | [`interop_and_protocols`](examples/10_interop_and_protocols.py) | MCP client+server · A2A · Agent Skills · framework interop · connectors · packs |
+| 11 | [`advanced_context`](examples/11_advanced_context.py) | reasoning control · test-time compute · long-horizon · world-model · semantic cache · record-replay |
+| 12 | [`cross_org_economy`](examples/12_cross_org_economy.py) | negotiation · contracts · durable sagas · settlement · arbitration · solvency proofs |
 
 ```bash
-export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
-cd examples && python 02_document_qa.py
+cd examples && python 01_quickstart.py            # offline, no keys
+export VINCIO_PROVIDER=openai OPENAI_API_KEY=sk-... && python 01_quickstart.py   # against a real model
 ```
 
 ## Command line
 
 ```bash
-vincio init my-project --template rag  # scaffold config + app + golden set (minimal|rag|agent|eval)
-vincio config schema --output vincio.schema.json  # typed JSON Schema for editor completion
-vincio config migrate            # upgrade vincio.yaml to the current schema (--check for CI)
-vincio doctor                    # report deprecated-API usage and config schema drift
-vincio migrate 4.0               # codemod a project's source for a major-version upgrade
-vincio packs list                # opt-in domain packs (support/engineering/finance/legal)
-vincio tui                       # interactive inspector for runs, traces, and memory
-vincio run app.py --input "..."  # run an app
-vincio eval run golden.jsonl     # run an eval suite (with CI gates and baseline compare)
-vincio eval dataset golden.jsonl --min-feedback 0.5  # curate traces into a dataset
-vincio prompt lint prompts/      # lint prompt specs
-vincio prompt push prompts/support.yaml --tag production  # version a prompt
-vincio trace view trace_123      # TUI trace tree with scores + feedback
-vincio trace export trace_123    # self-contained static HTML (also --session)
-vincio trace diff a b --html diff.html  # visual side-by-side diff
+vincio init my-project --template rag   # scaffold config + app + golden set
+vincio run app.py --input "..."         # run an app
+vincio eval run golden.jsonl            # run an eval suite with CI gates + baseline compare
+vincio trace view trace_123             # TUI trace tree with scores + feedback
 vincio optimize run --target groundedness
-vincio optimize reflective --app app.py --dataset golden.jsonl  # GEPA-style reflective optimization
-vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"  # one closed-loop cycle
-vincio distill --traces-dir .vincio/traces --output train.jsonl  # grounded fine-tuning JSONL
-vincio index build ./docs        # build a retrieval index
-vincio memory recall "answer style" --user u1  # scored hybrid recall
-vincio audit verify              # verify the audit-log hash chain offline
-vincio mcp serve app.py          # expose an app as an MCP server (stdio)
-vincio serve --app app.py        # launch the HTTP API (health/readiness/metrics)
+vincio loop run --app app.py --gate groundedness=">= 0.8"   # one closed-loop cycle
+vincio audit verify                     # verify the audit-log hash chain offline
+vincio mcp serve app.py                 # expose an app as an MCP server
+vincio serve --app app.py               # launch the HTTP API (health/readiness/metrics)
 ```
 
-A FastAPI server (API-key + JWT auth, real-token SSE streaming, `/v1/health/ready`
-and Prometheus `/v1/metrics`) is launched with `vincio serve --app app.py` or built
-with `from vincio.server import create_app` — see [`docs/reference/api.md`](docs/reference/api.md).
-For horizontal scale, point your process manager at it and configure `server.redis_url`
-so rate-limit and idempotency state stays coherent across workers.
+The full CLI is in the [CLI reference](docs/reference/cli.md). `vincio serve` launches a FastAPI
+server (API-key + JWT auth, SSE streaming, Prometheus metrics); `from vincio.server import
+create_app` embeds it.
 
 ## Architecture
 
@@ -533,32 +339,21 @@ so rate-limit and idempotency state stays coherent across workers.
                     └─────────────────────────────────────────┘
 ```
 
-The public surface is organized into lazy **capability facades** (`app.runs` / `.knowledge` /
-`.governance` / `.optimization` / `.serving` / `.training`) over async-first stores and a typed,
-versioned event catalog. See [`AGENTS.md`](AGENTS.md) for the package layout and
-[`docs/concepts/`](docs/concepts) for a tour of each engine.
+See [`AGENTS.md`](AGENTS.md) for the package layout and [`docs/concepts/`](docs/concepts) for a tour
+of each engine.
 
-## Roadmap
+## Status
 
-Every subsystem above is implemented, tested offline, documented, and demonstrated by a runnable
-example. The platform is **feature-complete and in long-term support**: the public API is re-frozen
-for the **4.0 LTS major** under [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
-with a mechanical [deprecation policy](docs/reference/stability.md); performance and quality targets
-are [published as SLOs](docs/reference/slo.md) and gated by VincioBench; the
-[threat model](docs/security/threat-model.md) is documented with offline audit-chain verification and
-a resource-limited tool sandbox; and releases ship a CycloneDX SBOM with SLSA provenance attestations.
+Vincio 4.0 is **feature-complete and in long-term support**. The public API is frozen under
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) with a mechanical
+[deprecation policy](docs/reference/stability.md); performance and quality targets are
+[published as SLOs](docs/reference/slo.md) and gated by VincioBench; releases ship a CycloneDX SBOM
+with SLSA provenance. New capabilities are added behind opt-in extras, never by breaking working
+code. See [`ROADMAP.md`](ROADMAP.md) and [`MIGRATION.md`](MIGRATION.md).
 
-New capabilities are added without breaking working code: each one sits behind a new entry point or an
-opt-in extra. Vincio adopts the ecosystem's standards — the MCP, A2A, and Agent Skills protocols, and
-the OWASP LLM / OWASP Agentic / NIST AI RMF / MITRE ATLAS governance frameworks — *in your process*; it
-never becomes a hosted service to do so.
-
-See **[ROADMAP.md](ROADMAP.md)** for the complete, finished plan and what is intentionally out of
-scope, and **[MIGRATION.md](MIGRATION.md)** for the clean 3.x → 4.0 upgrade.
-
-Vincio is, and stays, a **library**. The building blocks for production operation (audit chain,
-retention, tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own
-infrastructure. Hosted services and managed control planes are not part of this project.
+Vincio is, and stays, a **library**. The building blocks for production (audit chain, retention,
+tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own
+infrastructure. There is no hosted service.
 
 ## Documentation
 
@@ -568,47 +363,24 @@ infrastructure. Hosted services and managed control planes are not part of this 
   [retrieval](docs/concepts/retrieval.md) · [agents & workflows](docs/concepts/agents.md) ·
   [evaluation](docs/concepts/evals.md) · [observability](docs/concepts/observability.md)
 - **Guides** — [build a RAG app](docs/guides/build-rag-app.md) ·
-  [build a chat product (the Assistant)](docs/guides/assistant.md) ·
-  [vertical packs](docs/guides/vertical-packs.md) · [cookbook recipes](docs/guides/cookbook.md) ·
-  [connect data sources](docs/guides/connectors.md) ·
-  [extend with plugins](docs/guides/plugins.md) ·
   [structured output](docs/guides/structured-output.md) ·
-  [generate documents & media](docs/guides/generate-documents.md) ·
-  [video understanding & generation](docs/guides/video.md) ·
-  [reliability & guardrails](docs/guides/reliability-guardrails.md) ·
   [add tools](docs/guides/add-tools.md) ·
   [orchestrate multi-agent systems](docs/guides/orchestrate-agents.md) ·
-  [run evals](docs/guides/run-evals.md) · [test LLM apps](docs/guides/test-llm-apps.md) ·
-  [optimize](docs/guides/optimize-context.md) · [close the loop](docs/guides/close-the-loop.md) ·
-  [performance & streaming](docs/guides/performance.md) ·
-  [edge / WASM runtime](docs/guides/edge.md) ·
-  [cost, reliability & scale](docs/guides/cost-and-reliability.md) ·
-  [integrations](docs/guides/integrations.md)
-- **Agentic evaluation & continuous quality** —
-  [trajectory metrics, simulator, online eval, drift & annotation](docs/guides/agentic-eval.md)
-- **Protocols & interoperability** — [MCP client + server](docs/guides/mcp.md) ·
-  [A2A agent-to-agent](docs/guides/a2a.md) · [Agent Skills](docs/guides/agent-skills.md) ·
-  [reasoning control & Responses API](docs/guides/reasoning.md) ·
-  [voice & realtime](docs/guides/realtime.md)
-- **Migrating** — coming from [LangChain](docs/guides/migrate-from-langchain.md) ·
-  [LlamaIndex](docs/guides/migrate-from-llamaindex.md) ·
-  [Ragas](docs/guides/migrate-from-ragas.md) · [Mem0](docs/guides/migrate-from-mem0.md)
-- **Reference** — [API](docs/reference/api.md) · [API index](docs/reference/api-generated.md) ·
-  [CLI](docs/reference/cli.md) · [config](docs/reference/config.md) ·
-  [errors](docs/reference/errors.md) · [typing](docs/reference/typing.md) ·
-  [API stability & deprecation policy](docs/reference/stability.md) ·
-  [performance & quality SLOs](docs/reference/slo.md) ·
-  [4.0 migration guide](MIGRATION.md)
+  [run evals](docs/guides/run-evals.md) · [close the loop](docs/guides/close-the-loop.md) ·
+  [performance & streaming](docs/guides/performance.md) · [integrations](docs/guides/integrations.md)
+- **Protocols** — [MCP client + server](docs/guides/mcp.md) · [A2A](docs/guides/a2a.md) ·
+  [Agent Skills](docs/guides/agent-skills.md) · [reasoning control](docs/guides/reasoning.md)
+- **Migrating** — from [LangChain](docs/guides/migrate-from-langchain.md) ·
+  [LlamaIndex](docs/guides/migrate-from-llamaindex.md) · [Ragas](docs/guides/migrate-from-ragas.md)
 - **Security & governance** — [threat model](docs/security/threat-model.md) ·
-  [security policy](SECURITY.md) · [governance & compliance](docs/guides/governance.md) ·
-  [differential privacy](docs/guides/differential-privacy.md)
+  [security policy](SECURITY.md) · [governance & compliance](docs/guides/governance.md)
+- **Reference** — [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
+  [config](docs/reference/config.md) · [SLOs](docs/reference/slo.md) ·
+  [stability & deprecation](docs/reference/stability.md)
 - **Comparisons** — [LangChain](docs/comparisons/langchain.md) ·
-  [LlamaIndex](docs/comparisons/llamaindex.md) · [RAGatouille](docs/comparisons/ragatouille.md) ·
-  [Mem0](docs/comparisons/mem0.md) · [CrewAI](docs/comparisons/crewai.md) ·
-  [OpenAI Agents SDK](docs/comparisons/openai-agents-sdk.md) · [DSPy](docs/comparisons/dspy.md) ·
-  [Pydantic AI](docs/comparisons/pydantic-ai.md) · [Guardrails AI](docs/comparisons/guardrails.md) ·
-  [NeMo Guardrails](docs/comparisons/nemo-guardrails.md) · [Ragas](docs/comparisons/ragas.md) ·
-  [LiteLLM / gateways](docs/comparisons/litellm.md)
+  [LlamaIndex](docs/comparisons/llamaindex.md) · [DSPy](docs/comparisons/dspy.md) ·
+  [CrewAI](docs/comparisons/crewai.md) · [Ragas](docs/comparisons/ragas.md) ·
+  [and more](docs/comparisons)
 
 ## Contributing
 
@@ -616,7 +388,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/ -q     # 1929 tests, no network or API keys required
+python -m pytest -q          # 3288 tests, no network or API keys required
 ruff check vincio/ tests/
 mypy vincio
 ```

@@ -144,7 +144,7 @@ TimerService(flow).tick()                            # wake due sleep timers (re
 TimerService(flow).deliver(thread_id, "approved")    # wake an event wait
 ```
 
-See [`examples/40_orchestrator_planner_depth.py`](../../examples/40_orchestrator_planner_depth.py)
+See [`examples/04_agents_and_tools.py`](../../examples/04_agents_and_tools.py)
 and the [agents concept guide](../concepts/agents.md#orchestrator--planner-depth).
 
 ## Choosing a shape

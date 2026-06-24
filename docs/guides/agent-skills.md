@@ -73,4 +73,4 @@ POSIX `setrlimit`) through the permissioned, audited tool runtime — namespaced
 `"<skill>.<script>"`, `side_effects="external"`. Pass `permissions=[...]` to
 `register_skill_scripts` to additionally gate them behind an RBAC scope.
 
-See [`examples/24_agent_skills.py`](../../examples/24_agent_skills.py).
+See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py).
