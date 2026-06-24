@@ -207,15 +207,35 @@ async def bench_injection_uplift() -> dict[str, Any]:
 #    statistical delta needs a real provider (command printed at the end).
 # --------------------------------------------------------------------------- #
 
-# (question, correct answer substring, the source passage that contains it)
+# (question, correct answer substring, the source passage that contains it).
+# These are FABRICATED, company-specific policy facts — a model has no way to know
+# them from pretraining, so a direct call must guess. That is the point: it
+# isolates the value of *supplying evidence*, not the model's parametric memory.
 _QA = [
-    ("What is the refund window for the Pro plan?", "30 days",
-     "Pro plan customers may request a refund within 30 days of purchase."),
-    ("How long before renewal must a subscription be cancelled?", "60 days",
-     "A subscription renews automatically unless cancelled 60 days before the term ends."),
-    ("What interest do late payments accrue?", "1.5%",
-     "Late payments accrue 1.5% monthly interest on the outstanding balance."),
+    ("What is the refund window for the Acme Pro plan?", "30 days",
+     "Acme Pro plan customers may request a refund within 30 days of purchase."),
+    ("How long before renewal must an Acme subscription be cancelled?", "60 days",
+     "An Acme subscription renews automatically unless cancelled 60 days before the term ends."),
+    ("What monthly interest do late Acme payments accrue?", "1.5%",
+     "Late Acme payments accrue 1.5% monthly interest on the outstanding balance."),
+    ("What is the refund window for the Acme Basic plan?", "14 days",
+     "The Acme Basic plan offers a 14-day refund window."),
+    ("How long is an Acme free trial?", "21 days",
+     "New Acme accounts receive a 21-day free trial."),
+    ("How long are Acme application logs retained?", "ninety days",
+     "Acme application logs are retained for ninety days before deletion."),
+    ("What is Acme's priority-support first-response SLA?", "four hours",
+     "Acme priority support guarantees a first response within four hours."),
+    ("What is the maximum Acme file upload size?", "250 MB",
+     "Acme uploads are capped at 250 MB per file."),
+    ("What is the Acme API rate limit?", "600 requests",
+     "The Acme API gateway enforces a limit of 600 requests per minute per tenant."),
+    ("How long until an Acme password-reset link expires?", "one hour",
+     "Acme password-reset links sent by email expire after one hour."),
 ]
+
+_ABSTENTION_MARKERS = ("don't know", "do not know", "cannot", "can't", "no information",
+                       "not sure", "unable to", "i don't have", "not specified", "unclear")
 
 
 def _grounded_responder(request: Any) -> str:
@@ -233,52 +253,75 @@ def _grounded_responder(request: Any) -> str:
     return "I believe the answer is 90 days."  # an ungrounded guess
 
 
+def _is_correct(answer: str, output: str) -> bool:
+    return answer.lower() in output.lower()
+
+
+def _is_abstention(output: str) -> bool:
+    low = output.lower()
+    return any(marker in low for marker in _ABSTENTION_MARKERS)
+
+
 async def bench_grounding_uplift() -> dict[str, Any]:
     provider, model = _provider_and_model(responder=_grounded_responder)
     using_real_model = os.environ.get("VINCIO_PROVIDER", "mock") != "mock"
 
-    direct_correct = 0
-    via_correct = 0
-    via_cited = 0
+    direct_correct = direct_hallucinated = 0
+    via_correct = via_cited = 0
+    errors = 0
     for question, answer, source in _QA:
         # Direct: ask the model with no retrieval and no grounding policy.
         direct = ContextApp(name="direct", provider=provider, model=model)
         d = direct.run(question)
-        if answer in str(d.output):
+        if d.output is None:  # a provider error is not an answer — don't score it
+            errors += 1
+            continue
+        d_out = str(d.output)
+        if _is_correct(answer, d_out):
             direct_correct += 1
+        elif not _is_abstention(d_out):
+            # Wrong AND confident (didn't say "I don't know") → a hallucination:
+            # a made-up company-specific fact the model could not have known.
+            direct_hallucinated += 1
 
         # Through Vincio: the source is a known document, retrieval surfaces it,
         # and the policy forbids answering from anything but the sources.
         app = ContextApp(name="grounded", provider=provider, model=model)
-        app.add_source("policy", documents=[Document(text=source, title="refund_policy")])
+        app.add_source("policy", documents=[Document(text=source, title="acme_policy")])
         app.set_policy("answer_only_from_sources", True)
         v = app.run(question)
-        if answer in str(v.output):
+        if v.output is None:
+            errors += 1
+            continue
+        if _is_correct(answer, str(v.output)):
             via_correct += 1
         if v.citations:
             via_cited += 1
 
-    n = len(_QA)
+    n = max(1, len(_QA) - errors)  # score only the questions both arms actually answered
+    model_label = model if using_real_model else "deterministic mock"
     out: dict[str, Any] = {
         "regime": "frontier-model-quality" if using_real_model else "deterministic-illustration",
-        "operation": f"answer {n} policy questions correctly and with a citation",
+        "operation": f"answer {n} company-specific policy questions correctly, with a citation",
+        "model": model_label,
+        "provider_errors": errors,
         "direct_correct": f"{direct_correct}/{n}",
+        "direct_hallucinated": f"{direct_hallucinated}/{n}",
         "via_vincio_correct": f"{via_correct}/{n}",
         "via_vincio_cited": f"{via_cited}/{n}",
-        "model": "real provider" if using_real_model else "deterministic mock",
     }
     if using_real_model:
         out["verdict"] = (
-            f"On {model}: direct answers {direct_correct}/{n} correctly; through Vincio "
-            f"{via_correct}/{n}, with {via_cited}/{n} carrying a citation — the measured uplift from "
-            "supplying and enforcing evidence."
+            f"On {model}: called directly it answers {direct_correct}/{n} correctly and confidently "
+            f"hallucinates {direct_hallucinated}/{n} (it cannot know these fabricated facts); through "
+            f"Vincio it answers {via_correct}/{n} correctly, each with a citation ({via_cited}/{n}) — "
+            "the measured uplift from retrieving and enforcing evidence, same model both ways."
         )
     else:
         out["verdict"] = (
-            f"Deterministic illustration: the same stand-in model answers {direct_correct}/{n} "
-            f"correctly when called directly (it guesses) and {via_correct}/{n} through Vincio "
-            f"(retrieval supplies the source, the policy enforces it, {via_cited}/{n} cited). "
-            "Run with VINCIO_PROVIDER set for the real-model statistical delta — the harness is identical."
+            f"Deterministic illustration (mock model): direct answers {direct_correct}/{n}, through "
+            f"Vincio {via_correct}/{n} with {via_cited}/{n} cited. Set VINCIO_PROVIDER (e.g. "
+            "openrouter) for the real-model delta — the harness is identical."
         )
     return out
 

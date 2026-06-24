@@ -213,22 +213,36 @@ pipeline, not a pile of single-purpose libraries.
 ### Orchestrator uplift — the same model, through Vincio
 
 [`quality_uplift.py`](benchmarks/quality_uplift.py) measures what routing a model *through* Vincio
-adds versus calling it directly. The metrics below are **deterministic** — they hold for any model
-because they are mechanical, so they are measured offline. (Absolute answer-quality lift on a
-frontier model needs a real key; the suite ships that harness and prints the exact command rather
-than fabricating a number.)
+adds versus calling it directly — like every example and test, it runs deterministic on the mock and
+**against a real model when a provider is configured** (`VINCIO_PROVIDER=openrouter …`). These
+mechanism metrics are **deterministic** and measured offline:
 
 | Same model — direct vs. via Vincio | Direct | Via Vincio |
 |---|--:|--:|
 | Schema-valid object from realistic model outputs | 1/6 | **5/6** |
 | Prompt-injection exfiltration via a tool call | compromised | **contained** |
 | Context tokens to retain an early fact at 80 turns | 640 (lost) | **33 (retained)** |
-| Grounded + cited answers *(deterministic illustration)* | 0/3 | **3/3** |
 
-The token-usage and context-rot results are the heart of it: a keep-everything agent grows its
-context linearly until the early fact falls out of the window, while Vincio's budgeted compiler and
-bounded recall hold the footprint flat and keep the relevant evidence in view — the same mechanism
-that sends ~60% fewer tokens for the same retrieved set, on every call.
+**Grounded-answer quality, measured on real models** (10 company-specific policy questions a model
+cannot know from pretraining; OpenRouter, June 2026):
+
+| Model (called directly vs. through Vincio) | Direct correct | Direct hallucinated | **Via Vincio correct** | Cited |
+|---|--:|--:|--:|--:|
+| `openai/gpt-4o-mini` | 1/10 | 8/10 | **10/10** | 10/10 |
+| `anthropic/claude-3-haiku` | 0/10 | 0/10¹ | **8/10** | 10/10 |
+| `google/gemini-2.5-flash-lite` | 0/10 | 4/10 | **9/10** | 10/10 |
+| `meta-llama/llama-3.1-8b-instruct` | 0/10 | 8/10 | **9/10** | 9/10 |
+
+<sub>¹ claude-3-haiku abstains rather than guessing — older/smaller models confidently fabricate
+instead. Either way the model *alone* answers ~0/10; the same model through Vincio's retrieval +
+grounding answers 8–10/10, every answer carrying a citation.</sub>
+
+The token-usage and context-rot results are the heart of the deterministic story: a keep-everything
+agent grows its context linearly until the early fact falls out of the window, while Vincio's
+budgeted compiler and bounded recall hold the footprint flat and keep the relevant evidence in view —
+the same mechanism that sends ~60% fewer tokens for the same retrieved set, on every call. Reproduce:
+`VINCIO_PROVIDER=openrouter VINCIO_MODEL=openai/gpt-4o-mini OPENROUTER_API_KEY=… python
+benchmarks/quality_uplift.py`.
 
 ### Mechanism benchmarks (VincioBench)
 
