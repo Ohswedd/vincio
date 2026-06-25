@@ -93,6 +93,7 @@ local-neural = ["fastembed>=0.3", "sentence-transformers>=3.0", "llama-cpp-pytho
 dev = [
   "pytest>=8.0",
   "pytest-asyncio>=0.23",
+  "coverage[toml]>=7.0",
   "ruff>=0.4",
   "mypy>=1.9",
 ]
@@ -119,6 +120,21 @@ packages = ["vincio"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+# Coverage is measured with `coverage run -m pytest`, NOT `pytest --cov`. The
+# vincio pytest11 plugin imports library modules at startup, before pytest-cov's
+# tracer attaches, so `pytest --cov` under-reports (class/field-definition lines
+# are falsely "missed"). Starting coverage.py first measures honestly. See TESTING.md.
+[tool.coverage.run]
+source = ["vincio"]
+branch = true
+
+[tool.coverage.report]
+# A floor that gates regressions with headroom below the current ~89% line
+# coverage; raise it as coverage climbs. Offline-unreachable lines (optional-dep
+# providers/stores, real media/HTTP/MCP sockets) keep the ceiling below 100%.
+fail_under = 85
+skip_covered = false
 
 [tool.ruff]
 line-length = 100
