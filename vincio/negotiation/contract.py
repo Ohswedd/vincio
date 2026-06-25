@@ -93,7 +93,7 @@ class ContractVerification(BaseModel):
 
 
 class ContractFulfillment(BaseModel):
-    """Whether delivered work met the contract's terms — the enforcement verdict.
+    """Whether delivered work met the contract's terms, the enforcement verdict.
 
     A breach line reads ``"<term>: <delivered> > <agreed>"`` (or ``"< "`` for a
     quality floor), so a fulfilment is debuggable, not just a boolean.

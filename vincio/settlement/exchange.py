@@ -83,7 +83,7 @@ _ENVELOPE_KEY = "vincio_attestation_exchange"
 
 
 class ReputationBundle(BaseModel):
-    """The signed artifacts a peer holds about one subject — its reply to a query.
+    """The signed artifacts a peer holds about one subject, its reply to a query.
 
     A peer answering a gossip query returns a bundle of its **own** signed
     :class:`~vincio.settlement.attestation.ReputationAttestation`\\ s and

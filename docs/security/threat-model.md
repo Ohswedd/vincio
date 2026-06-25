@@ -2,21 +2,21 @@
 
 Vincio is a **library** you deploy on your own infrastructure. This document
 states what it defends against, what it deliberately does not, and which
-controls implement each defense — so you can reason about residual risk in your
+controls implement each defense, so you can reason about residual risk in your
 deployment. It is the reference behind the [reliability & guardrails
 guide](../guides/reliability-guardrails.md) and
 [SECURITY.md](https://github.com/Ohswedd/vincio/blob/main/SECURITY.md).
 
 ## Assets
 
-- **Model context** — the compiled prompt + evidence + tool surface sent to a
+- **Model context**: the compiled prompt + evidence + tool surface sent to a
   provider. Leaking it can expose system instructions, other tenants' data, or
   secrets.
-- **Tenant/user data** — documents, memory, and traces, isolated per tenant.
-- **Secrets & PII** — API keys, credentials, and personal data flowing through
+- **Tenant/user data**: documents, memory, and traces, isolated per tenant.
+- **Secrets & PII**: API keys, credentials, and personal data flowing through
   context, tool I/O, and logs.
-- **The audit trail** — the integrity record of who did what.
-- **The host** — the process Vincio (and any tool it runs) executes in.
+- **The audit trail**: the integrity record of who did what.
+- **The host**: the process Vincio (and any tool it runs) executes in.
 
 ## Trust boundaries
 
@@ -33,7 +33,7 @@ guide](../guides/reliability-guardrails.md) and
 The core rule: **only system/developer content may instruct the model.**
 Retrieved, tool-produced, MCP-served, and A2A-delegated text is data, not
 instructions. Skills you load are developer-authored procedural knowledge, so
-they may instruct — but their bundled *scripts* are still sandboxed and audited
+they may instruct, but their bundled *scripts* are still sandboxed and audited
 like any other tool.
 
 ## Threats and controls (STRIDE)
@@ -99,7 +99,7 @@ like any other tool.
   `quarantined`) that propagates through `TaintedValue` derivations and
   `ContextPacket.materialize()`, so a value computed from untrusted data stays
   tainted end-to-end. A `DualPlaneExecutor` runs a privileged planner that never
-  sees untrusted bytes — only typed, schema-validated extractions — and gates
+  sees untrusted bytes, only typed, schema-validated extractions, and gates
   every side-effecting tool call on an unforgeable `CapabilityToken` minted by a
   `CapabilityBroker` from the *user's* request (HMAC-signed, principal- and
   argument-scoped, TTL-bounded). An untrusted-tainted argument cannot reach a
@@ -112,11 +112,11 @@ like any other tool.
 
 Vincio's sandbox is **OS-process isolation, not a security boundary against a
 hostile kernel.** For adversarial, attacker-controlled code, run tools in a
-container/VM with seccomp and network egress controls — the in-process limits
+container/VM with seccomp and network egress controls, the in-process limits
 reduce blast radius but do not contain a kernel exploit. Vincio also does not:
 
 - protect against a compromised host, provider, or dependency at runtime
-  (supply-chain integrity is addressed at *release* time — see below);
+  (supply-chain integrity is addressed at *release* time, see below);
 - guarantee an LLM never produces harmful output (defense is layered detection,
   not a proof);
 - provide a hosted control plane, managed secrets store, or compliance program.
@@ -125,7 +125,7 @@ The opt-in voice/realtime module (`vincio.realtime`, ) opens a
 stateful WebSocket session to the configured provider; **its in-session tool
 calls are dispatched through the same permissioned, sandboxed, audited tool
 runtime** as every other Vincio tool, so the tool trust boundary above applies
-unchanged. The session itself is a direct provider connection — apply the same
+unchanged. The session itself is a direct provider connection, apply the same
 network-egress controls you use for any outbound provider traffic.
 
 ## Supply-chain integrity
@@ -140,5 +140,5 @@ release workflow. See `.github/workflows/release.yml`.
 
 ## Reporting
 
-Report vulnerabilities privately via GitHub Security Advisories — see
+Report vulnerabilities privately via GitHub Security Advisories, see
 [SECURITY.md](https://github.com/Ohswedd/vincio/blob/main/SECURITY.md).

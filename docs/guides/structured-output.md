@@ -50,12 +50,12 @@ policy_validate → repair_if_allowed → final_validate
 
 Inspect it per run: `result.validation["steps"]`.
 
-## Repair policy — what may and may not be fixed
+## Repair policy, what may and may not be fixed
 
 Allowed: malformed JSON, missing optional fields, safe type coercion
 ("0.9" → 0.9), markdown formatting.
 **Never repaired:** factual claims, unsafe content, missing required
-evidence, failed business rules — those fail validation loudly.
+evidence, failed business rules, those fail validation loudly.
 
 ```python
 from vincio.output import RepairPolicy
@@ -81,8 +81,8 @@ app.add_validator("risk_levels", risk_levels_valid)
 streaming so UIs can render structured output incrementally. On top of it,
 the `StreamingValidator` prefix-checks the partial output against the
 schema as it streams: missing required fields are tolerated (they may still
-arrive), but a definite mismatch — wrong type, unknown field on a closed
-object — is reported immediately so you can abort generation early.
+arrive), but a definite mismatch, wrong type, unknown field on a closed
+object, is reported immediately so you can abort generation early.
 
 `app.astream()` does this automatically when a schema is set: every
 `partial_output` event carries `valid_prefix` and `validation_errors`.
@@ -108,7 +108,7 @@ result = app.run("Refund invoice INV-100")     # validates as BillingIssue
 ## Typed signatures
 
 DSPy-style input → output signatures compile to a `PromptSpec` over the
-prompt AST — see [reliability & guardrails](reliability-guardrails.md) and
+prompt AST, see [reliability & guardrails](reliability-guardrails.md) and
 the [DSPy comparison](../comparisons/dspy.md):
 
 ```python

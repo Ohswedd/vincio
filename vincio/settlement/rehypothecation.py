@@ -160,7 +160,7 @@ class LedgerPool(BaseModel):
 
 
 class ReuseBreach(BaseModel):
-    """A contract pledged across more than one pool — the same collateral, twice.
+    """A contract pledged across more than one pool, the same collateral, twice.
 
     The pinpointed evidence of re-use: ``contract_id`` is backed by every pool in ``pools``
     (two or more), so ``pledged_usd`` (the capital they collectively earmark to it)
@@ -203,7 +203,7 @@ class BeneficiaryClaim(BaseModel):
 
 
 class UnderReservedBreach(BaseModel):
-    """A proven-reserves shortfall — the pools pledge more than the custodian attests.
+    """A proven-reserves shortfall, the pools pledge more than the custodian attests.
 
     Surfaced only when the held capital is **proven** by a
     :class:`~vincio.settlement.custody.CustodyAttestation` (``custody=``) rather than
@@ -241,7 +241,7 @@ class CollateralLedgerVerification(BaseModel):
 
 
 class CollateralLedger(BaseModel):
-    """A poster's cross-pool rehypothecation view — a bounded re-use guard.
+    """A poster's cross-pool rehypothecation view, a bounded re-use guard.
 
     Produced by :func:`guard_collateral` (or
     :meth:`~vincio.settlement.book.SettlementBook.guard_collateral` /

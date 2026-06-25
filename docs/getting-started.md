@@ -57,7 +57,7 @@ What happened under the hood (the 17-step runtime):
    volatile suffix) with lint checks.
 6. The model ran (with bounded tool loops if tools are registered).
 7. Output was parsed, schema-validated, citation-checked, and policy-checked,
-   with principled repair (structure only — never facts).
+   with principled repair (structure only, never facts).
 8. Evaluators scored the run, memory was updated, an audit entry and a full
    trace were written.
 
@@ -98,7 +98,7 @@ from vincio.providers import MockProvider
 app = ContextApp(name="dev", provider=MockProvider(), model="mock-1")
 ```
 
-With an `output_schema` set, the mock generates schema-valid instances —
+With an `output_schema` set, the mock generates schema-valid instances, so
 your whole pipeline (validation, evals, traces) runs for real.
 
 ## Run evals
@@ -110,6 +110,9 @@ vincio eval run golden/basic.jsonl --app app.py \
 ```
 
 ## Next steps
+
+The [documentation index](README.md) maps every guide, concept, and reference
+page in a reading order. Common next steps:
 
 - [Concepts: context packets](concepts/context-packets.md)
 - [Guide: build a RAG app](guides/build-rag-app.md)

@@ -10,12 +10,12 @@ run happened to exercise?*
 
 `app.verify_governance()` answers it with a **proof, not an observation**. A
 deterministic, in-process verifier checks each governance invariant across its
-*whole* bounded, typed state space, ahead of any run — so a `held=True` verdict is a
+*whole* bounded, typed state space, ahead of any run, so a `held=True` verdict is a
 statement about every reachable state, not a sample. A violation yields a concrete,
 minimal counterexample. The verdict is a content-hashed artifact on the hash-chained
 audit log, computed in-process with no external prover service.
 
-Everything here is opt-in and additive — without calling `verify_governance`, a run
+Everything here is opt-in and additive, without calling `verify_governance`, a run
 behaves exactly as before.
 
 ## Why bounded model checking
@@ -23,15 +23,15 @@ behaves exactly as before.
 Each governance control is a *deterministic, pure* decision function over a small,
 well-typed state: a trust label, a capability's presence, a provider region, an
 accrued budget, a removed-id set. Those alphabets are finite and small. So the
-verifier does not sample or fuzz — it **enumerates the entire state space** and
+verifier does not sample or fuzz, it **enumerates the entire state space** and
 checks the property at every point. Over the modeled domain the check is sound and
 complete: if it holds, it is proven; if it fails, the failing state is exhibited.
 
 An `Invariant` pairs a formal *specification* (the property the control must satisfy)
 with the variables it quantifies over. Crucially, the predicate calls the **same
-decision functions the runtime uses** — the containment gate is
+decision functions the runtime uses**, the containment gate is
 `vincio.security.requires_authority`, the erasure binding is
-`verify_erasure_proof` — so verifying the invariant verifies the shipped machinery,
+`verify_erasure_proof`, so verifying the invariant verifies the shipped machinery,
 not a re-implementation of it.
 
 ## The four invariants
@@ -76,8 +76,8 @@ assert app.audit.verify_chain()
 
 ## A counterexample, not just a verdict
 
-A failed property returns the concrete, delta-minimized state that violates it — the
-input, the labels, the capability gap — so a governance regression is debuggable.
+A failed property returns the concrete, delta-minimized state that violates it, the
+input, the labels, the capability gap, so a governance regression is debuggable.
 Here is the verifier catching a fail-open residency posture:
 
 ```python
@@ -92,7 +92,7 @@ print(report.counterexamples[0].render())
 
 The counterexample is **minimized**: each variable is relaxed back toward its benign
 default while the violation persists, so the reported witness is the simplest one the
-search exposes — no incidental noise.
+search exposes, no incidental noise.
 
 The same machinery catches a real implementation bug. A budget cap that checks only
 what is already spent (ignoring the projection) admits an over-budget run:
@@ -166,7 +166,7 @@ counterexample minimization produces the cleanest witness.
 The verifier proves the **modeled** properties over their **bounded** domains. The
 domains are the controls' real, finite alphabets (three trust labels, the side-effect
 classes, representative regions and budget points), so the proof is complete *for the
-control as modeled* — it is not a whole-program proof of the Python implementation,
+control as modeled*, it is not a whole-program proof of the Python implementation,
 and it does not replace the runtime guards or the adversarial ContainmentBench
 corpus. It is the rung beside them: a property checked by construction, ahead of any
 run, with a debuggable witness when it fails.

@@ -89,12 +89,12 @@ app.run("export button 500s").output.label
 - **Reasoning-trace caching.** `ReasoningTraceCache` (`vincio.caching`) is a
   byte-budgeted LRU of paid thinking prefixes keyed by stable-prefix hash + model
   + effort, so a re-ask that shares a thinking prefix reuses it under the
-  resident-memory budget — the reasoning analogue of the prompt render program.
+  resident-memory budget, the reasoning analogue of the prompt render program.
 - **Test-time search.** `app.test_time_search(input, *, verifier=, strategy="best_of_n"|"self_consistency", n=)`
   or `TestTimeSearch(generate, verifier=, budget=SearchBudget(...))` in
   `vincio.optimize`: verifier-guided best-of-N, self-consistency, and beam search
   over tool-use trajectories, scored by the existing critics via a `Verifier`
-  protocol — `JudgeVerifier` (any `Judge`/`JudgeEnsemble`; disagreement → low
+  protocol, `JudgeVerifier` (any `Judge`/`JudgeEnsemble`; disagreement → low
   confidence), `RewardVerifier` (any `VerifiableReward`/`RewardModel`), or a
   callable. Early-exits the moment the verifier clears the bar (best-of-N) or the
   majority is locked (self-consistency); bounded by candidate / cost / deadline.
@@ -102,7 +102,7 @@ app.run("export button 500s").output.label
   installs a per-run `ContextGovernor` (`vincio.context`) that holds a context
   budget across million-token, multi-day, multi-session runs: feed each result
   with `app.govern_packet(result)` and read `app.context_budget_report()`
-  (`ContextBudgetReport` — live tokens, residency, KV-cache footprint — the
+  (`ContextBudgetReport`, live tokens, residency, KV-cache footprint, the
   residency analogue of `cost_report`). `RelevanceDecay` applies the memory
   decay model within one run so stale `RunSpan`s lose weight (surfaced in the
   excluded-context report); a provenance-preserving `ContextCompactor` folds the
@@ -117,7 +117,7 @@ app.run("export button 500s").output.label
   each tool's *parameterized* effect (constant / argument / numeric-step value)
   under a learned *precondition* (the discriminative state field), so
   `model.predict(obs, action)` returns a `PredictedStep` that fails a refund on a
-  processing order and succeeds on a cancelled one — and generalizes a cancel seen
+  processing order and succeeds on a cancelled one, and generalizes a cancel seen
   on one order to another; `model.imagine(obs, actions)` rolls a plan forward
   without touching a tool. `model.calibrate(holdout)` returns a `CalibrationReport`
   (`state_accuracy`, `reward_mae`, `trusted`, `weight`) that earns planning weight
@@ -128,9 +128,9 @@ app.run("export button 500s").output.label
   matches or beats reactive (one-step) planning (`families.world_model`). Reference
   worlds: `make_retail_environment`, `make_vault_environment` (a shortcut trap).
 - **Causal record-replay debugger.** `Recorder(app).record(input)`
-  (`vincio.observability`) runs an app while capturing every non-deterministic edge
-  — model responses (by `ModelRequest.hash`), tool outputs (by name+args), retrieval
-  hits, the negotiated `ModelCapabilities`, and clock/seed — into a portable,
+  (`vincio.observability`) runs an app while capturing every non-deterministic edge:
+  model responses (by `ModelRequest.hash`), tool outputs (by name+args), retrieval
+  hits, the negotiated `ModelCapabilities`, and clock/seed, into a portable,
   content-addressed `Recording` (`recording.put(store)` / `Recording.from_store`,
   `recording.save`/`load`, `recording.verify()` over a `fidelity_digest`).
   `Replayer(app).replay(recording)` serves each edge back so the run replays
@@ -149,7 +149,7 @@ app.run("export button 500s").output.label
   *semantically-equivalent* (not byte-identical) request from cache. A
   `lookup(query, policy_scope=, schema_ref=)` embeds the query, finds the best
   in-scope/in-schema, unexpired entry, and serves it (`SemanticCacheHit.value`,
-  `.accepted`) **only at/above a calibrated acceptance threshold** — below the bar
+  `.accepted`) **only at/above a calibrated acceptance threshold**, below the bar
   is a recorded-but-never-served near-miss. The threshold is *learned*:
   `ThresholdCalibrator`/`cache.calibrate(examples)` / `await
   cache.calibrate_from_pairs([(q, q2, equivalent), ...])` fits the lowest bar
@@ -163,14 +163,14 @@ app.run("export button 500s").output.label
   [SemanticGateCase(...)])` is the eval-replay no-regression check (the cache
   analogue of the model-swap `SwapGate`): it passes a faithful cache and blocks a
   drifted one. `KVPrefixPool` (`app.use_kv_prefix_reuse()`) accounts cross-request
-  reuse of a shared stable-prefix KV footprint — `observe(prefix_hash=, model=,
+  reuse of a shared stable-prefix KV footprint, `observe(prefix_hash=, model=,
   prefix_tokens=)` reports the serving-engine KV a shared head avoids recomputing
   (`app.kv_prefix_report()`), bounded under the resident budget. The runtime
   consults both, opt-in, only when installed. Held by `families.semantic_cache`
   (accepted near-miss at-least-as-good + below-bar never served + gate blocks drift).
 - **On-device fine-tuning & continual local adaptation.** `LocalLoRATrainer`
   (`vincio.optimize.local_adaptation`) fits a parameter-efficient, low-rank
-  `LocalAdapter` **on-device** from a grounded `TrainingSet` — `await
+  `LocalAdapter` **on-device** from a grounded `TrainingSet`, `await
   trainer.fit(training_set, base_model)` embeds each example's prompt, builds a
   rank-`r` orthonormal subspace (the LoRA-class compression: an `r×d` basis plus
   `n×r` codes), and stores the grounded targets; deterministic and dependency-free,
@@ -182,7 +182,7 @@ app.run("export button 500s").output.label
   neutralizes without unloading). `AdapterRegistry` versions adapters
   (content-addressed `adapter.digest`, `register`/`rollback`/`active`, optional
   on-disk persistence). `ContinualAdaptation`/`app.adapt_locally(dataset,
-  runs=|training_set=)` runs the gated loop — fit → gate base-vs-adapted on a
+  runs=|training_set=)` runs the gated loop, fit → gate base-vs-adapted on a
   held-out set with `AdapterGate` (reuses the canary no-regression verdict; the
   adapted model must be at-least-as-good) → promote (register + `app.use_local_adapter`)
   or refuse, every decision on the audit chain and event bus. `app.local_adaptation`
@@ -196,7 +196,7 @@ app.run("export button 500s").output.label
   second-moment sufficient statistic of the local subspace), then **clips** it to
   `PrivacyConfig.clip_norm`, optionally adds the **DP** Gaussian mechanism
   (`dp_epsilon`/`dp_delta` → `noise_sigma()`), and folds in **secure-aggregation**
-  masks against `participants` — the wire object carries **no prompt and no
+  masks against `participants`, the wire object carries **no prompt and no
   response**, only numbers, plus a consent attestation (TRAINING purpose, enforced
   when `require_consent`) and a residency tag. `SecureAggregator(privacy=, rank=,
   allowed_regions=).aggregate(contributions)` sums the masked updates (pairwise
@@ -207,7 +207,7 @@ app.run("export button 500s").output.label
   `refit_with_subspace(subspace, training_set, embedder=)` re-fits a member's own
   `LocalAdapter` against the shared geometry (fleet basis, the member's own grounded
   targets). `FederatedImprovement`/`app.adopt_federated(dataset, contributions,
-  training_set=|runs=)` runs the gated round — aggregate → refit → gate base-vs-adapted
+  training_set=|runs=)` runs the gated round, aggregate → refit → gate base-vs-adapted
   with the same `AdapterGate` no-regression verdict → adopt (`AdapterRegistry.register`
   + `app.use_local_adapter`) or refuse/rollback, every decision on the audit chain and
   event bus; `app.federated_improvement` returns the streaming controller. Held by
@@ -236,7 +236,7 @@ app.run("export button 500s").output.label
   per-subject-report + on-audit-chain).
 - **Cross-fleet reputation & weighting.** A federated round merges every member with equal
   weight; this adds a per-member **reputation** that discounts an unreliable or adversarial
-  member's pull on the shared consensus — earned only from how each contribution fared against
+  member's pull on the shared consensus, earned only from how each contribution fared against
   the no-regression gate, never from raw traffic (`vincio.optimize.reputation`).
   `app.use_reputation_ledger(config=ReputationConfig(prior_success=, prior_failure=, decay=,
   weight_floor=, weight_ceiling=))` attaches a `ReputationLedger` keeping each member's
@@ -250,21 +250,21 @@ app.run("export button 500s").output.label
   or the aggregator refuses to re-weight it (`FederatedError`). Wires in automatically: when a
   ledger is bound, `app.federated_improvement`/`app.adopt_federated` weight each contribution and
   record the round's gate verdict back (`FederatedPolicy.record_reputation`). Bounded and
-  reversible — a weight only ever lowers pull, and adoption still clears the same no-regression
+  reversible, a weight only ever lowers pull, and adoption still clears the same no-regression
   and canary gates, so reputation never bypasses the quality bar. `ReputationLedger.from_audit(
   audit)` replays the whole ledger from the chain; `app.reputation_report(member=)` rolls up each
   member's standing next to the cost and privacy reports. Held by `families.reputation`
   (discount-the-regressor + weight-bounded/floored + audit-replayable + adopts-at-least-as-good +
   gate-not-bypassed). `ReputationError` inherits `OPTIMIZATION_ERROR`.
 - **Energy & carbon accounting.** The cost report makes a run's dollar spend an auditable
-  number; this adds the sustainability figure beside it — a per-run **energy** (watt-hours) and
+  number; this adds the sustainability figure beside it, a per-run **energy** (watt-hours) and
   **carbon** (grams CO₂e) estimate on the *same* cost-report surface, never a new plane
   (`vincio.observability.energy` / `vincio.observability.finops`). Opt in with
   `app.use_energy_accounting(region=, pue=, carbon_intensity=)` (off by default; `result.energy_wh`
   / `result.co2e_grams` stay 0 until enabled). Each run then accrues a **deterministic** estimate
   from its own token accounting: an `EnergyIntensityTable` maps the model to an `EnergyProfile`
-  (watt-hours per million tokens, seeded by the `ModelRegistry` tier — decode dominates prefill, a
-  stronger tier draws more — and overridable via `.set(model, EnergyProfile(...))`), scales by the
+  (watt-hours per million tokens, seeded by the `ModelRegistry` tier, decode dominates prefill, a
+  stronger tier draws more, and overridable via `.set(model, EnergyProfile(...))`), scales by the
   datacenter `pue`, and multiplies by a per-region grid factor (g CO₂e/kWh, from a built-in
   `DEFAULT_CARBON_INTENSITY` table, overridable via `.set_region_intensity(region, g)`); the region
   is the operator's declared `region=` (pinned), else the residency policy's resolved region, else
@@ -289,7 +289,7 @@ app.run("export button 500s").output.label
   render program (`CompilerOptions.use_render_program`, `program_hits`) reusing
   the rendered stable prefix, and a warm candidate arena
   (`performance.reuse_candidate_set`, `arena_hits`) reusing the prepared
-  candidate set — both correctness-preserving; streaming-first compilation
+  candidate set, both correctness-preserving; streaming-first compilation
   (`ContextCompiler.compile_streaming` → `CompileStreamEvent`, prefix before
   scoring); opt-in speculative retrieval prefetch
   (`performance.speculative_prefetch`, `SpeculativePrefetcher`) warming the
@@ -325,7 +325,7 @@ app.run("export button 500s").output.label
   a `VideoAnalysis` (segments + frames) that `video_evidence_items` lowers into
   `modality="video"` `EvidenceItem`s with a `time_range` whose `citation_ref`
   renders `<source>:t<start>-<end>`. `EvidenceItem.time_range` flows from retrieval
-  chunking through the `CitedReportBuilder` footnote — temporal grounding at
+  chunking through the `CitedReportBuilder` footnote, temporal grounding at
   sub-clip resolution. `app.load_video(path, analyzer=)`.
 - **Learned compression.** `from vincio.context import LLMLinguaCompressor`
   (drop-in `ContextCompiler.compressor`, protects numbers/entities/citations/
@@ -345,7 +345,7 @@ app.run("export button 500s").output.label
   `AutoMergingIndex`) `| contextual` (+`contextualize_chunks` for LLM prefixes);
   `GraphRAG` (communities + summaries, global/local routing).
 - **Live / sharded / quantized.** `LiveIndex.upsert(chunks, *, ttl_seconds=)` /
-  `upsert_stream(...)` → `UpsertStats` (content-hash change detection — only
+  `upsert_stream(...)` → `UpsertStats` (content-hash change detection, only
   changed chunks re-embed) + `VectorIndex.migrate`; `ShardedIndex(shards, *,
   router=, max_concurrency=8)` (parallel fan-out, chunks co-locate by
   `document_id`); `TwoStageIndex` + `quantize_scalar` / `quantize_binary` (coarse
@@ -368,7 +368,7 @@ app.run("export button 500s").output.label
   fallbacks: `FastEmbedEmbedder`, `SpladeEncoder`, `ColBERTTokenEmbedder`,
   `LocalCrossEncoderReranker`, llama.cpp `GGUFProvider` (each accepts an injected
   `model=`/`tokenizer=`; extras `vincio[fastembed,splade,cross-encoder,gguf]`).
-- **Connectors.** `from vincio.connectors import connect` — `web, github, sql,
+- **Connectors.** `from vincio.connectors import connect`, `web, github, sql,
   s3, gcs, notion, confluence, slack, jira, linear, gdrive, sharepoint,
   salesforce, zendesk, bigquery, snowflake`, custom via `register_connector`;
   `app.add_source("kb", connector=connect("jira", base_url=..., token=...))`. The
@@ -388,7 +388,7 @@ app.run("export button 500s").output.label
   `memory.ttl_days`, importance-weighted `decay_pass()`, audited
   `edit`/`forget`/`export_owner_data`/`erase_owner_data`. Auto-memory from runs:
   `memory.write_back: [input, evidence, tools, facts]` +
-  `memory.fact_min_support` / `memory.max_facts_per_run` — evidence-supported
+  `memory.fact_min_support` / `memory.max_facts_per_run`, evidence-supported
   claims (`extract_grounded_facts`) become candidates (`origin: run_fact`).
 - **Bi-temporal + ACL + consent.** `MemoryItem` carries `valid_from`/`valid_to`/
   `valid_at()`/`acl`/`readable_by()`/`purpose`/`consent_id`, plus
@@ -426,7 +426,7 @@ app.run("export button 500s").output.label
   the prior step's confidence is low; `SelectionDecision` records the pick.
 - **Crews.** `app.crew(members=[{"name","description","goal","keywords",
   "budget_fraction"}], process="sequential|parallel|hierarchical", max_rounds=)`
-  → `CrewResult` (output, reports, delegations, blackboard snapshot) — members
+  → `CrewResult` (output, reports, delegations, blackboard snapshot), members
   share a versioned `Blackboard`, run under scaled budget shares, always
   terminate.
 - **Durable graphs.** `app.graph(name)` → `StateGraph.add_node(name, fn)` (dict
@@ -486,7 +486,7 @@ app.run("export button 500s").output.label
   selector** (role+name, not a pixel), then for each action: **pre-gates** it against
   an `ActionPolicy` (a destructive/out-of-scope action gated like a write tool, behind
   an `approve` callback), performs it, **post-verifies** the effect (declarative
-  `StateCheck` / `expect_change`), and **undoes** it on divergence — into a typed
+  `StateCheck` / `expect_change`), and **undoes** it on divergence, into a typed
   `ActionOutcome`, every step audited. A `ComputerTask` (goal + verifier) drives
   `env.run(policy, task)` → `ComputerRun` (`.success`, `.safe`, `.trajectory`),
   projecting onto the existing trajectory metrics / test-time search. `make_web_checkout`
@@ -496,18 +496,18 @@ app.run("export button 500s").output.label
   AgentIdentity, IdentityDocument, Keyring, Delegation, DelegationChain, AgentCredential,
   Grant, did_from_public_key, public_key_from_did` (also `vincio.security.identity`).
   The identity substrate beneath the tool permissions, the agent fabric, and the
-  cross-org trust fabric — *who authorized this action, down what chain, within what
+  cross-org trust fabric, *who authorized this action, down what chain, within what
   bounds*. `app.identity(name, *, capabilities=, controller=, seed=, use=False)` mints a
   portable, **self-certifying** `AgentIdentity` whose DID is *derived from* its Ed25519
   public key (`did:vincio:ed25519:<hex>`, offline-resolvable with `public_key_from_did`,
   no registry); its content-bound `IdentityDocument` `verify()`s from the bytes, and a
   `Keyring` `rotate()`s keys along a **signed chain** so a signature is validated against
-  the key current at signing time — a rotated/revoked key cannot forge new history while
+  the key current at signing time, a rotated/revoked key cannot forge new history while
   its past signatures stay valid (`document.verify_signature(msg, sig, at=)`). A signed
   `Delegation` mints a bounded `Grant` (capabilities ⊆, budget ≤, expiry ≤, audience,
   `max_delegations`) from a principal to an agent; `delegation.delegate(...)` sub-delegates,
   and a `DelegationChain` `verify(root_issuer=)`s **offline** where **each link only
-  attenuates, never amplifies** — `chain.permits(capability, budget_usd=, at=)` /
+  attenuates, never amplifies**, `chain.permits(capability, budget_usd=, at=)` /
   `require_permits(...)` answer authorization, and an over-reaching or tampered link is
   refused from the bytes. A signed `AgentCredential` (`app.issue_credential(subject,
   claims)`) is a verifiable claim that `verify()`s offline and `admits(capability)` folds
@@ -535,7 +535,7 @@ app.run("export button 500s").output.label
   `require_before` / `invariant`) states a temporal-logic property over an agent's
   trajectory, a `RuntimeMonitor` (`app.behavior_monitor`) checks it step-by-step, and a
   `Shield` (`app.shield(specs, *, mode="block"|"repair"|"monitor", use=False)` /
-  `app.use_shield`) **blocks or repairs a violating action before it executes** — wired into
+  `app.use_shield`) **blocks or repairs a violating action before it executes**, wired into
   the tool runtime so a policy-violating tool call (an unapproved write) is structurally
   refused. A `ToolContract` (`requires_that` / `ensures_that`) enforces pre/post-conditions
   against the actual call (`app.add_tool(..., contract=)`, `ToolContractError` on breach),
@@ -559,17 +559,17 @@ app.run("export button 500s").output.label
   verify → distill → promote across cycles. An `AutoCurriculum(tasks, *, rails=, governance=,
   world_model=, search=, max_tasks=4)` proposes the next task at the **frontier of current
   competence** (solvable by a bounded, library-composing `SkillSearch`, not yet by retrieving a
-  known skill) and **gates every objective before it is attempted** — the rails screen the
+  known skill) and **gates every objective before it is attempted**, the rails screen the
   instruction and the `GovernanceVerifier` must prove the app's controls hold, else the
   objective (or the whole round) is refused; a `CurriculumProposal.verify()` catches a refused
   objective relabelled as proposed (`stayed_in_policy`). A winning, oracle-verified trajectory
-  is distilled into a `LearnedSkill` (objective, precondition, ordered `SkillStep`s — each a
+  is distilled into a `LearnedSkill` (objective, precondition, ordered `SkillStep`s, each a
   primitive `EnvAction` **or** a sub-skill call, so skills **compose** via `compose()`),
   verifier, `SkillProvenance`. A `LearnedSkillLibrary` is content-addressed (`add` dedups a
   byte-identical procedure, versions a changed one), retrieved like memory/tools (`relevant` /
   `evidence_for`), and offline-verifiable (`verify()` / `library_hash`; a tampered procedure is
   caught). A skill is promoted **only through the same `no_regression_gate`** a deploy clears
-  (capability — `library_capability` over a held-out frontier set — must not fall, a
+  (capability, `library_capability` over a held-out frontier set, must not fall, a
   `CanaryVerdict`), and a dead-weight skill is demoted. `CultivationResult.verify()` re-derives
   the monotonicity and stay-in-policy verdicts from the bytes; every run lands on the audit
   chain (`skill_cultivation`) and event bus (`cultivation.completed`). Error: `CultivationError`.
@@ -581,10 +581,10 @@ app.run("export button 500s").output.label
   into one continuously-verified safety argument (the GSN / CAE assurance-case discipline).
   `app.assurance_case(statement, *, context="", subclaims=None, evidence=None, subject=None,
   sign=True, record=True)` builds a content-bound `Claim` tree: a top claim decomposed into
-  sub-claims, each leaf discharged by `Evidence` the platform **already emits** — `Evidence.from_gate`
+  sub-claims, each leaf discharged by `Evidence` the platform **already emits**, `Evidence.from_gate`
   (a `CanaryVerdict` / eval gate), `from_governance` (a `GovernanceVerifier` report), `from_certificate`
   (a reasoning `Certificate`), `from_audit` (an `AuditLog` segment), `from_identity` (a delegation
-  chain), `from_sbom` (an `AIBOM`), or `asserted` (external) — **bound by hash**, each carrying a
+  chain), `from_sbom` (an `AIBOM`), or `asserted` (external), **bound by hash**, each carrying a
   freshness `horizon_days`. `case.check(as_of=)` re-evaluates the tree into an `AssuranceReport`
   (`holds`, `missing`, `stale`, `falsified`, `failing_claims`) and **no claim stands on missing or
   stale evidence**: a leaf whose required evidence is absent, expired, or falsified is pinpointed and
@@ -594,7 +594,7 @@ app.run("export button 500s").output.label
   a remediation proof (`case.discharge(claim_id, *evidence)`) before it re-validates. `app.certify(case,
   *, residual_risks=None, aibom=True, sign=True, record=True)` emits a portable `CertificationReport`
   (case + evidence + residual risks + `vincio` version / SBOM / SLSA provenance) whose `verify()`
-  recomputes the hash AND re-runs the case's own check from the bytes — a report certifying a case that
+  recomputes the hash AND re-runs the case's own check from the bytes, a report certifying a case that
   does not hold is caught. Every verdict lands on the audit chain (`assurance_case` /
   `assurance_certification`). Error: `AssuranceError`. No new dependency; offline and deterministic.
   See the [assurance guide](docs/guides/assurance.md).
@@ -602,7 +602,7 @@ app.run("export button 500s").output.label
 ## Use-case coverage: verticals, Assistant, voice
 
 - **Vertical packs.** `app.use_pack("healthcare|ediscovery|kyc|customer_support|
-  code_review")` — full-stack bundles that preconfigure retrieval knobs, scoped
+  code_review")`, full-stack bundles that preconfigure retrieval knobs, scoped
   memory (`add_memory`), deterministic rails, domain metrics, a data-residency
   posture (`set_residency`, fail-open on unknown so the offline path runs), and a
   golden eval set, on top of the domain-pack contract. The `Pack` model gains
@@ -612,7 +612,7 @@ app.run("export button 500s").output.label
   passed provider instance reports its real name (mock/local → `on_prem`). A
   `redact` rail masks PII/PHI in *structured* output fields, not just free text.
 - **Assistant.** `chat = app.assistant(user_id=, session_id=, memory_writeback=True,
-  auto_approve=[...], on_approval=fn)` — a session-aware multi-turn layer; each
+  auto_approve=[...], on_approval=fn)`, a session-aware multi-turn layer; each
   `chat.send(text)`/`asend` is a full `run` threaded under one session, returns an
   `AssistantTurn` (`text`/`output`/`citations`/`approvals`/`memory_writes`/`trace_id`).
   Multi-turn state is session-scoped memory write-back. Write tools are denied and
@@ -634,7 +634,7 @@ app.run("export button 500s").output.label
   on the trace as `decoding=native|prompt`); `choice_schema(options)` /
   `regex_schema(pattern)`.
 - **Streaming validation.** `partial_output` events carry `valid_prefix` /
-  `validation_errors` — abort early when `valid_prefix is False`.
+  `validation_errors`, abort early when `valid_prefix is False`.
 - **Rails.** `app.add_rail(name=, kind="topic|format|safety|custom",
   direction="input|output|both", action="block|warn|redact", blocked_topics=/
   allowed_topics=/max_chars=/require_pattern=/forbid_pattern=/detectors=
@@ -642,7 +642,7 @@ app.run("export button 500s").output.label
   deterministic, enforced before/after every generation, violations audited as
   `rail:<name>`.
 - **Self-correction.** `app.enable_self_correction(max_cycles=2,
-  max_cost_usd=0.05)` (bounded validate→critique→repair, structure-only — facts
+  max_cost_usd=0.05)` (bounded validate→critique→repair, structure-only, facts
   never invented) or `vincio.output.SelfCorrector`.
 - **Multi-schema routing.** `app.add_output_schema(schema, keywords=,
   task_types=, when=)` picks the contract per run; `SchemaRouter.classify/
@@ -661,7 +661,7 @@ app.run("export button 500s").output.label
   and are excluded from gates.
 - **Trajectory & tool-use.** `tool_call_accuracy | tool_call_f1 | goal_accuracy |
   plan_adherence | plan_quality | step_efficiency | topic_adherence` score the
-  `trajectory` on a `RunOutput` — build it with `RunOutput.from_agent_state` /
+  `trajectory` on a `RunOutput`, build it with `RunOutput.from_agent_state` /
   `from_crew_result` / `from_trace` (no re-instrumentation); refs in
   `rubric['expected_tools'|'plan'|'optimal_steps'|'topic']`;
   `report.metric_families()` shows output-only vs trajectory.
@@ -677,7 +677,7 @@ app.run("export button 500s").output.label
   metric)` (paired/Welch t-test, p-value + CI + effect size, pure-Python);
   `EvalRunner(..., repeats=N, repeat_aggregate="mean", flake_quarantine=True,
   flake_threshold=0.15)`; `ExperimentTracker(path).log/compare/ablation`.
-  `vincio.testing` —
+  `vincio.testing`,
   `assert_eval`/`assert_grounded`/`assert_metric`/`assert_safe` + a pytest plugin
   with the `vincio_snapshot` fixture (`--vincio-update-snapshots`).
 - **Multi-turn & online.** `Simulator(seed=).simulate(agent, Persona(goal=))` →
@@ -737,7 +737,7 @@ app.run("export button 500s").output.label
 ## Optimization & self-improvement
 
 - **The closed loop.** `loop = app.improvement_loop(metrics=, gates=
-  {"groundedness": ">= 0.8"})`; `loop.run(min_feedback_score=0.5)` — capture
+  {"groundedness": ">= 0.8"})`; `loop.run(min_feedback_score=0.5)`, capture
   traces → `dataset_from_traces` → baseline eval → gated optimization → promote
   (registry push + tag "production" + `link_eval` + applied + `loop_promotion`
   audit + `loop.promoted` event); `dry_run=True` decides without acting. CLI
@@ -763,7 +763,7 @@ app.run("export button 500s").output.label
   `RetrievalFeedback(app.retrieval, records_from_dataset(ds)).tune()` (gated RRF/
   reranker tuning) + `recommend_chunking(reports_by_config, baseline=)`;
   `ContextOptimizer(...).optimize(dataset, strategy="hill_climb|anneal")` /
-  `guided_search(space, evaluate, strategy=, budget=, seed=)` — deterministic,
+  `guided_search(space, evaluate, strategy=, budget=, seed=)`, deterministic,
   gate-respecting.
 - **Optimizer-judge calibration.** `app.calibrate_judge(geval, samples)` (samples
   `(case, output, human_score)`) reflectively tunes the judge's *steps* to
@@ -786,7 +786,7 @@ app.run("export button 500s").output.label
 - **Canary-gated deploy (prompt/policy).** `app.deploy(candidate, dataset=...)`
   (offline gated comparison) or `app.deploy(candidate, live_inputs=[...],
   score_fn=...)` (live-traffic canary via `LiveCanary`: ramps `CanarySpec.percent`,
-  scores each arm, auto-rolls-back) — promotes live only on a no-regression
+  scores each arm, auto-rolls-back), promotes live only on a no-regression
   `CanaryVerdict`. This is the **prompt/policy** canary; for live **model**
   rotation see `app.canary` / `CanaryRouter` under Providers & models.
 - **On-policy reinforcement from verifiable rewards (RLVR).** `from
@@ -795,7 +795,7 @@ app.run("export button 500s").output.label
   environment_step_value, TrajectoryOptimizer, SoftmaxPolicy, LearningTask,
   CandidateOutcome, LearningResult, compute_group_advantages, no_regression_gate,
   kl_divergence`. `RewardModel([reward, ...])` composes verifiable rewards into a
-  dense signal — `OracleReward` (stateful-environment task-success oracle),
+  dense signal, `OracleReward` (stateful-environment task-success oracle),
   `BenchmarkReward(adapter)` (the nine benchmark scorers), `JudgeEnsembleReward(
   ensemble)` (a split panel **down-weights itself**, leaning on what is
   checkable). `TrajectoryAdvantage(value_fn).credit(trajectory)` assigns
@@ -817,7 +817,7 @@ app.run("export button 500s").output.label
   sustained debounced drift into one gated, audited, restart-safe action);
   `ExperimentProposer(app, ...)`
   (`.rank/propose/run_next`); `GuardedBanditRouter(entries,
-  bandit="epsilon_greedy|ucb1|linucb")` (safety floor — no exploration on
+  bandit="epsilon_greedy|ucb1|linucb")` (safety floor, no exploration on
   high-risk traffic, per-arm regret, auto-freeze/rollback; `app.use_bandit_router`);
   `GoldenRegressionSuite(path)` (`gate(report)` blocks a regressing candidate;
   `ImprovementLoop(golden_suite=)`).
@@ -831,7 +831,7 @@ app.run("export button 500s").output.label
   `render_trace_text`, `trace_to_html`/`session_to_html` (self-contained),
   `trace_diff_html`. OTel exporter emits GenAI semantic conventions
   (`chat {model}`, `gen_ai.*`, `gen_ai.conversation.id`, agentic `invoke_agent`).
-- **Prompt registry.** `PromptRegistry(dir).push(spec, tags=)` — content-hash
+- **Prompt registry.** `PromptRegistry(dir).push(spec, tags=)`, content-hash
   versions, moving tags, `diff(name, a, b, rendered=True)`, `rollback(name)`,
   `link_eval(name, version, report)`.
 - **Causal record-replay.** `Recorder`/`Replayer`/`Recording`/`ReplayProvider`/
@@ -859,7 +859,7 @@ app.run("export button 500s").output.label
   endpoint with `openai_compatible(base_url=, api_key=)`. Enterprise endpoints
   `bedrock | vertex | azure` via `build_provider(...)` behind a pluggable
   `AuthStrategy`. All async-first, pooled transport, retries, request coalescing.
-- **ModelRegistry.** `from vincio import default_model_registry, ModelRegistry` —
+- **ModelRegistry.** `from vincio import default_model_registry, ModelRegistry`,
   a versioned, config-overridable (`VINCIO_MODEL_REGISTRY` JSON/YAML) catalog
   keyed by exact model id binding `ModelProfile` (capabilities + standard/batch
   pricing + context window + modalities + GA/deprecation/retirement). The cost
@@ -973,7 +973,7 @@ app.run("export button 500s").output.label
 - **Formal verification of governance invariants.** `app.verify_governance()` proves containment,
   residency, the budget hard cap, and the erasure-proof binding hold across their whole bounded,
   typed state space ahead of any run (a `held=True` verdict checks every point of each invariant's
-  domain — a proof, not a sample), yields a delta-minimized `Counterexample` on violation, and lands
+  domain, a proof, not a sample), yields a delta-minimized `Counterexample` on violation, and lands
   a content-hashed verdict on the audit chain offline with no external prover. See the full entry
   below (`families.verification`).
 
@@ -988,14 +988,14 @@ app.run("export button 500s").output.label
   `DetectorBackend` (an ML model merges with, never replaces, the rules).
 - **Provable injection containment.** Detection is best-effort, so containment
   separates the control plane from the data plane. `from vincio import TrustLabel,
-  TaintedValue` — provenance becomes a `trusted`/`untrusted`/`quarantined` lattice
+  TaintedValue`, provenance becomes a `trusted`/`untrusted`/`quarantined` lattice
   that propagates through derivations and `ContextPacket.materialize()`, never
   laundering taint. `DualPlaneExecutor(tool_runtime, broker=CapabilityBroker(...))`
   ingests untrusted bytes into a quarantine, exposes only typed, schema-validated
   `extract(...)`ions to the privileged planner (`control_messages` never contain
   the bytes), and gates every side-effecting `call(...)` on an unforgeable
   `CapabilityToken` minted from the user's request (`executor.mint(tool,
-  constraints=...)`) — an untrusted-tainted argument is refused without a
+  constraints=...)`), an untrusted-tainted argument is refused without a
   capability or approval (`ContainmentError`). `verify_containment(monitor.events)`
   proves `untrusted ⇒ no unapproved capability` over a run (escalation rate 0).
   Capability-scoped tools are also available at the permission layer via
@@ -1003,7 +1003,7 @@ app.run("export button 500s").output.label
 - **Access & egress.** RBAC/ABAC via `AccessController`
   (`require_explicit_tenant=True` fails closed on untagged tenants); mandatory
   egress DLP `PolicyEngine.scan_egress` (`security.egress_dlp`: off/warn/block) on
-  the fully-assembled request — `block` raises `EgressBlockedError`.
+  the fully-assembled request, `block` raises `EgressBlockedError`.
 - **Audit chain.** Append-only, hash-chained, offline-verifiable
   (`verify_audit_file` / `AuditLog.verify_file()` / `vincio audit verify`); sign
   with `security.audit_signing_key` (HMAC) or an `Ed25519Signer` over `entry_hash`;
@@ -1022,8 +1022,8 @@ app.run("export button 500s").output.label
   `AccessController.check_purpose(...)`; recall drops items whose purpose lost
   consent.
 - **Formal verification of governance invariants.** `app.verify_governance()` →
-  `VerificationReport` *proves* — by exhaustive bounded model checking, ahead of any
-  run — that four governance invariants hold across their whole bounded, typed state
+  `VerificationReport` *proves*, by exhaustive bounded model checking, ahead of any
+  run, that four governance invariants hold across their whole bounded, typed state
   space: containment (`untrusted ⇒ no unapproved capability`), in-jurisdiction
   residency (reflecting the app's `deny_on_unknown` posture), the budget hard cap,
   and the erasure-proof content binding. Each `Invariant` binds to the *same*
@@ -1051,7 +1051,7 @@ app.run("export button 500s").output.label
 - **Autonomous skill acquisition (gated open-ended growth).** `app.cultivate(curriculum, ...)`
   → `CultivationResult` runs an `AutoCurriculum` through propose → attempt → verify → distill →
   promote: it proposes only frontier tasks, **gates every objective through the rails + the
-  `GovernanceVerifier` before attempting** (an unsafe/out-of-policy task is refused, never run —
+  `GovernanceVerifier` before attempting** (an unsafe/out-of-policy task is refused, never run,
   `stayed_in_policy`), distills oracle-verified trajectories into a content-addressed, composable
   `LearnedSkillLibrary`, and **promotes a skill only through the same `no_regression_gate`** a
   deploy clears (capability never falls; dead weight is demoted). `CultivationResult.verify()`
@@ -1068,7 +1068,7 @@ app.run("export button 500s").output.label
   `case.learn_from(...)` makes the case demand a remediation proof before it re-validates.
   `app.certify(case, *, residual_risks=, aibom=True, sign=True, record=True)` → `CertificationReport`
   (case + evidence + residual risks + SBOM/SLSA provenance) whose `verify()` re-runs the case's own
-  check from the bytes — a report certifying a non-holding case is caught. Audited as `assurance_case`
+  check from the bytes, a report certifying a non-holding case is caught. Audited as `assurance_case`
   / `assurance_certification`; error `AssuranceError`. VincioBench `assurance` family + 2 SLOs
   (assurance-soundness, assurance-regression); no new dependency. See the
   [assurance guide](docs/guides/assurance.md).
@@ -1156,13 +1156,13 @@ app.run("export button 500s").output.label
   `app.add_mcp_server(..., elicitation=collector, elicitation_approval=fn,
   elicitation_policy=ElicitationPolicy(require_approval=, screen_rails=,
   forbid_quarantined=))` builds an `ElicitationGate`: a server's `elicitation/create`
-  is gated like a write tool — an approver may deny it, the collected value is
+  is gated like a write tool, an approver may deny it, the collected value is
   screened through the input `RailEngine` (a secret/injection value is declined), and
   an accepted value is wrapped `TaintedValue.untrusted(...)` (`mcp:<server>:elicitation`)
   so it is contained like any untrusted input; every decision audited (`mcp_elicit`).
   A served app initiates one with `MCPServer.elicit(message, schema=)`.
 - **MCP marketplace bridge.** `app.add_mcp_from_registry(name, registry=,
-  allow=/deny=/directory=)` — one call: discover via `MCPRegistryClient`, govern
+  allow=/deny=/directory=)`, one call: discover via `MCPRegistryClient`, govern
   reachability through a governed `AgentDirectory` (`AllowListGate`, audited
   `agent_resolve`), then land the server's tools in the permissioned runtime;
   `server=`/`transport=` for offline/in-process. Unlisted → `AccessDeniedError`.
@@ -1194,7 +1194,7 @@ app.run("export button 500s").output.label
   `contract.check(cost_usd=, latency_ms=, quality=)` / `app.enforce_contract(...)`
   detect a breach (and debit the seller's reputation). When a `ReputationLedger` is
   attached (`app.use_reputation_ledger()`), a local party discounts a counterparty's
-  offers by its reputation weight (`[floor, 1]`, bounded/reversible — discounted, not
+  offers by its reputation weight (`[floor, 1]`, bounded/reversible, discounted, not
   singled out); `select_offer(results, buyer_position, reputation=)` picks the
   reputation-weighted best deal. Over the A2A fabric: `app.serve_negotiation(party)`
   exposes a `Party` as an A2A agent (a `negotiate` skill), `A2ANegotiator(client,
@@ -1217,7 +1217,7 @@ app.run("export button 500s").output.label
   callables, wrapped in a `LocalParticipant`); a handler returns a dict (output) or a
   `StepOutcome(ok=, output=, cost_usd=, latency_ms=, quality=)`. **Per-org governance**:
   the coordinator audits each dispatched handoff on its own chain (`choreography_step`
-  action) while each participant audits its execution on its own — no shared control
+  action) while each participant audits its execution on its own, no shared control
   plane. **Compensation**: a forward step that returns `ok=False`, raises, or **breaches
   its step `contract`** (`contract.check` on the delivered metrics) triggers
   deterministic compensation of completed steps in **reverse order** (a compensation
@@ -1237,7 +1237,7 @@ app.run("export button 500s").output.label
   CapabilityBinder, BindingWeights, BindingCandidate, StepBinding` (also top-level
   `vincio.__all__`). A step declaring `capability=` is resolved to a participant **at dispatch
   time** from a governed `AgentDirectory` (`app.agent_directory(allow=)`), passed as
-  `app.choreograph(..., directory=)` — discovery changes *who* runs a step, never *how*. A
+  `app.choreograph(..., directory=)`, discovery changes *who* runs a step, never *how*. A
   `CapabilityBinder(directory, *, reputation=, settlement_book=, weights=BindingWeights(
   reputation=, settlement=, contract_fit=, unknown_settlement_score=))` `.rank(capability, *,
   contract=, available=)` / `.bind(step, *, available=)` finds the directory records advertising
@@ -1245,7 +1245,7 @@ app.run("export button 500s").output.label
   allowed **and** reachable ones (an org present in both the directory and `participants`), and
   ranks them by a weighted mean of reputation weight (`ReputationLedger.weight`), settlement
   reliability (share honoured, from `SettlementBook.report`), and contract fit (prior delivered
-  cost vs the step contract's price) — best first, ties broken by org id (deterministic). The
+  cost vs the step contract's price), best first, ties broken by org id (deterministic). The
   chosen `StepBinding` (`.org`, `.score`, `.candidates`, `.considered`, `.eligible`) is recorded
   on the journal (`result.bindings[step]` / `journal.bindings()`) and audited on the
   coordinator's chain (`choreography_bind`). A capability no allowed, reachable candidate
@@ -1260,17 +1260,17 @@ app.run("export button 500s").output.label
   reconcile, settle_contract, settle_saga` (also `vincio.settlement.__all__`;
   `SettlementLine`, `SettlementSignature`, `SettlementVerification`, `SettlementStatus`,
   `SettlementRow`, `BookVerification` are subpackage-only). **Closing the books** on work
-  delivered under a negotiated `Contract` — never a payment rail, only a verifiable ledger
+  delivered under a negotiated `Contract`, never a payment rail, only a verifiable ledger
   of what was owed and delivered. **Meter**: `app.meter(contract, *, run_id=)` →
   `Meter(contract_id)`; `.accrue(*, units=, cost_usd=, latency_ms=, quality=, step=)` adds a
   `UsageEvent`, `.reading()` → a **total-preserving** `MeterReading` (cost/latency summed,
   quality the **minimum** = weakest link held against a floor, totals exactly the sum of the
-  events — the metering-accuracy invariant); `Meter.from_saga(result)` builds a meter per
+  events, the metering-accuracy invariant); `Meter.from_saga(result)` builds a meter per
   contract from a saga's journal. **Settle**: `app.settle(contract, *, reading=|cost_usd=,
   latency_ms=, quality=, run_id=, party=, sign=True, record_reputation=True)` → a
   `SettlementRecord` (`.status` settled|breached, `.amount_owed_usd` = agreed price,
   `.balance_usd` = price − delivered cost [+credit/−overrun], `.overrun_usd`/`.credit_usd`,
-  `.lines` per dimension, `.breaches`) — reconciles delivery via `contract.check`. A breach
+  `.lines` per dimension, `.breaches`), reconciles delivery via `contract.check`. A breach
   is **not** an error (it reconciles to `status="breached"`). `settle_contract(contract, *,
   reading=|cost_usd=,…)` is the pure builder; `app.settle_saga(result, *, contracts={id:
   Contract})` / `settle_saga` settles every contract a saga ran under from its journal.
@@ -1294,7 +1294,7 @@ app.run("export button 500s").output.label
   net_settlements, net_books` (also `vincio.settlement.__all__`: `NetPosition`,
   `NetObligation`, `BilateralNet`, `GrossObligation`, `NettingDispute`, `NettingVerification`
   are subpackage-only). **Netting** folds a fleet's many bilateral `SettlementBook` balances
-  into a single minimal set of net obligations — a library-side clearing *calculation*, never
+  into a single minimal set of net obligations, a library-side clearing *calculation*, never
   a hosted clearing house or a payment rail. Each settled contract is a directed payable
   (buyer owes seller `amount_owed_usd`, the agreed price; a breach is surfaced by the
   settlement's own status/reputation, not by altering what is owed). `net_settlements(records,
@@ -1303,11 +1303,11 @@ app.run("export button 500s").output.label
   not double-counted** (by reconciliation hash), the directed payables aggregate per pair into
   `GrossObligation`s, collapse to one `BilateralNet` per counterparty, and the per-org
   `NetPosition`s (`owed_usd`/`due_usd`/`net_usd`; sum to zero) **clear** to the minimal set of
-  `NetObligation` transfers — at most `N − 1`, net-debtors paying net-creditors,
+  `NetObligation` transfers, at most `N − 1`, net-debtors paying net-creditors,
   deterministically (ties by org id). **Content-bound & offline-verifiable**: the netting hash
   binds the fleet, the exact source records read, the positions, and the cleared obligations;
   `netting.sign(signer, party=)`, `netting.verify(verifier=, require=)` → `NettingVerification`
-  (`.hash_ok`, `.positions_balanced`, `.conserves` — the cleared transfers reproduce every
+  (`.hash_ok`, `.positions_balanced`, `.conserves`, the cleared transfers reproduce every
   position), `.require_valid()`. **Same discipline**: a tampered source record (its
   reconciliation hash no longer recomputes) is **refused** (`SettlementError`), and two books
   that disagree on a contract are pinpointed as a `NettingDispute` (excluded; `.clean`,
@@ -1317,21 +1317,21 @@ app.run("export button 500s").output.label
 - **Cross-org dispute resolution & arbitration.** `from vincio import Resolution, arbitrate`
   (also `vincio.settlement.__all__`: `ResolutionStatus`, `ResolutionVerification`, `ClaimVerdict`
   are subpackage-only). **Arbitration** resolves a pinpointed disagreement (a `NettingDispute`,
-  or two records that do not reconcile) — a library-side protocol, never a hosted arbitration
+  or two records that do not reconcile), a library-side protocol, never a hosted arbitration
   service or a court of record. `arbitrate(records, *, contract_id=None, arbiter="",
   verify_with=None)` → a `Resolution`: each party submits its signed `SettlementRecord`s for one
-  contract and the decision rests on nothing it cannot recompute — a reconciliation hash **both**
+  contract and the decision rests on nothing it cannot recompute, a reconciliation hash **both**
   the buyer and the seller signed (each on their own record, co-signing one figure) is mutually
   corroborated and **upheld**; a unilateral claim contradicting it is **rejected** and pinpointed
   (`ClaimVerdict.reason`); a single uncontested figure stands on its own; neither corroborated →
   **unresolved** (`status` is `"upheld"`|`"unresolved"`). Unlike netting, a tampered/forged claim
-  is marked **inadmissible** and pinpointed (`.inadmissible_claims`), never raised — arbitration
+  is marked **inadmissible** and pinpointed (`.inadmissible_claims`), never raised, arbitration
   is the venue that adjudicates a bad claim. **Content-bound & offline-verifiable**: the
   resolution hash binds the contract, parties, outcome (`upheld_hash`/`upheld_balance_usd`), and
   every claim verdict (by reconciliation hash + signers + admissible + stands, NOT record id, so
   the same claim from both sides binds once; arbiter/id/timestamp excluded → two arbiters
   co-sign one hash); `resolution.sign(signer, party=)`, `resolution.verify(verifier=, require=)`
-  → `ResolutionVerification` (`.hash_ok`, `.decision_sound` — the recorded outcome re-derives
+  → `ResolutionVerification` (`.hash_ok`, `.decision_sound`, the recorded outcome re-derives
   from the recorded claims, so a flipped verdict is caught even after re-sealing), `.require_valid()`,
   `.require_resolved()`. `.standing_claims`/`.rejected_claims`/`.inadmissible_claims`/`.dissenters`.
   `app.arbitrate(records, *, contract_id=None, sign=True, verify_with=None, record_audit=True,
@@ -1344,7 +1344,7 @@ app.run("export button 500s").output.label
   AttestationRevocation, PortableReputation, attest_reputation, revoke_attestation, combine_attestations`
   (also `vincio.settlement.__all__`: `AttestationConfig`, `AttestationVerification`,
   `AttestationVerdict`, `RevocationVerification`, `SubjectStanding` are subpackage-only). Makes earned
-  standing **portable** — reputation that travels the fabric, never a hosted reputation bureau.
+  standing **portable**, reputation that travels the fabric, never a hosted reputation bureau.
   `attest_reputation(records, subject, *, issuer="", resolutions=None, config=None, verify_with=None,
   horizon_days=None, note="")` → a `ReputationAttestation`: reads an issuer's own signed
   `SettlementRecord`s where `subject` is the **seller** (a fulfilled settlement a success, a breach a
@@ -1352,9 +1352,9 @@ app.run("export button 500s").output.label
   what it can recompute (a tampered own record is skipped; the exact `source_hashes` bound). Raises
   `SettlementError` on no admissible history. **Content-bound & offline-verifiable**: the attestation
   hash binds issuer/subject/`settled`/`breached`/`dissents`/prior/`reputation`/`source_hashes` (plus
-  `horizon_days` when set; id + timestamp excluded; issuer **is** bound — one issuer's signed claim);
+  `horizon_days` when set; id + timestamp excluded; issuer **is** bound, one issuer's signed claim);
   `att.sign(signer, party=None)` (defaults to issuer), `att.verify(verifier=, require=None)` →
-  `AttestationVerification` (`.hash_ok`, `.evidence_sound` — the attested reputation re-derives from the
+  `AttestationVerification` (`.hash_ok`, `.evidence_sound`, the attested reputation re-derives from the
   evidence counts, so a tampered score is caught even after re-sealing), `.require_valid()`,
   `.to_wire`/`.from_wire`. `combine_attestations(attestations, *, subject=None, config=None,
   verify_with=None, base=None, allow_self=False, revocations=None, as_of=None)` → a `PortableReputation`:
@@ -1373,7 +1373,7 @@ app.run("export button 500s").output.label
   `revoke_attestation(attestation_or_hash, *, subject="", issuer="", replacement=None, reason="")` → an
   `AttestationRevocation` (binds issuer/subject/`attestation_hash`/`replacement_hash`; `.sign`/`.verify` →
   `RevocationVerification`, `.revokes(att)`, `.is_supersession`, `.to_wire`/`.from_wire`) withdraws/supersedes
-  an attestation **by its hash** — a `combine_attestations(..., revocations=[rev])` excludes it (`.revoked`),
+  an attestation **by its hash**, a `combine_attestations(..., revocations=[rev])` excludes it (`.revoked`),
   honored only when it verifies and is issued by the **same party** (a forged or cross-issuer revocation
   cannot cancel a claim). `app.attest_reputation(subject, *, book=None, resolutions=None, config=None,
   horizon_days=None, sign=True, record_audit=True)` issues from the app's settlement book, signs as the
@@ -1388,13 +1388,13 @@ app.run("export button 500s").output.label
 - **Cross-org reputation gossip & attestation exchange.** `from vincio import AttestationExchange,
   ReputationBundle, PeerVisit, GatheredReputation, attestation_a2a_server, gather_reputation` (all also in
   `vincio.settlement.__all__`). A bounded, **pull-based** exchange of the existing signed attestations and
-  revocations over the A2A fabric — the discovery analogue for reputation, never a hosted registry or a
+  revocations over the A2A fabric, the discovery analogue for reputation, never a hosted registry or a
   push-based bus. **Peer (server):** `attestation_a2a_server(book, *, revocations=None, attestations=None,
   config=None, name=None, url="", description="", tracer=None, token_validator=None, audit=None)` → an
   `A2AServer` whose Agent Card advertises an `attestation-exchange` skill; answering a subject query it
   returns a `ReputationBundle` of its **own** signed artifacts (the current attestation it can issue from
   `book.attest(subject)` plus held `revocations` for that subject; pass explicit `attestations=` to serve a
-  fixed snapshot) — *pull, never push*, a no-history subject yields an attestation-free bundle, never an
+  fixed snapshot), *pull, never push*, a no-history subject yields an attestation-free bundle, never an
   error. `app.serve_attestations(*, book=None, revocations=None, attestations=None, config=None, name=None,
   url="", description="", token_validator=None)` wires it from the app's book and its retained revocations.
   **Importer (client):** `AttestationExchange(client, *, peer_id="")` wraps an `A2AClient`; `.fetch(subject)`
@@ -1403,7 +1403,7 @@ app.run("export button 500s").output.label
   max_peers=None, audit=None, record_audit=True)` → a `GatheredReputation`: visits peers (a dict
   `id→connection` or `(id, conn)` pairs; a connection is an `AttestationExchange`, an in-process `A2AServer`,
   or an `A2AClient`) in deterministic order, **governs** each through `directory` (an `AgentDirectory`
-  allow-list, audited — a denied peer skipped and pinpointed), **bounds** the fan-out to `max_peers`,
+  allow-list, audited, a denied peer skipped and pinpointed), **bounds** the fan-out to `max_peers`,
   **verifies** every fetched artifact from the bytes (a forged/tampered one refused), **dedupes** by content
   hash, and folds the gathered (plus any `held_*`) artifacts into the **same** `combine_attestations` under the
   same freshness/revocation/`[floor, 1]` discipline. `.weight(member_id)` / `.standing(id)` delegate to the
@@ -1432,7 +1432,7 @@ app.run("export button 500s").output.label
   it as a counterparty) lends it trust derived from that pooled standing, attenuated by `hop_decay` per hop;
   **unreached** issuers fall back to `trust_floor` (counted, never zeroed). Only admissible (verified)
   attestations vouch, and an issuer never bootstraps its own trust. **Sybil-resistant** because trust is lent
-  only *outward from a trusted root* — a ring of mutually-vouching unknown issuers is never reached and stays at
+  only *outward from a trusted root*, a ring of mutually-vouching unknown issuers is never reached and stays at
   the floor, so pull follows earned trust, not issuer count. `TrustModel.trust_in(issuer)` / `.weight(issuer)`
   (alias, so it drops in as a `trust=` source or wherever a ledger is), `.assessment(issuer)`→`IssuerTrust`
   (`.issuer`/`.trust`/`.depth`[0 direct, k transitive, None unreached]/`.direct`/`.vouched_by`/`.reputation`/
@@ -1443,12 +1443,12 @@ app.run("export button 500s").output.label
   `SubjectStanding.issuer_trust` (`{issuer: multiplier}`); `PortableReputation.trust` holds the model and
   `.trust_in(issuer)` reads it. `app.import_reputation(..., trust=None, trust_config=None)` /
   `app.gather_reputation(..., trust=None, trust_config=None)` thread it through, rooted in
-  `self.reputation_ledger`. Deterministic and offline — never a central trust authority.
+  `self.reputation_ledger`. Deterministic and offline, never a central trust authority.
 - **Cross-org reputation-gated admission & progressive exposure.** `from vincio import AdmissionConfig,
   AdmissionDecision, AdmissionPolicy, AdmissionVerification, admit` (all also in `vincio.settlement.__all__`;
   `Standing` is subpackage-only). A weighted standing was still only *consulted* as a soft negotiation weight;
   nothing **acted** on a thin or low standing to bound up-front exposure. An `AdmissionPolicy` maps the standing
-  the fabric earns — an imported `PortableReputation` or a local `ReputationLedger` — to a bounded
+  the fabric earns, an imported `PortableReputation` or a local `ReputationLedger`, to a bounded
   `AdmissionDecision`. `AdmissionConfig(parity_exposure_usd=1000.0, floor_fraction=0.1, full_trust_evidence=10.0,
   ramp_floor=0.2, max_escrow_fraction=0.5, min_sla_factor=0.5)`: exposure is `floor_fraction + (1−floor_fraction)·
   reputation·ramp_progress(evidence)` (`.ramp_progress` climbs `[ramp_floor,1]` to parity at `full_trust_evidence`
@@ -1460,18 +1460,18 @@ app.run("export button 500s").output.label
   standing=None, config=None)` is the convenience. `AdmissionDecision` (`.subject`, `.standing` →
   `Standing(weight, reputation, evidence, issuers)`, `.config`, `.exposure_fraction`, `.max_contract_value_usd`,
   `.escrow_fraction`, `.sla_factor`, `.at_parity`, `.issuers`, `.content_hash`, `.audit_id`): **content-bound &
-  offline-verifiable** — `.compute_hash`/`.seal`, `.verify()` → `AdmissionVerification(valid, hash_ok, terms_sound,
+  offline-verifiable**, `.compute_hash`/`.seal`, `.verify()` → `AdmissionVerification(valid, hash_ok, terms_sound,
   reason)` re-derives the terms from the bound standing so a tampered ceiling is caught even after re-sealing,
   `.require_valid()` raises `SettlementError`, `.to_wire`/`.from_wire`. **Folds into the existing path**:
   `.bound_position(position)` clamps a buyer's `NegotiationPosition` price reserve to the ceiling and tightens the
   SLA reserve (a copy; the original is untouched), `.apply_to_terms(terms)` caps a `ContractTerms` price/SLA and
   stamps the escrow posture into `.metadata` (excluded from the contract hash, so the contract stays
-  offline-verifiable). A thin or low-trust standing is admitted on conservative terms — discounted exposure, never
-  refused — the ceiling ramping toward parity as settled history accrues and a regression walking it back, bounded
+  offline-verifiable). A thin or low-trust standing is admitted on conservative terms, discounted exposure, never
+  refused, the ceiling ramping toward parity as settled history accrues and a regression walking it back, bounded
   and reversible. `app.admit(subject, *, reputation=None, policy=None, config=None, record_audit=True)` reads the
   same source the negotiation path weights by (`imported_reputation` else `reputation_ledger`) and records the
   decision on the audit chain (action `reputation_admission`, decision `parity`|`graduated`). Deterministic and
-  offline — never a hosted underwriting service.
+  offline, never a hosted underwriting service.
 - **Cross-org collateralized settlement & escrow.** `from vincio import Escrow, EscrowConfig, EscrowVerification,
   post_escrow, settle_escrow` (all also in `vincio.settlement.__all__`; `EscrowState`, `EscrowSignature` are
   subpackage-only). The admission-required escrow fraction was still only a *number stamped on the terms*; nothing
@@ -1484,29 +1484,29 @@ app.run("export button 500s").output.label
   `.price_usd`/`.escrow_fraction`/`.amount_usd`, `.decision_hash`, `.config`, `.state` (`posted`|`released`|
   `forfeited`), `.shortfall_fraction`/`.forfeited_usd`/`.released_usd`/`.breaches`, `.settlement_hash`,
   `.content_hash`/`.audit_id`, `.is_posted`/`.is_released`/`.is_forfeited`/`.is_resolved`): **content-bound &
-  offline-verifiable** — `.compute_hash`/`.seal`, `.sign(signer, party)` (buyer/seller only), `.verify(verifier=None,
+  offline-verifiable**, `.compute_hash`/`.seal`, `.sign(signer, party)` (buyer/seller only), `.verify(verifier=None,
   *, require=None)` → `EscrowVerification(valid, hash_ok, terms_sound, signatures_ok, signed_by, reason)` re-derives
   the amount from the fraction and the release/forfeit split from the shortfall so a tampered amount or forfeiture is
   caught even after re-sealing, `.require_valid()`, `.to_wire`/`.from_wire`. `.resolve(record, *, config=None)` /
   `settle_escrow(escrow, record, *, config=None)` settles it against a `SettlementRecord`: a fulfilled delivery
   releases the whole stake, a breach forfeits `min(shortfall, max_forfeit_fraction)·amount` (the per-dimension
   shortfall is how far delivery missed the worst breached term, pinpointed in `.breaches`) and releases the
-  remainder — driven by the same record verdict, never the whole stake. `EscrowConfig(max_forfeit_fraction=1.0)`
+  remainder, driven by the same record verdict, never the whole stake. `EscrowConfig(max_forfeit_fraction=1.0)`
   caps a single breach's forfeiture (set `<1` for a guaranteed residual). `app.post_escrow(contract, *, decision=,
   fraction=, amount=, poster=, beneficiary=, config=, party=, sign=True)`, `app.settle_escrow(escrow, record, *,
   config=, party=, sign=True)`, and `app.settle(contract, ..., escrow=None, escrow_config=None)` resolve it in the
-  same call — every transition signed and on the audit chain (action `escrow`, decision = the state). Deterministic
-  and offline — never a hosted escrow custodian or a payment rail.
+  same call, every transition signed and on the audit chain (action `escrow`, decision = the state). Deterministic
+  and offline, never a hosted escrow custodian or a payment rail.
 - **Cross-org collateral pooling & cross-contract margin.** `from vincio import CollateralPool,
   CollateralPoolVerification, PooledContract, post_collateral_pool, draw_pool` (all also in
   `vincio.settlement.__all__`; `PooledContractState`, `PoolStatus` are subpackage-only). An `Escrow` backs *one*
   contract; a counterparty running many concurrent contracts had to lock **separate** collateral per deal even
   though its breaches and clean deliveries net out (capital stranded contract-by-contract the way bilateral
   settlements were before netting). A `CollateralPool` is a **bounded margin account** posted once that backs many
-  contracts — the collateral analogue of a `NettingSet`. `post_collateral_pool(contracts, *, poster=None,
+  contracts, the collateral analogue of a `NettingSet`. `post_collateral_pool(contracts, *, poster=None,
   posted=None, decisions=None, fraction=None, config=None)` → a sealed, unsigned `CollateralPool`: each contract's
   `required_usd` re-derives via the same source resolver as `post_escrow` (a matching `AdmissionDecision` in
-  `decisions` — a dict keyed by contract id or one decision for all — a uniform `fraction`, or the posture stamped
+  `decisions`, a dict keyed by contract id or one decision for all, a uniform `fraction`, or the posture stamped
   onto each contract's terms); `poster` defaults to the common seller; `posted` defaults to the total required (so
   the pool starts exactly collateralized). Each open contract is **allocated** `required_usd × coverage`
   (`coverage = min(1, balance/required_open)`), proportional to its requirement. `CollateralPool`
@@ -1515,7 +1515,7 @@ app.run("export button 500s").output.label
   `.forfeited_usd`/`.released_usd`/`.breaches`, `.settlement_hash`), `.posted_usd`/`.drawn_usd`/`.balance_usd`/
   `.required_open_usd`/`.available_usd`/`.topup_usd`/`.coverage`, `.status` (`posted`|`active`|`settled`),
   `.needs_topup`/`.residual_usd`/`.parties`/`.beneficiaries`/`.open_contracts`, `.contract(id)`): **content-bound &
-  offline-verifiable** — `.compute_hash`/`.seal` (contracts sorted by id so add-order is irrelevant), `.sign(signer,
+  offline-verifiable**, `.compute_hash`/`.seal` (contracts sorted by id so add-order is irrelevant), `.sign(signer,
   party)` (poster or a counterparty only), `.verify(verifier=None, *, require=None)` →
   `CollateralPoolVerification(valid, hash_ok, terms_sound, signatures_ok, signed_by, reason)` re-derives every
   allocation and reconciles the balance (`balance == posted − drawn`, top-up == `max(0, required_open − balance)`,
@@ -1523,25 +1523,25 @@ app.run("export button 500s").output.label
   caught even after re-sealing, `.require_valid()`, `.to_wire`/`.from_wire`. `.draw(record, *, config=None)` /
   `draw_pool(pool, record, *, config=None)` settles one backed contract against its `SettlementRecord`: a clean
   delivery releases its requirement back to the available balance (frees capital for the next deal), a breach draws
-  a bounded slice from the shared stake and releases the rest — driven by the same record verdict, never the whole
+  a bounded slice from the shared stake and releases the rest, driven by the same record verdict, never the whole
   stake. `.back(contract, *, decision=/fraction=/amount=, beneficiary=)` adds a contract to the open pool (may
   surface a top-up); `.top_up(amount)` adds capital to clear a top-up obligation. Reuses `EscrowConfig`
   (`max_forfeit_fraction`) for the forfeiture policy. `app.post_collateral_pool(contracts, *, poster=, posted=,
   decisions=, fraction=, config=, party=, sign=True)`, `app.draw_pool(pool, record, *, config=, party=, sign=True)`,
-  and `app.settle(contract, ..., pool=None)` draw it in the same call — every transition signed and on the audit
-  chain (action `collateral_pool`, decision = the status). Deterministic and offline — never a hosted clearing
+  and `app.settle(contract, ..., pool=None)` draw it in the same call, every transition signed and on the audit
+  chain (action `collateral_pool`, decision = the status). Deterministic and offline, never a hosted clearing
   house, a margin custodian, or a payment rail.
 - **Cross-org collateral rehypothecation guards & re-use bounds.** `from vincio import CollateralLedger,
   CollateralLedgerVerification, ReuseBreach, BeneficiaryClaim, guard_collateral` (all also in
   `vincio.settlement.__all__`; `LedgerPool`, `LedgerContract` are subpackage-only). A `CollateralPool` only ever
   re-allocates capital *within itself*, so nothing bounded a counterparty that pledged the **same** stake across more
-  than one pool — the same capital double-counted, over-stating what backs each deal (the collateral analogue of a
+  than one pool, the same capital double-counted, over-stating what backs each deal (the collateral analogue of a
   `SettlementRecord` double-counted before netting deduplicated it). A `CollateralLedger` is the **rehypothecation
   guard**. `guard_collateral(pools, *, poster=None, held=None, custody=None, verify_with=None)` → a sealed, unsigned
   `CollateralLedger`: reads a counterparty's pools (refusing one whose content hash no longer recomputes; a forged
   pool signature too, with `verify_with`), reconciles what they collectively pledge (`pledged_usd` = Σ live
   `balance_usd`) against the capital it actually holds (`held_usd`; from a `custody` proof-of-reserves, an asserted
-  `held=`, or — by default — the gross pledge minus the provably double-pledged capital; `held` and `custody` are
+  `held=`, or, by default, the gross pledge minus the provably double-pledged capital; `held` and `custody` are
   mutually exclusive). `CollateralLedger` (`.poster`/`.pools` (`LedgerPool`)/`.pool_hashes`, `.posted_usd`/
   `.pledged_usd`/`.held_usd`/`.available_usd`/`.reuse_usd`/`.duplicate_pledge_usd`, `.reserves_proven`/`.custodian`/
   `.custody_hash`/`.reserves_usd`, `.breaches` (`ReuseBreach`:
@@ -1553,7 +1553,7 @@ app.run("export button 500s").output.label
   pledged across more than one pool is a pinpointed `ReuseBreach` (its collateral honorable once, the excess provably
   double-pledged), and when a stake backs deals for more than one beneficiary each claim is bounded to its
   deterministic **pari-passu** share of the held capital (proportional to its claim) so a forfeiture cannot pay one
-  beneficiary out of capital another has first claim on. **Content-bound & offline-verifiable** —
+  beneficiary out of capital another has first claim on. **Content-bound & offline-verifiable**,
   `.compute_hash`/`.seal` (pools/breaches/claims sorted so fold-order is irrelevant), `.sign(signer, party)`,
   `.verify(verifier=None, *, require=None)` → `CollateralLedgerVerification(valid, hash_ok, terms_sound,
   signatures_ok, signed_by, reason)` re-derives the pledged total, the re-use breaches, the beneficiary
@@ -1562,10 +1562,10 @@ app.run("export button 500s").output.label
   `.to_wire`/`.from_wire`.
   `app.guard_collateral(pools, *, poster=, held=, custody=, sign=True, verify_with=, record_audit=True)` and
   `book.guard_collateral(...)` sign it and record the guard on the audit chain (action `rehypothecation`, decision =
-  the status). Deterministic and offline — never a hosted custodian, a clearing house, or a payment rail.
+  the status). Deterministic and offline, never a hosted custodian, a clearing house, or a payment rail.
 - **Cross-org collateral custody attestation & proof-of-reserves.** `from vincio import CustodyAttestation,
   CustodyAttestationVerification, ReserveLine, attest_custody` (all also in `vincio.settlement.__all__`). The
-  rehypothecation guard's `held` figure was *asserted*, not proven — a counterparty over-stating its reserves still
+  rehypothecation guard's `held` figure was *asserted*, not proven, a counterparty over-stating its reserves still
   passed. A `CustodyAttestation` makes it **evidence-backed**: a signed, content-bound **proof-of-reserves**.
   `attest_custody(poster, reserves, *, custodian=None, as_of=None)` → a sealed, unsigned `CustodyAttestation`:
   `reserves` is a number, a `{account: amount}` mapping, or `ReserveLine`/`(account, amount)` items (a negative
@@ -1576,19 +1576,19 @@ app.run("export button 500s").output.label
   re-derives the reserve total from the line items so a tampered figure is caught even after re-sealing,
   `.require_valid()`, `.audit_details`/`.to_wire`/`.from_wire`). `guard_collateral(..., custody=)` reads
   `.reserves_usd` as the `held` figure (`.reserves_proven` on the ledger), surfacing an `UnderReservedBreach` when the
-  proven reserves fall below the pledges — refusing a tampered figure, a forged custodian (with `verify_with`), or an
+  proven reserves fall below the pledges, refusing a tampered figure, a forged custodian (with `verify_with`), or an
   attestation for a different poster. `app.attest_custody(poster, reserves, *, custodian=, as_of=, sign=True,
   record_audit=True)` / `book.attest_custody(...)` sign it as the custodian and record it on the audit chain (action
-  `custody_attestation`, decision = `self_custody`|`custodied`). Offline — never a hosted custodian or a
+  `custody_attestation`, decision = `self_custody`|`custodied`). Offline, never a hosted custodian or a
   proof-of-reserves auditor.
 - **Cross-org custody liability attestation & proof-of-solvency.** `from vincio import LiabilityAttestation,
   LiabilityAttestationVerification, LiabilityLine, InsolvencyBreach, SolvencyProof, SolvencyProofVerification,
   attest_liabilities, prove_solvency` (all also in `vincio.settlement.__all__`). Proof-of-reserves proves the capital a
-  counterparty *holds*, but reserves are one side of the ledger — a counterparty solvent against one buyer may be
+  counterparty *holds*, but reserves are one side of the ledger, a counterparty solvent against one buyer may be
   under-water once *every* obligation it owes is counted. A `LiabilityAttestation` makes the liability side
   evidence-backed: `attest_liabilities(poster, liabilities, *, attestor=None, as_of=None)` → a sealed, unsigned
   `LiabilityAttestation` over the total obligations owed (`liabilities` is a number, a `{creditor: amount}` mapping, or
-  `LiabilityLine`/`(creditor, amount)` items; a negative obligation is refused; `attestor` defaults to `poster` —
+  `LiabilityLine`/`(creditor, amount)` items; a negative obligation is refused; `attestor` defaults to `poster`,
   self-attested). `LiabilityAttestation` (`.attestor`/`.poster`/`.liabilities` (`LiabilityLine`:
   `.creditor`/`.amount_usd`/`.note`)/`.liabilities_usd`/`.as_of`, `.self_attested`/`.creditors`, `.compute_hash()`/
   `.seal()`/`.sign(signer, *, party=None)` (only the attestor signs), `.verify(verifier=None, *, require=None)` →
@@ -1599,7 +1599,7 @@ app.run("export button 500s").output.label
   poster (refusing a tampered, forged, or wrong-poster attestation; pass `completeness=` a `CompletenessProof` to bound
   the margin by the completed total) → a sealed, unsigned `SolvencyProof` (`.poster`/`.custodian`/
   `.attestor`/`.custody_hash`/`.liability_hash`/`.reserves_usd`/`.liabilities_usd`/`.margin_usd` (reserves − liabilities),
-  `.solvent`/`.insolvent`/`.status` (`solvent`|`insolvent`), `.solvency_adjusted_held` (`max(0, margin)` — the
+  `.solvent`/`.insolvent`/`.status` (`solvent`|`insolvent`), `.solvency_adjusted_held` (`max(0, margin)`, the
   unencumbered capital), `.breach` (`InsolvencyBreach`: `.poster`/`.custodian`/`.attestor`/`.custody_hash`/
   `.liability_hash`/`.reserves_usd`/`.liabilities_usd`/`.shortfall_usd`), `.verify(verifier=None, *, require=None)` →
   `SolvencyProofVerification(valid, hash_ok, margin_sound, signatures_ok, signed_by, reason)` re-derives the margin and
@@ -1607,17 +1607,17 @@ app.run("export button 500s").output.label
   insolvent), `.sign(signer, *, party)`, `.audit_details`/`.to_wire`/`.from_wire`). `guard_collateral(..., solvency=)`
   reads `.solvency_adjusted_held` as the `held` figure (`.solvency_adjusted` on the ledger, with `.attestor`/
   `.liability_hash`/`.liabilities_usd`/`.solvency_margin_usd`/`.gross_reserves_usd`/`.insolvent`/`.require_solvent()`),
-  bounding pledges against capital not already owed elsewhere — refusing a tampered proof, a forged signature (with
+  bounding pledges against capital not already owed elsewhere, refusing a tampered proof, a forged signature (with
   `verify_with`), or a proof for a different poster. `app.attest_liabilities(poster, liabilities, *, attestor=,
   as_of=, sign=True, record_audit=True)` / `book.attest_liabilities(...)` sign it as the attestor (action
   `liability_attestation`, decision = `self_attested`|`attested`), and `app.prove_solvency(custody, liabilities, *,
   poster=, as_of=, verify_with=, sign=True, record_audit=True)` / `book.prove_solvency(...)` sign and record the proof
   (action `solvency_proof`, decision = `solvent`|`insolvent`). When a completeness check is folded the proof carries
   `.attested_liabilities_usd` (the attestor's figure), `.completeness_hash`, `.completeness_adjusted`, and
-  `.understated_usd`. Offline — never a hosted solvency auditor.
+  `.understated_usd`. Offline, never a hosted solvency auditor.
 - **Cross-org liability inclusion proofs & completeness.** `from vincio import MerkleStep, InclusionProof,
   InclusionProofVerification, OmissionBreach, CompletenessProof, CompletenessVerification, check_completeness` (all also
-  in `vincio.settlement.__all__`). A `LiabilityAttestation`'s total is still one number — a counterparty could
+  in `vincio.settlement.__all__`). A `LiabilityAttestation`'s total is still one number, a counterparty could
   under-state what it owes by omitting a creditor. The attestation now commits its line items into a Merkle root
   (`.liabilities_root`, bound in the signed hash; the total *and* root re-derive on every verify), so each creditor gets
   an `InclusionProof`: `attestation.inclusion_proof(creditor)` / `app.inclusion_proof(liabilities, creditor)` /
@@ -1639,16 +1639,16 @@ app.run("export button 500s").output.label
   `.audit_details`/`.to_wire`/`.from_wire`). `prove_solvency(..., completeness=)` reads `.completed_usd` instead of the
   attestor's figure (refusing a check for a different poster/attestation), so the solvency margin is bounded by the
   obligations creditors can prove. App/book sign and record the check (action `liability_completeness`, decision =
-  `complete`|`incomplete`). Offline — never a hosted attestation registry.
+  `complete`|`incomplete`). Offline, never a hosted attestation registry.
 - **Cross-org liability non-equivocation & root consistency.** `from vincio import RootCommitment,
   RootCommitmentVerification, EquivocationProof, EquivocationProofVerification, RootConsistencyReport,
   prove_equivocation, check_root_consistency` (all also in `vincio.settlement.__all__`). Completeness catches an omission
-  only when the omitted creditor folds its own claim, but a counterparty issues its attestation per relationship — so it
+  only when the omitted creditor folds its own claim, but a counterparty issues its attestation per relationship, so it
   can **equivocate**, signing a smaller `liabilities_root` for one creditor and a different one for another, each
   creditor's `InclusionProof` verifying against the root *it* was shown. `attestation.root_commitment()` →
   `RootCommitment` (`.poster`/`.attestor`/`.as_of`/`.liabilities_root`/`.liabilities_usd`/`.liability_hash`/`.signature`,
   `.consistency_key` (`(poster, attestor, as_of)`), `.conflicts_with(other)`, `.verify(verifier=None)` →
-  `RootCommitmentVerification(valid, committed, signed_ok, signed_by, reason)`, `.to_wire`/`.from_wire`) — a signed,
+  `RootCommitmentVerification(valid, committed, signed_ok, signed_by, reason)`, `.to_wire`/`.from_wire`), a signed,
   privacy-preserving digest of the root and `as_of` the attestor signed, **without** the line items, that creditors
   compare over the attestation exchange. `prove_equivocation(first, second, *, verifier=None, first_creditor="",
   second_creditor="")` folds two attestations a poster signed for the same `(poster, attestor, as_of)` with different
@@ -1665,7 +1665,7 @@ app.run("export button 500s").output.label
   inadmissible, so it cannot manufacture a false accusation. `app.check_root_consistency(attestations, *, verify_with=,
   record_reputation=True, record_audit=True)` / `book.check_root_consistency(...)` record each equivocation (action
   `liability_equivocation`, decision `equivocation`) on the audit log and ding the equivocating poster on the bound
-  reputation ledger. Offline — never a hosted transparency log.
+  reputation ledger. Offline, never a hosted transparency log.
 - **Cross-org liability history consistency & snapshot monotonicity.** `from vincio import Discharge,
   DischargeVerification, discharge_liability, MonotonicityBreach, HistoryConsistencyProof,
   HistoryConsistencyProofVerification, HistoryConsistencyReport, check_history_consistency` (all also in
@@ -1673,9 +1673,9 @@ app.run("export button 500s").output.label
   snapshot that quietly drops a past obligation. A `LiabilityAttestation` now carries an optional commitment to the prior
   snapshot (`.prior_hash`/`.prior_root`/`.prior_as_of`, `.has_prior`), bound into its signed hash, set via
   `attest_liabilities(poster, liabilities, *, attestor=None, as_of=None, prior=None)` or `attestation.link_to(prior)`
-  (same `(poster, attestor)`, strictly later `as_of` — a back-dated link is refused and caught from the bytes). A
+  (same `(poster, attestor)`, strictly later `as_of`, a back-dated link is refused and caught from the bytes). A
   `Discharge` (`discharge_liability(poster, creditor, amount_usd, *, as_of=None, note="")`: `.poster`/`.creditor`/
-  `.amount_usd`/`.as_of`/`.status` (`partial`|`empty`), `.sign(signer, *, party=None)` — signed by the **creditor** only,
+  `.amount_usd`/`.as_of`/`.status` (`partial`|`empty`), `.sign(signer, *, party=None)`, signed by the **creditor** only,
   `.verify(verifier=None, *, require=None)` → `DischargeVerification(valid, hash_ok, sound, signatures_ok, signed_by,
   reason)`, `.audit_details`/`.to_wire`/`.from_wire`) is the creditor's signed release that legitimizes a drop.
   `check_history_consistency(attestations, *, discharges=None, verifier=None)` groups snapshots by `(poster, attestor)`,
@@ -1693,17 +1693,17 @@ app.run("export button 500s").output.label
   verify_with=None, record_reputation=True, record_audit=True)` / `book.check_history_consistency(...)` record each
   inconsistent history (action `liability_history`, decision `consistent`|`inconsistent`) and ding the breaching poster;
   `app.discharge_liability(poster, amount_usd, *, creditor=None, as_of=None, note="")` / `book.discharge_liability(...)`
-  sign and record a discharge (action `liability_discharge`). Offline — never a hosted transparency log.
+  sign and record a discharge (action `liability_discharge`). Offline, never a hosted transparency log.
 - **Cross-org insolvency resolution & liability seniority waterfall.** `from vincio import SeniorityTranche,
   SeniorityVerification, SenioritySchedule, build_seniority_schedule, CreditorRecovery, WaterfallTranche,
   InsolvencyResolution, InsolvencyResolutionVerification, resolve_insolvency` (all also in `vincio.settlement.__all__`). A
   `SolvencyProof` *flags* an insolvency but says nothing about which creditors the scarce reserves pay, or in what order.
   `build_seniority_schedule(poster, tranches, *, as_of=None)` ranks the obligations into a sealed, unsigned
-  `SenioritySchedule` — `tranches` is an ordered spec: a list of creditor-name lists (position = priority, rank 0 most
+  `SenioritySchedule`, `tranches` is an ordered spec: a list of creditor-name lists (position = priority, rank 0 most
   senior, e.g. `[["bank"], ["acme", "globex"]]`), `SeniorityTranche(rank, creditors, label)` items, or `{rank, creditors,
   label}` dicts. `SenioritySchedule` (`.poster`/`.tranches`/`.as_of`, `.ranks`/`.residual_rank` (one below the most-junior
-  listed tranche — an unlisted creditor falls here)/`.creditors`, `.ranking()` → `{creditor: rank}`, `.rank_of(creditor)`,
-  `.compute_hash()`/`.seal()`, `.sign(signer, *, party)` — signed by the poster or its creditors, `.verify(verifier=None,
+  listed tranche, an unlisted creditor falls here)/`.creditors`, `.ranking()` → `{creditor: rank}`, `.rank_of(creditor)`,
+  `.compute_hash()`/`.seal()`, `.sign(signer, *, party)`, signed by the poster or its creditors, `.verify(verifier=None,
   *, require=None)` → `SeniorityVerification(valid, hash_ok, well_formed, signatures_ok, signed_by, reason)` (a duplicate
   rank or a creditor in two tranches is not `well_formed`), `.require_valid`, `.audit_details`/`.to_wire`/`.from_wire`).
   `resolve_insolvency(custody, liabilities, schedule=None, *, poster=None, completeness=None, solvency=None, set_off=None,
@@ -1718,7 +1718,7 @@ app.run("export button 500s").output.label
   `.status` (`solvent`|`resolved`)/`.fully_recovered`/`.shortfall_bearers` (ordered by seniority)/`.recovery_rate`/
   `.set_off`, `.recovery_of(creditor)`,
   `.verify(verifier=None, schedule=None, set_off=None, *, require=None)` → `InsolvencyResolutionVerification(valid, hash_ok,
-  distribution_sound, schedule_bound, set_off_bound, signatures_ok, signed_by, reason)` — re-derives the **entire** waterfall from the
+  distribution_sound, schedule_bound, set_off_bound, signatures_ok, signed_by, reason)`, re-derives the **entire** waterfall from the
   recorded per-creditor claims/ranks/reserves (an over-stated recovery, a re-ordered tranche, or a junior creditor paid
   ahead of a senior one is refused even after re-sealing) and, with `schedule`, binds each creditor's rank to the signed
   schedule, `.require_valid`/`.require_fully_recovered`, `.sign(signer, *, party)`, `.audit_details`/`.to_wire`/
@@ -1729,29 +1729,29 @@ app.run("export button 500s").output.label
   schedule=None, *, poster=None, completeness=None, solvency=None, set_off=None, as_of=None, verify_with=None, sign=True,
   record_reputation=True, record_audit=True)` / `book.resolve_insolvency(...)` sign and record the resolution (action
   `insolvency_resolution`, decision `solvent`|`resolved`) and ding a poster that could not make its creditors whole on the
-  reputation path. Offline — never a hosted receiver or a bankruptcy court.
+  reputation path. Offline, never a hosted receiver or a bankruptcy court.
 - **Cross-org insolvency set-off & close-out netting.** `from vincio import SetOffStatement, build_set_off_statement,
   set_off_from_records`. A creditor of an insolvent estate is often *also* a debtor of it, paid on its **gross** claim
   while it still owes the other side; close-out netting collapses the mutual obligations to a single net claim *before*
   the waterfall. `build_set_off_statement(poster, creditor, owed_usd, owing_usd, *, references=None, as_of=None)` states
-  the obligations running both ways — `owed_usd` the poster owes, `owing_usd` the creditor owes back — into a sealed
+  the obligations running both ways, `owed_usd` the poster owes, `owing_usd` the creditor owes back, into a sealed
   `SetOffStatement` (`.poster`/`.creditor`/`.owed_usd`/`.owing_usd`/`.net_debtor`/`.net_creditor`/`.net_usd`/`.references`,
   `.poster_net_claim_usd` (`max(0, owed − owing)`)/`.set_off_usd` (`min(owed, owing)`)/`.creditor_in_debit`/`.eliminated`/
   `.direction` (`poster_owes`|`creditor_in_debit`|`eliminated`)/`.mutual`, `.compute_hash()`/`.seal()`, `.sign(signer, *,
-  party)` — signed by **both** parties, `.verify(verifier=None, *, require=None, require_mutual=False)` →
+  party)`, signed by **both** parties, `.verify(verifier=None, *, require=None, require_mutual=False)` →
   `SetOffVerification(valid, hash_ok, well_formed, net_sound, signatures_ok, signed_by, reason)` (the net re-derives from
   the gross; `require_mutual` refuses a one-sided claim), `.require_valid`, `.audit_details`/`.to_wire`/`.from_wire`).
   `set_off_from_records(poster, creditor, liabilities, records, *, as_of=None, verifier=None)` derives a statement straight
-  from the existing `LiabilityAttestation` (the `owed_usd`) and `SettlementRecord`s (the `owing_usd`, deduped by hash) — a
+  from the existing `LiabilityAttestation` (the `owed_usd`) and `SettlementRecord`s (the `owing_usd`, deduped by hash), a
   tampered artifact refused, a forged signature too with a verifier. Pass `set_off=[...]` to `resolve_insolvency` to net
   each creditor to its net claim before distributing (a creditor in debit recovers nothing; an over-stated set-off claiming
   a different gross than the attestation, or a one-sided statement, is refused), reconciled against the *completed* gross
   and bound into the resolution by hash. `app.build_set_off_statement(poster, creditor, owed_usd, owing_usd, *,
   references=None, as_of=None, sign=True, record_audit=True)` / `book.build_set_off_statement(poster, creditor,
   owed_usd=None, owing_usd=None, *, liabilities=None, references=None, as_of=None, verify_with=None, sign=True)` sign and
-  record the statement (action `liability_set_off`, decision = the net direction). Offline — never a hosted clearing house
+  record the statement (action `liability_set_off`, decision = the net direction). Offline, never a hosted clearing house
   or a bankruptcy court.
-- **Cross-org engagement lifecycle (capstone — fabric feature-complete & frozen).** `from vincio import
+- **Cross-org engagement lifecycle (capstone, fabric feature-complete & frozen).** `from vincio import
   CrossOrgEngagement, EngagementNarrative, EngagementStage, EngagementSignature, EngagementVerification`. The capstone that
   unifies the twenty cross-org rungs into one coherent, conformance-proven system. `app.cross_org_engagement(*, buyer="",
   seller="", scope="", coordinator=None)` → a `CrossOrgEngagement` facade that threads the whole pipeline behind one
@@ -1770,12 +1770,12 @@ app.run("export button 500s").output.label
   (`intact`/`head_ok`/`hash_ok`/`digests_ok`/`signatures_ok`/`broken_at`); `eng.verify(verifier=None, *, require=None)`
   re-digests every captured live artifact too, so a re-ordered stage, an edited digest, an edited underlying artifact, or a
   forged signature is caught. `narrative.to_wire`/`from_wire`, `require_valid`, `stage_names`, `print_summary`. With this
-  capstone the cross-org settlement & credit surface is **feature-complete and frozen** under the stability policy — no
-  further cross-org *primitive* is scheduled. Offline — never a hosted orchestration service or a managed control plane.
+  capstone the cross-org settlement & credit surface is **feature-complete and frozen** under the stability policy, no
+  further cross-org *primitive* is scheduled. Offline, never a hosted orchestration service or a managed control plane.
 - **Community pack & skill registry.** `from vincio import CommunityRegistry,
   BundleRecord`; a signed, content-bound (SHA-256 + `HMACSigner`/`Ed25519Signer`)
   index of opt-in packs and `SKILL.md` bundles. `registry.publish_pack/skill(...)`,
-  `registry.load_pack/load_skill(name)` — resolution passes the same `AllowListGate`
+  `registry.load_pack/load_skill(name)`, resolution passes the same `AllowListGate`
   the fabric uses, verifies the signature, and records an audited `bundle_resolve`
   decision; tamper/unlisted/unsigned are denied. `sign_index()`/`verify_index()`.
 - **Plugins.** `from vincio import installed_plugins, load_plugins,
@@ -1789,14 +1789,14 @@ app.run("export button 500s").output.label
   run_stream_to_agui, agent_stream_to_agui`; SSE `POST /v1/apps/{id}/agui`;
   `AgentExecutor.astream` /
   `Crew.astream` yield `AgentEvent`/`CrewEvent` (lifecycle, genuine provider token
-  deltas, tool events) — inherits the run's provenance/budget/audit.
+  deltas, tool events), inherits the run's provenance/budget/audit.
 - **Framework interop & DX.** `from vincio.interop import add_langchain_tool,
   from_langchain_loader/retriever/embeddings, from_llamaindex_reader/retriever/
   embedding, add_llamaindex_tool, from_haystack_retriever/document/embedder,
   add_haystack_component, from_dspy_module/retriever/signature, add_dspy_module,
   to_dspy_lm` (duck-typed `from_*`) + `to_langchain_*`/`to_llamaindex_*`/
   `to_haystack_*` (extras `vincio[langchain|llamaindex|haystack|dspy]`); packs
-  `app.use_pack(name)` (`load_pack`, `available_packs`, `register_pack`) — domain
+  `app.use_pack(name)` (`load_pack`, `available_packs`, `register_pack`), domain
   packs `support|engineering|finance|legal` and full-stack vertical packs
   `healthcare|ediscovery|kyc|customer_support|code_review` (the `Pack` contract's
   `retrieval`/`memory`/`residency`/`purpose` fields also preconfigure retrieval,
@@ -1813,13 +1813,13 @@ app.run("export button 500s").output.label
   `docs/reference/public-surface.txt` and a build gate fails on silent drift. `from vincio import
   deprecated, experimental, stability_of` (`@deprecated(since=, removed_in=,
   alternative=)` / `@experimental(since=)` emit warnings, escalatable to errors).
-  Nothing public is removed in a minor/patch — only deprecated then removed at the
+  Nothing public is removed in a minor/patch, only deprecated then removed at the
   next major. `vincio doctor [path]` reports a project's deprecated-API usage
   (replacement + removal version from `stability_of`) and config schema drift.
 - `vincio migrate <major> [path]` (`vincio.cli.migrate`) is the code-surface analogue of
   `vincio config migrate`: a static, `ast`-based codemod driven by a declarative per-major rename
   table (`RENAMES`), with `--write` (apply), `--check` (CI gate), `--json`. The `"4.0"` table is
-  empty — the additive-only 3.x line reached no removal runway, so 3.x → 4.0 needs zero source
+  empty, the additive-only 3.x line reached no removal runway, so 3.x → 4.0 needs zero source
   changes; see `MIGRATION.md`.
 - Typing: the package ships `py.typed` (PEP 561) and is type-checked end to end; a
   graduated, CI-enforced `mypy --strict` set (`stability`, `core.errors`,
@@ -1852,8 +1852,8 @@ app.run("export button 500s").output.label
   text, `.resident_bytes`, `.within_profile`, `.allowed`, `.rail_check`). No
   provider, network, filesystem, or caller-owned event loop. `.run` is sync
   (works under a WASM host loop); `.arun` is async. Accepts a plain string too.
-- `EdgeProfile` bounds the compiled packet — `max_resident_bytes` /
-  `max_input_tokens` / `max_evidence_items` — and lowers to the *same*
+- `EdgeProfile` bounds the compiled packet, `max_resident_bytes` /
+  `max_input_tokens` / `max_evidence_items`, and lowers to the *same*
   `ContextCompilerOptions` the server reads (`.to_compiler_options()`). Presets:
   `EdgeProfile.browser()` (256 KiB / 4096 tok), `.worker()` (the default), and
   `.server_like()` (for parity testing). The footprint stays under the cap as the
@@ -1892,21 +1892,21 @@ app.run("export button 500s").output.label
 
 ## Gotchas for generated code
 
-- **Don't hand-parse model output** — pass `output_schema=` (or a `Signature`) and
+- **Don't hand-parse model output**: pass `output_schema=` (or a `Signature`) and
   read `result.output`; repair fixes structure only, never invents facts.
-- **Security/permissions/budgets are code, not prompts** — use rails, the access
+- **Security/permissions/budgets are code, not prompts**: use rails, the access
   controller, and `RunConfig` budgets; never ask the model to self-police.
-- **Offline by default** — omit a provider/key (or use `provider="mock"`) and the
+- **Offline by default**: omit a provider/key (or use `provider="mock"`) and the
   full pipeline runs deterministically in CI.
-- **Async methods are `arun`/`astream`/`a*`** — the sync wrappers need no running
+- **Async methods are `arun`/`astream`/`a*`**: the sync wrappers need no running
   loop; don't `asyncio.run` inside an existing loop.
-- **`continuous_improvement` / `experiment_proposer` are removed** — use
+- **`continuous_improvement` / `experiment_proposer` are removed**: use
   `app.self_improvement(policy)`, or construct `ContinuousImprovementController(
   app, ...)` / `ExperimentProposer(app, ...)` directly.
-- **Metrics are one object** — the same metric is an eval, a runtime guardrail
+- **Metrics are one object**: the same metric is an eval, a runtime guardrail
   (`add_metric_rail`), and optimizer fitness.
-- **`lexical_overlap` is lexical; `semantic_similarity` is embedding-backed** —
+- **`lexical_overlap` is lexical; `semantic_similarity` is embedding-backed**,
   unscoreable cases are skipped (`MetricResult(skipped=True)`), not scored 0 or 1.
 - **Budgets raise** `BudgetExceededError`; unknown models warn (no silent $0).
-- **Everything lands on one trace + audit chain** — read `result.trace_id` and
+- **Everything lands on one trace + audit chain**: read `result.trace_id` and
   `vincio audit verify` rather than adding side-channel logging.

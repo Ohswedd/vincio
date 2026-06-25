@@ -1,8 +1,8 @@
 # Guide: close the loop
 
 Vincio ships the milestone no single-purpose library can: one continuous,
-reproducible improvement cycle — **trace → dataset → eval → optimize →
-promote** — plus the feedback paths that let every organ tune the others:
+reproducible improvement cycle, **trace → dataset → eval → optimize →
+promote**, plus the feedback paths that let every organ tune the others:
 runs write grounded facts back to memory, eval-scored relevance tunes
 retrieval, the optimizer keeps a cost/quality Pareto frontier instead of one
 score, budget allocation is learned from eval outcomes, and richer offline
@@ -11,9 +11,9 @@ same packet, ledger, and trace as the rest of the library.
 
 ## The improvement loop
 
-`ImprovementLoop` wires together pieces that already exist — the tracer's
+`ImprovementLoop` wires together pieces that already exist, the tracer's
 exporter, `dataset_from_traces`, the eval runner, the gated evolution loop,
-the prompt registry, and the experiment tracker — into one call:
+the prompt registry, and the experiment tracker, into one call:
 
 ```python
 loop = app.improvement_loop(
@@ -27,20 +27,20 @@ result.promoted, result.promoted_ref, result.dataset_fingerprint
 
 One cycle does five things:
 
-1. **Capture** — loads the traces your production runs already write
+1. **Capture**: loads the traces your production runs already write
    (`loop.capture()`; any exporter with `load_all()` or `.traces`).
-2. **Curate** — `dataset_from_traces` turns them into an eval dataset,
+2. **Curate**: `dataset_from_traces` turns them into an eval dataset,
    keeping only successful runs whose mean user feedback clears
    `min_feedback_score`. The dataset's case-id fingerprint is recorded so
    the decision is reproducible.
-3. **Evaluate** — the current prompt is the baseline, measured by the same
+3. **Evaluate**: the current prompt is the baseline, measured by the same
    metric objects used everywhere else.
-4. **Optimize** — the gated evolution loop searches prompt variants;
+4. **Optimize**: the gated evolution loop searches prompt variants;
    promotion is blocked on safety/schema regression, cost ceilings, and
    your gates. Candidate evaluations are **memory-write-free**: an eval run
    never pollutes user memory or hands later candidates different recall
    state than earlier ones saw.
-5. **Promote** — the winner is pushed to the `PromptRegistry`, tagged
+5. **Promote**: the winner is pushed to the `PromptRegistry`, tagged
    (`production` by default), linked to the eval report that justified it,
    applied to the live app, written to the hash-chained audit log
    (`loop_promotion`), and announced on the event bus (`loop.promoted`).
@@ -59,7 +59,7 @@ vincio loop run --app app.py --dataset golden.jsonl --dry-run
 
 With `memory.write_back: [facts]` in `vincio.yaml`, verifiable claims from a
 run's output that the cited evidence actually supports become **candidate**
-memories — with measured support, evidence provenance, and the same guarded
+memories, with measured support, evidence provenance, and the same guarded
 admission (privacy, stability, contradiction, confidence) as every other
 write:
 
@@ -74,7 +74,7 @@ Extraction is deterministic (`extract_grounded_facts`): a sentence must look
 like a factual claim *and* reach `fact_min_support` lexical support against
 the run's cited evidence. Facts land as candidates (`origin: run_fact`,
 status penalty in recall until confirmed) and are utility-scored against the
-task before they ever enter a packet — high-confidence grounding in, stale
+task before they ever enter a packet, high-confidence grounding in, stale
 hallucination out.
 
 ## Retrieval feedback
@@ -94,7 +94,7 @@ result.applied, result.index_weights_after, result.reranker_weights_after
 The search is deterministic (fixed grids, no randomness) and **gated**: the
 engine's per-index RRF fusion weights and the heuristic reranker's blend
 only change when the tuned configuration measurably beats the current one on
-recall@k + MRR over the records — otherwise nothing moves.
+recall@k + MRR over the records, otherwise nothing moves.
 `recommend_chunking(reports_by_config, baseline=...)` closes the chunking
 side: it picks the chunking config whose eval report scored best, and stays
 on the baseline unless beaten by `min_improvement`.
@@ -122,7 +122,7 @@ result.frontier.knee()            # best summed normalized goodness
 
 Screening still uses scalar fitness (cheap); the final pick comes from the
 frontier of full-dataset reports and goes through the same promotion safety
-rules — a frontier point that regresses safety or fails a gate never wins.
+rules, a frontier point that regresses safety or fails a gate never wins.
 
 ## Learned context budgeting
 
@@ -157,7 +157,7 @@ result = await ContextOptimizer(evaluate_config).optimize(
 `hill_climb` mutates the best config one knob at a time; `anneal` walks with
 a cooling schedule (early batches explore, late batches exploit). Both are
 deterministic under a seed, hard-bounded by the evaluation budget, and feed
-the same gated promotion path — a guided search can never bypass the safety
+the same gated promotion path, a guided search can never bypass the safety
 rules. `guided_search(space, evaluate, strategy=...)` exposes the primitive
 for custom spaces.
 
@@ -165,7 +165,7 @@ for custom spaces.
 
 Blind search proposes; reflection *diagnoses*. The `ReflectiveOptimizer` reads
 the eval report's failures, reflects on why the prompt lost, and proposes
-targeted edits — then verifies each child on the same gated, Pareto-aware
+targeted edits, then verifies each child on the same gated, Pareto-aware
 machinery:
 
 ```python
@@ -183,7 +183,7 @@ result.frontier.front     # the evolved Pareto frontier
 
 A child is screened on a minibatch and earns a full-dataset rollout *only* when
 it beats its parent, so the sample-efficiency win GEPA reports (beating RL with
-far fewer rollouts) holds under a hard budget — deterministic under a seed.
+far fewer rollouts) holds under a hard budget, deterministic under a seed.
 `strategy="mipro"` switches to MIPROv2-style joint instruction+example proposal.
 The result is a drop-in `OptimizationResult`, so the improvement loop runs it
 unchanged:
@@ -207,18 +207,18 @@ reproducible in tests and air-gapped runs.
 
 The one lever the rest of the field is missing: turn the runs you already make
 into *cheaper inference*. The faithful, flag-free path is to keep the
-`RunResult`s — they carry the full output and cited evidence, and the runtime
-stamps the input — and export from them:
+`RunResult`s, they carry the full output and cited evidence, and the runtime
+stamps the input, and export from them:
 
 ```python
 results = [app.run(q) for q in prompts]
 ts = app.export_training_set(runs=results, path="train.jsonl")
-ts.grounded_fraction                   # 1.0 — every example is evidence-supported
+ts.grounded_fraction                   # 1.0, every example is evidence-supported
 ts.save("train_anthropic.jsonl", format="anthropic")
 ```
 
 If you'd rather curate from the traces production already writes (with feedback
-filtering), enable capture so the full output and evidence are recorded — this
+filtering), enable capture so the full output and evidence are recorded, this
 covers streaming runs too:
 
 ```python
@@ -227,7 +227,7 @@ app.enable_training_capture()          # record full output + cited evidence on 
 ts = app.export_training_set(min_feedback_score=0.5, path="train.jsonl")
 ```
 
-Nothing ungrounded is exported — an example whose answer the evidence does not
+Nothing ungrounded is exported, an example whose answer the evidence does not
 support is dropped, not trained on. The teacher→student loop then promotes a
 cheaper student into the runtime cascade **only** when it holds quality:
 
@@ -245,7 +245,7 @@ exports from the CLI.
 ## On-policy reinforcement from verifiable rewards (RLVR)
 
 Reflective optimization tunes a *prompt*; the flywheel distills a *model*. RLVR
-closes the loop on a **policy** — the choice the agent makes — using the
+closes the loop on a **policy**, the choice the agent makes, using the
 verifiable signals the platform already computes as the reward, with no trainer
 dependency on the default path.
 
@@ -254,7 +254,7 @@ dependency on the default path.
 opinion:
 
 - `OracleReward` reads the stateful-environment task-success oracle (the database
-  end state) — a dense reward (fraction of checks satisfied) or a bare pass/fail.
+  end state), a dense reward (fraction of checks satisfied) or a bare pass/fail.
 - `BenchmarkReward` wraps any benchmark adapter, so SWE-bench's test transition,
   τ-bench's database state, GAIA's exact match, or ToolBench's solvable path *is*
   the reward.
@@ -270,7 +270,7 @@ reward = RewardModel([(OracleReward(), 1.0), (JudgeEnsembleReward(panel), 0.5)])
 
 **Credit is assigned to the steps that earned it.** `TrajectoryAdvantage`
 attributes a trajectory's outcome reward back to its steps by Shapley
-counterfactual replay — the same kernel that backs causal regression
+counterfactual replay, the same kernel that backs causal regression
 attribution. Drop a step, re-verify the end state, measure the marginal: the
 cancel a refund depended on carries the larger share, a no-op carries ~0, and the
 credits sum to the outcome value (efficiency).
@@ -290,7 +290,7 @@ for credit in advantage.credit(trajectory):
 update (`A_i = (r_i − mean) / (std + ε)`) over a deterministic policy, behind the
 same discipline prompt optimization uses: a **KL-to-reference clamp** keeps the
 policy inside a trust region, and a **monotonic no-regression gate** serves the
-updated policy only if its expected reward does not regress the reference —
+updated policy only if its expected reward does not regress the reference,
 otherwise it reverts. The served policy is non-regressing in reward by
 construction.
 
@@ -339,7 +339,7 @@ compression_faithfulness(evidence_text, result.text)  # salient units preserved
 ```
 
 It is a drop-in for the compiler's inline compression step, but adoption is
-**faithfulness-gated** — installed only when it shrinks the prompt without
+**faithfulness-gated**, installed only when it shrinks the prompt without
 losing the cited-fact set or regressing quality under eval:
 
 ```python
@@ -372,7 +372,7 @@ report.drifted, report.delta, report.z_score                 # raises drift.dete
 Drift fires a `drift.detected` event and persists the baseline; the CLI
 `vincio eval drift baseline.json current.json` exits non-zero so a scheduled
 check can gate. Because the live scores are trajectory metrics like any
-other, they flow straight into the optimizer's fitness — the
+other, they flow straight into the optimizer's fitness, the
 `AGENTIC_OBJECTIVES` preset keeps a frontier over `goal_accuracy`,
 `tool_call_accuracy`, `step_efficiency`, and `cost`:
 
@@ -386,7 +386,7 @@ result = await pareto_loop(candidates, evaluate_fn, dataset,
 A metric earns the right to *gate* CI only once it has demonstrably agreed
 with people. An `AnnotationQueue` pairs judge scores with human labels and
 reports Cohen's κ; the judge's gating weight is `1.0` only when calibrated κ
-clears the bar — chance-level agreement carries no veto:
+clears the bar, chance-level agreement carries no veto:
 
 ```python
 from vincio.evals import AnnotationQueue
@@ -398,14 +398,14 @@ q.gating_weight(threshold=0.6)      # 0.0 until κ clears the bar, then 1.0
 ```
 
 `GEvalJudge.calibrate(pairs)` returns the same `cohens_kappa`, and
-`vincio eval annotate labels.jsonl` reports it from the CLI — the LLM judge
+`vincio eval annotate labels.jsonl` reports it from the CLI, the LLM judge
 only joins the gate after it has earned the trust.
 
 And the judge that gates the optimizer can itself be optimized.
 `app.calibrate_judge(judge, samples)` reflectively proposes alternative
 evaluation procedures, scores each against the labelled samples, and installs
-the one that best agrees with people — only when its κ strictly beats the
-incumbent — leaving the judge calibrated for CI gating:
+the one that best agrees with people, only when its κ strictly beats the
+incumbent, leaving the judge calibrated for CI gating:
 
 ```python
 result = app.calibrate_judge(geval, labelled_samples)  # (case, output, human_score)
@@ -430,14 +430,14 @@ result.gating_weight_before, result.gating_weight_after
 | Promoted student | runtime `ModelCascade` (cheap→strong) + `distill.promoted` event |
 | Adopted compressor | `ContextCompiler.compressor` + `compression.adopted` event (only when faithfulness-gated) |
 
-The VincioBench `loop` family measures all of it offline — promotion fires
+The VincioBench `loop` family measures all of it offline, promotion fires
 and is deterministic, gates block regressions, the registry is tagged and
 eval-linked, grounded facts are written (and ungrounded ones never are),
 retrieval tuning is gated, the frontier excludes dominated points, learned
 budgets promote, guided search respects its budget, the reflective optimizer
 beats the baseline within its rollout budget, distillation exports only grounded
 examples and gates the student on quality, and learned compression preserves the
-cited-fact set under a faithfulness gate — under CI-gated budgets.
+cited-fact set under a faithfulness gate, under CI-gated budgets.
 
 ## Closing the loop online
 
@@ -457,7 +457,7 @@ ctl.set_baseline("groundedness", baseline_scores).attach()
 The controller subscribes to `eval.online` and `drift.detected`, streams online
 scores into a per-metric CUSUM changepoint detector (`evals/drift.py` also adds
 KS / PSI / MMD distributional drift), and turns a *sustained* signal into exactly
-one **gated** action — a targeted re-eval to confirm, a fresh `ImprovementLoop`
+one **gated** action, a targeted re-eval to confirm, a fresh `ImprovementLoop`
 run, or a rollback to the last known-good prompt registry version. Every trigger
 is debounced (per-metric cooldown) and bounded (a global eval budget); every
 decision lands on the audit chain and an `improvement.decision` event; controller
@@ -465,12 +465,12 @@ state persists so it is restart-safe.
 
 Three more organs make the closed loop safer and more informed:
 
-- **Real reflector (GEPA proper)** — `app.reflective_optimize(..., reflector="llm")`
+- **Real reflector (GEPA proper)**: `app.reflective_optimize(..., reflector="llm")`
   reads the actual failing cases, clusters them into failure modes, and proposes
   the targeted edit, falling back to the deterministic heuristic offline.
-- **Experiment proposer** — `ExperimentProposer(app, ...)` ranks the weakest
+- **Experiment proposer**: `ExperimentProposer(app, ...)` ranks the weakest
   subsystem from online eval + drift and schedules the highest-ROI experiment.
-- **Held-out growing golden suite** — `GoldenRegressionSuite` records each
+- **Held-out growing golden suite**: `GoldenRegressionSuite` records each
   promotion's fixed cases and gates every later promotion
   (`ImprovementLoop(golden_suite=...)`), so an auto-promotion can never silently
   undo a prior fix.
@@ -482,8 +482,8 @@ rollback, the non-regression guard, and restart-safe online state; the
 ## The unified self-improvement contract
 
 The organs above compose under one declarative, governed contract. A
-`SelfImprovementPolicy` is the spec — *what to watch, when to propose, how to
-meta-optimize, whether to canary, how much to spend* — and
+`SelfImprovementPolicy` is the spec, *what to watch, when to propose, how to
+meta-optimize, whether to canary, how much to spend*, and
 `app.self_improvement(policy, dataset=...)` returns a
 `SelfImprovementController` that drives the existing loop, proposer, controller,
 and canary as **one streaming engine**:
@@ -505,11 +505,11 @@ async for event in controller.astream():
 
 Two parts are first-class here rather than ad-hoc knobs:
 
-- **Meta-optimization** — `successive_halving` screens the `strategies × budgets`
+- **Meta-optimization**: `successive_halving` screens the `strategies × budgets`
   grid on a minibatch and keeps the best config; `learn_fitness_weights` adapts
   the fitness weights toward the metric with the most headroom, so the system
   also decides *how* to tune itself.
-- **Active learning** — `select_for_labeling` queues the most-uncertain cases
+- **Active learning**: `select_for_labeling` queues the most-uncertain cases
   (scores nearest the decision midpoint) for human labels, the acquisition step
   before the next round.
 
@@ -522,7 +522,7 @@ result = app.deploy(candidate_spec, dataset=golden)  # offline canary-gated
 # Promotes live (registry push + tag + apply + audit) only on a no-regression
 # verdict; a failing gate refuses and rolls back to the last known-good version.
 
-# Or qualify on *live traffic* — the prompt-layer analog of the CanaryRouter:
+# Or qualify on *live traffic*, the prompt-layer analog of the CanaryRouter:
 result = app.deploy(
     candidate_spec,
     live_inputs=sampled_live_runs,        # a sampled stream of real inputs
@@ -530,7 +530,7 @@ result = app.deploy(
     canary=CanarySpec(percent=10.0, min_samples=20),
 )
 # Ramps ~10% of the runs onto the candidate, scores each arm, and once enough
-# candidate observations land promotes on no regression — or freezes and
+# candidate observations land promotes on no regression, or freezes and
 # auto-rolls-back. The reusable LiveCanary (aobserve / verdict / afinalize) drives
 # a true live stream one run at a time; each observation still serves a real answer.
 ```

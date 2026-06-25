@@ -34,7 +34,7 @@ app.tool_registry.register(
 ## Execution lifecycle
 
 validate_arguments → check_permissions (RBAC scopes, ABAC rules, tenant
-boundary, sensitivity scan — credentials in arguments are always denied) →
+boundary, sensitivity scan, credentials in arguments are always denied) →
 approval gate → execute (timeout enforced) → validate_output →
 sanitize_output (secrets redacted; injection-looking text wrapped as
 untrusted) → trace → cache.
@@ -42,7 +42,7 @@ untrusted) → trace → cache.
 ## Write-action guardrails
 
 Write tools require explicit permission and (when `approval_required`)
-a granted approval; every write gets an **idempotency key** — replays return
+a granted approval; every write gets an **idempotency key**, replays return
 the original result instead of double-executing:
 
 ```python

@@ -3,7 +3,7 @@
 [Agent Skills](https://www.anthropic.com/news/skills) package procedural
 knowledge as a `SKILL.md` file (YAML frontmatter + Markdown body, optional
 bundled scripts), donated to the Agentic AI Foundation. Vincio loads them as
-**budgeted, scored, cited** context — not a privileged side channel — with
+**budgeted, scored, cited** context, not a privileged side channel, with
 **progressive disclosure**.
 
 ## SKILL.md format
@@ -49,11 +49,11 @@ skills = load_skills("skills/")                # every subdir with a SKILL.md
 
 Skills cost context only when used:
 
-1. **Level 1 — always disclosed.** A one-line index (name + description) per
+1. **Level 1, always disclosed.** A one-line index (name + description) per
    skill, so the model knows which skills exist. Cheap; always in budget.
-2. **Level 2 — disclosed on relevance.** A skill's full instructions enter the
+2. **Level 2, disclosed on relevance.** A skill's full instructions enter the
    packet *only* when the task matches it above a threshold. The context
-   compiler then scores, budgets, and cites the body like any other evidence —
+   compiler then scores, budgets, and cites the body like any other evidence,
    so an unused skill costs only its index line.
 
 ```python
@@ -69,7 +69,7 @@ shapes an answer is traceable.
 
 With `register_scripts=True`, each bundled script becomes a tool that runs in
 the resource-limited subprocess sandbox (timeout, output caps, scrubbed env,
-POSIX `setrlimit`) through the permissioned, audited tool runtime — namespaced
+POSIX `setrlimit`) through the permissioned, audited tool runtime, namespaced
 `"<skill>.<script>"`, `side_effects="external"`. Pass `permissions=[...]` to
 `register_skill_scripts` to additionally gate them behind an RBAC scope.
 

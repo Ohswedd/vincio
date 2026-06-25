@@ -137,7 +137,7 @@ class UIElement(BaseModel):
 
 
 class ScreenState(BaseModel):
-    """A perceived snapshot of the UI — the *observe* half of the loop.
+    """A perceived snapshot of the UI, the *observe* half of the loop.
 
     Carries the addressable :class:`UIElement`\\ s, a public state projection the
     declarative verifier reads, and a content ``digest`` of the salient state used
@@ -374,7 +374,7 @@ class ScreenSpec(BaseModel):
 
 
 class ScreenApp(BaseModel):
-    """A deterministic, in-process app a :class:`MockScreen` drives — the offline,
+    """A deterministic, in-process app a :class:`MockScreen` drives, the offline,
     WebArena / OSWorld-shaped harness: named screens, form fields, click-driven
     transitions, and effects that set durable flags."""
 
@@ -384,7 +384,7 @@ class ScreenApp(BaseModel):
 
 
 class MockScreen(ScreenBackend):
-    """Deterministic in-process screen over a :class:`ScreenApp` — no browser, no
+    """Deterministic in-process screen over a :class:`ScreenApp`, no browser, no
     network. Tracks the current screen, typed field values, and durable flags, and
     re-derives a stable :class:`ScreenState` from them, so a run is reproducible and
     CI-golden. Supports exact snapshot restore as an undo fallback."""
@@ -879,7 +879,7 @@ class ComputerEnvironment:
 
 
 def make_web_checkout() -> tuple[ScreenApp, ComputerTask]:
-    """A deterministic, in-process checkout app and its goal — the offline,
+    """A deterministic, in-process checkout app and its goal, the offline,
     WebArena / OSWorld-shaped reference scenario.
 
     The agent must navigate a two-screen store, set the shipping address, and place

@@ -356,7 +356,7 @@ class LocalParty:
 
 
 class NegotiationResult(BaseModel):
-    """The outcome of a bounded negotiation — a deal, or a partial no-deal.
+    """The outcome of a bounded negotiation, a deal, or a partial no-deal.
 
     ``status`` is ``"agreement"`` when a contract was reached, ``"no_agreement"``
     when the round/deadline budget ran out, or ``"walk_away"`` when a party left.

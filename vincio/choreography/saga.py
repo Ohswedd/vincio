@@ -64,7 +64,7 @@ SagaStatus = Literal[
 
 
 class StepRequest(BaseModel):
-    """The typed envelope dispatched to a participant for one step — the handoff.
+    """The typed envelope dispatched to a participant for one step, the handoff.
 
     The only artifact that crosses a trust boundary. ``kind`` distinguishes a
     forward step from its compensation; ``payload`` is the step's input (built from
@@ -441,7 +441,7 @@ class SagaJournal(BaseModel):
 
 
 class SagaResult(BaseModel):
-    """The outcome of a cross-org saga run — completion, a clean unwind, or a pause.
+    """The outcome of a cross-org saga run, completion, a clean unwind, or a pause.
 
     ``status`` is ``"completed"`` when every forward step ran, ``"compensated"``
     when a failure unwound the completed steps cleanly, ``"failed"`` when a

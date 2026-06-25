@@ -3,24 +3,24 @@
 `ContextApp.run` executes one stateless context-engineering pipeline. A chat
 product needs more around it: turns threaded into a session, state carried
 forward, write tools gated behind an approval, and a memory of what the user
-said. `app.assistant(...)` is that loop, written once — a thin layer in
+said. `app.assistant(...)` is that loop, written once, a thin layer in
 [`vincio.assistant`](../reference/api.md).
 
 Every turn is still a full `ContextApp` run, so retrieval, grounding, validation,
 rails, budgets, tracing, and the audit chain apply unchanged. The Assistant adds
 four things and nothing else:
 
-1. **Session threading** — every turn runs under one stable `session_id` (plus
+1. **Session threading**: every turn runs under one stable `session_id` (plus
    optional `user_id` / `tenant_id`), so traces, cost, and memory recall are
    scoped to the conversation.
-2. **Multi-turn state via memory write-back** — each turn is written back to
+2. **Multi-turn state via memory write-back**: each turn is written back to
    session-scoped memory, so the next turn's pipeline recalls it as scored,
    budgeted context. Conversational state flows through the context compiler, not
    a side channel.
-3. **Tool approvals** — an approval surface for write tools. Approval-required
+3. **Tool approvals**: an approval surface for write tools. Approval-required
    tools are *denied by default* (a chat reply can never silently run a write
    tool) and surfaced for the caller to approve.
-4. **A recorded transcript** — the running thread, available to the caller and as
+4. **A recorded transcript**: the running thread, available to the caller and as
    a [`Simulator`](agentic-eval.md) target for multi-turn evaluation.
 
 ## Quickstart
@@ -43,7 +43,7 @@ print(chat.send("And change my email too?").text)   # remembers the thread
 
 ## Tool approvals
 
-A write tool surfaces as a *pending approval* rather than running — a reply never
+A write tool surfaces as a *pending approval* rather than running, a reply never
 silently triggers a side effect:
 
 ```python
@@ -80,8 +80,8 @@ recalled across conversations.
 
 ## Multi-turn evaluation
 
-The Assistant satisfies the `Simulator`'s agent contract — give it the running
-thread, get back the next reply — so a persona-driven simulator can drive a whole
+The Assistant satisfies the `Simulator`'s agent contract, give it the running
+thread, get back the next reply, so a persona-driven simulator can drive a whole
 conversation offline and convert it to a scorable `EvalCase`:
 
 ```python

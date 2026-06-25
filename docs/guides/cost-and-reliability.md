@@ -3,7 +3,7 @@
 Vincio runs the FinOps and resilience layer in-process: batch at half cost,
 compose retries / failover / circuit-breaking, pool keys across regions,
 cascade cheap→strong by confidence, attribute and budget every dollar, cache
-provider prefixes, and index incrementally or sharded — all on the same trace,
+provider prefixes, and index incrementally or sharded, all on the same trace,
 audit log, and policy engine as the rest of the run. The examples run offline.
 
 ## Batch at ~50% cost
@@ -25,7 +25,7 @@ for r in results:
     print(r.output)
 ```
 
-The same app runs sync (`app.run`) or batch (`app.batch`) — switch by calling
+The same app runs sync (`app.run`) or batch (`app.batch`), switch by calling
 the other method, no rewrite. Use `app.abatch(...)` for the async form.
 
 For explicit reconcile-by-id and partial-failure handling, drop to
@@ -53,7 +53,7 @@ for doc in docs:
         retry_later(doc.id, res.error)          # partial failures don't abort the job
 ```
 
-A `BatchResult` carries `custom_id`, `response`, `error`, and `.ok` — one
+A `BatchResult` carries `custom_id`, `response`, `error`, and `.ok`, one
 failed request never sinks the rest. Switch the backend to ship to a real
 provider's batch API without touching the request code:
 
@@ -72,9 +72,9 @@ From the shell: `vincio batch app.py --input X --input Y [--input-file lines.txt
 
 Three failure modes, three tools, composed inner→outer:
 
-- **Transient** (a timeout, a 503) — retry it: `RetryingProvider`.
-- **Persistent** (one key/region is down) — fail over: `HealthAwareFailover`.
-- **Systemic** (a provider is melting down) — stop hammering it: `CircuitBreaker`.
+- **Transient** (a timeout, a 503), retry it: `RetryingProvider`.
+- **Persistent** (one key/region is down), fail over: `HealthAwareFailover`.
+- **Systemic** (a provider is melting down), stop hammering it: `CircuitBreaker`.
 
 Wrap retries on the inside and the breaker on the outside, so the breaker sees
 the outcome *after* retries and trips on sustained failure rather than a single
@@ -135,7 +135,7 @@ any other. For standalone limiting, `RateLimiter(rpm=..., tpm=...)` exposes
 ## Runtime model cascades
 
 `app.use_cascade([...])` starts each run on the cheap model and only escalates
-to a stronger one when confidence is low — paying for the big model only on the
+to a stronger one when confidence is low, paying for the big model only on the
 hard inputs:
 
 ```python
@@ -182,8 +182,8 @@ for row in report.rows:
     print(row.key, row.cost_usd, row.calls, row.cached_input_tokens)
 ```
 
-Set enforced budgets with an automatic action on breach — cap (deny), degrade
-to a cheaper model, or queue the work to batch — and an anomaly factor that
+Set enforced budgets with an automatic action on breach, cap (deny), degrade
+to a cheaper model, or queue the work to batch, and an anomaly factor that
 fires `cost.anomaly` when spend spikes:
 
 ```python
@@ -204,7 +204,7 @@ On breach the `BudgetManager` returns a `BudgetDecision`
 `cost.budget_exceeded` fires on the bus. From the shell:
 `vincio cost report --by tenant|feature|user|model|provider|run [--db .vincio/vincio.db] [--json]`.
 
-Attribution and budgets cover the whole runtime — `run` / `arun` / `astream` /
+Attribution and budgets cover the whole runtime, `run` / `arun` / `astream` /
 `batch` (including tool loops and self-correction) **and** the `app.agent()` /
 `app.crew()` handles. Pass `tenant_id` / `user_id` / `feature` to a handle's
 `run`/`arun` and every agent or crew (manager + member) model call is attributed
@@ -215,7 +215,7 @@ app.agent(tools=[...]).run("research the refund policy", tenant_id="acme", featu
 app.crew(members=[...]).run("draft the report", tenant_id="acme", feature="report")
 ```
 
-A response-cache hit costs nothing — it is billed `$0` and recorded as a free
+A response-cache hit costs nothing, it is billed `$0` and recorded as a free
 event, so `cost_report` reflects real spend, not what an uncached run would have
 cost.
 
@@ -223,7 +223,7 @@ cost.
 
 The cost report makes a run's dollar spend an auditable number; the same surface
 also reports a run's **energy** (watt-hours) and estimated **carbon** (grams
-CO₂e) — the disclosure sustainability-reporting regimes increasingly require. It
+CO₂e), the disclosure sustainability-reporting regimes increasingly require. It
 is **opt-in** and additive: until you enable it, `result.energy_wh` and
 `result.co2e_grams` stay `0.0`.
 
@@ -236,9 +236,9 @@ print(result.energy_wh, result.co2e_grams)  # this run's footprint
 app.energy_report(by="model").print_summary()
 ```
 
-The estimate is **mechanical and offline** — no external service. Each run accrues
+The estimate is **mechanical and offline**, no external service. Each run accrues
 energy from its own token accounting against a per-model intensity (watt-hours per
-million tokens, seeded from the `ModelRegistry` by tier — decode dominates prefill,
+million tokens, seeded from the `ModelRegistry` by tier, decode dominates prefill,
 a stronger tier draws more), scaled by a datacenter power-overhead factor (`pue`);
 carbon is that energy at a per-region grid factor (g CO₂e/kWh) from a built-in
 table. `region=` pins the deployment region (an operator knows where their
@@ -265,7 +265,7 @@ app.set_energy_budget(limit_wh=1000.0, period="hour")   # an energy ceiling, glo
 ```
 
 When a scope's accrued energy or carbon over the period reaches the ceiling, the
-run is **denied** — an `energy_budget` decision on the audit chain and an
+run is **denied**, an `energy_budget` decision on the audit chain and an
 `energy.budget_exceeded` event on the bus, exactly parallel to `cost_budget`. Both
 the per-run estimate and every refusal land on the hash-chained, verifiable audit
 log, so the sustainability figure an auditor sees is a number, not a claim.
@@ -354,8 +354,8 @@ distinctly from a transient outage. Unknown models are never blocked; pass
 `guard_capabilities=False` to restore the previous attempt-everything behavior.
 
 When a [residency policy](governance.md) is configured, every model a run can
-reach — the router's candidates, a cascade's rungs, a budget-degrade target, and
-a shadow/canary candidate — is residency-checked at the run boundary, so a
+reach, the router's candidates, a cascade's rungs, a budget-degrade target, and
+a shadow/canary candidate, is residency-checked at the run boundary, so a
 rotation can never egress to a disallowed region.
 
 ### The swap gate
@@ -411,8 +411,8 @@ Both implement `ModelProvider`, so they nest inside `CircuitBreaker` / `KeyPool`
 ### Lifecycle watcher
 
 `app.watch_lifecycle()` reads the registry's deprecation/retirement dates and
-emits early sunset warnings, then proposes a migration — to a model's declared
-successor or a cheaper, at-least-as-capable Pareto-dominating model — that can
+emits early sunset warnings, then proposes a migration, to a model's declared
+successor or a cheaper, at-least-as-capable Pareto-dominating model, that can
 rewrite a `ModelCascade`, `RoutingPolicy`, or `config.model` in place:
 
 ```python
@@ -426,14 +426,14 @@ CLI: `vincio providers lifecycle --app app.py` and `vincio providers list`.
 ### Live discovery & Google/Vertex batch parity
 
 `vincio providers discover <provider>` reconciles a provider's live model list
-into the registry (offline-safe — the shipped catalog stands when no endpoint is
+into the registry (offline-safe, the shipped catalog stands when no endpoint is
 available). A `GoogleBatchBackend` completes half-cost batch parity with
 OpenAI/Anthropic.
 
 ## Edge over gateways
 
 LLM gateways (LiteLLM, Bifrost, Portkey) give you failover, circuit breaking,
-cascades, cost attribution, budgets, and batch — behind a separate proxy hop, and
+cascades, cost attribution, budgets, and batch, behind a separate proxy hop, and
 they route by health, not by **capability**. Vincio gives you the same in-process
 (no extra network hop, governed by your own policy engine, on **one trace**), and
 adds what a proxy structurally cannot: it refuses a capability-mismatched

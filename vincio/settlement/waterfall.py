@@ -108,7 +108,7 @@ def _rate(recovery: float, claim: float) -> float:
 
 
 class SeniorityTranche(BaseModel):
-    """One priority rank of a :class:`SenioritySchedule` — the creditors paid at that level.
+    """One priority rank of a :class:`SenioritySchedule`, the creditors paid at that level.
 
     ``rank`` is the priority (``0`` most senior; capital reaches a tranche only once every
     lower-ranked one is paid in full); ``creditors`` are the obligations sharing that rank

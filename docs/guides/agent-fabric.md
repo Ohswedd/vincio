@@ -1,6 +1,6 @@
 # Guide: the governed agent fabric (registry & discovery)
 
-Point-to-point delegation — one agent calling another it already knows — does not
+Point-to-point delegation, one agent calling another it already knows, does not
 scale to an organization. As soon as agents and tool servers proliferate, you need
 to **discover** them by capability and **govern** which ones are reachable. Vincio's
 `vincio.registry` turns the existing A2A Agent Card into a *discoverable, governed
@@ -12,8 +12,8 @@ This is additive; it changes nothing about how a single agent runs.
 
 ## The directory
 
-An `AgentDirectory` indexes protocol-neutral `AgentRecord`s — normalized from A2A
-Agent Cards, ACP manifests, or MCP server records — and answers capability queries.
+An `AgentDirectory` indexes protocol-neutral `AgentRecord`s, normalized from A2A
+Agent Cards, ACP manifests, or MCP server records, and answers capability queries.
 
 ```python
 from vincio.a2a.protocol import AgentCard, AgentSkill
@@ -51,7 +51,7 @@ directory = app.agent_directory(allow=["researcher"], deny=["evil*"])
 ## Governed resolution
 
 `resolve(name)` passes the name through the `AllowListGate` and records the decision
-on the audit chain — whether it allows or denies. An unlisted (or explicitly denied)
+on the audit chain, whether it allows or denies. An unlisted (or explicitly denied)
 agent is not reachable.
 
 ```python
@@ -93,7 +93,7 @@ await MCPRegistryClient(base_url="https://registry.modelcontextprotocol.io")\
 ```
 
 Both clients accept an in-process `catalog=` for fully offline use (tests, air-gapped
-deployments) and an HTTP `base_url=` for live discovery — the same in-process/HTTP
+deployments) and an HTTP `base_url=` for live discovery, the same in-process/HTTP
 duality the MCP and A2A clients already use.
 
 ## Why this is governed by construction
@@ -103,7 +103,7 @@ duality the MCP and A2A clients already use.
 - **Every resolution is on the audit chain.** `audit.query(action="agent_resolve")`
   returns the allow/deny decisions, so the fabric is accountable end to end.
 - **It is yours.** The directory is a governed catalog you run on your own
-  infrastructure — never a hosted control plane.
+  infrastructure, never a hosted control plane.
 
 See the [API reference](../reference/api.md) (`vincio.registry`) and the runnable
 [`37_benchmarks_and_agent_fabric.py`](../../examples/07_evaluation_observability.py) example.

@@ -8,7 +8,7 @@ exactly how things get removed.
 
 The public surface is:
 
-- Every symbol re-exported from the top-level `vincio` package — i.e.
+- Every symbol re-exported from the top-level `vincio` package, i.e.
   `vincio.__all__`, also returned by `vincio.stability.public_api()`.
 - The documented entry points of each subpackage listed in the
   [API reference](api.md).
@@ -31,7 +31,7 @@ Within a major version (`1.x.y`):
 |---|---|---|
 | **PATCH** | `1.0.0 → 1.0.1` | Bug fixes only. No public behavior changes. |
 | **MINOR** | `1.0.0 → 1.1.0` | Additive only: new symbols, new **optional** parameters with defaults. Existing code keeps working. |
-| **MAJOR** | `1.x → 2.0.0` | May remove or change public API — but only after the deprecation contract below. |
+| **MAJOR** | `1.x → 2.0.0` | May remove or change public API, but only after the deprecation contract below. |
 
 `vincio.API_VERSION` (`"4.0"`) is the contract version SemVer is applied
 against; it changes only on a major bump. **4.0 is the long-term-support major:**
@@ -64,7 +64,7 @@ stability_of(old_api)
 ```
 
 Run `vincio doctor` to scan a project for any deprecated public API it still
-uses — each finding names the symbol, its replacement, and its removal version,
+uses, each finding names the symbol, its replacement, and its removal version,
 read straight from the `stability_of` metadata above (the doctor also flags a
 `vincio.yaml` that is behind the current schema). See the
 [CLI reference](cli.md).
@@ -94,7 +94,7 @@ old_name = deprecated_alias(new_name, old_name="old_name",
 ```
 
 When a major bump renames public symbols, `vincio migrate <major>` rewrites a
-project's source to the new names — the code-surface analogue of
+project's source to the new names, the code-surface analogue of
 `vincio config migrate`. It is a **static** codemod (it parses with `ast`, never
 imports or runs your code) driven by a declarative, per-major rename table:
 
@@ -104,19 +104,19 @@ vincio migrate 4.0 --write    # apply the rewrites in place
 vincio migrate 4.0 --check    # CI gate: exit non-zero if a migration is available
 ```
 
-The `4.0` table is **empty** — the 3.x line reached no removal runway, so a clean
+The `4.0` table is **empty**, the 3.x line reached no removal runway, so a clean
 3.x → 4.0 upgrade needs no source changes (the codemod truthfully reports "no
 source changes required"). See [MIGRATION.md](https://github.com/Ohswedd/vincio/blob/main/MIGRATION.md).
 
 ## Experimental APIs
 
 Symbols marked `@experimental` are public and usable but carry **no stability
-guarantee** — they may change or be removed in any release, including a minor.
+guarantee**, they may change or be removed in any release, including a minor.
 They emit a one-time `VincioExperimentalWarning` per process so their status is
 visible without being noisy. Use them, but pin your Vincio version if you
 depend on their exact shape.
 
-The public API is currently **stable end to end** — no shipped symbol is marked
+The public API is currently **stable end to end**, no shipped symbol is marked
 `@experimental`. Future, unproven surface will carry the marker and emit the
 warning until its shape settles, at which point it graduates to stable. The
 marker is part of the contract, not a permanent state.
@@ -124,7 +124,7 @@ marker is part of the contract, not a permanent state.
 ## The breaking-window contract
 
 `API_VERSION` (returned by `vincio.stability.API_VERSION`) tracks the frozen
-public-API contract and bumps only on a deliberate breaking window — announced in
+public-API contract and bumps only on a deliberate breaking window, announced in
 advance and shipped through the mechanical deprecation runway above. Nothing
 breaks *outside* such a window: across a minor or patch release, upgrading never
 breaks working code.
@@ -133,7 +133,7 @@ breaks working code.
 
 4.0 was the one announced breaking window, and it **broke nothing**: every release
 from 1.0 → 3.49 was additive on a frozen surface, the deprecation policy above was
-followed mechanically, and no public API ever reached its `removed_in` runway — so
+followed mechanically, and no public API ever reached its `removed_in` runway, so
 the deprecation sweep removed nothing and a project that tracked 3.x cleanly
 upgrades with zero source changes.
 

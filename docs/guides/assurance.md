@@ -1,6 +1,6 @@
 # Continuous assurance cases & production certification
 
-Vincio already *produces* the evidence a production AI system is judged on — eval and
+Vincio already *produces* the evidence a production AI system is judged on, eval and
 regression gates, the governance-invariant verifier, reasoning certificates and
 runtime monitors, identity and delegation provenance, the signed audit chain, C2PA
 media provenance, and SBOM / SLSA build attestations. The `vincio.assurance` module is
@@ -10,7 +10,7 @@ that argument **continuously valid as the system changes**. That is the assuranc
 discipline (GSN / CAE) the safety and regulatory frontier now demands.
 
 Everything here is opt-in, additive, deterministic, and offline. It composes the
-platform's existing verdicts — it does not introduce a new runtime, a hosted prover,
+platform's existing verdicts, it does not introduce a new runtime, a hosted prover,
 or a network dependency. A machine-checkable artifact, never a slide deck.
 
 > **An argument, not an audit log.** An assurance case is a *tree of claims*, each
@@ -22,8 +22,8 @@ or a network dependency. A machine-checkable artifact, never a slide deck.
 ## The argument tree
 
 A `Claim` is a node: a statement, an optional decomposition into sub-claims, and the
-`Evidence` that discharges it. The top `Claim` is the goal — *this app is fit for
-purpose X under context Y* — and each leaf rests on evidence the platform emits.
+`Evidence` that discharges it. The top `Claim` is the goal, *this app is fit for
+purpose X under context Y*, and each leaf rests on evidence the platform emits.
 
 ```python
 from vincio import Claim, ContextApp, Evidence
@@ -80,7 +80,7 @@ which propagates up the tree, and the failing path is reported.
 from datetime import timedelta
 from vincio.core.utils import utcnow
 
-# A proof carries a freshness horizon — a stale proof expires.
+# A proof carries a freshness horizon, a stale proof expires.
 ev = Evidence.from_governance(app.verify_governance(), horizon_days=30,
                               recorded_at=utcnow() - timedelta(days=40))
 assert not ev.holds()                       # intact and supportive, but expired
@@ -94,7 +94,7 @@ report.failing_claims
 
 ## Continuous assurance & the regression gate
 
-The case is not a point-in-time audit — it is **re-checked on every change** (a model
+The case is not a point-in-time audit, it is **re-checked on every change** (a model
 swap, a prompt edit, a dependency bump, a new deployment). The same gate machinery
 that blocks a quality regression now blocks an *assurance* regression:
 `assurance_regression_gate` fails the build when a claim that **held** before is no
@@ -116,7 +116,7 @@ if not passed:
 
 When a production failure falsifies a claim, a signed `Incident` ties the observed
 failure to the sub-claim it broke and the case **learns**: a remediation sub-claim is
-added that *demands fresh evidence* before the case can re-validate — closing the loop
+added that *demands fresh evidence* before the case can re-validate, closing the loop
 from a production incident back into a stronger safety argument.
 
 ```python
@@ -140,7 +140,7 @@ assert case.check().holds              # the argument is whole again, and strong
 
 ## Certification
 
-`app.certify(case)` emits a portable, offline-verifiable `CertificationReport` — the
+`app.certify(case)` emits a portable, offline-verifiable `CertificationReport`, the
 case, its discharged evidence verdict, the residual risks, and the build provenance
 (the `vincio` version and a CycloneDX AI-BOM / SLSA note). A downstream operator or
 auditor checks it **from the bytes**:
@@ -153,7 +153,7 @@ report.to_json()                # hand it to an auditor
 ```
 
 `CertificationReport.verify()` recomputes the report hash, re-verifies the embedded
-case and assurance report, and re-runs the evidence check — so a report claiming
+case and assurance report, and re-runs the evidence check, so a report claiming
 `certified` over a case that does not hold is caught offline, and so is a tamper to
 any underlying piece of evidence.
 

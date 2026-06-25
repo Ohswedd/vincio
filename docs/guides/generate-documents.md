@@ -3,7 +3,7 @@
 Vincio reads a DOCX, a PDF, and a scanned packet, and validates a JSON answer
 and closes the loop so the **deliverable** comes out under the same guarantees
 Vincio applies to text *in*: cited, structurally-validated, provenance-stamped,
-budget-metered, eval-gated artifacts — all on one trace and one audit chain,
+budget-metered, eval-gated artifacts, all on one trace and one audit chain,
 in-process and never a service.
 
 Install the renderer extras you need (Markdown and HTML are dependency-free):
@@ -16,8 +16,8 @@ pip install "vincio[gen-pptx]"   # PPTX (python-pptx)
 
 ## Document generation engine
 
-`DocumentBuilder` turns a **validated result** — an `OutputContract` output, a
-`RunResult`, a structured mapping, or Markdown — into a rendered artifact.
+`DocumentBuilder` turns a **validated result**, an `OutputContract` output, a
+`RunResult`, a structured mapping, or Markdown, into a rendered artifact.
 Because the input already passed validation, the document is grounded by
 construction; the builder lays it out and never invents content.
 
@@ -48,7 +48,7 @@ missing required section or an uncited section is a `DocumentContractError`, nev
 silently padded. Every render records a `document_generate` audit event carrying
 the source evidence ids.
 
-**Template / form filling** keeps the same grounding guarantee for fixed forms —
+**Template / form filling** keeps the same grounding guarantee for fixed forms,
 a `{{slot}}` marked `must_cite` must carry a valid citation:
 
 ```python
@@ -70,7 +70,7 @@ generate_redline(original_text, revised_text, format="docx").save("redline.docx"
 
 `CitedReportBuilder` resolves inline `[E1]`-style markers to numbered
 footnotes/endnotes and a generated bibliography, computes **sentence-level
-citation coverage**, and optionally verifies **per-claim entailment** — replacing
+citation coverage**, and optionally verifies **per-claim entailment**, replacing
 the flat "one valid citation anywhere" check with "every claim cited *and*
 supported".
 
@@ -114,7 +114,7 @@ Real backends: `OpenAIImageProvider` (`gpt-image-1`), `GoogleImageProvider`
 `GoogleSpeechProvider`, `ElevenLabsSpeechProvider`. The `Mock*` providers produce
 real PNG/WAV bytes for offline tests.
 
-`mark_synthetic_content` is now **media-aware** — it accepts raw bytes and binds
+`mark_synthetic_content` is now **media-aware**, it accepts raw bytes and binds
 by SHA-256, marks edits with `compositeWithTrainedAlgorithmicMedia`, and pairs
 with `embed_provenance` (PNG metadata, dependency-free) and
 `write_sidecar_manifest` (a `*.c2pa.json` for any format).
@@ -143,7 +143,7 @@ sections/tables; PDF figure regions become citable evidence via `figure_evidence
 The document engine's first governance application: a `RiskTierClassifier` places
 a configured app into the Act's risk tiers, and `AnnexIVBuilder` / `FRIAGenerator`
 render **Annex IV technical documentation** and the **Article 27 FRIA** as cited
-documents — every field drawn from the live config, the model/system cards, the
+documents, every field drawn from the live config, the model/system cards, the
 compliance matrix, and the eval/red-team evidence Vincio already holds, so they
 are grounded by construction and regenerate on every config change.
 
@@ -153,7 +153,7 @@ app.annex_iv(purpose="credit scoring", domains=["creditworthiness"]).save("annex
 app.fria(purpose="credit scoring", affected_groups=["Loan applicants"]).save("fria.md")
 ```
 
-The classification is **advisory** — the operator makes the final call. ISO/IEC
+The classification is **advisory**, the operator makes the final call. ISO/IEC
 42001 controls join the `ComplianceMapper` family; the pack is recorded as a
 `conformity_doc` audit event.
 

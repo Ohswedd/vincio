@@ -43,7 +43,7 @@ retrieval:
 ## Pushing retrieval quality
 
 When hybrid BM25+dense isn't enough, escalate the index mix and the query
-side — see [retrieval concepts](../concepts/retrieval.md) for each technique:
+side, see [retrieval concepts](../concepts/retrieval.md) for each technique:
 
 ```python
 # Fuse BM25 + dense + learned sparse + late interaction in one RRF.

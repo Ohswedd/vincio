@@ -58,7 +58,7 @@ ActionName = Literal[
 
 
 class ControllerDecision(BaseModel):
-    """The record of one controller evaluation — stamped on the audit chain."""
+    """The record of one controller evaluation, stamped on the audit chain."""
 
     trigger: str = "drift"  # drift | online_eval | manual
     metric: str = ""

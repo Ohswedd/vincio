@@ -206,7 +206,7 @@ class CollateralPoolVerification(BaseModel):
 
 
 class CollateralPool(BaseModel):
-    """A counterparty's single posted stake backing many contracts — a margin account.
+    """A counterparty's single posted stake backing many contracts, a margin account.
 
     Produced by :func:`post_collateral_pool` (or
     :meth:`~vincio.core.app.ContextApp.post_collateral_pool`) from a set of contracts and

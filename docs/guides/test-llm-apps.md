@@ -34,8 +34,8 @@ Quality metrics assert `>= threshold`; rate/cost-style metrics
 
 ## Snapshot tests for packets and traces
 
-Snapshots capture the *structure* of a context packet or trace — what was
-included, in what shape — and normalize away volatile fields (ids,
+Snapshots capture the *structure* of a context packet or trace, what was
+included, in what shape, and normalize away volatile fields (ids,
 timestamps, durations, hashes), so they fail when behavior changes, not when
 the clock does:
 
@@ -70,7 +70,7 @@ detectors), so this is a normal CI test, not a flaky model-judged one.
 
 ## Eval gates in CI
 
-For dataset-level checks, keep using the eval runner — same metrics, same
+For dataset-level checks, keep using the eval runner, same metrics, same
 thresholds, non-zero exit on gate failure:
 
 ```bash
@@ -81,7 +81,7 @@ vincio eval run tests/golden/basic.jsonl --app app.py \
 ## Unit-test agents on the trajectory
 
 Output-only eval can't see a run that answers right while taking the wrong
-path. Build a `RunOutput` from a completed run — no re-instrumentation — and
+path. Build a `RunOutput` from a completed run, no re-instrumentation, and
 assert on trajectory metrics: the same `(EvalCase, RunOutput) -> MetricResult`
 objects, just reading the `Trajectory` the run carried:
 
@@ -105,9 +105,9 @@ def test_agent_takes_the_right_path(support_agent):
 ```
 
 `expected_tools` entries are tool names or `{"tool": name, "arguments": {...}}`.
-The seven trajectory metrics — `tool_call_accuracy`, `tool_call_f1`,
+The seven trajectory metrics, `tool_call_accuracy`, `tool_call_f1`,
 `goal_accuracy`, `plan_adherence`, `plan_quality`, `step_efficiency`,
-`topic_adherence` (`TRAJECTORY_METRICS`) — all sit in the `METRICS` registry
+`topic_adherence` (`TRAJECTORY_METRICS`), all sit in the `METRICS` registry
 next to output metrics, return `[0, 1]`, and assert `>= threshold`. A run
 with no trajectory returns a neutral `1.0`, so they compose with output-only
 metrics in one report; `EvalReport.metric_families()` shows the `"output"`
@@ -117,7 +117,7 @@ and `"trajectory"` views side by side.
 
 `Simulator(seed=...)` is a reproducible multi-turn driver: with no
 provider it falls back to a seed-deterministic template, so the **same seed
-yields the same conversation** — usable as a CI golden, not a flaky
+yields the same conversation**, usable as a CI golden, not a flaky
 model-judged one:
 
 ```python

@@ -26,19 +26,19 @@ vincio config migrate [PATH] [--output FILE] [--dry-run] [--check]
 
 vincio doctor [PATH] [--json]
     Scan a project for deprecated-API usage (driven by the same stability_of
-    metadata the library marks its surface with — each finding names the
+    metadata the library marks its surface with, each finding names the
     replacement and removal version) and for a vincio.yaml behind the current
     schema. Exits non-zero if any actionable issue is found.
 
 vincio migrate TARGET [PATH] [--write] [--check] [--json]
     Rewrite a project's source for a major-version upgrade (the code-surface
-    analogue of `config migrate`). A static, ast-based codemod — it never
-    imports or runs your code — driven by a declarative per-major rename table,
+    analogue of `config migrate`). A static, ast-based codemod, it never
+    imports or runs your code, driven by a declarative per-major rename table,
     rewriting only the exact identifier tokens a rename touches. Default is a dry
     run that prints the plan; --write applies the rewrites in place; --check
     exits non-zero if a migration is available (CI gate) without writing; --json
     emits the plan as JSON. TARGET is the major to migrate to (e.g. 4.0). The 4.0
-    table is empty — a clean 3.x → 4.0 upgrade needs no source changes; see
+    table is empty, a clean 3.x → 4.0 upgrade needs no source changes; see
     MIGRATION.md.
 
 vincio packs list
@@ -124,7 +124,7 @@ vincio trace diff TRACE_A TRACE_B [--traces-dir DIR] [--html OUT.html]
 
 vincio trace export TRACE_ID [--session] [--output OUT.html] [--traces-dir DIR]
     Write a self-contained static HTML page for a trace (or, with --session,
-    a whole session) — no server, no account.
+    a whole session), no server, no account.
 
 vincio trace sessions [--traces-dir DIR]
     List sessions with run counts, durations, error rates, scores, feedback.
@@ -248,7 +248,7 @@ vincio providers lifecycle [--app APP.py] [--model ID]... [--as-of YYYY-MM-DD]
     alert.
 
 vincio providers discover PROVIDER [--mark-missing-deprecated] [--json]
-    Reconcile a provider's live model list into the registry (offline-safe —
+    Reconcile a provider's live model list into the registry (offline-safe,
     the shipped catalog stands when no endpoint is reachable).
 
 vincio providers regress --app APP.py --candidate-model Y [--baseline-model X]

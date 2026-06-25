@@ -160,7 +160,7 @@ class ReputationConfig(BaseModel):
 
 
 class MemberReputation(BaseModel):
-    """One member's reputation snapshot — its track record as an auditable number."""
+    """One member's reputation snapshot, its track record as an auditable number."""
 
     member_id: str
     successes: float = 0.0
@@ -197,7 +197,7 @@ class ReputationRow(BaseModel):
 
 
 class ReputationReport(BaseModel):
-    """Per-member reputation roll-up — alongside the cost and privacy reports.
+    """Per-member reputation roll-up, alongside the cost and privacy reports.
 
     Each row is a member's earned reliability score and the aggregation weight it
     currently maps to, with the success / failure tally behind it, so a member's

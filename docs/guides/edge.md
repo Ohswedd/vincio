@@ -1,15 +1,15 @@
 # Edge / WASM in-process runtime
 
-Vincio's promise is "runs in your process." The dependency-free core — the prompt
+Vincio's promise is "runs in your process." The dependency-free core, the prompt
 and context compilers, the vectorized scorer with its pure-Python fallback, the
-deterministic rails, and the offline-first evidence path — has no native
+deterministic rails, and the offline-first evidence path have no native
 dependencies on the default path. `vincio.edge` takes the next step: it packages
 that core for constrained and browser/WASM targets, so the same
 **compile → score → rail → pack** pipeline runs at the edge and in the browser,
 not only on a server.
 
-It is additive and standalone. `EdgeRuntime` holds no provider, store, or tracer
-— it is the offline context-engineering core behind a thin in-process boundary,
+It is additive and standalone. `EdgeRuntime` holds no provider, store, or tracer:
+it is the offline context-engineering core behind a thin in-process boundary,
 bounded by an `EdgeProfile`. The server path is unchanged and remains the default.
 
 ## The runtime
@@ -59,7 +59,7 @@ does.
 An `EdgeProfile` is the constrained-target analogue of the server's per-app
 resident-memory budget: a declarative cap on the compiled packet's resident
 footprint, the input-token window, the evidence count, and a latency budget. It
-lowers directly to the `ContextCompilerOptions` the *same* compiler reads — a
+lowers directly to the `ContextCompilerOptions` the *same* compiler reads, a
 profile, not a fork.
 
 ```python
@@ -71,7 +71,7 @@ EdgeProfile.server_like()   # loose, for parity testing against an unconstrained
 The footprint is held **by construction**: the compiler slims the packet (evidence
 text is referenced by hash, not duplicated) and evicts the lowest-utility evidence
 until the estimate fits, exactly as the server's resident ceiling does. As the
-candidate corpus grows 10×, the resident footprint stays under the cap — held by an
+candidate corpus grows 10×, the resident footprint stays under the cap, held by an
 edge-scaling SLO. `strict=True` raises `EdgeError` instead of reporting
 `within_profile=False` when a packet cannot be held inside the bounds.
 
@@ -84,7 +84,7 @@ assert big.resident_bytes <= runtime.profile.max_resident_bytes   # always
 
 The deterministic rails run unchanged at the edge. Input rails screen the task;
 output rails screen the *rendered context*, so a secret or PII that leaked from a
-retrieved document into the assembled prompt is refused before it is emitted —
+retrieved document into the assembled prompt is refused before it is emitted,
 the edge runtime won't ship a context it would refuse on the server.
 
 ```python
@@ -94,14 +94,14 @@ guarded = EdgeRuntime(rails=[
     Rail(name="no_secrets", kind="safety", detectors=["secrets", "pii"], direction="output"),
 ])
 result = guarded.run(EdgeRequest(task="print the config", evidence=[...]))
-result.allowed            # False — a leaked secret was caught
+result.allowed            # False, a leaked secret was caught
 result.rail_check.violations
 ```
 
 ## Parity, not a fork
 
 The edge build is the same library under a build target, exercised by the same
-offline test suite — so a capability never silently diverges between server and
+offline test suite, so a capability never silently diverges between server and
 edge. Two checks make that mechanical:
 
 - **Byte-identical packets.** `verify_edge_parity()` compiles the same inputs
@@ -113,22 +113,22 @@ edge. Two checks make that mechanical:
 
 - **A WASM-buildable core.** `edge_manifest()` statically scans every module on
   the compile/score/rail/pack path and certifies that none imports a native or
-  optional dependency unconditionally — only the stdlib, `pydantic`, `httpx`,
+  optional dependency unconditionally, only the stdlib, `pydantic`, `httpx`,
   and other `vincio` modules. (NumPy is used only behind a guarded pure-Python
   fallback, so the pure-Python path is what ships to the edge.)
 
 ```python
 from vincio.edge import verify_edge_parity, edge_manifest
 
-verify_edge_parity().held     # True — same library, byte-identical packet
-edge_manifest().clean         # True — no native import on the edge path
+verify_edge_parity().held     # True, same library, byte-identical packet
+edge_manifest().clean         # True, no native import on the edge path
 ```
 
 ## Detecting a WASM host
 
 `edge_environment()` reports whether the process is running on a WASM target
 (Pyodide / CPython-on-Emscripten, or a WASI runtime) so a caller can pick a
-profile without guessing. The core runs identically on every host — this only
+profile without guessing. The core runs identically on every host, this only
 helps you choose a profile and know whether thread- or filesystem-dependent
 extras are available.
 
@@ -146,7 +146,7 @@ is_wasm_runtime()
 The edge runtime is deliberately the offline context-engineering core and
 nothing else. A model call, a provider, a persistent store, retrieval over a
 remote index, and the optional native extras (PyAV video decode, a GGUF model,
-NumPy acceleration) are server-side concerns — the edge path keeps the
+NumPy acceleration) are server-side concerns, the edge path keeps the
 dependency-free default. Bring the edge result back to a server (or call a model
 from the host environment) to generate; the packet and prompt are portable.
 

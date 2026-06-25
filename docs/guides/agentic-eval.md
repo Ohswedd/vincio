@@ -1,7 +1,7 @@
 # Guide: agentic evaluation & continuous quality
 
-Vincio already traces your crews, graphs, and tool loops — and **scores**
-them — over the trajectory, across a multi-turn conversation, and on live traffic —
+Vincio already traces your crews, graphs, and tool loops, and **scores**
+them, over the trajectory, across a multi-turn conversation, and on live traffic,
 reusing the *same* metric objects offline, as runtime guardrails, and as optimizer
 fitness. Everything runs in your process, offline and deterministic by default.
 
@@ -10,8 +10,8 @@ Import the entry points (`app.add_online_evaluator`, `app.experiment`,
 
 ## 1. Trajectory & tool-use metrics
 
-Project a finished agent run onto a `RunOutput` that carries its trajectory —
-no re-instrumentation — and score the seven trajectory metrics. References
+Project a finished agent run onto a `RunOutput` that carries its trajectory,
+no re-instrumentation, and score the seven trajectory metrics. References
 (`expected_tools`, `plan`, `optimal_steps`, `topic`) live on the case rubric.
 `metric_families()` shows output-only vs trajectory side by side: a run can
 answer right while taking the wrong path, and output-only eval can't see that.
@@ -39,8 +39,8 @@ for name in ("goal_accuracy", "tool_call_accuracy", "tool_call_f1",
     print(name, METRICS[name](case, run).value)
 ```
 
-Across a golden dataset, run the eval through the app — each case's trajectory
-comes for free from the run's tool calls — and read both families side by side:
+Across a golden dataset, run the eval through the app, each case's trajectory
+comes for free from the run's tool calls, and read both families side by side:
 
 ```python
 report = app.evaluate(dataset, metrics=[
@@ -57,7 +57,7 @@ they sit alongside output-only metrics without penalizing non-agentic cases.
 ## 2. Multi-turn & the Simulator
 
 `Simulator` drives a synthetic user against your app for a whole thread. With no
-provider it falls back to a **seed-deterministic** template — the same seed yields
+provider it falls back to a **seed-deterministic** template, the same seed yields
 the same conversation, which is what makes simulated sessions usable as CI goldens.
 `to_eval_case` packs the thread into `context["messages"]` for the conversational
 metrics.
@@ -89,7 +89,7 @@ golden = dataset_from_traces(exporter.load_all(), group_by_session=True)
 
 ## 3. Online / continuous eval
 
-Score a sampled fraction of live runs *after* the response is finalized — scheduled
+Score a sampled fraction of live runs *after* the response is finalized, scheduled
 off the hot path with deterministic 1-in-N sampling. Each score is written as a time
 series to the metadata store (kind `eval_results`); nothing is mirrored to any
 external platform. Each call emits an `eval.online` event.
@@ -107,7 +107,7 @@ app.online_evaluators[0].series()                  # the recorded score rows, ol
 
 ## 4. Drift detection
 
-`DriftMonitor` compares a recent window against a baseline — both on raw scores
+`DriftMonitor` compares a recent window against a baseline, both on raw scores
 (mean shift + z-score) and on embedding distributions. On drift it raises a
 `drift.detected` event on the bus and persists baselines (kind `drift_baselines`).
 
@@ -126,7 +126,7 @@ monitor.set_embedding_baseline(golden_vectors)
 monitor.check_embeddings(live_vectors)             # distribution-shift report
 ```
 
-From CI — exits non-zero on drift:
+From CI, exits non-zero on drift:
 
 ```bash
 vincio eval drift baseline.json current.json --threshold 0.1
@@ -194,7 +194,7 @@ app.add_metric_rail("answer_relevance", threshold=0.3, action="warn")  # higher-
 from vincio.evals import metric_guardrail
 guard = metric_guardrail("groundedness", threshold=0.8)
 
-# (b) the same metric as optimizer fitness — trajectory metrics flow into
+# (b) the same metric as optimizer fitness, trajectory metrics flow into
 #     report.metric_values and onto the Pareto frontier
 from vincio.optimize import AGENTIC_OBJECTIVES, pareto_loop   # goal_accuracy,
                                                               # tool_call_accuracy,
@@ -211,7 +211,7 @@ the value exceeds the threshold, higher-is-better when it falls below. Pass
 
 Turn-by-turn trajectory scoring judges *how plausible* each step looks. The agentic
 leaderboards judge something stronger: did the agent **change the world correctly**?
-A `vincio.evals.Environment` makes that measurable — `reset` / `step` / `observe` /
+A `vincio.evals.Environment` makes that measurable, `reset` / `step` / `observe` /
 `verify`, where `verify()` runs a **task-success oracle** over the *end state* and
 the run projects onto the same `Trajectory` the metrics already score.
 
@@ -226,9 +226,9 @@ result = EnvironmentSimulator().run(env, scripted_policy([
 result.success                # the oracle: True iff every end-state check passed
 ```
 
-Nine `BenchmarkAdapter`s score a Vincio agent on the public leaderboards —
+Nine `BenchmarkAdapter`s score a Vincio agent on the public leaderboards,
 **SWE-bench Verified, τ-bench/τ²-bench, GAIA, WebArena, BFCL, AgentBench, ToolBench,
-LiveCodeBench, MMLU-Pro** — each against the benchmark's own *verifiable* scorer
+LiveCodeBench, MMLU-Pro**, each against the benchmark's own *verifiable* scorer
 (AgentBench's per-environment exact/contains/set/numeric match, ToolBench's solvable
 pass-rate over a call path, LiveCodeBench's all-tests-pass, MMLU-Pro's option-letter
 extraction), pinned by a task-set hash, replayable offline:
@@ -239,7 +239,7 @@ from vincio.evals import load_benchmark
 # Offline: replay a recorded output against the real scorer.
 report = await load_benchmark("tau_bench", fixture_path="benchmarks/fixtures/tau_bench.json").replay()
 
-# Live: solve fresh with a real agent — the *identical* scorer grades the output.
+# Live: solve fresh with a real agent, the *identical* scorer grades the output.
 from vincio.evals import GAIAAdapter, gaia_tasks_from_export, make_agent_solver
 tasks = gaia_tasks_from_export(official_gaia_records)         # load the released format
 report = await GAIAAdapter(tasks).run(make_agent_solver(app, mode="text"))
@@ -253,7 +253,7 @@ report.to_eval_report()       # project onto an EvalReport for gates / the optim
 
 And a retrieval-eval harness records a versioned artifact keyed on
 `(embedder, chunker, corpus hash)` and **gates a recall/nDCG regression on the same
-significance test as a model swap** — see the [run evals guide](run-evals.md).
+significance test as a model swap**, see the [run evals guide](run-evals.md).
 
 ## Trustworthy judges, explained gates, cheaper budgets
 
@@ -277,12 +277,12 @@ panel.calibrate(human_pairs)        # fit + record the panel-vs-human Cohen's κ
 panel.gating_weight(threshold=0.6)  # 1.0 only once that κ clears the bar
 ```
 
-When a gate *does* regress, reporting the score drop is not enough — a release
+When a gate *does* regress, reporting the score drop is not enough, a release
 usually changes several things at once. A `CausalAttributor` attributes the drop
 to the component that caused it by **Shapley counterfactual replay**: it
 re-evaluates the dataset under every combination of baseline and candidate
 components, and assigns each its average marginal contribution. The contributions
-sum exactly to the total delta, so the regression is fully accounted for — and
+sum exactly to the total delta, so the regression is fully accounted for, and
 interactions (a drop that only appears when the new prompt meets the new
 retriever) are split fairly rather than double-counted:
 
@@ -304,7 +304,7 @@ report.concentration     # how concentrated the blame is
 ```
 
 Finally, a noisy gate need not sample every case the same number of times. An
-`AdaptiveSampler` spends the eval budget where the variance is — seeding each case,
+`AdaptiveSampler` spends the eval budget where the variance is, seeding each case,
 then allocating each next sample to the case that most reduces the aggregate's
 variance, and **stopping the moment the confidence interval clears the
 threshold**. It reaches the same verdict as the exhaustive run for far fewer
@@ -326,7 +326,7 @@ result.allocations    # where the budget actually went
 
 LangSmith, Ragas, and DeepEval send your traces *out* to a platform to be scored.
 Vincio scores the trajectory **in your process**, in the same model that runs the
-agent at runtime — so the metric that gates a release offline is the identical
+agent at runtime, so the metric that gates a release offline is the identical
 object that guards live generations and that the optimizer maximizes. Offline and
 deterministic by default (mock provider, seed-deterministic simulator and
 environments), with no hosted dependency. See the [evaluation concepts](../concepts/evals.md)

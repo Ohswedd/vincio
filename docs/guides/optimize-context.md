@@ -1,6 +1,6 @@
 # Guide: optimize prompts, context, and routing
 
-Optimization turns eval results into better configurations — always through
+Optimization turns eval results into better configurations, always through
 gates, never silently.
 
 ## Fitness
@@ -43,13 +43,13 @@ result = await ContextOptimizer(evaluate_config_fn).optimize(dataset, space=spac
 ```
 
 `strategy="hill_climb"` or `"anneal"` makes proposals condition on
-subset scores already observed instead of sampling blindly — deterministic
+subset scores already observed instead of sampling blindly, deterministic
 under a seed, bounded by the budget, same gated promotion.
 
 ## The closed loop
 
-`ImprovementLoop` runs the whole cycle — capture traces, curate a dataset,
-evaluate, optimize, and promote the winner into the prompt registry — in
+`ImprovementLoop` runs the whole cycle, capture traces, curate a dataset,
+evaluate, optimize, and promote the winner into the prompt registry, in
 one call; `pareto_loop` keeps a cost/quality frontier instead of one score;
 `RetrievalFeedback` tunes retrieval from eval relevance labels; and
 `BudgetLearner` learns per-task budget allocation from eval outcomes. See
@@ -66,7 +66,7 @@ model = policy.route(difficulty=estimate_difficulty(query), risk="low")
 ```
 
 `RoutingOptimizer` learns the difficulty thresholds offline from per-tier
-eval reports; `EpsilonGreedyBandit`/`UCB1Bandit` support live routing —
+eval reports; `EpsilonGreedyBandit`/`UCB1Bandit` support live routing,
 behind offline gates only.
 
 ## Cache layout tuning

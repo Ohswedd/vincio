@@ -1,7 +1,7 @@
 # Integrations: providers, vector stores, and frameworks
 
 Vincio's breadth sits behind interfaces that already exist, so adding a model
-gateway, embedder, reranker, or vector store changes nothing downstream — the
+gateway, embedder, reranker, or vector store changes nothing downstream, the
 context compiler, budgeting, evals, traces, and security apply unchanged. This
 guide covers those integration adapters; for end-to-end migrations see the
 "coming from" guides linked at the bottom, and for the MCP/A2A/Skills
@@ -41,13 +41,13 @@ provider:
   model: llama-3.3-70b-versatile
 ```
 
-The local/self-hosted path (Ollama, vLLM, llama.cpp, LM Studio) is unchanged —
+The local/self-hosted path (Ollama, vLLM, llama.cpp, LM Studio) is unchanged,
 use the `local`, `ollama`, or `vllm` provider names.
 
 ## Embedders
 
 `build_embedder` returns an embedder for local hashing, a hosted embedding API
-(httpx only — no SDK), or any provider that supports embeddings:
+(httpx only, no SDK), or any provider that supports embeddings:
 
 ```python
 from vincio.retrieval import build_embedder
@@ -60,7 +60,7 @@ mm = build_embedder("voyage-multimodal")              # unified text+image vecto
 ```
 
 `dimensions=N` truncates each output vector to N dims and L2-renormalizes
-(the leading dimensions carry the most signal — `retrieval.embedding_dimensions`
+(the leading dimensions carry the most signal, `retrieval.embedding_dimensions`
 in config); hosted embedders request the shorter vector natively, others wrap
 in `MatryoshkaEmbedder`. All built-in embedders accept an `input_type`
 (`"document"` | `"query"`); `VectorIndex` passes the right one on add/search.
@@ -74,11 +74,11 @@ in `MatryoshkaEmbedder`. All built-in embedders accept an `input_type`
 | `openai` / `google` / `mistral` / preset names | provider `embed` | the provider's extra |
 
 `voyage-context` (model `voyage-context-3`) embeds each chunk with surrounding
-document context — it complements the `contextualize_chunks` LLM-prefix path
+document context, it complements the `contextualize_chunks` LLM-prefix path
 rather than replacing it, with `embed_grouped(documents)` for explicit
-per-document grouping. The multimodal embedders — `voyage-multimodal`
+per-document grouping. The multimodal embedders, `voyage-multimodal`
 (`voyage-multimodal-3`) and `cohere-multimodal` (alias `cohere-v4`, model
-`embed-v4.0`) — share one text+image vector space; pass
+`embed-v4.0`), share one text+image vector space; pass
 `MultimodalInput(text=..., image=ImageRef(path=...|url=...))` to
 `embedder.embed_multimodal([...])`.
 
@@ -103,7 +103,7 @@ retrieval:
 
 Kinds: `heuristic`, `recency`, `authority`, `llm`, `cohere`, `jina`, `voyage`.
 The hosted rerankers (`cohere`/`jina`/`voyage`) ride the core `httpx`
-dependency — no SDK to install.
+dependency, no SDK to install.
 
 ## Vector stores
 
@@ -215,7 +215,7 @@ A `CommunityRegistry` indexes opt-in packs and `SKILL.md` skill bundles as a
 **signed, governed catalog**. Each bundle is content-bound (SHA-256) and may be
 signed (HMAC, or Ed25519 for third-party verification); every resolution passes
 the same allow-list gate the agent fabric uses and is recorded as an audited
-access decision — a tampered or unlisted bundle is denied, not served.
+access decision, a tampered or unlisted bundle is denied, not served.
 
 ```python
 from vincio import CommunityRegistry
@@ -236,7 +236,7 @@ pack = registry.load_pack("support-pro")     # governed + audited + signature-ve
 `app.add_mcp_from_registry(name, registry=...)` composes discovery, governance,
 and connection in one call: an `MCPRegistryClient` finds the server, a governed
 `AgentDirectory` under an allow-list decides reachability (recorded on the audit
-chain), and the server's tools land in the permissioned, sandboxed runtime —
+chain), and the server's tools land in the permissioned, sandboxed runtime,
 see the [MCP guide](mcp.md).
 
 ## Next steps

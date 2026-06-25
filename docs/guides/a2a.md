@@ -4,7 +4,7 @@
 protocol (Google → Linux Foundation): an **Agent Card** at
 `/.well-known/agent.json` plus a JSON-RPC **task lifecycle**
 (`submitted → working → input-required → completed/failed`). Vincio both serves
-A2A and consumes it — and the edge over a raw A2A SDK is that a Vincio crew or
+A2A and consumes it, and the edge over a raw A2A SDK is that a Vincio crew or
 graph stays **bounded, terminating, and traced** across the delegation.
 
 A2A uses only the core `httpx` dependency. Transports are HTTP and an in-process
@@ -28,10 +28,10 @@ server.agent_card()          # the /.well-known/agent.json document
 `serve_a2a(target)` accepts a `Crew`, a compiled `StateGraph`, or `None` (the
 app itself):
 
-- **Crew** — each member becomes an advertised skill; the task runs the bounded
+- **Crew**: each member becomes an advertised skill; the task runs the bounded
   crew (per-member budgets, termination guarantees) and returns its output as an
   artifact.
-- **Graph** — a human-in-the-loop `interrupt()` surfaces as the
+- **Graph**: a human-in-the-loop `interrupt()` surfaces as the
   `input-required` task state; a follow-up `message/send` carrying the same
   `taskId` resumes the checkpointed thread with the caller's answer.
 - Pass `token_validator=` for OAuth2/API-key resource-server validation; the
@@ -55,7 +55,7 @@ print(task.status.state, task.status.message.text)
 ## A remote agent as a local crew delegate
 
 A `RemoteA2AAgent` implements the `AgentExecutor` contract, so another vendor's
-agent can be a member of *your* crew — while your crew keeps its budget,
+agent can be a member of *your* crew, while your crew keeps its budget,
 termination, and tracing guarantees around the call:
 
 ```python

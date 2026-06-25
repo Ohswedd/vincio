@@ -60,7 +60,7 @@ analytics.metric_trend("groundedness")
 ## 6. Score agent trajectories
 
 Output-only metrics can't see that a run answered right while taking the wrong
-path. Project a completed agent run onto a `RunOutput` — no re-instrumentation —
+path. Project a completed agent run onto a `RunOutput`, no re-instrumentation,
 and score the trajectory it actually took:
 
 ```python
@@ -72,7 +72,7 @@ state = app.agent(...).run(...)            # or RunOutput.from_crew_result / .fr
 run = RunOutput.from_agent_state(state)
 METRICS["tool_call_accuracy"](case, run).value
 
-# ...or evaluate a whole golden set through the app — each run carries its
+# ...or evaluate a whole golden set through the app, each run carries its
 # trajectory automatically, so the trajectory metrics score every case:
 report = app.evaluate("golden/agents.jsonl", metrics=[
     "goal_accuracy", "tool_call_accuracy", "plan_adherence", "step_efficiency",
@@ -111,7 +111,7 @@ app.online_evaluators[0].series()   # the rows
 await app.aflush_online()           # drain in-flight scoring (tests/shutdown)
 ```
 
-Scoring is in-process — no traces leave the box — and emits an `eval.online`
+Scoring is in-process, no traces leave the box, and emits an `eval.online`
 event you can subscribe to.
 
 ## 8. Detect drift and calibrate judges
@@ -149,13 +149,13 @@ q.judge_trusted(threshold=0.6)
 
 ## 9. Go further
 
-- **Bootstrap a dataset from your corpus** — `SyntheticGenerator(seed=7).generate(documents, n=50)`
+- **Bootstrap a dataset from your corpus**: `SyntheticGenerator(seed=7).generate(documents, n=50)`
   (difficulty mix, source coverage, provenance), or curate production traces:
   `vincio eval dataset golden.jsonl --min-feedback 0.5`.
-- **Judge with G-Eval** — `GEvalJudge(provider, model=..., criteria="...", samples=3)`;
+- **Judge with G-Eval**: `GEvalJudge(provider, model=..., criteria="...", samples=3)`;
   calibrate against human labels with `judge.calibrate(pairs)`.
-- **Compare variants with significance** — `ExperimentTracker` + `ab_test(report_a, report_b, metric)`
+- **Compare variants with significance**: `ExperimentTracker` + `ab_test(report_a, report_b, metric)`
   (paired/Welch t-test). See the [evaluation concepts](../concepts/evals.md).
-- **Red-team the app** — `RedTeamSuite().run(app)`; gate `attack_success_rate` at 0.0.
-- **Assert in pytest** — `assert_grounded(result)`, `assert_eval(result, metrics={...})`;
+- **Red-team the app**: `RedTeamSuite().run(app)`; gate `attack_success_rate` at 0.0.
+- **Assert in pytest**: `assert_grounded(result)`, `assert_eval(result, metrics={...})`;
   see the [testing guide](test-llm-apps.md).

@@ -62,7 +62,7 @@ class SkillStep(BaseModel):
 
 
 class SkillProvenance(BaseModel):
-    """Where a learned skill came from — the audit trail of its acquisition."""
+    """Where a learned skill came from, the audit trail of its acquisition."""
 
     cycle: str = ""
     objective: str = ""

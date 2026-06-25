@@ -84,7 +84,7 @@ class ReasoningPolicy(BaseModel):
 
 
 class ReasoningDecision(BaseModel):
-    """The record of one reasoning-effort pick — stamped on the trace."""
+    """The record of one reasoning-effort pick, stamped on the trace."""
 
     effort: ReasoningEffort
     thinking_budget_tokens: int

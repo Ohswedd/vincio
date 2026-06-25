@@ -1,6 +1,6 @@
 # Observability
 
-Every run produces a trace — in your process, in the same data model as the
+Every run produces a trace, in your process, in the same data model as the
 runtime. There is no platform to send data to: traces export to JSONL,
 memory, the console, or OpenTelemetry, and the viewer is a terminal renderer
 plus a self-contained static HTML file.
@@ -21,7 +21,7 @@ with tracer.trace(run_id="r1", session_id="sess_1", user_id="u1") as trace:
 ## Sessions and threaded runs
 
 Traces carry `session_id` / `thread_id`; `ContextApp.run(..., session_id=...)`
-threads them automatically. Sessions are a derived view — group any list of
+threads them automatically. Sessions are a derived view; group any list of
 traces, no second store to sync:
 
 ```python
@@ -61,10 +61,10 @@ app.online_evaluators[0].series()   # the score time series
 
 `DriftMonitor` reads those series against a baseline. When live scores or
 embeddings move past threshold it raises a `drift.detected` event on the bus
-and persists the comparison (kind `drift_baselines`) — drift is itself an
+and persists the comparison (kind `drift_baselines`); drift is itself an
 observable signal, in the same store as everything else.
 
-A traced agent run also carries a `Trajectory` — the steps, tool calls, and
+A traced agent run also carries a `Trajectory`, the steps, tool calls, and
 termination it took to get there. Project it onto a `RunOutput` and the run
 becomes scorable without re-instrumentation:
 
@@ -73,7 +73,7 @@ run = RunOutput.from_agent_state(state)   # from app.agent(...).run(...)
 ```
 
 so the trace that recorded *what happened* feeds the metrics that judge
-*how good the path was* — the same scores/feedback narrative, now over the
+*how good the path was*, the same scores/feedback narrative, now over the
 whole trajectory.
 
 ## Traces become datasets
@@ -101,16 +101,16 @@ vincio trace diff <a> <b> --html diff.html   # visual side-by-side diff
 vincio trace sessions                        # session list with aggregates
 ```
 
-The HTML is one file with inline CSS — no server, no account, no external
+The HTML is one file with inline CSS, no server, no account, no external
 assets; mail it, attach it to a PR, or open it from CI artifacts.
 
 ## OpenTelemetry GenAI conventions
 
 `OTelExporter` (extra: `vincio[otel]`) re-emits traces through any OTLP
-backend. Model and tool spans follow the **GenAI semantic conventions** —
+backend. Model and tool spans follow the **GenAI semantic conventions**,
 `chat {model}` / `execute_tool {tool}` span names, `gen_ai.request.model`,
 `gen_ai.usage.input_tokens` / `output_tokens`, `gen_ai.response.finish_reasons`,
-`gen_ai.conversation.id` for sessions — alongside the full `vincio.*`
+`gen_ai.conversation.id` for sessions, alongside the full `vincio.*`
 attribute set, so GenAI-aware backends (Jaeger, Datadog, Grafana, Honeycomb)
 render them natively.
 
@@ -122,7 +122,7 @@ on model spans and aggregate per run (`result.cost_usd`) and per report.
 ## Causal record-replay
 
 A trace tells you *what* a run did; a **recording** lets you re-run it. A run is
-deterministic except at its edges — every place it reads the outside world — so
+deterministic except at its edges, every place it reads the outside world, so
 the recorder captures exactly those: model responses, tool outputs, retrieval
 hits, the capabilities a request was negotiated against, and the clock/seed,
 each keyed to its trace span.
@@ -155,7 +155,7 @@ branch = await Replayer(app).branch(
 
 Each edge is keyed by the same identity the live code computes (a model call by
 its `ModelRequest.hash`, a tool call by its name + arguments), so a changed edge
-is a cache miss — and a miss is a **divergence**, reported with the edge that
+is a cache miss, and a miss is a **divergence**, reported with the edge that
 drifted instead of silently re-executed. In branch mode the unchanged prefix is
 still served from the recording while only the affected suffix re-executes, so a
 fix is validated against the exact failing run. Recordings are content-addressed

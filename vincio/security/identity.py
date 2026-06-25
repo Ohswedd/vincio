@@ -140,7 +140,7 @@ def is_vincio_did(did: str) -> bool:
 
 
 def key_fingerprint(public_key: bytes) -> str:
-    """A short, stable key id (``k<16 hex>``) for a public key — used as ``kid``."""
+    """A short, stable key id (``k<16 hex>``) for a public key, used as ``kid``."""
     return "k" + stable_hash({"pub": public_key.hex()}, length=16)
 
 

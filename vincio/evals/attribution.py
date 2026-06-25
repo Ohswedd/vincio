@@ -279,7 +279,7 @@ async def attribute_regression(
     repeats: int = 1,
 ) -> AttributionReport:
     """Attribute a metric regression to the changed ``factors`` by Shapley
-    counterfactual replay — the convenience entry point behind a failing gate."""
+    counterfactual replay, the convenience entry point behind a failing gate."""
     return await CausalAttributor(
         app, dataset, factors=factors, metric=metric, aggregate=aggregate, repeats=repeats
     ).attribute()
