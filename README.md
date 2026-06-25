@@ -21,7 +21,7 @@
 It takes everything that goes *into* a model (prompts, memory, retrieved evidence, tools, schemas,
 and policies) and compiles it into an optimized, validated, observable **context packet**; then it
 checks, measures, and traces everything that comes *out*. Named for **Leonardo da Vinci**,
-engineering and craft in equal measure.
+it pairs engineering and craft in equal measure.
 
 <p align="center">
   <img src="assets/pipeline.svg" alt="The run pipeline: raw input, normalize, retrieve and rank, compile context, call model, parse and validate, evaluate and guard, trace and cost, learn" width="840">

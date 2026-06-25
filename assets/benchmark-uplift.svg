@@ -69,7 +69,7 @@
     <rect x="453" y="143.64" width="40" height="178.36" rx="3" fill="url(#up_gold)"/>
     <text x="423" y="309" font-size="10" fill="#8A7551" text-anchor="middle">4%</text>
     <text x="473" y="135.5" font-size="15" font-weight="700" fill="#9A721C" text-anchor="middle">98%</text>
-    <text x="448" y="340" font-size="11.5" fill="#5B4A2E" text-anchor="middle">gemini-2.5-flash</text>
+    <text x="448" y="340" font-size="11" fill="#5B4A2E" text-anchor="middle">gemini-2.5-flash-lite</text>
 
     <!-- group 4: llama-3.1-8b (center 598) -->
     <rect x="553" y="318.36" width="40" height="3.64" fill="#B3A079"/>
