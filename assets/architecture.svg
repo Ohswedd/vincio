@@ -1,6 +1,6 @@
-<svg width="860" height="460" viewBox="0 0 860 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="arch_t arch_d">
+<svg width="860" height="500" viewBox="0 0 860 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="arch_t arch_d">
   <title id="arch_t">System architecture</title>
-  <desc id="arch_d">One coherent pipeline from input to output: input engine, context compiler hero with memory, tools, retrieval and prompt sources, model execution, and an output validation bar with a write-back feedback loop to memory.</desc>
+  <desc id="arch_d">One coherent pipeline from input to output: the input engine feeds the context compiler, which is also fed by memory, tools, retrieval, and the prompt compiler; the context compiler feeds provider-neutral model execution; the output is validated, evaluated, secured, governed, traced, costed, audited, and written back to memory. A governance and security layer runs across the whole pipeline: policy and rails, PII redaction, injection defense, RBAC and ABAC, tenant isolation, audit chain, EU AI Act, and residency.</desc>
   <defs>
     <radialGradient id="arch_parch" cx="40%" cy="26%" r="86%">
       <stop offset="0%" stop-color="#FBF4E2"/>
@@ -17,8 +17,8 @@
       <stop offset="100%" stop-color="#9A721C"/>
     </linearGradient>
   </defs>
-  <rect x="1.5" y="1.5" width="857" height="457" rx="16" fill="url(#arch_parch)" stroke="#C49A3A" stroke-width="1.5"/>
-  <rect x="6.5" y="6.5" width="847" height="447" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+  <rect x="1.5" y="1.5" width="857" height="497" rx="16" fill="url(#arch_parch)" stroke="#C49A3A" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="487" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
   <g font-family="Georgia, 'Times New Roman', serif">
     <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">ARCHITECTURE</text>
     <text x="40" y="78" font-size="26" font-weight="700" fill="url(#arch_goldtext)">One coherent pipeline, input to output</text>
@@ -91,6 +91,10 @@
 
     <!-- OUTPUT bar -->
     <rect x="40" y="410" width="780" height="40" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
-    <text x="430" y="435" font-size="12.5" font-weight="700" fill="#3A2E1C" text-anchor="middle">OUTPUT validation &#183; EVALS &#183; SECURITY &#183; TRACE + cost &#183; MEMORY write-back</text>
+    <text x="430" y="435" font-size="12" font-weight="700" fill="#3A2E1C" text-anchor="middle">OUTPUT validation &#183; EVALS &#183; SECURITY &#183; GOVERNANCE &#183; TRACE + cost &#183; AUDIT &#183; MEMORY write-back</text>
+
+    <!-- governance and security layer (cross-cutting) -->
+    <rect x="40" y="462" width="780" height="26" rx="8" fill="#F7ECCF" stroke="#C49A3A" stroke-width="0.8"/>
+    <text x="70" y="478.5" font-size="9.5"><tspan letter-spacing="2" fill="#9A721C" font-weight="700">GOVERNANCE &amp; SECURITY</tspan><tspan fill="#6B5836">&#160;&#160;policy &amp; rails &#183; PII redaction &#183; injection defense &#183; RBAC/ABAC &#183; tenant isolation &#183; audit chain &#183; EU AI Act &#183; residency</tspan></text>
   </g>
 </svg>
