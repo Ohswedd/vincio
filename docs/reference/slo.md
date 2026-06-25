@@ -264,7 +264,7 @@ weighting measurably leans the consensus toward the reliable members; the
 no-regression SLO holds that the discount is bounded (a weight never leaves
 `[floor, 1]`) and reversible (adoption still clears the same gate), so reputation
 changes only which geometry the fleet converges toward when every candidate already
-passes the gate, it is never a way around it.
+passes the gate; it is never a way around it.
 
 ## Differential-privacy memory & training
 

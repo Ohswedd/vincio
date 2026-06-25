@@ -728,7 +728,7 @@ SQLite-backed, indexed trace + cost store with pre-aggregated rollups.
 
 ### `InsolvencyBreach(**data)`
 
-A proven shortfall, the obligations owed exceed the reserves actually held.
+A proven shortfall: the obligations owed exceed the reserves actually held.
 
 ### `InsolvencyResolution(**data)`
 
@@ -1520,7 +1520,7 @@ A typed, addressable element grounded from the screen + accessibility tree.
 
 ### `UnderReservedBreach(**data)`
 
-A proven-reserves shortfall, the pools pledge more than the custodian attests.
+A proven-reserves shortfall: the pools pledge more than the custodian attests.
 
 ### `UnitVerifier()`
 

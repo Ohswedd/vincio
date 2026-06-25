@@ -203,7 +203,7 @@ class BeneficiaryClaim(BaseModel):
 
 
 class UnderReservedBreach(BaseModel):
-    """A proven-reserves shortfall, the pools pledge more than the custodian attests.
+    """A proven-reserves shortfall: the pools pledge more than the custodian attests.
 
     Surfaced only when the held capital is **proven** by a
     :class:`~vincio.settlement.custody.CustodyAttestation` (``custody=``) rather than

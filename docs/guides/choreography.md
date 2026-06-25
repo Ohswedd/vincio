@@ -74,7 +74,7 @@ output):
 ## Compensation unwinds a failure
 
 A forward step **fails** when its participant returns `ok=False`, raises, or
-breaches its step contract (below). A failure is terminal, the engine compensates
+breaches its step contract (below). A failure is terminal: the engine compensates
 the completed steps in reverse order and stops; it never loops. A compensation
 handler receives the forward step's recorded output under `forward_output`, so it
 knows exactly what to undo.
@@ -251,7 +251,7 @@ remote_vendor = RemoteParticipant(client, org_id="vendor")
 result = coordinator_app.choreograph(saga, participants={"vendor": remote_vendor})
 ```
 
-The same saga runs identically against a local or a remote participant, the engine
+The same saga runs identically against a local or a remote participant; the engine
 drives both through the same `perform` / `compensate` protocol.
 
 ## What it is not

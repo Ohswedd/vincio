@@ -21,7 +21,7 @@ incrementally without a hosted dependency.
 
 ## Bring your assets across
 
-Mem0 has no document/tool interop adapters, the migration is the native
+Mem0 has no document/tool interop adapters; the migration is the native
 memory API. Point `remember` / `recall` at the same owner ids you used in
 Mem0:
 

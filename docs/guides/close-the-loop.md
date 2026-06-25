@@ -207,8 +207,8 @@ reproducible in tests and air-gapped runs.
 
 The one lever the rest of the field is missing: turn the runs you already make
 into *cheaper inference*. The faithful, flag-free path is to keep the
-`RunResult`s, they carry the full output and cited evidence, and the runtime
-stamps the input, and export from them:
+`RunResult`s (they carry the full output and cited evidence, and the runtime
+stamps the input) and export from them:
 
 ```python
 results = [app.run(q) for q in prompts]
@@ -372,7 +372,7 @@ report.drifted, report.delta, report.z_score                 # raises drift.dete
 Drift fires a `drift.detected` event and persists the baseline; the CLI
 `vincio eval drift baseline.json current.json` exits non-zero so a scheduled
 check can gate. Because the live scores are trajectory metrics like any
-other, they flow straight into the optimizer's fitness, the
+other, they flow straight into the optimizer's fitness; the
 `AGENTIC_OBJECTIVES` preset keeps a frontier over `goal_accuracy`,
 `tool_call_accuracy`, `step_efficiency`, and `cost`:
 

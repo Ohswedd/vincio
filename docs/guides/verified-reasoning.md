@@ -138,7 +138,7 @@ app.add_tool(charge, side_effects="write", contract=contract)
 `synthesize` brings proof-carrying code into the tool plane: a small, **verified**
 data transform built from a whitelisted, deterministic op set (no `eval`, no I/O). It
 runs on representative examples, checks its declared properties, and binds the
-verdict into the same `Certificate` an answer carries, the properties are proven
+verdict into the same `Certificate` an answer carries; the properties are proven
 before the program is allowed to run, and re-checked on every use.
 
 ```python

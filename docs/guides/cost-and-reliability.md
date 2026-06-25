@@ -215,7 +215,7 @@ app.agent(tools=[...]).run("research the refund policy", tenant_id="acme", featu
 app.crew(members=[...]).run("draft the report", tenant_id="acme", feature="report")
 ```
 
-A response-cache hit costs nothing, it is billed `$0` and recorded as a free
+A response-cache hit costs nothing; it is billed `$0` and recorded as a free
 event, so `cost_report` reflects real spend, not what an uncached run would have
 cost.
 

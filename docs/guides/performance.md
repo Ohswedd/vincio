@@ -141,7 +141,7 @@ only the volatile suffix:
 # (CompilerOptions.use_render_program)
 ```
 
-The output is byte-identical to compiling from scratch, the program is a
+The output is byte-identical to compiling from scratch; the program is a
 hot-path accelerator, not a behaviour change. On a representative spec the warm
 prefix reuse is several times faster than re-rendering it every call;
 `compiler.program_hits` counts the reuses. This is distinct from the

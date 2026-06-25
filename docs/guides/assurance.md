@@ -94,7 +94,7 @@ report.failing_claims
 
 ## Continuous assurance & the regression gate
 
-The case is not a point-in-time audit, it is **re-checked on every change** (a model
+The case is not a point-in-time audit; it is **re-checked on every change** (a model
 swap, a prompt edit, a dependency bump, a new deployment). The same gate machinery
 that blocks a quality regression now blocks an *assurance* regression:
 `assurance_regression_gate` fails the build when a claim that **held** before is no

@@ -67,7 +67,7 @@ record.balance_usd = 999.0                      # tamper
 assert not record.verify(app.contract_signer).valid
 ```
 
-A breach is **not** an error, it reconciles to a record with `status="breached"`
+A breach is **not** an error; it reconciles to a record with `status="breached"`
 and the breaching dimensions on `.breaches` (an overrun on price/SLA, a shortfall on
 quality). Settling is closing the books, not raising an alarm.
 
@@ -607,7 +607,7 @@ same pools compute the same co-signable hash.
 
 ## Proving the reserves
 
-The `held` figure the guard bounds pledges against is the one input it **trusts**, it is
+The `held` figure the guard bounds pledges against is the one input it **trusts**: it is
 *asserted*, not proven, so a counterparty over-stating its real reserves still passes, the way a
 self-asserted reputation score passed before attestation made standing verifiable. A
 `CustodyAttestation` (`app.attest_custody` / `attest_custody`) is the **proof-of-reserves**: a
