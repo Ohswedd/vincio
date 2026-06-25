@@ -1,6 +1,6 @@
 # Memory
 
-Vincio memory is layered, scoped, scored, and decaying — never a raw dump
+Vincio memory is layered, scoped, scored, and decaying, never a raw dump
 of conversation history into prompts. Memories carry **confidence,
 provenance, decay, and conflict resolution**, and every recall
 utility-scores them against the task before they enter a packet.
@@ -65,7 +65,7 @@ MemoryValue = relevance · recency · confidence · scope_match · stability · 
 ## Consolidation tiers
 
 Episodic session memories summarize into a few durable semantic memories,
-promote to user/agent scope, and deduplicate — with full provenance:
+promote to user/agent scope, and deduplicate, with full provenance:
 promoted items record `consolidated_from`, and the episodes are archived
 (never silently dropped) with a `consolidated_into` backref.
 
@@ -102,7 +102,7 @@ of duplicating it.
 
 Step 16 of the runtime writes back what the run learned, governed by
 `memory.write_back`: durable statements from the `input` (default), cited
-`evidence`, and successful `tools` results — the latter two as *candidate*
+`evidence`, and successful `tools` results, the latter two as *candidate*
 memories with provenance that must earn their way into future packets.
 
 ## Eval harness

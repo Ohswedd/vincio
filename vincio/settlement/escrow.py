@@ -139,7 +139,7 @@ class EscrowVerification(BaseModel):
 
 
 class Escrow(BaseModel):
-    """Posted collateral bound to a contract — held, released, or forfeited.
+    """Posted collateral bound to a contract, held, released, or forfeited.
 
     Produced by :func:`post_escrow` (or
     :meth:`~vincio.core.app.ContextApp.post_escrow`) from a contract and the

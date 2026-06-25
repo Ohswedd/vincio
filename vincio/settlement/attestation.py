@@ -1020,7 +1020,7 @@ class PortableReputation:
 
 
 class IssuerTrust(BaseModel):
-    """The importer's resolved trust in one issuer — pinpointed, never silent.
+    """The importer's resolved trust in one issuer, pinpointed, never silent.
 
     Produced by :func:`build_trust_model`. ``trust`` is the bounded
     ``[trust_floor, 1]`` multiplier the issuer's attested evidence is scaled by;
@@ -1047,7 +1047,7 @@ class IssuerTrust(BaseModel):
 
 
 class TrustModel:
-    """The importer's bounded, transitive trust in each issuer — the Sybil-resistant kernel.
+    """The importer's bounded, transitive trust in each issuer, the Sybil-resistant kernel.
 
     Produced by :func:`build_trust_model` from the importer's own ``base`` ledger and
     the attestations on hand. It resolves, for each issuer, a trust multiplier in the

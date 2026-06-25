@@ -116,8 +116,8 @@ def render_api_index() -> str:
     lines: list[str] = [
         "# Reference: public API index",
         "",
-        "This page is generated from `vincio.__all__` — the exact set of names",
-        "[Semantic Versioning](https://semver.org/spec/v2.0.0.html) applies to —",
+        "This page is generated from `vincio.__all__`, the exact set of names",
+        "[Semantic Versioning](https://semver.org/spec/v2.0.0.html) applies to,",
         "with each symbol's signature and docstring summary. It is gated for",
         "docstring coverage: no public symbol ships undocumented. For the curated,",
         "grouped narrative see [api.md](api.md).",

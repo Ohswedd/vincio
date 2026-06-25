@@ -1,6 +1,6 @@
 # Reference: performance & quality SLOs
 
-These are Vincio's published Service Level Objectives — the performance and
+These are Vincio's published Service Level Objectives, the performance and
 quality guarantees the engine is held to. They are not marketing numbers: each
 SLO names a VincioBench metric and the CI **budget** that gates it, and the
 budget is held *at least as strict* as the published target. A green build
@@ -9,7 +9,7 @@ that invariant, and the source of truth is
 [`benchmarks/slos.json`](https://github.com/Ohswedd/vincio/blob/main/benchmarks/slos.json).
 
 All numbers are measured on the deterministic offline suite (mock provider,
-in-repo corpora). Reproduce them yourself — there is no hosted leaderboard:
+in-repo corpora). Reproduce them yourself, there is no hosted leaderboard:
 
 ```bash
 python benchmarks/vinciobench.py     # produce results/vinciobench_latest.json
@@ -104,7 +104,7 @@ gating weight once it has demonstrably agreed with people.
 | Provider-aware prompt caching achieves at least a 50% input-token hit rate on a warm, stable prefix. | ≥ 0.50 | `families.scale.cache.hit_rate` |
 | Cost rolled up by tenant/feature equals the sum of the attributed per-call costs. | ≥ 0.99 | `families.scale.attribution.accuracy` |
 
-Latency-tolerant batch work must return a result for every request — losing one
+Latency-tolerant batch work must return a result for every request, losing one
 corrupts evals and bulk extraction; a breaker that opens but never closes turns
 a transient outage into a permanent one; stable system/tool/context prefixes are
 the bulk of input tokens, so caching them is the single biggest cost lever; and
@@ -131,7 +131,7 @@ whose wake condition did not survive a restart would silently never fire.
 
 | SLO | Target | VincioBench metric (enforced by) |
 |---|---|---|
-| At a fixed candidate budget, verifier-guided best-of-N beats the single-shot draw — a quality-per-dollar Pareto improvement. | ≥ +0.1 quality | `families.test_time_compute.pareto_quality_gain` |
+| At a fixed candidate budget, verifier-guided best-of-N beats the single-shot draw, a quality-per-dollar Pareto improvement. | ≥ +0.1 quality | `families.test_time_compute.pareto_quality_gain` |
 | The best-of-N path returns quality per cent of inference spend above a floor. | ≥ 20 points/¢ | `families.test_time_compute.quality_per_cost_point` |
 | A reasoning step's thinking budget never exceeds the controller's hard token ceiling at any difficulty. | ≤ 8192 tokens | `families.test_time_compute.max_thinking_budget` |
 
@@ -164,7 +164,7 @@ promises.
 
 Reacting to the live world one step at a time is trapped by a locally-attractive
 shortcut that dead-ends; a planner that rolls a learned `WorldModel` forward sees
-the dead end in imagination and commits the patient path instead — here it opens
+the dead end in imagination and commits the patient path instead, here it opens
 the vault while the reactive planner is stuck. The model only earns planning
 weight once its predictions are calibrated against the real environment, the way a
 judge ensemble must earn its gating weight; the budget gates a strict planning win
@@ -174,16 +174,16 @@ and full prediction accuracy, above the published promises.
 
 | SLO | Target | VincioBench metric (enforced by) |
 |---|---|---|
-| A recorded run replays byte-identically — the recording, not the live provider, serves the answer. | byte-identical | `families.record_replay.replay_faithful` |
+| A recorded run replays byte-identically, the recording, not the live provider, serves the answer. | byte-identical | `families.record_replay.replay_faithful` |
 | When the code under replay changes, the divergence is detected and reported. | true | `families.record_replay.divergence_detected` |
 | A recording round-trips through a content-addressed store and verifies before replay. | true | `families.record_replay.fidelity_verified` |
 
-A run is deterministic except at its edges — every place it reads the outside
+A run is deterministic except at its edges, every place it reads the outside
 world. The recorder captures those edges (model responses, tool outputs,
 retrieval hits, the negotiated capabilities, clock/seed) keyed to the trace; the
 replayer serves them back, so replay reproduces the run byte-for-byte against a
 live provider that would answer differently. Because each edge is keyed by the
-same identity the live code computes, a changed edge is a cache miss — and a miss
+same identity the live code computes, a changed edge is a cache miss, and a miss
 is a divergence, reported with the edge that drifted rather than silently
 re-executed. Recordings are content-addressed and carry a fidelity digest, so a
 recording shared across processes is verified before it is trusted for replay.
@@ -197,7 +197,7 @@ recording shared across processes is verified before it is trusted for replay.
 | The eval-replay regression gate passes a faithful cache and blocks a drifted one. | true | `families.semantic_cache.gate_blocks_drift` |
 
 Exact-match caching serves a byte-identical request for free; the rung above it is
-near-miss reuse — answering a request that is *semantically equivalent* to a recent
+near-miss reuse, answering a request that is *semantically equivalent* to a recent
 one straight from cache. The risk is serving a near-miss that is not actually
 equivalent, so the cache never serves below a **calibrated** acceptance threshold:
 the bar is fit from labelled trace pairs so accepted near-misses clear a precision
@@ -206,7 +206,7 @@ Every accepted hit is auditable and reversible, and a cache whose calibration ha
 drifted is caught by the same eval-replay no-regression check that gates a model
 swap. Cross-request KV-prefix reuse extends the warm-prefix layout from one request
 to a family that shares a stable head, reporting the serving-engine KV the shared
-head avoids recomputing — all held under the resident-memory budget. The budgets
+head avoids recomputing, all held under the resident-memory budget. The budgets
 gate full hit-quality and full precision, above the published floors.
 
 ## On-device fine-tuning & continual local adaptation
@@ -215,7 +215,7 @@ gate full hit-quality and full precision, above the published floors.
 |---|---|---|
 | A LoRA-class adapter fit on-device is at-least-as-good as its base model on the held-out eval set before it is promoted. | true | `families.local_adaptation.at_least_as_good` |
 | An on-device adapter reshapes only in-distribution traffic; an off-distribution request falls through to the base model untouched. | true | `families.local_adaptation.off_distribution_inert` |
-| A regressing adapter is refused — never promoted or applied, the registry head unchanged. | true | `families.local_adaptation.regression_refused` |
+| A regressing adapter is refused, never promoted or applied, the registry head unchanged. | true | `families.local_adaptation.regression_refused` |
 
 The flywheel turns traces into hosted fine-tune jobs and the in-process GGUF
 provider runs a model air-gapped; on-device adaptation closes the loop by fitting a
@@ -223,7 +223,7 @@ LoRA-class adapter **in your process** from the same grounded data, so an edge o
 air-gapped deployment improves on its own traffic with no hosted round-trip. The
 risk is shipping a local change that silently degrades quality, so a new adapter
 version is promoted only behind the same no-regression gate a hosted fine-tune job
-clears — the adapted model must be at-least-as-good as its base on a held-out set.
+clears, the adapted model must be at-least-as-good as its base on a held-out set.
 The adapter is bounded (inert off-distribution), every version is content-addressed
 and versioned, and a regression is refused and rolled back.
 
@@ -238,11 +238,11 @@ and versioned, and a regression is refused and rolled back.
 On-device adaptation improves a model on its own traffic within one trust boundary;
 federated self-improvement lets a fleet improve **together without sharing the raw
 traffic**. Each member contributes only the numeric, clipped, masked subspace
-scatter of its local adapter geometry — never a prompt or response — and a secure
+scatter of its local adapter geometry, never a prompt or response, and a secure
 aggregation merges the fleet's contributions so no single member's update is ever
 observed, refusing a round below the k-anonymity contributor floor. The risk is two
 sided: leaking a member's data, or shipping a merged change that degrades quality.
-Both are gated — the privacy SLOs hold that nothing but numeric aggregates crosses a
+Both are gated, the privacy SLOs hold that nothing but numeric aggregates crosses a
 boundary and that individual updates are unrecoverable, while the no-regression SLO
 holds that the adopting member's re-fit adapter clears the same at-least-as-good gate
 a local promotion does, versioned and reversible.
@@ -257,44 +257,44 @@ a local promotion does, versioned and reversible.
 The federated round merged every member with equal weight, so a member whose
 contributions repeatedly fail the gate pulled the shared consensus as hard as one
 whose contributions consistently help. A reputation ledger earns a per-member
-reliability score from the gate verdicts on the audit chain — never from raw traffic —
+reliability score from the gate verdicts on the audit chain, never from raw traffic,
 and the secure aggregator weights each member by it, discounting an unreliable or
 adversarial member without singling it out. The discount-the-regressor SLO holds that
 weighting measurably leans the consensus toward the reliable members; the
 no-regression SLO holds that the discount is bounded (a weight never leaves
 `[floor, 1]`) and reversible (adoption still clears the same gate), so reputation
 changes only which geometry the fleet converges toward when every candidate already
-passes the gate — it is never a way around it.
+passes the gate; it is never a way around it.
 
 ## Differential-privacy memory & training
 
 | SLO | Target | VincioBench metric (enforced by) |
 |---|---|---|
 | A subject's cumulative (ε, δ) privacy loss composes across every consolidation and learning round their data touches, bounded more tightly than naively summing each step's ε. | true | `families.privacy.composes_across_rounds` |
-| A consolidation or contribution that would exceed a subject's privacy budget is refused — the privacy analogue of a hard cost cap — or down-weighted to fit; an over-budget release never silently proceeds. | true | `families.privacy.budget_refused` |
+| A consolidation or contribution that would exceed a subject's privacy budget is refused, the privacy analogue of a hard cost cap, or down-weighted to fit; an over-budget release never silently proceeds. | true | `families.privacy.budget_refused` |
 | The spent privacy budget is a mechanical, auditable number: a per-subject report sits alongside the cost report, and every spend and refusal is on the verifiable audit chain. | true | `families.privacy.on_audit_chain` |
 
 The federated round bounds one member's *per-round* influence, but a subject's data
-is touched again and again — by every memory consolidation and learning round. A
+is touched again and again, by every memory consolidation and learning round. A
 Rényi/moments privacy accountant composes the cumulative (ε, δ) a subject has spent
 and **refuses** once the budget is gone, the privacy analogue of a dollar budget. The
 composition SLO holds that the accountant tracks loss across rounds (and tighter than
 the naive sum); the refusal SLO holds that an over-budget release is refused or
 down-weighted, never silently admitted; and the auditability SLO holds that the spent
-budget is provable — reported per subject and recorded on the signed audit chain.
+budget is provable, reported per subject and recorded on the signed audit chain.
 
 ## Energy & carbon accounting
 
 | SLO | Target | VincioBench metric (enforced by) |
 |---|---|---|
-| Every run yields a per-run energy (Wh) and carbon (gCO₂e) estimate, accrued deterministically from token accounting against a per-model (by-tier) intensity and a per-region grid factor — the energy analogue of the per-run dollar cost, on the same cost-report surface. | true | `families.energy.per_run_estimate` |
-| A run that would push a scope's accrued energy or carbon over its sustainability envelope is refused — the energy analogue of a hard cost cap; an over-budget run never silently proceeds. | true | `families.energy.budget_refused` |
+| Every run yields a per-run energy (Wh) and carbon (gCO₂e) estimate, accrued deterministically from token accounting against a per-model (by-tier) intensity and a per-region grid factor, the energy analogue of the per-run dollar cost, on the same cost-report surface. | true | `families.energy.per_run_estimate` |
+| A run that would push a scope's accrued energy or carbon over its sustainability envelope is refused, the energy analogue of a hard cost cap; an over-budget run never silently proceeds. | true | `families.energy.budget_refused` |
 | The estimate is a mechanical, offline, auditable number: computed in-process from a deterministic intensity table (no external service), on the cost-report surface, with the per-run estimate and every refusal on the verifiable audit chain. | true | `families.energy.auditable_offline` |
 
 The cost report makes a run's dollar spend an auditable number; this adds the
 sustainability figure beside it. A run's energy is accrued from its own token
 accounting against a per-model intensity (by tier, from the model registry) scaled by
-a datacenter overhead factor, and its carbon from a per-region grid factor — all from
+a datacenter overhead factor, and its carbon from a per-region grid factor, all from
 a built-in, deterministic table, so the estimate is reproducible and consults no
 external service. The per-run-estimate SLO holds that an enabled run reports a
 positive, mechanical figure; the budget-refusal SLO holds that an energy or carbon
@@ -313,7 +313,7 @@ audit chain, computed in-process. Accounting is off until explicitly enabled.
 The dependency-free core runs at the edge through a thin in-process boundary
 (`EdgeRuntime`), bounded by an `EdgeProfile` that lowers to the *same*
 `ContextCompilerOptions` the server compiler reads. The parity SLO holds that an
-edge compile and a direct server compile produce a byte-identical packet — the
+edge compile and a direct server compile produce a byte-identical packet, the
 edge build is exercised by the same offline test suite, never a fork. The
 bounded-profile SLO holds the resident footprint under the cap as the corpus
 grows 10×, by the same eviction the server's memory budget uses. The
@@ -321,12 +321,12 @@ no-native-imports SLO holds, by a static scan, that the core path pulls nothing
 native at import time (NumPy stays behind its guarded pure-Python fallback), so
 the core is WASM-buildable.
 
-## Cross-org settlement fabric — end-to-end conformance
+## Cross-org settlement fabric, end-to-end conformance
 
 | SLO | Target | VincioBench metric (enforced by) |
 |---|---|---|
 | The cross-org settlement & credit fabric composes end-to-end as one system: a single `CrossOrgEngagement` threads the whole pipeline (negotiate → contract → choreograph delivery → settle → net → prove solvency) into one content-bound, signed `EngagementNarrative` that verifies offline from the bytes alone, with every captured artifact re-verified and one continuous hash-chained audit narrative. | true | `families.cross_org_conformance.conformance_verifies_offline` |
-| A tamper introduced anywhere in a composed engagement is caught from the bytes alone: a re-ordered stage breaks the hash chain, an edited stage digest or underlying artifact fails the digest check, and a forged signature fails authentication — so the engagement narrative is an end-to-end integrity proof, not merely a transcript. | true | `families.cross_org_conformance.conformance_tamper_caught` |
+| A tamper introduced anywhere in a composed engagement is caught from the bytes alone: a re-ordered stage breaks the hash chain, an edited stage digest or underlying artifact fails the digest check, and a forged signature fails authentication, so the engagement narrative is an end-to-end integrity proof, not merely a transcript. | true | `families.cross_org_conformance.conformance_tamper_caught` |
 
 The twenty cross-org rungs (negotiation, settlement, netting, arbitration,
 reputation portability, admission, collateral, solvency, insolvency) each publish
@@ -339,20 +339,20 @@ frozen under the [stability policy](stability.md).
 
 | SLO | Target | VincioBench metric (enforced by) |
 |---|---|---|
-| A computer-use agent driving the grounded action plane reaches a verified end state within its action budget — perceiving a screen as typed, addressable elements, grounding each intent to a stable role+name selector (never a brittle pixel), acting, and post-verifying the effect. | true | `families.computer_use.success_at_budget` |
+| A computer-use agent driving the grounded action plane reaches a verified end state within its action budget, perceiving a screen as typed, addressable elements, grounding each intent to a stable role+name selector (never a brittle pixel), acting, and post-verifying the effect. | true | `families.computer_use.success_at_budget` |
 | No destructive computer-use action ever executes without approval: a destructive or out-of-scope action is pre-gated like a write tool and refused unless explicitly approved, and a divergent action is rolled back. | true | `families.computer_use.no_unapproved_destructive` |
 
-Computer-use and provider-hosted tools already shipped as a thin GUI adapter — an
+Computer-use and provider-hosted tools already shipped as a thin GUI adapter, an
 agent acting on brittle pixel coordinates that cannot replay, cannot survive a
 layout shift, and cannot tell whether its action took effect. The action plane
 (`app.computer_use`) binds every action to a stable selector and closes a perceive →
 ground → pre-gate → act → post-verify → undo loop, so success is a reconstructable
-end-state the same trajectory metrics and test-time search already score — the
+end-state the same trajectory metrics and test-time search already score, the
 success-at-budget bar the agentic leaderboards judge on, held offline on a
 deterministic WebArena/OSWorld-shaped app. The safety bar is structural, not
 best-effort: a destructive or out-of-scope action is refused unless approved (the
 gate makes an unapproved destructive action impossible, not discouraged), and a
-post-verify divergence is undone — the computer-use analogue of saga compensation —
+post-verify divergence is undone, the computer-use analogue of saga compensation,
 so the plane is reversible and accountable by construction. The budgets gate a strict
 success-at-budget win and zero unapproved-destructive actions, above the published
 promises.
@@ -361,11 +361,11 @@ promises.
 
 | SLO | Target | VincioBench metric (enforced by) |
 |---|---|---|
-| An agent identity is portable and self-certifying — its DID derives from its Ed25519 public key, its document verifies from the bytes, and keys rotate along a signed chain so a rotated-away or revoked key cannot forge new history while its past signatures stay valid. | true | `families.identity.identity_integrity` |
-| A signed delegation composes into a chain that verifies offline where each link only attenuates, never amplifies — so an over-reaching or tampered sub-delegation is refused from the bytes. | true | `families.identity.delegation_attenuation` |
+| An agent identity is portable and self-certifying, its DID derives from its Ed25519 public key, its document verifies from the bytes, and keys rotate along a signed chain so a rotated-away or revoked key cannot forge new history while its past signatures stay valid. | true | `families.identity.identity_integrity` |
+| A signed delegation composes into a chain that verifies offline where each link only attenuates, never amplifies, so an over-reaching or tampered sub-delegation is refused from the bytes. | true | `families.identity.delegation_attenuation` |
 
 The platform signed every artifact, but *who* a key belonged to was an out-of-band
-`key_id` string — accountability was only as strong as that assumption. Identity
+`key_id` string, accountability was only as strong as that assumption. Identity
 (`app.identity`) makes the key first-class: a DID **derived from** the public key
 (self-certifying, offline-resolvable, no registry), a content-bound `IdentityDocument`,
 and a `Keyring` that rotates along a **signed chain** rather than a swap, so a
@@ -382,8 +382,8 @@ attenuation, above the published promises.
 
 | Promise | Target | VincioBench metric |
 |---|---|---|
-| A full propose → attempt → verify → distill → promote cultivation run ends **at least as capable** as it began — capability on a held-out frontier set never falls, each promotion clears the same gated no-regression check a deploy uses, dead weight is demoted, and a tampered capability number is caught from the bytes. | true | `families.skill_acquisition.capability_monotonicity` |
-| Every self-proposed objective is gated **before** it is attempted: an objective a safety rail blocks — or any objective when the governance invariants do not hold — is refused and never run, and the proposal's content hash catches a refused objective relabelled as proposed. | true | `families.skill_acquisition.stay_in_policy_safety` |
+| A full propose → attempt → verify → distill → promote cultivation run ends **at least as capable** as it began, capability on a held-out frontier set never falls, each promotion clears the same gated no-regression check a deploy uses, dead weight is demoted, and a tampered capability number is caught from the bytes. | true | `families.skill_acquisition.capability_monotonicity` |
+| Every self-proposed objective is gated **before** it is attempted: an objective a safety rail blocks, or any objective when the governance invariants do not hold, is refused and never run, and the proposal's content hash catches a refused objective relabelled as proposed. | true | `families.skill_acquisition.stay_in_policy_safety` |
 
 The self-improvement loop, RLVR, and the distillation flywheel make an agent better
 at *known* tasks; open-ended capability growth (Voyager / ADAS-shaped) is the apex of
@@ -391,7 +391,7 @@ that arc, and its risk is unbounded drift. `app.cultivate` proposes tasks at the
 frontier of current competence, attempts each with a library-composing test-time
 search, verifies against the task-success oracle, distills a winning trajectory into a
 verified, content-addressed `LearnedSkill`, and promotes it only through the **same
-no-regression gate** a prompt or policy promotion clears — so growth is reversible, not
+no-regression gate** a prompt or policy promotion clears, so growth is reversible, not
 runaway, and a skill that stops paying its way is demoted rather than silently kept.
 The `AutoCurriculum` gates every proposed objective through the rails and the
 governance verifier, so the autonomy stays inside the controls the platform already

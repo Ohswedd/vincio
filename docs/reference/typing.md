@@ -23,7 +23,7 @@ job), so a change that breaks the public type contract fails CI.
 ## The strict-typing ladder
 
 Beyond the baseline check, a growing set of modules is held to the much stricter
-`mypy --strict` bar — no untyped defs, no implicit `Any`, no unused ignores,
+`mypy --strict` bar, no untyped defs, no implicit `Any`, no unused ignores,
 checked generics. New modules ship strict, and the set expands over time without
 ever loosening. The strict set is enforced two ways:
 

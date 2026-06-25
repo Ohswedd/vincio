@@ -619,7 +619,7 @@ class AdapterRegistry:
 
 
 class AdapterGate:
-    """No-regression gate for an on-device adapter — the model-swap gate's analog.
+    """No-regression gate for an on-device adapter, the model-swap gate's analog.
 
     Promotes an adapter only when the adapted model is **at-least-as-good** as its
     base on a held-out set: the watched ``metric`` must not regress beyond

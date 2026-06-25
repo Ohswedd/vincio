@@ -6,7 +6,7 @@ as an MCP server. The edge over a thin adapter: an MCP tool runs through the
 *same* permissioned, sandboxed, audited, budgeted runtime as a native tool, and
 an MCP resource becomes cited evidence with provenance.
 
-MCP uses only the core `httpx` dependency — no SDK. Transports are **stdio**,
+MCP uses only the core `httpx` dependency, no SDK. Transports are **stdio**,
 **Streamable HTTP**, and an **in-process** transport for offline tests.
 
 ## Consume an MCP server
@@ -16,7 +16,7 @@ from vincio import ContextApp
 
 app = ContextApp(name="assistant")
 
-# stdio — launch the server as a subprocess
+# stdio, launch the server as a subprocess
 app.add_mcp_server("weather", command=["python", "weather_server.py"])
 
 # or Streamable HTTP
@@ -32,14 +32,14 @@ surface into the app:
 - **Tools** register through the existing `ToolRegistry`, namespaced
   `"<name>.<tool>"`, so they inherit RBAC/ABAC scopes, the permission
   lifecycle, idempotency keys, reliability scoring, the subprocess sandbox, and
-  the audit log — unchanged. Pass `permissions=["mcp:weather"]` to additionally
+  the audit log, unchanged. Pass `permissions=["mcp:weather"]` to additionally
   gate them behind a scope.
 - **Resources** become `EvidenceItem`s with `metadata["origin"] = "mcp:<name>"`,
   so the compiler chunks, scores, budgets, and cites them like any document.
   (Pass `resources=False` to skip.)
 - **Server-initiated sampling** routes to the app's model provider;
   **elicitation** (a mid-call request for user input) routes to a governed
-  `ElicitationGate` — see [Elicitation](#elicitation-governed-mid-call-input).
+  `ElicitationGate`, see [Elicitation](#elicitation-governed-mid-call-input).
 
 The live client is kept on `app.mcp_clients["weather"]` for direct calls:
 
@@ -55,7 +55,7 @@ for tool in await client.list_tools():
 `add_mcp_from_registry` composes discovery, governance, and connection in one
 call: an `MCPRegistryClient` (the official MCP Registry or an offline catalog)
 finds the server, a governed `AgentDirectory` under an `AllowListGate` decides
-reachability — recorded as an audited access decision on the app's audit chain —
+reachability, recorded as an audited access decision on the app's audit chain,
 and the server's tools land in the permissioned runtime exactly as above.
 
 ```python
@@ -121,7 +121,7 @@ await serve_stdio(server)
 [MCP Apps](https://modelcontextprotocol.io) let a server expose interactive UI as
 a resource (a `ui://` URI with an HTML or AG-UI body). Vincio surfaces that UI
 through its *existing* [generative-UI / AG-UI](agent-fabric.md) channel rather
-than opening a new, ungoverned path — so server UI rides one streamed run and
+than opening a new, ungoverned path, so server UI rides one streamed run and
 inherits its provenance, budget, and audit.
 
 ```python
@@ -139,8 +139,8 @@ async for event in bridge.stream(run_stream_to_agui(app.astream("..."))):
 
 Each render is **governed**:
 
-- **Provenance.** The UI bytes are *untrusted external* content — a third-party
-  server rendered them — so the event carries `trustLevel="untrusted_external"`
+- **Provenance.** The UI bytes are *untrusted external* content, a third-party
+  server rendered them, so the event carries `trustLevel="untrusted_external"`
   and the originating server.
 - **Budget.** The render is token-metered; one whose cost exceeds
   `max_render_tokens` (default 4096) is **refused** (its content dropped, no event
@@ -178,7 +178,7 @@ app.add_mcp_server(
 The `ElicitationGate` runs, in order:
 
 1. **Approval.** If the policy requires it, an `elicitation_approval` callable must
-   grant the request before any value is collected — the gate a write tool passes.
+   grant the request before any value is collected, the gate a write tool passes.
 2. **Collect.** The `elicitation=` collector obtains the user's value (a falsy
    return is an explicit decline).
 3. **Rail screen.** The value is run through the app's *input* rails; a secret,
@@ -207,7 +207,7 @@ Vincio tracks the spec's revisions while staying interoperable:
   a server echoes a supported revision and the client records it
   (`client.negotiated_version`). `negotiate_version(requested)` honours a peer
   pinned to an older stable revision in `SUPPORTED_PROTOCOL_VERSIONS`, falling back
-  to the latest for an unknown one — so a capability never silently breaks across a
+  to the latest for an unknown one, so a capability never silently breaks across a
   spec-revision boundary.
 - **Stateless-core transport.** `StreamableHTTPTransport(url, stateless=True)`
   never tracks or sends an `Mcp-Session-Id`, so each request is self-contained and
@@ -224,7 +224,7 @@ vincio mcp serve app.py                                  # expose an app
 
 ## Testing offline
 
-Use the in-process transport — no network, fully deterministic:
+Use the in-process transport, no network, fully deterministic:
 
 ```python
 from vincio.mcp import MCPServer, connect_in_process

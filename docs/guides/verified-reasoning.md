@@ -1,11 +1,11 @@
 # Verified reasoning & neuro-symbolic certificates
 
-Vincio scores answers with judges, oracles, and a governance verifier — but those
+Vincio scores answers with judges, oracles, and a governance verifier, but those
 per-answer signals are *probabilistic*. For the classes of question where it is
 possible, an answer can instead carry a **checkable certificate** a deterministic
 verifier confirms independently of the model: arithmetic, units, dates, constraint
 satisfaction, schema and citation consistency are all checkable. This turns *the
-judge thinks it is right* into *here is a proof you can verify* — the output-side
+judge thinks it is right* into *here is a proof you can verify*, the output-side
 analogue of the governance verifier's machine-checked invariants.
 
 Everything here is opt-in, additive, deterministic, and offline. The deterministic
@@ -16,7 +16,7 @@ kernels are dependency-free; optional SMT / CAS backends sit behind
 
 `app.verify_reasoning(answer)` runs a set of deterministic kernels over an answer
 and returns a `VerifiedAnswer` whose `Certificate` is **verified** (a kernel
-recomputed a claim and it held), **refuted** (a recomputation disagreed — a *proof
+recomputed a claim and it held), **refuted** (a recomputation disagreed, a *proof
 the answer is wrong*), or **inapplicable** (no checkable claim of that kind).
 
 ```python
@@ -35,7 +35,7 @@ assert good.holds
 
 A certificate is **content-bound**: `certificate.verify()` recomputes its hash and
 re-derives the status from the recorded checks, so a verdict flipped to `verified`
-after the fact is caught from the bytes alone — the same discipline the audit chain
+after the fact is caught from the bytes alone, the same discipline the audit chain
 and the cross-org settlement artifacts hold. Soundness is by construction: a kernel
 emits `verified` only when it actually recomputed the claim and it matched, so a
 wrong answer the relevant kernel can see is *refuted*, never silently passed.
@@ -66,7 +66,7 @@ assert ok.holds
 ### Refuse or repair
 
 A refuted certificate refuses to emit by default. When the answer can be repaired,
-pass a `regenerate` callable to drive the **bounded self-correction loop** — the
+pass a `regenerate` callable to drive the **bounded self-correction loop**, the
 deterministic refutations become a critique, the callable produces a fresh answer,
 and it is re-certified, up to `max_cycles`. This is the same refuse-or-repair
 discipline structured output already uses, now over *reasoning* rather than
@@ -85,7 +85,7 @@ refused answer. Every verdict lands on the hash-chained audit log as a
 
 The certificate proves a *result*; its behavioural, online analogue is a property
 over an agent's plan or tool trajectory, checked step-by-step as it runs. A
-`BehaviorSpec` states the property as plain data — events that must **never** occur
+`BehaviorSpec` states the property as plain data, events that must **never** occur
 (`forbid`), an ordering one event must precede another (`require_before` /
 `precede`), and an invariant of every event (`invariant`).
 
@@ -104,7 +104,7 @@ assert not verdict.ok                              # a claim with no prior retri
 A `Shield` wraps a monitor and **prevents** a violation: `block` refuses a violating
 action, `repair` maps it through a callback to a safe alternative that is re-checked,
 and `monitor` records without stopping. Installed on the tool runtime, the shield
-makes an unsafe tool call structurally impossible — the per-step, online counterpart
+makes an unsafe tool call structurally impossible, the per-step, online counterpart
 of the rails and the ahead-of-run governance verifier.
 
 ```python
@@ -121,7 +121,7 @@ app.shield(no_unapproved_write, use=True)          # installs on app.tool_runtim
 
 A tool can declare a **contract** on its behaviour, not merely its schema: pre- and
 post-conditions the runtime checks against the *actual* arguments and result. A
-breach raises `ToolContractError` at the boundary — an out-of-contract result is
+breach raises `ToolContractError` at the boundary, an out-of-contract result is
 refused, never returned.
 
 ```python
@@ -138,7 +138,7 @@ app.add_tool(charge, side_effects="write", contract=contract)
 `synthesize` brings proof-carrying code into the tool plane: a small, **verified**
 data transform built from a whitelisted, deterministic op set (no `eval`, no I/O). It
 runs on representative examples, checks its declared properties, and binds the
-verdict into the same `Certificate` an answer carries — the properties are proven
+verdict into the same `Certificate` an answer carries; the properties are proven
 before the program is allowed to run, and re-checked on every use.
 
 ```python
@@ -160,9 +160,9 @@ program.run([{"price": 2.0, "quantity": 10}])      # re-checks properties at run
 ## Optional SMT / CAS
 
 The deterministic kernels are the default and need no extra. For the cases that
-warrant a solver — proving a constraint system is *consistent* rather than that one
+warrant a solver, proving a constraint system is *consistent* rather than that one
 assignment happens to satisfy it, or checking an equality with **exact** rational
-arithmetic — `vincio.verify.smt` provides `SmtConstraintVerifier` (Z3) and
+arithmetic, `vincio.verify.smt` provides `SmtConstraintVerifier` (Z3) and
 `CasArithmeticVerifier` (SymPy) behind `pip install "vincio[verify]"`. They are
 strictly opt-in: nothing on the offline path imports them.
 
@@ -172,5 +172,5 @@ strictly opt-in: nothing on the offline path imports them.
 and the rails; the shield is the per-step counterpart of `verify_governance`; and tool
 contracts and synthesized programs extend the proof discipline into the tool plane.
 Together they take the platform from one whose per-answer signals are *probabilistic*
-to one that, where it is possible, emits **a proof you can check** — without a hosted
+to one that, where it is possible, emits **a proof you can check**, without a hosted
 prover, always offline, always additive on the frozen surface.

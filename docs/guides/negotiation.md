@@ -6,7 +6,7 @@ unreliable member's pull on a federated round. This guide covers the next rung:
 **bounded negotiation and contracting** between agents in a multi-org crew. A
 buyer agent and a seller agent converge on a price / SLA / scope contract under a
 hard budget; the contract is a typed, signed, audited artifact both sides can
-verify offline; and the counterparty's reputation weights the deal — all in the
+verify offline; and the counterparty's reputation weights the deal, all in the
 same governed, audited, budgeted runtime, never a hosted marketplace.
 
 This is additive (`vincio.negotiation`); it changes nothing about how a single
@@ -15,8 +15,8 @@ agent runs, and runs fully offline against deterministic local parties.
 ## A bounded bargain
 
 A negotiation is the analogue of a bounded crew round: **termination is
-guaranteed**. Each party holds a private `NegotiationPosition` — for each issue an
-*ideal* value and a *reservation* (walk-away) value — and concedes from its ideal
+guaranteed**. Each party holds a private `NegotiationPosition`, for each issue an
+*ideal* value and a *reservation* (walk-away) value, and concedes from its ideal
 toward its reservation as the deadline approaches (a time-dependent tactic). A
 party accepts the opponent's offer the moment it is at least as good as the offer
 it would make next, so the bargain ends in a deal when the parties' acceptable
@@ -72,8 +72,8 @@ hard floor below which the party will neither offer nor accept).
 ## A typed, signed, verifiable contract
 
 On agreement a `Contract` is minted and **signed by both parties**. It verifies
-**offline** from the bytes alone — the content hash recomputes from the stored
-terms and every signature checks — so a tampered term or a forged signature is
+**offline** from the bytes alone, the content hash recomputes from the stored
+terms and every signature checks, so a tampered term or a forged signature is
 caught without the live parties.
 
 ```python
@@ -113,8 +113,8 @@ fulfillment = app.enforce_contract(
 print(fulfillment.fulfilled, fulfillment.breaches)
 ```
 
-`enforce_contract` records the verdict on the hash-chained audit log and — when a
-reputation ledger is attached — credits the seller on fulfilment or **debits it on
+`enforce_contract` records the verdict on the hash-chained audit log and, when a
+reputation ledger is attached, credits the seller on fulfilment or **debits it on
 a breach**, so a breached SLA discounts the seller's future offers. That closes the
 loop: negotiation outcomes feed reputation, and reputation weights negotiation.
 
@@ -122,11 +122,11 @@ loop: negotiation outcomes feed reputation, and reputation weights negotiation.
 
 When a reputation ledger is attached (`app.use_reputation_ledger()`), it weights
 each party's view of the *counterparty's* offers. A repeatedly-regressing seller's
-offers are **discounted — never zeroed, never singled out**: the weight stays in
+offers are **discounted, never zeroed, never singled out**: the weight stays in
 `[floor, 1]`, so the discounted seller can still close a deal by conceding more (a
 risk premium), and a reformed seller recovers. With several competing sellers,
 `select_offer` picks the deal that maximizes the buyer's reputation-weighted
-utility, so reliability — not just price — decides the winner.
+utility, so reliability, not just price, decides the winner.
 
 ```python
 from vincio.negotiation import select_offer
@@ -144,7 +144,7 @@ best = select_offer(deals, buyer, reputation=ledger)   # reputation-weighted win
 ## Over the A2A fabric
 
 A counterparty can live in **another organization, reached over A2A**. Expose a
-local party as an A2A agent and drive it remotely with an `A2ANegotiator` — the
+local party as an A2A agent and drive it remotely with an `A2ANegotiator`, the
 local engine bargains against it exactly as it would a local party, and every offer
 exchange is a bounded, audited A2A task.
 
@@ -169,6 +169,6 @@ self-asserted one on the wire, so a reputation lookup cannot be spoofed.
 ## What it is not
 
 This is a library capability inside your process, not a hosted marketplace. There
-is no clearinghouse, no escrow service, no central order book — a negotiation is two
+is no clearinghouse, no escrow service, no central order book, a negotiation is two
 agents exchanging typed offers under a budget, and a contract is a signed file you
 hold and verify yourself. Everything that looks operational is something you run.

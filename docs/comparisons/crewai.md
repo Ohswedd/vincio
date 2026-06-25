@@ -10,14 +10,14 @@ and backstories collaborate on tasks sequentially or under a manager.
   its budget before each delegation, and hierarchical review is capped at
   `max_rounds`. Termination is a guarantee, not a hope.
 - **A real blackboard, not message passing.** Members coordinate through
-  versioned, author-attributed shared memory that snapshots to JSON — crew
+  versioned, author-attributed shared memory that snapshots to JSON, crew
   runs can be persisted, diffed, and replayed.
 - **Deterministic offline behavior.** Manager delegation is LLM-planned with
   a schema-validated plan and a deterministic keyword-routing fallback, so
   crews run in CI with the mock provider and the same code path.
 - **One trace, eval-ready.** The crew emits a `crew` span, each member a
   `crew_agent` span, and `CrewResult.metrics()` aggregates per-member agent
-  metrics — the same objects the eval runner gates releases with.
+  metrics, the same objects the eval runner gates releases with.
 - **Context is compiled, not concatenated.** Members read evidence through
   the context compiler, so scoring, budgeting, provenance, and injection
   defense apply to every agent automatically.

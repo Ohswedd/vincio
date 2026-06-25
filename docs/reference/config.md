@@ -49,7 +49,7 @@ security:
 
 governance:                  # enterprise governance & compliance; all opt-in
   allowed_regions: []        # non-empty pins data-residency: runs may only egress to these regions
-  provider_regions: {}       # e.g. {openai: us, anthropic: us} — region per provider/model
+  provider_regions: {}       # e.g. {openai: us, anthropic: us}, region per provider/model
   deny_on_unknown_region: true
   content_marking: false     # attach a synthetic-content manifest + AI disclosure to every run
   locales: []                # non-English PII packs: fr | de | es | in | sg | br | uk
@@ -63,7 +63,7 @@ retrieval:
   chunking: recursive        # fixed | recursive | semantic | heading_aware | table_aware | code_aware | sentence_window | hierarchical | parent_document | contextual | adaptive
   reranker: heuristic        # heuristic | recency | authority | llm | cohere | jina | voyage | null
   embedder: local            # local | jina | voyage | cohere | voyage-context | voyage-multimodal | cohere-multimodal | openai | google | mistral | <provider>
-  embedding_dimensions: null # int | None — Matryoshka output-dimension truncation; null keeps the native dimension
+  embedding_dimensions: null # int | None, Matryoshka output-dimension truncation; null keeps the native dimension
   query_strategies: []       # hyde | multi_query | decompose | step_back
 
 memory:
@@ -155,7 +155,7 @@ older files mechanically instead of letting them silently drift:
   schema and points at `config migrate`.
 
 Files written before versioning have no `schema_version` and load as version 0,
-then migrate forward. Migrations are idempotent — re-running is a no-op.
+then migrate forward. Migrations are idempotent, re-running is a no-op.
 
 ```bash
 vincio config migrate                 # upgrade ./vincio.yaml in place

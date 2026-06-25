@@ -18,7 +18,7 @@ except VincioError as exc:
 
 Error message strings are not part of the stable API; the `.code` values
 and this catalog are. This page is generated from
-`vincio.core.error_catalog` and gated for completeness — no error ships
+`vincio.core.error_catalog` and gated for completeness; no error ships
 without an entry here.
 
 ## Codes
@@ -41,11 +41,11 @@ without an entry here.
 
 ### PROVIDER_RATE_LIMIT
 
-**Provider rate limit.** Back off and retry — the error is retryable and carries `retry_after_s`. Add a RateLimiter or KeyPool, or lower `performance.max_concurrency`.
+**Provider rate limit.** Back off and retry; the error is retryable and carries `retry_after_s`. Add a RateLimiter or KeyPool, or lower `performance.max_concurrency`.
 
 ### PROVIDER_TIMEOUT
 
-**Provider timed out.** Raise `provider.timeout_s`, reduce the request size, or rely on the automatic retry; persistent timeouts indicate provider degradation — fail over to a healthy model.
+**Provider timed out.** Raise `provider.timeout_s`, reduce the request size, or rely on the automatic retry; persistent timeouts indicate provider degradation, so fail over to a healthy model.
 
 ### PROVIDER_UNAVAILABLE
 
@@ -165,7 +165,7 @@ without an entry here.
 
 ### TOOL_CONTRACT_VIOLATION
 
-**Tool call breached its contract.** A tool declared pre/post-conditions and the actual call broke one: an argument failed a `requires` clause, or the result failed an `ensures` clause. Fix the arguments to meet the precondition, or treat a post-condition breach as a bug in the tool — the runtime refuses an out-of-contract result rather than returning it.
+**Tool call breached its contract.** A tool declared pre/post-conditions and the actual call broke one: an argument failed a `requires` clause, or the result failed an `ensures` clause. Fix the arguments to meet the precondition, or treat a post-condition breach as a bug in the tool; the runtime refuses an out-of-contract result rather than returning it.
 
 ### AGENT_ERROR
 
@@ -189,7 +189,7 @@ without an entry here.
 
 ### CHECKPOINT_CONFLICT
 
-**Checkpoint version conflict.** Another worker advanced the thread first (optimistic-concurrency loss). Re-acquire the lease and resume from the new head — this is non-fatal.
+**Checkpoint version conflict.** Another worker advanced the thread first (optimistic-concurrency loss). Re-acquire the lease and resume from the new head; this is non-fatal.
 
 ### WORKFLOW_ERROR
 
@@ -349,15 +349,15 @@ without an entry here.
 
 ### BEHAVIOR_VIOLATION
 
-**Agent trajectory violated a behavior spec.** A `RuntimeMonitor` / `Shield` found a `BehaviorSpec` property breached — a forbidden action, a missing precondition (e.g. a write before approval, a claim before retrieval), or a violated invariant. Use a shield in `block`/`repair` mode to prevent the action, or correct the plan so the property holds.
+**Agent trajectory violated a behavior spec.** A `RuntimeMonitor` / `Shield` found a `BehaviorSpec` property breached: a forbidden action, a missing precondition (e.g. a write before approval, a claim before retrieval), or a violated invariant. Use a shield in `block`/`repair` mode to prevent the action, or correct the plan so the property holds.
 
 ### PROGRAM_SYNTHESIS_FAILED
 
-**Synthesized program failed verification.** A `synthesize(...)` program failed to run on its examples or a declared property (schema, row-count, field-range) was refuted. Inspect `SynthesizedProgram.certificate.refutations`, fix the op pipeline or the property, and re-synthesize — a refuted program is never run.
+**Synthesized program failed verification.** A `synthesize(...)` program failed to run on its examples or a declared property (schema, row-count, field-range) was refuted. Inspect `SynthesizedProgram.certificate.refutations`, fix the op pipeline or the property, and re-synthesize; a refuted program is never run.
 
 ### NEGOTIATION_ERROR
 
-**Negotiation could not proceed.** Check the `NegotiationPosition` is coherent (the reservation must be no better for the party than its ideal) and the `NegotiationBudget` has positive `max_rounds`. A negotiation that runs out of rounds without a deal does not raise — it returns a partial NegotiationResult with `status='no_agreement'`.
+**Negotiation could not proceed.** Check the `NegotiationPosition` is coherent (the reservation must be no better for the party than its ideal) and the `NegotiationBudget` has positive `max_rounds`. A negotiation that runs out of rounds without a deal does not raise; it returns a partial NegotiationResult with `status='no_agreement'`.
 
 ### CONTRACT_VIOLATION
 
@@ -365,7 +365,7 @@ without an entry here.
 
 ### CHOREOGRAPHY_ERROR
 
-**Cross-org choreography could not proceed.** Declare exactly one of `participant=` (static) or `capability=` (discovered) per `Saga` step; register a participant binding for every org a static step names; for a discovered step pass a governed `directory=` / `binder=` so the capability resolves to an allowed, reachable candidate at dispatch time. Give the saga at least one uniquely-named step and pass a `saga_id` that exists in the durable store when calling `resume`. A saga whose forward step fails does not raise — it compensates and returns a SagaResult with `status='compensated'`.
+**Cross-org choreography could not proceed.** Declare exactly one of `participant=` (static) or `capability=` (discovered) per `Saga` step; register a participant binding for every org a static step names; for a discovered step pass a governed `directory=` / `binder=` so the capability resolves to an allowed, reachable candidate at dispatch time. Give the saga at least one uniquely-named step and pass a `saga_id` that exists in the durable store when calling `resume`. A saga whose forward step fails does not raise; it compensates and returns a SagaResult with `status='compensated'`.
 
 ### COMPENSATION_FAILED
 
@@ -373,12 +373,12 @@ without an entry here.
 
 ### SETTLEMENT_ERROR
 
-**Settlement could not proceed.** Meter non-negative usage, sign a settlement only as its buyer or seller, and supply the contract terms a saga's steps ran under when settling it. A settlement whose delivered work breaches the agreed terms does not raise — it reconciles to a SettlementRecord with `status='breached'` (see `.breaches`); re-verify a record or book with the signer the parties used.
+**Settlement could not proceed.** Meter non-negative usage, sign a settlement only as its buyer or seller, and supply the contract terms a saga's steps ran under when settling it. A settlement whose delivered work breaches the agreed terms does not raise; it reconciles to a SettlementRecord with `status='breached'` (see `.breaches`); re-verify a record or book with the signer the parties used.
 
 ### CULTIVATION_ERROR
 
-**Skill acquisition could not proceed.** Give every `CurriculumTask` an `environment` factory before cultivating it, set exactly one of `action`/`skill` on a `SkillStep`, and ensure a skill's `requires` resolve to active library skills without a cycle. A proposed objective the rails or the governance verifier reject does not raise — it is pinpointed on the `CurriculumProposal` (`.refused`) and never attempted; re-verify a `LearnedSkill`, `LearnedSkillLibrary`, or `CultivationResult` with its own `verify()`.
+**Skill acquisition could not proceed.** Give every `CurriculumTask` an `environment` factory before cultivating it, set exactly one of `action`/`skill` on a `SkillStep`, and ensure a skill's `requires` resolve to active library skills without a cycle. A proposed objective the rails or the governance verifier reject does not raise; it is pinpointed on the `CurriculumProposal` (`.refused`) and never attempted; re-verify a `LearnedSkill`, `LearnedSkillLibrary`, or `CultivationResult` with its own `verify()`.
 
 ### ASSURANCE_ERROR
 
-**Assurance case or certification could not proceed.** Give every leaf `Claim` at least one `Evidence` item (or list the kinds it demands on `required_evidence`), bind each `Evidence` to an artifact that exposes a verifiable verdict (an eval gate, a `GovernanceVerifier` report, a reasoning `Certificate`, an audit log, an identity/delegation chain, or an AI-BOM), and reference an `Incident` only to a claim that exists in the case. A claim whose evidence is missing, stale, or falsified does not raise — it is pinpointed on the `AssuranceReport` and the case `holds` is False; re-verify an `AssuranceCase` or `CertificationReport` with its own `verify()`.
+**Assurance case or certification could not proceed.** Give every leaf `Claim` at least one `Evidence` item (or list the kinds it demands on `required_evidence`), bind each `Evidence` to an artifact that exposes a verifiable verdict (an eval gate, a `GovernanceVerifier` report, a reasoning `Certificate`, an audit log, an identity/delegation chain, or an AI-BOM), and reference an `Incident` only to a claim that exists in the case. A claim whose evidence is missing, stale, or falsified does not raise; it ispinpointed on the `AssuranceReport` and the case `holds` is False; re-verify an `AssuranceCase` or `CertificationReport` with its own `verify()`.

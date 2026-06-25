@@ -2,7 +2,7 @@
 
 LiteLLM, Bifrost, and Portkey are LLM gateways: a unified API over 100+
 providers, with failover, retries, circuit breaking, key/region load
-balancing, spend tracking and budgets, and caching — operated as a separate
+balancing, spend tracking and budgets, and caching, operated as a separate
 proxy/service that sits in front of your app.
 
 **Where Vincio differs**
@@ -10,7 +10,7 @@ proxy/service that sits in front of your app.
 - **The same reliability and FinOps controls, in-process.** Batch execution,
   circuit breakers, health-aware failover, key pooling, runtime cascades,
   cost attribution, enforced budgets, and provider-aware caching all run as a
-  Python library inside your process — no extra network hop, no second
+  Python library inside your process, no extra network hop, no second
   service to deploy, scale, or page on.
 - **One trace, not two systems.** A gateway is a proxy hop with its own logs;
   Vincio's reliability and cost events land on the *same* trace as the rest of
@@ -29,12 +29,12 @@ proxy/service that sits in front of your app.
   `month`/`total` period, and on breach will `cap`, `degrade` (to a cheaper
   `degrade_model`), or `queue_to_batch`. `anomaly_factor` emits a
   `cost.anomaly` event; the decision is written to the hash-chained audit log
-  as a `cost_budget` action and a `PolicyViolation` — governed by the same
+  as a `cost_budget` action and a `PolicyViolation`, governed by the same
   deterministic policy engine as everything else in the run.
 - **Cost attribution down to the feature.** `arun`/`astream` take
   `tenant_id`/`user_id`/`session_id` and a `feature` dimension; `CostLedger`
   records every call and `app.cost_report(by="tenant"|"feature"|"user"|
-  "model"|"provider"|"run")` (or `vincio cost report --by ...`) rolls it up —
+  "model"|"provider"|"run")` (or `vincio cost report --by ...`) rolls it up,
   no separate analytics store.
 - **Batch and cascades are first-class.** `app.batch(inputs, discount=0.5)`
   (and `vincio batch app.py`) runs at provider batch pricing through
@@ -48,7 +48,7 @@ proxy/service that sits in front of your app.
   (`provider_cache`, `provider_cache_ttl`, `provider_cache_min_prefix_tokens`).
 - **Capability-aware routing and a gated swap.** Where LiteLLM Router
   load-balances by health and cost, Vincio's `app.use_router([...])` routes by
-  **capability *and* cost** — it refuses a model that can't serve the request
+  **capability *and* cost**, it refuses a model that can't serve the request
   (vision/tools/schema/reasoning/context), so failover never silently returns a
   wrong answer. And a model swap is *gated*, not just compared:
   `app.gate_swap(candidate, dataset=, traces=)` replays golden traces and runs an
@@ -72,7 +72,7 @@ proxy/service that sits in front of your app.
 
 **Where gateways are a fit:** their provider breadth and their
 language-agnostic proxy deployment model are real strengths a Python library
-doesn't replicate — if your fleet is polyglot or you want one spend/routing
+doesn't replicate, if your fleet is polyglot or you want one spend/routing
 control plane shared across many unrelated apps, a gateway is the right tool.
 Vincio doesn't try to be that proxy: it reaches any OpenAI-compatible endpoint
 plus named gateway presets, so it can even sit *behind* one of these gateways

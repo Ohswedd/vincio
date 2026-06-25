@@ -44,7 +44,7 @@ compiled.rendered_hash         # version every rendering
 ## Rendering formats
 
 `markdown` (sections), `xml` (tags), `json`, `minimal`. Formats are an
-optimization dimension — `vincio.optimize.PromptOptimizer` searches them.
+optimization dimension; `vincio.optimize.PromptOptimizer` searches them.
 
 ## Lint rules
 

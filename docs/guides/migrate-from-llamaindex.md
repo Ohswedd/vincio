@@ -22,7 +22,7 @@ time, so you can migrate incrementally without rewriting your ingestion.
 
 ## Bring your assets across
 
-Readers — convert LlamaIndex-parsed content into Vincio `Document`s and
+Readers, convert LlamaIndex-parsed content into Vincio `Document`s and
 ingest them through the document engine:
 
 ```python
@@ -46,7 +46,7 @@ docs = from_llamaindex_documents(li_documents)
 one = from_llamaindex_document(li_node)
 ```
 
-Retrievers and embeddings — wrap an existing LlamaIndex retriever as a
+Retrievers and embeddings, wrap an existing LlamaIndex retriever as a
 read-only source, or reuse its embedding model:
 
 ```python
@@ -56,7 +56,7 @@ index = from_llamaindex_retriever(li_retriever)   # async .search()
 embedder = from_llamaindex_embedding(li_embedding)
 ```
 
-Tools — register a `FunctionTool` so an agent can call it:
+Tools, register a `FunctionTool` so an agent can call it:
 
 ```python
 from vincio.interop import add_llamaindex_tool
@@ -66,7 +66,7 @@ add_llamaindex_tool(app, li_function_tool)
 
 Going the other way (Vincio → LlamaIndex) is also supported with
 `to_llamaindex_tool`, `to_llamaindex_retriever`, `to_llamaindex_embedding`,
-and `to_llamaindex_documents` — install `vincio[llamaindex]` for the `to_*`
+and `to_llamaindex_documents`, install `vincio[llamaindex]` for the `to_*`
 direction.
 
 ## In Vincio
@@ -84,7 +84,7 @@ engine = index.as_query_engine()
 answer = engine.query("how do refunds work?")
 ```
 
-becomes a source plus a run — retrieval, reranking, budgeting, and citation
+becomes a source plus a run, retrieval, reranking, budgeting, and citation
 enforcement are handled by the compiler:
 
 ```python
@@ -102,7 +102,7 @@ print(result.citations, result.cost_usd, result.trace_id)
 ```
 
 Swap the in-memory index for a production vector store without touching the
-query side — the connector hub and embedder feed the same scored retrieval:
+query side, the connector hub and embedder feed the same scored retrieval:
 
 ```python
 from vincio.retrieval import build_embedder, build_reranker
@@ -117,25 +117,25 @@ The same factories span the wider breadth: `build_vector_index` also targets
 Weaviate, Milvus, Elasticsearch, OpenSearch, and Vespa, and `build_embedder`
 adds Matryoshka dimension truncation (`build_embedder(kind, dimensions=N)`),
 contextual (`voyage-context`), and multimodal (`voyage-multimodal` /
-`cohere-multimodal`) embedders — all behind the same `Embedder` interface and
+`cohere-multimodal`) embedders, all behind the same `Embedder` interface and
 feeding the same scored retrieval.
 
 ## What Vincio adds
 
-- **A context compiler, not just a query engine** — retrieved chunks compete
+- **A context compiler, not just a query engine**: retrieved chunks compete
   with memory, tool results, and instructions for a scored token budget, with
   conflict resolution and deduplication across all of them.
-- **Scored, budgeted context packets** — every piece of evidence is ranked
+- **Scored, budgeted context packets**: every piece of evidence is ranked
   and fitted to a budget, so you see exactly what went into each answer.
-- **Built-in evals, gates, and an optimization loop** — `groundedness`,
+- **Built-in evals, gates, and an optimization loop**: `groundedness`,
   `lexical_overlap`, `schema_validity`, `cost`, and `latency` metrics with
   CI gates, no separate harness to wire up.
-- **Native, provider-neutral observability** — every run writes a trace with
+- **Native, provider-neutral observability**: every run writes a trace with
   cost tracking and a `trace_id`; view it with `vincio trace view`.
-- **Deterministic security** — permissioned tools (`permission="read_only"`)
+- **Deterministic security**: permissioned tools (`permission="read_only"`)
   and citation policies compiled into the prompt and validated against real
   evidence ids.
-- **A closed improvement loop** — feedback and traces feed back into evals and
+- **A closed improvement loop**: feedback and traces feed back into evals and
   context optimization, all in one consistent model.
 
 ## Next steps

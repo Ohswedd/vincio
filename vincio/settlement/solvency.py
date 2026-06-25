@@ -1428,7 +1428,7 @@ def check_completeness(
 
 
 class InsolvencyBreach(BaseModel):
-    """A proven shortfall — the obligations owed exceed the reserves actually held.
+    """A proven shortfall: the obligations owed exceed the reserves actually held.
 
     Surfaced by :func:`prove_solvency` when the proven reserves cannot cover the proven
     liabilities: the ``poster`` holds ``reserves_usd`` (the custody attestation pinned by

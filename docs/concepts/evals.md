@@ -1,6 +1,6 @@
 # Evaluation
 
-Evaluation is a native runtime capability — every subsystem is measurable.
+Evaluation is a native runtime capability: every subsystem is measurable.
 
 ## Datasets
 
@@ -18,7 +18,7 @@ dataset = Dataset.load("golden/support_triage.jsonl")
 dataset.filter(tags=["edge_case"]).sample(20)
 ```
 
-Datasets also come from **traces** (one command — see
+Datasets also come from **traces** (one command, see
 [observability](observability.md)) and from **your own corpus**:
 
 ```python
@@ -35,24 +35,24 @@ and provenance (`metadata.source_ids`, source sentences in `rubric.facts`).
 
 ## Metrics
 
-- **Task** — `exact_match`, `lexical_overlap`, `classification_accuracy`, `extraction_f1`
-- **Grounding** — `groundedness`, `unsupported_claim_rate`, `citation_accuracy`,
+- **Task**: `exact_match`, `lexical_overlap`, `classification_accuracy`, `extraction_f1`
+- **Grounding**: `groundedness`, `unsupported_claim_rate`, `citation_accuracy`,
   `citation_recall`, `context_precision`, `context_recall`
-- **Quality & safety** — `faithfulness`, `answer_relevance`, `hallucination`
+- **Quality & safety**: `faithfulness`, `answer_relevance`, `hallucination`
   (strict number checking: "90 days" against evidence saying "30 days" fails),
   `toxicity`, `bias`, `summarization_quality`
-- **Conversational** — `knowledge_retention` (flags re-asking for facts the
+- **Conversational**: `knowledge_retention` (flags re-asking for facts the
   user already gave), `conversation_relevance`, `conversation_outcome` (did the
-  thread achieve the user's goal — `rubric["goal"]` or `rubric["goal_keywords"]`),
-  `intent_resolution` (fraction of user turns the assistant addressed) — all read
+  thread achieve the user's goal, `rubric["goal"]` or `rubric["goal_keywords"]`),
+  `intent_resolution` (fraction of user turns the assistant addressed), all read
   the session from `case.context["messages"]`
-- **Trajectory & tool-use** — `tool_call_accuracy`, `tool_call_f1`,
+- **Trajectory & tool-use**: `tool_call_accuracy`, `tool_call_f1`,
   `goal_accuracy`, `plan_adherence`, `plan_quality`, `step_efficiency`,
-  `topic_adherence` — they score *how* the agent got there, not just the final
+  `topic_adherence`. They score *how* the agent got there, not just the final
   answer (see [Trajectory & tool-use metrics](#trajectory--tool-use-metrics))
-- **Operational** — `cost`, `latency`, `input_tokens`, `output_tokens`, `retries`
-- **Retrieval** — `recall_at_k`, `precision_at_k`, `mrr`, `ndcg`
-- **Agent/memory** — via `AgentState.metrics()` and `MemoryEngine.stats()`
+- **Operational**: `cost`, `latency`, `input_tokens`, `output_tokens`, `retries`
+- **Retrieval**: `recall_at_k`, `precision_at_k`, `mrr`, `ndcg`
+- **Agent/memory**: via `AgentState.metrics()` and `MemoryEngine.stats()`
 
 Register custom metrics with `@register_metric("name")`. All metrics are
 deterministic and offline; the same objects run as eval metrics, runtime
@@ -60,14 +60,14 @@ evaluators (`app.add_evaluator`), and test assertions (`vincio.testing`).
 
 ## Trajectory & tool-use metrics
 
-A run can answer right while taking the wrong path — output-only eval can't see
+A run can answer right while taking the wrong path; output-only eval can't see
 that. The seven `TRAJECTORY_METRICS` (`tool_call_accuracy`, `tool_call_f1`,
 `goal_accuracy`, `plan_adherence`, `plan_quality`, `step_efficiency`,
 `topic_adherence`) score the **trajectory** carried on the `RunOutput`. They have
 the ordinary metric signature `(EvalCase, RunOutput) -> MetricResult` with a value
 in `[0, 1]`, so they sit beside output-only metrics in the same run.
 
-Attach a trajectory from a completed run — no re-instrumentation:
+Attach a trajectory from a completed run, no re-instrumentation:
 
 ```python
 from vincio.evals import RunOutput
@@ -117,7 +117,7 @@ convo.goal_achieved, convo.rounds, convo.turns
 ```
 
 The simulator is LLM-backed when given a `provider` + `model`, otherwise it falls
-back to a **seed-deterministic** template — the same seed yields an identical
+back to a **seed-deterministic** template; the same seed yields an identical
 conversation, which is what makes simulated sessions usable as CI goldens. Use
 `await Simulator(...).asimulate(agent, persona)` for async agents. To turn real
 traffic into multi-turn goldens, `dataset_from_traces(traces,
@@ -127,7 +127,7 @@ group_by_session=True)` stitches a session's traces into one case.
 
 `DeterministicJudge`, `ModelJudge` (rubric + structured score, calibrated by
 repeated sampling), `EmbeddingJudge`, `HybridJudge` (weighted blend), and
-**`GEvalJudge`** — rubric-based G-Eval: it derives explicit evaluation steps
+**`GEvalJudge`**, rubric-based G-Eval: it derives explicit evaluation steps
 from plain-language criteria once, scores on a 1–5 form-filling scale
 (`samples > 1` approximates probability-weighted scoring), and calibrates
 against human labels:
@@ -141,7 +141,7 @@ judge.calibrate([(0.75, 0.9), (0.5, 0.7)])   # (judge, human) pairs → linear f
 
 ### Human annotation & Cohen's κ
 
-`calibrate()` now also returns `"cohens_kappa"` — an LLM judge should only gate CI
+`calibrate()` now also returns `"cohens_kappa"`; an LLM judge should only gate CI
 once it has *demonstrably* agreed with people. Collect the labels through an
 `AnnotationQueue`, then read inter-rater agreement:
 
@@ -180,13 +180,13 @@ vincio eval run tests/golden/basic.jsonl --app app.py \
   --gate "groundedness=>= 0.95" --compare baseline.json --output report.json
 ```
 
-The command exits non-zero when gates fail — wire it into CI directly.
+The command exits non-zero when gates fail; wire it into CI directly.
 
 ## Online / continuous eval
 
 Score a sampled fraction of **live** runs with the same metric objects. Scoring
-runs after the response is finalized — scheduled off the hot path with
-deterministic 1-in-N sampling — so it never adds latency to the request:
+runs after the response is finalized, scheduled off the hot path with
+deterministic 1-in-N sampling, so it never adds latency to the request:
 
 ```python
 app.add_online_evaluator("answer_relevance", sample_rate=0.1)
@@ -197,7 +197,7 @@ await app.aflush_online()            # drain in-flight scoring (tests/shutdown)
 ```
 
 Each score is written as a time series to the metadata store (kind
-`eval_results`) and emits an `eval.online` event — no external mirroring.
+`eval_results`) and emits an `eval.online` event, no external mirroring.
 
 ## Drift detection
 
@@ -225,7 +225,7 @@ drift).
 
 Reports log to a local experiment store (the same SQLite metadata store the
 runtime uses); comparisons and ablations test for statistical significance
-with a paired t-test when reports share case ids, Welch's t-test otherwise —
+with a paired t-test when reports share case ids, Welch's t-test otherwise,
 pure Python, no SciPy:
 
 ```python
@@ -257,7 +257,7 @@ Variant dict keys: `model`, `prompt`, `apply` (a `callable(app)`), `params`.
 
 An adversarial suite (jailbreaks, prompt injections, PII/secret-leak probes,
 bias and toxicity provocations) judged **deterministically** by the security
-engine's detectors and the safety metrics — attack probes carry a canary
+engine's detectors and the safety metrics; attack probes carry a canary
 token, so an attack only "succeeds" if the output proves compliance:
 
 ```python
@@ -289,7 +289,7 @@ A metric-as-guardrail reads its direction from `LOWER_IS_BETTER`
 (lower-is-better fires above the threshold, higher-is-better fires below); pass
 `evidence` / `expected` / `input` via the rail params. Because trajectory metrics
 are ordinary metrics, they flow into `report.metric_values` and the Pareto
-frontier — the `AGENTIC_OBJECTIVES` preset is `goal_accuracy`,
+frontier; the `AGENTIC_OBJECTIVES` preset is `goal_accuracy`,
 `tool_call_accuracy`, `step_efficiency`, and `cost`, or pass your own
 `ObjectiveSpec` list. Unlike platforms that ship traces out to score them,
 Vincio scores the trajectory in-process, in the same model as the runtime, and
@@ -298,7 +298,7 @@ turns the very same metric into a guardrail and an optimization target.
 ## Testing ergonomics
 
 Unit-test LLM behavior with the `vincio.testing` assertions and the pytest
-plugin (auto-registered on install) — see the
+plugin (auto-registered on install); see the
 [testing guide](../guides/test-llm-apps.md):
 
 ```python

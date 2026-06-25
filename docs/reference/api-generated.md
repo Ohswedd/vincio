@@ -1,7 +1,7 @@
 # Reference: public API index
 
-This page is generated from `vincio.__all__` — the exact set of names
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html) applies to —
+This page is generated from `vincio.__all__`, the exact set of names
+[Semantic Versioning](https://semver.org/spec/v2.0.0.html) applies to,
 with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
@@ -36,7 +36,7 @@ Apply a :class:`LocalAdapter` to any base provider at generation time.
 
 ### `AdapterGate(metric=…, regression_threshold=…, require_significance=…, min_samples=…, alpha=…)`
 
-No-regression gate for an on-device adapter — the model-swap gate's analog.
+No-regression gate for an on-device adapter, the model-swap gate's analog.
 
 ### `AdapterRegistry(directory=…)`
 
@@ -156,7 +156,7 @@ One beneficiary's bounded claim on the poster's held capital.
 
 ### `BindingCandidate(**data)`
 
-One ranked candidate for a capability binding — the decision's evidence.
+One ranked candidate for a capability binding, the decision's evidence.
 
 ### `BindingWeights(**data)`
 
@@ -188,7 +188,7 @@ One labelled near-miss observation used to calibrate the threshold.
 
 ### `CalibrationReport(**data)`
 
-The verdict of :meth:`WorldModel.calibrate` — the model's planning weight.
+The verdict of :meth:`WorldModel.calibrate`, the model's planning weight.
 
 ### `CanaryRouter(primary, candidate, percent=…, candidate_model=…, score_fn=…, min_samples=…, window=…, regression_threshold=…, on_rollback=…, prompt_registry=…, prompt_name=…, events=…)`
 
@@ -256,7 +256,7 @@ The re-derived verdict for one claim and its subtree.
 
 ### `CollateralLedger(**data)`
 
-A poster's cross-pool rehypothecation view — a bounded re-use guard.
+A poster's cross-pool rehypothecation view, a bounded re-use guard.
 
 ### `CollateralLedgerVerification(**data)`
 
@@ -264,7 +264,7 @@ The (non-raising) outcome of verifying a collateral ledger offline.
 
 ### `CollateralPool(**data)`
 
-A counterparty's single posted stake backing many contracts — a margin account.
+A counterparty's single posted stake backing many contracts, a margin account.
 
 ### `CollateralPoolVerification(**data)`
 
@@ -360,7 +360,7 @@ A signed, audited, offline-verifiable agreement over typed terms.
 
 ### `ContractFulfillment(**data)`
 
-Whether delivered work met the contract's terms — the enforcement verdict.
+Whether delivered work met the contract's terms, the enforcement verdict.
 
 ### `ContractTerms(**data)`
 
@@ -372,15 +372,15 @@ The (non-raising) outcome of verifying a contract offline.
 
 ### `Contribution(**data)`
 
-One member's privacy-preserving federated update — numeric, no raw traffic.
+One member's privacy-preserving federated update, numeric, no raw traffic.
 
 ### `ContributionBuilder(embedder=…, privacy=…)`
 
-Build a :class:`Contribution` from a member's local data — never its text.
+Build a :class:`Contribution` from a member's local data, never its text.
 
 ### `ControllerDecision(**data)`
 
-The record of one controller evaluation — stamped on the audit chain.
+The record of one controller evaluation, stamped on the audit chain.
 
 ### `CostAwareSelector(models, registry=…, quality_floor=…, events=…)`
 
@@ -584,7 +584,7 @@ Outcome of a right-to-erasure-by-source sweep.
 
 ### `Escrow(**data)`
 
-Posted collateral bound to a contract — held, released, or forfeited.
+Posted collateral bound to a contract, held, released, or forfeited.
 
 ### `EscrowConfig(**data)`
 
@@ -728,7 +728,7 @@ SQLite-backed, indexed trace + cost store with pre-aggregated rollups.
 
 ### `InsolvencyBreach(**data)`
 
-A proven shortfall — the obligations owed exceed the reserves actually held.
+A proven shortfall: the obligations owed exceed the reserves actually held.
 
 ### `InsolvencyResolution(**data)`
 
@@ -756,7 +756,7 @@ A party's preference over one numeric issue.
 
 ### `IssuerTrust(**data)`
 
-The importer's resolved trust in one issuer — pinpointed, never silent.
+The importer's resolved trust in one issuer, pinpointed, never silent.
 
 ### `JudgeCalibrator(judge, reflector=…, kappa_bins=…, trust_threshold=…, min_kappa_gain=…)`
 
@@ -864,7 +864,7 @@ Matryoshka (MRL) dimension truncation over any embedder.
 
 ### `MemberReputation(**data)`
 
-One member's reputation snapshot — its track record as an auditable number.
+One member's reputation snapshot, its track record as an auditable number.
 
 ### `MemoryEngine(store=…, write_policy=…, decay_lambda=…, min_confidence=…, graph_enabled=…, embedder=…, vector_weight=…, retention_weight=…, ttl_days=…, audit=…, consent_ledger=…, privacy_accountant=…, privacy_mechanism=…)`
 
@@ -900,7 +900,7 @@ Deterministic offline image provider.
 
 ### `MockScreen(app)`
 
-Deterministic in-process screen over a :class:`ScreenApp` — no browser, no network. Tracks the current screen, typed field values, and durable flags, and re-derives a stable :class:`ScreenState` from them, so a run is reproducible and CI-golden. Supports exact snapshot restore as an undo fallback.
+Deterministic in-process screen over a :class:`ScreenApp`, no browser, no network. Tracks the current screen, typed field values, and durable flags, and re-derives a stable :class:`ScreenState` from them, so a run is reproducible and CI-golden. Supports exact snapshot restore as an undo fallback.
 
 ### `MockSpeechProvider(sample_rate=…)`
 
@@ -948,7 +948,7 @@ A party's private stance: per-issue preferences and a concession curve.
 
 ### `NegotiationResult(**data)`
 
-The outcome of a bounded negotiation — a deal, or a partial no-deal.
+The outcome of a bounded negotiation, a deal, or a partial no-deal.
 
 ### `NettingSet(**data)`
 
@@ -1040,11 +1040,11 @@ One differentially-private release, as accounted against a budget.
 
 ### `PrivacyReport(**data)`
 
-Per-subject DP budget roll-up — the privacy analogue of the cost report.
+Per-subject DP budget roll-up, the privacy analogue of the cost report.
 
 ### `PrivacySpend(**data)`
 
-One accounted privacy release for a subject — a row on the audit chain.
+One accounted privacy release for a subject, a row on the audit chain.
 
 ### `ProgramOp(**data)`
 
@@ -1088,7 +1088,7 @@ Pick a thinking effort + token budget per step from task + budget signals.
 
 ### `ReasoningDecision(**data)`
 
-The record of one reasoning-effort pick — stamped on the trace.
+The record of one reasoning-effort pick, stamped on the trace.
 
 ### `ReasoningPolicy(**data)`
 
@@ -1108,7 +1108,7 @@ A pluggable, deterministic checker that turns an answer into checks.
 
 ### `Reconciliation(**data)`
 
-Whether two parties' settlement records tie out — the dispute verdict.
+Whether two parties' settlement records tie out, the dispute verdict.
 
 ### `ReflectiveOptimizer(evaluate_variant, weights=…, gates=…, max_cost_per_case=…, objectives=…, reflector=…, constraints=…, prefer=…)`
 
@@ -1128,7 +1128,7 @@ A signed, offline-verifiable attestation of a counterparty's earned standing.
 
 ### `ReputationBundle(**data)`
 
-The signed artifacts a peer holds about one subject — its reply to a query.
+The signed artifacts a peer holds about one subject, its reply to a query.
 
 ### `ReputationConfig(**data)`
 
@@ -1144,7 +1144,7 @@ A per-member, gate-earned reputation that weights federated aggregation.
 
 ### `ReputationReport(**data)`
 
-Per-member reputation roll-up — alongside the cost and privacy reports.
+Per-member reputation roll-up, alongside the cost and privacy reports.
 
 ### `ResearchAgent(app, budget=…, strategies=…, judge=…, min_support=…, require_citations=…)`
 
@@ -1180,7 +1180,7 @@ A fixed query set scored against a fixed corpus.
 
 ### `ReuseBreach(**data)`
 
-A contract pledged across more than one pool — the same collateral, twice.
+A contract pledged across more than one pool, the same collateral, twice.
 
 ### `RewardModel(rewards, success_threshold=…, name=…)`
 
@@ -1240,7 +1240,7 @@ The durable, resumable, offline-verifiable record of one saga run.
 
 ### `SagaResult(**data)`
 
-The outcome of a cross-org saga run — completion, a clean unwind, or a pause.
+The outcome of a cross-org saga run, completion, a clean unwind, or a pause.
 
 ### `SagaStep(**data)`
 
@@ -1264,11 +1264,11 @@ Mem0-style handle bound to one owner: ``engine.for_user("u1")``.
 
 ### `ScreenApp(**data)`
 
-A deterministic, in-process app a :class:`MockScreen` drives — the offline, WebArena / OSWorld-shaped harness: named screens, form fields, click-driven transitions, and effects that set durable flags.
+A deterministic, in-process app a :class:`MockScreen` drives, the offline, WebArena / OSWorld-shaped harness: named screens, form fields, click-driven transitions, and effects that set durable flags.
 
 ### `ScreenState(**data)`
 
-A perceived snapshot of the UI — the *observe* half of the loop.
+A perceived snapshot of the UI, the *observe* half of the loop.
 
 ### `SearchBudget(**data)`
 
@@ -1280,7 +1280,7 @@ The outcome of a search: the winner, every candidate, and why it stopped.
 
 ### `SecureAggregator(privacy=…, rank=…, allowed_regions=…, reputation=…)`
 
-Merge masked contributions into a :class:`FederatedSubspace` — never seeing one.
+Merge masked contributions into a :class:`FederatedSubspace`, never seeing one.
 
 ### `SelfImprovementController(app, policy=…, dataset=…, golden=…, registry=…, prompt_name=…)`
 
@@ -1312,7 +1312,7 @@ A signed, offline-verifiable ranking of a poster's obligations into priority tra
 
 ### `SeniorityTranche(**data)`
 
-One priority rank of a :class:`SenioritySchedule` — the creditors paid at that level.
+One priority rank of a :class:`SenioritySchedule`, the creditors paid at that level.
 
 ### `SeniorityVerification(**data)`
 
@@ -1336,7 +1336,7 @@ A signed, offline-verifiable reconciliation of delivery against a contract.
 
 ### `SettlementReport(**data)`
 
-Per-counterparty settlement roll-up — alongside the cost report.
+Per-counterparty settlement roll-up, alongside the cost report.
 
 ### `ShadowProvider(primary, candidate, candidate_model=…, block=…, price_table=…, recorder=…, events=…, max_observations=…)`
 
@@ -1364,7 +1364,7 @@ Which key verified a signature and whether it was valid at a given time.
 
 ### `SkillProvenance(**data)`
 
-Where a learned skill came from — the audit trail of its acquisition.
+Where a learned skill came from, the audit trail of its acquisition.
 
 ### `SkillSearch(beam_width=…, max_depth=…)`
 
@@ -1416,7 +1416,7 @@ One immutable, hash-chained entry in a :class:`SagaJournal`.
 
 ### `StepRequest(**data)`
 
-The typed envelope dispatched to a participant for one step — the handoff.
+The typed envelope dispatched to a participant for one step, the handoff.
 
 ### `SubgraphScheduler(workers=…, store=…, coordinator=…, lease_ttl_s=…, budget=…, deadline_s=…, clock=…)`
 
@@ -1504,7 +1504,7 @@ A typed information-flow label on a value or context candidate.
 
 ### `TrustModel(assessments, config)`
 
-The importer's bounded, transitive trust in each issuer — the Sybil-resistant kernel.
+The importer's bounded, transitive trust in each issuer, the Sybil-resistant kernel.
 
 ### `TwoStageIndex(embedder=…, coarse_dims=…, quantization=…, rerank_factor=…)`
 
@@ -1520,7 +1520,7 @@ A typed, addressable element grounded from the screen + accessibility tree.
 
 ### `UnderReservedBreach(**data)`
 
-A proven-reserves shortfall — the pools pledge more than the custodian attests.
+A proven-reserves shortfall: the pools pledge more than the custodian attests.
 
 ### `UnitVerifier()`
 
@@ -1596,7 +1596,7 @@ The per-tranche distribution summary of an :class:`InsolvencyResolution`.
 
 ### `WorkerPoolBackend(workers=…, store=…, coordinator=…, lease_ttl_s=…)`
 
-In-process reference distributed executor — lock-free, durable, fan-out.
+In-process reference distributed executor, lock-free, durable, fan-out.
 
 ### `Workflow(name, tracer=…, approval_fn=…)`
 
@@ -1646,7 +1646,7 @@ Expose an org's settlement book as a queryable attestation peer over A2A.
 
 ### `attribute_regression(app, dataset, factors, metric=…, aggregate=…, repeats=…)`
 
-Attribute a metric regression to the changed ``factors`` by Shapley counterfactual replay — the convenience entry point behind a failing gate.
+Attribute a metric regression to the changed ``factors`` by Shapley counterfactual replay, the convenience entry point behind a failing gate.
 
 ### `available_packs()`
 
@@ -1766,7 +1766,7 @@ True when running on a WASM target (Emscripten/Pyodide or WASI).
 
 ### `key_fingerprint(public_key)`
 
-A short, stable key id (``k<16 hex>``) for a public key — used as ``kid``.
+A short, stable key id (``k<16 hex>``) for a public key, used as ``kid``.
 
 ### `library_capability(library, tasks, search=…)`
 
@@ -1798,7 +1798,7 @@ A τ-bench-style retail world: orders mutated by tools, verified by end state.
 
 ### `make_web_checkout()`
 
-A deterministic, in-process checkout app and its goal — the offline, WebArena / OSWorld-shaped reference scenario.
+A deterministic, in-process checkout app and its goal, the offline, WebArena / OSWorld-shaped reference scenario.
 
 ### `model_swap_regression(app, dataset, baseline_model=…, candidate_model, metrics=…, quality_metric=…, alpha=…, repeats=…, flake_quarantine=…, flake_threshold=…, slice_prefix=…)`
 

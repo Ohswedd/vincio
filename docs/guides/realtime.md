@@ -2,12 +2,12 @@
 
 > **Optional module.** A separate, opt-in module for stateful
 > bidirectional voice/realtime sessions. It is explicitly scoped as a *stateful
-> bidirectional* module — **not** core context engineering — and lives behind
+> bidirectional* module, **not** core context engineering, and lives behind
 > the `vincio[realtime]` extra. The dependency-free in-process backend is the
 > default and the offline path; the hosted backends speak WebSocket.
 
 `vincio.realtime` gives you a provider-neutral realtime session over a
-pluggable backend — **OpenAI Realtime**, **Gemini Live**, or a deterministic
+pluggable backend, **OpenAI Realtime**, **Gemini Live**, or a deterministic
 **in-process** backend for tests and offline development. The session owns the
 protocol-agnostic concerns; the backend owns the wire.
 
@@ -60,7 +60,7 @@ async with session:
 ## In-session tools through the permissioned runtime
 
 The headline integration: wire a session from a `ContextApp` and its tool calls
-flow through the app's permissioned, sandboxed, audited tool runtime — exactly
+flow through the app's permissioned, sandboxed, audited tool runtime, exactly
 like a native tool call.
 
 ```python
@@ -98,7 +98,7 @@ session = RealtimeSession(tool_dispatcher=dispatch)
 | Gemini Live | `"gemini"` | WebSocket | `vincio[realtime]` |
 
 `connect_realtime("inprocess", script=...)` drives the model's response from a
-pure function, so realtime flows — turns, VAD, interruption, tool round-trips —
+pure function, so realtime flows, turns, VAD, interruption, tool round-trips,
 are reproducible and fully testable offline with no network.
 
 ## End-to-end voice agent
@@ -127,27 +127,27 @@ async with agent:
 
 It wires three things onto the session:
 
-- **Deep research** — registers [`app.research`](../concepts/agents.md) as an
+- **Deep research**: registers [`app.research`](../concepts/agents.md) as an
   in-session `research` tool, so a spoken question runs the cited search → read →
   verify → synthesize loop and answers from sources, not the model's memory.
-- **Memory OS** — enables the self-editing memory tools
+- **Memory OS**: enables the self-editing memory tools
   ([`enable_memory_os`](../concepts/memory.md)), so the agent can recall and
   update its own memory mid-conversation on the audited, permissioned path.
-- **Rails** — runs the app's deterministic input/output
+- **Rails**: runs the app's deterministic input/output
   [rails](reliability-guardrails.md) over every spoken transcript and reply,
   redacting or blocking before audio is produced, recorded on the audit chain.
 
 Pass `research=False`, `memory_os=False`, or `rails=False` to opt out of any one;
 `backend="openai"` / `"gemini"` switch to the hosted wire. Tool calls (including
 `research` and the memory ops) route through the app's permissioned, sandboxed,
-budgeted, audited runtime — a voice turn cannot do anything a text turn could
+budgeted, audited runtime, a voice turn cannot do anything a text turn could
 not. See [`examples/01_quickstart.py`](../../examples/01_quickstart.py) for a
 runnable, offline end-to-end version.
 
 ## Scope
 
 This module is deliberately small and opt-in. The base session is **not** wired
-into the context compiler, evals, or the closed loop — a realtime audio session
+into the context compiler, evals, or the closed loop, a realtime audio session
 is a different shape of computation from a compiled context packet. The
 `VoiceAgent` is the bridge for the cases that *do* want grounding, memory, and
 rails. What both share is the tool runtime: realtime tool calls are permissioned,

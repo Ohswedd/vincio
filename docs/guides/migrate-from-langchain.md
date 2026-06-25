@@ -27,7 +27,7 @@ replace it with the native equivalent when you're ready.
 
 ## Bring your assets across
 
-Tools — register a LangChain tool directly (no `langchain` import needed):
+Tools, register a LangChain tool directly (no `langchain` import needed):
 
 ```python
 from vincio import ContextApp
@@ -41,7 +41,7 @@ spec = from_langchain_tool(my_lc_tool)         # or inspect the adapter
 # {name, description, input_schema, handler}
 ```
 
-Retrievers and loaders — reuse what you already built:
+Retrievers and loaders, reuse what you already built:
 
 ```python
 from vincio.interop import from_langchain_retriever, from_langchain_loader
@@ -51,7 +51,7 @@ docs = from_langchain_loader(my_lc_loader)          # -> list[Document]
 app.add_source("kb", documents=docs)                # ingest converted Documents
 ```
 
-Embeddings — wrap a LangChain embeddings object, or switch to a native one:
+Embeddings, wrap a LangChain embeddings object, or switch to a native one:
 
 ```python
 from vincio.interop import from_langchain_embeddings
@@ -61,7 +61,7 @@ embedder = from_langchain_embeddings(my_lc_embeddings)
 embedder = build_embedder("openai")                 # or local | jina | voyage | cohere
 ```
 
-Hand Vincio back to LangChain — the `to_*` direction (needs
+Hand Vincio back to LangChain, the `to_*` direction (needs
 `pip install "vincio[langchain]"`):
 
 ```python
@@ -74,7 +74,7 @@ lc_retriever = to_langchain_retriever(vincio_index)
 
 ## In Vincio
 
-A LCEL retrieval chain — retriever, prompt, parser, model wired by hand —
+A LCEL retrieval chain, retriever, prompt, parser, model wired by hand,
 collapses into a source plus a grounding policy:
 
 ```python
@@ -93,7 +93,7 @@ result = app.run("How do I configure SSO?")
 print(result.output, result.citations, result.cost_usd, result.trace_id)
 ```
 
-A LangGraph `StateGraph` maps to `app.graph()` — conditional edges and
+A LangGraph `StateGraph` maps to `app.graph()`, conditional edges and
 checkpoints included; multi-specialist `AgentExecutor` setups map to
 `app.crew()`:
 
@@ -125,22 +125,22 @@ hits = app.recall("contact preference", user_id="u1")
 
 ## What Vincio adds
 
-- **A context compiler, not string templates** — prompts, evidence, memory,
+- **A context compiler, not string templates**: prompts, evidence, memory,
   tools, and policies compile into one scored, budgeted, provenance-aware
   packet with an excluded-context report for every omission.
-- **Built-in evals + gates + optimization** — `groundedness`,
+- **Built-in evals + gates + optimization**: `groundedness`,
   `lexical_overlap`, `schema_validity`, `cost`, and `latency` ship in the
   core library and gate CI; no separate eval SaaS.
-- **Native, provider-neutral observability** — every run writes a full trace
+- **Native, provider-neutral observability**: every run writes a full trace
   (JSONL or OTEL) with cost tracking and `result.trace_id`; no LangSmith
   account required.
-- **Deterministic security** — answer-only-from-sources, citation enforcement,
+- **Deterministic security**: answer-only-from-sources, citation enforcement,
   tool permissions (`app.add_tool(fn, permission="read_only")`), and audit logs
   are enforced in code, not by the model.
-- **Provider breadth without rewrites** — `openai_compatible("groq")` and
+- **Provider breadth without rewrites**: `openai_compatible("groq")` and
   `build_provider("groq")` reach groq, together, fireworks, openrouter,
   deepseek, perplexity, xai, nvidia, or any OpenAI-compatible gateway.
-- **A closed improvement loop** — eval-scored runs feed dataset curation and
+- **A closed improvement loop**: eval-scored runs feed dataset curation and
   gated prompt/context/routing optimization, so scores change the system.
 
 ## Next steps

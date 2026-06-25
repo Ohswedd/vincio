@@ -264,7 +264,7 @@ class PrivacyBudget(BaseModel):
 
 
 class PrivacySpend(BaseModel):
-    """One accounted privacy release for a subject — a row on the audit chain."""
+    """One accounted privacy release for a subject, a row on the audit chain."""
 
     id: str = Field(default_factory=lambda: new_id("privacy"))
     subject_id: str
@@ -314,7 +314,7 @@ class PrivacyRow(BaseModel):
 
 
 class PrivacyReport(BaseModel):
-    """Per-subject DP budget roll-up — the privacy analogue of the cost report.
+    """Per-subject DP budget roll-up, the privacy analogue of the cost report.
 
     Sits alongside :meth:`~vincio.core.app.ContextApp.cost_report`: each row is a
     subject's cumulative ``ε`` spent against its ceiling, with the operation and

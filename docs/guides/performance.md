@@ -2,13 +2,13 @@
 
 Vincio's spine is built for speed: concurrent hot paths, content-addressed
 compilation caches, zero-copy context packets, end-to-end streaming, and
-throughput primitives — all measured by VincioBench and gated in CI. This
+throughput primitives, all measured by VincioBench and gated in CI. This
 guide shows how to use each.
 
 ## Streaming end to end
 
 `ContextApp.astream` runs the full 17-step pipeline (policy, retrieval,
-context compile, validation — nothing is skipped) and streams as it goes:
+context compile, validation, nothing is skipped) and streams as it goes:
 
 ```python
 import asyncio
@@ -43,7 +43,7 @@ Notes:
 - The model span records `ttft_ms` (time to first token), so streaming
   latency is a number in the trace, not a feeling.
 - The server's `POST /v1/apps/{id}/stream` endpoint emits these same events
-  over SSE — real deltas as the provider produces them.
+  over SSE, real deltas as the provider produces them.
 - `app.stream(...)` is a synchronous convenience that collects the async
   event stream.
 - `parse_partial_json` never invents content: a partial parse is the
@@ -115,7 +115,7 @@ prompt-compile entries; and so on).
 
 ### Partial recompile on packet edits
 
-Edit a compiled packet without paying for a full recompile — selection,
+Edit a compiled packet without paying for a full recompile, selection,
 budgeting, and ordering re-run over the retained inputs, and unchanged texts
 hit the memoized scorers:
 
@@ -130,18 +130,18 @@ edited = await app.context_compiler.recompile(
 
 ### Compiled-prompt render program
 
-A prompt's stable prefix — role, objective, rules, safety policies,
-definitions, the output contract, and examples — depends only on the spec, not
+A prompt's stable prefix, role, objective, rules, safety policies,
+definitions, the output contract, and examples, depends only on the spec, not
 on the per-call task or evidence. The prompt compiler compiles that prefix once
 into a render program and reuses it across calls that share the spec, rendering
 only the volatile suffix:
 
 ```yaml
-# vincio.yaml — on by default
+# vincio.yaml, on by default
 # (CompilerOptions.use_render_program)
 ```
 
-The output is byte-identical to compiling from scratch — the program is a
+The output is byte-identical to compiling from scratch; the program is a
 hot-path accelerator, not a behaviour change. On a representative spec the warm
 prefix reuse is several times faster than re-rendering it every call;
 `compiler.program_hits` counts the reuses. This is distinct from the
@@ -150,9 +150,9 @@ blocks included) is unchanged.
 
 ### Warm candidate arena
 
-Collecting and normalizing candidates — building a candidate for every
+Collecting and normalizing candidates, building a candidate for every
 evidence, memory, and tool item, collapsing whitespace, and screening privacy
-scope — is query-independent. In the common session pattern (the same retrieved
+scope, is query-independent. In the common session pattern (the same retrieved
 corpus, a new turn each time) the compiler reuses that prepared set instead of
 rebuilding it, so a warm recompile is dominated by the query-dependent scoring
 and selection:
@@ -169,8 +169,8 @@ concurrent runs. `compiler.arena_hits` counts the reuses.
 ## Vectorized scoring
 
 Candidate scoring runs in a single pass. The per-component scores for the whole
-candidate set are reduced against the weight vector together, and — when NumPy
-is installed — semantic relevance and the weighted reduction each collapse to a
+candidate set are reduced against the weight vector together, and, when NumPy
+is installed, semantic relevance and the weighted reduction each collapse to a
 single matrix product. The pure-Python fallback is the zero-dependency default
 and produces bit-for-bit the same selection, so NumPy is an optional
 accelerator and never a requirement:
@@ -179,14 +179,14 @@ accelerator and never a requirement:
 pip install numpy   # optional: accelerates large semantic candidate sets
 ```
 
-Nothing to configure — the batched scorer is always on, and a build without
+Nothing to configure, the batched scorer is always on, and a build without
 NumPy compiles identical context to one with it.
 
 ## Streaming-first compilation
 
 `ContextCompiler.compile_streaming` streams the compiled context as it becomes
-available. The stable prefix — objective, instructions, constraints, and the
-task — is always included and independent of which evidence is selected, so it
+available. The stable prefix, objective, instructions, constraints, and the
+task, is always included and independent of which evidence is selected, so it
 is emitted *before* any candidate is scored; the selected evidence follows, then
 a terminal event carries the full `CompiledContext`:
 
@@ -273,7 +273,7 @@ Three mechanisms keep the live context bounded as the horizon grows:
 - **Provenance-preserving compaction** (`ContextCompactor`) folds the coldest
   cold spans into a hierarchical extractive summary, writes the summary into the
   memory OS (audited), and pages the originals' full text to a content-addressed
-  store — recoverable on demand via the same cross-process path slim packets
+  store, recoverable on demand via the same cross-process path slim packets
   use, so `governor.recall(query)` pages a compacted fact back when it is needed.
 - **The budget itself** (`ContextBudget`) caps live tokens, resident bytes, and
   the estimated decode KV-cache footprint; the governor compacts (or evicts, when
@@ -281,7 +281,7 @@ Three mechanisms keep the live context bounded as the horizon grows:
 
 A horizon-scaling SLO holds the guarantee: at 10× horizon the governed footprint
 stays within a bounded multiple of the 1× footprint (flat, not the ~linear growth
-of naïve accumulation) and a compacted fact is still recalled — see the
+of naïve accumulation) and a compacted fact is still recalled, see the
 `families.long_horizon` VincioBench family and example
 [`54_long_horizon_context.py`](https://github.com/Ohswedd/vincio/blob/main/examples/11_advanced_context.py).
 
@@ -304,14 +304,14 @@ performance:
 
 ## Throughput primitives
 
-- **Pooled transport** — every HTTP provider uses a connection-pooled
+- **Pooled transport**: every HTTP provider uses a connection-pooled
   `httpx.AsyncClient` (`performance.max_connections`,
   `performance.max_keepalive_connections`), and the app reuses provider
   instances across runs so pools stay warm.
-- **Request coalescing** — identical in-flight `generate` calls share one
+- **Request coalescing**: identical in-flight `generate` calls share one
   provider call (`performance.coalesce_requests: true` by default). Only
   byte-identical requests coalesce; each caller gets an independent copy.
-- **Batch embedding** — `ProviderEmbedder` splits large inputs into bounded
+- **Batch embedding**: `ProviderEmbedder` splits large inputs into bounded
   batches embedded concurrently; `BatchingEmbedder` micro-batches concurrent
   small calls into one provider round-trip:
 

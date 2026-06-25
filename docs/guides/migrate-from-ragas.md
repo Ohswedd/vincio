@@ -4,7 +4,7 @@ Ragas is eval-only, and its core ideas map cleanly onto Vincio: an
 `EvaluationDataset` becomes a Vincio `Dataset`, Ragas metrics map onto
 Vincio's built-in metrics, and `ragas.evaluate()` becomes `EvalRunner(...).run()`
 or `vincio eval run`. Because Vincio evaluates the same app you ship, you can
-adopt it incrementally — keep Ragas for ad-hoc analysis while moving CI scoring
+adopt it incrementally, keep Ragas for ad-hoc analysis while moving CI scoring
 and gating over case by case.
 
 ## Concept mapping
@@ -23,7 +23,7 @@ and gating over case by case.
 
 ## Bring your assets across
 
-Ragas has no documents or tools to adapt — what carries over is your test set.
+Ragas has no documents or tools to adapt, what carries over is your test set.
 A Ragas record (question / ground-truth / contexts) becomes one line of a
 Vincio `Dataset`, where `expected` holds the ground truth and `rubric.facts`
 holds the supporting sentences grounding metrics check against:
@@ -85,24 +85,24 @@ vincio eval run golden/refunds.jsonl --app app.py \
 
 Every case that fails a gate links back to a full trace (`result.trace_id`), so
 you can open `vincio trace view` and see the scored context packet that produced
-the low score — not just the number.
+the low score, not just the number.
 
 ## What Vincio adds
 
-- **CI gates, not just scores** — `gates={...}` and `--gate` turn metrics into a
+- **CI gates, not just scores**: `gates={...}` and `--gate` turn metrics into a
   pass/fail contract that exits non-zero, so a regression blocks the merge
   instead of landing silently.
-- **Baseline diffing and regression detection** — compare a run against a stored
+- **Baseline diffing and regression detection**: compare a run against a stored
   baseline report to catch metric drift between versions, rather than eyeballing
   a dataframe each time.
-- **Judges wired to the same report** — add a `ModelJudge` with repeated-sample
+- **Judges wired to the same report**: add a `ModelJudge` with repeated-sample
   scoring alongside deterministic metrics; one runner, one report format.
-- **Trace-derived datasets** — production runs each write a trace, so you can
+- **Trace-derived datasets**: production runs each write a trace, so you can
   curate golden cases from real traffic instead of hand-authoring every example.
-- **Native, provider-neutral observability** — every eval case runs the same
+- **Native, provider-neutral observability**: every eval case runs the same
   pipeline as production with cost and latency tracked as first-class metrics
   and a `trace_id` per case.
-- **A closed improvement loop** — trace → dataset → eval → optimize → promote:
+- **A closed improvement loop**: trace → dataset → eval → optimize → promote:
   scores feed context and prompt optimization behind safety gates, so an
   evaluation can change the system, not just measure it. Ragas stops at the
   score.

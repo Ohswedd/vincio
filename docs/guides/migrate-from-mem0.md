@@ -21,7 +21,7 @@ incrementally without a hosted dependency.
 
 ## Bring your assets across
 
-Mem0 has no document/tool interop adapters — the migration is the native
+Mem0 has no document/tool interop adapters; the migration is the native
 memory API. Point `remember` / `recall` at the same owner ids you used in
 Mem0:
 
@@ -38,7 +38,7 @@ app.remember("Alex prefers dark mode", user_id="alex")
 hits = app.recall("ui preferences", user_id="alex")
 ```
 
-For lower-level control — listing, scopes, export — drive the engine
+For lower-level control, listing, scopes, export, drive the engine
 directly:
 
 ```python
@@ -55,12 +55,12 @@ session.remember("Asked about refund policy")
 ```
 
 `MemoryScope.SESSION` / `USER` / `AGENT` replace Mem0's `run_id` /
-`user_id` / `agent_id` — `remember` infers the scope from the most
+`user_id` / `agent_id`, `remember` infers the scope from the most
 specific owner id you pass.
 
 ## In Vincio
 
-Before — a standalone Mem0 store wired by hand into each prompt:
+Before, a standalone Mem0 store wired by hand into each prompt:
 
 ```python
 from mem0 import Memory
@@ -72,7 +72,7 @@ prompt = build_prompt(question, ctx)     # you assemble + budget context yoursel
 answer = llm(prompt)
 ```
 
-After — memory is part of the run, scored and budgeted into the packet
+After, memory is part of the run, scored and budgeted into the packet
 alongside retrieved evidence:
 
 ```python
@@ -91,7 +91,7 @@ result.trace_id      # the whole run is traced
 ```
 
 Turn on write-back so grounded facts from a run are remembered for next
-time, instead of you calling `add` after every turn — set it in `vincio.yaml`:
+time, instead of you calling `add` after every turn, set it in `vincio.yaml`:
 
 ```yaml
 memory:
@@ -100,17 +100,17 @@ memory:
 ```
 
 Facts still pass the guarded write policy and land as *candidate* memories
-(with evidence provenance) until confirmed — they never bypass the same
+(with evidence provenance) until confirmed, they never bypass the same
 admission checks as a manual `remember`.
 
 ## What Vincio adds
 
 - **Guarded write policy** on every memory: credential/PII screening,
   stability scoring (volatile statements rejected), contradiction detection,
-  and confidence assignment — Mem0 stores whatever you hand it.
+  and confidence assignment, Mem0 stores whatever you hand it.
 - **Decay and TTL** so stale memories fade instead of accumulating;
   forgetting and consolidation are first-class operations, not just delete.
-- **Hash-chained audit log** — edits, forgets, and exports are tamper-evident
+- **Hash-chained audit log**: edits, forgets, and exports are tamper-evident
   entries, not silent mutations.
 - **GDPR-style owner export** via `engine.export_owner_data(...)` for
   auditable access and erasure across a user's memories.
@@ -118,13 +118,13 @@ admission checks as a manual `remember`.
   durable user/agent scope while keeping provenance.
 - **One loop**: memory is scored into the same context packet, measured by
   the same evals and gates, and recorded in the same traces as retrieval and
-  tools — no separate hosted service to reason about.
+  tools, no separate hosted service to reason about.
 
 ## Next steps
 
-- [Memory concepts](../concepts/memory.md) — layers, scoring, decay, consolidation.
-- [Build a RAG app](build-rag-app.md) — combine memory with retrieved sources.
-- [Optimize context](optimize-context.md) — how memory is scored and budgeted into a packet.
-- [Run evals](run-evals.md) and [evals concepts](../concepts/evals.md) — measure recall and personalization.
-- [Observability concepts](../concepts/observability.md) — traces, cost, and feedback for memory-backed runs.
-- [Vincio vs Mem0](../comparisons/mem0.md) — the full comparison.
+- [Memory concepts](../concepts/memory.md), layers, scoring, decay, consolidation.
+- [Build a RAG app](build-rag-app.md), combine memory with retrieved sources.
+- [Optimize context](optimize-context.md), how memory is scored and budgeted into a packet.
+- [Run evals](run-evals.md) and [evals concepts](../concepts/evals.md), measure recall and personalization.
+- [Observability concepts](../concepts/observability.md), traces, cost, and feedback for memory-backed runs.
+- [Vincio vs Mem0](../comparisons/mem0.md), the full comparison.

@@ -287,7 +287,7 @@ def _mask_matrix(seed_text: str, dim: int, sign: float) -> list[list[float]]:
 
 
 class Contribution(BaseModel):
-    """One member's privacy-preserving federated update — numeric, no raw traffic.
+    """One member's privacy-preserving federated update, numeric, no raw traffic.
 
     The only thing that leaves a member: the ``d × d`` weighted ``scatter`` of its
     local prompt-embedding subspace (clipped, optionally DP-noised, optionally
@@ -338,7 +338,7 @@ class Contribution(BaseModel):
 
 
 class ContributionBuilder:
-    """Build a :class:`Contribution` from a member's local data — never its text.
+    """Build a :class:`Contribution` from a member's local data, never its text.
 
     Embeds the member's prompts, forms the weighted subspace scatter, **clips** it
     to the configured sensitivity bound, optionally adds the **DP** Gaussian
@@ -508,7 +508,7 @@ class FederatedSubspace(BaseModel):
 
 
 class SecureAggregator:
-    """Merge masked contributions into a :class:`FederatedSubspace` — never seeing one.
+    """Merge masked contributions into a :class:`FederatedSubspace`, never seeing one.
 
     Sums the contributions coordinate-wise: when secure aggregation is on, the
     pairwise masks cancel across the exact participant set, so the aggregator

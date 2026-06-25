@@ -97,7 +97,7 @@ class BindingWeights(BaseModel):
 
 
 class BindingCandidate(BaseModel):
-    """One ranked candidate for a capability binding — the decision's evidence.
+    """One ranked candidate for a capability binding, the decision's evidence.
 
     Every directory record that advertises the capability becomes a candidate,
     whether or not it is finally eligible, so the :class:`StepBinding` carries a

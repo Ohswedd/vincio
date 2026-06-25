@@ -56,7 +56,7 @@ Notes:
 
 - REST connectors (`web`, `github`, `notion`, `confluence`, `slack`, `jira`,
   `linear`, `gdrive`, `sharepoint`, `salesforce`, `zendesk`) run on the core
-  `httpx` dependency and accept an injected `client=` (`httpx.AsyncClient`) —
+  `httpx` dependency and accept an injected `client=` (`httpx.AsyncClient`),
   use `httpx.MockTransport` for offline tests.
 - `s3`/`gcs`/`bigquery` accept an injected client; `snowflake` an injected
   DB-API connection. The heavy SDK import is lazy, so they round-trip offline.
@@ -67,7 +67,7 @@ Notes:
   access token; Salesforce an instance URL + bearer token.
 
 Third-party connectors can also register themselves on install via the
-`vincio.connectors` entry-point group — see the [plugins guide](plugins.md).
+`vincio.connectors` entry-point group, see the [plugins guide](plugins.md).
 
 ## Custom connectors
 
@@ -94,4 +94,4 @@ app.add_source("support", connector=connect("tickets", queue="billing"))
 ## Keeping sources fresh
 
 Pair connectors with a `LiveIndex` (upserts + TTL) to refresh changing
-corpora without rebuilds — see [retrieval concepts](../concepts/retrieval.md#live-indexes).
+corpora without rebuilds, see [retrieval concepts](../concepts/retrieval.md#live-indexes).

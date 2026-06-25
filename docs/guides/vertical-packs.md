@@ -3,9 +3,9 @@
 A [pack](plugins.md) is an opt-in, dependency-free bundle you apply with
 `app.use_pack(...)`. Two tiers ship in the box:
 
-- **Domain packs** — `support`, `engineering`, `finance`, `legal`. A light prompt
+- **Domain packs**: `support`, `engineering`, `finance`, `legal`. A light prompt
   + schema + policy starting point for a domain.
-- **Vertical packs** — `healthcare`, `ediscovery`, `kyc`, `customer_support`,
+- **Vertical packs**: `healthcare`, `ediscovery`, `kyc`, `customer_support`,
   `code_review`. A *full-stack* configuration for a regulated or high-stakes use
   case: on top of the prompt, schema, policies, deterministic rails, and domain
   metrics, a vertical also preconfigures **retrieval**, **scoped memory**, and a
@@ -31,8 +31,8 @@ result = app.run("Screen this customer against sanctions and adverse media.")
 | `healthcare` | `clinical_answer` (`phi_detected`, `needs_clinician`) | PHI redact + secrets (output) | user-scoped | `us` |
 | `ediscovery` | `ediscovery_review` (`responsive`, `privileged`, `privilege_basis`) | secrets (output) | team-scoped | `us` |
 | `kyc` | `kyc_assessment` (`risk_rating`, `sanctions_hit`, `pep`, `sar_recommended`) | PII redact + secrets (output) | user-scoped | `us` |
-| `customer_support` | `support_resolution` (`category`, `priority`, `resolution_steps`) | PII redact + secrets (output) | user-scoped | — |
-| `code_review` | `code_review` (`findings[]`, `security_risk`, `approve`) | secrets (output) | team-scoped | — |
+| `customer_support` | `support_resolution` (`category`, `priority`, `resolution_steps`) | PII redact + secrets (output) | user-scoped |, |
+| `code_review` | `code_review` (`findings[]`, `security_risk`, `approve`) | secrets (output) | team-scoped |, |
 
 Each also sets retrieval knobs suited to the domain (e.g. `sentence_window`
 chunking for clinical notes, `parent_document` for long litigation records,
@@ -50,8 +50,8 @@ report.print_summary()
 
 ## PII / PHI redaction on structured output
 
-A vertical's `redact` rail masks detected identifiers in the deliverable —
-including the **string fields of a structured output**, not just free text — so a
+A vertical's `redact` rail masks detected identifiers in the deliverable,
+including the **string fields of a structured output**, not just free text, so a
 `clinical_answer` or `kyc_assessment` never ships an SSN or account number the
 rail caught. The schema and field types are preserved; the raw model emission is
 left intact on the trace (trace content capture is
@@ -60,7 +60,7 @@ left intact on the trace (trace content capture is
 ## Residency: fail-closed, offline-first
 
 A residency-pinned vertical (`healthcare`, `ediscovery`, `kyc`) applies
-`set_residency([...region, "on_prem"])` — **fail-closed** (`deny_on_unknown=True`):
+`set_residency([...region, "on_prem"])`, **fail-closed** (`deny_on_unknown=True`):
 a provider whose region cannot be resolved is refused egress, the correct posture
 for a regulated domain. Self-hosted / in-process processing is in jurisdiction by
 construction, so `on_prem` is always admitted.
@@ -68,14 +68,14 @@ construction, so `on_prem` is always admitted.
 This stays offline-first because a passed provider instance reports its own
 identity: the deterministic mock and the local provider resolve to the known
 `on_prem` region, so the dependency-free path runs unchanged even under
-fail-closed residency. A **live** deployment must make its region known too —
+fail-closed residency. A **live** deployment must make its region known too,
 pin a region-bearing endpoint (an Azure/Bedrock/Vertex regional resource or a
 sovereign gateway, from which the region is inferred) or declare it via
 `app.set_residency([...], provider_regions={"openai": "us"})`. Pointing a
 residency-pinned pack at an undeclared global provider is *refused*, by design.
 
 The `purpose` field on a vertical (e.g. `treatment`, `legal_obligation`) is
-advisory metadata — pair it with a [`ConsentLedger`](governance.md) to enforce a
+advisory metadata, pair it with a [`ConsentLedger`](governance.md) to enforce a
 GDPR lawful basis.
 
 ## Writing your own vertical

@@ -315,7 +315,7 @@ class SettlementRecord(BaseModel):
 
 
 class Reconciliation(BaseModel):
-    """Whether two parties' settlement records tie out — the dispute verdict.
+    """Whether two parties' settlement records tie out, the dispute verdict.
 
     Produced by :func:`reconcile`. ``agrees`` is true when both records describe
     the same contract, parties, agreed terms, and delivered metrics (within

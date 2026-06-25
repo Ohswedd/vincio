@@ -9,20 +9,20 @@ document workflows.
   Retrieved chunks compete with memory, tool results, and instructions for
   a scored token budget, with conflict resolution and deduplication across
   all of them.
-- **The advanced-indexing playbook ships natively** — sentence-window,
+- **The advanced-indexing playbook ships natively**: sentence-window,
   parent-document/auto-merging (`AutoMergingIndex`), contextual chunk
   prefixes, HyDE / multi-query / decomposition / step-back query
   strategies, and GraphRAG (communities + hierarchical summaries with
-  global/local routing) — every one fused through the same weighted RRF and
+  global/local routing), every one fused through the same weighted RRF and
   measured by the same eval loop, alongside learned-sparse and
   late-interaction indexes LlamaIndex delegates to plugins.
-- **Live corpora without rebuilds** — `LiveIndex` upserts, TTL expiry, and
+- **Live corpora without rebuilds**: `LiveIndex` upserts, TTL expiry, and
   embedding migrations (`VectorIndex.migrate`), with freshness surfaced in
   evidence metadata.
 - **The full lifecycle is one consistent model**: input routing, memory with
   decay and privacy scopes, permissioned tools, bounded agents, output
   contracts with principled repair, evals, optimization, tracing, audit.
-- **Grounding is enforced end-to-end** — citation policies are compiled into
+- **Grounding is enforced end-to-end**: citation policies are compiled into
   prompts, citations are validated against real evidence ids, and
   groundedness is measured per run.
 - **Reasoning retrieval** retrieves by required fact types and reports
@@ -30,14 +30,14 @@ document workflows.
 
 **Where LlamaIndex is a fit:** very broad loader/index integrations for
 exotic data sources. Vincio's connector hub covers the common ones (web,
-GitHub, SQL, S3, GCS, Notion, Confluence, Slack — plus custom connectors
+GitHub, SQL, S3, GCS, Notion, Confluence, Slack, plus custom connectors
 via `register_connector`), and for anything else `vincio.interop`
 converts LlamaIndex readers, retrievers, tools, and embeddings directly:
 `from_llamaindex_reader(reader)` → `app.add_source(documents=...)`,
 `from_llamaindex_retriever(r)`, `add_llamaindex_tool(app, t)`,
 `from_llamaindex_embedding(e)` (and `to_llamaindex_*` with
-`vincio[llamaindex]`). Vector stores — Chroma, Pinecone, LanceDB,
-Weaviate, Milvus, Elasticsearch, OpenSearch, Vespa — join Qdrant and
+`vincio[llamaindex]`). Vector stores, Chroma, Pinecone, LanceDB,
+Weaviate, Milvus, Elasticsearch, OpenSearch, Vespa, join Qdrant and
 pgvector behind one `build_vector_index` factory, and `build_embedder`
 spans local, jina, voyage, cohere, and openai plus Matryoshka dimension
 truncation (`dimensions=`), contextual (`voyage-context`), and multimodal

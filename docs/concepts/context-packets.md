@@ -1,6 +1,6 @@
 # Context packets and the context compiler
 
-The central unit in Vincio is not a prompt template — it is the **Context
+The central unit in Vincio is not a prompt template; it is the **Context
 Packet**: the complete, budgeted, provenance-aware bundle of instructions,
 user input, evidence, memory, tool specs, schema, and policies passed to a
 model.
@@ -23,7 +23,7 @@ Score(c_i | τ) = w_r·relevance + w_n·novelty + w_a·authority + w_f·freshnes
               − w_t·token_cost − w_d·duplication − w_k·leakage_risk
 ```
 
-Items below the threshold are excluded — and every exclusion is reported:
+Items below the threshold are excluded, and every exclusion is reported:
 
 ```python
 result = app.run("Which clauses are risky?")

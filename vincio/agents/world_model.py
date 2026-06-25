@@ -592,7 +592,7 @@ def _apply_value(value_tpl: _ValueTpl, state: dict[str, Any], path: str, args: d
 
 
 class CalibrationReport(BaseModel):
-    """The verdict of :meth:`WorldModel.calibrate` — the model's planning weight.
+    """The verdict of :meth:`WorldModel.calibrate`, the model's planning weight.
 
     ``state_accuracy`` is the fraction of held-out transitions whose next state
     the model predicted exactly; ``reward_mae`` is the mean absolute reward error;

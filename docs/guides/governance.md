@@ -3,7 +3,7 @@
 Regulated buyers ask for evidence: a model card, a control-coverage matrix, an
 AI bill of materials, proof you can erase a customer's data, a data-residency
 guarantee. Vincio's `vincio.governance` module generates that evidence
-**in the library, from the running system** — there is no hosted compliance
+**in the library, from the running system**, there is no hosted compliance
 program. Every artifact is a view over data Vincio already holds: the
 hash-chained audit log, the evidence ledger, eval reports, and the price table.
 
@@ -14,7 +14,7 @@ Everything here is additive and opt-in.
 A **model card** documents one model; a **system card** documents the whole
 context-engineering system around it (model + retrieval + memory + safety
 filters + human-oversight points). Both are generated from the live config and,
-optionally, measured eval evidence — so they cannot drift from what the app does.
+optionally, measured eval evidence, so they cannot drift from what the app does.
 
 ```python
 from vincio import ContextApp
@@ -43,9 +43,9 @@ From the CLI: `vincio governance card app.py --kind system --format ai_card`.
 
 ## Compliance-framework mapping
 
-`app.compliance_report()` maps Vincio's controls onto four frameworks — **OWASP
+`app.compliance_report()` maps Vincio's controls onto four frameworks, **OWASP
 LLM Top 10 (2025)**, **OWASP Agentic AI**, **NIST AI RMF (GenAI profile)**, and
-**MITRE ATLAS** — and backs each claim with evidence: red-team probe outcomes,
+**MITRE ATLAS**, and backs each claim with evidence: red-team probe outcomes,
 the security configuration, and eval results. An uncovered control is reported
 honestly, not hidden in an aggregate.
 
@@ -68,7 +68,7 @@ From the CLI: `vincio governance report app.py --red-team --markdown`.
 
 The release pipeline already ships a CycloneDX **SBOM** (dependencies) and SLSA
 provenance. The **AI-BOM** adds the AI layer: the base model and version, the
-embedding and rerank models, fine-tune datasets, and prompt/registry versions —
+embedding and rerank models, fine-tune datasets, and prompt/registry versions,
 each with an optional **SHA-256 hash** for blast-radius assessment.
 
 ```python
@@ -87,7 +87,7 @@ From the CLI: `vincio governance aibom app.py --output vincio.aibom.cdx.json`.
 ## EU AI Act transparency
 
 For the 2 Aug 2026 GenAI transparency duties, Vincio supplies the artifacts and
-hooks — deadline-agnostic:
+hooks, deadline-agnostic:
 
 ```python
 from vincio.governance import ai_disclosure, data_summary, mark_synthetic_content
@@ -112,7 +112,7 @@ manifest = mark_synthetic_content(result.raw_text, model_id=app.model, signer=si
 verify_manifest(manifest, result.raw_text, signer=signer)  # True; tamper/wrong-key -> False
 ```
 
-`HmacSigner` is symmetric (HMAC-SHA256, dependency-free) — good for internal
+`HmacSigner` is symmetric (HMAC-SHA256, dependency-free), good for internal
 integrity. For third-party-verifiable provenance, implement the `ContentSigner`
 protocol with an asymmetric key. Set `app.content_signer = signer` to sign every
 auto-marked run. `verify_manifest` always checks the content binding and fails
@@ -130,14 +130,14 @@ result = app.erase_source("kb")            # GDPR right-to-erasure
 
 `erase_source` removes the source's chunks from **every index**, its memories,
 and its cache entries, then writes an `erase_source` entry to the hash-chained
-audit log. It is idempotent — a second call finds nothing left to erase.
+audit log. It is idempotent, a second call finds nothing left to erase.
 
 From the CLI: `vincio governance lineage app.py kb` / `vincio governance erase app.py kb`.
 
 ## Data-residency-aware routing
 
 When a tenant requires in-jurisdiction processing, pin allowed provider regions
-and Vincio **refuses egress** to others — deterministically, as a blocking
+and Vincio **refuses egress** to others, deterministically, as a blocking
 policy decision on the audit path, before any request leaves the process.
 
 ```python
@@ -146,7 +146,7 @@ app.set_residency(["eu"], provider_regions={"openai": "us"})
 # recorded as a residency_check deny on the audit log.
 ```
 
-The strongest posture is to point at a **region-pinned endpoint** — an Azure
+The strongest posture is to point at a **region-pinned endpoint**, an Azure
 OpenAI regional resource, an AWS Bedrock regional endpoint, a Vertex AI regional
 host, or a sovereign/EU gateway. Vincio infers the region from the configured
 `provider.base_urls` (e.g. `bedrock-runtime.eu-west-1.amazonaws.com` →
@@ -162,7 +162,7 @@ app.set_residency(["eu"])     # the eu-west-1 endpoint resolves; a us endpoint i
 
 Or configure it: `governance.allowed_regions: ["eu"]` plus
 `governance.provider_regions: {openai: us}`. Vincio can refuse to *send* a
-request; it cannot guarantee where a global provider runs it — the control is
+request; it cannot guarantee where a global provider runs it, the control is
 client-side egress refusal, which, paired with a region-pinned endpoint, is what
 an in-jurisdiction policy needs.
 
@@ -181,7 +181,7 @@ detector.detect("DNI 12345678Z, PAN ABCDE1234F, NRIC S1234567D")
 Packs ship for France, Germany, Spain, India, Singapore, Brazil, and the UK.
 Configured locales flow through the policy engine automatically.
 
-The **token tax** — non-English text costing more tokens per character — is
+The **token tax**, non-English text costing more tokens per character, is
 tracked per language and tenant by `app.fertility`, so the cost is visible and
 routable rather than hidden in an aggregate:
 
@@ -201,8 +201,8 @@ report.tag_gap("accuracy", prefix="lang:")  # best, worst, and the gap
 
 A handful of crafted documents can flip many answers. `PoisoningDetector` scans
 retrieved evidence and flags likely-poisoned items from **authority/provenance**
-signals — embedded instructions, low-authority/high-promotion sources, and
-consensus outliers — before they reach the model. An optional async classifier
+signals, embedded instructions, low-authority/high-promotion sources, and
+consensus outliers, before they reach the model. An optional async classifier
 hook (PromptArmor-class) blends in; the deterministic layers never depend on it.
 
 ```python
@@ -216,7 +216,7 @@ print(report.telemetry(poisoned_ids={"bad1"}))   # precision/recall/FP/FN
 ## Provable erasure, consent & bi-temporal memory
 
 `app.erase_source` removes a source's chunks,
-documents, memories, and cache entries and logs it — and makes the removal **provable**.
+documents, memories, and cache entries and logs it, and makes the removal **provable**.
 The sweep now returns a signed, content-bound `ErasureProof` on the result:
 
 ```python
@@ -231,7 +231,7 @@ assert verify_erasure_proof(proof, signer=app.content_signer)   # binds to the r
 The proof records the exact chunk / document / memory / **generated-artifact**
 ids removed, binds them by SHA-256 over the sorted set (tampering with the
 recorded set breaks verification), signs the manifest with the app's
-`content_signer`, and anchors it to the audit chain's Merkle root — so a
+`content_signer`, and anchors it to the audit chain's Merkle root, so a
 "we deleted everything" claim is checkable, not just logged. Unlike OneTrust /
 Transcend, which orchestrate erasure across systems and report it, the proof is
 emitted *from the running system* on the same hash-chained audit chain the
@@ -266,7 +266,7 @@ engine.recall("where does the user live", user_id="u1", as_of=last_month)  # →
 ```
 
 Per-memory ACLs (`acl=[...]`, `MemoryItem.readable_by`) and a `MemoryScope.TEAM`
-scope gate **team-shared memory** — `engine.for_team("eng").remember(..., acl=["alice"])`
+scope gate **team-shared memory**, `engine.for_team("eng").remember(..., acl=["alice"])`
 surfaces only to listed readers. The VincioBench `governance` family gates
 erasure-proof verification, tamper detection, and consent enforcement; the
 `memory` family gates as-of recall and per-memory ACLs. See
@@ -274,8 +274,8 @@ erasure-proof verification, tamper detection, and consent enforcement; the
 
 ## How it interconnects
 
-Every artifact reads from data Vincio already holds — the audit chain, the
-evidence ledger, eval reports, the price table, the prompt registry — so
+Every artifact reads from data Vincio already holds, the audit chain, the
+evidence ledger, eval reports, the price table, the prompt registry, so
 governance is a *view* over the running system, not a parallel bookkeeping
 burden. Residency and erasure are `PolicyViolation`s and audit entries on the
 same hash-chained path as every other decision. See the

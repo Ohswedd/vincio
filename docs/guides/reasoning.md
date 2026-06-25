@@ -30,13 +30,13 @@ Whether a model supports reasoning is provider-declared
 ## Cost accounting
 
 Thinking tokens are recorded on the `model_call` span (`reasoning_tokens`) and
-**billed** at the output rate — including Gemini thinking tokens
+**billed** at the output rate, including Gemini thinking tokens
 (`thoughtsTokenCount`), which are counted as billable output, not costed at $0.
 
 ## OpenAI Responses API
 
 An optional adapter targets OpenAI's stateful Responses API behind the same
-`ModelProvider` interface — `previous_response_id` preserves reasoning across
+`ModelProvider` interface, `previous_response_id` preserves reasoning across
 tool calls without resending context. Chat Completions stays the portable
 default.
 

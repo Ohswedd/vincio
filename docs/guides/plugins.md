@@ -1,6 +1,6 @@
 # Plugins: extend Vincio from a separate package
 
-Vincio is built on registries — providers, connectors, metrics, chunkers,
+Vincio is built on registries, providers, connectors, metrics, chunkers,
 rerankers, judges, and packs are all looked up by name. The `vincio.plugins`
 module turns those registries into a **discoverable, versioned plugin contract**:
 a third-party package advertises entry points, and installing it is all it takes
@@ -24,7 +24,7 @@ object is the contract:
 | `vincio.packs` | pack | a `Pack` (or a zero-arg factory returning one) |
 
 The contract is versioned by `vincio.plugins.PLUGIN_API_VERSION`. It bumps only
-on a breaking change to a group's expected object shape — never for the package
+on a breaking change to a group's expected object shape, never for the package
 patch level.
 
 ## Publishing a plugin
@@ -61,7 +61,7 @@ load_plugins()   # register every compatible plugin into its registry
 ```
 
 `installed_plugins()` (alias `discover_plugins()`) lists what is installed
-**without importing the target objects** — so a broken or heavy plugin never
+**without importing the target objects**, so a broken or heavy plugin never
 slows discovery, and an incompatible-major plugin is reported as `incompatible`.
 `load_plugins()` actually imports and registers each compatible plugin; it is
 idempotent and isolates a plugin that fails to import (reported as `error`,
@@ -91,6 +91,6 @@ chunker    legacy                 old-plugin             9.0.0      incompatible
 When a distribution declares its targeted plugin-API major via the
 `vincio.plugins` / `api_version` entry point, Vincio compares it to
 `PLUGIN_API_VERSION`. A major mismatch marks every plugin from that distribution
-`incompatible` and skips loading it — a plugin written for a future contract
+`incompatible` and skips loading it, a plugin written for a future contract
 never half-loads against an older runtime, and vice-versa. A distribution that
 doesn't declare a version is treated as compatible.

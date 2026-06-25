@@ -1,7 +1,7 @@
 # How-to: orchestrate multi-agent systems
 
-This guide builds a support-triage system three ways — a crew, a durable
-graph, and a composed pipeline — all bounded, traced, and resumable.
+This guide builds a support-triage system three ways, a crew, a durable
+graph, and a composed pipeline, all bounded, traced, and resumable.
 
 ## 1. A crew with roles and delegation
 
@@ -31,7 +31,7 @@ for d in result.delegations:
 ```
 
 Members coordinate through the shared blackboard (`result.blackboard`), each
-runs under its budget share, and the manager is capped at `max_rounds` — the
+runs under its budget share, and the manager is capped at `max_rounds`, the
 crew terminates by construction. Offline (or if the manager's plan fails to
 validate) delegation falls back to deterministic keyword routing, so the same
 code runs in CI.
@@ -88,7 +88,7 @@ pipeline = (
 reply = pipeline.call(raw_ticket)
 ```
 
-Every node — including the crew and the graph — streams `node_start` /
+Every node, including the crew and the graph, streams `node_start` /
 `node_end` events from `pipeline.astream(...)` and lands in the same trace,
 so one `vincio trace view` shows the whole system.
 
@@ -129,7 +129,7 @@ agent = app.agent(
     cost_aware_models=["gpt-5.2-mini", "gpt-5.2"],   # cheapest capable per step
 )
 state = agent.run("Triage the alert")    # a failed enrich re-binds to its backup, recorded in
-state.repairs                            #   state.repairs — the run finishes instead of restarting
+state.repairs                            #   state.repairs, the run finishes instead of restarting
 
 # Run independent sub-graphs across a worker pool under one fair-share budget.
 result = SubgraphScheduler(workers=4, budget=Budget(max_cost_usd=1.0), deadline_s=30).run(
@@ -137,7 +137,7 @@ result = SubgraphScheduler(workers=4, budget=Budget(max_cost_usd=1.0), deadline_
 )
 result.completed, result.partial, result.shares_usd
 
-# Pause a graph durably — for a delay or an approval — without holding a worker.
+# Pause a graph durably, for a delay or an approval, without holding a worker.
 def gate(s):
     return {"approval": wait_for_event(s, "approved")}
 TimerService(flow).tick()                            # wake due sleep timers (restart-safe)

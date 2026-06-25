@@ -281,7 +281,7 @@ class SettlementRow(BaseModel):
 
 
 class SettlementReport(BaseModel):
-    """Per-counterparty settlement roll-up — alongside the cost report.
+    """Per-counterparty settlement roll-up, alongside the cost report.
 
     Each row totals what was owed, what was delivered, and the net balance across
     every settlement with that counterparty, with the settled / breached tally
