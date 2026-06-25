@@ -27,14 +27,13 @@ from vincio.generation.render import (
     render_markdown,
 )
 
-_HAVE_DOCX = importlib.util.find_spec("docx") is not None
-_HAVE_PDF = importlib.util.find_spec("reportlab") is not None
+# Only used to skip the python-pptx absent-branch test when pptx *is* present.
 _HAVE_PPTX = importlib.util.find_spec("pptx") is not None
 
 
 def _write_png(path) -> None:
     """Write a small valid PNG so reportlab/python-docx accept it as an image."""
-    from PIL import Image  # pulled in transitively by reportlab
+    Image = pytest.importorskip("PIL.Image")  # pulled in transitively by reportlab
 
     Image.new("RGB", (2, 2), (200, 30, 30)).save(str(path), "PNG")
 
@@ -493,11 +492,10 @@ def test_media_types_table_matches_each_renderable_format():
 # -- DOCX (only when python-docx is installed) --------------------------------
 
 
-@pytest.mark.skipif(not _HAVE_DOCX, reason="python-docx not installed")
 def test_render_docx_produces_openable_document_with_all_blocks():
     import io
 
-    import docx
+    docx = pytest.importorskip("docx")
 
     table = TableData(columns=["A", "B"], rows=[["1", "2"]])
     model = DocumentModel(
@@ -534,8 +532,8 @@ def test_render_docx_produces_openable_document_with_all_blocks():
     assert [c.text for c in cells] == ["A", "B"]
 
 
-@pytest.mark.skipif(not _HAVE_DOCX, reason="python-docx not installed")
 def test_render_docx_embeds_a_real_image(tmp_path):
+    pytest.importorskip("docx")
     img = tmp_path / "pic.png"
     _write_png(img)
     model = DocumentModel(
@@ -547,9 +545,8 @@ def test_render_docx_embeds_a_real_image(tmp_path):
     assert b"word/media/" in content
 
 
-@pytest.mark.skipif(not _HAVE_DOCX, reason="python-docx not installed")
 def test_render_docx_empty_table_and_uncaptioned_image(tmp_path):
-    import docx
+    docx = pytest.importorskip("docx")
 
     img = tmp_path / "p.png"
     _write_png(img)
@@ -570,8 +567,8 @@ def test_render_docx_empty_table_and_uncaptioned_image(tmp_path):
     assert "tail" in "\n".join(p.text for p in parsed.paragraphs)
 
 
-@pytest.mark.skipif(not _HAVE_DOCX, reason="python-docx not installed")
 def test_render_docx_heading_level_clamped_to_nine():
+    pytest.importorskip("docx")
     model = DocumentModel(blocks=[DocBlock(kind="heading", text="Deep", level=99)])
     # level clamp to <=9 keeps python-docx from raising on the style name
     content = render(model, "docx").content
@@ -581,8 +578,8 @@ def test_render_docx_heading_level_clamped_to_nine():
 # -- PDF (only when reportlab is installed) -----------------------------------
 
 
-@pytest.mark.skipif(not _HAVE_PDF, reason="reportlab not installed")
 def test_render_pdf_produces_pdf_bytes_across_block_types(tmp_path):
+    pytest.importorskip("reportlab")
     img = tmp_path / "pix.png"
     _write_png(img)
     table = TableData(columns=["A", "B"], rows=[["1", "2"]])
@@ -609,8 +606,8 @@ def test_render_pdf_produces_pdf_bytes_across_block_types(tmp_path):
     assert len(art.content) > 500
 
 
-@pytest.mark.skipif(not _HAVE_PDF, reason="reportlab not installed")
 def test_render_pdf_empty_table_and_uncaptioned_image(tmp_path):
+    pytest.importorskip("reportlab")
     img = tmp_path / "p.png"
     _write_png(img)
     model = DocumentModel(
@@ -625,8 +622,8 @@ def test_render_pdf_empty_table_and_uncaptioned_image(tmp_path):
     assert art.content[:5] == b"%PDF-"
 
 
-@pytest.mark.skipif(not _HAVE_PDF, reason="reportlab not installed")
 def test_render_pdf_heading_level_clamped_to_four():
+    pytest.importorskip("reportlab")
     # level 99 would index a missing "Heading99" style without the clamp
     model = DocumentModel(blocks=[DocBlock(kind="heading", text="Deep", level=99)])
     art = render(model, "pdf")

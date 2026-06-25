@@ -39,13 +39,6 @@ try:  # pragma: no cover - environment probe
 except ImportError:  # pragma: no cover
     _HAS_OPENPYXL = False
 
-try:  # pragma: no cover - environment probe
-    import docx as _docx  # noqa: F401
-
-    _HAS_DOCX = True
-except ImportError:  # pragma: no cover
-    _HAS_DOCX = False
-
 
 # -- _read_text encoding fallback ---------------------------------------------
 
@@ -250,8 +243,7 @@ def test_eml_without_text_body_leaves_body_empty(tmp_path):
 def test_docx_invalid_zip_wraps_in_loader_error(tmp_path):
     # Reaches the generic except branch in load_document: docx raises a
     # non-LoaderError (bad package), which is wrapped as a LoaderError.
-    if not _HAS_DOCX:
-        pytest.skip("python-docx not installed")
+    pytest.importorskip("docx")
     p = tmp_path / "corrupt.docx"
     p.write_bytes(b"this is not a docx zip")
     with pytest.raises(LoaderError, match="failed to load"):
@@ -334,9 +326,8 @@ def test_default_rasterizer_requires_pypdfium2():
 # -- DOCX (python-docx is available) ------------------------------------------
 
 
-@pytest.mark.skipif(not _HAS_DOCX, reason="python-docx not installed")
 def test_docx_extracts_headings_body_and_table(tmp_path):
-    import docx
+    docx = pytest.importorskip("docx")
 
     builder = docx.Document()
     builder.add_heading("Intro", level=1)
@@ -363,9 +354,8 @@ def test_docx_extracts_headings_body_and_table(tmp_path):
     assert doc.tables[0]["rows"] == [["v1", "v2"]]
 
 
-@pytest.mark.skipif(not _HAS_DOCX, reason="python-docx not installed")
 def test_load_docx_direct(tmp_path):
-    import docx
+    docx = pytest.importorskip("docx")
 
     builder = docx.Document()
     builder.add_paragraph("plain paragraph")
@@ -376,9 +366,8 @@ def test_load_docx_direct(tmp_path):
     assert doc.sections == []  # no headings → no sections
 
 
-@pytest.mark.skipif(not _HAS_DOCX, reason="python-docx not installed")
 def test_docx_skips_blank_paragraphs(tmp_path):
-    import docx
+    docx = pytest.importorskip("docx")
 
     builder = docx.Document()
     builder.add_paragraph("real line")

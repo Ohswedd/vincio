@@ -5,7 +5,8 @@ runs offline (no solver installed), so it nails the *not-installed* contract: th
 availability probes report False, ``_require`` raises a precise ``LoaderError``,
 and both verifiers refuse to run rather than silently passing. The pure-Python
 ``_comparisons`` extraction (which needs no solver) is exercised directly. The
-solver-dependent code paths are guarded by ``skipif`` and say so explicitly.
+solver-dependent code paths each ``pytest.importorskip`` their backend, so they
+run only when the solver is present and skip cleanly when it is absent.
 """
 
 from __future__ import annotations
@@ -186,9 +187,9 @@ def test_cas_verifier_kind_is_cas():
 # --------------------------------------------------------------------------- #
 
 
-@pytest.mark.skipif(not _HAS_Z3, reason="needs the real z3 solver (vincio[verify])")
 def test_smt_inapplicable_when_no_comparison_constraints_present():
     """With z3 present, a no-comparison context yields a single inapplicable check."""
+    pytest.importorskip("z3")
     verifier = SmtConstraintVerifier()
     ctx = VerificationContext()
     checks = verifier.check({}, ctx)
@@ -197,9 +198,9 @@ def test_smt_inapplicable_when_no_comparison_constraints_present():
     assert checks[0].kind == "smt"
 
 
-@pytest.mark.skipif(not _HAS_Z3, reason="needs the real z3 solver (vincio[verify])")
 def test_smt_refutes_unsatisfiable_system():
     """x > 5 and x < 1 is unsatisfiable: the solver refutes the system."""
+    pytest.importorskip("z3")
     verifier = SmtConstraintVerifier()
     ctx = VerificationContext(
         constraints=[Constraint.compare("x", ">", 5), Constraint.compare("x", "<", 1)]
@@ -209,18 +210,18 @@ def test_smt_refutes_unsatisfiable_system():
     assert "unsatisfiable" in checks[0].detail
 
 
-@pytest.mark.skipif(not _HAS_Z3, reason="needs the real z3 solver (vincio[verify])")
 def test_smt_verifies_assignment_that_models_constraints():
     """A satisfiable system with a conforming assignment verifies."""
+    pytest.importorskip("z3")
     verifier = SmtConstraintVerifier()
     ctx = VerificationContext(constraints=[Constraint.compare("x", "<=", 10)])
     checks = verifier.check({"x": 4}, ctx)
     assert checks[0].status == "verified"
 
 
-@pytest.mark.skipif(not _HAS_Z3, reason="needs the real z3 solver (vincio[verify])")
 def test_smt_refutes_assignment_that_is_not_a_model():
     """A satisfiable system but a violating assignment is refuted, not verified."""
+    pytest.importorskip("z3")
     verifier = SmtConstraintVerifier()
     ctx = VerificationContext(constraints=[Constraint.compare("x", "<=", 10)])
     checks = verifier.check({"x": 99}, ctx)
@@ -228,26 +229,26 @@ def test_smt_refutes_assignment_that_is_not_a_model():
     assert "not a model" in checks[0].detail
 
 
-@pytest.mark.skipif(not _HAS_SYMPY, reason="needs the real sympy CAS (vincio[verify])")
 def test_cas_inapplicable_when_no_arithmetic_equality_present():
     """With sympy present but no equality in the text, the check is inapplicable."""
+    pytest.importorskip("sympy")
     verifier = CasArithmeticVerifier()
     checks = verifier.check("the answer is purely prose", VerificationContext())
     assert len(checks) == 1
     assert checks[0].status == "inapplicable"
 
 
-@pytest.mark.skipif(not _HAS_SYMPY, reason="needs the real sympy CAS (vincio[verify])")
 def test_cas_verifies_exact_rational_equality():
     """2 + 2 = 4 holds exactly under rational arithmetic."""
+    pytest.importorskip("sympy")
     verifier = CasArithmeticVerifier()
     checks = verifier.check("2 + 2 = 4", VerificationContext())
     assert any(c.status == "verified" for c in checks)
 
 
-@pytest.mark.skipif(not _HAS_SYMPY, reason="needs the real sympy CAS (vincio[verify])")
 def test_cas_refutes_inexactly_rounded_equality():
     """1/3 = 0.333 is refuted because exact rational arithmetic disagrees."""
+    pytest.importorskip("sympy")
     verifier = CasArithmeticVerifier()
     checks = verifier.check("1/3 = 0.333", VerificationContext())
     assert any(c.status == "refuted" for c in checks)

@@ -10,11 +10,14 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-import docx
 import pytest
 
-from vincio.core.errors import GenerationError
-from vincio.generation.templates import (
+# This module is entirely about the python-docx merge-field path; without docx
+# there is nothing here to exercise, so skip the whole file when it is absent.
+docx = pytest.importorskip("docx")
+
+from vincio.core.errors import GenerationError  # noqa: E402
+from vincio.generation.templates import (  # noqa: E402
     Slot,
     fill_docx_form,
     fill_pdf_form,

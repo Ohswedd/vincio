@@ -10,8 +10,6 @@ the package by calling the private ``_missing`` helper directly.
 
 from __future__ import annotations
 
-import importlib.util
-
 import pytest
 
 from vincio.core.errors import ConfigError
@@ -21,8 +19,9 @@ from vincio.providers import MockProvider
 from vincio.retrieval.indexes import SearchHit
 from vincio.tools import ToolRegistry
 
-_HAS_LANGCHAIN = importlib.util.find_spec("langchain_core") is not None
-_needs_lc = pytest.mark.skipif(not _HAS_LANGCHAIN, reason="langchain_core not installed")
+# The export (``to_langchain_*``) tests build real ``langchain_core`` objects;
+# each guards its own body with ``pytest.importorskip("langchain_core")`` so the
+# offline suite still collects and runs the dep-free import-direction tests.
 
 
 # -- duck-typed fakes (import direction) ----------------------------------------
@@ -296,8 +295,8 @@ def test_missing_returns_config_error_with_install_hint():
 # -- export direction (real langchain_core) -------------------------------------
 
 
-@_needs_lc
 def test_to_langchain_document_round_trips_metadata():
+    pytest.importorskip("langchain_core")
     doc = Document(text="body", metadata={"k": "v"}, source_uri="s3://x", title="T")
     lc_doc = lc.to_langchain_document(doc)
     assert lc_doc.page_content == "body"
@@ -306,23 +305,23 @@ def test_to_langchain_document_round_trips_metadata():
     assert lc_doc.metadata["title"] == "T"
 
 
-@_needs_lc
 def test_to_langchain_document_does_not_overwrite_existing_source():
+    pytest.importorskip("langchain_core")
     doc = Document(text="b", metadata={"source": "kept"}, source_uri="other")
     lc_doc = lc.to_langchain_document(doc)
     assert lc_doc.metadata["source"] == "kept"  # setdefault, not overwrite
 
 
-@_needs_lc
 def test_to_langchain_document_no_source_or_title_keys():
+    pytest.importorskip("langchain_core")
     doc = Document(text="b")
     lc_doc = lc.to_langchain_document(doc)
     assert "source" not in lc_doc.metadata
     assert "title" not in lc_doc.metadata
 
 
-@_needs_lc
 def test_to_langchain_documents_maps_each():
+    pytest.importorskip("langchain_core")
     docs = [Document(text="a"), Document(text="b")]
     out = lc.to_langchain_documents(docs)
     assert [d.page_content for d in out] == ["a", "b"]
@@ -362,8 +361,8 @@ def test_unwrap_tool_rejects_other_shapes():
 # -- to_langchain_tool (sync + async handlers) ----------------------------------
 
 
-@_needs_lc
 def test_to_langchain_tool_sync_handler():
+    pytest.importorskip("langchain_core")
     spec = ToolSpec(name="greet", description="say hi")
 
     def greet(name: str) -> str:
@@ -376,8 +375,8 @@ def test_to_langchain_tool_sync_handler():
 
 
 @pytest.mark.asyncio
-@_needs_lc
 async def test_to_langchain_tool_async_handler_uses_coroutine_path():
+    pytest.importorskip("langchain_core")
     spec = ToolSpec(name="aecho", description="async echo")
 
     async def aecho(value: str) -> str:
@@ -404,8 +403,8 @@ class _StubIndex:
         return self._hits
 
 
-@_needs_lc
 def test_to_langchain_retriever_converts_hits_to_documents():
+    pytest.importorskip("langchain_core")
     hits = [
         SearchHit(chunk=Chunk(document_id="d1", text="one", index=0, metadata={"m": 1}), score=0.9),
         SearchHit(chunk=Chunk(document_id="d2", text="two", index=1, metadata={}), score=0.5),
@@ -426,8 +425,8 @@ class _StubEmbedder:
         return [[float(len(t)), 1.0] for t in texts]
 
 
-@_needs_lc
 def test_to_langchain_embeddings_documents_and_query():
+    pytest.importorskip("langchain_core")
     emb = lc.to_langchain_embeddings(_StubEmbedder())
     assert emb.embed_documents(["ab", "cde"]) == [[2.0, 1.0], [3.0, 1.0]]
     # embed_query takes the first (and only) vector.

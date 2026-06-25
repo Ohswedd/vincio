@@ -81,6 +81,10 @@ jobs:
           cache: pip
       - run: python -m pip install --upgrade pip
       - run: pip install -e ".[dev]"
+      # Lightweight, pure-wheel optional deps so the optional-path tests (which
+      # `importorskip` in the minimal Test jobs) actually run here and coverage
+      # reflects the full picture. No compiled/network deps.
+      - run: pip install python-docx pypdf pypdfium2 openpyxl pillow reportlab z3-solver sympy langchain-core llama-index-core
       # Start coverage.py BEFORE importing anything (the vincio pytest plugin
       # imports modules at startup, so `pytest --cov` would under-report). The
       # fail_under floor is configured in pyproject [tool.coverage.report].

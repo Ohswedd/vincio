@@ -10,8 +10,6 @@ those round trips are tested end to end against the real classes.
 from __future__ import annotations
 
 import builtins
-import importlib
-import importlib.util
 import sys
 
 import pytest
@@ -24,28 +22,14 @@ from vincio.providers import MockProvider
 from vincio.retrieval.indexes import SearchHit
 from vincio.tools import ToolRegistry
 
-
-def _llamaindex_importable() -> bool:
-    """True only if ``llama_index.core`` can actually be imported here.
-
-    ``find_spec`` is not enough: under ``coverage run --source=...`` this
-    environment's numpy C-extension raises "cannot load module more than once
-    per process" during llama_index's import, so the real-object ``to_*`` tests
-    cannot be *measured* (they still run and pass under a plain ``pytest``).
-    Probing the import keeps the coverage-measurement command green by skipping
-    those tests when, and only when, the import genuinely fails.
-    """
-    if importlib.util.find_spec("llama_index") is None:
-        return False
-    try:
-        import llama_index.core  # noqa: F401
-    except ImportError:
-        return False
-    return True
-
-
-_HAS_LLAMAINDEX = _llamaindex_importable()
-_requires_li = pytest.mark.skipif(not _HAS_LLAMAINDEX, reason="llama_index not importable here")
+# The export (``to_llamaindex_*``) tests build real ``llama_index.core`` objects;
+# each guards its own body with
+# ``pytest.importorskip("llama_index.core", exc_type=ImportError)``. Using
+# importorskip (which actually imports) rather than ``find_spec`` is deliberate:
+# under ``coverage run`` this environment's numpy C-extension can raise on
+# llama_index's import even when the spec is found, and ``exc_type=ImportError``
+# makes importorskip skip on that real ImportError too. The dep-free ``from_*``
+# tests still collect and run.
 
 
 # -- duck-typed fakes for the from_* (import-free) path -------------------------
@@ -448,8 +432,8 @@ def test_missing_returns_config_error_with_install_hint():
 # -- export: Vincio -> real LlamaIndex objects ----------------------------------
 
 
-@_requires_li
 def test_to_llamaindex_document_real():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     from llama_index.core import Document as LIDocument
 
     node = li.to_llamaindex_document(
@@ -461,8 +445,8 @@ def test_to_llamaindex_document_real():
     assert node.metadata["source"] == "s3://bucket/a"  # source_uri injected
 
 
-@_requires_li
 def test_to_llamaindex_document_keeps_explicit_source():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     node = li.to_llamaindex_document(
         Document(text="t", metadata={"source": "explicit"}, source_uri="other")
     )
@@ -470,8 +454,8 @@ def test_to_llamaindex_document_keeps_explicit_source():
     assert node.metadata["source"] == "explicit"
 
 
-@_requires_li
 def test_to_llamaindex_documents_accepts_chunks():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     docs = li.to_llamaindex_documents(
         [Document(text="d1"), Chunk(document_id="d", text="c1", source_uri="file://c")]
     )
@@ -479,8 +463,8 @@ def test_to_llamaindex_documents_accepts_chunks():
     assert docs[1].metadata["source"] == "file://c"
 
 
-@_requires_li
 def test_to_llamaindex_tool_from_registered_tool():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     from llama_index.core.tools import FunctionTool
 
     registry = ToolRegistry()
@@ -497,8 +481,8 @@ def test_to_llamaindex_tool_from_registered_tool():
     assert "hi ada" in str(out)
 
 
-@_requires_li
 def test_to_llamaindex_tool_from_spec_handler_tuple():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     from vincio.core.types import ToolSpec
 
     spec = ToolSpec(name="adder", description="adds")
@@ -511,15 +495,15 @@ def test_to_llamaindex_tool_from_spec_handler_tuple():
     assert int(str(fn_tool.call(a=2, b=3))) == 5
 
 
-@_requires_li
 def test_to_llamaindex_tool_rejects_unknown_shape():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     # The FunctionTool import succeeds, so we reach _unwrap_tool's guard.
     with pytest.raises(ConfigError, match="RegisteredTool or"):
         li.to_llamaindex_tool(object())
 
 
-@_requires_li
 def test_to_llamaindex_tool_rejects_wrong_length_tuple():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     with pytest.raises(ConfigError, match="RegisteredTool or"):
         li.to_llamaindex_tool(("only-one",))
 
@@ -537,8 +521,8 @@ class _StaticSearchable:
         return self._hits[:top_k]
 
 
-@_requires_li
 def test_to_llamaindex_retriever_round_trips_hits():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     from llama_index.core.retrievers import BaseRetriever
     from llama_index.core.schema import QueryBundle
 
@@ -554,8 +538,8 @@ def test_to_llamaindex_retriever_round_trips_hits():
     assert nodes[0].node.metadata == {"m": 1}
 
 
-@_requires_li
 def test_to_llamaindex_retriever_accepts_plain_string_query():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     hits = [SearchHit(chunk=Chunk(document_id="d", text="x"), score=1.0, source="s")]
     retriever = li.to_llamaindex_retriever(_StaticSearchable(hits))
     nodes = retriever.retrieve("plain string")  # not a QueryBundle -> str() branch
@@ -567,8 +551,8 @@ class _VincioEmbedder:
         return [[float(len(t)), 1.0, 2.0] for t in texts]
 
 
-@_requires_li
 def test_to_llamaindex_embedding_sync_and_async():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     from llama_index.core.embeddings import BaseEmbedding
 
     emb = li.to_llamaindex_embedding(_VincioEmbedder())
@@ -578,8 +562,8 @@ def test_to_llamaindex_embedding_sync_and_async():
     assert emb._get_text_embeddings(["a", "bb"]) == [[1.0, 1.0, 2.0], [2.0, 1.0, 2.0]]
 
 
-@_requires_li
 @pytest.mark.asyncio
 async def test_to_llamaindex_embedding_async_query():
+    pytest.importorskip("llama_index.core", exc_type=ImportError)
     emb = li.to_llamaindex_embedding(_VincioEmbedder())
     assert await emb._aget_query_embedding("hey") == [3.0, 1.0, 2.0]
