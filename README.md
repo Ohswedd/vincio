@@ -12,7 +12,7 @@
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
   <img src="https://img.shields.io/badge/tests-5858%20passing-2ea44f" alt="5858 tests passing">
-  <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
+  <img src="https://img.shields.io/badge/providers-OpenAI%20%C2%B7%20Anthropic%20%C2%B7%20Google%20%C2%B7%20Mistral%20%C2%B7%20local-B98B2E" alt="Providers: OpenAI, Anthropic, Google, Mistral, local, and OpenAI-compatible gateways">
 </p>
 
 ---
@@ -24,21 +24,22 @@ checks, measures, and traces everything that comes *out*. Named for **Leonardo d
 it pairs engineering and craft in equal measure.
 
 <p align="center">
-  <img src="assets/pipeline.svg" alt="The run pipeline: raw input, normalize, retrieve and rank, compile context, call model, parse and validate, evaluate and guard, trace and cost, learn" width="840">
+  <img src="assets/pipeline.svg" alt="The run pipeline, governed end to end: raw input, normalize, redact and gate, retrieve and rank, compile context, call model, parse and validate, evaluate and guard, trace and cost, learn; with a governance layer across the whole run (policy and rails, PII redaction, injection defense, audit chain, EU AI Act, residency, cross-org)" width="840">
 </p>
 
 Most libraries help you *call* a model. Vincio governs the **boundary** between your application and
 the model: what evidence is selected, how it is scored and budgeted, how the result is validated,
-and what it cost.
+and what it cost. It runs on your model of choice across every major provider, with batching,
+caching, failover, and cost tracking built in.
 
 <p align="center">
-  <img src="assets/why.svg" alt="Why Vincio: offline for real (no key, deterministic mock, full CI); deterministic (security and validation in code, not model output); measured (every run traced and costed, eval-gated); one system (input to output, not a bag of utilities)" width="840">
+  <img src="assets/why.svg" alt="Why Vincio: offline dev and CI (deterministic mock, no key, no cost); deterministic (security and validation in code, not model output); measured (every run traced and costed, eval-gated); one system (input to output, not a bag of utilities)" width="840">
 </p>
 
 <details>
 <summary><b>Why you'd reach for it, in one line each</b></summary>
 
-- **Runs offline, for real.** No API key needed: a deterministic mock provider emits schema-valid output, so your whole pipeline (retrieval, validation, evals, traces) runs in CI without network.
+- **Runs on any model, offline when you want.** Call OpenAI, Anthropic, Google, Mistral, a local model, or any OpenAI-compatible gateway through one interface. No key yet? A deterministic mock runs the whole pipeline (retrieval, validation, evals, traces) for dev, tests, and CI, with no network and no cost.
 - **Deterministic where it counts.** Security, permissions, and validation are enforced in code, never gated on model output. The same input compiles to the same packet.
 - **Measured, not asserted.** Every run is traced and costed; every change can be gated by an eval suite before it ships.
 - **One coherent system** from input to output, not a bag of utilities you wire together yourself.
@@ -48,14 +49,14 @@ and what it cost.
 ## Contents
 
 [Install](#install) · [Quickstart](#quickstart) · [What you can build](#what-you-can-build) ·
-[Features](#features) · [Benchmarks](#benchmarks) · [How Vincio compares](#how-vincio-compares) ·
-[Examples](#examples) · [CLI](#command-line) · [Architecture](#architecture) ·
-[Docs](#documentation)
+[Providers](#providers--models) · [Features](#features) · [Benchmarks](#benchmarks) ·
+[How Vincio compares](#how-vincio-compares) · [Examples](#examples) · [CLI](#command-line) ·
+[Architecture](#architecture) · [Docs](#documentation)
 
 ## Install
 
 ```bash
-pip install vincio                  # core: runs fully offline with the mock provider
+pip install vincio                  # core (the offline mock provider is built in)
 pip install "vincio[openai]"        # + OpenAI    (also: anthropic, google, mistral)
 pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, pgvector, …)
 pip install "vincio[all]"           # every optional integration
@@ -80,8 +81,11 @@ print(result.trace_id)    # every run produces a full trace
 print(result.cost_usd)    # …and a cost
 ```
 
-No API key? It runs offline out of the box on a deterministic mock provider that emits schema-valid
-output, so the whole pipeline runs for real in CI.
+To use a real model, set a provider and key, for example `export VINCIO_PROVIDER=openai
+OPENAI_API_KEY=sk-...`, or pass `provider=` and `model=` to `ContextApp`. The same code runs against
+OpenAI, Anthropic, Google, Mistral, a local model, or any OpenAI-compatible gateway. No key yet? Out
+of the box it runs on a deterministic mock that emits schema-valid output, so you can build and test
+the whole pipeline offline in CI.
 
 ## What you can build
 
@@ -124,6 +128,32 @@ assert all(g["passed"] for g in report.gates.values())   # fail the build on a r
 ```
 
 See **[Examples](#examples)** for twelve complete, runnable programs that cover the whole platform.
+
+## Providers & models
+
+Vincio calls real models in production. One interface routes to every major provider, with the
+model-operations layer (reasoning control, half-cost batch, caching, failover, cost tracking) built
+in. The deterministic mock is a development convenience, not the product: it lets you build and test
+the whole pipeline with no key and no cost before you point it at a real model.
+
+<p align="center">
+  <img src="assets/providers.svg" alt="Providers and models: one interface over OpenAI, Anthropic, Google, Mistral, local models, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex, and Azure OpenAI. Model operations: unified reasoning control, batch at about half cost, prompt caching, circuit breaker and failover, key pool, and per-run cost tracking. With no key, a deterministic mock runs the whole pipeline for dev, tests, and CI." width="840">
+</p>
+
+<details>
+<summary><b>Providers, model operations, and the mock</b></summary>
+
+- **Providers**: OpenAI, Anthropic, Google (Gemini), Mistral, local models, and any OpenAI-compatible gateway (Groq, Together, Fireworks, OpenRouter, and the like) through one `ModelProvider` interface.
+- **Enterprise auth**: Amazon Bedrock, Google Vertex, and Azure OpenAI via pluggable auth strategies (SigV4, service-account, Azure AD / key).
+- **Model operations**: unified reasoning/thinking control across providers, batch backends (~50% cost), prompt-cache strategy, a circuit breaker with health-aware failover, a key pool, and a data-driven `ModelRegistry` (capabilities, pricing, lifecycle) that drives capability guards and shadow / canary dispatch.
+- **The mock**: `MockProvider` is deterministic and emits schema-valid output, so the full pipeline (retrieval, validation, evals, traces, cost) runs offline in CI with no key and no cost. Use it for development and tests; use a real provider in production.
+
+```python
+# point an app at a real model (or set VINCIO_PROVIDER / the API key in the environment)
+app = ContextApp(name="docs_qa", provider="openai", model="gpt-4o-mini")
+```
+
+</details>
 
 ## Features
 
