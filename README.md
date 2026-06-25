@@ -11,7 +11,7 @@
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-3288%20passing-2ea44f" alt="3288 tests passing">
+  <img src="https://img.shields.io/badge/tests-5858%20passing-2ea44f" alt="5858 tests passing">
   <img src="https://img.shields.io/badge/offline-first-555" alt="Offline-first">
 </p>
 
@@ -20,26 +20,30 @@
 **Vincio is a Python platform for building AI applications that you can trust in production.**
 It takes everything that goes *into* a model (prompts, memory, retrieved evidence, tools, schemas,
 and policies) and compiles it into an optimized, validated, observable **context packet**; then it
-checks, measures, and traces everything that comes *out*.
+checks, measures, and traces everything that comes *out*. Named for **Leonardo da Vinci**,
+it pairs engineering and craft in equal measure.
+
+<p align="center">
+  <img src="assets/pipeline.svg" alt="The run pipeline: raw input, normalize, retrieve and rank, compile context, call model, parse and validate, evaluate and guard, trace and cost, learn" width="840">
+</p>
 
 Most libraries help you *call* a model. Vincio governs the **boundary** between your application and
 the model: what evidence is selected, how it is scored and budgeted, how the result is validated,
-and what it cost. Named for **Leonardo da Vinci**, engineering and craft in equal measure.
+and what it cost.
 
-```text
-Raw input → normalize → retrieve & rank evidence → compile context (score · dedupe · budget)
-→ call model → parse & validate → evaluate & guard → trace & cost → learn
-```
+<p align="center">
+  <img src="assets/why.svg" alt="Why Vincio: offline for real (no key, deterministic mock, full CI); deterministic (security and validation in code, not model output); measured (every run traced and costed, eval-gated); one system (input to output, not a bag of utilities)" width="840">
+</p>
 
-**Why you'd reach for it**
+<details>
+<summary><b>Why you'd reach for it, in one line each</b></summary>
 
-- **Runs offline, for real.** No API key needed: a deterministic mock provider emits schema-valid
-  output, so your whole pipeline (retrieval, validation, evals, traces) runs in CI without network.
-- **Deterministic where it counts.** Security, permissions, and validation are enforced in code,
-  never gated on model output. The same input compiles to the same packet.
-- **Measured, not asserted.** Every run is traced and costed; every change can be gated by an eval
-  suite before it ships.
+- **Runs offline, for real.** No API key needed: a deterministic mock provider emits schema-valid output, so your whole pipeline (retrieval, validation, evals, traces) runs in CI without network.
+- **Deterministic where it counts.** Security, permissions, and validation are enforced in code, never gated on model output. The same input compiles to the same packet.
+- **Measured, not asserted.** Every run is traced and costed; every change can be gated by an eval suite before it ships.
 - **One coherent system** from input to output, not a bag of utilities you wire together yourself.
+
+</details>
 
 ## Contents
 
@@ -126,74 +130,62 @@ See **[Examples](#examples)** for twelve complete, runnable programs that cover 
 Everything below is implemented, tested offline, and demonstrated by a runnable example. Use the
 high-level `ContextApp`, or reach for any engine directly.
 
+<p align="center">
+  <img src="assets/features.svg" alt="One platform, every layer: context and prompts; retrieval and memory; agents and orchestration; output and evaluation; the closed loop; security and governance; protocols and interop; cross-org economy, edge and federated reach" width="840">
+</p>
+
+<details>
+<summary><b>Every engine, in detail</b></summary>
+
 **Context & prompts**
-- Prompt compiler: typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix
-  layout, versioning, hashing, and diffing.
-- Context compiler: scores every candidate (relevance, novelty, authority, freshness, provenance,
-  token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token
-  budget, with an *excluded-context report* explaining every omission.
+- Prompt compiler: typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, and diffing.
+- Context compiler: scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget, with an *excluded-context report* explaining every omission.
 
 **Retrieval & memory**
-- Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query
-  understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking;
-  GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as
-  first-class scored candidates.
-- Layered memory: session → episodic → semantic → tenant → graph, with a guarded write pipeline,
-  confidence decay, contradiction resolution, bi-temporal recall, per-memory ACLs, and audited
-  GDPR-style edit/forget/export.
+- Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates.
+- Layered memory: session → episodic → semantic → tenant → graph, with a guarded write pipeline, confidence decay, contradiction resolution, bi-temporal recall, per-memory ACLs, and audited GDPR-style edit/forget/export.
 
 **Agents & orchestration**
-- Tools: permissioned registry (RBAC + ABAC), schema-from-typehints, a resource-limited sandbox,
-  idempotent write guardrails with approval callbacks, and a grounded computer-use action plane.
-- Agents: bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN),
-  in-place plan repair, cost-aware action selection, and a budgeted deep-research agent.
-- Orchestration: multi-agent crews with a shared blackboard, durable stateful graphs
-  (checkpoint / resume / time-travel / human-in-the-loop), deterministic workflows, and a
-  distributed durable-execution backend.
+- Tools: permissioned registry (RBAC + ABAC), schema-from-typehints, a resource-limited sandbox, idempotent write guardrails with approval callbacks, and a grounded computer-use action plane.
+- Agents: bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN), in-place plan repair, cost-aware action selection, and a budgeted deep-research agent.
+- Orchestration: multi-agent crews with a shared blackboard, durable stateful graphs (checkpoint / resume / time-travel / human-in-the-loop), deterministic workflows, and a distributed durable-execution backend.
 
 **Output, evaluation & observability**
-- Structured output: Pydantic contracts, constrained decoding, streaming validation with early
-  abort, bounded self-correction that repairs structure only (never invents facts), and DSPy-style
-  typed signatures.
-- Evaluation: golden datasets, 30+ metrics, deterministic / model / G-Eval judges, synthetic data,
-  red-teaming, trajectory & tool-use scoring, drift detection, regression gates, and a `pytest`
-  plugin.
-- Observability: full trace span trees, OpenTelemetry export, a local trace viewer, a versioned
-  prompt registry, and per-run cost tracking, no account or hosted backend required.
+- Structured output: Pydantic contracts, constrained decoding, streaming validation with early abort, bounded self-correction that repairs structure only (never invents facts), and DSPy-style typed signatures.
+- Evaluation: golden datasets, 30+ metrics, deterministic / model / G-Eval judges, synthetic data, red-teaming, trajectory & tool-use scoring, drift detection, regression gates, and a `pytest` plugin.
+- Observability: full trace span trees, OpenTelemetry export, a local trace viewer, a versioned prompt registry, and per-run cost tracking, no account or hosted backend required.
 
 **The closed loop**
-- Optimization: one reproducible cycle (trace → dataset → eval → optimize → promote): a reflective
-  GEPA/MIPRO optimizer, a distillation flywheel, on-policy reinforcement from verifiable rewards,
-  and gated deploy with canary + rollback. No promotion ships without clearing the gates.
+- Optimization: one reproducible cycle (trace → dataset → eval → optimize → promote): a reflective GEPA/MIPRO optimizer, a distillation flywheel, on-policy reinforcement from verifiable rewards, and gated deploy with canary + rollback. No promotion ships without clearing the gates.
 
 **Security & governance**
-- Security: deterministic PII / secret redaction (multilingual), prompt-injection defense and
-  provable containment (taint tracking + capability tokens), RBAC / ABAC, tenant isolation, and a
-  hash-chained, signed audit log with offline tamper verification.
-- Governance: model / system cards, an OWASP / NIST / MITRE / ISO compliance matrix, an AI-BOM,
-  provable erasure, a consent ledger, data-residency enforcement, formal invariant verification,
-  agent identity & delegation, verified-reasoning certificates, and continuous assurance cases.
+- Security: deterministic PII / secret redaction (multilingual), prompt-injection defense and provable containment (taint tracking + capability tokens), RBAC / ABAC, tenant isolation, and a hash-chained, signed audit log with offline tamper verification.
+- Governance: model / system cards, an OWASP / NIST / MITRE / ISO compliance matrix, an AI-BOM, provable erasure, a consent ledger, data-residency enforcement, formal invariant verification, agent identity & delegation, verified-reasoning certificates, and continuous assurance cases.
 
 **Interop**
 - Protocols: MCP (client *and* server), A2A agent-to-agent, and Agent Skills, all in-process.
-- Ecosystem: import/export LangChain, LlamaIndex, Haystack, and DSPy assets; first-party data
-  connectors; and any OpenAI-compatible model or vector store you already run.
+- Ecosystem: import/export LangChain, LlamaIndex, Haystack, and DSPy assets; first-party data connectors; and any OpenAI-compatible model or vector store you already run.
 
-> Reach further: a cross-organization agent economy (negotiation, contracts, durable sagas,
-> metering, settlement, arbitration, reputation, collateral & solvency proofs), an edge / WASM
-> in-process runtime, on-device LoRA adaptation, federated learning with a differential-privacy
-> accountant, and per-run energy / carbon accounting. See [`ROADMAP.md`](ROADMAP.md).
+**Reach further:** a cross-organization agent economy (negotiation, contracts, durable sagas, metering, settlement, arbitration, reputation, collateral & solvency proofs), an edge / WASM in-process runtime, on-device LoRA adaptation, federated learning with a differential-privacy accountant, and per-run energy / carbon accounting. See [`ROADMAP.md`](ROADMAP.md).
+
+</details>
 
 ## Benchmarks
 
-Three suites ship in [`benchmarks/`](benchmarks), all reproducible on your own machine.
+Three suites ship in [`benchmarks/`](benchmarks), all reproducible on your own machine. Every number
+is measured live from both sides; a missing competitor is reported as skipped, never assumed.
 
 ### Head-to-head vs. real libraries
 
 [`competitive.py`](benchmarks/competitive.py) runs Vincio against the *actual* library a team would
-otherwise use. **Every number is measured live from both sides**: a missing competitor is reported
-as skipped, never assumed. Representative results (Apple Silicon, Python 3.13; *ratios* are the
-portable signal, not wall-clock):
+otherwise use (Apple Silicon, Python 3.13; ratios are the portable signal, not wall-clock).
+
+<p align="center">
+  <img src="assets/benchmark-headtohead.svg" alt="Head-to-head vs. real libraries: 30 to 40 times faster BM25 at 20k docs vs rank_bm25; 60 percent fewer tokens for the same answer vs LangChain and LlamaIndex; 1.4 to 1.8 times faster token counting vs tiktoken; 4 of 8 vs 1 of 8 malformed JSON recovered vs stdlib json" width="840">
+</p>
+
+<details>
+<summary><b>Show the full table</b></summary>
 
 | Operation | Vincio | Competitor | Result |
 |---|---|---|---|
@@ -210,13 +202,22 @@ beats every specialist: a dedicated JSON-repair library recovers more than Vinci
 which is unsafe for typed extraction). Vincio's edge is an **integrated, correct, governed**
 pipeline, not a pile of single-purpose libraries.
 
+</details>
+
 ### Orchestrator uplift: the same model, through Vincio
 
 [`quality_uplift.py`](benchmarks/quality_uplift.py) measures what routing a model *through* Vincio
-adds versus calling it directly, deterministic on the mock, and against real models when a provider
-is configured (`VINCIO_PROVIDER=openrouter`). Two regimes, kept separate.
+adds versus calling it directly, against real models on 15 company-specific policy questions a model
+cannot know from pretraining (**4 models × 3 runs = 360 live calls**, OpenRouter, June 2026).
 
-**Deterministic mechanism metrics**: mechanical, so they hold for any model and are measured offline:
+<p align="center">
+  <img src="assets/benchmark-uplift.svg" alt="Grounded-answer accuracy, direct vs. through Vincio: gpt-4o-mini 2 to 100 percent; claude-3-haiku 0 to 91 percent; gemini-2.5-flash-lite 4 to 98 percent; llama-3.1-8b 2 to 89 percent; aggregate 2 to 95 percent" width="840">
+</p>
+
+<details>
+<summary><b>Show the numbers and the honest read</b></summary>
+
+**Deterministic mechanism metrics** (mechanical, so they hold for any model and run offline):
 
 | Same model: direct vs. via Vincio | Direct | Via Vincio |
 |---|--:|--:|
@@ -224,9 +225,7 @@ is configured (`VINCIO_PROVIDER=openrouter`). Two regimes, kept separate.
 | Prompt-injection exfiltration via a tool call | compromised | **contained** |
 | Context tokens to keep an early fact at 160 turns | 1,267 (lost) | **33 (retained)** |
 
-**Grounded-answer quality on real models**: 15 company-specific policy questions a model cannot know
-from pretraining, **4 models × 3 runs = 360 live calls** (OpenRouter, June 2026; numbers are
-mean-over-runs and stochastic by a point or two):
+**Grounded-answer quality on real models** (mean over runs, stochastic by a point or two):
 
 | Model: direct vs. through Vincio | Direct correct | **Via Vincio correct** | Direct hallucinated | Cost per *correct* answer |
 |---|--:|--:|--:|:--|
@@ -236,39 +235,36 @@ mean-over-runs and stochastic by a point or two):
 | `meta-llama/llama-3.1-8b-instruct` | 2% | **89%** | 40% | **~29× cheaper** via Vincio |
 | **Aggregate** | **2%** | **95%** | n/a | n/a |
 
-<sub>¹ claude-3-haiku *abstains* (98% of the time) rather than guessing; better-aligned models say
-"I don't know," weaker ones confidently fabricate. Either way the model *alone* answers ~2%; the same
-model through Vincio's retrieval + grounding answers 89–100%, every answer cited.</sub>
+<sub>¹ claude-3-haiku *abstains* (98% of the time) rather than guessing; better-aligned models say "I don't know," weaker ones confidently fabricate. Either way the model *alone* answers ~2%; the same model through Vincio's retrieval + grounding answers 89–100%, every answer cited.</sub>
 
 The cost line is the honest punchline: a direct call is cheaper *per call*, but it answers almost
-nothing correctly, so its cost **per correct answer** is 29–67× higher, or undefined, when the model
-gets *nothing* right on its own. Vincio is also **faster per answer here** (~1.3–1.6 s vs. ~1.7–2.5 s;
-a concise cited reply beats a long wrong guess), and token usage is roughly a wash (it adds the
-evidence, but direct often rambles). The deterministic story compounds it: a keep-everything agent
-grows its context until the early fact falls out of the window, while Vincio's budgeted compiler holds
-the footprint flat, the same mechanism that sends ~60% fewer tokens for the same retrieved set. Full
-per-metric breakdown (accuracy ± variance, abstention, tokens, latency, $/answer) is in
-[`benchmarks/README.md`](benchmarks/README.md). Reproduce: `VINCIO_PROVIDER=openrouter
-VINCIO_UPLIFT_MODELS=openai/gpt-4o-mini,anthropic/claude-3-haiku OPENROUTER_API_KEY=… python
+nothing correctly, so its cost **per correct answer** is 29–67× higher, or undefined when the model
+gets *nothing* right on its own. Vincio is also faster per answer here (~1.3–1.6 s vs. ~1.7–2.5 s),
+and token usage is roughly a wash. Full per-metric breakdown is in
+[`benchmarks/README.md`](benchmarks/README.md). Reproduce with `VINCIO_PROVIDER=openrouter … python
 benchmarks/quality_uplift.py`.
+
+</details>
 
 ### VincioBench: the internal regression suite
 
-[`vinciobench.py`](benchmarks/vinciobench.py) is the third suite, but it is **not a competitive
-claim**: it is the deterministic mechanism suite that gates CI. Its families assert that each engine
-still *works* on a bundled synthetic corpus (the context compiler reduces tokens, the injection
-detector fires, retrieval returns the known answer), so a regression fails the build. Because that
-corpus is small and built to exercise each mechanism, the scores saturate (perfect recall, full
-detection on a handful of cases against a naive baseline), which proves *the mechanism is intact*,
-not real-world performance. **The credible performance evidence is the two sections above** (real
-libraries, and real models). Run `python benchmarks/vinciobench.py` against your own corpus and trust
-only what it prints; [`benchmarks/README.md`](benchmarks/README.md) documents what each family
-measures and on what corpus size.
+[`vinciobench.py`](benchmarks/vinciobench.py) is **not a competitive claim**: it is the deterministic
+mechanism suite that gates CI. Its families assert that each engine still *works* on a bundled
+synthetic corpus, so a regression fails the build. The scores saturate by design (a small corpus
+built to exercise each mechanism), which proves *the mechanism is intact*, not real-world
+performance. The credible performance evidence is the two sections above.
 
 ## How Vincio compares
 
-Each ecosystem below is strong in its focus area. This reflects **built-in, in-library**
-capability, not what's reachable by adding a separate product or SaaS.
+Each ecosystem below is strong in its focus area. This reflects **built-in, in-library** capability,
+not what's reachable by adding a separate product or SaaS.
+
+<p align="center">
+  <img src="assets/compare-matrix.svg" alt="Capability matrix comparing Vincio, LangChain, LlamaIndex, DSPy, and Ragas across twelve capabilities including the scored context compiler, sparse and late-interaction and GraphRAG fusion, layered memory, permissioned tools, durable graphs, structure-only repair, built-in evals and CI gates, eval-driven optimization, native tracing and cost, deterministic security, MCP and A2A and Skills, and governance evidence. Vincio is first-class across all twelve." width="840">
+</p>
+
+<details>
+<summary><b>Show the full matrix</b></summary>
 
 | Capability | **Vincio** | LangChain | LlamaIndex | DSPy | Ragas |
 |---|:--:|:--:|:--:|:--:|:--:|
@@ -285,10 +281,12 @@ capability, not what's reachable by adding a separate product or SaaS.
 | **MCP** client *and* server + **A2A** + **Skills** | ✅ | ➖ | ➖ | ➖ | ❌ |
 | **Governance evidence** (cards · AI-BOM · erasure · residency) | ✅ | ❌ | ❌ | ❌ | ❌ |
 
-<sub>✅ first-class in-library · ➖ partial or via an add-on/SaaS · ❌ not a focus. Ecosystems evolve,
-and Vincio is built to *interoperate*: `vincio.interop` brings LangChain, LlamaIndex, Haystack, and
-DSPy assets in (and hands Vincio's back). See the in-depth write-ups in
-[`docs/comparisons/`](docs/comparisons).</sub>
+✅ first-class in-library · ➖ partial or via an add-on/SaaS · ❌ not a focus. Ecosystems evolve, and
+Vincio is built to *interoperate*: `vincio.interop` brings LangChain, LlamaIndex, Haystack, and DSPy
+assets in (and hands Vincio's back). See the in-depth write-ups in
+[`docs/comparisons/`](docs/comparisons).
+
+</details>
 
 ## Examples
 
@@ -335,28 +333,15 @@ create_app` embeds it.
 
 ## Architecture
 
-```text
-                         ┌──────────────────────────────────────────────┐
-   user input  ─────────▶│  Input engine   normalize · classify · scope  │
-                         └───────────────┬──────────────────────────────┘
-                                         ▼
-        ┌──────────────┐        ┌────────────────┐        ┌──────────────┐
-        │   Memory     │───────▶│    CONTEXT     │◀───────│  Retrieval   │
-        │  L0…L5       │        │   COMPILER     │        │  hybrid RAG  │
-        └──────────────┘        │ score·dedupe·  │        └──────────────┘
-        ┌──────────────┐        │ conflict·      │        ┌──────────────┐
-        │    Tools     │───────▶│ compress·budget│◀───────│   Prompt     │
-        │ permissioned │        └───────┬────────┘        │  compiler    │
-        └──────────────┘                ▼                 └──────────────┘
-                              ┌────────────────────┐
-                              │   Model execution  │   provider-neutral
-                              └─────────┬──────────┘
-                                        ▼
-                    ┌─────────────────────────────────────────┐
-                    │ Output validation · Evals · Security ·   │
-                    │ Trace + cost · Memory write-back         │
-                    └─────────────────────────────────────────┘
-```
+One coherent pipeline from raw input to traced, validated result: the input engine normalizes and
+scopes the request; memory, retrieval, tools, and the prompt compiler all feed the **context
+compiler**, which scores, deduplicates, resolves conflicts, compresses, and budgets; the model runs
+provider-neutral; and every output is validated, evaluated, secured, traced, costed, and written
+back to memory.
+
+<p align="center">
+  <img src="assets/architecture.svg" alt="Vincio architecture: the input engine feeds the context compiler, which is also fed by memory, retrieval, tools, and the prompt compiler; the context compiler feeds provider-neutral model execution; the output is validated, evaluated, secured, traced, costed, and written back to memory" width="840">
+</p>
 
 See [`AGENTS.md`](AGENTS.md) for the package layout and [`docs/concepts/`](docs/concepts) for a tour
 of each engine.
@@ -410,7 +395,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 3288 tests, no network or API keys required
+python -m pytest -q          # 5858 tests, no network or API keys required
 ruff check vincio/ tests/
 mypy vincio
 ```
