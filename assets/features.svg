@@ -1,0 +1,77 @@
+<svg width="860" height="400" viewBox="0 0 860 400" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="feat_t feat_d">
+  <title id="feat_t">One platform, every layer</title>
+  <desc id="feat_d">A four-by-two grid of eight numbered plates describing the platform layers: context and prompts, retrieval and memory, agents and orchestration, output and evaluation, the closed loop, security and governance, protocols and interop, and reach further.</desc>
+  <defs>
+    <radialGradient id="feat_parch" cx="40%" cy="26%" r="86%">
+      <stop offset="0%" stop-color="#FBF4E2"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="feat_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="feat_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D9B354"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="857" height="397" rx="16" fill="url(#feat_parch)" stroke="#C49A3A" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="387" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">WHAT IS INSIDE</text>
+    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#feat_goldtext)">One platform, every layer</text>
+    <text x="40" y="102" font-size="13" fill="#6B5836">Eight layers, one governed runtime &#183; context to cross-org reach</text>
+
+    <!-- Row 1 -->
+    <rect x="40" y="130" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="56" y="164" font-size="20" font-weight="700" fill="url(#feat_goldtext)">1</text>
+    <text x="56" y="192" font-size="13" font-weight="700" fill="#3A2E1C">Context &amp; prompts</text>
+    <text x="56" y="212" font-size="11" fill="#6B5836">prompt + context compiler,</text>
+    <text x="56" y="229" font-size="11" fill="#6B5836">cache-aware, budgeted, provenance</text>
+
+    <rect x="237" y="130" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="253" y="164" font-size="20" font-weight="700" fill="url(#feat_goldtext)">2</text>
+    <text x="253" y="192" font-size="13" font-weight="700" fill="#3A2E1C">Retrieval &amp; memory</text>
+    <text x="253" y="212" font-size="11" fill="#6B5836">hybrid + sparse + GraphRAG;</text>
+    <text x="253" y="229" font-size="11" fill="#6B5836">layered, decaying memory</text>
+
+    <rect x="434" y="130" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="450" y="164" font-size="20" font-weight="700" fill="url(#feat_goldtext)">3</text>
+    <text x="450" y="192" font-size="13" font-weight="700" fill="#3A2E1C">Agents &amp; orchestration</text>
+    <text x="450" y="212" font-size="11" fill="#6B5836">permissioned tools, planners,</text>
+    <text x="450" y="229" font-size="11" fill="#6B5836">crews, durable graphs</text>
+
+    <rect x="631" y="130" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="647" y="164" font-size="20" font-weight="700" fill="url(#feat_goldtext)">4</text>
+    <text x="647" y="192" font-size="13" font-weight="700" fill="#3A2E1C">Output &amp; evaluation</text>
+    <text x="647" y="212" font-size="11" fill="#6B5836">typed contracts, 30+ metrics,</text>
+    <text x="647" y="229" font-size="11" fill="#6B5836">judges, CI gates</text>
+
+    <!-- Row 2 -->
+    <rect x="40" y="266" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="56" y="300" font-size="20" font-weight="700" fill="url(#feat_goldtext)">5</text>
+    <text x="56" y="328" font-size="13" font-weight="700" fill="#3A2E1C">The closed loop</text>
+    <text x="56" y="348" font-size="11" fill="#6B5836">trace, dataset, eval,</text>
+    <text x="56" y="365" font-size="11" fill="#6B5836">optimize, gated promote</text>
+
+    <rect x="237" y="266" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="253" y="300" font-size="20" font-weight="700" fill="url(#feat_goldtext)">6</text>
+    <text x="253" y="328" font-size="13" font-weight="700" fill="#3A2E1C">Security &amp; governance</text>
+    <text x="253" y="348" font-size="11" fill="#6B5836">PII, injection, audit;</text>
+    <text x="253" y="365" font-size="11" fill="#6B5836">cards, AI-BOM, residency</text>
+
+    <rect x="434" y="266" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="450" y="300" font-size="20" font-weight="700" fill="url(#feat_goldtext)">7</text>
+    <text x="450" y="328" font-size="13" font-weight="700" fill="#3A2E1C">Protocols &amp; interop</text>
+    <text x="450" y="348" font-size="11" fill="#6B5836">MCP client+server, A2A,</text>
+    <text x="450" y="365" font-size="11" fill="#6B5836">Skills, framework bridges</text>
+
+    <rect x="631" y="266" width="185" height="120" rx="9" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+    <text x="647" y="300" font-size="20" font-weight="700" fill="url(#feat_goldtext)">8</text>
+    <text x="647" y="328" font-size="13" font-weight="700" fill="#3A2E1C">Reach further</text>
+    <text x="647" y="348" font-size="11" fill="#6B5836">cross-org economy, edge/WASM,</text>
+    <text x="647" y="365" font-size="11" fill="#6B5836">federated DP, energy</text>
+  </g>
+</svg>

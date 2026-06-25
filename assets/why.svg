@@ -1,0 +1,54 @@
+<svg width="860" height="160" viewBox="0 0 860 160" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="why_t why_d">
+  <title id="why_t">Why Vincio</title>
+  <desc id="why_d">Four value tiles: Offline for real, Deterministic, Measured, and One system.</desc>
+  <defs>
+    <radialGradient id="why_parch" cx="40%" cy="26%" r="86%">
+      <stop offset="0%" stop-color="#FBF4E2"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="why_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="why_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D9B354"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="857" height="157" rx="16" fill="url(#why_parch)" stroke="#C49A3A" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="147" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <text x="34" y="26" font-size="12.5" letter-spacing="3" fill="#B98B2E">WHY VINCIO</text>
+
+    <!-- Tile 1 -->
+    <rect x="40" y="44" width="180" height="100" rx="9" fill="#FCF6E8" stroke="url(#why_gold)" stroke-width="1"/>
+    <circle cx="62" cy="70" r="9" fill="none" stroke="url(#why_gold)" stroke-width="2.4"/>
+    <circle cx="62" cy="70" r="3" fill="url(#why_gold)"/>
+    <text x="62" y="100" font-size="13" font-weight="700" fill="#3A2E1C">Offline, for real</text>
+    <text x="62" y="118" font-size="10.5" fill="#6B5836">no key &#183; deterministic</text>
+    <text x="62" y="132" font-size="10.5" fill="#6B5836">mock &#183; full CI</text>
+
+    <!-- Tile 2 -->
+    <rect x="240" y="44" width="180" height="100" rx="9" fill="#FCF6E8" stroke="url(#why_gold)" stroke-width="1"/>
+    <path d="M256 71 l5 5 l10 -11" fill="none" stroke="url(#why_gold)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+    <text x="262" y="100" font-size="13" font-weight="700" fill="#3A2E1C">Deterministic</text>
+    <text x="262" y="118" font-size="10.5" fill="#6B5836">security &amp; validation</text>
+    <text x="262" y="132" font-size="10.5" fill="#6B5836">in code</text>
+
+    <!-- Tile 3 -->
+    <rect x="440" y="44" width="180" height="100" rx="9" fill="#FCF6E8" stroke="url(#why_gold)" stroke-width="1"/>
+    <rect x="453" y="62" width="16" height="16" rx="3" fill="url(#why_gold)"/>
+    <text x="462" y="100" font-size="13" font-weight="700" fill="#3A2E1C">Measured</text>
+    <text x="462" y="118" font-size="10.5" fill="#6B5836">every run traced &amp; costed,</text>
+    <text x="462" y="132" font-size="10.5" fill="#6B5836">eval-gated</text>
+
+    <!-- Tile 4 -->
+    <rect x="640" y="44" width="180" height="100" rx="9" fill="#FCF6E8" stroke="url(#why_gold)" stroke-width="1"/>
+    <circle cx="662" cy="70" r="9" fill="url(#why_gold)"/>
+    <text x="662" y="100" font-size="13" font-weight="700" fill="#3A2E1C">One system</text>
+    <text x="662" y="118" font-size="10.5" fill="#6B5836">input to output,</text>
+    <text x="662" y="132" font-size="10.5" fill="#6B5836">not a bag of utilities</text>
+  </g>
+</svg>

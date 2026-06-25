@@ -1,0 +1,94 @@
+<svg width="860" height="384" viewBox="0 0 860 384" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d">
+  <title id="t">Grounded-answer accuracy: the same model, direct vs. routed through Vincio</title>
+  <desc id="d">Bar chart of grounded-answer accuracy on 15 company-specific questions, 4 models times 3 runs. Direct vs. through Vincio: gpt-4o-mini 2 percent to 100 percent; claude-3-haiku 0 percent to 91 percent; gemini-2.5-flash-lite 4 percent to 98 percent; llama-3.1-8b 2 percent to 89 percent; aggregate 2 percent to 95 percent.</desc>
+  <defs>
+    <radialGradient id="up_parch" cx="40%" cy="26%" r="86%">
+      <stop offset="0%" stop-color="#FBF4E2"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="up_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="up_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D9B354"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="1.5" y="1.5" width="857" height="381" rx="16" fill="url(#up_parch)" stroke="#C49A3A" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="371" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <!-- header -->
+    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">ORCHESTRATOR UPLIFT</text>
+    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#up_goldtext)">Grounded-answer accuracy</text>
+    <text x="40" y="102" font-size="13" fill="#6B5836">Same model, direct vs. routed through Vincio &#183; 15 questions no model can know from pretraining &#183; 4 models &#215; 3 runs = 360 live calls</text>
+
+    <!-- legend -->
+    <rect x="610" y="36" width="14" height="14" rx="2" fill="#B3A079"/>
+    <text x="630" y="47" font-size="13" fill="#5B4A2E">Direct</text>
+    <rect x="690" y="36" width="14" height="14" rx="2" fill="url(#up_gold)"/>
+    <text x="710" y="47" font-size="13" fill="#5B4A2E">Through Vincio</text>
+
+    <!-- gridlines + y labels -->
+    <g stroke="#5B4A2E" stroke-width="1" opacity="0.16">
+      <line x1="72" y1="322" x2="824" y2="322"/>
+      <line x1="72" y1="276.5" x2="824" y2="276.5"/>
+      <line x1="72" y1="231" x2="824" y2="231"/>
+      <line x1="72" y1="185.5" x2="824" y2="185.5"/>
+      <line x1="72" y1="140" x2="824" y2="140"/>
+    </g>
+    <g font-size="10.5" fill="#8A7551" text-anchor="end">
+      <text x="64" y="325">0</text>
+      <text x="64" y="280">25</text>
+      <text x="64" y="234.5">50</text>
+      <text x="64" y="189">75</text>
+      <text x="64" y="143.5">100%</text>
+    </g>
+    <line x1="72" y1="322" x2="824" y2="322" stroke="#3A2E1C" stroke-width="1.4" opacity="0.55"/>
+
+    <!-- group 1: gpt-4o-mini  (center 147) -->
+    <rect x="102" y="318.36" width="40" height="3.64" fill="#B3A079"/>
+    <rect x="152" y="140" width="40" height="182" rx="3" fill="url(#up_gold)"/>
+    <text x="122" y="313" font-size="10" fill="#8A7551" text-anchor="middle">2%</text>
+    <text x="172" y="132" font-size="15" font-weight="700" fill="#9A721C" text-anchor="middle">100%</text>
+    <text x="147" y="340" font-size="11.5" fill="#5B4A2E" text-anchor="middle">gpt-4o-mini</text>
+
+    <!-- group 2: claude-3-haiku (center 298) -->
+    <rect x="253" y="320.5" width="40" height="1.5" fill="#B3A079"/>
+    <rect x="303" y="156.38" width="40" height="165.62" rx="3" fill="url(#up_gold)"/>
+    <text x="273" y="315" font-size="10" fill="#8A7551" text-anchor="middle">0%</text>
+    <text x="323" y="148" font-size="15" font-weight="700" fill="#9A721C" text-anchor="middle">91%</text>
+    <text x="298" y="340" font-size="11.5" fill="#5B4A2E" text-anchor="middle">claude-3-haiku</text>
+
+    <!-- group 3: gemini-2.5-flash-lite (center 448) -->
+    <rect x="403" y="314.72" width="40" height="7.28" fill="#B3A079"/>
+    <rect x="453" y="143.64" width="40" height="178.36" rx="3" fill="url(#up_gold)"/>
+    <text x="423" y="309" font-size="10" fill="#8A7551" text-anchor="middle">4%</text>
+    <text x="473" y="135.5" font-size="15" font-weight="700" fill="#9A721C" text-anchor="middle">98%</text>
+    <text x="448" y="340" font-size="11.5" fill="#5B4A2E" text-anchor="middle">gemini-2.5-flash</text>
+
+    <!-- group 4: llama-3.1-8b (center 598) -->
+    <rect x="553" y="318.36" width="40" height="3.64" fill="#B3A079"/>
+    <rect x="603" y="160.02" width="40" height="161.98" rx="3" fill="url(#up_gold)"/>
+    <text x="573" y="313" font-size="10" fill="#8A7551" text-anchor="middle">2%</text>
+    <text x="623" y="152" font-size="15" font-weight="700" fill="#9A721C" text-anchor="middle">89%</text>
+    <text x="598" y="340" font-size="11.5" fill="#5B4A2E" text-anchor="middle">llama-3.1-8b</text>
+
+    <!-- separator before aggregate -->
+    <line x1="673" y1="150" x2="673" y2="330" stroke="#B98B2E" stroke-width="1" stroke-dasharray="2 4" opacity="0.5"/>
+
+    <!-- group 5: aggregate (center 749) -->
+    <rect x="704" y="318.36" width="40" height="3.64" fill="#B3A079"/>
+    <rect x="754" y="149.1" width="40" height="172.9" rx="3" fill="url(#up_gold)" stroke="#9A721C" stroke-width="1"/>
+    <text x="724" y="313" font-size="10" fill="#8A7551" text-anchor="middle">2%</text>
+    <text x="774" y="141" font-size="16" font-weight="700" fill="#9A721C" text-anchor="middle">95%</text>
+    <text x="749" y="340" font-size="11.5" font-weight="700" fill="#9A721C" text-anchor="middle">AGGREGATE</text>
+
+    <!-- footnote -->
+    <text x="40" y="368" font-size="10.5" fill="#8A7551">Direct = the model alone &#183; Through Vincio = the same model with retrieval &amp; grounding &#183; every Vincio answer is cited.</text>
+  </g>
+</svg>

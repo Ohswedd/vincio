@@ -1,0 +1,96 @@
+<svg width="860" height="460" viewBox="0 0 860 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="arch_t arch_d">
+  <title id="arch_t">System architecture</title>
+  <desc id="arch_d">One coherent pipeline from input to output: input engine, context compiler hero with memory, tools, retrieval and prompt sources, model execution, and an output validation bar with a write-back feedback loop to memory.</desc>
+  <defs>
+    <radialGradient id="arch_parch" cx="40%" cy="26%" r="86%">
+      <stop offset="0%" stop-color="#FBF4E2"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="arch_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="arch_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D9B354"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="857" height="457" rx="16" fill="url(#arch_parch)" stroke="#C49A3A" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="447" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">ARCHITECTURE</text>
+    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#arch_goldtext)">One coherent pipeline, input to output</text>
+    <text x="40" y="102" font-size="13" fill="#6B5836">Everything between your application and the model, governed in one pass.</text>
+
+    <!-- Connectors (drawn before boxes so arrowheads sit cleanly at edges) -->
+    <!-- INPUT bottom -> COMPILER top -->
+    <line x1="430" y1="164" x2="430" y2="184" stroke="#C49A3A" stroke-width="1.6"/>
+    <path d="M430 190 L425 180 L435 180 Z" fill="#C49A3A"/>
+    <!-- MEMORY right -> COMPILER left -->
+    <line x1="240" y1="220" x2="314" y2="232" stroke="#C49A3A" stroke-width="1.6"/>
+    <path d="M320 233 L309 232 L312.5 222.5 Z" fill="#C49A3A"/>
+    <!-- TOOLS right -> COMPILER left -->
+    <line x1="240" y1="280" x2="314" y2="268" stroke="#C49A3A" stroke-width="1.6"/>
+    <path d="M320 267 L309 268 L312.5 277.5 Z" fill="#C49A3A"/>
+    <!-- RETRIEVAL left -> COMPILER right -->
+    <line x1="620" y1="220" x2="546" y2="232" stroke="#C49A3A" stroke-width="1.6"/>
+    <path d="M540 233 L551 232 L547.5 222.5 Z" fill="#C49A3A"/>
+    <!-- PROMPT left -> COMPILER right -->
+    <line x1="620" y1="280" x2="546" y2="268" stroke="#C49A3A" stroke-width="1.6"/>
+    <path d="M540 267 L551 268 L547.5 277.5 Z" fill="#C49A3A"/>
+    <!-- COMPILER bottom -> MODEL top -->
+    <line x1="430" y1="310" x2="430" y2="338" stroke="#C49A3A" stroke-width="1.6"/>
+    <path d="M430 344 L425 334 L435 334 Z" fill="#C49A3A"/>
+    <!-- MODEL bottom -> OUTPUT bar top -->
+    <line x1="430" y1="388" x2="430" y2="404" stroke="#C49A3A" stroke-width="1.6"/>
+    <path d="M430 410 L425 400 L435 400 Z" fill="#C49A3A"/>
+
+    <!-- Feedback dashed arrow: OUTPUT bar left up to MEMORY box -->
+    <path d="M40 430 L24 430 L24 220 L36 220" fill="none" stroke="#C49A3A" stroke-width="1.2" stroke-dasharray="4 3" opacity="0.85"/>
+    <path d="M40 220 L30 215 L30 225 Z" fill="#C49A3A"/>
+    <text x="28" y="120" font-size="10.5" fill="#8A7551" transform="rotate(-90 28 120)" text-anchor="middle">write-back</text>
+
+    <!-- INPUT ENGINE -->
+    <rect x="330" y="120" width="200" height="44" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
+    <text x="430" y="139" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">INPUT ENGINE</text>
+    <text x="430" y="154" font-size="10.5" fill="#6B5836" text-anchor="middle">normalize &#183; classify &#183; scope</text>
+
+    <!-- CONTEXT COMPILER hero -->
+    <rect x="320" y="190" width="220" height="120" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="2"/>
+    <rect x="324" y="194" width="212" height="112" rx="6" fill="url(#arch_gold)" opacity="0.14"/>
+    <text x="430" y="232" font-size="15" font-weight="700" fill="url(#arch_goldtext)" text-anchor="middle">CONTEXT COMPILER</text>
+    <text x="430" y="262" font-size="11.5" fill="#5B4A2E" text-anchor="middle">score &#183; dedupe &#183; conflict</text>
+    <text x="430" y="282" font-size="11.5" fill="#5B4A2E" text-anchor="middle">compress &#183; budget</text>
+
+    <!-- MEMORY -->
+    <rect x="40" y="196" width="200" height="48" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
+    <text x="140" y="217" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">MEMORY</text>
+    <text x="140" y="233" font-size="10.5" fill="#6B5836" text-anchor="middle">L0-L5 &#183; decay &#183; ACL</text>
+
+    <!-- TOOLS -->
+    <rect x="40" y="256" width="200" height="48" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
+    <text x="140" y="277" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">TOOLS</text>
+    <text x="140" y="293" font-size="10.5" fill="#6B5836" text-anchor="middle">permissioned RBAC/ABAC</text>
+
+    <!-- RETRIEVAL -->
+    <rect x="620" y="196" width="200" height="48" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
+    <text x="720" y="217" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">RETRIEVAL</text>
+    <text x="720" y="233" font-size="10.5" fill="#6B5836" text-anchor="middle">hybrid RAG + GraphRAG</text>
+
+    <!-- PROMPT -->
+    <rect x="620" y="256" width="200" height="48" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
+    <text x="720" y="277" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">PROMPT</text>
+    <text x="720" y="293" font-size="10.5" fill="#6B5836" text-anchor="middle">cache-aware compiler</text>
+
+    <!-- MODEL EXECUTION -->
+    <rect x="330" y="344" width="200" height="44" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
+    <text x="430" y="363" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">MODEL EXECUTION</text>
+    <text x="430" y="378" font-size="10.5" fill="#6B5836" text-anchor="middle">provider-neutral</text>
+
+    <!-- OUTPUT bar -->
+    <rect x="40" y="410" width="780" height="40" rx="8" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1.2"/>
+    <text x="430" y="435" font-size="12.5" font-weight="700" fill="#3A2E1C" text-anchor="middle">OUTPUT validation &#183; EVALS &#183; SECURITY &#183; TRACE + cost &#183; MEMORY write-back</text>
+  </g>
+</svg>
