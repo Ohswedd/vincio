@@ -111,6 +111,7 @@ CurriculumTask
 CustodyAttestation
 CustodyAttestationVerification
 CycleReport
+DataEncoder
 Dataset
 Delegation
 DelegationChain
@@ -363,6 +364,7 @@ SwapGate
 SwapVerdict
 SynthesizedProgram
 SystemCard
+TableEvidence
 TaintedValue
 TaskType
 TemporalVerifier

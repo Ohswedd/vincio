@@ -95,18 +95,51 @@ and a runnable example.
 | **Autonomous skill acquisition & open-ended curriculum** | The apex of the self-improvement arc: an agent that **grows its own capability** safely rather than only getting better at known tasks. `app.cultivate(...)` runs an open-ended loop — propose → attempt → verify → distill → promote — across cycles, so capability compounds. An `AutoCurriculum` proposes the next task at the **frontier of current competence** (solvable by a bounded, library-composing test-time search, but not yet by retrieving an existing skill), and **gates every proposed objective before it is attempted**: the instruction is screened by the programmable rails and the `GovernanceVerifier` must prove the app's controls (containment, residency, budget, erasure) still hold — so an unsafe or out-of-policy task is pinpointed and *refused, never run*, a `CurriculumProposal` whose content hash catches a refused objective relabelled as proposed. A winning, oracle-verified trajectory is distilled into a `LearnedSkill` — a named, typed, tool-using procedure with a precondition, an ordered list of steps (primitive `EnvAction`s *and* calls to existing skills, so skills **compose**), a verifier, and provenance — held in a `LearnedSkillLibrary` that is **content-addressed** (a byte-for-byte duplicate dedups; a changed procedure versions), retrieved like memory and tools (it projects to a `Skill` for the same progressive-disclosure path), and offline-verifiable (each skill recomputes its hash; a tampered procedure is caught). A skill is **promoted only through the same no-regression gate** a prompt or policy deploy clears (capability on a held-out frontier set must not fall), and one that stops paying its way is **demoted, never silently kept** — so growth is reversible, not unbounded drift. The whole run is content-bound: `CultivationResult.verify` re-derives the monotonicity and stay-in-policy verdicts from the bytes, and every cultivation lands on the hash-chained audit log. Deterministic and offline against the reference environments — never a hosted trainer or a managed curriculum; held by a capability-monotonicity SLO and a stay-in-policy safety SLO. |
 | **4.0 — consolidation, hardening & the long-term-support major** | The one announced breaking window, delivered as a *consolidation* in the strict sense: the public surface that was additive from 1.0 → 3.49 is **re-frozen unchanged** under the 4.0 SemVer contract, with `API_VERSION` promoted to `4.0`. Because the [deprecation policy](docs/reference/stability.md) was followed mechanically across 40+ themes, **no public API ever reached its `removed_in` runway** — the deprecation sweep removes nothing and a project that tracked 3.x cleanly upgrades with **zero source changes** (`vincio doctor` reports a clean tree on 4.0). The re-freeze is **mechanical**, not just documented: `docs/reference/public-surface.txt` pins the exact 481-name surface and a build gate fails on any silent drift from it. `vincio migrate <target>` ships the code-surface analogue of `vincio config migrate` — a static, `ast`-based codemod driven by a declarative, per-major rename table (empty for 4.0, so it truthfully reports "no source changes required"; the mechanism through which any future 4.x consolidation or 5.0 removal is delivered) — alongside a `MIGRATION.md` upgrade guide. Every guarantee carries forward unchanged: the published SLOs held by at-least-as-strict VincioBench budgets, the CycloneDX SBOM + SLSA build-provenance on every release, the strict-typing ladder, and the completeness-gated error and API references. **The platform now enters long-term support** on a stable 4.x surface: bug-fix, security, and standards-tracking releases only. |
 | **Continuous assurance cases & production certification** | The platform-completion capstone: the platform already *produces* the evidence a production system is judged on — eval and regression gates, the `GovernanceVerifier` proof, reasoning `Certificate`s and runtime monitors, identity and delegation provenance, the signed audit chain, C2PA media provenance, SBOM / SLSA build attestations — and this assembles it into one structured, machine-checkable argument that the system is *fit for purpose*, kept continuously valid as the system changes (the assurance-case / GSN-CAE discipline the safety and regulatory frontier demands). An `AssuranceCase` (`app.assurance_case`) is an argument tree: a top `Claim` (*this app is fit for purpose X under context Y*) decomposed into sub-claims, each discharged by `Evidence` the platform already emits — `Evidence.from_gate` / `from_governance` / `from_certificate` / `from_audit` / `from_identity` / `from_sbom` — **bound by hash**, so the whole case `verify`s offline and a **missing, stale, or falsified** piece is *pinpointed* (each evidence item carries a freshness horizon, so a stale proof expires). The case is **re-checked on every change**: `case.check()` re-derives the verdict from the bytes into an `AssuranceReport`, and `assurance_regression_gate` turns a previously-discharged claim now falsified into a **build failure** — the same gate machinery that blocks a quality regression, now blocking an *assurance* regression. A signed `Incident` ties an observed production failure to the sub-claim it falsified and the case **learns** — a remediation sub-claim demands fresh evidence before it re-validates — and `app.certify` emits a portable, offline-verifiable `CertificationReport` (the case, its discharged evidence, the residual risks, the SBOM / SLSA provenance) whose `verify()` recomputes the hash *and re-runs the case's own check from the bytes*, so a report certifying a case that does not hold is caught. Deterministic and offline — never a hosted certification authority or control plane; held by an assurance-soundness SLO (no claim stands on missing or stale evidence) and an assurance-regression SLO (a falsified claim fails the build). **With it, the platform is production-complete** — every subsystem composes into one continuously-verified safety argument. |
+| **Tabular evidence & the compact data encoder** | The token-efficiency foundation of the data & analytics plane: structured data is *first-class, schema-bearing, columnar evidence*, never a row-flattened `Document`. A `Dataset` (`vincio.data`) carries a typed `DataSchema` — per-column name, type, unit, and nullability — over column-major cells, built from rows, records, columns, a legacy `TableData`, or a compact encoding. A deterministic `DataEncoder` renders it **header-once**: the schema, types, units, and null-handling are declared once and the cells follow as delimited rows, replacing the `json.dumps(indent=2)` fallback and the pipe-join `TableData.to_text` on the path to the prompt. The encoding is **lossless** — `decode` reconstructs the columns, types, and cells from the bytes alone (a null distinguished from an empty string; leading zeros, embedded delimiters, quotes, and newlines preserved) — and **columnar-accurate**: a table's token cost is the count of the tokens the model actually receives (the schema once, the rows once), which fixes the generic `3·cells` heuristic. `TableEvidence` (`app.table_evidence`) projects a dataset into the context evidence the compiler already scores, deduplicates, budgets, orders, and cites, so a table reaches the model structured and token-cheap rather than flattened to prose. Deterministic, dependency-free, and offline; held by a token-efficiency SLO and a losslessness SLO in the **CostBench** family, and benchmarked head-to-head against `json.dumps`, `pandas.to_markdown`, and a TOON reference encoder in `benchmarks/competitive.py`. |
 
 VincioBench holds these guarantees under CI-gated budgets and SLOs; the full test suite runs offline.
 
 ---
 
-## 🚧 Where this goes next
+## 🚧 Where this goes next — the data & analytics plane (4.2 → 5.0)
 
-**Nothing is scheduled — the plan is complete.** Every phase from the first release through the 4.0 long-term-support
-major has shipped above. The platform now enters **long-term support** on a stable 4.x surface: bug-fix, security, and
-standards-tracking releases only.
+The original plan closed at 4.0: every subsystem above is shipped, frozen, and under long-term support. The 4.x line opens
+**one new domain, deliberately and gated afresh** — the data & analytics plane — because a real gap in the platform meets a
+real gap in the literature and in buyer demand. The plane's **first rung shipped in 4.1**: a table is now first-class,
+schema-bearing, columnar `Dataset` / `TableEvidence` rendered by a compact, lossless `DataEncoder`, replacing the
+pipe-joined-text / `json.dumps(indent=2)` rendering and the `3·cells` token heuristic (above). The remaining gaps the 4.x
+line closes: the SQL / BigQuery / Snowflake connectors still materialize at most 1,000 rows into row-flattened `Document`s,
+and there is no text-to-query, no dataframe agent, no profiling or sampling, no cell-level provenance, and no analytics
+benchmark — even though a `DATA_ANALYSIS` task type already exists, unevaluated. Real AI applications for **data analysts
+and big-data pipelines** need that plane, and the 4.x line builds it
+exactly the way every other subsystem was built: additive behind a new entry point or an opt-in extra, a dependency-free
+offline-first core with optional accelerators (pyarrow / DuckDB / Polars), governed and audited on the same runtime, held
+by VincioBench budgets and SLOs and a runnable example, and benchmarked head-to-head against the real tools a data team
+would otherwise reach for. Never a hosted query engine, a managed warehouse, or a notebook service.
 
-The arc closed in order. The **cross-org settlement & credit fabric** closed with its capstone (3.44), the
+**Design thesis.** A dataset is *first-class, schema-bearing, columnar evidence* — never flattened to prose. The model
+sees a **compact, token-oriented encoding** plus a deterministic **profile** and a **representative sample**, not a raw
+dump. Analysis is expressed as a **governed query verified before it executes** and **pushed down to where the data
+lives**, and every analytical answer is **cell-level cited** and offline-verifiable the way a generated report's claims
+already are. The plane reuses what exists — the context compiler, the permissioned tool runtime, the rails and governance
+verifier, the cited-report builder, the bounded agents and verifier-guided test-time search, and the cost and audit
+reports — rather than growing a parallel stack.
+
+| Release | Theme |
+|---|---|
+| **4.2 — Dataset profiling, sampling & data-quality rails** | Fitting a dataset far larger than the window into bounded, faithful evidence. `profile_dataset` computes a deterministic, offline column **profile** (cardinality, histograms, percentiles, null rate, exemplars) that becomes evidence the compiler scores and budgets; **stratified / reservoir sampling** replaces the hard `max_rows=1000` cutoff so a representative sample stands in for the whole; and `DataQualityRails` screen a tabular input for schema violations, constraint breaks, and anomalies on the same deterministic rail path PII and injection detection already ride. Held by a fit-in-window SLO — a 10M-row table is faithfully represented under a fixed token budget. |
+| **4.3 — Governed text-to-query & cell-level provenance** | The core analyst capability. `app.query_data` turns a natural-language question over a registered dataset into a query (SQL or a dataframe op), **schema-grounded and verified before it runs** — parsed, dry-run, cost-bounded, and held read-only-by-default by the rails and a `ToolContract`, so a write or DDL is structurally refused. The query **pushes down** to the source (DuckDB / SQL / BigQuery / Snowflake) and executes where the data lives rather than materializing rows into the prompt, and the answer **cites the exact rows and cells** it rests on — the analytics analogue of a cited report, offline-verifiable. It rides the permissioned, approval-gated, audited tool runtime unchanged. Benchmarked with new **Spider** and **BIRD** text-to-SQL adapters under an execution-accuracy SLO. |
+| **4.4 — The data-analysis agent & multi-step EDA** | `app.analyze_data` is a bounded analysis agent that plans, queries, inspects, and refines over a dataset using the *existing* planners, critics, and verifier-guided test-time search — no new search machinery — producing a cited analytical narrative. A DuckDB / Polars execution engine sits behind the `vincio[data]` extra, with a deterministic in-process engine offline. Benchmarked with **DS-1000**, **InfiAgent-DABench**, and **DABench** adapters under a task-success-at-budget SLO. |
+| **4.5 — Charts & cited analytical artifacts** | `generate_chart` turns a query result into a spec-driven chart (Vega-Lite / matplotlib behind the extra) that carries a **C2PA manifest bound to its bytes** and a back-reference to the exact rows it was built from — exactly the provenance generated images and audio already carry. The cited-report builder extends to tables and charts, so an analytical deliverable is per-claim entailed and per-figure data-bound. |
+| **4.6 — Streaming & out-of-core bulk processing** | The big-data-scale rung. Streaming / chunked ingestion and compression process a dataset larger than memory in bounded passes; a **streaming candidate pre-filter** drops low-relevance evidence before full scoring (closing the collect-everything-then-score path at `compiler.py:361-448`); reservoir dedup and out-of-core vector handling keep a 10k+ candidate pool inside the resident-memory budget; and analytical pipelines run at scale on the existing `BatchRunner`. Held by throughput SLOs (rows/s, tokens/s) and a memory-stays-bounded SLO as the dataset grows 100×. |
+| **4.7 — The semantic layer & governed metrics** | A `SemanticLayer` defines measures, dimensions, and derived columns once (*revenue = price × qty*), so a natural-language question maps to a **governed metric** rather than a raw column and is computed one way everywhere — the single-source discipline the governance refactors already use. Column-level **data lineage** feeds the existing lineage and right-to-erasure machinery, so a metric's provenance and a subject's erasure both reach into the dataset plane. |
+| **5.0 — data & analytics capstone + the next long-term-support major** | The capstone unifies the plane: a `DataEngagement` facade (`app.data_engagement`) threads profile → sample → query → analyze → chart → cite into one governed, audited, hash-chained narrative that `verify`s offline — the analytics analogue of `CrossOrgEngagement` — proven end-to-end by a `data_analysis_conformance` VincioBench family and benchmarked as a whole against pandas-ai, the LlamaIndex query engine, the LangChain SQL agent, Vanna, and native DuckDB. 5.0 is then the next announced consolidation major: it re-freezes the expanded public surface under SemVer, ships the `vincio migrate 5.0` codemod table, and declares the data & analytics plane **feature-complete and frozen**, the platform back into long-term support on the 5.x surface. |
+
+Each release lands additive behind its own entry point and opt-in extra, holds the dependency-free offline-first path as the
+default, and ships its VincioBench family, its published SLOs, and a runnable example — the same contract every subsystem
+above was held to.
+
+The original arc closed in order. The **cross-org settlement & credit fabric** closed with its capstone (3.44), the
 **computer-use & embodied action plane** (3.45) took the platform from an engine that *thinks and transacts* to one that
 **acts** on real interfaces, and **agent identity, delegation & cryptographic accountability** (3.46) made it
 **accountable for who acts**: an `AgentIdentity` (`app.identity`) on a self-certifying DID, a `Keyring` that rotates along
@@ -137,8 +170,8 @@ references.
 The platform can now reason, retrieve, remember, generate, evaluate, optimize, govern, **transact across organizations**,
 **act** on the interfaces built for humans, prove **who authorized each action, down what chain, within what bounds**,
 **certify what it produces**, **grow its own capability** within the guardrails, and **carry one continuously-verified
-safety argument** that it is fit for production — a complete, production-ready, long-term-stable base. There is **no
-standing backlog**.
+safety argument** that it is fit for production — a complete, production-ready, long-term-stable base. Beyond the data &
+analytics plane scoped above, there is **no other standing backlog**.
 
 The last additive cross-org refinements the roadmap reserved for the 4.x line — claim assignment & subrogation, avoidance /
 clawback, triangular & cross-currency set-off — ship *if and only if* real demand surfaces (otherwise the cross-org
@@ -150,11 +183,24 @@ gated afresh, never carried as a backlog.
 
 ## 🔭 Exploring — later
 
-*Intentionally empty.* The plan above was the complete, finite roadmap to a production-complete, long-term-stable
-platform, and it has shipped in full. There is no standing backlog: future work is bug-fix, security, and
-standards-tracking on the stable 4.x surface, and any genuinely new domain would be proposed and gated from scratch — a
-real gap in the literature *and* in buyer demand, covered offline, held by VincioBench budgets and SLOs, demonstrated by a
-runnable example — rather than pulled from a backlog here.
+Demand-pulled extensions to the data & analytics plane, shipped *if and only if* real usage surfaces — never carried as a
+standing backlog:
+
+- **Real-time & streaming analytics** — the query and profiling plane over an unbounded event stream rather than a bounded
+  dataset, on the existing realtime session, with windowed profiles and incremental cell-level provenance.
+- **Cross-org / federated analytics** — a `DataEngagement` that spans more than one organization's data plane over the
+  existing cross-org fabric, so a governed query joins datasets across a trust boundary under a negotiated contract without
+  the raw rows ever crossing it (the analytics analogue of federated self-improvement).
+- **Forecasting & causal-inference verifier kernels** — additional deterministic `verify_reasoning` kernels for the
+  analytical claims a data answer makes (a trend, a correlation-vs-causation distinction, a confidence interval), so a
+  statistical conclusion carries a checkable certificate the way an arithmetic one already does.
+- **Notebook-native surface** — a thin, governed binding of `app.analyze_data` into the existing `vincio.notebook`
+  surface, so the same audited, cited, budget-bounded analysis runs interactively without becoming a hosted notebook
+  service.
+
+Anything genuinely beyond the data plane is proposed and gated from scratch — a real gap in the literature *and* in buyer
+demand, covered offline, held by VincioBench budgets and SLOs, demonstrated by a runnable example — rather than pulled from
+a backlog here.
 
 ---
 

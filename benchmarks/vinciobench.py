@@ -984,9 +984,49 @@ async def bench_rag() -> dict[str, Any]:
     }
 
 
+def _table_encoding_bench() -> dict[str, Any]:
+    """CostBench / tabular: the compact data encoder vs the ``json.dumps`` and
+    pipe-join Markdown renderings it replaces on the path to the prompt, plus a
+    round-trip losslessness check."""
+    from vincio.data import Dataset
+
+    records = [
+        {
+            "order_id": f"ORD-{i:05d}",
+            "customer": f"Customer {i}",
+            "amount_usd": 100.0 + i,
+            "region": ["NA", "EU", "APAC"][i % 3],
+            "shipped": i % 2 == 0,
+        }
+        for i in range(40)
+    ]
+    dataset = Dataset.from_records(records, name="orders")
+    encoded = dataset.encode()
+    encoded_tokens = count_tokens(encoded)
+    json_tokens = count_tokens(json.dumps(records, indent=2))
+
+    columns = list(records[0])
+    md_lines = ["| " + " | ".join(columns) + " |", "| " + " | ".join("---" for _ in columns) + " |"]
+    md_lines += ["| " + " | ".join(str(r[c]) for c in columns) + " |" for r in records]
+    markdown_tokens = count_tokens("\n".join(md_lines))
+
+    lossless = Dataset.from_encoding(encoded).rows() == dataset.rows()
+    return {
+        "rows": len(records),
+        "columns": len(columns),
+        "json_tokens": json_tokens,
+        "markdown_tokens": markdown_tokens,
+        "encoded_tokens": encoded_tokens,
+        "reduction_vs_json": round(1 - encoded_tokens / json_tokens, 4),
+        "reduction_vs_markdown": round(1 - encoded_tokens / markdown_tokens, 4),
+        "lossless": lossless,
+    }
+
+
 async def bench_cost() -> dict[str, Any]:
     """CostBench: context-compiler token reduction vs naive context stuffing
-    (hypothesis: 20–40% token reduction — measured here)."""
+    (hypothesis: 20–40% token reduction — measured here), plus the compact
+    tabular data encoder's token efficiency."""
     compiler = ContextCompiler(ContextCompilerOptions())
     naive_tokens, compiled_tokens = [], []
     for question, _expected, _source in QA_CASES:
@@ -1081,6 +1121,8 @@ async def bench_cost() -> dict[str, Any]:
         "compiled_evidence_tokens": sum(compiled_tokens),
         "token_reduction": round(reduction, 4),
         "hypothesis_20_40pct_met": 0.20 <= reduction,
+        # 4.1 — compact tabular data encoder token efficiency + losslessness
+        "table_encoding": _table_encoding_bench(),
         # 2.1 — served burn-rate + EWMA-anomaly alerting over the cost ledger
         "alerting": alerting_2_1,
         # 1.7

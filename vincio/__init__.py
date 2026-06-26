@@ -121,6 +121,7 @@ from .cultivate import (
     Solution,
     library_capability,
 )
+from .data import DataEncoder, TableEvidence
 from .edge import (
     EdgeEnvironment,
     EdgeManifest,
@@ -502,7 +503,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.0.0"
+__version__ = "4.1.0"
 
 __all__ = [
     "ContextApp",
@@ -539,6 +540,8 @@ __all__ = [
     "TaskType",
     "UserInput",
     "Dataset",
+    "DataEncoder",
+    "TableEvidence",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

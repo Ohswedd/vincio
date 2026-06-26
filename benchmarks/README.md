@@ -44,6 +44,7 @@ wall-clock, are the portable signal):
 | **BM25 query** @ 2k docs | `BM25Index` | `rank_bm25` | **~18–22× faster**, identical ranking |
 | **Context assembly** — tokens sent for the same retrieved set | context compiler | LangChain `stuff` / LlamaIndex `compact` | **~60% fewer tokens**, answer retained (scores + dedups + budgets) |
 | **Text chunking** a 24k-word doc | `chunk_document` | LangChain / LlamaIndex splitters | **fastest**, and chunks carry provenance the string-splitters don't |
+| **Tabular encoding** — tokens for a 50×5 table | `DataEncoder` | `json.dumps` / `pandas.to_markdown` / a TOON reference | **~66% fewer tokens** than `json.dumps`, beats the TOON reference, round-trips losslessly with a typed schema |
 | **Token counting** (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.4–1.8× faster**, zero-dependency, conservative (+~25%) |
 | **Malformed-JSON recovery** | lenient parser | stdlib `json.loads` | **4/8 vs 1/8** (a dedicated repair lib recovers more, by guessing) |
 | **Template render w/ a missing var** | `PromptSpec.substitute` | `jinja2` | raises a typed error vs silently rendering empty |
@@ -143,7 +144,7 @@ above on your own key to reproduce.
 | **ToolBench** | reliability, runtime overhead (p50 ms), invalid-arg rejection, cache hits | — |
 | **OutputBench** | recovery rate over malformed model outputs; missing-required correctly rejected | raw `json.loads` |
 | **ReliabilityBench (0.7)** | strict-schema closure for constrained decoding; mid-stream invalid detection + abort savings; self-correction recovery within cycle bounds; rail catch rate + false positives; signature prediction validity + optimizer variants; schema routing/classification accuracy | validate-at-end / unguarded output |
-| **CostBench** | evidence-token reduction from the context compiler | stuff-everything context |
+| **CostBench** | evidence-token reduction from the context compiler; the compact data encoder's tabular token efficiency (`families.cost.table_encoding`) and round-trip losslessness | stuff-everything context; `json.dumps` / Markdown table |
 | **SecurityBench** | injection detection rate, false-positive rate, PII coverage | — |
 | **EvalBench** | metric agreement on labeled examples; red-team judging (guarded vs naive target, detector coverage); synthetic-data determinism and coverage; A/B significance machinery; session grouping; HTML viewer self-containment; trace→dataset; G-Eval calibration | an unguarded target where attacks succeed |
 | **AgenticEvalsBench (1.2)** | trajectory & tool-use metric agreement with labeled traces; trajectory eval flags runs that output-only eval passes; user-simulator determinism; drift sensitivity/specificity; Cohen's-κ judge-agreement tracking; (2.2) stateful-environment task-success oracle (verifies the end state, rejects policy violations) + deterministic replay of the nine benchmark adapters with hash-pinned task sets; judge ensembles whose disagreement is an uncertainty signal and whose calibration is κ-gated, Shapley causal regression attribution, and verdict-preserving adaptive sampling (`families.agentic_evals.environment_eval` / `families.agentic_evals.quality_frontier`) | output-only evaluation / no drift detector / un-attributed regressions |

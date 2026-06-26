@@ -34,6 +34,7 @@ __all__ = [
     "InputError",
     "DocumentError",
     "LoaderError",
+    "DataError",
     "RetrievalError",
     "IndexError_",
     "MemoryEngineError",
@@ -339,6 +340,13 @@ class DocumentError(VincioError):
 
 class LoaderError(DocumentError):
     code = "LOADER_ERROR"
+
+
+# --- tabular data -----------------------------------------------------------
+
+
+class DataError(VincioError):
+    code = "DATA_ERROR"
 
 
 # --- retrieval --------------------------------------------------------------

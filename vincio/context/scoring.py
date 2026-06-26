@@ -310,6 +310,12 @@ class ContextScorer:
             detail = getattr(candidate.video, "detail", "auto") if candidate.video else "auto"
             return self._VIDEO_TOKEN_COST.get(detail, self._VIDEO_TOKEN_COST["auto"])
         if candidate.modality == "table" and candidate.table:
+            # First-class table evidence carries a compact encoding: cost it by
+            # the tokens the model receives. A raw table dict falls back to the
+            # per-cell heuristic.
+            encoding = candidate.table.get("encoding")
+            if encoding:
+                return count_tokens(str(encoding))
             rows = candidate.table.get("rows") or []
             cols = candidate.table.get("columns") or []
             cells = sum(len(r) for r in rows) if rows else 0

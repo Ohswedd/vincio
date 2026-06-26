@@ -6199,6 +6199,65 @@ class ContextApp:
         )
         return cultivator.run(cycles=cycles)
 
+    # -- tabular evidence & the compact data encoder --------------------
+
+    def table_evidence(
+        self,
+        data: Any,
+        *,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+        source_id: str = "",
+        caption: str = "",
+        encoder: Any | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Build first-class tabular evidence — a typed, columnar dataset rendered
+        header-once — from rows, records, a :class:`~vincio.data.Dataset`, or a
+        legacy ``TableData``.
+
+        A dataset is *schema-bearing, columnar evidence*, never a row-flattened
+        document: it carries a typed schema (per-column name, type, unit,
+        nullability) and reaches the model as the compact, token-oriented encoding
+        of :class:`~vincio.data.DataEncoder` (the schema declared once, the cells
+        as delimited rows), with a columnar-accurate token cost. Add the result to
+        ``app.pending_evidence`` for the next run, or hand it to the context
+        compiler's ``evidence`` list directly::
+
+            ev = app.table_evidence(
+                [{"region": "NA", "revenue": 1200.5}, {"region": "EU", "revenue": 980.0}],
+                name="sales",
+            )
+            app.pending_evidence.append(ev.to_evidence_item())
+            result = await app.arun("Revenue by region?")
+
+        ``data`` may be a list of record mappings, a list of rows (with ``columns``
+        or ``schema``), a :class:`~vincio.data.Dataset`, or a ``TableData``.
+        Returns a :class:`~vincio.data.TableEvidence`.
+        """
+        from ..core.errors import DataError
+        from ..data import Dataset, TableEvidence
+
+        if isinstance(data, TableEvidence):
+            return data
+        if isinstance(data, Dataset):
+            dataset = data
+        elif isinstance(data, list) and data and isinstance(data[0], dict):
+            dataset = Dataset.from_records(data, schema=schema, name=name)
+        elif isinstance(data, list):
+            spec = schema if schema is not None else columns
+            if spec is None:
+                raise DataError("from rows, pass `columns=` or `schema=` to name the columns")
+            dataset = Dataset.from_rows(data, spec, name=name)
+        elif hasattr(data, "columns") and hasattr(data, "rows"):
+            dataset = Dataset.from_table_data(data, name=name)
+        else:
+            raise DataError(f"cannot build table evidence from {type(data).__name__}")
+        return dataset.to_evidence(
+            source_id=source_id or name or "dataset", caption=caption, encoder=encoder, **kwargs
+        )
+
     # -- continuous assurance & production certification ----------------
 
     def assurance_case(

@@ -213,6 +213,13 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "No loader matched, or a loader failed. Register one with "
             "`register_loader`, or install the extra its format requires.",
         ),
+        # --- tabular data ---
+        _entry(
+            "DATA_ERROR",
+            "Tabular data error",
+            "A dataset could not be built, encoded, or decoded. Confirm the schema "
+            "matches the data width and the column types are valid.",
+        ),
         # --- retrieval ---
         _entry(
             "RETRIEVAL_ERROR",
