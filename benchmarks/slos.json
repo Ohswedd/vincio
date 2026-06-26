@@ -183,6 +183,36 @@
       "rationale": "A compact encoding is only safe to send if it is lossless; round-trip integrity is non-negotiable."
     },
     {
+      "id": "dataset_fit_in_window",
+      "category": "cost",
+      "statement": "A dataset far larger than the window is represented under a fixed token budget: a full-fidelity column profile plus a representative sample fit a 500,000-row table inside a 2,000-token budget, and the representation's size does not grow with the row count.",
+      "metric": "families.data_plane.fit_in_window.within_budget",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.fit_in_window.within_budget",
+      "rationale": "The data plane's promise is that a 10M-row table reaches the model faithfully without overrunning the window; the budget gates that both a 100k- and a 500k-row table fit the fixed budget, and a companion budget gates that their representations stay within 100 tokens of each other (size invariant to rows)."
+    },
+    {
+      "id": "dataset_profile_faithful",
+      "category": "quality",
+      "statement": "The bounded-memory dataset profile faithfully recovers a large table's true extrema, row count, cardinality, and central tendency (exact for counts and ranges; percentiles within tolerance).",
+      "metric": "families.data_plane.profile.faithful",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.profile.faithful",
+      "rationale": "A profile is only worth standing in for the rows if it is accurate; the budget gates that a 200k-row profile recovers exact min/max/count/cardinality and a mean within 2% and median within 10% of ground truth, in a single bounded-memory pass."
+    },
+    {
+      "id": "data_quality_rails_complete",
+      "category": "reliability",
+      "statement": "Data-quality rails deterministically catch every seeded class of defect — type mismatch, out-of-range value, disallowed value, numeric anomaly, and PII in a cell — on the same rail path PII and injection detection ride for text.",
+      "metric": "families.data_plane.quality.detected_all",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.quality.detected_all",
+      "rationale": "Screening tabular input is only a safety control if it is complete; the budget gates that a dataset seeded with one of each defect class has every class reported, with no model judgment in the loop."
+    },
+    {
       "id": "tool_overhead_p50",
       "category": "performance",
       "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",

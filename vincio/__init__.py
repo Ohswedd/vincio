@@ -121,7 +121,13 @@ from .cultivate import (
     Solution,
     library_capability,
 )
-from .data import DataEncoder, TableEvidence
+from .data import (
+    DataEncoder,
+    DataQualityRails,
+    DataQualityReport,
+    DatasetProfile,
+    TableEvidence,
+)
 from .edge import (
     EdgeEnvironment,
     EdgeManifest,
@@ -503,7 +509,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.1.0"
+__version__ = "4.2.0"
 
 __all__ = [
     "ContextApp",
@@ -542,6 +548,9 @@ __all__ = [
     "Dataset",
     "DataEncoder",
     "TableEvidence",
+    "DatasetProfile",
+    "DataQualityRails",
+    "DataQualityReport",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

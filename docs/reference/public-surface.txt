@@ -112,7 +112,10 @@ CustodyAttestation
 CustodyAttestationVerification
 CycleReport
 DataEncoder
+DataQualityRails
+DataQualityReport
 Dataset
+DatasetProfile
 Delegation
 DelegationChain
 DelegationChainVerification

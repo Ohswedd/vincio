@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.2.0] - 2026-06-26
+
+Dataset profiling, sampling & data-quality rails — the second rung of the data & analytics plane: fitting a dataset far
+larger than the window into bounded, faithful, screened evidence. Additive in the `vincio.data` subpackage; entirely
+backward-compatible (the connector first-N behavior is unchanged unless an opt-in `sample=` is set), dependency-free,
+deterministic, and offline. `API_VERSION` is unchanged at `"4.0"` — 4.2 extends the 4.x surface additively (483 → 486
+public symbols).
+
+### Added
+
+- **`profile_dataset` / `profile_stream` — deterministic, bounded-memory column profiling.** A `DatasetProfile` carries a
+  `ColumnProfile` per column: exact `count` / `null_count` / `null_rate`, exact `min` / `max` / `mean` / `stddev`,
+  percentiles and a population-scaled `histogram` (reservoir-estimated and flagged `estimated` once a column exceeds
+  `reservoir_size`), `distinct` cardinality (exact up to `distinct_cap`, then a lower bound), `top_values`, and
+  `exemplars`. The profile is itself **fixed-size evidence** — `to_evidence_item()` renders it as a compact stats table the
+  context compiler scores and cites — and `profile_stream` profiles a row iterator without materializing it.
+- **`sample_dataset` (`reservoir_sample` / `stratified_sample` / `systematic_sample`).** A representative sample that stands
+  in for the whole, replacing a biased first-N cutoff: uniform reservoir sampling in a single `O(k)`-memory pass,
+  stratified sampling that preserves a key column's distribution (proportional, largest-remainder allocation), systematic
+  even spacing, and `head`. A sampled `Dataset` records how it was drawn in `metadata["sample"]`. `SampleMethod` enumerates
+  the strategies.
+- **`fit_to_window` / `fit_stream` (`WindowFit`).** The fit-in-window guarantee: a table far larger than the window is
+  represented under a **fixed token budget** — a full-fidelity profile (over every row, in bounded memory) plus a
+  representative sample sized to whatever budget the profile leaves — and the representation's size is invariant to the row
+  count. `to_evidence_items()` yields the profile and the sample as cited table evidence; `fit_stream` does it in a single
+  bounded pass over a source larger than memory.
+- **`DataQualityRails` (`ColumnConstraint`, `DataQualityReport`, `DataQualityViolation`).** Deterministic screening of a
+  tabular input for schema violations (type, nullability, null rate), constraint breaks (range, allowed-set, pattern,
+  uniqueness, monotonicity), and numeric anomalies (robust median/MAD outliers) — and the same PII / secret / injection
+  detectors the text rails ride, applied to string cells. `from_schema` / `from_dataset` derive baseline schema-enforcing
+  rails. `DataQualityReport.raise_for_status()` raises the new `DataQualityError` (a `DataError` subclass).
+- **App surface.** `app.profile_dataset`, `app.sample_dataset`, `app.fit_dataset`, and `app.screen_data` (which lands an
+  audited `data_quality` decision on the hash-chained log). `DatasetProfile`, `DataQualityRails`, and `DataQualityReport`
+  are re-exported at the top level; the full profiling/sampling/quality surface lives in `vincio.data`.
+- **DataPlaneBench VincioBench family** (`families.data_plane`) with a `dataset_fit_in_window` SLO (a 500k-row table fits a
+  fixed token budget, size invariant to row count), a `dataset_profile_faithful` SLO, and a `data_quality_rails_complete`
+  SLO, plus a `dataset_fit` head-to-head in `benchmarks/competitive.py` against `json.dumps`, the compact all-rows
+  encoding, and `pandas.describe`.
+
+### Changed
+
+- **The SQL / BigQuery / Snowflake connectors gain an opt-in reservoir sample.** Passing `sample=N` (with `sample_seed=`)
+  draws a representative sample of `N` rows from the entire result set in a single bounded pass instead of truncating at the
+  first `max_rows`. The default (no `sample`) is unchanged: the first-N cutoff behaves exactly as before.
+
+### Documentation
+
+- New concept page **[Dataset profiling, sampling, and quality rails](concepts/dataset-profiling.md)** (under `docs/`), a
+  runnable **`examples/14_dataset_profiling.py`**, and updates to the README, `llms.txt`, `SECURITY.md`, the SLO reference,
+  the benchmark docs, and the ROADMAP (the 4.2 row moves from planned to shipped).
+
 ## [4.1.0] - 2026-06-26
 
 Tabular evidence & the compact data encoder — the token-efficiency foundation of the data & analytics plane. Structured

@@ -30,6 +30,7 @@ demonstrate one capability and print a concrete result. Read them top to bottom.
 | 11 | [`advanced_context`](11_advanced_context.py) | Reasoning control, test-time compute (best-of-N / self-consistency / beam), the long-horizon context governor, world-model planning, the learned semantic cache, the record-replay debugger, and energy/carbon accounting. |
 | 12 | [`cross_org_economy`](12_cross_org_economy.py) | One narrative of two organizations transacting through agents: negotiate a signed contract, run a durable compensating saga, meter and settle, arbitrate a dispute, prove solvency, and resolve an insolvency. |
 | 13 | [`tabular_evidence`](13_tabular_evidence.py) | Structured data as first-class evidence: a typed, columnar `Dataset`, the lossless `DataEncoder` that renders it header-once and token-cheap, columnar-accurate token accounting, and `TableEvidence` scored and cited by the context compiler. |
+| 14 | [`dataset_profiling`](14_dataset_profiling.py) | Fitting a table far larger than the window into bounded, faithful evidence: `profile_dataset` for a fixed-size column profile, reservoir/stratified `sample_dataset`, `fit_to_window` under a fixed token budget, and `DataQualityRails` screening for schema/constraint/anomaly/PII defects. |
 
 `_shared.py` holds the small offline helpers every example imports (`example_provider`,
 `json_responder`, `citing_responder`, `write_sample_docs`).

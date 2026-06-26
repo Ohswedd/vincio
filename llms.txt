@@ -331,6 +331,31 @@ app.run("export button 500s").output.label
   dataset into scored, budgeted, cited `modality="table"` evidence; the compiler
   also coerces a bare `Dataset`/`TableEvidence` in its `evidence` list. Held by a
   token-efficiency + losslessness SLO (CostBench). Deterministic, offline.
+- **Dataset profiling, sampling & data-quality rails.** `from vincio.data import
+  profile_dataset, sample_dataset, fit_to_window, DataQualityRails` (also
+  `from vincio import DatasetProfile, DataQualityRails, DataQualityReport`).
+  `profile_dataset`/`profile_stream` compute a deterministic, bounded-memory
+  `DatasetProfile` (per-column `count`/`null_rate`/`distinct` exact; `min`/`max`/
+  `mean`/`stddev` exact; percentiles + histogram reservoir-estimated past
+  `reservoir_size`; cardinality exact up to `distinct_cap` then a lower bound) —
+  itself fixed-size table evidence (`to_evidence_item`). `sample_dataset`
+  (`reservoir`/`stratified`/`systematic`/`head`; `reservoir_sample` over any
+  iterator in O(k) memory; `stratified_sample(by=)` preserves a key's
+  distribution) stands a representative sample in for the whole, recorded in
+  `metadata["sample"]`, replacing the order-biased first-N cutoff (the SQL-family
+  connectors gain an opt-in `sample=` that reservoir-samples the full result set).
+  `fit_to_window(data, max_tokens=)`/`fit_stream(rows, schema, max_tokens=)` →
+  `WindowFit` = full profile + representative sample under a fixed token budget,
+  size invariant to row count (a 10M-row table represented inside the window).
+  `DataQualityRails(constraints=[ColumnConstraint(...)], detect_anomalies=)` /
+  `.from_dataset(ds)` screen for schema violations, constraint breaks (range/
+  allowed-set/pattern/unique/monotonic/null-rate), numeric anomalies (robust MAD),
+  and PII/secrets/injection in string cells — the same detectors the text rails
+  use — returning a `DataQualityReport` (`.allowed`/`.violations`/
+  `.raise_for_status()` → `DataQualityError`). App surface: `app.profile_dataset`/
+  `app.sample_dataset`/`app.fit_dataset`/`app.screen_data` (audited `data_quality`).
+  Held by a fit-in-window + profile-faithfulness + rail-completeness SLO
+  (DataPlaneBench). Deterministic, dependency-free, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`

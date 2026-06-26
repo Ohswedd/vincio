@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**482** public symbols.
+**485** public symbols.
 
 ## Classes
 
@@ -446,9 +446,21 @@ What one cultivation cycle proposed, learned, promoted, and demoted.
 
 Render tabular data header-once in a compact, token-oriented form.
 
+### `DataQualityRails(constraints=…, detect_anomalies=…, anomaly_threshold=…, anomaly_action=…, max_examples=…, pii_detector=…, secret_scanner=…, injection_detector=…)`
+
+Screen tabular data deterministically against a set of column constraints, with optional numeric anomaly detection.
+
+### `DataQualityReport(**data)`
+
+The outcome of screening a dataset. ``allowed`` is false when any blocking rule fired; the violations carry the detail.
+
 ### `Dataset(**data)`
 
 !!! abstract "Usage Documentation" [Models](../concepts/models.md)
+
+### `DatasetProfile(**data)`
+
+A dataset's deterministic, fixed-size column profile.
 
 ### `Delegation(**data)`
 

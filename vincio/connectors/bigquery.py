@@ -13,7 +13,7 @@ from typing import Any
 
 from ..core.errors import LoaderError
 from ..core.types import Document
-from .base import register_connector, row_text
+from .base import register_connector, row_text, sampled_rows
 
 __all__ = ["BigQueryConnector"]
 
@@ -32,6 +32,8 @@ class BigQueryConnector:
         title_column: str | None = None,
         text_columns: list[str] | None = None,
         max_rows: int = 1000,
+        sample: int | None = None,
+        sample_seed: int = 0,
     ) -> None:
         self.query = query
         self.project = project
@@ -40,6 +42,8 @@ class BigQueryConnector:
         self.title_column = title_column
         self.text_columns = text_columns
         self.max_rows = max_rows
+        self.sample = sample
+        self.sample_seed = sample_seed
 
     def _client(self) -> Any:
         if self.client is not None:
@@ -55,10 +59,9 @@ class BigQueryConnector:
     def _load_sync(self) -> list[Document]:
         try:
             rows = self._client().query(self.query).result()
+            pairs = sampled_rows(rows, max_rows=self.max_rows, sample=self.sample, seed=self.sample_seed)
             documents: list[Document] = []
-            for index, raw in enumerate(rows):
-                if index >= self.max_rows:
-                    break
+            for index, raw in pairs:
                 row = dict(raw)  # BigQuery Row is mapping-convertible
                 row_id = str(row.get(self.id_column, index)) if self.id_column else str(index)
                 title = (

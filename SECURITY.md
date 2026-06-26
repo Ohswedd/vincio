@@ -512,6 +512,33 @@ refusal land on the hash-chained, tamper-evident audit log, so the sustainabilit
 an auditor sees is a verifiable number, not a vendor claim. Accounting is off by default
 and additive: with it disabled, a run behaves exactly as before.
 
+### Tabular input screening & data-quality rails
+
+**A tabular input is screened the way a text input is — deterministically, with no
+model judgment, on the same rail path.** `vincio.data.DataQualityRails`
+(`app.screen_data`) screen a `Dataset` for the failure modes structured data
+carries: **schema violations** (a value of the wrong type, a null in a
+non-nullable column, a null rate above a ceiling), **constraint breaks** (a value
+out of range, outside an allowed set, not matching a required pattern, a broken
+uniqueness or monotonicity guarantee), and **anomalies** (numeric outliers found
+with a robust median/MAD z-score that a few extreme values cannot mask). Crucially,
+the **same security detectors** the text rails ride run here too: a column
+constraint may apply the PII, secret, or injection detector to the column's string
+cells, so a leaked email or an injection payload smuggled inside a data table is
+caught exactly as it would be in a prompt — closing a path by which untrusted bytes
+could otherwise reach the model unscreened simply because they arrived as a table.
+Every finding is a `DataQualityViolation`; a blocking finding fails the screen and
+`raise_for_status()` raises a `DataQualityError`. `app.screen_data` lands the
+decision (allow / deny, with the offending rules) on the **hash-chained,
+tamper-evident audit log** (`data_quality`) like any other rail decision, so an
+auditor sees which inputs were screened and why one was refused. Screening is
+deterministic and offline: the same dataset yields the same report, and the rails
+add no new egress channel. The profiling and sampling that fit a large table into
+the window (`profile_dataset`, `sample_dataset`, `fit_to_window`) are likewise
+deterministic and dependency-free, and the connector reservoir sample is opt-in —
+the default first-N behavior is unchanged, so enabling it changes representativeness,
+never the security posture.
+
 ### Edge / WASM runtime — the same deterministic safety, offline
 
 **The edge runtime carries the deterministic rails to a constrained target without

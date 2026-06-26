@@ -14,7 +14,7 @@ from typing import Any
 
 from ..core.errors import LoaderError
 from ..core.types import Document
-from .base import register_connector, row_text
+from .base import register_connector, row_text, sampled_rows
 
 __all__ = ["SQLConnector"]
 
@@ -33,6 +33,8 @@ class SQLConnector:
         title_column: str | None = None,
         text_columns: list[str] | None = None,
         max_rows: int = 1000,
+        sample: int | None = None,
+        sample_seed: int = 0,
     ) -> None:
         if url is None and connection is None:
             raise LoaderError("sql connector needs a url or a DB-API connection")
@@ -43,6 +45,8 @@ class SQLConnector:
         self.title_column = title_column
         self.text_columns = text_columns
         self.max_rows = max_rows
+        self.sample = sample
+        self.sample_seed = sample_seed
 
     def _connect(self) -> tuple[Any, bool]:
         if self.connection is not None:
@@ -63,9 +67,13 @@ class SQLConnector:
             cursor = connection.cursor()
             cursor.execute(self.query)
             columns = [d[0] for d in cursor.description]
-            rows = cursor.fetchmany(self.max_rows) if hasattr(cursor, "fetchmany") else cursor.fetchall()
+            if self.sample is not None:
+                pairs = sampled_rows(cursor, max_rows=self.max_rows, sample=self.sample, seed=self.sample_seed)
+            else:
+                raw = cursor.fetchmany(self.max_rows) if hasattr(cursor, "fetchmany") else cursor.fetchall()
+                pairs = list(enumerate(raw))
             documents: list[Document] = []
-            for index, values in enumerate(rows):
+            for index, values in pairs:
                 row = dict(zip(columns, values, strict=False))
                 text = row_text(row, self.text_columns)
                 row_id = str(row.get(self.id_column, index)) if self.id_column else str(index)

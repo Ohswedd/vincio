@@ -35,6 +35,7 @@ __all__ = [
     "DocumentError",
     "LoaderError",
     "DataError",
+    "DataQualityError",
     "RetrievalError",
     "IndexError_",
     "MemoryEngineError",
@@ -347,6 +348,12 @@ class LoaderError(DocumentError):
 
 class DataError(VincioError):
     code = "DATA_ERROR"
+
+
+class DataQualityError(DataError):
+    """A dataset failed a blocking data-quality rail (schema violation,
+    constraint break, or anomaly). Inherits the ``DATA_ERROR`` code so it is
+    caught by ``except DataError`` and resolved by the same catalog entry."""
 
 
 # --- retrieval --------------------------------------------------------------
