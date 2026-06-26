@@ -23,10 +23,10 @@ EXAMPLE_FILES = sorted(p for p in EXAMPLES_DIR.glob("[0-9]*.py"))
 
 
 def test_examples_present():
-    # Guards against an example being dropped without notice. The suite was
-    # consolidated to twelve solid, end-to-end examples that together exercise
-    # the whole platform (see examples/README.md).
-    assert len(EXAMPLE_FILES) == 12
+    # Guards against an example being dropped without notice. The suite covers
+    # the whole platform end-to-end, one solid example per area (see
+    # examples/README.md).
+    assert len(EXAMPLE_FILES) == 13
 
 
 @pytest.mark.parametrize("path", EXAMPLE_FILES, ids=lambda p: p.stem)

@@ -4,6 +4,50 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.1.0] - 2026-06-26
+
+Tabular evidence & the compact data encoder — the token-efficiency foundation of the data & analytics plane. Structured
+data becomes *first-class, schema-bearing, columnar evidence*, never a row-flattened `Document`. Additive behind a new
+`vincio.data` subpackage; entirely backward-compatible (a table dict without a compact encoding keeps its prior behavior),
+dependency-free, deterministic, and offline. `API_VERSION` is unchanged at `"4.0"` — 4.1 extends the 4.x surface additively.
+
+### Added
+
+- **`vincio.data` — a typed, columnar `Dataset`.** A `Dataset` carries a typed `DataSchema` (a `ColumnSchema` per column:
+  name, `DataType`, optional unit, nullability) over column-major cells, built from rows, records, columns, a legacy
+  `TableData`, or a compact encoding (`from_rows` / `from_records` / `from_columns` / `from_table_data` / `from_encoding`),
+  with `rows` / `records` / `column` / `head` / `exemplars` / `to_table_data` / `to_evidence` accessors. `DataSchema`,
+  `ColumnSchema`, and `DataType` are exported from `vincio.data`.
+- **`DataEncoder` — the deterministic, token-oriented encoder.** Renders a dataset header-once — the schema, types, units,
+  and null-handling declared once and the cells as delimited rows — in a compact form that is **lossless** (`decode`
+  reconstructs the columns, types, and cells from the bytes alone: a null distinguished from an empty string; leading zeros,
+  embedded delimiters, quotes, and newlines preserved) and reports the **columnar-accurate** token cost (the count of the
+  tokens the model receives). `encode_value` is the token-efficient replacement for `json.dumps`. Re-exported at the top
+  level as `vincio.DataEncoder`; the encoding kernel lives in `vincio.core.tabular`.
+- **`TableEvidence` (`app.table_evidence`).** Projects a dataset into the `modality="table"` context evidence the compiler
+  already scores, deduplicates, budgets, orders, and cites; its scorable text and prompt rendering are the compact encoding,
+  and its token cost is columnar-accurate. The context compiler also coerces a bare `Dataset` / `TableEvidence` in its
+  `evidence` list. Re-exported at the top level as `vincio.TableEvidence`.
+- **`DataError`** (`vincio.data` / `vincio.core.errors`, code `DATA_ERROR`) with an error-catalog entry.
+- **CostBench tabular token-efficiency family** (`families.cost.table_encoding`) plus a `table_token_efficiency` SLO
+  (≥ 40% fewer tokens than `json.dumps`) and a `table_encoding_lossless` SLO, and a `data_encoding` head-to-head in
+  `benchmarks/competitive.py` against `json.dumps`, `pandas.to_markdown`, and a TOON reference encoder.
+
+### Changed
+
+- **The compact encoder replaces the pipe-join / `json.dumps` rendering on the path to the prompt.** `TableData.to_text`
+  now renders the compact, lossless encoding (its string cells preserved exactly) instead of a pipe-joined table, and
+  `structure_data` encodes nested JSON-like values compactly instead of `json.dumps(indent=2)`.
+- **Columnar-accurate table token accounting.** `EvidenceItem.estimated_token_cost` and the context scorer cost a table
+  carrying a compact encoding by the tokens the model actually receives, replacing the generic `3·cells` heuristic; a raw
+  table dict without an encoding keeps the prior per-cell heuristic unchanged.
+
+### Documentation
+
+- New concept page **[Tabular evidence and the compact data encoder](concepts/tabular-evidence.md)** (under `docs/`), a
+  runnable **`examples/13_tabular_evidence.py`**, and updates to the README, `llms.txt`, `SECURITY.md`, the benchmark docs,
+  and the ROADMAP (the 4.1 row moves from planned to shipped).
+
 ## [4.0.0] - 2026-06-24
 
 Consolidation, hardening & the long-term-support major. 4.0 is the one announced breaking window — and it breaks nothing.

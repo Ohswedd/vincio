@@ -12,6 +12,19 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..core.tabular import encode_table, encode_value
+
+# Map the parser's inferred column types onto the compact encoder's vocabulary.
+# Numbers are refined to int / float per column when rendered; everything else
+# carries through as a header hint while the string cells stay exact (lossless).
+_DTYPE_HINT = {
+    "currency": "str",
+    "date": "date",
+    "boolean": "bool",
+    "string": "str",
+    "empty": "null",
+}
+
 __all__ = [
     "Section",
     "TableData",
@@ -47,16 +60,43 @@ class TableData(BaseModel):
     quality: dict[str, Any] = Field(default_factory=dict)
 
     def to_text(self) -> str:
-        """Render preserving headers — chunk-friendly."""
-        lines = []
-        if self.title:
-            lines.append(f"Table: {self.title}")
-        lines.append(" | ".join(self.columns))
-        for row in self.rows:
-            lines.append(" | ".join(str(cell) for cell in row))
-        for note in self.footnotes:
-            lines.append(f"Note: {note}")
-        return "\n".join(lines)
+        """Render in the compact, token-oriented encoding: the schema, types, and
+        units are declared once in the header and the cells follow as delimited
+        rows, instead of repeating the ``|`` separators on every line. The string
+        cells are preserved exactly (lossless); footnotes follow as ``#`` notes.
+        An empty table renders as the empty string, so an empty document or chunk
+        stays empty."""
+        if not self.columns and not self.rows:
+            return "\n".join(f"# note: {note}" for note in self.footnotes)
+        types = self._dtype_hints()
+        units = [self.units.get(col) for col in self.columns]
+        text = encode_table(
+            self.columns,
+            self.rows,
+            types=types,
+            units=units,
+            name=self.title,
+        )
+        if self.footnotes:
+            text += "\n" + "\n".join(f"# note: {note}" for note in self.footnotes)
+        return text
+
+    def _dtype_hints(self) -> list[str]:
+        """The per-column type hints for the encoding header, refining a numeric
+        column to ``int`` or ``float`` while keeping the string cells intact."""
+        hints: list[str] = []
+        for index, col in enumerate(self.columns):
+            inferred = self.inferred_schema.get(col, "string")
+            if inferred == "number":
+                values = [
+                    row[index]
+                    for row in self.rows
+                    if index < len(row) and str(row[index]).strip()
+                ]
+                hints.append("int" if all("." not in str(v) for v in values) else "float")
+            else:
+                hints.append(_DTYPE_HINT.get(inferred, "str"))
+        return hints
 
 
 # -- markdown ------------------------------------------------------------------
@@ -358,12 +398,10 @@ def structure_data(obj: Any, *, title: str = "") -> tuple[str, list[Section], li
     """Structure parsed JSON/JSONL/YAML into sections and tables.
 
     A list of flat objects becomes a :class:`TableData`; a mapping becomes one
-    section per top-level key (scalars inline, nested values pretty-printed);
-    anything else falls back to a single text section. Returns
-    ``(text, sections, tables)``.
+    section per top-level key (scalars inline, nested values compactly encoded
+    token-oriented rather than ``json.dumps``-dumped); anything else falls back
+    to a single text section. Returns ``(text, sections, tables)``.
     """
-    import json
-
     sections: list[Section] = []
     tables: list[TableData] = []
 
@@ -388,14 +426,14 @@ def structure_data(obj: Any, *, title: str = "") -> tuple[str, list[Section], li
                 tables.append(table)
                 body = table.to_text()
             elif isinstance(value, (dict, list)):
-                body = json.dumps(value, indent=2, ensure_ascii=False, default=str)
+                body = encode_value(value)
             else:
                 body = _flatten_scalar(value)
             sections.append(Section(title=str(key), level=1, path=[str(key)], text=body, start_line=0))
             text_parts.append(f"{key}: {body}")
         return "\n\n".join(text_parts), sections, tables
 
-    body = json.dumps(obj, indent=2, ensure_ascii=False, default=str)
+    body = encode_value(obj)
     return body, sections, tables
 
 

@@ -40,10 +40,13 @@ and the PII / injection / secret detectors accept a pluggable `DetectorBackend`
 where an ML model *merges with*, never replaces, the deterministic rules.
 
 Untrusted content enters through one provenance-stamped pipeline regardless of
-source: MCP resources, OCR'd pages, transcripts, figure crops, and extracted form
-fields all arrive as injection-scanned evidence (with the extractor recorded for
-honesty), exactly like any loaded file. Optional cloud Document-AI / transcription
-backends are lazy and opt-in.
+source: MCP resources, OCR'd pages, transcripts, figure crops, extracted form
+fields, and **tabular data** (a `Dataset` / `TableEvidence`, a CSV, or query
+results) all arrive as injection-scanned evidence (with the extractor recorded
+for honesty), exactly like any loaded file. A dataset is a content surrogate, not
+a trusted boundary: its compact encoding is the scorable text the detectors and
+rails screen, and it carries the same `untrusted` trust level by default. Optional
+cloud Document-AI / transcription backends are lazy and opt-in.
 
 **Containment that holds when detection misses.** Detection is necessary but not
 sufficient — an attacker needs only one missed instruction. The control plane is

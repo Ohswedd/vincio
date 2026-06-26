@@ -163,6 +163,20 @@ def _media_identity(e: EvidenceItem) -> str | None:
     return stable_hash(payload) if payload is not None else None
 
 
+def _coerce_evidence(evidence: list[Any] | None) -> list[EvidenceItem]:
+    """Normalize an evidence list so a :class:`~vincio.data.Dataset` or
+    :class:`~vincio.data.TableEvidence` (anything exposing ``to_evidence_item``)
+    is projected to a ``modality="table"`` :class:`EvidenceItem`; plain evidence
+    items pass through unchanged. Lets a dataset be dropped straight into the
+    compiler's evidence list (or ``app.pending_evidence``) as table evidence."""
+    if not evidence:
+        return []
+    return [
+        item.to_evidence_item() if hasattr(item, "to_evidence_item") else item
+        for item in evidence
+    ]
+
+
 def _looks_negated(text: str) -> bool:
     return bool(_NEGATION_RE.search(text.lower()))
 
@@ -372,9 +386,12 @@ class ContextCompiler:
         tool_results: list[ToolResult],
     ) -> list[ContextCandidate]:
         candidates: list[ContextCandidate] = []
-        for item in evidence:
+        for raw in evidence:
+            # A Dataset / TableEvidence is first-class: it projects to a
+            # ``modality="table"`` EvidenceItem carrying its compact encoding.
+            item = raw.to_evidence_item() if hasattr(raw, "to_evidence_item") else raw
             # text, image, table, and video evidence are all candidates. The
-            # scorable surrogate (text / caption / table Markdown / transcript)
+            # scorable surrogate (text / caption / table encoding / transcript)
             # drives relevance/dedup/ordering; image/table/video carry the
             # non-text payload.
             text = item.scorable_text.strip()
@@ -797,6 +814,7 @@ class ContextCompiler:
     ) -> CompiledContext:
         budget = budget or Budget()
         policies = policies or PolicySet()
+        evidence = _coerce_evidence(evidence)
         query = (user_input.text or "") or objective.text
         excluded: list[dict[str, Any]] = []
 

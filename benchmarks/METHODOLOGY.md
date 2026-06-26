@@ -38,7 +38,7 @@ where they are, so you can run it yourself and audit the claims.
 | **ToolBench** | reliability, p50 runtime overhead, invalid-arg rejection, cache hits | — |
 | **OutputBench** | recovery rate over malformed outputs vs raw parsing | `json.loads` |
 | **ReliabilityBench** | constrained-decode closure, mid-stream abort savings, self-correction, rails | validate-at-end |
-| **CostBench** | evidence-token reduction from the compiler | stuff-everything |
+| **CostBench** | evidence-token reduction from the compiler; the compact data encoder's tabular token efficiency + losslessness | stuff-everything; `json.dumps` / Markdown |
 | **SecurityBench** | injection detection / false-positive rate, PII coverage | — |
 | **EvalBench** | metric agreement, red-team judging, synthetic determinism, A/B significance | naive target |
 | **AgenticEvalsBench** | trajectory/tool metric agreement, simulator determinism, drift sensitivity/specificity, κ tracking; (2.2) stateful-environment task-success oracle + deterministic hash-pinned replay of the nine benchmark adapters; κ-gated judge ensembles, Shapley causal regression attribution, verdict-preserving adaptive sampling | output-only eval |

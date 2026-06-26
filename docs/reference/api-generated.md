@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**480** public symbols.
+**482** public symbols.
 
 ## Classes
 
@@ -441,6 +441,10 @@ The (non-raising) outcome of verifying a custody attestation offline.
 ### `CycleReport(**data)`
 
 What one cultivation cycle proposed, learned, promoted, and demoted.
+
+### `DataEncoder(delimiter=…, include_name=…, include_count=…, include_types=…, include_units=…, exemplars=…, max_rows=…)`
+
+Render tabular data header-once in a compact, token-oriented form.
 
 ### `Dataset(**data)`
 
@@ -1441,6 +1445,10 @@ A verified transform paired with the certificate proving its properties.
 ### `SystemCard(**data)`
 
 Documentation for the whole system: model + retrieval + memory + safety.
+
+### `TableEvidence(**data)`
+
+A :class:`~vincio.data.Dataset` presented as first-class context evidence.
 
 ### `TaintedValue(value, label=…, sources=…)`
 

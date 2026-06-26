@@ -529,6 +529,90 @@ def bench_assembly() -> dict[str, Any]:
 
 
 # --------------------------------------------------------------------------- #
+# 7. Tabular encoding: Vincio's compact DataEncoder vs json.dumps,
+#    pandas.to_markdown, and a TOON reference encoder. Same table, same
+#    tokenizer — how many tokens reach the model, and does it round-trip?
+# --------------------------------------------------------------------------- #
+
+
+def _toon_reference(records: list[dict[str, Any]], *, name: str = "data") -> str:
+    """A faithful minimal TOON (Token-Oriented Object Notation) encoder for a
+    uniform array of objects — the reference baseline. TOON declares the length
+    and field names once (``name[N]{f1,f2}:``) then emits indented CSV rows; it
+    does not carry a typed schema or units the way Vincio's encoder does."""
+    columns = list(records[0])
+
+    def cell(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        return str(value)
+
+    head = f"{name}[{len(records)}]{{{','.join(columns)}}}:"
+    rows = ["  " + ",".join(cell(record[col]) for col in columns) for record in records]
+    return "\n".join([head, *rows])
+
+
+def bench_data_encoding() -> dict[str, Any]:
+    """Tabular encoding: Vincio's compact, schema-once DataEncoder vs the
+    serializations it competes with — ``json.dumps`` (the fallback it replaces),
+    ``pandas.to_markdown`` (the real dataframe tool), and a TOON reference
+    encoder. Reports tokens for each over the same table and whether Vincio's
+    encoding round-trips."""
+    from vincio.core.tokens import count_tokens
+    from vincio.data import Dataset
+
+    records = [
+        {
+            "order_id": f"ORD-{i:05d}",
+            "customer": f"Customer {i}",
+            "amount_usd": round(100.0 + i * 1.5, 2),
+            "region": ["NA", "EU", "APAC"][i % 3],
+            "shipped": i % 2 == 0,
+        }
+        for i in range(50)
+    ]
+    dataset = Dataset.from_records(records, name="orders")
+    encoded = dataset.encode()
+
+    result: dict[str, Any] = {
+        "operation": "serialize 50 rows × 5 columns to model-ready text",
+        "rows": len(records),
+        "columns": len(records[0]),
+        "vincio_tokens": count_tokens(encoded),
+        "json_tokens": count_tokens(json.dumps(records, indent=2)),
+        "json_compact_tokens": count_tokens(json.dumps(records, separators=(",", ":"))),
+        "toon_tokens": count_tokens(_toon_reference(records, name="orders")),
+        "lossless_round_trip": Dataset.from_encoding(encoded).rows() == dataset.rows(),
+    }
+    if _have("pandas"):
+        import pandas as pd
+
+        markdown = pd.DataFrame(records).to_markdown(index=False)
+        result["pandas_markdown_tokens"] = count_tokens(markdown)
+    else:
+        result["pandas_markdown_tokens"] = "skipped (pip install pandas)"
+
+    vincio_t = result["vincio_tokens"]
+    result["vs_json_reduction"] = round(1 - vincio_t / result["json_tokens"], 3)
+    result["vs_toon_reduction"] = round(1 - vincio_t / result["toon_tokens"], 3)
+    md = result["pandas_markdown_tokens"]
+    md_clause = (
+        f"and {md} for pandas.to_markdown" if isinstance(md, int) else "(pandas not installed)"
+    )
+    result["verdict"] = (
+        f"On a 50×5 table, Vincio's compact encoder reaches the model in {vincio_t} tokens "
+        f"vs {result['json_tokens']} for json.dumps, {result['toon_tokens']} for a TOON reference, "
+        f"{md_clause} — a {1 - vincio_t / result['json_tokens']:.0%} cut versus the json.dumps "
+        "fallback it replaces on the path to the prompt. Unlike TOON and Markdown, the encoding "
+        f"carries a typed schema and units declared once and round-trips losslessly "
+        f"({result['lossless_round_trip']})."
+    )
+    return result
+
+
+# --------------------------------------------------------------------------- #
 # Runner
 # --------------------------------------------------------------------------- #
 
@@ -539,6 +623,7 @@ COMPARISONS: dict[str, Callable[[], dict[str, Any]]] = {
     "prompt": bench_prompt,
     "chunking": bench_chunking,
     "assembly": bench_assembly,
+    "data_encoding": bench_data_encoding,
 }
 
 

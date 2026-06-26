@@ -106,7 +106,11 @@ class DocumentModel(BaseModel):
             elif block.kind == "list":
                 words += sum(len(item.split()) for item in block.items)
             elif block.kind == "table" and block.table is not None:
-                words += len(block.table.to_text().split())
+                # Count the table's content words from its cells, independent of
+                # the rendering format (column headers + every cell).
+                table = block.table
+                words += sum(len(str(col).split()) for col in table.columns)
+                words += sum(len(str(cell).split()) for row in table.rows for cell in row)
         return words
 
     def plain_text(self) -> str:

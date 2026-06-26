@@ -25,6 +25,12 @@
     "families.cost.token_reduction": {
       "gte": 0.2
     },
+    "families.cost.table_encoding.reduction_vs_json": {
+      "gte": 0.4
+    },
+    "families.cost.table_encoding.lossless": {
+      "eq": true
+    },
     "families.rag.recall_at_3.mean": {
       "gte": 0.8
     },

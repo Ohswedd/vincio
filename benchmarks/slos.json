@@ -163,6 +163,26 @@
       "rationale": "Budgeting and scoring exist to cut tokens; the floor protects the core value proposition."
     },
     {
+      "id": "table_token_efficiency",
+      "category": "cost",
+      "statement": "The compact data encoder renders a table in at least 40% fewer tokens than the json.dumps fallback it replaces.",
+      "metric": "families.cost.table_encoding.reduction_vs_json",
+      "direction": "gte",
+      "threshold": 0.4,
+      "enforced_by": "families.cost.table_encoding.reduction_vs_json",
+      "rationale": "Tabular evidence is declared schema-once and rendered header-once; the floor protects the token-efficiency foundation of the data plane."
+    },
+    {
+      "id": "table_encoding_lossless",
+      "category": "reliability",
+      "statement": "The compact table encoding round-trips without loss: decoding the encoding reproduces the dataset's cells exactly.",
+      "metric": "families.cost.table_encoding.lossless",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.cost.table_encoding.lossless",
+      "rationale": "A compact encoding is only safe to send if it is lossless; round-trip integrity is non-negotiable."
+    },
+    {
       "id": "tool_overhead_p50",
       "category": "performance",
       "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",

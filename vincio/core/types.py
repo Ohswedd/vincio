@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .tokens import count_tokens
 from .utils import new_id, stable_hash, utcnow
 
 __all__ = [
@@ -364,7 +365,12 @@ class EvidenceItem(BaseModel):
         if self.text:
             return self.text
         if self.modality == "table" and self.table:
-            return str(self.table.get("markdown") or self.table.get("caption") or "")
+            return str(
+                self.table.get("encoding")
+                or self.table.get("markdown")
+                or self.table.get("caption")
+                or ""
+            )
         if self.modality == "image" and self.image is not None:
             return str(self.image.metadata.get("caption") or self.image.metadata.get("alt") or "")
         if self.modality == "video" and self.video is not None:
@@ -374,12 +380,19 @@ class EvidenceItem(BaseModel):
         return ""
 
     def estimated_token_cost(self) -> int:
-        """Modality-aware token cost: a calibrated image budget by detail, a
-        per-cell table estimate, or the text token count (computed lazily by the
-        caller when 0)."""
+        """Modality-aware token cost: a calibrated image budget by detail, the
+        columnar token count of an encoded table (a per-cell heuristic only when
+        no compact encoding is present), or the text token count (computed lazily
+        by the caller when 0)."""
         if self.modality == "image" and self.image is not None:
             return _IMAGE_TOKEN_COST.get(self.image.detail, _IMAGE_TOKEN_COST["auto"])
         if self.modality == "table" and self.table:
+            # A compact encoding (first-class table evidence) is costed exactly
+            # by the tokens the model receives — columnar-accurate. A raw table
+            # dict without an encoding falls back to the per-cell heuristic.
+            encoding = self.table.get("encoding")
+            if encoding:
+                return count_tokens(str(encoding))
             rows = self.table.get("rows") or []
             cols = self.table.get("columns") or []
             cells = sum(len(r) for r in rows) if rows else 0

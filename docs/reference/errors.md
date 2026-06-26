@@ -111,6 +111,10 @@ without an entry here.
 
 **Document loader error.** No loader matched, or a loader failed. Register one with `register_loader`, or install the extra its format requires.
 
+### DATA_ERROR
+
+**Tabular data error.** A dataset could not be built, encoded, or decoded. Confirm the schema matches the data width and the column types are valid.
+
 ### RETRIEVAL_ERROR
 
 **Retrieval failure.** A retrieval backend errored. Verify the index exists and the vector store URL in `storage.vector` is reachable.

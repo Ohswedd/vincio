@@ -43,6 +43,9 @@ between your input and the model's validated output.
 - **[Context packets and the context compiler](concepts/context-packets.md)**:
   the central unit. How candidate evidence is scored, deduplicated, budgeted,
   and packed into a provider-neutral packet.
+- **[Tabular evidence and the compact data encoder](concepts/tabular-evidence.md)**:
+  a typed, columnar `Dataset`, a lossless `DataEncoder` that renders it
+  header-once, and `TableEvidence` that scores and budgets a table token-cheap.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

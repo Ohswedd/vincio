@@ -318,6 +318,19 @@ app.run("export button 500s").output.label
   `modality` (text/image/table/video) and image/table/video payloads; the
   compiler scores, budgets, orders, and cites them together. Slim packets
   `materialize()` cross-process from a content-addressed `InMemoryEvidenceStore`.
+- **Tabular evidence & the compact data encoder.** `from vincio.data import
+  Dataset, DataEncoder` (also `from vincio import DataEncoder, TableEvidence`). A
+  `Dataset` is schema-bearing, columnar evidence (typed `DataSchema`: per-column
+  name/type/unit/nullability over column-major cells; `from_records`/`from_rows`/
+  `from_columns`/`from_table_data`/`from_encoding`). `DataEncoder` renders it
+  header-once in a compact, lossless, token-oriented form — the schema/types/units
+  declared once, the cells as delimited rows — replacing the `json.dumps(indent=2)`
+  fallback (`parsers.py`) and the pipe-join `TableData.to_text` on the path to the
+  prompt; `decode` round-trips it and `token_cost` is columnar-accurate (fixes the
+  `3·cells` heuristic). `TableEvidence` / `app.table_evidence(...)` project a
+  dataset into scored, budgeted, cited `modality="table"` evidence; the compiler
+  also coerces a bare `Dataset`/`TableEvidence` in its `evidence` list. Held by a
+  token-efficiency + losslessness SLO (CostBench). Deterministic, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`

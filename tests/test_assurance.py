@@ -341,7 +341,7 @@ def test_certify_emits_portable_verifiable_report():
     assert isinstance(report, CertificationReport)
     assert report.certified
     assert report.verify()
-    assert report.provenance.get("vincio_version") == "4.0.0"
+    assert report.provenance.get("vincio_version") == "4.1.0"
     assert "sbom" in report.provenance
     # round-trips through JSON for a downstream auditor
     assert report.to_json()

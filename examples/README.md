@@ -29,6 +29,7 @@ demonstrate one capability and print a concrete result. Read them top to bottom.
 | 10 | [`interop_and_protocols`](10_interop_and_protocols.py) | MCP client *and* server, A2A agent-to-agent delegation, Agent Skills, framework interop (LangChain / LlamaIndex / Haystack / DSPy), first-party connectors, and vertical packs. |
 | 11 | [`advanced_context`](11_advanced_context.py) | Reasoning control, test-time compute (best-of-N / self-consistency / beam), the long-horizon context governor, world-model planning, the learned semantic cache, the record-replay debugger, and energy/carbon accounting. |
 | 12 | [`cross_org_economy`](12_cross_org_economy.py) | One narrative of two organizations transacting through agents: negotiate a signed contract, run a durable compensating saga, meter and settle, arbitrate a dispute, prove solvency, and resolve an insolvency. |
+| 13 | [`tabular_evidence`](13_tabular_evidence.py) | Structured data as first-class evidence: a typed, columnar `Dataset`, the lossless `DataEncoder` that renders it header-once and token-cheap, columnar-accurate token accounting, and `TableEvidence` scored and cited by the context compiler. |
 
 `_shared.py` holds the small offline helpers every example imports (`example_provider`,
 `json_responder`, `citing_responder`, `write_sample_docs`).
