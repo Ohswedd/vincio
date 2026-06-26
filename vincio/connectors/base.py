@@ -19,6 +19,7 @@ __all__ = [
     "connect",
     "managed_client",
     "row_text",
+    "sampled_rows",
 ]
 
 
@@ -61,6 +62,29 @@ def row_text(row: dict[str, Any], text_columns: list[str] | None = None) -> str:
     """
     columns = text_columns or [c for c, v in row.items() if isinstance(v, str)]
     return "\n".join(f"{c}: {row[c]}" for c in columns if row.get(c) is not None)
+
+
+def sampled_rows(
+    rows: Any, *, max_rows: int, sample: int | None = None, seed: int = 0
+) -> list[tuple[int, Any]]:
+    """Materialize result-set rows as ``(original_index, row)`` pairs.
+
+    With ``sample`` unset, this takes the first ``max_rows`` rows (the legacy
+    cutoff). With ``sample`` set, it draws a uniform reservoir sample of that many
+    rows from the *entire* result set in a single bounded pass — a representative
+    sample stands in for the whole instead of an order-biased prefix. The original
+    row index is preserved so downstream document ids stay stable.
+    """
+    if sample is None:
+        out: list[tuple[int, Any]] = []
+        for index, row in enumerate(rows):
+            if index >= max_rows:
+                break
+            out.append((index, row))
+        return out
+    from ..data.sampling import reservoir_sample
+
+    return reservoir_sample(enumerate(rows), sample, seed=seed)
 
 
 def register_connector(name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:

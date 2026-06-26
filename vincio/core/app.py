@@ -6258,6 +6258,172 @@ class ContextApp:
             source_id=source_id or name or "dataset", caption=caption, encoder=encoder, **kwargs
         )
 
+    def _coerce_dataset(
+        self, data: Any, *, schema: Any | None = None, columns: list[str] | None = None, name: str = ""
+    ) -> Any:
+        """Coerce records, rows, a ``TableData``, ``TableEvidence``, or a
+        ``Dataset`` into a :class:`~vincio.data.Dataset` for the data-plane
+        methods (profiling, sampling, screening, fitting)."""
+        from ..core.errors import DataError
+        from ..data import Dataset, TableEvidence
+
+        if isinstance(data, TableEvidence):
+            return data.dataset
+        if isinstance(data, Dataset):
+            return data
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            return Dataset.from_records(data, schema=schema, name=name)
+        if isinstance(data, list):
+            spec = schema if schema is not None else columns
+            if spec is None:
+                raise DataError("from rows, pass `columns=` or `schema=` to name the columns")
+            return Dataset.from_rows(data, spec, name=name)
+        if hasattr(data, "columns") and hasattr(data, "rows"):
+            return Dataset.from_table_data(data, name=name)
+        raise DataError(f"cannot build a dataset from {type(data).__name__}")
+
+    def profile_dataset(
+        self,
+        data: Any,
+        *,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+        **kwargs: Any,
+    ) -> Any:
+        """Compute a deterministic, bounded-memory column profile of a dataset —
+        per column its type, null rate, cardinality, extrema, mean/stddev,
+        percentiles, a distribution histogram, and exemplars.
+
+        The profile is fixed-size (its footprint depends on the number of columns,
+        not the number of rows), so it stands in for a table that will never fit
+        and is itself first-class evidence the context compiler scores and cites::
+
+            profile = app.profile_dataset(rows, columns=["region", "revenue"])
+            app.pending_evidence.append(profile.to_evidence_item())
+
+        ``data`` may be a list of record mappings, a list of rows (with
+        ``columns`` / ``schema``), a :class:`~vincio.data.Dataset`, a
+        ``TableData``, or :class:`~vincio.data.TableEvidence`. Returns a
+        :class:`~vincio.data.DatasetProfile`.
+        """
+        from ..data import profile_dataset as _profile
+
+        dataset = self._coerce_dataset(data, schema=schema, columns=columns, name=name)
+        return _profile(dataset, **kwargs)
+
+    def sample_dataset(
+        self,
+        data: Any,
+        n: int,
+        *,
+        method: Any = "reservoir",
+        by: Any = None,
+        seed: int = 0,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+    ) -> Any:
+        """Draw a representative sample of up to ``n`` rows that stands in for the
+        whole dataset, replacing a biased first-N cutoff.
+
+        ``method`` is ``reservoir`` (uniform, single-pass), ``stratified``
+        (proportional across the ``by`` column, preserving its distribution),
+        ``systematic`` (evenly spaced), or ``head``. Returns a schema-preserving
+        :class:`~vincio.data.Dataset` that records how it was drawn in
+        ``metadata['sample']`` and can be encoded, profiled, or carried as
+        evidence exactly like any other dataset.
+        """
+        from ..data import sample_dataset as _sample
+
+        dataset = self._coerce_dataset(data, schema=schema, columns=columns, name=name)
+        return _sample(dataset, n, method=method, by=by, seed=seed)
+
+    def fit_dataset(
+        self,
+        data: Any,
+        *,
+        max_tokens: int,
+        method: Any = "reservoir",
+        by: Any = None,
+        seed: int = 0,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+        model: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Fit a dataset far larger than the window into a fixed token budget: a
+        full-fidelity column profile plus a representative sample sized to whatever
+        budget the profile leaves.
+
+        The representation stays within ``max_tokens`` whether the table has ten
+        thousand rows or ten million — the profile is fixed-size and the sample is
+        budget-bound. Returns a :class:`~vincio.data.WindowFit` whose
+        ``to_evidence_items()`` yields the profile and the sample as cited table
+        evidence::
+
+            fit = app.fit_dataset(rows, columns=["region", "revenue"], max_tokens=2000)
+            app.pending_evidence.extend(fit.to_evidence_items())
+        """
+        from ..data import fit_to_window
+
+        dataset = self._coerce_dataset(data, schema=schema, columns=columns, name=name)
+        return fit_to_window(
+            dataset, max_tokens=max_tokens, method=method, by=by, seed=seed, model=model, **kwargs
+        )
+
+    def screen_data(
+        self,
+        data: Any,
+        *,
+        rails: Any | None = None,
+        constraints: list[Any] | None = None,
+        detect_anomalies: bool = False,
+        enforce_schema: bool = True,
+        raise_on_block: bool = False,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+    ) -> Any:
+        """Screen a tabular input for schema violations, constraint breaks, and
+        anomalies on the same deterministic rail path PII and injection detection
+        ride. The decision lands on the shared audit chain (``data_quality``).
+
+        Pass an explicit :class:`~vincio.data.DataQualityRails` as ``rails``, a
+        list of :class:`~vincio.data.ColumnConstraint`s as ``constraints``, or
+        neither — in which case (``enforce_schema``) the dataset's own declared
+        schema is enforced. With ``raise_on_block`` a blocking finding raises
+        :class:`~vincio.core.errors.DataQualityError`. Returns a
+        :class:`~vincio.data.DataQualityReport`.
+        """
+        from ..data import DataQualityRails
+
+        dataset = self._coerce_dataset(data, schema=schema, columns=columns, name=name)
+        if rails is None:
+            if constraints is not None:
+                rails = DataQualityRails(constraints, detect_anomalies=detect_anomalies)
+            elif enforce_schema:
+                rails = DataQualityRails.from_dataset(dataset, detect_anomalies=detect_anomalies)
+            else:
+                rails = DataQualityRails(detect_anomalies=detect_anomalies)
+        report = rails.check(dataset)
+        self.audit.record(
+            "data_quality",
+            decision="allow" if report.allowed else "deny",
+            resource=dataset.name or "dataset",
+            details={
+                "row_count": report.row_count,
+                "column_count": report.column_count,
+                "violations": len(report.violations),
+                "blocking": [f"{v.column}:{v.rule}" for v in report.blocking],
+                "warnings": [f"{v.column}:{v.rule}" for v in report.warnings],
+            },
+        )
+        if raise_on_block:
+            report.raise_for_status()
+        return report
+
     # -- continuous assurance & production certification ----------------
 
     def assurance_case(

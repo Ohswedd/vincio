@@ -55,6 +55,22 @@ portable.
 | Matryoshka truncated dimension recall@3 (one-eighth of base) | ≥ 0.80 | `rag.mrl.recalls_by_dimension.64.recall_at_3.mean` |
 | Unified text+image retrieval recall@3 | ≥ 0.80 | `rag.multimodal.recall_at_3.mean` |
 | Self-correction recovery | 100% within cycle bound | `reliability.self_correction.recovery_rate` |
+| Compact table encoding vs `json.dumps` | ≥ 40% fewer tokens | `cost.table_encoding.reduction_vs_json` |
+| Compact table encoding round-trips losslessly | true | `cost.table_encoding.lossless` |
+
+## Data & analytics plane
+
+| SLO | Target | VincioBench metric |
+|---|---|---|
+| A table far larger than the window fits a fixed token budget (profile + representative sample), size invariant to row count | true | `data_plane.fit_in_window.within_budget` |
+| The bounded-memory profile faithfully recovers a large table's extrema, count, cardinality, and central tendency | true | `data_plane.profile.faithful` |
+| Data-quality rails catch every seeded defect class (type, range, allowed-set, anomaly, PII) deterministically | true | `data_plane.quality.detected_all` |
+
+The fit-in-window guarantee is the headline of the profiling/sampling rung: a
+full-fidelity column profile (computed over every row in bounded memory) plus a
+representative sample sized to the remaining budget represent a table of any
+height inside the same window. The budget gates that a 100k- and a 500k-row table
+both fit, and that their representations stay within 100 tokens of each other.
 
 ## Security
 

@@ -31,6 +31,18 @@
     "families.cost.table_encoding.lossless": {
       "eq": true
     },
+    "families.data_plane.fit_in_window.within_budget": {
+      "eq": true
+    },
+    "families.data_plane.fit_in_window.scale_invariant": {
+      "eq": true
+    },
+    "families.data_plane.profile.faithful": {
+      "eq": true
+    },
+    "families.data_plane.quality.detected_all": {
+      "eq": true
+    },
     "families.rag.recall_at_3.mean": {
       "gte": 0.8
     },

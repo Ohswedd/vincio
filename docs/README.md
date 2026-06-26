@@ -46,6 +46,10 @@ between your input and the model's validated output.
 - **[Tabular evidence and the compact data encoder](concepts/tabular-evidence.md)**:
   a typed, columnar `Dataset`, a lossless `DataEncoder` that renders it
   header-once, and `TableEvidence` that scores and budgets a table token-cheap.
+- **[Dataset profiling, sampling, and quality rails](concepts/dataset-profiling.md)**:
+  `profile_dataset` for a fixed-size column profile, reservoir/stratified
+  sampling, `fit_to_window` to fit a table far larger than the window under a
+  fixed token budget, and `DataQualityRails` for deterministic screening.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

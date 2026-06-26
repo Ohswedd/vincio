@@ -1137,6 +1137,127 @@ async def bench_cost() -> dict[str, Any]:
     }
 
 
+def _fit_in_window_bench() -> dict[str, Any]:
+    """DataPlaneBench / fit-in-window: a table far larger than the window is
+    represented under a fixed token budget, and the representation's size is
+    invariant to the row count (the headline SLO of the profiling/sampling rung)."""
+    from vincio.data import ColumnSchema, DataType, fit_stream
+
+    schema = [
+        ColumnSchema(name="id", dtype=DataType.INT),
+        ColumnSchema(name="region", dtype=DataType.STR),
+        ColumnSchema(name="amount", dtype=DataType.FLOAT),
+    ]
+    regions = ["NA", "EU", "APAC", "LATAM"]
+
+    def gen(n: int) -> Any:
+        for i in range(n):
+            yield [i, regions[i % 4], float(i % 1000)]
+
+    budget = 2000
+    small = fit_stream(gen(100_000), schema, max_tokens=budget, seed=7)
+    large = fit_stream(gen(500_000), schema, max_tokens=budget, seed=7)
+    within_budget = (
+        small.within_budget
+        and large.within_budget
+        and small.token_cost <= budget
+        and large.token_cost <= budget
+    )
+    # The half-million-row table is represented within a few tokens of the
+    # hundred-thousand-row one — the representation does not grow with the rows.
+    scale_invariant = within_budget and abs(small.token_cost - large.token_cost) <= 100
+    return {
+        "within_budget": within_budget,
+        "scale_invariant": scale_invariant,
+        "budget_tokens": budget,
+        "represented_rows": large.original_row_count,
+        "small_tokens": small.token_cost,
+        "large_tokens": large.token_cost,
+        "profile_tokens": large.profile_tokens,
+        "sample_rows": large.sample_size,
+    }
+
+
+def _profile_faithful_bench() -> dict[str, Any]:
+    """DataPlaneBench / profile faithfulness: the bounded-memory profile recovers
+    a large table's true extrema, count, cardinality, and central tendency."""
+    from vincio.data import ColumnSchema, DataType, profile_stream
+
+    schema = [
+        ColumnSchema(name="region", dtype=DataType.STR),
+        ColumnSchema(name="amount", dtype=DataType.FLOAT),
+    ]
+    regions = ["NA", "EU", "APAC", "LATAM"]
+    n = 200_000
+
+    def gen() -> Any:
+        for i in range(n):
+            yield [regions[i % 4], float(i % 1000)]
+
+    profile = profile_stream(gen(), schema, name="txns", reservoir_size=2048, seed=1)
+    amount = profile.column("amount")
+    # Ground truth: amount cycles 0..999, region cycles over 4 values.
+    exact = (
+        profile.row_count == n
+        and amount.min == 0.0
+        and amount.max == 999.0
+        and amount.count == n
+        and profile.column("region").distinct == 4
+    )
+    true_mean = sum(range(1000)) / 1000
+    mean_error = abs((amount.mean or 0.0) - true_mean) / true_mean
+    p50_error = abs(amount.percentiles.get("p50", 0.0) - 499.5) / 499.5
+    faithful = exact and mean_error < 0.02 and p50_error < 0.1
+    return {
+        "faithful": faithful,
+        "exact_stats": exact,
+        "mean_relative_error": round(mean_error, 6),
+        "p50_relative_error": round(p50_error, 6),
+    }
+
+
+def _quality_rails_bench() -> dict[str, Any]:
+    """DataPlaneBench / quality rails: deterministic screening catches every
+    seeded class of defect — schema/type, range, allowed-set, anomaly, and PII —
+    on the same rail path PII and injection detection ride for text."""
+    from vincio.data import ColumnConstraint, DataQualityRails, Dataset, DataType
+
+    rails = DataQualityRails(
+        [
+            ColumnConstraint(column="id", dtype=DataType.INT),
+            ColumnConstraint(column="region", allowed_values=["NA", "EU", "APAC", "LATAM"]),
+            ColumnConstraint(column="amount", min_value=0.0, max_value=10_000.0),
+            ColumnConstraint(column="note", detectors=["pii"]),
+        ],
+        detect_anomalies=True,
+    )
+    rows = [{"id": i, "region": "NA", "amount": 10.0 + i, "note": "ok"} for i in range(20)]
+    rows += [
+        {"id": "x", "region": "ZZ", "amount": -5.0, "note": "reach me at a@b.com"},  # type/allowed/range/pii
+        {"id": 999, "region": "EU", "amount": 9_000_000.0, "note": "fine"},  # range + numeric anomaly
+    ]
+    report = rails.check(Dataset.from_records(rows, name="orders"))
+    rules = {v.rule for v in report.violations}
+    expected = {"type_mismatch", "not_allowed", "out_of_range", "pii_detected", "anomaly"}
+    return {
+        "detected_all": expected <= rules,
+        "blocked": not report.allowed,
+        "rules": sorted(rules),
+        "expected": sorted(expected),
+    }
+
+
+async def bench_data_plane() -> dict[str, Any]:
+    """DataPlaneBench: dataset profiling, representative sampling, fit-in-window,
+    and data-quality rails — fitting a dataset far larger than the window into
+    bounded, faithful, screened evidence."""
+    return {
+        "fit_in_window": _fit_in_window_bench(),
+        "profile": _profile_faithful_bench(),
+        "quality": _quality_rails_bench(),
+    }
+
+
 async def bench_output() -> dict[str, Any]:
     """OutputBench: schema/format reliability — validator+repair recovery
     rate over malformed model outputs vs naive json.loads."""
@@ -10321,6 +10442,7 @@ FAMILIES = {
     "output": bench_output,
     "reliability": bench_reliability,
     "cost": bench_cost,
+    "data_plane": bench_data_plane,
     "security": bench_security,
     "containment": bench_containment,
     "evals": bench_evals,

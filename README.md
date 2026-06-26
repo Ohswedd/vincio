@@ -171,6 +171,7 @@ high-level `ContextApp`, or reach for any engine directly.
 - Prompt compiler: typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, and diffing.
 - Context compiler: scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget, with an *excluded-context report* explaining every omission.
 - Tabular evidence: a typed, columnar `Dataset` and a deterministic `DataEncoder` that renders it header-once — schema, types, and units declared once, cells as delimited rows — lossless, columnar-accurate in token cost, and far cheaper than `json.dumps` or a Markdown table; `TableEvidence` scores and cites it like any other evidence.
+- Dataset profiling & quality: `profile_dataset` computes a deterministic, bounded-memory column profile (cardinality, percentiles, histograms, null rate, exemplars); reservoir/stratified sampling stands a representative sample in for the whole; `fit_to_window` fits a table far larger than the window — profile plus sample — under a fixed token budget; and `DataQualityRails` screen for schema violations, constraint breaks, anomalies, and PII on the deterministic rail path.
 
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates.
@@ -223,6 +224,7 @@ otherwise use (Apple Silicon, Python 3.13; ratios are the portable signal, not w
 | BM25 query @ **20k docs** | `BM25Index` | `rank_bm25` | **~30–40× faster**: identical top-1 ranking |
 | **Context assembly**: tokens sent for the same retrieved set | context compiler | LangChain `stuff` / LlamaIndex `compact` | **~60% fewer tokens**: answer retained |
 | **Tabular encoding**: tokens for a 50×5 table | `DataEncoder` | `json.dumps` / `pandas.to_markdown` / TOON | **~66% fewer tokens** than `json.dumps`, lossless, typed schema |
+| **Fit a 5k-row table into the window** | `fit_to_window` | `json.dumps` all rows / `pandas.describe` | **~99% fewer tokens**: profile + representative sample, size invariant to row count |
 | Text chunking a 24k-word doc | `chunk_document` | LangChain / LlamaIndex splitters | **fastest**, chunks carry provenance |
 | Token counting (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.4–1.8× faster**, zero-dependency, conservative |
 | Malformed-JSON recovery | lenient parser | stdlib `json.loads` | **4/8 vs 1/8** recovered |
@@ -340,6 +342,7 @@ and teaches a whole theme end to end.
 | 11 | [`advanced_context`](examples/11_advanced_context.py) | reasoning control · test-time compute · long-horizon · world-model · semantic cache · record-replay |
 | 12 | [`cross_org_economy`](examples/12_cross_org_economy.py) | negotiation · contracts · durable sagas · settlement · arbitration · solvency proofs |
 | 13 | [`tabular_evidence`](examples/13_tabular_evidence.py) | typed columnar `Dataset` · the compact, lossless `DataEncoder` · columnar token cost · `TableEvidence` in the compiler |
+| 14 | [`dataset_profiling`](examples/14_dataset_profiling.py) | `profile_dataset` · reservoir/stratified sampling · `fit_to_window` under a token budget · `DataQualityRails` screening |
 
 ```bash
 cd examples && python 01_quickstart.py            # offline, no keys
