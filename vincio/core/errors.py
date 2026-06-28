@@ -36,6 +36,8 @@ __all__ = [
     "LoaderError",
     "DataError",
     "DataQualityError",
+    "QueryError",
+    "UnsafeQueryError",
     "RetrievalError",
     "IndexError_",
     "MemoryEngineError",
@@ -354,6 +356,25 @@ class DataQualityError(DataError):
     """A dataset failed a blocking data-quality rail (schema violation,
     constraint break, or anomaly). Inherits the ``DATA_ERROR`` code so it is
     caught by ``except DataError`` and resolved by the same catalog entry."""
+
+
+class QueryError(DataError):
+    """A text-to-query request could not be grounded, verified, or executed
+    (an unknown table or column, a dialect mismatch, a cost ceiling, or an
+    execution failure). Inherits ``DataError`` so ``except DataError`` catches
+    the whole data plane; carries its own catalog code for precise remediation."""
+
+    code = "QUERY_ERROR"
+
+
+class UnsafeQueryError(QueryError):
+    """A generated query was refused before it ran because it was not provably
+    read-only — a write, DDL, multiple statements, or an injection signal in the
+    question. The refusal is structural (never gated on model output); inherits
+    :class:`QueryError` so ``except QueryError`` (and ``except DataError``)
+    catches it."""
+
+    code = "UNSAFE_QUERY"
 
 
 # --- retrieval --------------------------------------------------------------

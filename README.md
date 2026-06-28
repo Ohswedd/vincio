@@ -172,6 +172,7 @@ high-level `ContextApp`, or reach for any engine directly.
 - Context compiler: scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget, with an *excluded-context report* explaining every omission.
 - Tabular evidence: a typed, columnar `Dataset` and a deterministic `DataEncoder` that renders it header-once — schema, types, and units declared once, cells as delimited rows — lossless, columnar-accurate in token cost, and far cheaper than `json.dumps` or a Markdown table; `TableEvidence` scores and cites it like any other evidence.
 - Dataset profiling & quality: `profile_dataset` computes a deterministic, bounded-memory column profile (cardinality, percentiles, histograms, null rate, exemplars); reservoir/stratified sampling stands a representative sample in for the whole; `fit_to_window` fits a table far larger than the window — profile plus sample — under a fixed token budget; and `DataQualityRails` screen for schema violations, constraint breaks, anomalies, and PII on the deterministic rail path.
+- Governed text-to-query: `app.query_data` turns a question over a registered dataset into a query that is verified *before* it runs — schema-grounded, **read-only by default** (a generated write, DDL, stacked statement, or an injection signal in the question is refused structurally), and cost-bounded — executed by the standard-library `sqlite3` engine where the data lives, not by pouring rows into the prompt. The answer **cites the exact source cells** it rests on (`sales#r0!revenue`), and `result.verify()` re-derives the answer and every cited cell from the bytes.
 
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates.
@@ -343,6 +344,7 @@ and teaches a whole theme end to end.
 | 12 | [`cross_org_economy`](examples/12_cross_org_economy.py) | negotiation · contracts · durable sagas · settlement · arbitration · solvency proofs |
 | 13 | [`tabular_evidence`](examples/13_tabular_evidence.py) | typed columnar `Dataset` · the compact, lossless `DataEncoder` · columnar token cost · `TableEvidence` in the compiler |
 | 14 | [`dataset_profiling`](examples/14_dataset_profiling.py) | `profile_dataset` · reservoir/stratified sampling · `fit_to_window` under a token budget · `DataQualityRails` screening |
+| 15 | [`governed_text_to_query`](examples/15_governed_text_to_query.py) | `app.query_data` · read-only-verified SQL · cell-level provenance (`cite_refs`) · offline `verify()` · the dataframe-op dialect |
 
 ```bash
 cd examples && python 01_quickstart.py            # offline, no keys

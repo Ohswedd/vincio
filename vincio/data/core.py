@@ -107,7 +107,20 @@ def _coerce_schema(
     elif schema is not None and schema and isinstance(schema[0], ColumnSchema):
         resolved = DataSchema(columns=[c for c in schema if isinstance(c, ColumnSchema)])
     elif schema is not None and schema and isinstance(schema[0], str):
-        resolved = DataSchema(columns=[ColumnSchema(name=str(n)) for n in schema])
+        # Bare column names carry no type intent — infer each column's type from
+        # the data, exactly as ``from_records`` does, so a numeric column is typed
+        # numeric (not string) on the path to the encoder and the query engine.
+        bare = [str(n) for n in schema]
+        resolved = DataSchema(
+            columns=[
+                ColumnSchema(
+                    name=bare[j],
+                    dtype=DataType(tabular.infer_dtype(cells[j])) if j < len(cells) else DataType.STR,
+                    nullable=j < len(cells) and any(v is None for v in cells[j]),
+                )
+                for j in range(len(bare))
+            ]
+        )
     else:
         resolved = DataSchema()
     if not resolved.columns:

@@ -33,9 +33,11 @@ def test_registry_lists_all_adapters():
     assert available_benchmarks() == [
         "agentbench",
         "bfcl",
+        "bird",
         "gaia",
         "livecodebench",
         "mmlu_pro",
+        "spider",
         "swebench_verified",
         "tau_bench",
         "toolbench",
@@ -155,6 +157,8 @@ def test_fixture_hash_mismatch_raises():
         "toolbench",
         "livecodebench",
         "mmlu_pro",
+        "spider",
+        "bird",
     ],
 )
 @pytest.mark.asyncio
@@ -322,3 +326,78 @@ def test_mmlu_pro_export_mapping():
     assert tasks[0].gold == 1
     assert tasks[0].inputs["options"] == ["a", "b"]
     assert tasks[0].metadata["category"] == "math"
+
+
+# -- Spider / BIRD: text-to-SQL execution accuracy ---------------------------
+
+
+def _sql_db():
+    return {
+        "orders": {
+            "columns": ["order_id", "region", "revenue"],
+            "rows": [[1, "NA", 1200.5], [2, "EU", 980.0], [3, "NA", 300.0]],
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_spider_execution_accuracy_not_string_match():
+    from vincio.evals import SpiderAdapter
+
+    adapter = SpiderAdapter()
+    task = BenchmarkTask(
+        id="t",
+        prompt="how many orders over 1000",
+        gold="SELECT COUNT(*) FROM orders WHERE revenue > 1000",
+        inputs={"tables": _sql_db()},
+    )
+    # A semantic variant (different SQL, same result set) is correct by execution.
+    ok = await adapter.score(task, "SELECT COUNT(order_id) AS n FROM orders WHERE revenue >= 1000.01")
+    assert ok.success is True and ok.score == 1.0
+    # A wrong query (different result set) fails.
+    bad = await adapter.score(task, "SELECT COUNT(*) FROM orders")
+    assert bad.success is False
+
+
+@pytest.mark.asyncio
+async def test_text_to_sql_refuses_a_generated_write():
+    from vincio.evals import BIRDAdapter
+
+    adapter = BIRDAdapter()
+    task = BenchmarkTask(
+        id="w",
+        gold="SELECT COUNT(*) FROM orders",
+        inputs={"tables": _sql_db(), "evidence": ""},
+    )
+    # A generated write is governed: refused, scored failed, marked invalid.
+    result = await adapter.score(task, "DROP TABLE orders")
+    assert result.success is False
+    assert result.details["valid"] is False
+
+
+@pytest.mark.asyncio
+async def test_spider_gold_failure_raises():
+    from vincio.evals import SpiderAdapter
+
+    adapter = SpiderAdapter()
+    task = BenchmarkTask(id="g", gold="SELECT * FROM nope", inputs={"tables": _sql_db()})
+    with pytest.raises(BenchmarkError):
+        await adapter.score(task, "SELECT * FROM orders")
+
+
+def test_spider_and_bird_export_mapping():
+    from vincio.evals import bird_tasks_from_export, spider_tasks_from_export
+
+    spider = spider_tasks_from_export(
+        [{"id": "s1", "question": "count", "query": "SELECT 1", "tables": {"t": {"columns": ["a"], "rows": [[1]]}}}]
+    )
+    assert spider[0].gold == "SELECT 1"
+    assert spider[0].recorded == "SELECT 1"
+    assert spider[0].inputs["tables"]["t"]["columns"] == ["a"]
+
+    bird = bird_tasks_from_export(
+        [{"id": "b1", "question": "avg", "SQL": "SELECT AVG(a) FROM t", "evidence": "a in units",
+          "tables": {"t": {"columns": ["a"], "rows": [[1]]}}}]
+    )
+    assert bird[0].gold == "SELECT AVG(a) FROM t"
+    assert bird[0].inputs["evidence"] == "a in units"

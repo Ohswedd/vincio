@@ -1,0 +1,88 @@
+{
+  "name": "bird",
+  "description": "BIRD-shaped text-to-SQL: a real-world question over a small inline database, with an external-knowledge `evidence` hint, scored by execution accuracy (BIRD's primary metric). The predicted SQL (recorded) is a semantic variant of the gold. Self-contained and offline; structurally a miniature of the real BIRD task.",
+  "tasks": [
+    {
+      "id": "bird-revenue-by-region",
+      "prompt": "What is the total revenue for each region?",
+      "gold": "SELECT region, SUM(revenue) FROM orders GROUP BY region ORDER BY region",
+      "recorded": "SELECT region, SUM(revenue) AS total_revenue FROM orders GROUP BY region ORDER BY region ASC",
+      "inputs": {
+        "evidence": "revenue refers to the revenue column in dollars",
+        "tables": {
+          "orders": {
+            "columns": ["order_id", "region", "revenue"],
+            "rows": [
+              [1, "NA", 1200.5],
+              [2, "EU", 980.0],
+              [3, "NA", 300.0],
+              [4, "APAC", 1500.25]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "sales", "difficulty": "simple"}
+    },
+    {
+      "id": "bird-high-value-customers",
+      "prompt": "List the customer names whose balance exceeds 1000, highest first.",
+      "gold": "SELECT name FROM customer WHERE balance > 1000 ORDER BY balance DESC",
+      "recorded": "SELECT name FROM customer WHERE balance >= 1001 ORDER BY balance DESC",
+      "inputs": {
+        "evidence": "high value means balance greater than 1000",
+        "tables": {
+          "customer": {
+            "columns": ["customer_id", "name", "balance"],
+            "rows": [
+              [1, "Acme", 2500.0],
+              [2, "Globex", 800.0],
+              [3, "Initech", 1500.0]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "crm", "difficulty": "simple"}
+    },
+    {
+      "id": "bird-count-by-status",
+      "prompt": "How many orders are in each status?",
+      "gold": "SELECT status, COUNT(*) FROM orders GROUP BY status ORDER BY status",
+      "recorded": "SELECT status, COUNT(order_id) AS n FROM orders GROUP BY status ORDER BY status ASC",
+      "inputs": {
+        "evidence": "status is the order_status column",
+        "tables": {
+          "orders": {
+            "columns": ["order_id", "status", "revenue"],
+            "rows": [
+              [1, "shipped", 100.0],
+              [2, "pending", 50.0],
+              [3, "shipped", 75.0],
+              [4, "cancelled", 0.0]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "sales", "difficulty": "moderate"}
+    },
+    {
+      "id": "bird-avg-above-threshold",
+      "prompt": "What is the average revenue of shipped orders?",
+      "gold": "SELECT AVG(revenue) FROM orders WHERE status = 'shipped'",
+      "recorded": "SELECT AVG(revenue) AS avg_revenue FROM orders WHERE status = 'shipped'",
+      "inputs": {
+        "evidence": "shipped orders have status = 'shipped'",
+        "tables": {
+          "orders": {
+            "columns": ["order_id", "status", "revenue"],
+            "rows": [
+              [1, "shipped", 100.0],
+              [2, "pending", 50.0],
+              [3, "shipped", 200.0]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "sales", "difficulty": "moderate"}
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 # Vincio examples
 
-Twelve complete, heavily-commented programs — together they exercise the whole platform. Every one
+Fifteen complete, heavily-commented programs — together they exercise the whole platform. Every one
 runs **fully offline** on the deterministic mock provider: no API keys, no network.
 
 ```bash
@@ -31,6 +31,7 @@ demonstrate one capability and print a concrete result. Read them top to bottom.
 | 12 | [`cross_org_economy`](12_cross_org_economy.py) | One narrative of two organizations transacting through agents: negotiate a signed contract, run a durable compensating saga, meter and settle, arbitrate a dispute, prove solvency, and resolve an insolvency. |
 | 13 | [`tabular_evidence`](13_tabular_evidence.py) | Structured data as first-class evidence: a typed, columnar `Dataset`, the lossless `DataEncoder` that renders it header-once and token-cheap, columnar-accurate token accounting, and `TableEvidence` scored and cited by the context compiler. |
 | 14 | [`dataset_profiling`](14_dataset_profiling.py) | Fitting a table far larger than the window into bounded, faithful evidence: `profile_dataset` for a fixed-size column profile, reservoir/stratified `sample_dataset`, `fit_to_window` under a fixed token budget, and `DataQualityRails` screening for schema/constraint/anomaly/PII defects. |
+| 15 | [`governed_text_to_query`](15_governed_text_to_query.py) | Turning a question over a registered dataset into a schema-grounded, read-only-verified, cost-bounded query (`app.query_data`): the structural read-only guard refusing a write / DDL / injection, cell-level provenance (`result.cite_refs`) pointing at the exact source cells, offline `verify()` that catches a tampered source, and the deterministic dataframe-op dialect. |
 
 `_shared.py` holds the small offline helpers every example imports (`example_provider`,
 `json_responder`, `citing_responder`, `write_sample_docs`).

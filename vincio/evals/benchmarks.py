@@ -56,6 +56,8 @@ __all__ = [
     "ToolBenchAdapter",
     "LiveCodeBenchAdapter",
     "MMLUProAdapter",
+    "SpiderAdapter",
+    "BIRDAdapter",
     "BENCHMARK_ADAPTERS",
     "load_benchmark",
     "available_benchmarks",
@@ -70,6 +72,8 @@ __all__ = [
     "toolbench_tasks_from_export",
     "livecodebench_tasks_from_export",
     "mmlu_pro_tasks_from_export",
+    "spider_tasks_from_export",
+    "bird_tasks_from_export",
 ]
 
 
@@ -993,6 +997,138 @@ def mmlu_pro_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkT
     return tasks
 
 
+# ---------------------------------------------------------------------------
+# Spider / BIRD  (text-to-SQL; execution accuracy)
+# ---------------------------------------------------------------------------
+
+
+def _build_catalog(tables: dict[str, Any]) -> Any:
+    """Build a :class:`~vincio.data.DataCatalog` from a task's in-line database
+    (``{name: {"columns": [...], "rows": [[...]]}}``)."""
+    from ..data import DataCatalog, Dataset
+
+    catalog = DataCatalog()
+    for name, spec in tables.items():
+        columns = list(spec["columns"])
+        rows = [list(r) for r in spec.get("rows", [])]
+        catalog.add(Dataset.from_rows(rows, columns, name=name), name=name)
+    return catalog
+
+
+def _execute_result(sql: str, catalog: Any) -> tuple[bool, list[tuple[Any, ...]], str]:
+    """Execute ``sql`` read-only against ``catalog``. Returns
+    ``(valid, rows, error)`` — ``valid`` is false when the query was refused as
+    not read-only or failed to execute."""
+    from ..core.errors import QueryError
+    from ..data import query_dataset
+
+    try:
+        result = query_dataset(sql, catalog, max_rows=100_000)
+    except QueryError as exc:
+        return False, [], str(exc)
+    return True, [tuple(row) for row in result.rows], ""
+
+
+class _TextToSQLAdapter(BenchmarkAdapter):
+    """Shared text-to-SQL scoring: **execution accuracy** — the predicted SQL is
+    correct iff, executed against the task's database, it returns the same result
+    set as the gold SQL. The predicted query is held read-only (a write / DDL is
+    refused, scoring the task failed), so the benchmark measures *governed*
+    text-to-query, not raw generation.
+
+    ``prompt`` = the natural-language question; ``inputs`` = ``{"tables": {name:
+    {"columns": [...], "rows": [[...]]}}}`` (and, for BIRD, an ``"evidence"`` hint);
+    ``gold`` = the gold SQL; ``output`` / ``recorded`` = the candidate SQL.
+    """
+
+    def _order_sensitive(self, gold_sql: str) -> bool:
+        return "order by" in gold_sql.lower()
+
+    async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
+        tables = task.inputs.get("tables", {})
+        gold_sql = str(task.gold or "")
+        pred_sql = str(output or "")
+        catalog = _build_catalog(tables)
+        gold_valid, gold_rows, _ = _execute_result(gold_sql, catalog)
+        pred_valid, pred_rows, pred_err = _execute_result(pred_sql, catalog)
+        if not gold_valid:
+            raise BenchmarkError(f"{self.name}: gold SQL failed to execute for task {task.id!r}")
+        if self._order_sensitive(gold_sql):
+            match = pred_valid and pred_rows == gold_rows
+        else:
+            key = lambda rows: sorted(rows, key=repr)  # noqa: E731 - local comparator
+            match = pred_valid and key(pred_rows) == key(gold_rows)
+        return BenchmarkResult(
+            task_id=task.id,
+            success=bool(match),
+            score=1.0 if match else 0.0,
+            output=output,
+            details={
+                "valid": pred_valid,
+                "execution_match": bool(match),
+                "gold_rows": len(gold_rows),
+                "pred_rows": len(pred_rows) if pred_valid else 0,
+                "error": pred_err,
+            },
+        )
+
+
+class SpiderAdapter(_TextToSQLAdapter):
+    """Spider: cross-domain text-to-SQL scored by **execution accuracy** (the
+    predicted query's result set equals the gold query's). Vincio runs both on its
+    in-process, read-only SQL engine, so the score reflects *governed* text-to-query
+    — a generated write or DDL is structurally refused and scores the task failed."""
+
+    name = "spider"
+
+
+class BIRDAdapter(_TextToSQLAdapter):
+    """BIRD: large-scale, real-world text-to-SQL with external-knowledge
+    ``evidence``, scored by **execution accuracy** (BIRD's primary metric). The
+    ``inputs["evidence"]`` hint rides on the prompt for a live solver; scoring is
+    the same governed, read-only execution match Spider uses."""
+
+    name = "bird"
+
+
+def spider_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map Spider records (``db_id`` / ``question`` / ``query`` / ``tables``) onto
+    :class:`BenchmarkTask`s for :class:`SpiderAdapter`. The per-task ``tables``
+    carry the inline database the offline engine executes against."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("id", f"spider-{index}")),
+                prompt=str(rec.get("question", "")),
+                gold=rec.get("query", rec.get("gold")),
+                recorded=rec.get("recorded", rec.get("query", rec.get("gold"))),
+                inputs={"tables": rec.get("tables", {})},
+                metadata={"db_id": rec.get("db_id")},
+            )
+        )
+    return tasks
+
+
+def bird_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map BIRD records (``db_id`` / ``question`` / ``SQL`` / ``evidence`` /
+    ``tables``) onto :class:`BenchmarkTask`s for :class:`BIRDAdapter`."""
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        gold = rec.get("SQL", rec.get("query", rec.get("gold")))
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("id", f"bird-{index}")),
+                prompt=str(rec.get("question", "")),
+                gold=gold,
+                recorded=rec.get("recorded", gold),
+                inputs={"tables": rec.get("tables", {}), "evidence": rec.get("evidence", "")},
+                metadata={"db_id": rec.get("db_id"), "difficulty": rec.get("difficulty")},
+            )
+        )
+    return tasks
+
+
 BENCHMARK_ADAPTERS: dict[str, type[BenchmarkAdapter]] = {
     SWEBenchAdapter.name: SWEBenchAdapter,
     TauBenchAdapter.name: TauBenchAdapter,
@@ -1003,6 +1139,8 @@ BENCHMARK_ADAPTERS: dict[str, type[BenchmarkAdapter]] = {
     ToolBenchAdapter.name: ToolBenchAdapter,
     LiveCodeBenchAdapter.name: LiveCodeBenchAdapter,
     MMLUProAdapter.name: MMLUProAdapter,
+    SpiderAdapter.name: SpiderAdapter,
+    BIRDAdapter.name: BIRDAdapter,
 }
 
 

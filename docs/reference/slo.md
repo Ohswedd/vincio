@@ -65,12 +65,22 @@ portable.
 | A table far larger than the window fits a fixed token budget (profile + representative sample), size invariant to row count | true | `data_plane.fit_in_window.within_budget` |
 | The bounded-memory profile faithfully recovers a large table's extrema, count, cardinality, and central tendency | true | `data_plane.profile.faithful` |
 | Data-quality rails catch every seeded defect class (type, range, allowed-set, anomaly, PII) deterministically | true | `data_plane.quality.detected_all` |
+| Governed text-to-query reaches ≥ 0.9 execution accuracy on the Spider/BIRD-shaped battery (generated query's result set equals the gold's) | ≥ 0.9 | `data_plane.text_to_query.execution_accuracy` |
+| Every generated write, DDL, stacked statement, or injection attempt is structurally refused before a query runs | true | `data_plane.text_to_query.read_only_enforced` |
+| An analytical answer and its cited source cells re-derive from the bytes; a tampered source is caught | true | `data_plane.text_to_query.provenance_verifiable` |
 
 The fit-in-window guarantee is the headline of the profiling/sampling rung: a
 full-fidelity column profile (computed over every row in bounded memory) plus a
 representative sample sized to the remaining budget represent a table of any
 height inside the same window. The budget gates that a 100k- and a 500k-row table
 both fit, and that their representations stay within 100 tokens of each other.
+
+The text-to-query SLOs gate the analyst rung three ways: execution accuracy holds
+on a Spider/BIRD-shaped battery (the budget gates 0.95, stricter than the published
+0.9), read-only enforcement is total (an entire battery of write / DDL / stacked /
+injection attempts is refused, deterministically), and cell-level provenance is
+offline-verifiable (a result and its cited cells re-derive from the bytes, and a
+tampered source flips `verify()` to false).
 
 ## Security
 

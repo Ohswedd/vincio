@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**485** public symbols.
+**490** public symbols.
 
 ## Classes
 
@@ -213,6 +213,10 @@ An unforgeable, capability-scoped grant minted from the user's request.
 ### `CausalAttributor(app, dataset, factors, metric=…, aggregate=…, repeats=…, concurrency=…)`
 
 Attribute a metric delta to the components a release changed, by Shapley counterfactual replay over the dataset.
+
+### `CellCitation(**data)`
+
+A reference to one source cell an answer rests on.
 
 ### `Certificate(**data)`
 
@@ -441,6 +445,10 @@ The (non-raising) outcome of verifying a custody attestation offline.
 ### `CycleReport(**data)`
 
 What one cultivation cycle proposed, learned, promoted, and demoted.
+
+### `DataCatalog(datasets=…)`
+
+A named set of registered :class:`~vincio.data.Dataset`\s a query grounds against and executes over.
 
 ### `DataEncoder(delimiter=…, include_name=…, include_count=…, include_types=…, include_units=…, exemplars=…, max_rows=…)`
 
@@ -1089,6 +1097,14 @@ A C2PA-style content-provenance manifest for AI-generated output.
 ### `Purpose(*args, **kwds)`
 
 Why personal data is processed (GDPR Art. 5(1)(b) purpose limitation).
+
+### `QueryPlan(**data)`
+
+A schema-grounded, read-only-verified query that has **not yet run**.
+
+### `QueryResult(**data)`
+
+A query's result, schema-bearing and **cell-level cited**.
 
 ### `Rail(**data)`
 
@@ -1859,6 +1875,10 @@ Build an *executed* :data:`StudentTrainer` over a fine-tune backend.
 ### `public_key_from_did(did)`
 
 Recover the Ed25519 public key embedded in a ``did:vincio:ed25519`` DID.
+
+### `query_dataset(request, data, dialect=…, question=…, ops=…, table=…, max_rows=…, engine=…, injection_detector=…, screen_question=…)`
+
+Plan → verify → execute → cite, in one call.
 
 ### `reconcile(a, b, tolerance=…)`
 

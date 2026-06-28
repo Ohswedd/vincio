@@ -43,6 +43,15 @@
     "families.data_plane.quality.detected_all": {
       "eq": true
     },
+    "families.data_plane.text_to_query.execution_accuracy": {
+      "gte": 0.95
+    },
+    "families.data_plane.text_to_query.read_only_enforced": {
+      "eq": true
+    },
+    "families.data_plane.text_to_query.provenance_verifiable": {
+      "eq": true
+    },
     "families.rag.recall_at_3.mean": {
       "gte": 0.8
     },

@@ -1,0 +1,124 @@
+{
+  "name": "spider",
+  "description": "Spider-shaped text-to-SQL: a cross-domain natural-language question over a small inline database, scored by execution accuracy (the predicted query's result set equals the gold query's). The predicted SQL (recorded) is a semantic variant of the gold, so the score reflects execution — not string — match. Self-contained and offline; structurally a miniature of the real Spider task.",
+  "tasks": [
+    {
+      "id": "spider-heads-count",
+      "prompt": "How many heads of the departments are older than 56?",
+      "gold": "SELECT COUNT(*) FROM head WHERE age > 56",
+      "recorded": "SELECT COUNT(*) AS n FROM head WHERE age >= 57",
+      "inputs": {
+        "tables": {
+          "head": {
+            "columns": ["head_id", "name", "age"],
+            "rows": [
+              [1, "Tiger Woods", 67],
+              [2, "Sergio García", 68],
+              [3, "K. J. Choi", 69],
+              [4, "Dudley Hart", 52],
+              [5, "Jeff Maggert", 53]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "department_management"}
+    },
+    {
+      "id": "spider-heads-names",
+      "prompt": "List the names of heads younger than 60 ordered by age.",
+      "gold": "SELECT name FROM head WHERE age < 60 ORDER BY age",
+      "recorded": "SELECT name FROM head WHERE age <= 59 ORDER BY age ASC",
+      "inputs": {
+        "tables": {
+          "head": {
+            "columns": ["head_id", "name", "age"],
+            "rows": [
+              [1, "Tiger Woods", 67],
+              [4, "Dudley Hart", 52],
+              [5, "Jeff Maggert", 53]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "department_management"}
+    },
+    {
+      "id": "spider-singers-by-country",
+      "prompt": "How many singers are there from each country?",
+      "gold": "SELECT country, COUNT(*) FROM singer GROUP BY country ORDER BY country",
+      "recorded": "SELECT country, COUNT(singer_id) AS n FROM singer GROUP BY country ORDER BY country ASC",
+      "inputs": {
+        "tables": {
+          "singer": {
+            "columns": ["singer_id", "name", "country", "age"],
+            "rows": [
+              [1, "Joe Sharp", "Netherlands", 43],
+              [2, "Timbaland", "United States", 52],
+              [3, "Justin Brown", "France", 29],
+              [4, "Rose White", "France", 41],
+              [5, "John Nizinik", "France", 43]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "concert_singer"}
+    },
+    {
+      "id": "spider-avg-age",
+      "prompt": "What is the average age of all singers?",
+      "gold": "SELECT AVG(age) FROM singer",
+      "recorded": "SELECT AVG(age) AS avg_age FROM singer",
+      "inputs": {
+        "tables": {
+          "singer": {
+            "columns": ["singer_id", "name", "country", "age"],
+            "rows": [
+              [1, "Joe Sharp", "Netherlands", 40],
+              [2, "Timbaland", "United States", 50],
+              [3, "Justin Brown", "France", 30]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "concert_singer"}
+    },
+    {
+      "id": "spider-max-capacity",
+      "prompt": "What is the maximum stadium capacity?",
+      "gold": "SELECT MAX(capacity) FROM stadium",
+      "recorded": "SELECT MAX(capacity) AS max_capacity FROM stadium",
+      "inputs": {
+        "tables": {
+          "stadium": {
+            "columns": ["stadium_id", "name", "capacity"],
+            "rows": [
+              [1, "Stark's Park", 10104],
+              [2, "Somerset Park", 11998],
+              [3, "Recreation Park", 10000]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "concert_singer"}
+    },
+    {
+      "id": "spider-filter-project",
+      "prompt": "Show the names of stadiums with capacity above 10000.",
+      "gold": "SELECT name FROM stadium WHERE capacity > 10000 ORDER BY name",
+      "recorded": "SELECT name FROM stadium WHERE capacity >= 10001 ORDER BY name ASC",
+      "inputs": {
+        "tables": {
+          "stadium": {
+            "columns": ["stadium_id", "name", "capacity"],
+            "rows": [
+              [1, "Stark's Park", 10104],
+              [2, "Somerset Park", 11998],
+              [3, "Recreation Park", 10000]
+            ]
+          }
+        }
+      },
+      "metadata": {"db_id": "concert_singer"}
+    }
+  ]
+}

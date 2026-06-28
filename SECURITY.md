@@ -539,6 +539,44 @@ deterministic and dependency-free, and the connector reservoir sample is opt-in 
 the default first-N behavior is unchanged, so enabling it changes representativeness,
 never the security posture.
 
+### Governed text-to-query — read-only by default, structurally
+
+**A generated query is a write path unless it is provably not one — so Vincio makes
+the read-only guarantee structural, never gated on model output.** `app.query_data`
+(`vincio.data.query_dataset`) turns a question over a registered dataset into a query
+that is verified *before* it runs, and the verification refuses anything that is not a
+single, read-only read:
+
+- **Read-only screen.** `is_read_only_sql` / `assert_read_only_sql` accept only a
+  single statement with a `SELECT` / `WITH` head and no write, DDL, or stacked
+  statement (`INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `CREATE`, `ATTACH`,
+  `PRAGMA`, …). The check strips comments and string literals first, so a write
+  keyword hidden inside a quoted value or a comment cannot slip the guard, and a
+  second statement smuggled after a `;` is refused. A breach raises `UnsafeQueryError`
+  — a subclass of `QueryError` / `DataError` with the stable `UNSAFE_QUERY` code.
+- **Engine authorizer (defense in depth).** The default `InProcessSqlEngine` opens its
+  `sqlite3` connection read-only (`PRAGMA query_only`) and installs an authorizer that
+  **denies every non-read action**, so a write or DDL that somehow passed the screen is
+  still refused by the engine itself — two independent barriers, neither gated on the
+  model.
+- **Injection-screened question.** The natural-language question is run through the
+  **same injection detector** the text rails use before it becomes a query, so a
+  prompt-injection attempt in the question is refused, not translated into SQL.
+- **Schema-grounded and cost-bounded.** A query may reference only registered tables
+  and declared columns (an unknown table/column is refused before execution), and a
+  `max_rows` ceiling bounds the result.
+
+The same guarantee is available as a `ToolContract` (`make_query_contract`), so a
+`query_data` tool **structurally** refuses a write when it rides the permissioned,
+approval-gated, audited tool runtime. Rows execute in the engine, not the prompt, so
+text-to-query opens no new egress channel: only the result and the cells it cites reach
+the model. Every query lands on the **hash-chained audit log** (`data_query`, with a
+`deny` entry pinpointing a refused unsafe query; `data_register` for a registration),
+and the answer's cell-level provenance is **offline-verifiable** — `QueryResult.verify`
+re-executes the query against the content-hashed source and confirms the result and
+every cited cell re-derive from the bytes, so a tampered source or a doctored answer is
+caught. The whole path is deterministic and offline.
+
 ### Edge / WASM runtime — the same deterministic safety, offline
 
 **The edge runtime carries the deterministic rails to a constrained target without

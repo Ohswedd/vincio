@@ -356,6 +356,32 @@ app.run("export button 500s").output.label
   `app.sample_dataset`/`app.fit_dataset`/`app.screen_data` (audited `data_quality`).
   Held by a fit-in-window + profile-faithfulness + rail-completeness SLO
   (DataPlaneBench). Deterministic, dependency-free, offline.
+- **Governed text-to-query & cell-level provenance.** `from vincio.data import
+  query_dataset, DataCatalog, QueryPlan, QueryResult, CellCitation` (also `from
+  vincio import query_dataset, DataCatalog, QueryPlan, QueryResult, CellCitation`).
+  `app.register_dataset(data, name=)` registers a dataset in the app's
+  `DataCatalog`; `app.query_data(question, *, table=|dataset=, dialect="sql"|
+  "dataframe", ops=, max_rows=)` (audited `data_query`) grounds a natural-language
+  question — or explicit SQL, or a `ProgramOp` dataframe pipeline — into a
+  `QueryPlan` that is **schema-grounded** (an unknown table/column refused before
+  it runs), **read-only-verified** (a single `SELECT`/`WITH` head, no write / DDL /
+  stacked statement, screened structurally by `is_read_only_sql`/`assert_read_only_sql`
+  and never gated on model output; `make_query_contract()` carries the same
+  guarantee as a `ToolContract` when wired into the tool runtime), dry-run /
+  cost-bounded, and whose natural-language question is screened by the same
+  `InjectionDetector` the text rails use. It executes on a pluggable `QueryEngine`
+  — the default `InProcessSqlEngine` is stdlib `sqlite3`, opened read-only with a
+  deny-writes authorizer (defense in depth) — so rows go to the engine, not the
+  prompt. The `QueryResult` carries the result `Dataset`, per-row `RowProvenance`
+  of the exact source `CellCitation`s (`cite_refs(row, col)` → `sales#r0!revenue`;
+  `LineageCoverage` is `cell` for projection/filter and group-by aggregation, else
+  `result`, always stated), a content-bound `result_hash`, and `verify(catalog)`
+  that re-executes against the hashed source and confirms the result and every
+  cited cell re-derive from the bytes. The `HeuristicQueryPlanner` grounds common
+  questions offline (counts, single-column and group-by aggregates). Benchmarked by
+  new Spider / BIRD adapters (`vincio.evals.SpiderAdapter`/`BIRDAdapter`) under an
+  execution-accuracy SLO plus read-only-enforcement and provenance-verifiability
+  SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`

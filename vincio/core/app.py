@@ -6424,6 +6424,136 @@ class ContextApp:
             report.raise_for_status()
         return report
 
+    # -- governed text-to-query & cell-level provenance -----------------
+
+    def data_catalog(self) -> Any:
+        """The app's lazily-created :class:`~vincio.data.DataCatalog` — the grounding
+        source for :meth:`query_data` and the catalog a
+        :meth:`~vincio.data.QueryResult.verify` re-executes against."""
+        catalog = getattr(self, "_data_catalog_obj", None)
+        if catalog is None:
+            from ..data import DataCatalog
+
+            catalog = DataCatalog()
+            self._data_catalog_obj = catalog
+        return catalog
+
+    def register_dataset(
+        self,
+        data: Any,
+        *,
+        name: str = "",
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+    ) -> str:
+        """Register a dataset in the app's data catalog so :meth:`query_data` can
+        ground and execute a query against it by name.
+
+        ``data`` may be records, rows (with ``columns`` / ``schema``), a
+        :class:`~vincio.data.Dataset`, a ``TableData``, or
+        :class:`~vincio.data.TableEvidence`. Returns the resolved table name. The
+        registration is audited (``data_register``)::
+
+            app.register_dataset(rows, columns=["region", "revenue"], name="sales")
+            result = app.query_data("total revenue by region", table="sales")
+        """
+        dataset = self._coerce_dataset(data, schema=schema, columns=columns, name=name)
+        table = self.data_catalog().add(dataset, name=name)
+        self.audit.record(
+            "data_register",
+            resource=table,
+            details={"row_count": dataset.row_count, "column_count": dataset.width},
+        )
+        return table
+
+    def query_data(
+        self,
+        request: str,
+        *,
+        dataset: Any | None = None,
+        table: str | None = None,
+        dialect: Any = "sql",
+        ops: list[Any] | None = None,
+        question: str = "",
+        max_rows: int = 10_000,
+        engine: Any | None = None,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+        raise_on_refusal: bool = True,
+    ) -> Any:
+        """Turn a natural-language question (or explicit SQL / dataframe ops) over a
+        registered dataset into a query that is **schema-grounded and verified
+        before it runs**, executed where the data lives rather than materialized
+        into the prompt, and whose answer **cites the exact rows and cells** it
+        rests on — the analytics analogue of a cited report, offline-verifiable.
+
+        The query is held **read-only by default**: it is screened structurally (a
+        write, DDL, stacked statement, or an injection signal in the question is
+        refused, raising :class:`~vincio.core.errors.UnsafeQueryError`) and executed
+        by the offline ``sqlite3`` engine under a deny-writes authorizer — the same
+        guarantee :func:`~vincio.data.make_query_contract` carries when the
+        capability rides the permissioned tool runtime. Every decision lands on the
+        audit chain (``data_query``)::
+
+            app.register_dataset(rows, columns=["region", "revenue"], name="sales")
+            result = app.query_data("total revenue by region", table="sales")
+            result.value(0, "sum_revenue")          # the answer
+            result.cite_refs(0, "sum_revenue")      # the exact source cells it rests on
+            result.verify(app.data_catalog())       # re-derives from the bytes
+
+        Pass ``dataset=`` for a one-shot over an unregistered table, or
+        ``dialect="dataframe"`` with ``ops=`` for the deterministic dataframe-op
+        path. Returns a :class:`~vincio.data.QueryResult` (or ``None`` when a
+        refusal is caught with ``raise_on_refusal=False``).
+        """
+        from ..core.errors import QueryError, UnsafeQueryError
+        from ..data import DataCatalog, query_dataset
+
+        if dataset is not None:
+            ds = self._coerce_dataset(dataset, schema=schema, columns=columns, name=name)
+            catalog = DataCatalog.of(ds, name=name or ds.name or "data")
+        else:
+            catalog = self.data_catalog()
+            if not catalog.names:
+                raise QueryError(
+                    "no dataset registered; pass dataset= or call "
+                    "app.register_dataset(...) first"
+                )
+        try:
+            result = query_dataset(
+                request,
+                catalog,
+                dialect=dialect,
+                question=question,
+                ops=ops,
+                table=table,
+                max_rows=max_rows,
+                engine=engine,
+            )
+        except UnsafeQueryError as exc:
+            self.audit.record(
+                "data_query",
+                decision="deny",
+                resource=table or (catalog.names[0] if catalog.names else "dataset"),
+                details={"refused": "unsafe", "reason": str(exc)[:200]},
+            )
+            if raise_on_refusal:
+                raise
+            return None
+        self.audit.record(
+            "data_query",
+            decision="allow",
+            resource=",".join(result.plan.tables) or "dataset",
+            details={
+                "dialect": str(result.plan.dialect),
+                "row_count": result.row_count,
+                "lineage_coverage": str(result.coverage),
+                "result_hash": result.result_hash,
+            },
+        )
+        return result
+
     # -- continuous assurance & production certification ----------------
 
     def assurance_case(
