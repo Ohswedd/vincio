@@ -213,6 +213,36 @@
       "rationale": "Screening tabular input is only a safety control if it is complete; the budget gates that a dataset seeded with one of each defect class has every class reported, with no model judgment in the loop."
     },
     {
+      "id": "text_to_query_execution_accuracy",
+      "category": "quality",
+      "statement": "Governed text-to-query achieves at least 0.9 execution accuracy on the Spider/BIRD-shaped battery — the generated query's result set equals the gold query's when both run on the in-process SQL engine.",
+      "metric": "families.data_plane.text_to_query.execution_accuracy",
+      "direction": "gte",
+      "threshold": 0.9,
+      "enforced_by": "families.data_plane.text_to_query.execution_accuracy",
+      "rationale": "Execution accuracy (not string match) is the Spider/BIRD metric; the budget gates 0.95 so an engine or scorer regression on the battery is caught with headroom under the promise."
+    },
+    {
+      "id": "text_to_query_read_only_enforced",
+      "category": "reliability",
+      "statement": "Every generated write, DDL, stacked statement, or injection attempt is structurally refused before a query runs — the read-only guarantee is never gated on model output.",
+      "metric": "families.data_plane.text_to_query.read_only_enforced",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.text_to_query.read_only_enforced",
+      "rationale": "Read-only is a safety control: a single non-refused write would make text-to-query a write path. The budget gates that an entire battery of write/DDL/stacked/injection attempts is refused, deterministically and without model judgment."
+    },
+    {
+      "id": "text_to_query_provenance_verifiable",
+      "category": "quality",
+      "statement": "An analytical answer and the exact source cells it cites re-derive from the bytes — a result verifies against its hashed source, a tampered source is caught, and the cited cells reproduce.",
+      "metric": "families.data_plane.text_to_query.provenance_verifiable",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.text_to_query.provenance_verifiable",
+      "rationale": "Cell-level provenance is only trustworthy if it is offline-verifiable; the budget gates that a result re-executes to the same rows, a tampered cell flips verify() to false, and the cited cells point at source cells whose values still hold."
+    },
+    {
       "id": "tool_overhead_p50",
       "category": "performance",
       "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",

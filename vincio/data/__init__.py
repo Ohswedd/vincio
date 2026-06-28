@@ -28,6 +28,13 @@ would not fit.
 * :class:`DataQualityRails` — screen a dataset for schema violations, constraint
   breaks, and anomalies on the same deterministic rail path PII and injection
   detection ride.
+* :func:`query_dataset` / :class:`QueryResult` — turn a question (or explicit
+  SQL / dataframe ops) over a registered :class:`DataCatalog` into a
+  schema-grounded, read-only-verified, cost-bounded query, executed offline by
+  the standard-library ``sqlite3`` engine (:class:`InProcessSqlEngine`), whose
+  answer **cites the exact source cells** it rests on
+  (:class:`~vincio.data.provenance.CellCitation`) and re-derives from the bytes
+  via :meth:`QueryResult.verify`.
 
 Everything here is deterministic, dependency-free, and offline. ``Dataset`` and
 the schema types are exported from this subpackage (the top-level ``Dataset``
@@ -48,7 +55,7 @@ name belongs to :mod:`vincio.evals`); :class:`DataEncoder`,
 
 from __future__ import annotations
 
-from ..core.errors import DataError, DataQualityError
+from ..core.errors import DataError, DataQualityError, QueryError, UnsafeQueryError
 from .core import ColumnSchema, DataSchema, Dataset, DataType
 from .encoders import DataEncoder
 from .evidence import TableEvidence
@@ -59,11 +66,25 @@ from .profile import (
     profile_dataset,
     profile_stream,
 )
+from .provenance import CellCitation, LineageCoverage, RowProvenance
 from .quality import (
     ColumnConstraint,
     DataQualityRails,
     DataQualityReport,
     DataQualityViolation,
+)
+from .query import (
+    DataCatalog,
+    HeuristicQueryPlanner,
+    InProcessSqlEngine,
+    QueryDialect,
+    QueryEngine,
+    QueryPlan,
+    QueryResult,
+    assert_read_only_sql,
+    is_read_only_sql,
+    make_query_contract,
+    query_dataset,
 )
 from .sampling import (
     SampleMethod,
@@ -83,6 +104,8 @@ __all__ = [
     "TableEvidence",
     "DataError",
     "DataQualityError",
+    "QueryError",
+    "UnsafeQueryError",
     # profiling
     "HistogramBin",
     "ColumnProfile",
@@ -104,4 +127,19 @@ __all__ = [
     "DataQualityViolation",
     "DataQualityReport",
     "DataQualityRails",
+    # governed text-to-query & cell-level provenance
+    "DataCatalog",
+    "QueryDialect",
+    "QueryPlan",
+    "QueryResult",
+    "QueryEngine",
+    "InProcessSqlEngine",
+    "HeuristicQueryPlanner",
+    "CellCitation",
+    "RowProvenance",
+    "LineageCoverage",
+    "query_dataset",
+    "make_query_contract",
+    "is_read_only_sql",
+    "assert_read_only_sql",
 ]

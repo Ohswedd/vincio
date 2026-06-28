@@ -54,6 +54,7 @@ CapabilityBinder
 CapabilityBroker
 CapabilityToken
 CausalAttributor
+CellCitation
 Certificate
 CertificationReport
 Check
@@ -111,6 +112,7 @@ CurriculumTask
 CustodyAttestation
 CustodyAttestationVerification
 CycleReport
+DataCatalog
 DataEncoder
 DataQualityRails
 DataQualityReport
@@ -275,6 +277,8 @@ PrometheusExporter
 PromptSpec
 ProvenanceManifest
 Purpose
+QueryPlan
+QueryResult
 Rail
 RealtimeSession
 ReasoningController
@@ -466,6 +470,7 @@ prove_equivocation
 prove_solvency
 provider_trainer
 public_key_from_did
+query_dataset
 reconcile
 record_transitions
 resolve_insolvency

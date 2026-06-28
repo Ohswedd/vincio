@@ -122,11 +122,16 @@ from .cultivate import (
     library_capability,
 )
 from .data import (
+    CellCitation,
+    DataCatalog,
     DataEncoder,
     DataQualityRails,
     DataQualityReport,
     DatasetProfile,
+    QueryPlan,
+    QueryResult,
     TableEvidence,
+    query_dataset,
 )
 from .edge import (
     EdgeEnvironment,
@@ -509,7 +514,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.2.0"
+__version__ = "4.3.0"
 
 __all__ = [
     "ContextApp",
@@ -551,6 +556,11 @@ __all__ = [
     "DatasetProfile",
     "DataQualityRails",
     "DataQualityReport",
+    "DataCatalog",
+    "QueryPlan",
+    "QueryResult",
+    "CellCitation",
+    "query_dataset",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

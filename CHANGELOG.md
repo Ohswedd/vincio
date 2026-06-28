@@ -4,6 +4,72 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.3.0] - 2026-06-28
+
+Governed text-to-query & cell-level provenance — the third rung of the data & analytics plane: the core analyst
+capability. A question over a registered dataset becomes a query that is *verified before it runs* — schema-grounded,
+read-only by default, and cost-bounded — executed by the standard-library `sqlite3` engine where the data lives rather
+than by pouring rows into the prompt, and answered with a citation to the **exact cells** it rests on, offline-verifiable
+the way a cited report is. Additive in the `vincio.data` subpackage; entirely backward-compatible, dependency-free,
+deterministic, and offline. `API_VERSION` is unchanged at `"4.0"` — 4.3 extends the 4.x surface additively (486 → 491
+public symbols).
+
+### Added
+
+- **`query_dataset` / `app.query_data` — the governed text-to-query pipeline.** Grounds a natural-language question (or
+  explicit SQL, or a dataframe-op pipeline) over a registered `DataCatalog` into a `QueryPlan`: **schema-grounded** (an
+  unknown table or column is refused before execution), **read-only-verified** (`is_read_only_sql` / `assert_read_only_sql`
+  accept only a single `SELECT` / `WITH` statement with no write / DDL / stacked statement, screened after stripping
+  comments and string literals; a breach raises the new `UnsafeQueryError`), dry-run / cost-bounded (compiled and
+  plan-inspected without fetching, capped by `max_rows`), and with the natural-language question screened by the same
+  injection detector the text rails use. `app.register_dataset` registers a dataset in the app's catalog; both the
+  registration (`data_register`) and the query (`data_query`) land on the hash-chained audit log.
+- **`InProcessSqlEngine` — the offline, read-only SQL engine.** The default `QueryEngine` executes the verified query on an
+  in-memory standard-library `sqlite3` database opened read-only (`PRAGMA query_only`) with an authorizer that **denies
+  every non-read action** — defense in depth beneath the read-only screen, so a write or DDL that somehow passed the screen
+  is still refused by the engine. Rows go to the engine, not the prompt. A pushdown engine can run the same verified SQL
+  against a live source through the `QueryEngine` interface.
+- **`QueryResult` — schema-bearing, cell-level cited, offline-verifiable.** Carries the result as a `Dataset`, per-row
+  `RowProvenance` of the exact source `CellCitation`s (`cite_refs(row, col)` renders `sales#r0!revenue`), a `LineageCoverage`
+  that is `cell` for single-table projection / filter and group-by aggregation (and honestly `result` for shapes outside
+  that grammar, never silently downgraded), the content hashes of the source tables, and a `result_hash`. `verify(catalog)`
+  re-executes the query and confirms the result — and every cited cell — re-derives from the bytes; a tampered source, a
+  tampered result, or a flipped cell flips it to `False`. `to_evidence()` projects the result into cited table evidence.
+- **The dataframe-op dialect.** `dialect="dataframe"` runs the same pipeline over the whitelisted, `eval`-free
+  `vincio.verify.ProgramOp` transforms (`select` / `filter` / `derive` / `rename`), which are read-only by construction and
+  yield **exact per-cell lineage** with no model in the loop — a derived column cites every source column its expression
+  references.
+- **`make_query_contract` — the read-only guarantee as a `ToolContract`.** Refuses a non-read-only query as a pre-condition
+  and bounds the row count as a post-condition, so a `query_data` tool **structurally** refuses a write when it rides the
+  permissioned, approval-gated, audited tool runtime.
+- **`HeuristicQueryPlanner` — deterministic offline NL→SQL.** Grounds common analyst questions (counts, single-column and
+  group-by aggregates) against the catalog schema offline; a question it cannot ground confidently returns `None` rather
+  than guessing an ungrounded query.
+- **Top-level surface.** `QueryResult`, `QueryPlan`, `DataCatalog`, `CellCitation`, and `query_dataset` are re-exported at
+  the package top level; the full surface (`QueryEngine`, `InProcessSqlEngine`, `QueryDialect`, `RowProvenance`,
+  `LineageCoverage`, `HeuristicQueryPlanner`, `make_query_contract`, `is_read_only_sql`, `assert_read_only_sql`,
+  `QueryError`, `UnsafeQueryError`) lives in `vincio.data`. New error codes `QUERY_ERROR` and `UNSAFE_QUERY`.
+- **Spider / BIRD text-to-SQL adapters** (`vincio.evals.SpiderAdapter`, `BIRDAdapter`, with
+  `spider_tasks_from_export` / `bird_tasks_from_export` and shipped fixtures) scored by **execution accuracy** — the
+  predicted query's result set equals the gold's when both run on the read-only engine, so a generated write is refused and
+  scores the task failed. A `text_to_query` section of the **DataPlaneBench** family adds an `execution_accuracy` SLO
+  (gated ≥ 0.95), a `read_only_enforced` SLO, and a `provenance_verifiable` SLO.
+
+### Changed
+
+- **`Dataset.from_rows(rows, ["bare", "names"])` now infers column types from the data** (as `from_records` already does),
+  instead of defaulting every column to `str`. Bare column names carry no type intent, so a numeric column is now typed
+  numeric on the path to the encoder and the query engine; passing typed `ColumnSchema`s is unchanged. This makes
+  `app.register_dataset(rows, columns=[...])` and `app.table_evidence(rows, columns=[...])` type their numeric columns
+  correctly.
+
+### Documentation
+
+- New concept page **[Governed text-to-query and cell-level provenance](concepts/governed-text-to-query.md)** (under
+  `docs/`), a runnable **`examples/15_governed_text_to_query.py`**, and updates to the README, `llms.txt`, `SECURITY.md`,
+  the SLO reference, and the ROADMAP (the 4.3 row moves from planned to shipped). The 4.2 profiling concept's "what it is
+  not" note is updated, since text-to-query and cell-level provenance now ship.
+
 ## [4.2.0] - 2026-06-26
 
 Dataset profiling, sampling & data-quality rails — the second rung of the data & analytics plane: fitting a dataset far

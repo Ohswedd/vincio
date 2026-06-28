@@ -220,6 +220,21 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "A dataset could not be built, encoded, or decoded. Confirm the schema "
             "matches the data width and the column types are valid.",
         ),
+        _entry(
+            "QUERY_ERROR",
+            "Text-to-query error",
+            "A query could not be grounded, verified, or executed. Confirm the "
+            "referenced tables and columns exist in the registered schema, that the "
+            "dialect matches, and that the result stays within `max_rows`.",
+        ),
+        _entry(
+            "UNSAFE_QUERY",
+            "Query refused as not read-only",
+            "A generated query was structurally refused before it ran because it was "
+            "not provably read-only (a write, DDL, multiple statements, or an injection "
+            "signal). Re-issue a single read-only `SELECT`; the read-only guard cannot "
+            "be disabled.",
+        ),
         # --- retrieval ---
         _entry(
             "RETRIEVAL_ERROR",

@@ -50,6 +50,10 @@ between your input and the model's validated output.
   `profile_dataset` for a fixed-size column profile, reservoir/stratified
   sampling, `fit_to_window` to fit a table far larger than the window under a
   fixed token budget, and `DataQualityRails` for deterministic screening.
+- **[Governed text-to-query and cell-level provenance](concepts/governed-text-to-query.md)**:
+  `app.query_data` grounds a question to a read-only-verified, cost-bounded query
+  executed by the standard-library SQL engine where the data lives, and a
+  `QueryResult` that cites the exact source cells and `verify()`s offline.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.
