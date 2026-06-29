@@ -235,6 +235,12 @@ class PerformanceConfig(BaseModel):
     # surfaced in the run's cost summary. ``None`` leaves the footprint
     # unbounded (the default).
     memory_budget_mb: float | None = None
+    # Streaming candidate pre-filter cap. When set and the evidence candidate
+    # pool exceeds it, the context compiler keeps only the top-N candidates by a
+    # cheap relevance proxy before full scoring, so a 10k+ candidate corpus stays
+    # bounded in compute and resident memory. ``None`` scores every candidate
+    # (the default; behavior unchanged).
+    max_context_candidates: int | None = None
 
 
 class ServerConfig(BaseModel):

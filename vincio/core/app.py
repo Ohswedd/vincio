@@ -400,6 +400,7 @@ class ContextApp:
                     if self.config.performance.memory_budget_mb is not None
                     else None
                 ),
+                max_candidates=self.config.performance.max_context_candidates,
             ),
             cache=self.context_compile_cache,
         )
@@ -6441,6 +6442,128 @@ class ContextApp:
         if raise_on_block:
             report.raise_for_status()
         return report
+
+    # -- streaming & out-of-core bulk processing ------------------------
+
+    def stream_dataset(
+        self,
+        source: Any,
+        *,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+        format: str | None = None,
+    ) -> Any:
+        """Open a dataset larger than memory as a lazy, schema-bearing
+        :class:`~vincio.data.RowStream` — the out-of-core handle the streaming
+        operators consume in bounded passes.
+
+        ``source`` may be a file path (CSV / JSON-Lines, chosen by ``format`` or
+        the extension), a list of record mappings, a list of rows (with
+        ``columns`` / ``schema``), a :class:`~vincio.data.Dataset`, or a
+        zero-argument callable returning a fresh row iterator. Profile, fit,
+        sample, :meth:`~vincio.data.RowStream.aggregate`, or
+        :meth:`~vincio.data.RowStream.encode` the result without ever
+        materializing the whole table::
+
+            stream = app.stream_dataset("events.csv")
+            app.pending_evidence.extend(stream.fit(max_tokens=2000).to_evidence_items())
+        """
+        from pathlib import Path
+
+        from ..core.errors import DataError
+        from ..data import Dataset, RowStream, TableEvidence
+
+        if isinstance(source, RowStream):
+            return source
+        if isinstance(source, TableEvidence):
+            return RowStream.from_dataset(source.dataset)
+        if isinstance(source, Dataset):
+            return RowStream.from_dataset(source)
+        if isinstance(source, (str, Path)) and (format is not None or "\n" not in str(source)):
+            return RowStream.open(source, format=format, schema=schema, name=name)
+        if isinstance(source, list) and source and isinstance(source[0], dict):
+            return RowStream.from_records(source, schema=schema, name=name)
+        if isinstance(source, list):
+            spec = schema if schema is not None else columns
+            if spec is None:
+                raise DataError("from rows, pass `columns=` or `schema=` to name the columns")
+            return RowStream.from_rows(source, spec, name=name)
+        if callable(source):
+            spec = schema if schema is not None else columns
+            if spec is None:
+                raise DataError("from a row factory, pass `columns=` or `schema=` to name the columns")
+            return RowStream.from_rows(source, spec, name=name)
+        raise DataError(f"cannot stream {type(source).__name__}")
+
+    def aggregate_stream(
+        self,
+        data: Any,
+        *,
+        group_by: Any,
+        measures: Any | None = None,
+        max_groups: int = 1_000_000,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+    ) -> Any:
+        """Group a dataset larger than memory by one or more columns and reduce
+        measures over each group in a single bounded-memory pass.
+
+        ``measures`` maps a column to the aggregation(s) to compute over it
+        (``"sum"`` / ``"mean"`` / ``"min"`` / ``"max"``; each group's row
+        ``count`` is always emitted). The working set tracks the number of
+        *groups*, not rows, so a table far larger than memory aggregates inside a
+        fixed footprint; a group cardinality beyond ``max_groups`` is refused.
+        ``data`` may be a :class:`~vincio.data.RowStream`, a file path, records,
+        rows (with ``columns`` / ``schema``), or a
+        :class:`~vincio.data.Dataset`. Returns a
+        :class:`~vincio.data.StreamAggregation`.
+        """
+        from ..data import stream_aggregate
+
+        stream = self.stream_dataset(data, schema=schema, columns=columns, name=name)
+        return stream_aggregate(
+            stream, group_by=group_by, measures=measures, max_groups=max_groups
+        )
+
+    async def map_stream(
+        self,
+        data: Any,
+        build_request: Any,
+        *,
+        runner: Any | None = None,
+        backend: Any | None = None,
+        chunk_rows: int = 4_096,
+        timeout_s: float | None = None,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+    ) -> Any:
+        """Run an analytical transform over a dataset larger than memory *at
+        scale* by chunking it into the provider Batch API.
+
+        Each bounded chunk becomes one model request via ``build_request(chunk,
+        index)`` (typically a prompt over the chunk's compact encoding), the set
+        is dispatched through the existing
+        :class:`~vincio.providers.BatchRunner` (half-cost, bounded concurrency),
+        and the responses are reconciled by chunk index. Pass a ``runner`` /
+        ``backend``, or omit both to use the app's own provider. Returns a
+        :class:`~vincio.data.BulkMapResult`.
+        """
+        from ..data import stream_map
+
+        stream = self.stream_dataset(data, schema=schema, columns=columns, name=name)
+        if runner is None and backend is None:
+            backend = self.resolve_provider()
+        return await stream_map(
+            stream,
+            build_request,
+            runner=runner,
+            backend=backend,
+            chunk_rows=chunk_rows,
+            timeout_s=timeout_s,
+        )
 
     # -- governed text-to-query & cell-level provenance -----------------
 

@@ -319,6 +319,7 @@ RootCommitment
 RootCommitmentVerification
 RootConsistencyReport
 Router
+RowStream
 RunConfig
 RunHandle
 RunResult
@@ -495,6 +496,7 @@ signature
 sleep_for
 sleep_until
 stability_of
+stream_aggregate
 synthesize
 task_goal_value
 verify_containment

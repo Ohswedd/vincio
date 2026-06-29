@@ -669,6 +669,75 @@ def bench_dataset_fit() -> dict[str, Any]:
     return result
 
 
+def bench_streaming() -> dict[str, Any]:
+    """Out-of-core aggregation: Vincio's streaming group-by (one accumulator per
+    group, the rows never materialized) vs the naive approach a script reaches for
+    — load every row into a list, then aggregate. Reports peak Python heap for
+    each over the same large source, plus pandas' in-memory groupby when present.
+    The point is memory, not speed: the streaming path's footprint tracks the
+    number of groups, not the number of rows."""
+    import tracemalloc
+
+    from vincio.data import ColumnSchema, DataType, RowStream, stream_aggregate
+
+    n_rows = 500_000
+    schema = [
+        ColumnSchema(name="id", dtype=DataType.INT),
+        ColumnSchema(name="region", dtype=DataType.STR),
+        ColumnSchema(name="amount", dtype=DataType.FLOAT),
+    ]
+    regions = ["NA", "EU", "APAC", "LATAM"]
+
+    def gen() -> Any:
+        for i in range(n_rows):
+            yield [i, regions[i % 4], float(i % 1000)]
+
+    tracemalloc.start()
+    agg = stream_aggregate(RowStream.from_rows(gen, schema), group_by="region", measures={"amount": ["sum", "mean"]})
+    _, vincio_peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    def naive() -> dict[str, float]:
+        rows = [row for row in gen()]  # materialize every row
+        totals: dict[str, float] = {}
+        for _id, region, amount in rows:
+            totals[region] = totals.get(region, 0.0) + amount
+        return totals
+
+    tracemalloc.start()
+    naive()
+    _, naive_peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
+
+    result: dict[str, Any] = {
+        "operation": f"group a {n_rows:,}-row source by region, summing one measure",
+        "rows": n_rows,
+        "groups": agg.group_count,
+        "vincio_peak_kib": round(vincio_peak / 1024),
+        "naive_materialize_peak_kib": round(naive_peak / 1024),
+        "reduction": round(1 - vincio_peak / naive_peak, 3) if naive_peak else 0.0,
+    }
+    if _have("pandas"):
+        import pandas as pd
+
+        tracemalloc.start()
+        pd.DataFrame(list(gen()), columns=["id", "region", "amount"]).groupby("region")["amount"].sum()
+        _, pandas_peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        result["pandas_groupby_peak_kib"] = round(pandas_peak / 1024)
+    else:
+        result["pandas_groupby_peak_kib"] = "skipped (pip install pandas)"
+
+    result["verdict"] = (
+        f"Aggregating {n_rows:,} rows by region costs {result['naive_materialize_peak_kib']:,} KiB when every row "
+        f"is loaded into memory first; Vincio's streaming group-by holds only one accumulator per group "
+        f"({agg.group_count} of them) and peaks at {result['vincio_peak_kib']:,} KiB — a "
+        f"{result['reduction']:.0%} reduction — and that footprint does not grow with the rows, so the same "
+        "aggregation runs over a source far larger than memory."
+    )
+    return result
+
+
 # --------------------------------------------------------------------------- #
 # Runner
 # --------------------------------------------------------------------------- #
@@ -682,6 +751,7 @@ COMPARISONS: dict[str, Callable[[], dict[str, Any]]] = {
     "assembly": bench_assembly,
     "data_encoding": bench_data_encoding,
     "dataset_fit": bench_dataset_fit,
+    "streaming": bench_streaming,
 }
 
 

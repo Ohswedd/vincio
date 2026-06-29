@@ -74,6 +74,9 @@ portable.
 | A generated chart re-derives from the rows it was built from; a tampered source is caught | true | `data_plane.charts.data_bound` |
 | A generated chart cites the exact source cells it was built from, aggregates included | true | `data_plane.charts.figure_cited` |
 | A generated chart carries a C2PA credential bound to its rendered bytes; an edited byte stream is caught | true | `data_plane.charts.content_bound` |
+| Out-of-core processing sustains ≥ 20,000 rows/s (and ≥ 1,000,000 tokens/s through the streaming encoder) | ≥ 20,000 | `data_plane.streaming.throughput_rows_per_s` |
+| The resident working set of a streaming group-by stays bounded as the dataset grows 100× (it tracks groups, not rows) | true | `data_plane.streaming.memory_bounded` |
+| The context compiler's streaming candidate pre-filter bounds a 10k+ evidence pool before full scoring while keeping the relevant evidence | true | `data_plane.streaming.prefilter_bounds_pool` |
 
 The fit-in-window guarantee is the headline of the profiling/sampling rung: a
 full-fidelity column profile (computed over every row in bounded memory) plus a

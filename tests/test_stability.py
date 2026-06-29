@@ -23,7 +23,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "4.5.0"
+    assert vincio.__version__ == "4.6.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 4.0 is the
     # long-term-support major: the public surface re-frozen for the 4.x line and

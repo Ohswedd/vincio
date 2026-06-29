@@ -437,6 +437,37 @@ app.run("export button 500s").output.label
   → `CitationValidationError`). Held by data-bound, figure-cited, and content-bound
   SLOs (DataPlaneBench). `ChartError` (code `CHART_ERROR`). Deterministic,
   dependency-free, offline.
+- **Streaming & out-of-core bulk processing.** `from vincio.data import RowStream,
+  stream_aggregate, StreamAggregation, encode_stream, stream_map, BulkMapResult`
+  (also `from vincio import RowStream, stream_aggregate`). `RowStream` is a lazy,
+  re-iterable, schema-bearing handle over a source larger than memory:
+  `RowStream.from_records/.from_rows(rows_or_factory, schema)/.from_dataset/.from_csv
+  (path_or_lines, *, schema=, has_header=, delimiter=)/.from_jsonl/.open(path, *,
+  format=)`. A bare generator object is single-use; pass a sequence, a zero-arg
+  callable, or a file for multiple passes. CSV types are inferred from a bounded
+  peek and coerced losslessly (a value that does not round-trip exactly stays text).
+  `.chunks(size)` → bounded `Dataset` chunks; `.profile()/.fit(max_tokens=)/.sample(k)`
+  reuse `profile_stream`/`fit_stream`/`reservoir_sample`; `.aggregate(group_by=,
+  measures=)`; `.encode(compress=)`; `.materialize()`. `stream_aggregate(data, *,
+  group_by, measures={col: ["sum","mean","min","max"]}, max_groups=)` is a
+  bounded-memory group-by (one accumulator per group; each group's row `count` always
+  emitted; cardinality beyond `max_groups` → `StreamError`) → `StreamAggregation`
+  (`.result` Dataset, `.group_count`, `.rows_processed`, `.to_evidence_item()`).
+  `encode_stream(stream, *, compress=, sink=)` renders the compact encoding
+  header-once row-by-row (no row count → `decode_table` reads to EOF; gzip when
+  `compress=True`; streamed to a binary `sink=`). `stream_map(stream, build_request,
+  *, runner=|backend=, chunk_rows=)` runs a per-chunk transform at scale through the
+  `BatchRunner` → `BulkMapResult` (`.succeeded`/`.failed`/`.by_chunk()`/`.cost_usd`).
+  **Streaming candidate pre-filter:** `ContextCompilerOptions.max_candidates` (config
+  `performance.max_context_candidates`); when the evidence pool exceeds the cap, one
+  pass keeps the top-N by a cheap lexical proxy (a bounded heap) and drops exact dups
+  by a bounded fingerprint *before* full scoring/dedup/conflict/embedding — recorded
+  in the excluded report (`prefiltered_low_relevance`/`prefiltered_duplicate`),
+  `compiler.prefilter_drops` counter, off by default (unbounded compile unchanged).
+  App: `app.stream_dataset(source, *, schema=|columns=, name=, format=)`,
+  `app.aggregate_stream(...)`, `await app.map_stream(...)`. `StreamError` (code
+  `DATA_ERROR`). Held by throughput (rows/s, tokens/s), memory-bounded, and
+  prefilter-bounds-pool SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`
