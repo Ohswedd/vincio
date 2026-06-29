@@ -225,6 +225,11 @@ class PerformanceConfig(BaseModel):
     # compiles whose inputs are unchanged, so a steady-state recompile skips
     # re-collection. Correctness-preserving; on by default.
     reuse_candidate_set: bool = True
+    # Single-pass feature arena: derive each candidate's lexical features once per
+    # compile and thread them through the dedup, conflict, and selection passes
+    # instead of re-deriving them pass after pass through the bounded global cache.
+    # Selection-preserving and concurrency-safe; on by default.
+    single_pass_selection: bool = True
     # Speculative retrieval prefetch: warm the query embedding (and connection
     # pool) from the task classification while the rest of preparation runs, so
     # retrieval's query embed lands as a cache hit. Off by default; opt-in.

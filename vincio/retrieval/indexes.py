@@ -5,6 +5,7 @@ storage layer provides Qdrant/pgvector adapters with the same interface.
 
 from __future__ import annotations
 
+import heapq
 import math
 import re
 from collections import Counter, defaultdict
@@ -204,8 +205,10 @@ class BM25Index:
             if predicate is not None and not predicate(chunk):
                 continue
             hits.append(SearchHit(chunk=chunk, score=score, source=self.name))
-        hits.sort(key=lambda h: h.score, reverse=True)
-        return hits[:top_k]
+        # Bound the top-k with a partial selection (O(n log k)) instead of a full
+        # sort (O(n log n)). ``nlargest`` breaks ties toward the earlier hit, so
+        # the result is identical to ``sort(reverse=True)[:top_k]``.
+        return heapq.nlargest(top_k, hits, key=lambda h: h.score)
 
 
 class VectorIndex:

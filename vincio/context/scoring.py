@@ -18,14 +18,17 @@ import re
 from collections.abc import Callable
 from datetime import datetime
 from functools import lru_cache
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from ..core.tokens import count_tokens
 from ..core.utils import utcnow
-from ..retrieval.embeddings import cosine
+from ..retrieval.embeddings import cosine_with_norms, vector_norm
 from .vectorized import HAS_NUMPY, matrix_vector_cosine, row_normalize, weighted_totals
+
+if TYPE_CHECKING:
+    from .features import FeatureArena
 
 __all__ = [
     "CandidateType",
@@ -77,13 +80,18 @@ def _terms(text: str) -> frozenset[str]:
     )
 
 
-def lexical_similarity(a: str, b: str) -> float:
-    """Symmetric lexical overlap in [0, 1] with IDF-free dampening."""
-    terms_a, terms_b = _terms(a), _terms(b)
+def _lexical_from_terms(terms_a: frozenset[str], terms_b: frozenset[str]) -> float:
+    """Lexical overlap from precomputed term sets (the kernel behind
+    :func:`lexical_similarity`), so a feature arena can supply the terms once."""
     if not terms_a or not terms_b:
         return 0.0
     overlap = len(terms_a & terms_b)
     return overlap / math.sqrt(len(terms_a) * len(terms_b))
+
+
+def lexical_similarity(a: str, b: str) -> float:
+    """Symmetric lexical overlap in [0, 1] with IDF-free dampening."""
+    return _lexical_from_terms(_terms(a), _terms(b))
 
 
 @lru_cache(maxsize=4096)
@@ -94,22 +102,32 @@ def _shingles(text: str, size: int = 3) -> frozenset[str]:
     return frozenset(" ".join(tokens[i : i + size]) for i in range(len(tokens) - size + 1))
 
 
-def shingle_similarity(a: str, b: str, *, size: int = 3) -> float:
-    """Jaccard similarity over word shingles — near-duplicate detection."""
-    sa, sb = _shingles(a, size), _shingles(b, size)
+def _shingle_jaccard(sa: frozenset[str], sb: frozenset[str]) -> float:
+    """Jaccard of precomputed shingle sets (the kernel behind
+    :func:`shingle_similarity`)."""
     if not sa or not sb:
         return 0.0
     return len(sa & sb) / len(sa | sb)
 
 
-def containment_similarity(a: str, b: str) -> float:
-    """Max containment of content terms — catches near-duplicates that differ
-    by a few filler words (where shingle Jaccard under-reports)."""
-    terms_a, terms_b = _terms(a), _terms(b)
+def shingle_similarity(a: str, b: str, *, size: int = 3) -> float:
+    """Jaccard similarity over word shingles — near-duplicate detection."""
+    return _shingle_jaccard(_shingles(a, size), _shingles(b, size))
+
+
+def _containment_from_terms(terms_a: frozenset[str], terms_b: frozenset[str]) -> float:
+    """Max term containment from precomputed term sets (the kernel behind
+    :func:`containment_similarity`)."""
     if not terms_a or not terms_b:
         return 0.0
     overlap = len(terms_a & terms_b)
     return max(overlap / len(terms_a), overlap / len(terms_b))
+
+
+def containment_similarity(a: str, b: str) -> float:
+    """Max containment of content terms — catches near-duplicates that differ
+    by a few filler words (where shingle Jaccard under-reports)."""
+    return _containment_from_terms(_terms(a), _terms(b))
 
 
 def near_duplicate_score(a: str, b: str) -> float:
@@ -197,30 +215,70 @@ class ContextScorer:
         # near-duplicate detection use cosine over these instead of lexical
         # overlap. Defaults stay lexical when unset — fully additive.
         self._vectors: dict[str, list[float]] | None = None
+        # Per-compile feature arena (optional): when installed, the lexical
+        # similarity passes read each candidate's terms/shingles from it instead
+        # of re-deriving them through the bounded global cache. The arena is a
+        # fresh per-compile object, so a scorer carrying one is never shared.
+        self._features: FeatureArena | None = None
+        # Per-vector-set L2-norm cache for semantic cosine, so a vector's norm is
+        # computed once and reused across every pairwise comparison rather than
+        # recomputed on each call. Reset whenever the vector set changes.
+        self._norm_cache: dict[str, float] = {}
+        # The default lexical estimator can route through the arena; a custom
+        # similarity callback is opaque and is always called directly.
+        self._lexical_default = self.similarity_fn is lexical_similarity
 
     def set_embeddings(self, vectors: dict[str, list[float]] | None) -> None:
         """Install (or clear) the embedding vector cache used for semantic scoring."""
         self._vectors = vectors or None
+        self._norm_cache = {}
+
+    def set_features(self, arena: FeatureArena | None) -> None:
+        """Install (or clear) the per-compile feature arena."""
+        self._features = arena
+
+    def _terms_of(self, text: str) -> frozenset[str]:
+        arena = self._features
+        return arena.terms(text) if arena is not None else _terms(text)
+
+    def _shingles_of(self, text: str, size: int = 3) -> frozenset[str]:
+        arena = self._features
+        return arena.shingles(text, size) if arena is not None else _shingles(text, size)
+
+    def _norm_of(self, text: str, vector: list[float]) -> float:
+        cache = self._norm_cache
+        norm = cache.get(text)
+        if norm is None:
+            norm = vector_norm(vector)
+            cache[text] = norm
+        return norm
 
     @property
     def semantic(self) -> bool:
         return self._vectors is not None
 
     def _semantic_sim(self, a: str, b: str) -> float | None:
-        """Cosine over cached embeddings, or ``None`` when either vector is absent."""
+        """Cosine over cached embeddings, or ``None`` when either vector is absent.
+
+        Each vector's L2 norm is computed once (memoized by text) and reused, so
+        comparing one candidate against many never recomputes its norm; the value
+        is bit-for-bit identical to recomputing both norms on every call."""
         if self._vectors is None:
             return None
         va = self._vectors.get(a)
         vb = self._vectors.get(b)
         if va is None or vb is None:
             return None
-        return max(0.0, min(1.0, cosine(va, vb)))
+        sim = cosine_with_norms(va, vb, self._norm_of(a, va), self._norm_of(b, vb))
+        return max(0.0, min(1.0, sim))
 
     def query_similarity(self, content: str, query: str) -> float:
         """Semantic cosine vs the query when embeddings are present; else lexical."""
         sim = self._semantic_sim(content, query)
         if sim is not None:
             return sim
+        if self._lexical_default:
+            return _lexical_from_terms(self._terms_of(content), self._terms_of(query))
         return self.similarity_fn(content, query)
 
     def diversity_similarity(self, a: str, b: str) -> float:
@@ -229,7 +287,7 @@ class ContextScorer:
         sim = self._semantic_sim(a, b)
         if sim is not None:
             return sim
-        return shingle_similarity(a, b)
+        return _shingle_jaccard(self._shingles_of(a), self._shingles_of(b))
 
     def near_duplicate(self, a: str, b: str) -> float:
         """Near-duplicate score: semantic cosine when embeddings are present
@@ -238,7 +296,10 @@ class ContextScorer:
         sim = self._semantic_sim(a, b)
         if sim is not None:
             return sim
-        return near_duplicate_score(a, b)
+        return max(
+            _shingle_jaccard(self._shingles_of(a), self._shingles_of(b)),
+            _containment_from_terms(self._terms_of(a), self._terms_of(b)),
+        )
 
     # -- component scores -------------------------------------------------------
 
@@ -285,10 +346,10 @@ class ContextScorer:
         """Does this item plausibly contain an answer? Question terms covered + facts present."""
         if not query:
             return 0.0
-        question_terms = _terms(query)
+        question_terms = self._terms_of(query)
         if not question_terms:
             return 0.0
-        content_terms = _terms(candidate.content)
+        content_terms = self._terms_of(candidate.content)
         coverage = len(question_terms & content_terms) / len(question_terms)
         has_specifics = 1.0 if re.search(r"\d|%|\$|€", candidate.content) else 0.6
         return coverage * has_specifics

@@ -23,7 +23,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 from ..core.errors import ContextCompileError
-from ..core.tokens import count_tokens
+from ..core.tokens import count_tokens, count_tokens_many
 from ..core.types import (
     Budget,
     Constraint,
@@ -41,6 +41,7 @@ from ..core.utils import new_id, stable_hash
 from .arena import CandidateArena, PreparedCandidates
 from .budgeting import BudgetAllocator
 from .compression import distill_evidence_ledger, extractive_compress
+from .features import FeatureArena
 from .footprint import estimate_resident_bytes
 from .ir import ContextIR, OutputContractRef
 from .llmlingua import salient_units
@@ -94,6 +95,15 @@ class ContextCompilerOptions(BaseModel):
     # default. The reused candidates are fresh per-compile copies, so the
     # shared compiler stays concurrency-safe.
     reuse_candidate_set: bool = True
+    # Single-pass feature arena: derive each candidate's stemmed terms, shingles,
+    # and similarity-blocking tokens exactly once per compile and thread them
+    # through the dedup, conflict, and selection passes, instead of re-deriving
+    # them pass after pass through the bounded global cache (which thrashes on the
+    # 10k+ pools the streaming pre-filter exercises). Selection-preserving — the
+    # features are byte-identical to the per-pass derivation, so the same context
+    # is selected — and concurrency-safe, since the arena is a fresh per-compile
+    # object. On by default; turn off to fall back to the per-pass derivation.
+    single_pass_selection: bool = True
     # Per-app resident-memory ceiling for the compiled packet, in bytes. When
     # set and the selected context would exceed it, the compiler slims the
     # packet and evicts the lowest-utility evidence until the estimate is under
@@ -254,15 +264,37 @@ class ContextCompiler:
         # ``app.use_learned_compression(...)`` once faithfulness-gated.
         self.compressor: Any = extractive_compress
 
+    def _fresh_scorer(self, features: FeatureArena | None) -> ContextScorer:
+        """A per-compile scorer mirroring the shared one's configuration, carrying
+        this compile's feature arena. Used whenever per-compile state (a feature
+        arena or embedding vectors) must not touch the shared, concurrently-used
+        ``self.scorer``."""
+        scorer = ContextScorer(
+            self.options.weights,
+            similarity_fn=self.scorer.similarity_fn,
+            max_token_cost=self.scorer.max_token_cost,
+            freshness_half_life_days=self.scorer.freshness_half_life_days,
+        )
+        scorer.set_features(features)
+        return scorer
+
     async def _scorer_for(
-        self, candidates: list[ContextCandidate], query: str
+        self,
+        candidates: list[ContextCandidate],
+        query: str,
+        features: FeatureArena | None = None,
     ) -> ContextScorer:
         """The scorer for this compile. Lexical mode returns the shared,
-        vector-less scorer. Semantic mode batch-embeds candidate contents and
-        the query (content-addressed, so repeats are cheap) and installs the
-        vectors on a fresh scorer — keeping the shared instance race-free."""
+        vector-less scorer (or a fresh one carrying the feature arena, so the
+        shared instance stays state-free under concurrent compiles). Semantic mode
+        batch-embeds candidate contents and the query (content-addressed, so
+        repeats are cheap) and installs the vectors on a fresh scorer — keeping
+        the shared instance race-free."""
         if not (self.options.semantic_scoring and self.embedder is not None):
-            return self.scorer
+            return self.scorer if features is None else self._fresh_scorer(features)
+        # Semantic mode always works on a fresh scorer (it carries per-compile
+        # vectors); the feature arena rides on the same fresh instance.
+        fallback = self.scorer if features is None else self._fresh_scorer(features)
         seen: set[str] = set()
         texts: list[str] = []
         for candidate in candidates:
@@ -273,18 +305,13 @@ class ContextCompiler:
             seen.add(query)
             texts.append(query)
         if not texts:
-            return self.scorer
+            return fallback
         try:
             vectors_list = await self.embedder.embed(texts)
         except Exception:  # noqa: BLE001 - fall back to lexical if embedding fails
-            return self.scorer
+            return fallback
         vectors = {text: vec for text, vec in zip(texts, vectors_list, strict=False)}
-        scorer = ContextScorer(
-            self.options.weights,
-            similarity_fn=self.scorer.similarity_fn,
-            max_token_cost=self.scorer.max_token_cost,
-            freshness_half_life_days=self.scorer.freshness_half_life_days,
-        )
+        scorer = self._fresh_scorer(features)
         scorer.set_embeddings(vectors)
         return scorer
 
@@ -556,18 +583,25 @@ class ContextCompiler:
     def _normalize(candidates: list[ContextCandidate]) -> list[ContextCandidate]:
         for candidate in candidates:
             candidate.content = " ".join(candidate.content.split())
-            if not candidate.token_cost:
-                candidate.token_cost = count_tokens(candidate.content)
+        # Count the tokens of every candidate still missing a cost in one batch,
+        # rather than one memoized call per item.
+        pending = [c for c in candidates if not c.token_cost and c.content]
+        if pending:
+            counts = count_tokens_many([c.content for c in pending])
+            for candidate, count in zip(pending, counts, strict=True):
+                candidate.token_cost = count
         return [c for c in candidates if c.content]
 
     @staticmethod
-    def _block_tokens(text: str) -> set[str]:
+    def _block_tokens(text: str, arena: FeatureArena | None = None) -> frozenset[str]:
         """Tokens a candidate is indexed under for similarity blocking. Two
         passages that share none of these have shingle *and* containment
         similarity 0, so they can be skipped without computing either — making
-        the blocking pass exact, not an approximation."""
-        raw = set(re.findall(r"[a-z0-9]+", text.lower()))
-        return raw | set(_terms(text))
+        the blocking pass exact, not an approximation. Reads the feature arena
+        when one is threaded in, so the tokens are derived once per compile."""
+        if arena is not None:
+            return arena.block_tokens(text)
+        return frozenset(re.findall(r"[a-z0-9]+", text.lower())) | _terms(text)
 
     def _remove_duplicates(
         self,
@@ -577,6 +611,7 @@ class ContextCompiler:
     ) -> list[ContextCandidate]:
         kept: list[ContextCandidate] = []
         semantic = scorer.semantic
+        arena = scorer._features
         # Lexical mode: inverted token index so each candidate is compared only
         # against kept items that could possibly be near-duplicates (near-linear
         # for diverse pools, exact at the 0.85 threshold). Semantic mode compares
@@ -585,9 +620,10 @@ class ContextCompiler:
         for candidate in sorted(candidates, key=lambda c: c.scores.total, reverse=True):
             if semantic:
                 neighbors: list[ContextCandidate] = kept
+                tokens: frozenset[str] = frozenset()
             else:
                 positions: set[int] = set()
-                tokens = self._block_tokens(candidate.content)
+                tokens = self._block_tokens(candidate.content, arena)
                 for token in tokens:
                     positions.update(index.get(token, ()))
                 neighbors = [kept[p] for p in positions]
@@ -603,7 +639,7 @@ class ContextCompiler:
             else:
                 if not semantic:
                     pos = len(kept)
-                    for token in self._block_tokens(candidate.content):
+                    for token in tokens:
                         index[token].append(pos)
                 kept.append(candidate)
         return kept
@@ -624,9 +660,10 @@ class ContextCompiler:
                 for b in same_type[ia + 1 :]
                 if candidates[a].type == candidates[b].type
             ]
+        arena = scorer._features
         index: dict[str, list[int]] = defaultdict(list)
         for i in same_type:
-            for token in self._block_tokens(candidates[i].content):
+            for token in self._block_tokens(candidates[i].content, arena):
                 index[token].append(i)
         pairs: set[tuple[int, int]] = set()
         for members in index.values():
@@ -1000,10 +1037,13 @@ class ContextCompiler:
         if self.options.max_candidates is not None:
             candidates = self._prefilter_candidates(candidates, query, excluded)
 
-        # 4. score (with a per-compile scorer — semantic embeddings are installed
-        # on a fresh scorer so the shared instance stays vector-less and concurrent
-        # compiles never race on mutable state).
-        scorer = await self._scorer_for(candidates, query)
+        # 4. score (with a per-compile scorer — the feature arena and any semantic
+        # embeddings are installed on a fresh scorer so the shared instance stays
+        # state-free and concurrent compiles never race on mutable state). The
+        # arena derives each candidate's lexical features once and threads them
+        # through scoring, dedup, conflict, and selection.
+        features = FeatureArena() if self.options.single_pass_selection else None
+        scorer = await self._scorer_for(candidates, query, features)
         scorer.score_batch(candidates, query)
 
         # 5. dedupe
