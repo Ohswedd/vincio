@@ -178,6 +178,7 @@ FederatedRoundResult
 FederatedSubspace
 FertilityTracker
 Figure
+Flow
 FrontierEstimate
 GGUFProvider
 GatheredReputation
@@ -442,6 +443,7 @@ build_set_off_statement
 build_trust_model
 buyer_position
 certify
+chat
 check_completeness
 check_history_consistency
 check_root_consistency
@@ -458,7 +460,9 @@ draw_pool
 edge_environment
 edge_manifest
 enable_rich_reprs
+evaluation
 experimental
+extractor
 gather_reputation
 generate_chart
 generate_redline
@@ -487,6 +491,7 @@ provider_trainer
 public_key_from_did
 query_dataset
 query_metric
+rag
 reconcile
 record_transitions
 resolve_insolvency
@@ -506,6 +511,7 @@ stability_of
 stream_aggregate
 synthesize
 task_goal_value
+tool_agent
 verify_containment
 verify_edge_parity
 verify_erasure_proof

@@ -87,6 +87,31 @@ OpenAI, Anthropic, Google, Mistral, a local model, or any OpenAI-compatible gate
 of the box it runs on a deterministic mock that emits schema-valid output, so you can build and test
 the whole pipeline offline in CI.
 
+## The one-line front door
+
+For the five jobs you reach for most, the `vincio.tasks` namespace is one expression each — a
+task-shaped constructor with sane governed defaults that **lowers to the exact same governed run** as
+the verbose builder path (retrieval, grounding, validation, rails, budgets, tracing, and the audit
+chain all apply unchanged). `.app` is the escape hatch to every deep method.
+
+```python
+from vincio import rag, extractor, tool_agent, evaluation, chat, Flow
+
+rag("./docs").ask("How do I configure SSO?")          # grounded RAG Q&A, cited and eval-scored
+extractor(Ticket).extract("I was charged twice")      # typed structured extraction
+tool_agent(writes=[create_ticket]).run(task)          # an approval-gated tool agent
+evaluation(dataset, gates={"groundedness": ">= 0.8"}).run()   # an offline eval
+chat().send("What's my refund window?")               # a multi-turn assistant
+
+# …or thread the whole pipeline fluently — the Vincio answer to LCEL:
+Flow(provider=p, model=m).retrieve("./docs").ground().evaluate("groundedness").run(question)
+```
+
+These are `@experimental` while their shape settles. See
+[`examples/00_one_liners.py`](examples/00_one_liners.py) and the
+[ergonomic-surface concept](docs/concepts/ergonomic-surface.md) for how each one-liner maps to the
+deep methods it composes.
+
 ## What you can build
 
 **Typed output you can rely on**: declare a Pydantic schema, get a validated instance back:

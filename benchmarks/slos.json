@@ -2191,6 +2191,36 @@
       "threshold": true,
       "enforced_by": "families.perf.retrieval.topk_identical",
       "rationale": "Bounding the top-k with a partial selection (O(n log k)) instead of a full sort (O(n log n)) must not change the hits returned; the gate proves the bounded path reproduces the full-sort ranking exactly for every k."
+    },
+    {
+      "id": "ergonomics_conciseness",
+      "category": "quality",
+      "statement": "Each of the five jobs a newcomer actually has — grounded RAG Q&A, a tool-using agent, structured extraction, an eval, and a multi-step flow — plus the fluent Flow, is expressible through a single vincio.tasks entry point (rag / extractor / tool_agent / evaluation / chat / Flow), where the verbose ContextApp path takes a fistful of string-keyed builder calls.",
+      "metric": "families.ergonomics.conciseness_one_entry_point",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ergonomics.conciseness_one_entry_point",
+      "rationale": "The platform is feature-complete but its power was buried: the canonical RAG path alone is six coupled calls where an LCEL chain, a LlamaIndex query engine, a DSPy module, or a Haystack pipeline each cost one line. The budget gates that every job is reachable through one task-shaped constructor returning the right facade (benchmarked head-to-head against those competitors in benchmarks/competitive.py); a companion budget gates the count of entry points — so the front door is a real, minimal top layer, never a partial sugar that still drops to the verbose path for the common case."
+    },
+    {
+      "id": "ergonomics_compiles_byte_identical",
+      "category": "reliability",
+      "statement": "Each one-line task lowers to the exact same governed ContextApp.run packet and RunResult as the verbose builder form: given the same inputs, the ad-hoc form (rag, the Flow pipeline, extractor) and the hand-written six-call form produce a byte-identical lowering signature — the same packet spec_hash and the same output, citations, eval scores, and token usage — so there is no behavioral fork.",
+      "metric": "families.ergonomics.compiles_byte_identical",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ergonomics.compiles_byte_identical",
+      "rationale": "A one-line front door is only safe to adopt if it changes nothing about what runs: retrieval, grounding, validation, rails, budgets, tracing, and the audit chain must all apply unchanged. The budget gates that the ad-hoc form and the verbose form compile to a byte-identical lowering signature, proven with the shared vincio.testing.run_signature harness (the same lowering harness the 5.2 single-pass feature arena uses for selection byte-identity); a companion budget gates the count of forms proven identical — so the facade is provably pure sugar over the existing governed path, never a parallel stack."
+    },
+    {
+      "id": "ergonomics_escape_hatch_total",
+      "category": "reliability",
+      "statement": "Every task facade exposes .app, the fully-configured ContextApp, reaching every deep method — nothing is shadowed and nothing is unreachable — so the common case is one expression while the complex case drops to all of the platform's methods through the same object.",
+      "metric": "families.ergonomics.escape_hatch_total",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ergonomics.escape_hatch_total",
+      "rationale": "A minimal front door must never become a cage: the simplification is only acceptable if it adds no ceiling. The budget gates that every facade's .app is the full ContextApp and that the deep methods (rails, memory, optimization, governance, agents, the cross-org and data-engagement facades) are all reachable through it; a companion budget gates the count of deep methods checked — so the escape hatch is total, the one-liner a strict superset-in-reach of the verbose path."
     }
   ]
 }

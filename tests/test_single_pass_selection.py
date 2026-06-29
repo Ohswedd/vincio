@@ -43,27 +43,14 @@ from vincio.core.types import (
 from vincio.retrieval.embeddings import LocalHashEmbedder, cosine, cosine_with_norms, vector_norm
 from vincio.retrieval.indexes import BM25Index
 
+# The selection-byte-identity signature is the shared lowering harness in
+# ``vincio.testing`` — the same one the ergonomic front door (5.3) reuses to prove
+# its one-liners lower to the verbose form's packet.
+from vincio.testing.lowering import selection_signature as _selection_signature
+
 
 def _obj(text: str = "What is the refund window for the Pro plan?") -> Objective:
     return Objective(text=text, task_type=TaskType.DOCUMENT_QA)
-
-
-def _selection_signature(result: object) -> dict[str, object]:
-    """Everything the optimization could affect; the packet's own identity
-    (id/timestamp) is excluded since it is non-deterministic by design."""
-    return {
-        "evidence": [
-            (e.id, e.text, round(e.relevance, 12), e.token_cost) for e in result.ir.evidence
-        ],
-        "memory": [m.id for m in result.ir.memory],
-        "tool_specs": [t.name for t in result.ir.tool_specs],
-        "excluded": result.excluded_report,
-        "conflicts": result.conflicts,
-        "budget": result.budget_report,
-        "tokens": result.token_count,
-        "resident_bytes": result.resident_bytes,
-        "slim": result.packet.slim,
-    }
 
 
 # --------------------------------------------------------------------------- #

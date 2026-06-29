@@ -486,6 +486,7 @@ from .stability import (
     experimental,
     stability_of,
 )
+from .tasks import Flow, chat, evaluation, extractor, rag, tool_agent
 from .tools import (
     ActionOutcome,
     ActionPolicy,
@@ -531,7 +532,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "5.2.0"
+__version__ = "5.3.0"
 
 __all__ = [
     "ContextApp",
@@ -1082,5 +1083,12 @@ __all__ = [
     "Incident",
     "CertificationReport",
     "certify",
+    # the ergonomic 'ad-hoc' front door (experimental task-shaped constructors)
+    "rag",
+    "extractor",
+    "tool_agent",
+    "evaluation",
+    "chat",
+    "Flow",
     "__version__",
 ]

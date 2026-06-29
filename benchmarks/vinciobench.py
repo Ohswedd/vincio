@@ -3825,20 +3825,10 @@ async def bench_perf() -> dict[str, Any]:
     # through every pass. The gates prove it never changes *what* is selected
     # (eq:true) and that the win has not eroded (a ratio floor), on the default,
     # dependency-free path. NumPy is an accelerator only; these run either way.
-    def _selection_signature(result: Any) -> dict[str, Any]:
-        """Everything the single-pass optimization could affect — the selected
-        items, the excluded report, the conflicts, the budget, the token count —
-        excluding only the packet's own identity (id/timestamp)."""
-        return {
-            "evidence": [
-                (e.id, e.text, round(e.relevance, 9), e.token_cost) for e in result.ir.evidence
-            ],
-            "memory": [m.id for m in result.ir.memory],
-            "excluded": result.excluded_report,
-            "conflicts": result.conflicts,
-            "budget": result.budget_report,
-            "tokens": result.token_count,
-        }
+    # The selection-byte-identity signature is the shared lowering harness in
+    # ``vincio.testing`` — the same one the ergonomic front door (5.3) reuses to
+    # prove its one-liners lower to the verbose form's packet.
+    from vincio.testing.lowering import selection_signature as _selection_signature
 
     async def _compile_single_pass(flag: bool, *, options_kwargs: dict[str, Any]) -> Any:
         compiler = ContextCompiler(
@@ -11285,6 +11275,163 @@ async def bench_registry_coverage() -> dict[str, Any]:
     }
 
 
+async def bench_ergonomics() -> dict[str, Any]:
+    """ErgonomicsBench: the one-line 'ad-hoc' front door, with no behavioral fork.
+
+    The ``vincio.tasks`` namespace adds task-shaped constructors — ``rag`` /
+    ``extractor`` / ``tool_agent`` / ``evaluation`` / ``chat`` — and one fluent,
+    immutable ``Flow``, each a purely-compositional facade that lowers to the *same*
+    governed ``ContextApp.run`` packet as the verbose builder form. This family
+    gates three guarantees: **conciseness** (each of the five jobs, plus the Flow,
+    is one entry point), **compiles-byte-identical** (the ad-hoc form lowers to the
+    same packet and ``RunResult`` as the verbose six-call form — proven with the
+    shared ``vincio.testing.run_signature`` lowering harness, the same one the 5.2
+    single-pass feature arena uses), and **escape-hatch-total** (``.app`` reaches
+    every deep method; nothing is shadowed or unreachable). Deterministic and
+    offline.
+    """
+    import tempfile
+    import warnings
+    from pathlib import Path
+
+    from pydantic import BaseModel
+
+    from vincio import (
+        Assistant,
+        ContextApp,
+        Flow,
+        chat,
+        evaluation,
+        extractor,
+        rag,
+        tool_agent,
+    )
+    from vincio.documents import load_directory
+    from vincio.providers import MockProvider
+    from vincio.tasks import Evaluation, Extractor, RagTask, ToolAgent
+    from vincio.testing import run_signature
+
+    class _Ticket(BaseModel):
+        label: str
+        confidence: float
+
+    def _provider() -> MockProvider:
+        return MockProvider(default_text="ok")
+
+    def _json_provider() -> MockProvider:
+        return MockProvider(responder=lambda request: '{"label": "billing", "confidence": 0.9}')
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")  # the @experimental notices are expected here
+
+        # Shared, already-loaded documents so the verbose and ad-hoc forms index
+        # byte-identical evidence (loading is outside the front door, held constant).
+        folder = Path(tempfile.mkdtemp()) / "docs"
+        folder.mkdir(parents=True)
+        (folder / "refund.md").write_text(
+            "# Refund Policy\n\nPro plan refunds within 30 days, no fee.\n", encoding="utf-8"
+        )
+        documents = load_directory(folder)
+        question = "What is the refund window for the Pro plan?"
+
+        # -- conciseness: each job is one entry point ------------------------
+        facades = [
+            rag(list(documents), provider=_provider(), model="mock-1"),
+            extractor(_Ticket, provider=_json_provider(), model="mock-1"),
+            tool_agent(provider=_provider(), model="mock-1"),
+            evaluation(provider=_provider(), model="mock-1"),
+        ]
+        bot = chat(provider=_provider(), model="mock-1")
+        flow = Flow(provider=_provider(), model="mock-1").retrieve(documents=list(documents)).ground()
+        conciseness_one_entry_point = bool(
+            isinstance(facades[0], RagTask)
+            and isinstance(facades[1], Extractor)
+            and isinstance(facades[2], ToolAgent)
+            and isinstance(facades[3], Evaluation)
+            and isinstance(bot, Assistant)
+            and isinstance(flow, Flow)
+        )
+        entry_points = 6
+
+        # -- compiles-byte-identical: ad-hoc lowers to the verbose packet ----
+        def _verbose_rag() -> ContextApp:
+            app = ContextApp(name="rag", provider=_provider(), model="mock-1")
+            app.add_source(
+                "docs", documents=list(documents), chunking="adaptive", retrieval="hybrid"
+            )
+            app.set_policy("answer_only_from_sources", True)
+            app.add_evaluator("groundedness")
+            app.add_evaluator("citation_accuracy")
+            return app
+
+        verbose_sig = run_signature(_verbose_rag(), question)
+        rag_sig = run_signature(
+            rag(list(documents), provider=_provider(), model="mock-1", chunking="adaptive").app,
+            question,
+        )
+        flow_sig = run_signature(
+            Flow(provider=_provider(), model="mock-1")
+            .retrieve(documents=list(documents), chunking="adaptive")
+            .ground()
+            .evaluate("groundedness", "citation_accuracy")
+            .app,
+            question,
+        )
+        extractor_verbose = run_signature(
+            ContextApp(
+                name="extractor", provider=_json_provider(), model="mock-1", output_schema=_Ticket
+            ),
+            "classify this",
+        )
+        extractor_sig = run_signature(
+            extractor(_Ticket, provider=_json_provider(), model="mock-1").app, "classify this"
+        )
+        identical = [
+            rag_sig == verbose_sig,
+            flow_sig == verbose_sig,
+            extractor_sig == extractor_verbose,
+        ]
+        compiles_byte_identical = bool(all(identical))
+        byte_identical_forms = sum(1 for ok in identical if ok)
+
+        # -- escape-hatch-total: `.app` reaches every deep method ------------
+        deep_methods = [
+            "add_source",
+            "add_tool",
+            "add_rail",
+            "add_memory",
+            "configure",
+            "set_policy",
+            "add_evaluator",
+            "evaluate",
+            "agent",
+            "research",
+            "reflective_optimize",
+            "verify_governance",
+            "data_engagement",
+            "cross_org_engagement",
+        ]
+        all_facades = [*facades, flow]
+        escape_hatch_total = bool(
+            all(isinstance(f.app, ContextApp) for f in all_facades)
+            and all(
+                callable(getattr(f.app, method, None))
+                for f in all_facades
+                for method in deep_methods
+            )
+        )
+        deep_methods_reachable = len(deep_methods)
+
+    return {
+        "conciseness_one_entry_point": conciseness_one_entry_point,
+        "compiles_byte_identical": compiles_byte_identical,
+        "escape_hatch_total": escape_hatch_total,
+        "entry_points": entry_points,
+        "byte_identical_forms": byte_identical_forms,
+        "deep_methods_reachable": deep_methods_reachable,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -11337,6 +11484,7 @@ FAMILIES = {
     "verified_reasoning": bench_verified_reasoning,
     "skill_acquisition": bench_skill_acquisition,
     "assurance": bench_assurance,
+    "ergonomics": bench_ergonomics,
     "breaking_2_0": bench_breaking_2_0,
 }
 
