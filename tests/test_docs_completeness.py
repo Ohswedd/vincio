@@ -1,7 +1,12 @@
 """Docs-completeness gate: every subsystem and example stays documented.
 
 Operationalizes the "a guide and a tested example for every subsystem and
-every public API" goal so coverage can't silently regress.
+every public API" goal so coverage can't silently regress. From 5.4 the gate
+deepens from a substring check into a docs-*graph* check: the structural
+guarantees (links resolve, every concept reaches a guide/example/reference,
+every ``app.*`` verb is documented, no orphans, ``llms.txt`` is current) live in
+``tests/test_docs_graph.py`` driving ``vincio._docmap``; the bridge test below
+ties that graph into this completeness gate.
 """
 
 from __future__ import annotations
@@ -105,3 +110,19 @@ def test_public_api_names_resolve():
         assert hasattr(vincio, name), name
     for name in ("deprecated", "experimental", "stability_of", "StabilityLevel"):
         assert name in vincio.__all__
+
+
+def test_docs_graph_is_intact():
+    """The deepened gate: the docs graph (links, capability-map coverage,
+    navigation reachability, no orphans, llms.txt freshness) must hold.
+
+    Detailed, per-page assertions live in tests/test_docs_graph.py; this is the
+    one-line bridge that fails the completeness gate if any of them regress.
+    """
+    from vincio import _docmap
+
+    failed = [c.name for c in _docmap.docs_graph_report() if not c.ok]
+    assert not failed, (
+        f"docs-graph checks failed: {failed} — run `vincio docs check` for detail "
+        f"and `vincio docs map` to regenerate"
+    )

@@ -158,3 +158,19 @@ and the [agents concept guide](../concepts/agents.md#orchestrator--planner-depth
 | `SubgraphScheduler` | many independent sub-graphs under one budget + deadline |
 | `app.workflow` | fixed business steps with retries/compensation |
 | `compose` | gluing any of the above into one observable pipeline |
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Agents & orchestration](../concepts/agents.md)
+- [Guide: add tools](add-tools.md)
+- [Example: 04_agents_and_tools.py](../../examples/04_agents_and_tools.py)
+- [Example: 05_orchestration.py](../../examples/05_orchestration.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

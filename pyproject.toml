@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "5.3.0"
+version = "5.4.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -97,6 +97,11 @@ registry-sync = ["vincio[openai,anthropic,google,mistral]"]
 # verified reasoning — optional SMT / CAS backends for the certificate kernels
 # (the deterministic, dependency-free kernels are the default and need no extra)
 verify = ["z3-solver>=4.12", "sympy>=1.12"]
+# 5.4 — connected docs. The capability map, the docs-graph check, and `vincio docs
+# map|check` run dependency-free on the standard library; this extra bundles the
+# richer Markdown renderer behind `vincio docs serve` (a local HTML preview of the
+# docs graph). The map and coverage check never require it.
+docs = ["markdown-it-py>=3.0"]
 # 2.1 — batteries-included local neural models (air-gapped / edge inference)
 fastembed = ["fastembed>=0.3"]
 splade = ["transformers>=4.40"]
@@ -111,7 +116,7 @@ dev = [
   "mypy>=1.9",
 ]
 all = [
-  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,haystack,dspy,bigquery,snowflake,gen-docx,gen-pdf,gen-pptx,ocr,video,parquet,data,charts,msg,computer-use,crypto,verify,fastembed,splade,cross-encoder,gguf]",
+  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,haystack,dspy,bigquery,snowflake,gen-docx,gen-pdf,gen-pptx,ocr,video,parquet,data,charts,msg,computer-use,crypto,verify,docs,fastembed,splade,cross-encoder,gguf]",
 ]
 
 [project.scripts]
@@ -175,6 +180,7 @@ module = [
   "vincio.core.config",
   "vincio.core.config_migrations",
   "vincio._apiref",
+  "vincio._docmap",
   "vincio.cli.doctor",
   "vincio.cli.migrate",
   "vincio.context.longhorizon",

@@ -159,3 +159,19 @@ q.judge_trusted(threshold=0.6)
 - **Red-team the app**: `RedTeamSuite().run(app)`; gate `attack_success_rate` at 0.0.
 - **Assert in pytest**: `assert_grounded(result)`, `assert_eval(result, metrics={...})`;
   see the [testing guide](test-llm-apps.md).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Evaluation & continuous quality](../concepts/evals.md)
+- [Guide: test LLM apps with pytest](test-llm-apps.md)
+- [Guide: agentic evaluation & continuous quality](agentic-eval.md)
+- [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
+- [Concept: Observability](../concepts/observability.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#optimization)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

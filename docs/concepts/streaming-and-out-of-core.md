@@ -156,3 +156,18 @@ memory head-to-head with loading every row first.
 - [Tabular evidence and the compact encoder](tabular-evidence.md) — the encoding the stream renders.
 - [Dataset profiling, sampling, and quality rails](dataset-profiling.md) — the bounded-pass profile and sample a stream reuses.
 - [Context packets](context-packets.md) — the compiler the pre-filter bounds.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Guide: Performance & streaming](../guides/performance.md)
+- [Example: 18_streaming_out_of_core.py](../../examples/18_streaming_out_of_core.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

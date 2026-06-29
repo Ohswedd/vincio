@@ -154,3 +154,15 @@ rails. What both share is the tool runtime: realtime tool calls are permissioned
 sandboxed, and audited like everything else. See the
 [security threat model](../security/threat-model.md) for how tool calls
 (including realtime ones) are governed.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 10_interop_and_protocols.py](../../examples/10_interop_and_protocols.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#serving)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

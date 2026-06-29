@@ -111,21 +111,16 @@ vincio eval run golden/basic.jsonl --app app.py \
 
 ## Next steps
 
-The [documentation index](README.md) maps every guide, concept, and reference
-page in a reading order. Common next steps:
+Follow the **[learning path](learning-path.md)** — a staged route from this first
+app through the core model, building a real application, evaluation, orchestration,
+governance, and the cross-organization economy. It is the spine; each stage links
+the concepts, guides, and examples in the order you need them.
 
-- [Concepts: context packets](concepts/context-packets.md)
-- [Guide: build a RAG app](guides/build-rag-app.md)
-- [Guide: add tools](guides/add-tools.md)
-- [Guide: structured output](guides/structured-output.md)
-- [Guide: reliability & guardrails](guides/reliability-guardrails.md)
-- [Guide: run evals](guides/run-evals.md)
-- [Guide: test LLM apps with pytest](guides/test-llm-apps.md)
-- [Guide: orchestrate multi-agent systems](guides/orchestrate-agents.md)
-- [Guide: computer-use action plane](guides/computer-use.md)
-- [Concepts: observability](concepts/observability.md)
-- [Guide: performance & streaming](guides/performance.md)
-- [Guide: verify governance invariants](guides/governance-verification.md)
-- [Guide: integrations (providers, vector stores, frameworks)](guides/integrations.md)
-- [Migrating from LangChain](guides/migrate-from-langchain.md), [LlamaIndex](guides/migrate-from-llamaindex.md), [Ragas](guides/migrate-from-ragas.md), or [Mem0](guides/migrate-from-mem0.md)
-- [Reference: configuration](reference/config.md)
+For the exhaustive map see the [documentation index](README.md); for every
+`app.*` verb and the page that documents it, the
+[capability map](reference/capability-map.md). Jumping straight in:
+
+- [Concepts: context packets](concepts/context-packets.md) and [build a RAG app](guides/build-rag-app.md).
+- [Add tools](guides/add-tools.md), [structured output](guides/structured-output.md), and [reliability & guardrails](guides/reliability-guardrails.md).
+- [Run evals](guides/run-evals.md) and [test LLM apps with pytest](guides/test-llm-apps.md).
+- [Reference: configuration](reference/config.md).

@@ -282,3 +282,15 @@ same hash-chained path as every other decision. See the
 [threat model](../security/threat-model.md) for the trust boundaries these
 controls operate within, and the runnable
 [`30_governance_compliance.py`](../../examples/09_security_governance.py) example.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

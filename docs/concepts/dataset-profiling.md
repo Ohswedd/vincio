@@ -136,3 +136,17 @@ of the data plane. The analyst rung —
 ships next on top of it; the data-analysis agent and charts are later rungs (see
 the [roadmap](../../ROADMAP.md)). Nothing here calls a database or a network:
 `vincio.data` is deterministic, dependency-free, and offline.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Example: 14_dataset_profiling.py](../../examples/14_dataset_profiling.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

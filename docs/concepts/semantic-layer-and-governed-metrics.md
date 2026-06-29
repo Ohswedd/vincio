@@ -164,3 +164,17 @@ identical to the governed query it reuses.
 - [Governed text-to-query and cell-level provenance](governed-text-to-query.md) — the query plane a metric compiles to and the cell-level lineage it inherits.
 - [Tabular evidence and the compact encoder](tabular-evidence.md) — the typed, columnar `Dataset` a layer is defined over.
 - [The data-analysis agent](data-analysis-agent.md) — the multi-step EDA that explores the same governed query plane.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Example: 19_semantic_layer_governed_metrics.py](../../examples/19_semantic_layer_governed_metrics.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

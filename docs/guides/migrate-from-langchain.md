@@ -155,3 +155,17 @@ hits = app.recall("contact preference", user_id="u1")
   [evals](../concepts/evals.md), [observability](../concepts/observability.md),
   [agents](../concepts/agents.md)
 - [Vincio vs LangChain / LangGraph](../comparisons/langchain.md)
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+_Migrating from another library:_
+- [Coming from LlamaIndex to Vincio](migrate-from-llamaindex.md)
+- [Coming from Mem0 to Vincio](migrate-from-mem0.md)
+- [Coming from Ragas to Vincio](migrate-from-ragas.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -157,3 +157,15 @@ output caps, a scrubbed environment, and, on POSIX, `setrlimit` CPU, memory,
 and file-descriptor limits (`max_cpu_seconds` / `max_memory_bytes` /
 `max_open_files`, conservative by default). This is OS-process isolation, not a
 kernel sandbox; for adversarial code, run tools in a container/VM.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -61,3 +61,17 @@ optimization dimension; `vincio.optimize.PromptOptimizer` searches them.
 | PROMPT009 | hidden business rule only in user message |
 
 Run them with `vincio prompt lint prompts/`.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: optimize prompts, context, and routing](../guides/optimize-context.md)
+- [Example: 01_quickstart.py](../../examples/01_quickstart.py)
+- [Concept: The ergonomic front door](ergonomic-surface.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

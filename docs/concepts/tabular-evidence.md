@@ -137,3 +137,17 @@ Text-to-query, the data-analysis agent, charts, and cell-level provenance are
 later rungs of the data plane (see the [roadmap](../../ROADMAP.md)). Nothing here
 calls a database or a network: `vincio.data` is deterministic, dependency-free,
 and offline.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Example: 13_tabular_evidence.py](../../examples/13_tabular_evidence.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

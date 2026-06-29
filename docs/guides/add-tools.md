@@ -70,3 +70,20 @@ result = await SandboxedPython(timeout_s=15).run("print(2 + 2)")
 
 Runs in an isolated subprocess (`python -I`, scrubbed environment, output
 caps, hard timeout).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Agents & orchestration](../concepts/agents.md)
+- [Guide: How-to: orchestrate multi-agent systems](orchestrate-agents.md)
+- [Guide: Agent Skills](agent-skills.md)
+- [Example: 04_agents_and_tools.py](../../examples/04_agents_and_tools.py)
+- [Example: 05_orchestration.py](../../examples/05_orchestration.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

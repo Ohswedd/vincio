@@ -329,3 +329,19 @@ rollouts before acting so a wrong move costs a simulated step, not a live one.
   `make_vault_environment` trap world it opens the vault a reactive planner is
   trapped short of. See
   [`examples/11_advanced_context.py`](../../examples/11_advanced_context.py).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: How-to: orchestrate multi-agent systems](../guides/orchestrate-agents.md)
+- [Guide: add tools](../guides/add-tools.md)
+- [Example: 04_agents_and_tools.py](../../examples/04_agents_and_tools.py)
+- [Example: 05_orchestration.py](../../examples/05_orchestration.py)
+- [Concept: Prompt compiler](prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

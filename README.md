@@ -437,7 +437,8 @@ infrastructure. There is no hosted service.
 ## Documentation
 
 The [documentation index](docs/README.md) maps every guide, concept, and reference page in a
-reading order. Highlights:
+reading order; the [learning path](docs/learning-path.md) is a staged route from your first app to
+the full platform. Highlights:
 
 - **[Getting started](docs/getting-started.md)**: install, your first app, offline development
 - **Concepts**: [context packets](docs/concepts/context-packets.md) ·
@@ -456,8 +457,8 @@ reading order. Highlights:
   [LlamaIndex](docs/guides/migrate-from-llamaindex.md) · [Ragas](docs/guides/migrate-from-ragas.md)
 - **Security & governance**: [threat model](docs/security/threat-model.md) ·
   [security policy](SECURITY.md) · [governance & compliance](docs/guides/governance.md)
-- **Reference**: [API](docs/reference/api.md) · [CLI](docs/reference/cli.md) ·
-  [config](docs/reference/config.md) · [SLOs](docs/reference/slo.md) ·
+- **Reference**: [API](docs/reference/api.md) · [capability map](docs/reference/capability-map.md) ·
+  [CLI](docs/reference/cli.md) · [config](docs/reference/config.md) · [SLOs](docs/reference/slo.md) ·
   [stability & deprecation](docs/reference/stability.md)
 - **Comparisons**: [LangChain](docs/comparisons/langchain.md) ·
   [LlamaIndex](docs/comparisons/llamaindex.md) · [DSPy](docs/comparisons/dspy.md) ·

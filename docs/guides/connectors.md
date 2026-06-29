@@ -95,3 +95,19 @@ app.add_source("support", connector=connect("tickets", queue="billing"))
 
 Pair connectors with a `LiveIndex` (upserts + TTL) to refresh changing
 corpora without rebuilds, see [retrieval concepts](../concepts/retrieval.md#live-indexes).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Retrieval (RAG)](../concepts/retrieval.md)
+- [Guide: build a RAG app](build-rag-app.md)
+- [Guide: Native video understanding & generation](video.md)
+- [Example: 02_retrieval_rag.py](../../examples/02_retrieval_rag.py)
+- [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

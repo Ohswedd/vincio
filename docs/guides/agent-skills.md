@@ -74,3 +74,17 @@ POSIX `setrlimit`) through the permissioned, audited tool runtime, namespaced
 `register_skill_scripts` to additionally gate them behind an RBAC scope.
 
 See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: add tools](add-tools.md)
+- [Example: 04_agents_and_tools.py](../../examples/04_agents_and_tools.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

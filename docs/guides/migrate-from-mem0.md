@@ -128,3 +128,17 @@ admission checks as a manual `remember`.
 - [Run evals](run-evals.md) and [evals concepts](../concepts/evals.md), measure recall and personalization.
 - [Observability concepts](../concepts/observability.md), traces, cost, and feedback for memory-backed runs.
 - [Vincio vs Mem0](../comparisons/mem0.md), the full comparison.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+_Migrating from another library:_
+- [Coming from LangChain / LangGraph to Vincio](migrate-from-langchain.md)
+- [Coming from LlamaIndex to Vincio](migrate-from-llamaindex.md)
+- [Coming from Ragas to Vincio](migrate-from-ragas.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

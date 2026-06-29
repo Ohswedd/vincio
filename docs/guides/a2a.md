@@ -77,3 +77,16 @@ assert task.status.state == "completed"
 ```
 
 See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Model Context Protocol (MCP)](mcp.md)
+- [Example: 10_interop_and_protocols.py](../../examples/10_interop_and_protocols.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#serving)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

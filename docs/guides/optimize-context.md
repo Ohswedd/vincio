@@ -77,3 +77,21 @@ report = analyze_prompt_cacheability(compiled_prompt)
 for advice in report.advice:
     print(advice.code, advice.message)   # CACHE001 timestamp in prefix, ...
 ```
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
+- [Guide: Performance & streaming](performance.md)
+- [Guide: close the loop](close-the-loop.md)
+- [Example: 01_quickstart.py](../../examples/01_quickstart.py)
+- [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
+- [Example: 08_optimization_self_improvement.py](../../examples/08_optimization_self_improvement.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

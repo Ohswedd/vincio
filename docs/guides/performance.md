@@ -368,3 +368,26 @@ python benchmarks/profile_stages.py --cprofile vincio.prof  # flamegraph input
 
 The per-stage profiler reads the same trace spans the runtime always emits,
 so production traces give you the identical breakdown.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
+- [Concept: Streaming & out-of-core](../concepts/streaming-and-out-of-core.md)
+- [Concept: Observability](../concepts/observability.md)
+- [Guide: Cookbook: task-shaped recipes](cookbook.md)
+- [Guide: optimize prompts, context, and routing](optimize-context.md)
+- [Guide: Analyze data](analyze-data.md)
+- [Guide: Cost, reliability & scale](cost-and-reliability.md)
+- [Example: 01_quickstart.py](../../examples/01_quickstart.py)
+- [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
+- [Example: 18_streaming_out_of_core.py](../../examples/18_streaming_out_of_core.py)
+- [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

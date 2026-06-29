@@ -157,3 +157,17 @@ builds the next rung on top of this one; charts are a later rung (see the
 [roadmap](../../ROADMAP.md)). Nothing here is gated on model output: grounding, the
 read-only guard, cost bounds, and verification are enforced in code,
 deterministically and offline.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Example: 15_governed_text_to_query.py](../../examples/15_governed_text_to_query.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -134,3 +134,18 @@ Retrieval metrics ship in `vincio.evals.metrics`: `recall_at_k`,
 The VincioBench `rag` family compares every retrieval mode (BM25, dense,
 sparse, late interaction, PLAID, hybrid, hybrid_full, query understanding,
 GraphRAG) on recall@3/MRR, gated in CI by `benchmarks/budgets.json`.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: build a RAG app](../guides/build-rag-app.md)
+- [Guide: Connect external data sources](../guides/connectors.md)
+- [Example: 02_retrieval_rag.py](../../examples/02_retrieval_rag.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

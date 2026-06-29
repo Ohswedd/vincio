@@ -262,3 +262,15 @@ choreography is a coordinator dispatching typed requests under a contract, and t
 journal is a hash-chained file you hold and verify yourself. Each organization
 governs and audits the steps that cross into it. Everything that looks operational
 is something you run.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 12_cross_org_economy.py](../../examples/12_cross_org_economy.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

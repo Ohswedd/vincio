@@ -127,3 +127,15 @@ deterministic reference environments:
 It is **a library capability inside your process**, never a hosted training service,
 a managed curriculum, or a network dependency. See `examples/08_optimization_self_improvement.py`
 for a runnable end-to-end walk-through.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 08_optimization_self_improvement.py](../../examples/08_optimization_self_improvement.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#training)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

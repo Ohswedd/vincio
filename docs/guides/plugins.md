@@ -94,3 +94,17 @@ When a distribution declares its targeted plugin-API major via the
 `incompatible` and skips loading it, a plugin written for a future contract
 never half-loads against an older runtime, and vice-versa. A distribution that
 doesn't declare a version is treated as compatible.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+_Recipes & extending Vincio:_
+- [Cookbook: task-shaped recipes](cookbook.md)
+- [Integrations: providers, vector stores, and frameworks](integrations.md)
+- [Vertical packs: a regulated domain in one line](vertical-packs.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

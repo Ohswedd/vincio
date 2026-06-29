@@ -126,3 +126,18 @@ re-derives from its source and a tampered source is caught), **figure-cited** (i
 cites the exact source cells, aggregates included), and **content-bound** (the C2PA
 credential binds the bytes and an edited byte stream is caught). See the
 [SLO reference](../reference/slo.md).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Guide: Generate documents & media (`vincio.generation`)](../guides/generate-documents.md)
+- [Example: 17_charts_cited_artifacts.py](../../examples/17_charts_cited_artifacts.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

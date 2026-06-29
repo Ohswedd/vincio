@@ -112,3 +112,17 @@ the hash-chained audit log with the provenance binding.
   output modalities video sits beside.
 - The `video` VincioBench family and its SLOs (`video_temporal_grounding`,
   `video_generation_provenance_bound`, `video_first_class_evidence`).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Connect external data sources](connectors.md)
+- [Example: 02_retrieval_rag.py](../../examples/02_retrieval_rag.py)
+- [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

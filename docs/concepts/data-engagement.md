@@ -117,3 +117,17 @@ under the [stability policy](../reference/stability.md).
 - [The semantic layer and governed metrics](semantic-layer-and-governed-metrics.md) — the governed metric the engagement threads.
 - [Charts and cited analytical artifacts](charts-and-cited-artifacts.md) — the data-bound figures the `cite` stage embeds.
 - [Governed text-to-query and cell-level provenance](governed-text-to-query.md) — the cell-level lineage every finding inherits.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Example: 20_data_engagement.py](../../examples/20_data_engagement.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

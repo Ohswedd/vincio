@@ -98,3 +98,18 @@ case = convo.to_eval_case(id="sim_billing")   # score with the conversational me
 See [`examples/01_quickstart.py`](../../examples/01_quickstart.py) for a runnable
 end-to-end version, and [agentic evaluation](agentic-eval.md) for the multi-turn
 metrics.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Memory](../concepts/memory.md)
+- [Guide: close the loop](close-the-loop.md)
+- [Example: 03_memory.py](../../examples/03_memory.py)
+- [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -165,3 +165,15 @@ evidence it binds is the evidence the platform already emits; the verdict it pro
 is deterministic, offline, and reproducible from the bytes. With it, the platform is
 **production-complete**: every subsystem composes into one continuously-verified safety
 argument.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

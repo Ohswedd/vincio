@@ -541,3 +541,20 @@ directly when you want to wire one organ on its own. The `loop` family's
 `self_improvement` checks gate the streaming cycle, meta-optimization, and the
 canary-gated deploy. See
 [`38_self_improvement_and_erasure.py`](../../examples/08_optimization_self_improvement.py).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Memory](../concepts/memory.md)
+- [Guide: Build a chat product: the Assistant](assistant.md)
+- [Guide: optimize prompts, context, and routing](optimize-context.md)
+- [Example: 03_memory.py](../../examples/03_memory.py)
+- [Example: 08_optimization_self_improvement.py](../../examples/08_optimization_self_improvement.py)
+- [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

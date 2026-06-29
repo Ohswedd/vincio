@@ -153,3 +153,19 @@ session's traces into the same multi-turn golden shape.
   thresholds over exact-output comparisons; use snapshots for structure.
 - **One bar per metric**: thresholds are explicit at the call site, so a
   failing test names the exact contract that broke.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Evaluation & continuous quality](../concepts/evals.md)
+- [Guide: run evals](run-evals.md)
+- [Guide: agentic evaluation & continuous quality](agentic-eval.md)
+- [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
+- [Concept: Observability](../concepts/observability.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#optimization)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->
