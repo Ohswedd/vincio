@@ -7,11 +7,11 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-5.0.0-B98B2E" alt="Vincio 5.0.0"></a>
+  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-5.5.0-B98B2E" alt="Vincio 5.5.0"></a>
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-5858%20passing-2ea44f" alt="5858 tests passing">
+  <img src="https://img.shields.io/badge/tests-6421%20passing-2ea44f" alt="6421 tests passing">
   <img src="https://img.shields.io/badge/providers-OpenAI%20%C2%B7%20Anthropic%20%C2%B7%20Google%20%C2%B7%20Mistral%20%C2%B7%20local-B98B2E" alt="Providers: OpenAI, Anthropic, Google, Mistral, local, and OpenAI-compatible gateways">
 </p>
 
@@ -32,6 +32,10 @@ the model: what evidence is selected, how it is scored and budgeted, how the res
 and what it cost. It runs on your model of choice across every major provider, with batching,
 caching, failover, and cost tracking built in.
 
+> **Try it in 30 seconds, no install:** open the
+> [**quickstart notebook in Google Colab**](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/01_quickstart.ipynb)
+> — one `pip install`, runs offline on the bundled mock provider, no API key required.
+
 <p align="center">
   <img src="assets/why.svg" alt="Why Vincio: offline dev and CI (deterministic mock, no key, no cost); deterministic (security and validation in code, not model output); measured (every run traced and costed, eval-gated); one system (input to output, not a bag of utilities)" width="840">
 </p>
@@ -39,7 +43,8 @@ caching, failover, and cost tracking built in.
 <details>
 <summary><b>Why you'd reach for it, in one line each</b></summary>
 
-- **Runs on any model, offline when you want.** Call OpenAI, Anthropic, Google, Mistral, a local model, or any OpenAI-compatible gateway through one interface. No key yet? A deterministic mock runs the whole pipeline (retrieval, validation, evals, traces) for dev, tests, and CI, with no network and no cost.
+- **Runs on any model.** Call OpenAI, Anthropic, Google, Mistral, a local model, or any OpenAI-compatible gateway through one interface, with batching, caching, failover, and cost tracking built in.
+- **Develops and tests offline.** Pass the bundled deterministic `MockProvider` (it emits schema-valid output) and the whole pipeline — retrieval, validation, evals, traces, cost — runs in dev and CI with no network and no key. Flip one env var to point at a real model.
 - **Deterministic where it counts.** Security, permissions, and validation are enforced in code, never gated on model output. The same input compiles to the same packet.
 - **Measured, not asserted.** Every run is traced and costed; every change can be gated by an eval suite before it ships.
 - **One coherent system** from input to output, not a bag of utilities you wire together yourself.
@@ -48,29 +53,31 @@ caching, failover, and cost tracking built in.
 
 ## Contents
 
-[Install](#install) · [Quickstart](#quickstart) · [What you can build](#what-you-can-build) ·
-[Providers](#providers--models) · [Features](#features) · [Benchmarks](#benchmarks) ·
-[How Vincio compares](#how-vincio-compares) · [Examples](#examples) · [CLI](#command-line) ·
-[Architecture](#architecture) · [Docs](#documentation)
+[Install](#install) · [Quickstart](#quickstart) · [The one-line front door](#the-one-line-front-door) ·
+[What you can build](#what-you-can-build) · [Providers](#providers--models) · [Features](#features) ·
+[Benchmarks](#benchmarks) · [How Vincio compares](#how-vincio-compares) · [Examples](#examples) ·
+[CLI](#command-line) · [Architecture](#architecture) · [Docs](#documentation)
 
 ## Install
 
 ```bash
-pip install vincio                  # core (the offline mock provider is built in)
-pip install "vincio[openai]"        # + OpenAI    (also: anthropic, google, mistral)
+pip install vincio                  # core (dependency-light: pydantic, httpx, pyyaml, typing-extensions)
+pip install "vincio[openai]"        # + a provider (also: anthropic, google, mistral)
 pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, pgvector, …)
+pip install "vincio[server]"        # + the FastAPI server (vincio serve)
 pip install "vincio[all]"           # every optional integration
 ```
 
-Python 3.11+. The core depends only on `pydantic`, `httpx`, `pyyaml`, and `typing-extensions`;
-every heavy integration (vector stores, OCR, server, OpenTelemetry, …) is an opt-in extra.
+Python 3.11+. Every heavy integration (vector stores, OCR, server, OpenTelemetry, charts, …) is an
+opt-in extra; the core stays small and runs offline.
 
 ## Quickstart
 
 ```python
 from vincio import ContextApp
 
-app = ContextApp(name="docs_qa")
+# Configure a provider (the default is OpenAI — set a provider + key, or pass one explicitly).
+app = ContextApp(name="docs_qa", provider="openai", model="gpt-4o-mini")
 app.add_source("docs", path="./docs", retrieval="hybrid")
 app.set_policy("answer_only_from_sources", True)
 
@@ -81,11 +88,16 @@ print(result.trace_id)    # every run produces a full trace
 print(result.cost_usd)    # …and a cost
 ```
 
-To use a real model, set a provider and key, for example `export VINCIO_PROVIDER=openai
-OPENAI_API_KEY=sk-...`, or pass `provider=` and `model=` to `ContextApp`. The same code runs against
-OpenAI, Anthropic, Google, Mistral, a local model, or any OpenAI-compatible gateway. No key yet? Out
-of the box it runs on a deterministic mock that emits schema-valid output, so you can build and test
-the whole pipeline offline in CI.
+**Run it offline — no key, no network.** Pass the bundled deterministic mock; it auto-generates
+schema-valid output, so the whole pipeline runs in dev and CI for real:
+
+```python
+from vincio.providers import MockProvider
+app = ContextApp(name="docs_qa", provider=MockProvider(), model="mock-1")
+```
+
+Set `VINCIO_PROVIDER` + the matching key in the environment (or pass `provider=`/`model=`) to point
+the same code at OpenAI, Anthropic, Google, Mistral, a local model, or any OpenAI-compatible gateway.
 
 ## The one-line front door
 
@@ -119,12 +131,14 @@ deep methods it composes.
 ```python
 from pydantic import BaseModel
 from vincio import ContextApp
+from vincio.providers import MockProvider
 
 class Triage(BaseModel):
     label: str
     confidence: float
 
-app = ContextApp(name="triage", output_schema=Triage)
+# (provider=MockProvider() runs this offline; use a real provider in production)
+app = ContextApp(name="triage", provider=MockProvider(), model="mock-1", output_schema=Triage)
 app.run("The dashboard crashes after login").output.label   # → a validated Triage
 ```
 
@@ -139,30 +153,19 @@ app.add_tool(issue_refund, permissions=["refunds:write"], approval_required=True
 app.run("Refund my duplicate charge")
 ```
 
-**Evaluation as a CI gate**: measure quality and block a regression before it ships:
-
-```python
-from vincio import Dataset
-from vincio.evals import EvalCase, EvalRunner
-
-dataset = Dataset(name="golden", cases=[EvalCase(id="c1", input="…", expected="…")])
-runner = EvalRunner(app, metrics=["groundedness", "citation_accuracy"],
-                    gates={"groundedness": ">= 0.8"})
-report = runner.run(dataset)
-assert all(g["passed"] for g in report.gates.values())   # fail the build on a regression
-```
-
-See **[Examples](#examples)** for twelve complete, runnable programs that cover the whole platform.
+**A real backend service** you can copy: `examples/applications/` ships a FastAPI grounded-RAG
+service, a ticket-triage API, a structured-extraction service, and a CLI research agent — each
+runnable fully offline. See **[Examples](#examples)**.
 
 ## Providers & models
 
 Vincio calls real models in production. One interface routes to every major provider, with the
 model-operations layer (reasoning control, half-cost batch, caching, failover, cost tracking) built
-in. The deterministic mock is a development convenience, not the product: it lets you build and test
+in. The deterministic mock is a development convenience, not the product: pass it to build and test
 the whole pipeline with no key and no cost before you point it at a real model.
 
 <p align="center">
-  <img src="assets/providers.svg" alt="Providers and models: one interface over OpenAI, Anthropic, Google, Mistral, local models, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex, and Azure OpenAI. Model operations: unified reasoning control, batch at about half cost, prompt caching, circuit breaker and failover, key pool, and per-run cost tracking. With no key, a deterministic mock runs the whole pipeline for dev, tests, and CI." width="840">
+  <img src="assets/providers.svg" alt="Providers and models: one interface over OpenAI, Anthropic, Google, Mistral, local models, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex, and Azure OpenAI. Model operations: unified reasoning control, batch at about half cost, prompt caching, circuit breaker and failover, key pool, and per-run cost tracking. With the bundled mock, the whole pipeline runs for dev, tests, and CI." width="840">
 </p>
 
 <details>
@@ -171,7 +174,7 @@ the whole pipeline with no key and no cost before you point it at a real model.
 - **Providers**: OpenAI, Anthropic, Google (Gemini), Mistral, local models, and any OpenAI-compatible gateway (Groq, Together, Fireworks, OpenRouter, and the like) through one `ModelProvider` interface.
 - **Enterprise auth**: Amazon Bedrock, Google Vertex, and Azure OpenAI via pluggable auth strategies (SigV4, service-account, Azure AD / key).
 - **Model operations**: unified reasoning/thinking control across providers, batch backends (~50% cost), prompt-cache strategy, a circuit breaker with health-aware failover, a key pool, and a data-driven `ModelRegistry` (capabilities, pricing, lifecycle) that drives capability guards and shadow / canary dispatch. Its shipped catalog prices the current lineup of every provider and is held by a coverage gate, so no current model silently bills $0.
-- **The mock**: `MockProvider` is deterministic and emits schema-valid output, so the full pipeline (retrieval, validation, evals, traces, cost) runs offline in CI with no key and no cost. Use it for development and tests; use a real provider in production.
+- **The mock**: `MockProvider` is deterministic and emits schema-valid output, so the full pipeline (retrieval, validation, evals, traces, cost) runs offline in CI with no key and no cost. Pass it explicitly for development and tests; use a real provider in production.
 
 ```python
 # point an app at a real model (or set VINCIO_PROVIDER / the API key in the environment)
@@ -195,14 +198,8 @@ high-level `ContextApp`, or reach for any engine directly.
 **Context & prompts**
 - Prompt compiler: typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, and diffing.
 - Context compiler: scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget, with an *excluded-context report* explaining every omission.
-- Tabular evidence: a typed, columnar `Dataset` and a deterministic `DataEncoder` that renders it header-once — schema, types, and units declared once, cells as delimited rows — lossless, columnar-accurate in token cost, and far cheaper than `json.dumps` or a Markdown table; `TableEvidence` scores and cites it like any other evidence.
-- Dataset profiling & quality: `profile_dataset` computes a deterministic, bounded-memory column profile (cardinality, percentiles, histograms, null rate, exemplars); reservoir/stratified sampling stands a representative sample in for the whole; `fit_to_window` fits a table far larger than the window — profile plus sample — under a fixed token budget; and `DataQualityRails` screen for schema violations, constraint breaks, anomalies, and PII on the deterministic rail path.
-- Governed text-to-query: `app.query_data` turns a question over a registered dataset into a query that is verified *before* it runs — schema-grounded, **read-only by default** (a generated write, DDL, stacked statement, or an injection signal in the question is refused structurally), and cost-bounded — executed by the standard-library `sqlite3` engine where the data lives, not by pouring rows into the prompt. The answer **cites the exact source cells** it rests on (`sales#r0!revenue`), and `result.verify()` re-derives the answer and every cited cell from the bytes.
-- Data-analysis agent: `app.analyze_data` runs a bounded, multi-step analysis over a dataset — it plans, queries through the read-only-verified query plane, inspects, and drills into the group that dominates — and returns a **cited analytical narrative** whose every finding points at the exact source cells and whose `verify(catalog)` re-derives the whole analysis from the bytes. Bounded by an explicit `AnalysisBudget`, audited, and deterministic offline; a DuckDB engine runs the same verified SQL at scale behind the `vincio[data]` extra.
-- Charts & cited artifacts: `app.generate_chart` turns a cited query result into a spec-driven `Chart` that is **content-bound** (a C2PA data-driven credential bound to its rendered bytes, exactly the provenance a generated image carries) and **data-bound** (a back-reference to the exact source cells that `verify(catalog)` re-derives offline). The default renderer emits a portable Vega-Lite spec — no drawing library — and `MatplotlibRenderer` rasterizes the same spec to a PNG behind the `vincio[charts]` extra. The cited-report builder extends to figures, so a `Figure` embeds a chart or table into a deliverable that is per-claim entailed *and* per-figure data-bound.
-- Streaming & out-of-core: a lazy, re-iterable `RowStream` processes a dataset far larger than memory in bounded passes — open a CSV / JSON-Lines file read line by line, iterate it in bounded chunks, and profile, fit, or sample it in a single pass whose footprint tracks columns, not rows. `stream_aggregate` is a bounded-memory group-by (one accumulator per group, never the rows); `encode_stream` renders the compact encoding header-once and gzip-compresses it; the context compiler's streaming candidate pre-filter (`max_candidates`) bounds a 10k+ evidence pool by a cheap relevance proxy before full scoring; and `app.map_stream` runs an analytical transform over a stream at scale through the `BatchRunner`.
-- Semantic layer & governed metrics: a `SemanticLayer` defines measures, dimensions, and derived columns *once* (`revenue = price × qty`) so a question maps to a **governed metric** rather than a raw column — `app.query_metric` resolves a name or natural-language question to the measure, compiles it to one canonical read-only `SELECT`, and runs it through the same governed query plane, so the metric is computed **one way everywhere**, cell-cited, and `MetricResult.verify` proves the number is the governed one (an ad-hoc query is rejected). Column-level `app.metric_lineage` resolves a metric to its base columns and source, and a right-to-erasure sweep (`app.erase_source`) reaches the dataset plane — so a metric's provenance and a subject's erasure both reach structured data.
-- Data engagement: `app.data_engagement` threads the whole analytics plane behind one governed, audited call-path — register → profile → sample → screen → query → analyze → chart → governed metric → cite — and seals it into a hash-chained, signed `DataNarrative`. The narrative `verify()`s offline from the bytes alone (a re-ordered stage, an edited digest, or a forged signature is caught), and — given the live catalog — every captured query, analysis, chart, and metric **re-executes against the content-hashed source and re-derives from the bytes**, so a tampered source is caught even when the chain is intact. Purely compositional: every step delegates to the same primitive a caller would use directly, each still usable on its own.
+- Tabular evidence: a typed, columnar `Dataset` and a deterministic `DataEncoder` that renders it header-once — lossless, columnar-accurate in token cost, far cheaper than `json.dumps` or a Markdown table; `TableEvidence` scores and cites it like any other evidence.
+- Governed text-to-query, a multi-step data-analysis agent, content- & data-bound charts, a streaming out-of-core path, and a governed semantic layer — the whole data & analytics plane, every answer citing the exact source cells and `verify()`-ing offline. See the [data analysis guide](docs/guides/analyze-data.md).
 
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates.
@@ -216,7 +213,7 @@ high-level `ContextApp`, or reach for any engine directly.
 **Output, evaluation & observability**
 - Structured output: Pydantic contracts, constrained decoding, streaming validation with early abort, bounded self-correction that repairs structure only (never invents facts), and DSPy-style typed signatures.
 - Evaluation: golden datasets, 30+ metrics, deterministic / model / G-Eval judges, synthetic data, red-teaming, trajectory & tool-use scoring, drift detection, regression gates, and a `pytest` plugin.
-- Observability: full trace span trees, OpenTelemetry export, a local trace viewer, a versioned prompt registry, and per-run cost tracking, no account or hosted backend required.
+- Observability: full trace span trees, OpenTelemetry export, a local trace viewer, a versioned prompt registry, and per-run cost tracking — no account or hosted backend required.
 
 **The closed loop**
 - Optimization: one reproducible cycle (trace → dataset → eval → optimize → promote): a reflective GEPA/MIPRO optimizer, a distillation flywheel, on-policy reinforcement from verifiable rewards, and gated deploy with canary + rollback. No promotion ships without clearing the gates.
@@ -305,8 +302,7 @@ cannot know from pretraining (**4 models × 3 runs = 360 live calls**, OpenRoute
 
 The cost line is the honest punchline: a direct call is cheaper *per call*, but it answers almost
 nothing correctly, so its cost **per correct answer** is 29–67× higher, or undefined when the model
-gets *nothing* right on its own. Vincio is also faster per answer here (~1.3–1.6 s vs. ~1.7–2.5 s),
-and token usage is roughly a wash. Full per-metric breakdown is in
+gets *nothing* right on its own. Full per-metric breakdown is in
 [`benchmarks/README.md`](benchmarks/README.md). Reproduce with `VINCIO_PROVIDER=openrouter … python
 benchmarks/quality_uplift.py`.
 
@@ -356,35 +352,51 @@ assets in (and hands Vincio's back). See the in-depth write-ups in
 
 ## Examples
 
-Twelve complete, heavily-commented programs in [`examples/`](examples); each runs **fully offline**
-and teaches a whole theme end to end.
+A three-tier on-ramp in [`examples/`](examples) — start in the browser, learn each subsystem, then
+copy a real backend. Every tier runs **fully offline** on the bundled mock and points at a real model
+with one env var; each is gated in CI so it can never drift.
+
+### 1 · Notebooks — start in the browser
+
+Five **Google Colab-ready** notebooks ([`examples/notebooks/`](examples/notebooks)), one `pip
+install` and no setup:
+
+| Notebook | Open in Colab |
+|---|---|
+| [Quickstart](examples/notebooks/01_quickstart.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/01_quickstart.ipynb) |
+| [RAG](examples/notebooks/02_rag.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/02_rag.ipynb) |
+| [Agents & tools](examples/notebooks/03_agents_and_tools.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/03_agents_and_tools.ipynb) |
+| [Evaluation](examples/notebooks/04_evaluation.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/04_evaluation.ipynb) |
+| [Data analysis](examples/notebooks/05_data_analysis.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/05_data_analysis.ipynb) |
+
+### 2 · Feature tours — one program per subsystem
+
+Twenty-three complete, heavily-commented programs; each runs offline and teaches a whole theme end to
+end. Highlights (full index in [`examples/README.md`](examples/README.md)):
 
 | # | Example | What it covers |
 |--|---|---|
+| 00 | [`one_liners`](examples/00_one_liners.py) | the `vincio.tasks` front door — `rag` / `extractor` / `tool_agent` / `evaluation` / `chat` / `Flow`, each lowering to the same governed run |
 | 01 | [`quickstart`](examples/01_quickstart.py) | typed output · grounded QA with citations · trace & cost · a short conversation |
 | 02 | [`retrieval_rag`](examples/02_retrieval_rag.py) | hybrid + sparse + late-interaction fusion · query understanding · GraphRAG · multimodal evidence |
-| 03 | [`memory`](examples/03_memory.py) | scoped remember/recall · bi-temporal · decay & contradictions · GDPR forget/export |
 | 04 | [`agents_and_tools`](examples/04_agents_and_tools.py) | permissioned tools · sandbox · planners · plan repair · deep research · computer-use |
-| 05 | [`orchestration`](examples/05_orchestration.py) | crews + blackboard · durable graphs · workflows · distributed execution |
-| 06 | [`structured_output`](examples/06_structured_output.py) | contracts · constrained decoding · streaming validation · self-correction · signatures |
 | 07 | [`evaluation_observability`](examples/07_evaluation_observability.py) | datasets · metrics · judges · red-team · drift · tracing · prompt registry |
-| 08 | [`optimization_self_improvement`](examples/08_optimization_self_improvement.py) | the closed loop · reflective optimizer · RLVR · canary deploy · local & federated adaptation |
 | 09 | [`security_governance`](examples/09_security_governance.py) | PII/injection/containment · audit · governance evidence · identity · verified reasoning · assurance |
-| 10 | [`interop_and_protocols`](examples/10_interop_and_protocols.py) | MCP client+server · A2A · Agent Skills · framework interop · connectors · packs |
-| 11 | [`advanced_context`](examples/11_advanced_context.py) | reasoning control · test-time compute · long-horizon · world-model · semantic cache · record-replay |
 | 12 | [`cross_org_economy`](examples/12_cross_org_economy.py) | negotiation · contracts · durable sagas · settlement · arbitration · solvency proofs |
-| 13 | [`tabular_evidence`](examples/13_tabular_evidence.py) | typed columnar `Dataset` · the compact, lossless `DataEncoder` · columnar token cost · `TableEvidence` in the compiler |
-| 14 | [`dataset_profiling`](examples/14_dataset_profiling.py) | `profile_dataset` · reservoir/stratified sampling · `fit_to_window` under a token budget · `DataQualityRails` screening |
-| 15 | [`governed_text_to_query`](examples/15_governed_text_to_query.py) | `app.query_data` · read-only-verified SQL · cell-level provenance (`cite_refs`) · offline `verify()` · the dataframe-op dialect |
-| 16 | [`data_analysis_agent`](examples/16_data_analysis_agent.py) | `analyze_dataset` / `app.analyze_data` · plan → query → inspect → drill · cited analytical narrative · `AnalysisBudget` · offline `verify()` · injection refusal |
-| 17 | [`charts_cited_artifacts`](examples/17_charts_cited_artifacts.py) | `generate_chart` / `app.generate_chart` · Vega-Lite spec (matplotlib PNG behind the extra) · C2PA-credentialed bytes · cell-level back-reference · offline `verify()` · per-figure data-bound cited reports |
-| 18 | [`streaming_out_of_core`](examples/18_streaming_out_of_core.py) | `RowStream` over a source larger than memory · bounded chunks · `stream_aggregate` group-by in a fixed footprint · `encode_stream` (gzip) · the compiler's streaming candidate pre-filter · `app.map_stream` at scale on the `BatchRunner` |
-| 19 | [`semantic_layer_governed_metrics`](examples/19_semantic_layer_governed_metrics.py) | `SemanticLayer` of measures / dimensions / derived columns defined once · `app.query_metric` governed metric computed one way everywhere · ratio metrics · cell-cited · `MetricResult.verify` (ad-hoc rejected) · column-level `app.metric_lineage` · `app.erase_source` reaching the dataset plane |
-| 20 | [`data_engagement`](examples/20_data_engagement.py) | `app.data_engagement` threading the whole plane (register → profile → … → cite) into a hash-chained, signed `DataNarrative` · offline `verify()` · data-binding (every finding re-derives from the content-hashed source) · tamper detection · purely compositional |
+| 13–20 | [data plane](examples/13_tabular_evidence.py) | tabular evidence · profiling · governed text-to-query · the analysis agent · cited charts · streaming · the semantic layer · the data engagement |
+| 22 | [`connected_docs`](examples/22_connected_docs.py) | the capability map · Related cross-links · the learning path · the docs-graph check |
+
+### 3 · Applications — real-world backends
+
+Small, production-shaped apps to copy ([`examples/applications/`](examples/applications)): a FastAPI
+**grounded-RAG service**, a **ticket-triage API** (typed output + scoped memory + an approval-gated
+tool), a **structured-extraction service** (self-correcting), and a no-framework **CLI research
+agent**. Each FastAPI app splits an offline-testable `core.py` from a thin FastAPI `main.py`.
 
 ```bash
 cd examples && python 01_quickstart.py            # offline, no keys
 export VINCIO_PROVIDER=openai OPENAI_API_KEY=sk-... && python 01_quickstart.py   # against a real model
+pip install "vincio[server]" && cd examples/applications/rag_service && uvicorn main:app --reload
 ```
 
 ## Command line
@@ -394,8 +406,8 @@ vincio init my-project --template rag   # scaffold config + app + golden set
 vincio run app.py --input "..."         # run an app
 vincio eval run golden.jsonl            # run an eval suite with CI gates + baseline compare
 vincio trace view trace_123             # TUI trace tree with scores + feedback
-vincio optimize run --target groundedness
 vincio loop run --app app.py --gate groundedness=">= 0.8"   # one closed-loop cycle
+vincio docs check                       # gate the docs graph (links, coverage, llms.txt freshness)
 vincio audit verify                     # verify the audit-log hash chain offline
 vincio mcp serve app.py                 # expose an app as an MCP server
 vincio serve --app app.py               # launch the HTTP API (health/readiness/metrics)
@@ -422,13 +434,14 @@ of each engine.
 
 ## Status
 
-Vincio 5.0 is **feature-complete and in long-term support**, with the data & analytics plane now
-complete. The public API is frozen under
-[Semantic Versioning](https://semver.org/spec/v2.0.0.html) with a mechanical
+Vincio is **feature-complete and in long-term support** on the 5.x surface. The public API is frozen
+under [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with a mechanical
 [deprecation policy](docs/reference/stability.md); performance and quality targets are
 [published as SLOs](docs/reference/slo.md) and gated by VincioBench; releases ship a CycloneDX SBOM
 with SLSA provenance. New capabilities are added behind opt-in extras, never by breaking working
-code. See [`ROADMAP.md`](ROADMAP.md) and [`MIGRATION.md`](MIGRATION.md).
+code. The forward plan — a scheduled data & analytics extension line (real-time, federated,
+forecasting/causal verifiers, notebook-native) — is in [`ROADMAP.md`](ROADMAP.md); upgrades in
+[`MIGRATION.md`](MIGRATION.md).
 
 Vincio is, and stays, a **library**. The building blocks for production (audit chain, retention,
 tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own
@@ -447,7 +460,7 @@ the full platform. Highlights:
   [evaluation](docs/concepts/evals.md) · [observability](docs/concepts/observability.md)
 - **Guides**: [build a RAG app](docs/guides/build-rag-app.md) ·
   [structured output](docs/guides/structured-output.md) ·
-  [add tools](docs/guides/add-tools.md) ·
+  [add tools](docs/guides/add-tools.md) · [analyze data](docs/guides/analyze-data.md) ·
   [orchestrate multi-agent systems](docs/guides/orchestrate-agents.md) ·
   [run evals](docs/guides/run-evals.md) · [close the loop](docs/guides/close-the-loop.md) ·
   [performance & streaming](docs/guides/performance.md) · [integrations](docs/guides/integrations.md)
@@ -471,7 +484,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 5858 tests, no network or API keys required
+python -m pytest -q          # 6421 tests, no network or API keys required
 ruff check vincio/ tests/
 mypy vincio
 ```

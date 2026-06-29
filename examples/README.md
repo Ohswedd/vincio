@@ -1,7 +1,8 @@
 # Vincio examples
 
-Twenty-three complete, heavily-commented programs — together they exercise the whole platform. Every one
-runs **fully offline** on the deterministic mock provider: no API keys, no network.
+A three-tier on-ramp — start in the browser, learn each subsystem, then copy a real backend. Every
+tier runs **fully offline** on the deterministic mock provider (no API keys, no network), and points
+at a real model with one environment variable. Each tier is gated in CI so it can never drift.
 
 ```bash
 cd examples
@@ -9,12 +10,21 @@ python 00_one_liners.py                 # the one-line front door
 python 01_quickstart.py                 # then the five-minute tour
 
 # Point any example at a real model instead of the mock:
-export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
+export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-4o-mini OPENAI_API_KEY=sk-...
 python 02_retrieval_rag.py
 ```
 
-Each file is a guided tour: a module docstring states what it teaches, and numbered sections each
-demonstrate one capability and print a concrete result. Read them top to bottom.
+## 1. Notebooks — start in the browser
+
+Five **Google Colab-ready** notebooks: one `pip install`, no setup, offline by default. See
+[`notebooks/`](notebooks/) for all five (quickstart, RAG, agents & tools, evaluation, data analysis),
+each with an *Open in Colab* badge.
+
+## 2. Feature tours — one program per subsystem
+
+Twenty-three complete, heavily-commented programs that exercise the whole platform. Each file is a
+guided tour: a module docstring states what it teaches, and numbered sections each demonstrate one
+capability and print a concrete result. Read them top to bottom.
 
 | # | Example | What it teaches |
 |--|---|---|
@@ -44,3 +54,16 @@ demonstrate one capability and print a concrete result. Read them top to bottom.
 
 `_shared.py` holds the small offline helpers every example imports (`example_provider`,
 `json_responder`, `citing_responder`, `write_sample_docs`).
+
+## 3. Applications — real-world backends
+
+Small, production-shaped apps you can copy as a starting point, in
+[`applications/`](applications/): a FastAPI **grounded-RAG service**, a **ticket-triage API** (typed
+output + scoped memory + an approval-gated tool), a **structured-extraction service** (self-correcting),
+and a no-framework **CLI research agent**. Each FastAPI app splits an offline-testable `core.py` from a
+thin FastAPI `main.py`, so the Vincio logic runs with no web framework installed.
+
+```bash
+pip install "vincio[server]"
+cd examples/applications/rag_service && uvicorn main:app --reload
+```
