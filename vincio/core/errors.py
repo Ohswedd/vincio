@@ -41,6 +41,7 @@ __all__ = [
     "UnsafeQueryError",
     "AnalysisError",
     "ChartError",
+    "SemanticLayerError",
     "RetrievalError",
     "IndexError_",
     "MemoryEngineError",
@@ -407,6 +408,19 @@ class ChartError(DataError):
     code for precise remediation."""
 
     code = "CHART_ERROR"
+
+
+class SemanticLayerError(DataError):
+    """A semantic-layer definition or governed-metric request was invalid — a
+    duplicate or non-identifier name, a derived-column or ratio-measure cycle, a
+    measure that declares neither an aggregation nor a ratio, a metric that does
+    not ground to the table's columns, or a natural-language question that grounds
+    to no defined metric. Inherits :class:`DataError` so ``except DataError``
+    catches the whole data plane; carries its own catalog code for precise
+    remediation. (A compiled metric that is somehow not read-only is refused by the
+    query plane as :class:`UnsafeQueryError`.)"""
+
+    code = "SEMANTIC_LAYER_ERROR"
 
 
 # --- retrieval --------------------------------------------------------------

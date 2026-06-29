@@ -55,11 +55,21 @@ class LineageRecord(BaseModel):
     # generated artifacts (cited documents, images, audio blob keys) whose
     # content derives from this source, so an erasure removes the deliverable too.
     artifacts: list[str] = Field(default_factory=list)
+    # registered tabular datasets (by catalog table name) ingested from this
+    # source, and the columns each carries — so a metric's provenance and a
+    # subject's erasure both reach into the dataset plane.
+    datasets: list[str] = Field(default_factory=list)
+    dataset_columns: dict[str, list[str]] = Field(default_factory=dict)
 
     @property
     def is_empty(self) -> bool:
         return not (
-            self.documents or self.chunks or self.evidence or self.runs or self.artifacts
+            self.documents
+            or self.chunks
+            or self.evidence
+            or self.runs
+            or self.artifacts
+            or self.datasets
         )
 
 
@@ -77,6 +87,10 @@ class ErasureResult(BaseModel):
     # source and removed in the same sweep — so an erased source is erased as
     # evidence, as memory, *and* as generated output in one operation.
     artifacts_removed: int = 0
+    # registered datasets removed from the data catalog in the same sweep — so an
+    # erased source is erased as evidence, memory, generated output, *and*
+    # structured data.
+    datasets_removed: int = 0
     audit_entry_id: str | None = None
     # the signed, content-bound proof of exactly what was removed.
     proof: ErasureProof | None = None
@@ -88,6 +102,7 @@ class ErasureResult(BaseModel):
             + self.chunks_removed
             + self.memories_removed
             + self.artifacts_removed
+            + self.datasets_removed
         )
 
 
@@ -202,6 +217,7 @@ class LineageIndex:
         self._records: dict[str, LineageRecord] = {}
         self._doc_to_source: dict[str, str] = {}
         self._chunk_to_source: dict[str, str] = {}
+        self._table_to_source: dict[str, str] = {}
 
     def _record(self, source: str) -> LineageRecord:
         return self._records.setdefault(source, LineageRecord(source=source))
@@ -253,6 +269,25 @@ class LineageIndex:
         if artifact_key not in record.artifacts:
             record.artifacts.append(artifact_key)
 
+    def record_dataset(self, source: str, table: str, columns: list[str] | None = None) -> None:
+        """Record that a registered tabular dataset (catalog table ``table``,
+        carrying ``columns``) was ingested from ``source`` — so a metric's
+        column-level provenance traces to the source and a right-to-erasure sweep
+        removes the dataset alongside the source's documents and memories."""
+        record = self._record(source)
+        if table not in record.datasets:
+            record.datasets.append(table)
+        record.dataset_columns[table] = list(columns or [])
+        self._table_to_source[table] = source
+
+    def source_of_table(self, table: str) -> str | None:
+        """The source a registered dataset table was ingested under, if any."""
+        return self._table_to_source.get(table)
+
+    def datasets_for(self, source: str) -> list[str]:
+        """The registered dataset tables ingested from a source."""
+        return list(self.trace(source).datasets)
+
     def trace(self, source: str) -> LineageRecord:
         """Return the lineage for a source name or a document id."""
         if source in self._records:
@@ -284,6 +319,8 @@ class LineageIndex:
             self._chunk_to_source.pop(chunk_id, None)
         for doc_id in record.documents:
             self._doc_to_source.pop(doc_id, None)
+        for table in record.datasets:
+            self._table_to_source.pop(table, None)
         return record
 
     def to_dict(self) -> dict[str, Any]:

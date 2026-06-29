@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**500** public symbols.
+**502** public symbols.
 
 ## Classes
 
@@ -1362,6 +1362,10 @@ Opt-in policy for the learned semantic cache.
 
 One probe for the cache gate: a query and its live (reference) answer.
 
+### `SemanticLayer(**data)`
+
+Measures, dimensions, and derived columns defined once over one table.
+
 ### `Send(node, state=…, **data)`
 
 Dynamic fan-out instruction for map-reduce super-steps.
@@ -1915,6 +1919,10 @@ Recover the Ed25519 public key embedded in a ``did:vincio:ed25519`` DID.
 ### `query_dataset(request, data, dialect=…, question=…, ops=…, table=…, max_rows=…, engine=…, injection_detector=…, screen_question=…)`
 
 Plan → verify → execute → cite, in one call.
+
+### `query_metric(request, data, layer, by=…, where=…, order_by=…, descending=…, limit=…, engine=…, max_rows=…, injection_detector=…, screen=…)`
+
+Resolve a governed metric over *data* with *layer* and run it — the one-shot free function behind :meth:`SemanticLayer.query`.
 
 ### `reconcile(a, b, tolerance=…)`
 

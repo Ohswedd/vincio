@@ -119,6 +119,16 @@ class DataCatalog:
                 f"no registered table {name!r}; known tables: {sorted(self._tables)}"
             ) from exc
 
+    def remove(self, name: str) -> bool:
+        """Drop a registered table from the catalog, returning whether it existed.
+
+        Used by the right-to-erasure sweep so an erased source's dataset is removed
+        from the catalog alongside its documents and memories; idempotent."""
+        return self._tables.pop(name, None) is not None
+
+    def __contains__(self, name: object) -> bool:
+        return isinstance(name, str) and name in self._tables
+
     @property
     def tables(self) -> dict[str, Dataset]:
         """The registered tables, by name (a copy)."""

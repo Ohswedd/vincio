@@ -333,6 +333,36 @@
       "rationale": "The pre-filter is the control that keeps a big-data candidate pool inside the compute and resident-memory budget; the budget gates that a 10,000-candidate corpus compiled under a cap keeps only the cap's worth, drops the rest into the excluded report, and still surfaces every relevant item — so a regression that either fails to bound the pool or drops answer-bearing evidence is caught."
     },
     {
+      "id": "semantic_layer_governed_one_way",
+      "category": "quality",
+      "statement": "A metric defined once in the semantic layer is computed one way everywhere: a measure compiles to a single canonical read-only SELECT and returns the same number however the question is phrased.",
+      "metric": "families.data_plane.semantic_layer.governed_one_way",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.semantic_layer.governed_one_way",
+      "rationale": "The single-source discipline is the whole point of a semantic layer; the budget gates that two phrasings of the same question compile to byte-identical SQL and return equal results matching an independent computation, so a regression that lets a metric drift between call sites is caught."
+    },
+    {
+      "id": "semantic_layer_metric_verifiable",
+      "category": "quality",
+      "statement": "A governed metric's result re-derives from the hashed source, and an ad-hoc query passed off as the governed metric — or a tampered source — is rejected.",
+      "metric": "families.data_plane.semantic_layer.metric_verifiable",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.semantic_layer.metric_verifiable",
+      "rationale": "A governed number is only trustworthy if you can prove it was computed the governed way; the budget gates that MetricResult.verify confirms the SQL was the layer's canonical compilation and the cited cells re-derive from the bytes, while a forged ad-hoc result and a tampered source both fail — so a regression that lets an ungoverned number pass is caught."
+    },
+    {
+      "id": "semantic_layer_lineage_reaches_dataset",
+      "category": "privacy",
+      "statement": "A metric's column-level provenance resolves to its base columns and registered source, and a right-to-erasure sweep removes the dataset it rests on from the catalog and the signed erasure proof.",
+      "metric": "families.data_plane.semantic_layer.lineage_reaches_dataset",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.semantic_layer.lineage_reaches_dataset",
+      "rationale": "Right-to-erasure must reach structured data, not only documents and memories; the budget gates that a metric's lineage traces through the derived-column graph to its base columns and the source the dataset was ingested under, and that erasing that source drops the dataset from the catalog and records it in the content-bound proof — so a regression that leaves a subject's structured data behind is caught."
+    },
+    {
       "id": "tool_overhead_p50",
       "category": "performance",
       "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",

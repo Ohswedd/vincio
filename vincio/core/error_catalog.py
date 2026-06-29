@@ -250,6 +250,16 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             '`pip install \"vincio[charts]\"` for the matplotlib renderer (the '
             "dependency-free Vega-Lite renderer needs no extra).",
         ),
+        _entry(
+            "SEMANTIC_LAYER_ERROR",
+            "Semantic-layer definition or metric error",
+            "A semantic-layer definition or governed-metric request was invalid. "
+            "Confirm names are unique, simple identifiers; that derived columns and "
+            "ratio measures have no cycles; that each measure declares an "
+            "aggregation or a numerator/denominator ratio; that referenced metrics "
+            "and dimensions are defined and ground to the table's columns; and that "
+            "a natural-language question names a defined metric.",
+        ),
         # --- retrieval ---
         _entry(
             "RETRIEVAL_ERROR",
