@@ -28,6 +28,7 @@ __all__ = [
     "register_token_counter",
     "get_token_counter",
     "count_tokens",
+    "count_tokens_many",
 ]
 
 
@@ -169,3 +170,22 @@ def count_tokens(text: str, model: str | None = None) -> int:
     if not text:
         return 0
     return _count_cached(text, model)
+
+
+def count_tokens_many(texts: list[str], model: str | None = None) -> list[int]:
+    """Token counts for a batch of *texts*, in order.
+
+    The compiler's normalization pass counts every candidate's tokens at once.
+    Resolving the counter once for the whole batch (it is itself cached) and
+    counting each text through the same per-text memo makes the result
+    element-for-element identical to ``[count_tokens(t, model) for t in texts]``
+    while a large pool is counted in a single pass — and a batch-capable counter
+    (one exposing ``count_many``) amortizes the whole batch in one native call.
+    """
+    if not texts:
+        return []
+    counter = get_token_counter(model)
+    batch = getattr(counter, "count_many", None)
+    if batch is not None:
+        return [max(0, int(n)) if text else 0 for text, n in zip(texts, batch(texts), strict=True)]
+    return [_count_cached(text, model) if text else 0 for text in texts]

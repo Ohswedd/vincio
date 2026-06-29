@@ -285,11 +285,17 @@ app.run("export button 500s").output.label
   coalescing + pooled transport, slim (zero-copy) packets, hard `max_latency_ms`
   deadline + cancellation propagation. The compile hot path is single-pass and
   allocation-light: a vectorized candidate scorer (`ContextScorer.score_batch`,
-  NumPy-optional with an identical pure-Python fallback); a compiled-prompt
-  render program (`CompilerOptions.use_render_program`, `program_hits`) reusing
-  the rendered stable prefix, and a warm candidate arena
+  NumPy-optional with an identical pure-Python fallback); a single-pass feature
+  arena (`performance.single_pass_selection`, `vincio.context.features.FeatureArena`)
+  that derives each candidate's terms/shingles/blocking-tokens once per compile
+  and threads them through dedup/conflict/selection — selection-preserving
+  (byte-identical context, `eq:true` gate) and held honest by a `compile_speedup`
+  ratio floor — with a norm-cached cosine (`cosine_with_norms`), a batched token
+  counter (`count_tokens_many`), and a bounded BM25 top-k (`heapq.nlargest`); a
+  compiled-prompt render program (`CompilerOptions.use_render_program`,
+  `program_hits`) reusing the rendered stable prefix, and a warm candidate arena
   (`performance.reuse_candidate_set`, `arena_hits`) reusing the prepared
-  candidate set, both correctness-preserving; streaming-first compilation
+  candidate set, all correctness-preserving; streaming-first compilation
   (`ContextCompiler.compile_streaming` → `CompileStreamEvent`, prefix before
   scoring); opt-in speculative retrieval prefetch
   (`performance.speculative_prefetch`, `SpeculativePrefetcher`) warming the

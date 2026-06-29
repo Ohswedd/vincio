@@ -550,6 +550,18 @@
     "families.perf.footprint.packet_bytes": {
       "lte": 5000
     },
+    "families.perf.single_pass.selection_byte_identical": {
+      "eq": true
+    },
+    "families.perf.single_pass.compile_speedup": {
+      "gte": 1.08
+    },
+    "families.perf.vectorized_selection.equivalent": {
+      "eq": true
+    },
+    "families.perf.retrieval.topk_identical": {
+      "eq": true
+    },
     "families.loop.promotion.significance_gated": {
       "eq": true
     },

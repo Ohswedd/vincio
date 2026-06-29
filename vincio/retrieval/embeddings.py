@@ -64,6 +64,8 @@ __all__ = [
     "embed_texts",
     "mrl_truncate",
     "cosine",
+    "cosine_with_norms",
+    "vector_norm",
 ]
 
 InputType = Literal["document", "query"]
@@ -99,15 +101,32 @@ def mrl_truncate(vector: list[float], dimensions: int) -> list[float]:
     return [x / norm for x in head]
 
 
+def vector_norm(vector: list[float]) -> float:
+    """L2 norm of *vector*. Cache it once and feed it to :func:`cosine_with_norms`
+    to avoid recomputing a vector's norm on every pairwise comparison."""
+    return math.sqrt(sum(x * x for x in vector))
+
+
+def cosine_with_norms(
+    a: list[float], b: list[float], norm_a: float, norm_b: float
+) -> float:
+    """Cosine similarity of *a* and *b* given their precomputed L2 norms.
+
+    Identical arithmetic to :func:`cosine` — ``dot / (norm_a * norm_b)`` — so it
+    returns bit-for-bit the same value, but the dedup/conflict/MMR passes that
+    compare one vector against many reuse each norm instead of recomputing both
+    norms on every call.
+    """
+    if not a or not b or len(a) != len(b) or norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b, strict=False))
+    return dot / (norm_a * norm_b)
+
+
 def cosine(a: list[float], b: list[float]) -> float:
     if not a or not b or len(a) != len(b):
         return 0.0
-    dot = sum(x * y for x, y in zip(a, b, strict=False))
-    norm_a = math.sqrt(sum(x * x for x in a))
-    norm_b = math.sqrt(sum(y * y for y in b))
-    if norm_a == 0.0 or norm_b == 0.0:
-        return 0.0
-    return dot / (norm_a * norm_b)
+    return cosine_with_norms(a, b, vector_norm(a), vector_norm(b))
 
 
 class LocalHashEmbedder:

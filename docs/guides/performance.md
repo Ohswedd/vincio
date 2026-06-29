@@ -166,14 +166,47 @@ The reuse is correctness-preserving: the cached state is query-independent, and
 each compile works from a fresh copy, so the shared compiler stays safe under
 concurrent runs. `compiler.arena_hits` counts the reuses.
 
+### Single-pass feature arena
+
+The dedup, conflict, and selection passes each need a candidate's stemmed terms,
+word shingles, and similarity-blocking tokens. Deriving those once per compile —
+instead of pass after pass through the bounded global cache, which thrashes once
+a candidate pool is larger than it can hold — keeps the constant factor of the
+O(n²) passes paid exactly once, however large the pool grows:
+
+```yaml
+performance:
+  single_pass_selection: true   # default
+```
+
+A per-compile *feature arena* memoizes each candidate's features in an unbounded
+dict that is discarded when the compile finishes, so a 10k-candidate pool that
+overruns the global cache pays each derivation once. The semantic path caches
+each embedding's norm once and reuses it across every pairwise cosine, the
+normalization pass counts tokens in one batch, and BM25 bounds its top-k with a
+partial selection instead of a full sort. Every one of these is
+**selection-preserving**: the features are byte-identical to the per-pass
+derivation, so the same context is selected with the flag on or off — held by a
+PerfBench `selection_byte_identical` gate. The arena is a fresh per-compile
+object, so the shared compiler stays safe under concurrent runs.
+
+The win is held honest: rather than a loose latency ceiling, a PerfBench
+`compile_speedup` **ratio floor** gates that the single-pass path stays
+measurably faster than the per-pass derivation on a large pool, so an erased win
+fails the build. Measure the before/after yourself:
+
+```bash
+python benchmarks/profile_stages.py --compare   # single-pass off vs on, with speedup
+```
+
 ## Vectorized scoring
 
 Candidate scoring runs in a single pass. The per-component scores for the whole
 candidate set are reduced against the weight vector together, and, when NumPy
 is installed, semantic relevance and the weighted reduction each collapse to a
-single matrix product. The pure-Python fallback is the zero-dependency default
-and produces bit-for-bit the same selection, so NumPy is an optional
-accelerator and never a requirement:
+single matrix product over the candidate set the feature arena prepared. The
+pure-Python fallback is the zero-dependency default and produces bit-for-bit the
+same selection, so NumPy is an optional accelerator and never a requirement:
 
 ```bash
 pip install numpy   # optional: accelerates large semantic candidate sets
@@ -329,6 +362,7 @@ Every claim above is a number in VincioBench, and CI fails on regression:
 python benchmarks/vinciobench.py perf   # latency/throughput/cache-speedup family
 python benchmarks/check_budgets.py      # enforce budgets.json (exit 1 on breach)
 python benchmarks/profile_stages.py     # per-stage breakdown from trace spans
+python benchmarks/profile_stages.py --compare               # single-pass before/after
 python benchmarks/profile_stages.py --cprofile vincio.prof  # flamegraph input
 ```
 

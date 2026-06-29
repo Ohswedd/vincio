@@ -398,6 +398,7 @@ class ContextApp:
             ContextCompilerOptions(
                 slim_packets=self.config.performance.slim_packets,
                 reuse_candidate_set=self.config.performance.reuse_candidate_set,
+                single_pass_selection=self.config.performance.single_pass_selection,
                 max_resident_bytes=(
                     int(self.config.performance.memory_budget_mb * 1_000_000)
                     if self.config.performance.memory_budget_mb is not None

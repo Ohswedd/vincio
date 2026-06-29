@@ -3819,6 +3819,131 @@ async def bench_perf() -> dict[str, Any]:
         "budget_enforced": bool(budget_enforced),
         "packet_bytes": int(ref_fp.resident_bytes),
     }
+
+    # -- single-pass feature arena: selection-preserving, measurably faster -----
+    # The arena derives each candidate's lexical features once and threads them
+    # through every pass. The gates prove it never changes *what* is selected
+    # (eq:true) and that the win has not eroded (a ratio floor), on the default,
+    # dependency-free path. NumPy is an accelerator only; these run either way.
+    def _selection_signature(result: Any) -> dict[str, Any]:
+        """Everything the single-pass optimization could affect — the selected
+        items, the excluded report, the conflicts, the budget, the token count —
+        excluding only the packet's own identity (id/timestamp)."""
+        return {
+            "evidence": [
+                (e.id, e.text, round(e.relevance, 9), e.token_cost) for e in result.ir.evidence
+            ],
+            "memory": [m.id for m in result.ir.memory],
+            "excluded": result.excluded_report,
+            "conflicts": result.conflicts,
+            "budget": result.budget_report,
+            "tokens": result.token_count,
+        }
+
+    async def _compile_single_pass(flag: bool, *, options_kwargs: dict[str, Any]) -> Any:
+        compiler = ContextCompiler(
+            ContextCompilerOptions(single_pass_selection=flag, **options_kwargs)
+        )
+        return await compiler.compile(**compile_kwargs)
+
+    sp_on = await _compile_single_pass(True, options_kwargs={})
+    sp_off = await _compile_single_pass(False, options_kwargs={})
+    results["single_pass"] = {
+        "selection_byte_identical": bool(
+            _selection_signature(sp_on) == _selection_signature(sp_off)
+        )
+    }
+
+    # Vectorized-selection equivalence: on a pool large enough to engage the
+    # single-pass NumPy reduction, the arena selects byte-identical context to the
+    # per-pass baseline (the optimization never changes *what* is selected at
+    # scale, with or without NumPy present).
+    vsel_pool = [
+        EvidenceItem(
+            id=f"vs{i}",
+            source_id=f"vs_doc_{i}",
+            text=f"{text} (clause {i}) covering renewal, refund, and termination terms for plan {i}.",
+            relevance=0.2,
+        )
+        for i, (_n, text) in enumerate(CORPUS * 16)
+    ]
+    vsel_kwargs = dict(
+        objective=objective,
+        user_input=UserInput(text=QA_CASES[0][0]),
+        evidence=vsel_pool,
+        budget=Budget(max_input_tokens=4000),
+    )
+    vsel_on = await ContextCompiler(
+        ContextCompilerOptions(single_pass_selection=True)
+    ).compile(**vsel_kwargs)
+    vsel_off = await ContextCompiler(
+        ContextCompilerOptions(single_pass_selection=False)
+    ).compile(**vsel_kwargs)
+    results["vectorized_selection"] = {
+        "equivalent": bool(_selection_signature(vsel_on) == _selection_signature(vsel_off))
+    }
+
+    # Compile speedup: on a large, mostly-distinct pool — the 10k-scale regime
+    # where the bounded global term/shingle cache thrashes and the per-compile
+    # arena pays each derivation once — the single-pass path is measurably faster.
+    # A ratio floor (not just a loose latency ceiling) makes an erased win fail
+    # the build. Ratio of medians over interleaved repeats, robust to a hiccup.
+    _sp_base = [
+        "The renewal clause requires written notice sixty days before the anniversary for plan {i}.",
+        "Termination for convenience needs thirty days notice under section {i} of the agreement.",
+        "Payment is net forty five from invoice receipt for account {i}; overdue balances accrue.",
+        "Liability is capped at the fees paid over the preceding twelve months for engagement {i}.",
+        "Warranty coverage spans ninety days of conforming performance for product line {i}.",
+        "The Pro plan refund window is thirty days from purchase for customer cohort {i} annual.",
+    ]
+    sp_pool = [
+        EvidenceItem(id=f"sp{i}", source_id=f"sp_doc_{i}", text=tmpl.format(i=i), relevance=0.2)
+        for i in range(1000)
+        for tmpl in _sp_base
+    ]  # ~6000 distinct candidates, above the global cache size
+    sp_kwargs = dict(
+        objective=objective,
+        user_input=UserInput(text="What are the refund and renewal-notice terms?"),
+        evidence=sp_pool,
+        budget=Budget(max_input_tokens=3000),
+    )
+
+    async def _sp_compile(flag: bool) -> None:
+        await ContextCompiler(
+            ContextCompilerOptions(single_pass_selection=flag)
+        ).compile(**sp_kwargs)
+
+    await _sp_compile(True)  # warm imports/caches
+    await _sp_compile(False)
+    sp_on_t: list[float] = []
+    sp_off_t: list[float] = []
+    for _ in range(7):
+        started = time.perf_counter()
+        await _sp_compile(False)
+        sp_off_t.append(time.perf_counter() - started)
+        started = time.perf_counter()
+        await _sp_compile(True)
+        sp_on_t.append(time.perf_counter() - started)
+    results["single_pass"]["compile_speedup"] = round(
+        statistics.median(sp_off_t) / max(1e-9, statistics.median(sp_on_t)), 2
+    )
+
+    # Bounded retrieval top-k: BM25 selects its top-k with a partial selection,
+    # returning the identical hits a full sort would — the bounded path equals the
+    # prefix of the full ranking.
+    topk_index = BM25Index()
+    await topk_index.add(
+        [Chunk(id=f"tk{i}", text=text, document_id="tk") for i, (_n, text) in enumerate(CORPUS * 3)]
+    )
+    topk_query = "refund renewal termination policy"
+    full_ranking = await topk_index.search(topk_query, top_k=10**6)
+    topk_identical = True
+    for k in (1, 2, 3, 5):
+        bounded = await topk_index.search(topk_query, top_k=k)
+        if [h.chunk.id for h in bounded] != [h.chunk.id for h in full_ranking[:k]]:
+            topk_identical = False
+            break
+    results["retrieval"]["topk_identical"] = bool(topk_identical)
     return results
 
 

@@ -4,6 +4,49 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.2.0] - 2026-06-29
+
+The second fit-and-finish minor on the frozen 5.x platform — **make the default compile path faster, honestly.**
+The win is not a new capability but the *same* selection made measurably cheaper on the default, dependency-free path
+VincioBench actually gates (NumPy is an optional accelerator, never present for a gated number). The compile hot path
+(`_normalize` → pre-filter → `_remove_duplicates` → `_resolve_conflicts` → `_select`) re-derived each candidate's stemmed
+terms, shingles, and similarity-blocking tokens pass after pass; the bounded global `lru_cache` on those derivations
+thrashes on the 10k+ pools the streaming pre-filter exercises, so the O(n²) dedup / conflict / selection constant factor
+was paid many times over. 5.2 derives each candidate's features **exactly once per compile** and threads them through every
+pass, returning **byte-identical context** — the same selection, made faster. Entirely additive and backward-compatible (no
+public symbol changes; `API_VERSION` stays `"5.0"`), dependency-free, deterministic, and offline.
+
+### Added
+
+- **A per-compile feature arena** (`vincio/context/features.py`, `FeatureArena`) that derives each candidate's stemmed
+  terms, word shingles, and similarity-blocking tokens **once per compile** — in an unbounded per-compile memo discarded
+  when the compile finishes — and threads them through scoring, dedup, conflict, and selection, so a 10k-scale pool that
+  overruns the bounded global cache pays each derivation once. The features are byte-identical to the per-pass derivation,
+  and the arena is a fresh per-compile object, so the shared compiler stays concurrency-safe. Ships behind a
+  `ContextCompilerOptions.single_pass_selection` flag (and a `performance.single_pass_selection` config knob), on by
+  default, exactly the way `reuse_candidate_set` does.
+- **A norm-cached cosine** (`vincio.retrieval.embeddings.cosine_with_norms` / `vector_norm`). The semantic dedup / conflict
+  / selection passes compute each embedding's L2 norm once and reuse it across every pairwise comparison instead of
+  recomputing both norms per call. Bit-for-bit identical to `cosine`, which now delegates to it.
+- **A batched token counter** (`vincio.core.tokens.count_tokens_many`) used by the compiler's normalization pass; resolves
+  the counter once for a batch and is element-for-element identical to `count_tokens` per item, with a fast path for a
+  native batch tokenizer.
+- **A bounded BM25 top-k.** `BM25Index.search` selects its top-k with `heapq.nlargest` (O(n log k)) instead of a full sort
+  (O(n log n)), returning the identical hits a full sort would — the bounded result equals the prefix of the full ranking.
+- **PerfBench gates** holding the optimization: `selection_byte_identical`, `vectorized_selection.equivalent`, and
+  `retrieval.topk_identical` (`eq:true`) prove it never changes *what* is selected, and a `single_pass.compile_speedup`
+  **ratio floor** (published 1.05×, gated 1.08×) makes an erased win fail the build rather than passing silently under a
+  loose latency ceiling. Four published SLOs, each held by an at-least-as-strict CI budget; the committed
+  `benchmarks/profile_stages.py --compare` reports the before/after per-stage breakdown.
+
+### Changed
+
+- The context compiler builds a per-compile scorer carrying the feature arena (and any semantic embedding vectors) rather
+  than threading per-compile state onto the shared scorer, so concurrent compiles never alias. The shared, state-free
+  scorer is still used unchanged when the single-pass flag is off.
+- `vincio.context.compiler._block_tokens` is derived once per kept candidate in the dedup pass instead of twice; this
+  applies whether the feature arena is on or off and is selection-preserving.
+
 ## [5.1.0] - 2026-06-29
 
 The first fit-and-finish minor on the frozen 5.x platform — **make the cost report honest.** The data-driven

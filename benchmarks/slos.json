@@ -2151,6 +2151,46 @@
       "threshold": true,
       "enforced_by": "families.registry_coverage.no_silent_zero",
       "rationale": "An unpriced billable model makes the cost report quietly wrong \u2014 the most expensive way to be inaccurate, because spend looks free. Gating that every GA billable model of a paid provider is priced makes the cost report honest by construction; genuinely free or self-hosted models (local, mock) are exempt, and an arbitrary uncatalogued id still warns once rather than billing $0 silently."
+    },
+    {
+      "id": "single_pass_selection_identical",
+      "category": "performance",
+      "statement": "The single-pass feature arena selects byte-identical context to the per-pass derivation: the same evidence, the same exclusions, the same conflicts, and the same budget.",
+      "metric": "families.perf.single_pass.selection_byte_identical",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.single_pass.selection_byte_identical",
+      "rationale": "The arena derives each candidate's lexical features once and threads them through scoring, dedup, conflict, and selection; correctness is the precondition for the speedup, so the gate proves the optimization never changes what is selected. The features are byte-identical to the per-pass derivation, so the selection signature must match with the flag on and off."
+    },
+    {
+      "id": "vectorized_selection_equivalent",
+      "category": "performance",
+      "statement": "Single-pass selection over a large candidate pool selects byte-identical context to the per-pass baseline, with or without NumPy present.",
+      "metric": "families.perf.vectorized_selection.equivalent",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.vectorized_selection.equivalent",
+      "rationale": "On a pool large enough to engage the single-pass NumPy reduction, the feature arena and the vectorized scoring path must still select the identical context the per-candidate baseline does \u2014 NumPy is an accelerator, never a behavior change, so the selection cannot diverge at scale."
+    },
+    {
+      "id": "single_pass_compile_speedup",
+      "category": "performance",
+      "statement": "The single-pass feature arena is at least 1.05x faster than the per-pass derivation on a large, mostly-distinct candidate pool (the 10k-scale regime where the bounded global feature cache thrashes).",
+      "metric": "families.perf.single_pass.compile_speedup",
+      "direction": "gte",
+      "threshold": 1.05,
+      "enforced_by": "families.perf.single_pass.compile_speedup",
+      "rationale": "A selection-preserving optimization is only worth shipping if the win is real and stays real; a ratio floor makes an erased win fail the build rather than passing silently under a loose latency ceiling. The budget gates 1.08 against the published 1.05 to leave headroom on shared runners while still catching a regression that erases the arena's benefit."
+    },
+    {
+      "id": "retrieval_topk_identical",
+      "category": "performance",
+      "statement": "Bounded BM25 top-k selection returns the identical hits a full sort would: the bounded result equals the prefix of the full ranking.",
+      "metric": "families.perf.retrieval.topk_identical",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.perf.retrieval.topk_identical",
+      "rationale": "Bounding the top-k with a partial selection (O(n log k)) instead of a full sort (O(n log n)) must not change the hits returned; the gate proves the bounded path reproduces the full-sort ranking exactly for every k."
     }
   ]
 }

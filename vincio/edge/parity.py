@@ -45,6 +45,7 @@ __all__ = [
 EDGE_CORE_MODULES: tuple[str, ...] = (
     "vincio.context.compiler",
     "vincio.context.scoring",
+    "vincio.context.features",
     "vincio.context.vectorized",
     "vincio.context.budgeting",
     "vincio.context.arena",

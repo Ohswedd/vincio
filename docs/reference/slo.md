@@ -29,6 +29,10 @@ for tuning.
 | Warm compile hot path (p50, cache hit) | ≤ 10 ms (sub-ms on the reference corpus) | `perf.context_compile.cached_p50_ms` |
 | Compile cache speedup | ≥ 1.5× | `perf.context_compile.cache_speedup` |
 | Vectorized scoring equivalence | batched == per-candidate loop | `perf.vectorized_scoring.equivalent` |
+| Single-pass selection byte-identity | feature arena selects identical context | `perf.single_pass.selection_byte_identical` |
+| Single-pass selection equivalence (large pool) | arena == per-pass baseline at scale | `perf.vectorized_selection.equivalent` |
+| Single-pass compile speedup | ≥ 1.05× on a large pool | `perf.single_pass.compile_speedup` |
+| Bounded BM25 top-k identity | nlargest == full-sort prefix | `perf.retrieval.topk_identical` |
 | Render-program byte-identity | identical to from-scratch compile | `perf.render_program.byte_identical` |
 | Warm candidate arena equivalence | warm reuse == cold compile | `perf.warm_arena.equivalent` |
 | Streaming-first compilation | prefix before scoring | `perf.streaming_compile.prefix_before_scoring` |
