@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "5.4.0"
+version = "5.5.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -161,6 +161,12 @@ target-version = "py311"
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B"]
 ignore = ["E501", "B008"]
+
+[tool.ruff.lint.per-file-ignores]
+# Colab/Jupyter notebooks legitimately interleave a setup statement (e.g.
+# quieting a warning) before an import within a teaching cell; E402 there is a
+# false positive for a tutorial, not a module.
+"examples/notebooks/*.ipynb" = ["E402"]
 
 [tool.mypy]
 python_version = "3.11"

@@ -23,14 +23,15 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "5.4.0"
+    assert vincio.__version__ == "5.5.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
     # the 4.x data & analytics plane (4.1–5.0) and declares that plane complete. The
-    # 5.4 fit-and-finish minor adds the connected docs & capability map — generated
-    # artifacts and a new `vincio docs` CLI verb, with **no public symbol changes** —
-    # so the contract stays "5.0" while the package version advances to 5.4.0.
+    # 5.5 developer-experience minor rebuilds the on-ramp (README, AGENTS, llms.txt,
+    # Colab notebooks, real-world backend apps) — docs and examples only, with **no
+    # public symbol changes** — so the contract stays "5.0" while the package
+    # version advances to 5.5.0.
     assert API_VERSION == "5.0"
 
 

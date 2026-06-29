@@ -4,6 +4,54 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.5.0] - 2026-06-30
+
+The developer-experience capstone — **rebuild the on-ramp to match the platform behind it.** The
+library is complete and the docs are a connected graph (5.4), but the first surfaces a developer or an
+agent meets — the README, the examples, and the agent-facing context files — had drifted and stayed
+feature-tour-shaped. 5.5 makes the on-ramp first-class, and completes the ROADMAP by scheduling the
+formerly-exploratory data & analytics extensions as concrete phases (5.6–5.9). Entirely additive:
+docs and examples only, **no public symbol changes** (`vincio.__all__` and `API_VERSION` untouched),
+dependency-free, deterministic, and offline.
+
+### Added
+
+- **A three-tier examples suite:**
+  - **`examples/notebooks/`** — five Google Colab-ready notebooks (quickstart, RAG, agents & tools,
+    evaluation, data analysis): one `pip install`, offline by default, an *Open in Colab* badge each.
+    Gated by `tests/test_example_notebooks.py` (valid JSON, an install cell, no stale outputs, and the
+    code cells run offline end to end).
+  - **`examples/applications/`** — real-world small backends: a FastAPI **grounded-RAG service**, a
+    **ticket-triage API** (typed output + scoped memory + an approval-gated escalation tool), a
+    **structured-extraction service** (bounded self-correction), and a no-framework **CLI research
+    agent**. Each FastAPI app splits an offline-testable `core.py` from a thin FastAPI `main.py`.
+    Gated by `tests/test_example_apps.py` (cores run offline; the FastAPI shells are exercised with a
+    test client when FastAPI is installed).
+- **`docs/guides/analyze-data.md` was already added in 5.4**; 5.5 adds the notebooks/applications
+  index pages and threads them through `examples/README.md`.
+
+### Changed
+
+- **`README.md` fully redesigned** — current version/test badges, a Colab "try it in 30 seconds"
+  callout, an honest offline story (pass `MockProvider()` or set a provider+key; the default provider
+  is OpenAI), the three example tiers, and the scheduled forward plan.
+- **`AGENTS.md` rewritten** — restructured contributor map with the examples & docs systems, a
+  CI-skip note for optional-dependency code, and an "adding a subsystem" checklist.
+- **`llms.txt` generator (`vincio/_docmap.py`) rewritten** — a richer, accurate preamble and gotchas
+  (the OpenAI-default-provider / explicit-mock reality, the data-plane app methods, the three example
+  tiers); still regenerated from `vincio.__all__` and gated for freshness.
+- **`ROADMAP.md` completed** — the open-ended "Exploring — later" section is replaced by a scheduled
+  data & analytics extension line (**5.6** real-time & streaming analytics, **5.7** cross-org /
+  federated analytics, **5.8** forecasting & causal-inference verifier kernels, **5.9**
+  notebook-native analysis surface), and the developer-experience overhaul lands in *What ships
+  today*.
+
+### Fixed
+
+- Corrected the "offline by default" claim in the README and `llms.txt`: a bare `ContextApp` uses the
+  OpenAI default and needs a key; the offline path is `provider=MockProvider()` (which auto-generates
+  schema-valid output). The examples and notebooks use this explicitly.
+
 ## [5.4.0] - 2026-06-30
 
 The fourth and final fit-and-finish minor on the frozen 5.x platform — **make the docs navigable.** Every subsystem ships

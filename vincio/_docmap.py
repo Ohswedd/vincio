@@ -1100,10 +1100,11 @@ def render_app_method_index() -> str:
 _LLMS_PREAMBLE = """\
 # Vincio
 
-> Vincio is a Python platform for context-engineered AI applications. It
-> compiles prompts, memory, retrieval, tools, schemas, and policies into
-> optimized, validated, observable, provider-neutral context packets, then
-> validates and evaluates every output.
+> Vincio is a Python platform for building AI applications you can trust in
+> production. It compiles everything that goes *into* a model — prompts, memory,
+> retrieved evidence, tools, schemas, and policies — into an optimized,
+> validated, observable, provider-neutral **context packet**, then checks,
+> measures, and traces everything that comes *out*.
 
 Package: `pip install vincio` · Python 3.11+ · Apache 2.0 · SemVer.
 Main entry point: `from vincio import ContextApp`.
@@ -1111,28 +1112,47 @@ Main entry point: `from vincio import ContextApp`.
 This file is generated from `vincio.__all__` by `vincio._docmap` and gated for
 freshness (a new public symbol must appear here), the way `api-generated.md` and
 the error catalog are. It is a complete, machine-readable digest of the public
-surface; for prose see the docs under `docs/`.
+surface; for prose see the docs under `docs/` (start at `docs/learning-path.md`
+and `docs/reference/capability-map.md`).
+
+## Install
+
+```bash
+pip install vincio                  # core (only pydantic, httpx, pyyaml, typing-extensions)
+pip install "vincio[openai]"        # + a provider (also: anthropic, google, mistral)
+pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, pgvector, ...)
+pip install "vincio[server]"        # + the FastAPI server (vincio serve / from vincio.server import create_app)
+pip install "vincio[all]"           # every optional integration
+```
+
+Every heavy integration (vector stores, OCR, server, OpenTelemetry, charts, ...)
+is an opt-in extra; the core is dependency-light and runs offline.
 
 ## Quickstart
 
 ```python
 from vincio import ContextApp
 
-app = ContextApp(name="docs_qa")
+# Uses your configured provider (set a provider+key, e.g. provider="openai" with
+# OPENAI_API_KEY in the env). The DEFAULT provider is OpenAI, so configure one.
+app = ContextApp(name="docs_qa", provider="openai", model="gpt-4o-mini")
 app.add_source("docs", path="./docs", retrieval="hybrid")
 app.set_policy("answer_only_from_sources", True)
 result = app.run("How do I configure SSO?")
 result.output; result.citations; result.trace_id; result.cost_usd
 
-# Typed output: pass a Pydantic class; result.output is a validated instance.
+# Run FULLY OFFLINE (no key, no network): pass the bundled deterministic mock.
+# It auto-generates schema-valid output, so the whole pipeline runs in CI.
+from vincio.providers import MockProvider
+app = ContextApp(name="dev", provider=MockProvider(), model="mock-1")
+
+# Typed output: pass a Pydantic class; result.output is a validated instance
+# (the mock fills it schema-valid offline; a real model fills it for real).
 from pydantic import BaseModel
 class Triage(BaseModel):
     label: str; confidence: float
-app = ContextApp(name="triage", output_schema=Triage)
+app = ContextApp(name="triage", provider=MockProvider(), model="mock-1", output_schema=Triage)
 app.run("export button 500s").output.label
-
-# Offline by default: with no provider/key, a deterministic mock emits
-# schema-valid output, so the whole pipeline runs in CI without network.
 ```
 
 ## Ergonomic front door (vincio.tasks)
@@ -1146,12 +1166,12 @@ apply unchanged). `.app` on every facade is the escape hatch to all deep methods
 ```python
 from vincio import rag, extractor, tool_agent, evaluation, chat, Flow
 
-rag("./docs").ask("How do I configure SSO?")          # grounded RAG Q&A
-extractor(Triage).extract("export button 500s")        # typed extraction
-tool_agent(tools=[...], writes=["send_email"]).run(...)  # approval-gated tools
-evaluation(dataset, metrics=[...]).run()               # offline eval + gates
-chat()                                                  # an Assistant
-Flow(provider=...).source("./docs").ground().ask("...")  # immutable, one packet
+rag("./docs").ask("How do I configure SSO?")             # grounded RAG Q&A
+extractor(Triage).extract("export button 500s")          # typed extraction
+tool_agent(tools=[lookup], writes=[refund]).run(task)    # approval-gated tools
+evaluation(dataset, gates={"groundedness": ">= 0.8"}).run()   # offline eval + CI gate
+chat().send("What's my refund window?")                  # a multi-turn Assistant
+Flow(provider=p, model=m).retrieve("./docs").ground().run(question)  # one packet, fluent
 ```
 
 ## Mental model
@@ -1161,31 +1181,50 @@ Flow(provider=...).source("./docs").ground().ask("...")  # immutable, one packet
   lazily-constructed capability facades — `app.runs`, `app.knowledge`,
   `app.governance`, `app.optimization`, `app.serving`, `app.training` — each a
   narrow view delegating to the same implementation.
-- Everything is offline-first and deterministic by default: no provider/key
-  falls back to a `MockProvider` that emits schema-valid output, so the whole
-  pipeline (validation, evals, traces, audit) runs in CI without a network.
-- Every run yields one `RunResult` (typed output, citations, trace_id,
-  cost_usd, usage, eval_scores, excluded_context), one trace, one cost entry,
-  and one hash-chained audit entry.
+- The run pipeline is one path: normalize → classify → policy → memory recall →
+  retrieve → compile context (score / dedupe / conflict / compress / budget) →
+  compile prompt (cache-aware) → model (+ bounded tool loop) → validate (schema /
+  citations / policy, principled repair) → evaluate → trace → memory write.
+- Deterministic where it matters: security, permissions, validation, and budgets
+  are enforced in code, never gated on model output.
+- Offline development uses the bundled `MockProvider` (pass it explicitly, or set
+  a provider+key for a real run). It emits schema-valid output so the whole
+  pipeline — validation, evals, traces, audit, cost — runs with no network.
+- Every run yields one `RunResult` (typed output, citations, trace_id, cost_usd,
+  usage, eval_scores, excluded_context), one trace, one cost entry, and one
+  hash-chained audit entry.
 - Errors all derive from `VincioError` and carry a stable `.code`, a
   `.remediation`, and a `.docs_url`. Catch the family with one `except`.
-- Optional heavy features ride extras (`vincio[...]`); the dependency-free,
-  offline path is always the default.
+- Optional heavy features ride extras (`vincio[...]`); the dependency-light,
+  offline-first path is always the default.
+
+## Examples (three tiers, all runnable offline)
+
+- `examples/notebooks/*.ipynb` — Google Colab-ready notebooks (one `pip install`,
+  offline by default): quickstart, RAG, agents & tools, evaluation, data analysis.
+- `examples/00`–`22` — complete, heavily-commented feature tours, one per subsystem.
+- `examples/applications/` — real-world small backends: a FastAPI grounded-RAG
+  service, a ticket-triage API, a structured-extraction service, and a CLI
+  research agent. Each splits an offline-testable `core.py` from a FastAPI
+  `main.py` and runs on the mock or a real model with one env var.
 """
 
 _LLMS_GOTCHAS = """\
 ## Gotchas for generated code
 
-- Construct `ContextApp(name=...)`; with no provider it uses the deterministic
-  mock, so examples run offline.
+- The DEFAULT provider is OpenAI. A bare `ContextApp(name=...)` needs a provider
+  and key; to run with NO key, pass `provider=MockProvider()` explicitly (from
+  `vincio.providers`). The mock auto-generates schema-valid output offline.
 - `result.output` is a validated Pydantic instance only when `output_schema=` is
-  set; otherwise read `result.raw_text`.
+  set; otherwise read `result.raw_text`. Check `result.status` / `result.error`.
 - Grounding is a policy: `app.set_policy("answer_only_from_sources", True)` plus
   an evaluator like `groundedness`. The `rag(...)` front door wires both.
 - Async methods are the `a`-prefixed variants (`arun`, `astream`, `abatch`, …);
-  the sync names wrap them.
+  the sync names wrap them and work with or without a running event loop.
 - Write/side-effecting tools are denied by default and surfaced for approval;
-  pass an `auto_approve` allow-list or approve explicitly.
+  pass an `approval_required=` tool plus an approval callback / allow-list.
+- The data plane uses app METHODS, not top-level functions: `app.register_dataset`,
+  `app.query_data`, `app.analyze_data`, `app.generate_chart`, `app.data_catalog`.
 - Heavy backends are extras: install `vincio[openai]`, `vincio[retrieval]`,
   `vincio[server]`, `vincio[charts]`, `vincio[docs]`, etc. as needed.
 - The frozen public surface is exactly `vincio.__all__`; import from the top
@@ -1230,11 +1269,12 @@ def render_llms_txt() -> str:
     for name, obj in public_symbols():
         by_kind[symbol_kind(obj)].append((name, obj))
     total = sum(len(v) for v in by_kind.values())
-    parts.append(f"## Public API ({total} symbols in vincio.__all__)")
+    parts.append(f"## Public API ({total} public symbols)")
     parts.append("")
     parts.append(
-        "The exact set Semantic Versioning applies to. Import every name from the "
-        "top-level `vincio` package."
+        "Every introspectable name in `vincio.__all__` — the exact set Semantic "
+        "Versioning applies to (the `__version__` value aside). Import every name "
+        "from the top-level `vincio` package."
     )
     parts.append("")
     for kind, heading in (("class", "Classes"), ("function", "Functions"), ("data", "Values")):
