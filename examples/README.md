@@ -1,11 +1,12 @@
 # Vincio examples
 
-Twenty-one complete, heavily-commented programs — together they exercise the whole platform. Every one
+Twenty-two complete, heavily-commented programs — together they exercise the whole platform. Every one
 runs **fully offline** on the deterministic mock provider: no API keys, no network.
 
 ```bash
 cd examples
-python 01_quickstart.py                 # start here
+python 00_one_liners.py                 # the one-line front door
+python 01_quickstart.py                 # then the five-minute tour
 
 # Point any example at a real model instead of the mock:
 export VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2-mini OPENAI_API_KEY=sk-...
@@ -17,6 +18,7 @@ demonstrate one capability and print a concrete result. Read them top to bottom.
 
 | # | Example | What it teaches |
 |--|---|---|
+| 00 | [`one_liners`](00_one_liners.py) | The ergonomic 'ad-hoc' front door (`vincio.tasks`): grounded RAG (`rag`), typed extraction (`extractor`), an approval-gated tool agent (`tool_agent`), an eval (`evaluation`), a chat (`chat`), and the fluent immutable `Flow` — each one expression that **lowers to the same governed `ContextApp.run` packet** as the verbose form (proven byte-identical), with `.app` as the escape hatch. |
 | 01 | [`quickstart`](01_quickstart.py) | The five-minute tour — `ContextApp`, typed Pydantic output, grounded QA with citations, the trace_id + cost on every result, and a short multi-turn chat. |
 | 02 | [`retrieval_rag`](02_retrieval_rag.py) | Hybrid retrieval (BM25 + dense + learned-sparse + late-interaction fused), query understanding (HyDE / multi-query / decomposition), chunking, GraphRAG, metadata filters, embedders, and multimodal (image/table/video) evidence. |
 | 03 | [`memory`](03_memory.py) | Scoped `remember`/`recall`, the guarded write pipeline, confidence decay, contradiction resolution, bi-temporal recall, per-memory ACLs, episodic→semantic consolidation, and audited GDPR edit/forget/export/erase. |

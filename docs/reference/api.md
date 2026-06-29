@@ -92,6 +92,28 @@ API below remains fully supported.
 | `task` (decorator) | configure from a task class |
 | `stats()` | sources, tools, memory, cost, run counts |
 
+## Ergonomic front door (`vincio.tasks`)
+
+One-line, task-shaped constructors over `ContextApp`, also re-exported at the top
+level and tagged `@experimental`. Each is a purely-compositional facade that
+configures an app with the *same* public builder calls and **lowers to the exact
+same governed `ContextApp.run` packet** as the verbose form; `facade.app` is the
+escape hatch to every deep method.
+
+| Entry point | Returns | What it composes |
+|---|---|---|
+| `rag(sources=None, *, evaluators=("groundedness","citation_accuracy"), grounded=True, chunking=None, retrieval="hybrid", ...)` | `RagTask` (`.ask(q)`) | `add_source` + `set_policy("answer_only_from_sources", True)` + `add_evaluator(...)` |
+| `extractor(schema, ...)` | `Extractor` (`.extract(text)`) | `ContextApp(output_schema=schema)` |
+| `tool_agent(tools=(), *, writes=(), approve=(), ...)` | `ToolAgent` (`.run(task)`) | `add_tool(...)` with write tools approval-gated |
+| `evaluation(dataset=None, *, metrics=(), gates=None, ...)` | `Evaluation` (`.run()`) | `add_evaluator(...)` + `evaluate(dataset, gates=)` |
+| `chat(*, tools=(), writes=(), approve=(), ...)` | `Assistant` | `add_tool(...)` + `app.assistant(...)` |
+| `Flow(*, provider=, model=, ...)` | `Flow` | fluent, immutable `retrieve` → `ground` → `call` → `validate` → `evaluate`; `.run(input)` |
+
+All constructors accept `provider=` / `model=` / `name=`, a `role` / `objective` /
+`rules` persona, and `app=` to layer the task onto a pre-built `ContextApp`. The
+byte-identical lowering is proven by `vincio.testing.run_signature` and gated by the
+**ErgonomicsBench** family. See the [ergonomic-surface concept](../concepts/ergonomic-surface.md).
+
 ## `RunResult`
 
 `output` (typed when a schema is set), `raw_text`, `status`, `error`,

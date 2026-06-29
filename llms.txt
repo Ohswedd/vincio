@@ -30,6 +30,46 @@ app.run("export button 500s").output.label
 # schema-valid output, so the whole pipeline runs in CI without network.
 ```
 
+## Ergonomic front door (vincio.tasks)
+
+One-line, task-shaped constructors over `ContextApp` for the five common jobs, plus
+one fluent `Flow`. Each is `@experimental`, re-exported at top level, and **lowers to
+the exact same governed `ContextApp.run` packet** as the verbose builder path
+(retrieval, grounding, validation, rails, budgets, tracing, audit chain all apply
+unchanged). `.app` on every facade is the escape hatch to all deep methods.
+
+```python
+from vincio import rag, extractor, tool_agent, evaluation, chat, Flow
+
+# Grounded RAG Q&A — indexes sources, grounds answers, adds groundedness +
+# citation_accuracy evaluators. `sources` = a path, a list of paths/Documents,
+# or a {name: spec} mapping.
+ans = rag("./docs").ask("What is the refund window?")   # ans.output, ans.citations, ans.eval_scores
+# == ContextApp() + add_source + set_policy("answer_only_from_sources",True) + 2x add_evaluator + run
+
+# Typed extraction — text in, validated Pydantic object out.
+ticket = extractor(MySchema).extract(text)              # == ContextApp(output_schema=MySchema).run(text).output
+
+# Approval-gated tool agent — write tools denied by default, surfaced as pending.
+agent = tool_agent(tools=[search], writes=[create_ticket], approve=[])
+res = agent.run(task)                                    # agent.pending_approvals; agent.approve("create_ticket")
+
+# Offline eval — metrics + gates bundled with the dataset.
+report = evaluation(dataset, metrics=["groundedness"], gates={"groundedness": ">= 0.8"}).run()
+
+# Multi-turn chat — a re-presentation of app.assistant (returns an Assistant).
+bot = chat(); bot.send("hi").text
+
+# Flow — immutable; each step returns a new Flow; .run lowers to one packet.
+Flow(provider=p, model=m).retrieve("./docs").ground().evaluate("groundedness").run(question)
+```
+
+- Common kwargs: `provider=`, `model=`, `name=`, `role=`/`objective=`/`rules=` (persona via
+  `app.configure`), and `app=` to layer the task onto a pre-built `ContextApp`.
+- Byte-identical lowering is proven by `vincio.testing.run_signature` and gated by the
+  **ErgonomicsBench** family. The verbose `ContextApp` path remains the way to do anything
+  the one-liner doesn't expose; reach it via `facade.app`.
+
 ## Mental model
 
 - **Pydantic v2 everywhere.** Every public data contract (`RunResult`, `Budget`,

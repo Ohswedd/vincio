@@ -2265,6 +2265,24 @@
     },
     "families.assurance.assurance_audited": {
       "eq": true
+    },
+    "families.ergonomics.conciseness_one_entry_point": {
+      "eq": true
+    },
+    "families.ergonomics.compiles_byte_identical": {
+      "eq": true
+    },
+    "families.ergonomics.escape_hatch_total": {
+      "eq": true
+    },
+    "families.ergonomics.entry_points": {
+      "gte": 6
+    },
+    "families.ergonomics.byte_identical_forms": {
+      "gte": 3
+    },
+    "families.ergonomics.deep_methods_reachable": {
+      "gte": 12
     }
   }
 }

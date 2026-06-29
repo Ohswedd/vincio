@@ -1,6 +1,10 @@
 # Guide: build a RAG app
 
-A grounded document-QA app in under 30 lines.
+A grounded document-QA app in under 30 lines. In a hurry? The whole grounded path
+below is one expression with `rag(...)` — see the
+[ergonomic front door](../concepts/ergonomic-surface.md):
+`rag("./docs").ask("What is the refund window?")` lowers to the exact same governed
+run. This guide shows the verbose path it composes, so you can tune any step.
 
 ```python
 from vincio import ContextApp

@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**507** public symbols.
+**513** public symbols.
 
 ## Classes
 
@@ -709,6 +709,10 @@ Track tokens-per-word per language to surface the non-English token tax.
 ### `Figure(**data)`
 
 A chart or table embedded in a cited report, **data-bound** to its source.
+
+### `Flow(provider=…, model=…, name=…, output_schema=…, app=…, config=…)`
+
+An immutable, fluent pipeline that lowers to one governed run packet.
 
 ### `FrontierEstimate(**data)`
 
@@ -1764,6 +1768,10 @@ Build a buyer position: wants low price, fast SLA, high quality.
 
 Build a :class:`CertificationReport` from a checked assurance case.
 
+### `chat(provider=…, model=…, name=…, tools=…, writes=…, approve=…, user_id=…, tenant_id=…, session_id=…, memory_writeback=…, on_approval=…, role=…, objective=…, rules=…, app=…, config=…)`
+
+Open a multi-turn, session-aware chat in one expression.
+
 ### `check_completeness(liabilities, claims, verifier=…, as_of=…)`
 
 Fold a set of creditor claims against a liability attestation into a completeness check.
@@ -1828,9 +1836,17 @@ Certify that the edge core imports no native/optional dependency.
 
 Attach ``_repr_html_`` / ``_repr_markdown_`` to the core result types.
 
+### `evaluation(dataset=…, metrics=…, gates=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)`
+
+Build an offline evaluation in one expression.
+
 ### `experimental(since, note=…)`
 
 Mark a function or class as experimental (no stability guarantee).
+
+### `extractor(schema, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)`
+
+Build a typed structured-extraction task from a schema in one expression.
 
 ### `gather_reputation(subject, peers, directory=…, principal=…, config=…, verify_with=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, trust=…, trust_config=…, max_peers=…, audit=…, record_audit=…)`
 
@@ -1944,6 +1960,10 @@ Plan → verify → execute → cite, in one call.
 
 Resolve a governed metric over *data* with *layer* and run it — the one-shot free function behind :meth:`SemanticLayer.query`.
 
+### `rag(sources=…, provider=…, model=…, name=…, grounded=…, evaluators=…, role=…, objective=…, rules=…, output_schema=…, chunking=…, retrieval=…, app=…, config=…)`
+
+Build a grounded-RAG question answerer in one expression.
+
 ### `reconcile(a, b, tolerance=…)`
 
 Tie two independently-produced settlement records out against each other.
@@ -2019,6 +2039,10 @@ Verify ``spec``'s properties on ``examples`` and emit a proof-carrying program.
 ### `task_goal_value(checks)`
 
 A goal-value function: the fraction of an environment task's checks an observation's state satisfies (the planner's default verifier).
+
+### `tool_agent(tools=…, writes=…, approve=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)`
+
+Build an approval-gated tool-using agent in one expression.
 
 ### `verify_containment(events)`
 

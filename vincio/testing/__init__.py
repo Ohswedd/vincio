@@ -17,6 +17,7 @@ option for refreshing them.
 
 from .asserts import assert_eval, assert_grounded, assert_metric, assert_safe
 from .conformance import assert_backend_conformance, conformance_cases
+from .lowering import result_signature, run_signature, selection_signature
 from .snapshots import Snapshot, normalize_packet, normalize_trace
 
 __all__ = [
@@ -29,4 +30,7 @@ __all__ = [
     "Snapshot",
     "normalize_packet",
     "normalize_trace",
+    "selection_signature",
+    "result_signature",
+    "run_signature",
 ]

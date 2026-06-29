@@ -173,6 +173,17 @@ approval-gated, `external`-side-effecting tools on the same RBAC + audit + budge
 path, so a hosted capability is governed exactly like a local one. Write actions
 are idempotent and approval-gated.
 
+The ergonomic `vincio.tasks` front door (`rag` / `extractor` / `tool_agent` /
+`evaluation` / `chat` / `Flow`) changes none of this: each constructor is pure
+sugar that configures a `ContextApp` with the *same* public builder calls and
+**lowers to the exact same governed `ContextApp.run` packet** as the verbose path,
+so every control — rails, policy, RBAC, the audit chain, budgets — applies
+unchanged (held byte-identical by the ErgonomicsBench `compiles-byte-identical`
+SLO). In particular, `tool_agent(writes=[...])` and `chat(writes=[...])` register
+their write tools as approval-required on the very approval surface above, so a
+one-line agent denies an unapproved write by default exactly as the verbose form
+does — the front door is a convenience layer, never a governance bypass.
+
 The computer-use **action plane** (`app.computer_use`) hardens this further for an
 agent driving a real screen. Every `UIAction` is **pre-gated** against an
 `ActionPolicy` before it runs: a destructive action (a deletion, a purchase, an

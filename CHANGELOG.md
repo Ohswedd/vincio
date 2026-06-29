@@ -4,6 +4,50 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.3.0] - 2026-06-29
+
+The third fit-and-finish minor on the frozen 5.x platform — **make the power one-line easy.** The platform is
+feature-complete, but its power was broad: a `ContextApp` carries a couple hundred methods, so the five jobs a newcomer
+actually has — grounded RAG Q&A, a tool-using agent, structured extraction, an eval, and a multi-step flow — each took a
+fistful of string-keyed builder calls (the canonical RAG path is six coupled calls) where an LCEL chain, a LlamaIndex query
+engine, a DSPy module, or a Haystack pipeline each cost one line. 5.3 adds the missing **top layer, not a new capability**:
+a small, discoverable `vincio.tasks` namespace of task-shaped constructors plus one fluent, immutable `Flow`, each a
+**purely-compositional facade** that configures a `ContextApp` with sane governed defaults using the *same* public builder
+calls a caller would make by hand — so the one-liner **lowers to the exact same governed `ContextApp.run` packet** as the
+verbose form, proven byte-identical. Entirely additive and backward-compatible (the new symbols are tagged `@experimental`
+and `API_VERSION` stays `"5.0"`), dependency-free, deterministic, and offline.
+
+### Added
+
+- **The `vincio.tasks` namespace** — six one-line, task-shaped entry points, also re-exported at the top level
+  (`from vincio import rag, extractor, tool_agent, evaluation, chat, Flow`) and tagged `@experimental`:
+  - `rag(sources, ...)` → a `RagTask` that indexes sources, turns on grounding-only answering with citations, and adds the
+    groundedness + citation-accuracy evaluators; `.ask(question)` runs a full grounded, cited, eval-scored run.
+  - `extractor(schema, ...)` → an `Extractor`; `.extract(text)` returns a validated Pydantic object.
+  - `tool_agent(tools=, writes=, approve=, ...)` → a `ToolAgent`; write tools are denied by default and surfaced as pending
+    approvals, `.run(task)` drives the governed model+tool loop.
+  - `evaluation(dataset, metrics=, gates=, ...)` → an `Evaluation`; `.run()` evaluates the bound dataset.
+  - `chat(...)` → a re-presentation of `app.assistant` (a session-aware, multi-turn `Assistant`).
+  - `Flow` → a fluent, immutable pipeline (retrieve → ground → call → validate → evaluate); every step returns a new Flow,
+    and `.run(input)` lowers the whole pipeline to one governed run. `.app` on every facade is the escape hatch to all of
+    `ContextApp`'s deep methods (none shadowed, none unreachable).
+- **A shared lowering harness** (`vincio.testing.lowering`: `selection_signature`, `result_signature`, `run_signature`) that
+  projects a compile or a finished run to a deterministic signature (the packet `spec_hash` plus the stable outputs). The
+  single-pass feature arena's selection-byte-identity check (5.2) and the new ergonomic byte-identical proof now share this
+  one harness; the duplicated `_selection_signature` copies in `tests/` and `benchmarks/` were factored out to it.
+- **The ErgonomicsBench VincioBench family** with three published SLOs — conciseness (each use-case is one entry point,
+  benchmarked head-to-head in `benchmarks/competitive.py` against LCEL, the LlamaIndex query engine, DSPy, and Haystack),
+  compiles-byte-identical (the ad-hoc form lowers to the verbose form's packet and result), and escape-hatch-total — each
+  held by an at-least-as-strict CI budget.
+- **`examples/00_one_liners.py`** (sits before the quickstart) and **`docs/concepts/ergonomic-surface.md`**, mapping each
+  one-liner to the deep methods it composes and proving the byte-identical lowering offline.
+
+### Changed
+
+- `vincio.__all__` gains six additive `@experimental` symbols (`rag`, `extractor`, `tool_agent`, `evaluation`, `chat`,
+  `Flow`); the frozen public surface (`docs/reference/public-surface.txt`) and the generated API index are re-frozen to
+  match. The 5.x SemVer contract (`API_VERSION = "5.0"`) is unchanged and every existing call-site is untouched.
+
 ## [5.2.0] - 2026-06-29
 
 The second fit-and-finish minor on the frozen 5.x platform — **make the default compile path faster, honestly.**
