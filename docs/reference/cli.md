@@ -256,4 +256,20 @@ vincio providers regress --app APP.py --candidate-model Y [--baseline-model X]
         [--gate "metric=>= 0.9"]... [--quality-metric M] [--alpha 0.05] [--repeats N]
     Gate a model swap: replay golden traces + an eval/cost/latency/behavioral
     diff with significance; exits non-zero on a FAIL verdict.
+
+vincio registry coverage [--as-of YYYY-MM-DD] [--json]
+    Prove the shipped model catalog is complete, honest, fresh, and
+    routing-stable: every provider default + capability-heuristic family +
+    openai_compat preset resolves to a non-sparse, priced profile, no GA billable
+    model silently bills $0, no price has drifted past the freshness horizon, and
+    the canonical router/cascade/energy picks are unchanged. Freshness is
+    evaluated against the catalog's release date by default (--as-of overrides it
+    for what-if checks; it never reads the wall clock). Exits non-zero on a gap.
+
+vincio registry sync [PROVIDER] [--out OVERLAY.json] [--json]
+    Review-only: diff a provider's live list_models() against the shipped catalog
+    and emit a candidate overlay of models that need a human-set price and
+    capabilities (default: openai/anthropic/google/mistral). Never mutates the
+    catalog. Needs the providers' clients (extra `vincio[registry-sync]`) and
+    credentials; offline-safe (a provider it cannot reach is skipped).
 ```

@@ -11082,6 +11082,84 @@ async def bench_assurance() -> dict[str, Any]:
     }
 
 
+async def bench_registry_coverage() -> dict[str, Any]:
+    """RegistryCoverageBench: the model pricing & capability registry, made honest.
+
+    The data-driven :class:`~vincio.providers.registry.ModelRegistry` is the single
+    source of truth the cost ``PriceTable``, the capability guard, the cost/latency
+    router, the model cascades, and the energy/carbon accounting all read from. This
+    family proves the shipped ``model_catalog.json`` is **complete** (every supported
+    provider's GA default and capability-heuristic families, and every
+    ``openai_compat`` preset's headline model, resolve to a non-sparse, priced
+    profile), **honest** (no GA billable model of a paid provider silently bills
+    ``$0``), **fresh** (no price has drifted past the ``as_of``-deterministic horizon,
+    evaluated against the catalog's *release* date so a frozen release never rots),
+    and **routing-stable** (the canonical cheapest-capable router/cascade picks are
+    unchanged by the refresh). Each gate is shown to be *real*, not vacuous: the
+    freshness, silent-$0, and routing-drift checks are also exercised against a
+    deliberately broken catalog and must fire. Deterministic, dependency-free,
+    offline — never a hosted price feed."""
+    from vincio.core.types import ModelCapabilities, ModelProfile
+    from vincio.providers.openai_compat import PRESETS
+    from vincio.providers.registry import CATALOG_RELEASED, ModelRegistry
+
+    reg = ModelRegistry()
+    report = reg.coverage_report()
+
+    # The catalog ships as reviewable data and prices the real current lineup.
+    catalog_from_json = bool(report.model_count >= 45 and report.provider_count >= 10)
+    priced_as_of_present = all(
+        reg.resolve(m).priced_as_of == CATALOG_RELEASED
+        for m in ("gpt-5.2", "o3", "gpt-4.1", "claude-3-5-sonnet", "mistral-medium-latest",
+                  "gemini-2.5-flash", "deepseek-chat")
+    )
+    # Every openai_compat preset prices its headline model instead of billing $0.
+    presets_priced = all(
+        reg.resolve(p.default_model) is not None and reg.resolve(p.default_model).input_cost_per_mtok > 0
+        for p in PRESETS.values()
+        if p.default_model
+    )
+
+    # The three gates must FAIL on a deliberately broken catalog — proof they bite.
+    stale_year_out = reg.coverage_report(as_of="2027-06-29")
+    freshness_gate_fires = bool(stale_year_out.no_stale_prices is False and stale_year_out.stale)
+
+    silent = ModelRegistry()
+    silent.register(ModelProfile(name="ghost", provider="openai", model="ghost-chat",
+                                 capabilities=ModelCapabilities(tool_calling=True)))
+    silent_zero_gate_fires = bool(
+        silent.coverage_report().no_silent_zero is False
+        and "ghost-chat" in silent.coverage_report().unpriced
+    )
+
+    drifted = ModelRegistry()
+    nano = drifted.resolve("gpt-5.2-nano")
+    drifted.register(nano.model_copy(update={"input_cost_per_mtok": 99.0}))
+    routing_drift_gate_fires = bool(
+        drifted.coverage_report().no_routing_drift is False and drifted.coverage_report().drift
+    )
+
+    return {
+        # The three published SLOs.
+        "coverage_complete": report.coverage_complete,
+        "no_stale_prices": report.no_stale_prices,
+        "no_silent_zero": report.no_silent_zero,
+        # Supporting coverage facts.
+        "default_models_resolve": report.default_models_resolve,
+        "capability_families_resolve": report.capability_families_resolve,
+        "presets_priced": presets_priced,
+        "no_routing_drift": report.no_routing_drift,
+        "catalog_from_json": catalog_from_json,
+        "priced_as_of_present": priced_as_of_present,
+        # Gates proven non-vacuous.
+        "freshness_gate_fires": freshness_gate_fires,
+        "silent_zero_gate_fires": silent_zero_gate_fires,
+        "routing_drift_gate_fires": routing_drift_gate_fires,
+        "model_count": report.model_count,
+        "provider_count": report.provider_count,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -11091,6 +11169,7 @@ FAMILIES = {
     "output": bench_output,
     "reliability": bench_reliability,
     "cost": bench_cost,
+    "registry_coverage": bench_registry_coverage,
     "data_plane": bench_data_plane,
     "data_analysis_conformance": bench_data_analysis_conformance,
     "security": bench_security,

@@ -29,37 +29,66 @@ __all__ = ["OpenAICompatibleProvider", "OpenAICompatPreset", "PRESETS", "openai_
 
 @dataclass(frozen=True)
 class OpenAICompatPreset:
-    """A named OpenAI-compatible endpoint."""
+    """A named OpenAI-compatible endpoint.
+
+    ``default_model`` names the gateway's canonical headline chat model — the one
+    the shipped catalog prices so the cost report is honest out of the box (the
+    registry coverage report checks it resolves to a non-sparse, priced profile).
+    Any other model id on the gateway is still yours to choose and warns once via
+    :class:`~vincio.providers.registry.ModelUnknownWarning` if it is not in the
+    catalog, rather than silently billing ``$0``.
+    """
 
     base_url: str
     env_key: str
     requires_api_key: bool = True
     embedding_model: str | None = None
+    default_model: str | None = None
 
 
 # Stable, OpenAI-Chat-Completions-compatible hosted gateways. The conventional
 # env var (``<NAME>_API_KEY``) is also what ``ProviderConfig.resolve_api_key``
-# falls back to, so no extra wiring is needed to pick keys up from the env.
+# falls back to, so no extra wiring is needed to pick keys up from the env. Each
+# preset's ``default_model`` is priced in ``model_catalog.json`` under a provider
+# key matching the preset name.
 PRESETS: dict[str, OpenAICompatPreset] = {
-    "groq": OpenAICompatPreset("https://api.groq.com/openai/v1", "GROQ_API_KEY"),
+    "groq": OpenAICompatPreset(
+        "https://api.groq.com/openai/v1", "GROQ_API_KEY",
+        default_model="llama-3.3-70b-versatile",
+    ),
     "together": OpenAICompatPreset(
         "https://api.together.xyz/v1",
         "TOGETHER_API_KEY",
         embedding_model="togethercomputer/m2-bert-80M-8k-retrieval",
+        default_model="meta-llama/Llama-3.3-70B-Instruct-Turbo",
     ),
     "fireworks": OpenAICompatPreset(
         "https://api.fireworks.ai/inference/v1",
         "FIREWORKS_API_KEY",
         embedding_model="nomic-ai/nomic-embed-text-v1.5",
+        default_model="accounts/fireworks/models/llama-v3p3-70b-instruct",
     ),
-    "openrouter": OpenAICompatPreset("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
-    "deepseek": OpenAICompatPreset("https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"),
-    "perplexity": OpenAICompatPreset("https://api.perplexity.ai", "PERPLEXITY_API_KEY"),
-    "xai": OpenAICompatPreset("https://api.x.ai/v1", "XAI_API_KEY"),
+    "openrouter": OpenAICompatPreset(
+        "https://openrouter.ai/api/v1", "OPENROUTER_API_KEY",
+        default_model="meta-llama/llama-3.3-70b-instruct",
+    ),
+    "deepseek": OpenAICompatPreset(
+        "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY",
+        default_model="deepseek-chat",
+    ),
+    "perplexity": OpenAICompatPreset(
+        "https://api.perplexity.ai", "PERPLEXITY_API_KEY",
+        default_model="sonar",
+    ),
+    "xai": OpenAICompatPreset(
+        "https://api.x.ai/v1", "XAI_API_KEY",
+        default_model="grok-4",
+    ),
     "nvidia": OpenAICompatPreset(
         "https://integrate.api.nvidia.com/v1",
         "NVIDIA_API_KEY",
         embedding_model="nvidia/nv-embedqa-e5-v5",
+        default_model="meta/llama-3.3-70b-instruct",
     ),
 }
 

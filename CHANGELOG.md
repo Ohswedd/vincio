@@ -4,6 +4,48 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.0] - 2026-06-29
+
+The first fit-and-finish minor on the frozen 5.x platform — **make the cost report honest.** The data-driven
+`ModelRegistry` was already the single source of truth the cost `PriceTable`, the capability guard, the cost/latency
+router, the model cascades, and the energy/carbon accounting all read from; it was simply under-populated and un-gated, so
+a current-lineup model (the OpenAI o-series and `gpt-4.1` families, OpenAI/Mistral embeddings, and the entire
+`openai_compat` preset surface) resolved to nothing, warned once, and then billed $0, and a stale price shipped green
+because the registry version was a hand-bumped string with no enforced horizon. 5.1 keeps the exact `ModelProfile` shape
+and the exact exact→alias→longest-prefix lookup path and only **fills and holds them**. Entirely additive and
+backward-compatible (no public symbol changes; `API_VERSION` stays `"5.0"`), dependency-free, deterministic, and offline.
+
+### Added
+
+- **A shipped, reviewable model catalog.** The inline `_builtin_catalog()` is lifted into
+  `vincio/providers/model_catalog.json` behind the existing loader, populated with the real current lineup of every
+  provider Vincio supports: OpenAI o-series (`o1` / `o3` / `o4-mini`) + `gpt-5` + `gpt-4.1` + `text-embedding-3-*`,
+  Anthropic `claude-3-5`/`3-7-sonnet` + `3-5-haiku` + `3-opus` beside the 4.x / Fable tier, Mistral
+  medium / codestral / pixtral / `mistral-embed`, the `openai_compat` presets priced instead of $0
+  (groq / together / fireworks / openrouter / deepseek / perplexity / xai / nvidia headline models), and Google reconciled
+  to verified live reality — `gemini-3-*` marked preview-not-GA, `gemini-2.5-flash` the stable GA default,
+  `gemini-embedding-001` the live embedder.
+- **`ModelProfile.priced_as_of`** — an additive, optional ISO date stamping when each profile's pricing was last verified.
+- **An `as_of`-deterministic freshness horizon.** `CATALOG_RELEASED` and `FRESHNESS_HORIZON_DAYS` evaluate price freshness
+  against the catalog's *release* date, never the wall clock, so a frozen release reports the same verdict forever and only
+  a genuinely stale snapshot fails the gate.
+- **`ModelRegistry.coverage_report()`** — a deterministic, offline drift detector returning a `RegistryCoverageReport`
+  proving every supported provider's default and capability-heuristic families and every `openai_compat` preset resolve to
+  a non-sparse, priced profile, that no GA billable model of a paid provider silently bills $0, that no price has drifted
+  past the freshness horizon, and — an explicit no-routing-drift check — that the canonical router / cascade / energy picks
+  are unchanged by the refresh.
+- **`vincio registry coverage`** and **`vincio registry sync`** CLI verbs. `coverage` runs the drift detector and exits
+  non-zero on a gap; `sync` (behind the new `vincio[registry-sync]` extra) is **review-only** — it diffs a provider's live
+  `list_models()` into a candidate overlay for a human to price and merge, and never mutates the shipped catalog.
+- **A `registry_coverage` VincioBench family** with three published SLOs — coverage, freshness, and no-silent-$0 — each
+  held by an at-least-as-strict CI budget, plus a runnable [`examples/21_model_pricing_registry.py`](examples/21_model_pricing_registry.py).
+
+### Changed
+
+- `OpenAICompatPreset` gains a `default_model` naming each gateway's priced headline model. Behavior is otherwise
+  unchanged — any other model id on a gateway is still yours to choose and warns once via `ModelUnknownWarning` if
+  uncatalogued, rather than silently billing $0.
+
 ## [5.0.0] - 2026-06-29
 
 The data & analytics capstone, and the second long-term-support major. Seven rungs (4.1–4.7) delivered the data plane's

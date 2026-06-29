@@ -531,7 +531,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "5.0.0"
+__version__ = "5.1.0"
 
 __all__ = [
     "ContextApp",

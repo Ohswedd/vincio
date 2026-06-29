@@ -1,0 +1,339 @@
+{
+  "_comment": "Vincio's shipped, reviewable model catalog — the single source of truth the cost PriceTable, the capability guard, the cost/latency router, the model cascades, and the energy/carbon accounting all read from. Loaded by vincio/providers/registry.py:_builtin_catalog(). Plain data, no network. 'released' is the deterministic date the registry's freshness horizon is evaluated against (never the wall clock) so a frozen release reports the same freshness verdict forever; 'priced_as_of' on each profile is the date its pricing was last verified against the provider's published rate card. Override at runtime with a VINCIO_MODEL_REGISTRY overlay or ModelRegistry.register(...); refresh candidates with `vincio registry sync`.",
+  "registry_version": "2026.06",
+  "released": "2026-06-29",
+  "models": [
+    {
+      "name": "gpt-5.2", "provider": "openai", "model": "gpt-5.2", "tier": "strong",
+      "input_cost_per_mtok": 1.25, "output_cost_per_mtok": 10.0, "cached_input_cost_per_mtok": 0.125,
+      "batch_input_cost_per_mtok": 0.625, "batch_output_cost_per_mtok": 5.0,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 272000, "max_output_tokens": 32768, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-5.2-mini", "provider": "openai", "model": "gpt-5.2-mini", "tier": "default",
+      "input_cost_per_mtok": 0.25, "output_cost_per_mtok": 2.0, "cached_input_cost_per_mtok": 0.025,
+      "batch_input_cost_per_mtok": 0.125, "batch_output_cost_per_mtok": 1.0,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 272000, "max_output_tokens": 16384, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-5.2-nano", "provider": "openai", "model": "gpt-5.2-nano", "tier": "fast",
+      "input_cost_per_mtok": 0.05, "output_cost_per_mtok": 0.4, "cached_input_cost_per_mtok": 0.005,
+      "batch_input_cost_per_mtok": 0.025, "batch_output_cost_per_mtok": 0.2,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 272000, "max_output_tokens": 16384, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-5", "provider": "openai", "model": "gpt-5", "tier": "strong",
+      "input_cost_per_mtok": 1.25, "output_cost_per_mtok": 10.0, "cached_input_cost_per_mtok": 0.125,
+      "batch_input_cost_per_mtok": 0.625, "batch_output_cost_per_mtok": 5.0,
+      "priced_as_of": "2026-06-29", "successor": "gpt-5.2",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 400000, "max_output_tokens": 128000, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-5-mini", "provider": "openai", "model": "gpt-5-mini", "tier": "default",
+      "input_cost_per_mtok": 0.25, "output_cost_per_mtok": 2.0, "cached_input_cost_per_mtok": 0.025,
+      "batch_input_cost_per_mtok": 0.125, "batch_output_cost_per_mtok": 1.0,
+      "priced_as_of": "2026-06-29", "successor": "gpt-5.2-mini",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 400000, "max_output_tokens": 128000, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-5-nano", "provider": "openai", "model": "gpt-5-nano", "tier": "fast",
+      "input_cost_per_mtok": 0.05, "output_cost_per_mtok": 0.4, "cached_input_cost_per_mtok": 0.005,
+      "batch_input_cost_per_mtok": 0.025, "batch_output_cost_per_mtok": 0.2,
+      "priced_as_of": "2026-06-29", "successor": "gpt-5.2-nano",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 400000, "max_output_tokens": 128000, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-4.1", "provider": "openai", "model": "gpt-4.1", "tier": "default", "successor": "gpt-5.2",
+      "input_cost_per_mtok": 2.0, "output_cost_per_mtok": 8.0, "cached_input_cost_per_mtok": 0.5,
+      "batch_input_cost_per_mtok": 1.0, "batch_output_cost_per_mtok": 4.0,
+      "priced_as_of": "2026-06-29", "knowledge_cutoff": "2024-06-01",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 1047576, "max_output_tokens": 32768, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-4.1-mini", "provider": "openai", "model": "gpt-4.1-mini", "tier": "fast", "successor": "gpt-5.2-mini",
+      "input_cost_per_mtok": 0.4, "output_cost_per_mtok": 1.6, "cached_input_cost_per_mtok": 0.1,
+      "batch_input_cost_per_mtok": 0.2, "batch_output_cost_per_mtok": 0.8,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 1047576, "max_output_tokens": 32768, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-4.1-nano", "provider": "openai", "model": "gpt-4.1-nano", "tier": "fast", "successor": "gpt-5.2-nano",
+      "input_cost_per_mtok": 0.1, "output_cost_per_mtok": 0.4, "cached_input_cost_per_mtok": 0.025,
+      "batch_input_cost_per_mtok": 0.05, "batch_output_cost_per_mtok": 0.2,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 1047576, "max_output_tokens": 32768, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "o1", "provider": "openai", "model": "o1", "tier": "strong", "successor": "o3",
+      "input_cost_per_mtok": 15.0, "output_cost_per_mtok": 60.0, "cached_input_cost_per_mtok": 7.5,
+      "batch_input_cost_per_mtok": 7.5, "batch_output_cost_per_mtok": 30.0,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 200000, "max_output_tokens": 100000, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "o3", "provider": "openai", "model": "o3", "tier": "strong",
+      "input_cost_per_mtok": 2.0, "output_cost_per_mtok": 8.0, "cached_input_cost_per_mtok": 0.5,
+      "batch_input_cost_per_mtok": 1.0, "batch_output_cost_per_mtok": 4.0,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 200000, "max_output_tokens": 100000, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "o4-mini", "provider": "openai", "model": "o4-mini", "tier": "fast",
+      "input_cost_per_mtok": 1.1, "output_cost_per_mtok": 4.4, "cached_input_cost_per_mtok": 0.275,
+      "batch_input_cost_per_mtok": 0.55, "batch_output_cost_per_mtok": 2.2,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 200000, "max_output_tokens": 100000, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-4o", "provider": "openai", "model": "gpt-4o", "tier": "default", "successor": "gpt-5.2",
+      "input_cost_per_mtok": 2.5, "output_cost_per_mtok": 10.0, "cached_input_cost_per_mtok": 1.25,
+      "batch_input_cost_per_mtok": 1.25, "batch_output_cost_per_mtok": 5.0,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 128000, "max_output_tokens": 32768, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "gpt-4o-mini", "provider": "openai", "model": "gpt-4o-mini", "tier": "fast", "successor": "gpt-5.2-mini",
+      "input_cost_per_mtok": 0.15, "output_cost_per_mtok": 0.6, "cached_input_cost_per_mtok": 0.075,
+      "batch_input_cost_per_mtok": 0.075, "batch_output_cost_per_mtok": 0.3,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 128000, "max_output_tokens": 16384, "supports_developer_message": true, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "text-embedding-3-small", "provider": "openai", "model": "text-embedding-3-small", "tier": "default",
+      "input_cost_per_mtok": 0.02, "priced_as_of": "2026-06-29",
+      "capabilities": {"max_context_tokens": 8191, "max_output_tokens": 0, "output_modalities": ["embedding"]}
+    },
+    {
+      "name": "text-embedding-3-large", "provider": "openai", "model": "text-embedding-3-large", "tier": "default",
+      "input_cost_per_mtok": 0.13, "priced_as_of": "2026-06-29",
+      "capabilities": {"max_context_tokens": 8191, "max_output_tokens": 0, "output_modalities": ["embedding"]}
+    },
+
+    {
+      "name": "claude-fable-5", "provider": "anthropic", "model": "claude-fable-5", "tier": "strong",
+      "input_cost_per_mtok": 5.0, "output_cost_per_mtok": 25.0, "cached_input_cost_per_mtok": 0.5,
+      "batch_input_cost_per_mtok": 2.5, "batch_output_cost_per_mtok": 12.5,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 200000, "max_output_tokens": 64000, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "claude-opus-4-8", "provider": "anthropic", "model": "claude-opus-4-8", "tier": "strong",
+      "input_cost_per_mtok": 5.0, "output_cost_per_mtok": 25.0, "cached_input_cost_per_mtok": 0.5,
+      "batch_input_cost_per_mtok": 2.5, "batch_output_cost_per_mtok": 12.5,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 200000, "max_output_tokens": 64000, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "claude-sonnet-4-6", "provider": "anthropic", "model": "claude-sonnet-4-6", "tier": "default",
+      "input_cost_per_mtok": 3.0, "output_cost_per_mtok": 15.0, "cached_input_cost_per_mtok": 0.3,
+      "batch_input_cost_per_mtok": 1.5, "batch_output_cost_per_mtok": 7.5,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 200000, "max_output_tokens": 64000, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "claude-haiku-4-5", "provider": "anthropic", "model": "claude-haiku-4-5", "tier": "fast",
+      "input_cost_per_mtok": 1.0, "output_cost_per_mtok": 5.0, "cached_input_cost_per_mtok": 0.1,
+      "batch_input_cost_per_mtok": 0.5, "batch_output_cost_per_mtok": 2.5,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 200000, "max_output_tokens": 32000, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "claude-3-7-sonnet", "provider": "anthropic", "model": "claude-3-7-sonnet", "tier": "default",
+      "successor": "claude-sonnet-4-6", "aliases": ["claude-3-7-sonnet-latest"],
+      "input_cost_per_mtok": 3.0, "output_cost_per_mtok": 15.0, "cached_input_cost_per_mtok": 0.3,
+      "batch_input_cost_per_mtok": 1.5, "batch_output_cost_per_mtok": 7.5,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 200000, "max_output_tokens": 64000, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "claude-3-5-sonnet", "provider": "anthropic", "model": "claude-3-5-sonnet", "tier": "default",
+      "successor": "claude-sonnet-4-6", "aliases": ["claude-3-5-sonnet-latest"],
+      "input_cost_per_mtok": 3.0, "output_cost_per_mtok": 15.0, "cached_input_cost_per_mtok": 0.3,
+      "batch_input_cost_per_mtok": 1.5, "batch_output_cost_per_mtok": 7.5,
+      "priced_as_of": "2026-06-29", "knowledge_cutoff": "2024-04-01",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 200000, "max_output_tokens": 8192, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "claude-3-5-haiku", "provider": "anthropic", "model": "claude-3-5-haiku", "tier": "fast",
+      "successor": "claude-haiku-4-5", "aliases": ["claude-3-5-haiku-latest"],
+      "input_cost_per_mtok": 0.8, "output_cost_per_mtok": 4.0, "cached_input_cost_per_mtok": 0.08,
+      "batch_input_cost_per_mtok": 0.4, "batch_output_cost_per_mtok": 2.0,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 200000, "max_output_tokens": 8192, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "claude-3-opus", "provider": "anthropic", "model": "claude-3-opus", "tier": "strong",
+      "successor": "claude-opus-4-8", "aliases": ["claude-3-opus-latest"],
+      "input_cost_per_mtok": 15.0, "output_cost_per_mtok": 75.0, "cached_input_cost_per_mtok": 1.5,
+      "batch_input_cost_per_mtok": 7.5, "batch_output_cost_per_mtok": 37.5,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 200000, "max_output_tokens": 4096, "supports_developer_message": false, "input_modalities": ["text", "image"]}
+    },
+
+    {
+      "name": "gemini-3-pro", "provider": "google", "model": "gemini-3-pro", "tier": "strong",
+      "input_cost_per_mtok": 2.0, "output_cost_per_mtok": 12.0, "cached_input_cost_per_mtok": 0.5,
+      "batch_input_cost_per_mtok": 1.0, "batch_output_cost_per_mtok": 6.0,
+      "priced_as_of": "2026-06-29", "ga_date": "2026-12-01", "aliases": ["gemini-3-pro-preview"],
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 1000000, "max_output_tokens": 65536, "input_modalities": ["text", "image", "audio"]}
+    },
+    {
+      "name": "gemini-3-flash", "provider": "google", "model": "gemini-3-flash", "tier": "default",
+      "input_cost_per_mtok": 0.3, "output_cost_per_mtok": 2.5, "cached_input_cost_per_mtok": 0.075,
+      "batch_input_cost_per_mtok": 0.15, "batch_output_cost_per_mtok": 1.25,
+      "priced_as_of": "2026-06-29", "ga_date": "2026-12-01", "aliases": ["gemini-3-flash-preview"],
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 1000000, "max_output_tokens": 65536, "input_modalities": ["text", "image", "audio"]}
+    },
+    {
+      "name": "gemini-2.5-pro", "provider": "google", "model": "gemini-2.5-pro", "tier": "strong",
+      "input_cost_per_mtok": 1.25, "output_cost_per_mtok": 10.0, "cached_input_cost_per_mtok": 0.31,
+      "batch_input_cost_per_mtok": 0.625, "batch_output_cost_per_mtok": 5.0,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 1000000, "max_output_tokens": 65536, "input_modalities": ["text", "image", "audio"]}
+    },
+    {
+      "name": "gemini-2.5-flash", "provider": "google", "model": "gemini-2.5-flash", "tier": "default",
+      "input_cost_per_mtok": 0.3, "output_cost_per_mtok": 2.5, "cached_input_cost_per_mtok": 0.075,
+      "batch_input_cost_per_mtok": 0.15, "batch_output_cost_per_mtok": 1.25,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 1000000, "max_output_tokens": 65536, "input_modalities": ["text", "image", "audio"]}
+    },
+    {
+      "name": "gemini-2.5-flash-lite", "provider": "google", "model": "gemini-2.5-flash-lite", "tier": "fast",
+      "input_cost_per_mtok": 0.1, "output_cost_per_mtok": 0.4, "cached_input_cost_per_mtok": 0.025,
+      "batch_input_cost_per_mtok": 0.05, "batch_output_cost_per_mtok": 0.2,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 1000000, "max_output_tokens": 65536, "input_modalities": ["text", "image", "audio"]}
+    },
+    {
+      "name": "gemini-2.0-flash", "provider": "google", "model": "gemini-2.0-flash", "tier": "fast",
+      "successor": "gemini-2.5-flash", "deprecation_date": "2026-02-05", "retirement_date": "2026-08-05",
+      "input_cost_per_mtok": 0.1, "output_cost_per_mtok": 0.4, "cached_input_cost_per_mtok": 0.025,
+      "batch_input_cost_per_mtok": 0.05, "batch_output_cost_per_mtok": 0.2,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 1000000, "max_output_tokens": 65536, "input_modalities": ["text", "image", "audio"]}
+    },
+    {
+      "name": "gemini-2.0-flash-lite", "provider": "google", "model": "gemini-2.0-flash-lite", "tier": "fast",
+      "successor": "gemini-2.5-flash-lite", "deprecation_date": "2026-02-25", "retirement_date": "2026-08-25",
+      "input_cost_per_mtok": 0.075, "output_cost_per_mtok": 0.3,
+      "batch_input_cost_per_mtok": 0.0375, "batch_output_cost_per_mtok": 0.15,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 1000000, "max_output_tokens": 65536, "input_modalities": ["text", "image", "audio"]}
+    },
+    {
+      "name": "gemini-embedding-001", "provider": "google", "model": "gemini-embedding-001", "tier": "default",
+      "input_cost_per_mtok": 0.15, "priced_as_of": "2026-06-29",
+      "capabilities": {"max_context_tokens": 2048, "max_output_tokens": 0, "output_modalities": ["embedding"]}
+    },
+    {
+      "name": "text-embedding-004", "provider": "google", "model": "text-embedding-004", "tier": "default",
+      "successor": "gemini-embedding-001", "deprecation_date": "2026-01-14", "retirement_date": "2026-10-31",
+      "input_cost_per_mtok": 0.0,
+      "capabilities": {"max_context_tokens": 2048, "max_output_tokens": 0, "output_modalities": ["embedding"]}
+    },
+
+    {
+      "name": "mistral-large-latest", "provider": "mistral", "model": "mistral-large-latest", "tier": "strong",
+      "input_cost_per_mtok": 2.0, "output_cost_per_mtok": 6.0, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "max_context_tokens": 131072, "max_output_tokens": 8192}
+    },
+    {
+      "name": "mistral-medium-latest", "provider": "mistral", "model": "mistral-medium-latest", "tier": "default",
+      "input_cost_per_mtok": 0.4, "output_cost_per_mtok": 2.0, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "max_context_tokens": 131072, "max_output_tokens": 8192, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "mistral-small-latest", "provider": "mistral", "model": "mistral-small-latest", "tier": "fast",
+      "input_cost_per_mtok": 0.2, "output_cost_per_mtok": 0.6, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "max_context_tokens": 131072, "max_output_tokens": 8192}
+    },
+    {
+      "name": "codestral-latest", "provider": "mistral", "model": "codestral-latest", "tier": "default",
+      "input_cost_per_mtok": 0.3, "output_cost_per_mtok": 0.9, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "max_context_tokens": 262144, "max_output_tokens": 8192}
+    },
+    {
+      "name": "pixtral-large-latest", "provider": "mistral", "model": "pixtral-large-latest", "tier": "strong",
+      "input_cost_per_mtok": 2.0, "output_cost_per_mtok": 6.0, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "max_context_tokens": 131072, "max_output_tokens": 8192, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "mistral-embed", "provider": "mistral", "model": "mistral-embed", "tier": "default",
+      "input_cost_per_mtok": 0.1, "priced_as_of": "2026-06-29",
+      "capabilities": {"max_context_tokens": 8192, "max_output_tokens": 0, "output_modalities": ["embedding"]}
+    },
+
+    {
+      "name": "deepseek-chat", "provider": "deepseek", "model": "deepseek-chat", "tier": "default",
+      "input_cost_per_mtok": 0.27, "output_cost_per_mtok": 1.1, "cached_input_cost_per_mtok": 0.07,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "prompt_caching": true, "reasoning": false, "max_context_tokens": 131072, "max_output_tokens": 8192}
+    },
+    {
+      "name": "deepseek-reasoner", "provider": "deepseek", "model": "deepseek-reasoner", "tier": "strong",
+      "input_cost_per_mtok": 0.55, "output_cost_per_mtok": 2.19, "cached_input_cost_per_mtok": 0.14,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "prompt_caching": true, "reasoning": true, "max_context_tokens": 131072, "max_output_tokens": 65536}
+    },
+    {
+      "name": "groq-llama-3.3-70b", "provider": "groq", "model": "llama-3.3-70b-versatile", "tier": "default",
+      "input_cost_per_mtok": 0.59, "output_cost_per_mtok": 0.79, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": false, "max_context_tokens": 131072, "max_output_tokens": 32768}
+    },
+    {
+      "name": "together-llama-3.3-70b", "provider": "together", "model": "meta-llama/Llama-3.3-70B-Instruct-Turbo", "tier": "default",
+      "input_cost_per_mtok": 0.88, "output_cost_per_mtok": 0.88, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": false, "max_context_tokens": 131072, "max_output_tokens": 32768}
+    },
+    {
+      "name": "fireworks-llama-3.3-70b", "provider": "fireworks", "model": "accounts/fireworks/models/llama-v3p3-70b-instruct", "tier": "default",
+      "input_cost_per_mtok": 0.9, "output_cost_per_mtok": 0.9, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": false, "max_context_tokens": 131072, "max_output_tokens": 32768}
+    },
+    {
+      "name": "openrouter-llama-3.3-70b", "provider": "openrouter", "model": "meta-llama/llama-3.3-70b-instruct", "tier": "default",
+      "input_cost_per_mtok": 0.12, "output_cost_per_mtok": 0.3, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": false, "max_context_tokens": 131072, "max_output_tokens": 32768}
+    },
+    {
+      "name": "perplexity-sonar", "provider": "perplexity", "model": "sonar", "tier": "default",
+      "input_cost_per_mtok": 1.0, "output_cost_per_mtok": 1.0, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": false, "reasoning": false, "max_context_tokens": 127072, "max_output_tokens": 8192}
+    },
+    {
+      "name": "perplexity-sonar-pro", "provider": "perplexity", "model": "sonar-pro", "tier": "strong",
+      "input_cost_per_mtok": 3.0, "output_cost_per_mtok": 15.0, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": false, "reasoning": false, "max_context_tokens": 200000, "max_output_tokens": 8192}
+    },
+    {
+      "name": "grok-4", "provider": "xai", "model": "grok-4", "tier": "strong",
+      "input_cost_per_mtok": 3.0, "output_cost_per_mtok": 15.0, "cached_input_cost_per_mtok": 0.75,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "reasoning": true, "max_context_tokens": 256000, "max_output_tokens": 64000, "input_modalities": ["text", "image"]}
+    },
+    {
+      "name": "grok-3-mini", "provider": "xai", "model": "grok-3-mini", "tier": "fast",
+      "input_cost_per_mtok": 0.3, "output_cost_per_mtok": 0.5, "cached_input_cost_per_mtok": 0.075,
+      "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": true, "max_context_tokens": 131072, "max_output_tokens": 16384}
+    },
+    {
+      "name": "nvidia-llama-3.3-70b", "provider": "nvidia", "model": "meta/llama-3.3-70b-instruct", "tier": "default",
+      "input_cost_per_mtok": 0.2, "output_cost_per_mtok": 0.2, "priced_as_of": "2026-06-29",
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": false, "max_context_tokens": 131072, "max_output_tokens": 32768}
+    },
+
+    {
+      "name": "local", "provider": "local", "model": "local", "tier": "default",
+      "capabilities": {"structured_output": true, "tool_calling": true, "max_context_tokens": 32768, "max_output_tokens": 8192}
+    },
+    {
+      "name": "mock", "provider": "mock", "model": "mock", "tier": "default",
+      "capabilities": {"structured_output": true, "tool_calling": true, "vision": true, "audio": true, "prompt_caching": true, "max_context_tokens": 200000, "max_output_tokens": 32768, "supports_developer_message": true, "input_modalities": ["text", "image", "audio"]}
+    }
+  ]
+}

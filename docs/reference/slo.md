@@ -58,6 +58,22 @@ portable.
 | Compact table encoding vs `json.dumps` | ≥ 40% fewer tokens | `cost.table_encoding.reduction_vs_json` |
 | Compact table encoding round-trips losslessly | true | `cost.table_encoding.lossless` |
 
+## Model pricing & capability registry (5.1)
+
+The data-driven `ModelRegistry` is the single source of truth the cost
+`PriceTable`, the capability guard, the cost/latency router, the model cascades,
+and the energy/carbon accounting all read from. These SLOs hold the shipped
+`model_catalog.json` complete, honest, fresh, and routing-stable — proven offline
+by `registry.coverage_report()` (run `vincio registry coverage`). Freshness is
+evaluated against the catalog's **release date**, never the wall clock, so a
+frozen release reports the same verdict forever.
+
+| SLO | Target | VincioBench metric |
+|---|---|---|
+| Every provider default + capability family + openai_compat preset resolves to a non-sparse, priced profile | true | `registry_coverage.coverage_complete` |
+| No price has drifted past the freshness horizon (vs release date) | true | `registry_coverage.no_stale_prices` |
+| No GA billable model of a paid provider silently bills $0 | true | `registry_coverage.no_silent_zero` |
+
 ## Data & analytics plane
 
 | SLO | Target | VincioBench metric |
