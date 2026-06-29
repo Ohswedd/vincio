@@ -130,3 +130,15 @@ under one key; bind the identity at startup.)
 - The runnable example: [`examples/09_security_governance.py`](../../examples/09_security_governance.py)
 - [SLOs](../reference/slo.md#agent-identity-delegation--cryptographic-accountability), the identity-integrity and delegation-attenuation budgets
 - [Audit integrity](../../SECURITY.md), how the identity binds to the hash-chained audit log
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

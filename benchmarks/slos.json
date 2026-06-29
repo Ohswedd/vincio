@@ -205,7 +205,7 @@
     {
       "id": "data_quality_rails_complete",
       "category": "reliability",
-      "statement": "Data-quality rails deterministically catch every seeded class of defect — type mismatch, out-of-range value, disallowed value, numeric anomaly, and PII in a cell — on the same rail path PII and injection detection ride for text.",
+      "statement": "Data-quality rails deterministically catch every seeded class of defect \u2014 type mismatch, out-of-range value, disallowed value, numeric anomaly, and PII in a cell \u2014 on the same rail path PII and injection detection ride for text.",
       "metric": "families.data_plane.quality.detected_all",
       "direction": "eq",
       "threshold": true,
@@ -215,7 +215,7 @@
     {
       "id": "text_to_query_execution_accuracy",
       "category": "quality",
-      "statement": "Governed text-to-query achieves at least 0.9 execution accuracy on the Spider/BIRD-shaped battery — the generated query's result set equals the gold query's when both run on the in-process SQL engine.",
+      "statement": "Governed text-to-query achieves at least 0.9 execution accuracy on the Spider/BIRD-shaped battery \u2014 the generated query's result set equals the gold query's when both run on the in-process SQL engine.",
       "metric": "families.data_plane.text_to_query.execution_accuracy",
       "direction": "gte",
       "threshold": 0.9,
@@ -225,7 +225,7 @@
     {
       "id": "text_to_query_read_only_enforced",
       "category": "reliability",
-      "statement": "Every generated write, DDL, stacked statement, or injection attempt is structurally refused before a query runs — the read-only guarantee is never gated on model output.",
+      "statement": "Every generated write, DDL, stacked statement, or injection attempt is structurally refused before a query runs \u2014 the read-only guarantee is never gated on model output.",
       "metric": "families.data_plane.text_to_query.read_only_enforced",
       "direction": "eq",
       "threshold": true,
@@ -235,7 +235,7 @@
     {
       "id": "text_to_query_provenance_verifiable",
       "category": "quality",
-      "statement": "An analytical answer and the exact source cells it cites re-derive from the bytes — a result verifies against its hashed source, a tampered source is caught, and the cited cells reproduce.",
+      "statement": "An analytical answer and the exact source cells it cites re-derive from the bytes \u2014 a result verifies against its hashed source, a tampered source is caught, and the cited cells reproduce.",
       "metric": "families.data_plane.text_to_query.provenance_verifiable",
       "direction": "eq",
       "threshold": true,
@@ -245,7 +245,7 @@
     {
       "id": "data_analysis_success_at_budget",
       "category": "quality",
-      "statement": "The data-analysis agent reaches the correct analytical answer within its step budget on the DS-1000 / InfiAgent-DABench / DABench-shaped batteries — task success and bounded exploration, together.",
+      "statement": "The data-analysis agent reaches the correct analytical answer within its step budget on the DS-1000 / InfiAgent-DABench / DABench-shaped batteries \u2014 task success and bounded exploration, together.",
       "metric": "families.data_plane.analysis.success_at_budget",
       "direction": "eq",
       "threshold": true,
@@ -255,7 +255,7 @@
     {
       "id": "data_analysis_narrative_cited",
       "category": "quality",
-      "statement": "Every cell-traceable finding in a generated analytical narrative cites the exact source cells it rests on — a claim is never asserted without its lineage.",
+      "statement": "Every cell-traceable finding in a generated analytical narrative cites the exact source cells it rests on \u2014 a claim is never asserted without its lineage.",
       "metric": "families.data_plane.analysis.narrative_cited",
       "direction": "eq",
       "threshold": true,
@@ -265,7 +265,7 @@
     {
       "id": "data_analysis_verifiable",
       "category": "quality",
-      "statement": "An analytical narrative and its cited cells re-derive from the bytes — the analysis re-executes against its hashed source, and a tampered source or narrative is caught.",
+      "statement": "An analytical narrative and its cited cells re-derive from the bytes \u2014 the analysis re-executes against its hashed source, and a tampered source or narrative is caught.",
       "metric": "families.data_plane.analysis.verifiable",
       "direction": "eq",
       "threshold": true,
@@ -275,7 +275,7 @@
     {
       "id": "charts_data_bound",
       "category": "quality",
-      "statement": "A generated chart re-derives from the rows it was built from — the figure re-executes its source query against the hashed source on verify(), and a tampered source is caught.",
+      "statement": "A generated chart re-derives from the rows it was built from \u2014 the figure re-executes its source query against the hashed source on verify(), and a tampered source is caught.",
       "metric": "families.data_plane.charts.data_bound",
       "direction": "eq",
       "threshold": true,
@@ -285,7 +285,7 @@
     {
       "id": "charts_figure_cited",
       "category": "quality",
-      "statement": "A generated chart cites the exact source cells it was built from — the figure carries a back-reference to the precise cells, aggregates included.",
+      "statement": "A generated chart cites the exact source cells it was built from \u2014 the figure carries a back-reference to the precise cells, aggregates included.",
       "metric": "families.data_plane.charts.figure_cited",
       "direction": "eq",
       "threshold": true,
@@ -295,7 +295,7 @@
     {
       "id": "charts_content_bound",
       "category": "security",
-      "statement": "A generated chart carries a C2PA credential bound to its rendered bytes — the credential verifies against the bytes, and an edited byte stream is caught.",
+      "statement": "A generated chart carries a C2PA credential bound to its rendered bytes \u2014 the credential verifies against the bytes, and an edited byte stream is caught.",
       "metric": "families.data_plane.charts.content_bound",
       "direction": "eq",
       "threshold": true,
@@ -315,22 +315,22 @@
     {
       "id": "streaming_memory_bounded",
       "category": "performance",
-      "statement": "The resident working set of out-of-core processing stays bounded as the dataset grows 100×: a streaming group-by's peak memory for a 1,000,000-row source is within a small factor of its peak for a 10,000-row source — it tracks the number of groups, not the number of rows.",
+      "statement": "The resident working set of out-of-core processing stays bounded as the dataset grows 100\u00d7: a streaming group-by's peak memory for a 1,000,000-row source is within a small factor of its peak for a 10,000-row source \u2014 it tracks the number of groups, not the number of rows.",
       "metric": "families.data_plane.streaming.memory_bounded",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.data_plane.streaming.memory_bounded",
-      "rationale": "The promise of out-of-core processing is that memory does not grow with the rows; the budget gates that a 100×-larger stream's peak resident set stays within a small factor of the smaller one and under a hard ceiling, so a leak or an unintended materialization is caught."
+      "rationale": "The promise of out-of-core processing is that memory does not grow with the rows; the budget gates that a 100\u00d7-larger stream's peak resident set stays within a small factor of the smaller one and under a hard ceiling, so a leak or an unintended materialization is caught."
     },
     {
       "id": "streaming_prefilter_bounds_pool",
       "category": "reliability",
-      "statement": "The context compiler's streaming candidate pre-filter bounds a 10,000+ evidence pool to its cap before full scoring while keeping the relevant evidence — a low-relevance corpus is dropped, never scored, and the answer-bearing items survive.",
+      "statement": "The context compiler's streaming candidate pre-filter bounds a 10,000+ evidence pool to its cap before full scoring while keeping the relevant evidence \u2014 a low-relevance corpus is dropped, never scored, and the answer-bearing items survive.",
       "metric": "families.data_plane.streaming.prefilter_bounds_pool",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.data_plane.streaming.prefilter_bounds_pool",
-      "rationale": "The pre-filter is the control that keeps a big-data candidate pool inside the compute and resident-memory budget; the budget gates that a 10,000-candidate corpus compiled under a cap keeps only the cap's worth, drops the rest into the excluded report, and still surfaces every relevant item — so a regression that either fails to bound the pool or drops answer-bearing evidence is caught."
+      "rationale": "The pre-filter is the control that keeps a big-data candidate pool inside the compute and resident-memory budget; the budget gates that a 10,000-candidate corpus compiled under a cap keeps only the cap's worth, drops the rest into the excluded report, and still surfaces every relevant item \u2014 so a regression that either fails to bound the pool or drops answer-bearing evidence is caught."
     },
     {
       "id": "semantic_layer_governed_one_way",
@@ -345,12 +345,12 @@
     {
       "id": "semantic_layer_metric_verifiable",
       "category": "quality",
-      "statement": "A governed metric's result re-derives from the hashed source, and an ad-hoc query passed off as the governed metric — or a tampered source — is rejected.",
+      "statement": "A governed metric's result re-derives from the hashed source, and an ad-hoc query passed off as the governed metric \u2014 or a tampered source \u2014 is rejected.",
       "metric": "families.data_plane.semantic_layer.metric_verifiable",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.data_plane.semantic_layer.metric_verifiable",
-      "rationale": "A governed number is only trustworthy if you can prove it was computed the governed way; the budget gates that MetricResult.verify confirms the SQL was the layer's canonical compilation and the cited cells re-derive from the bytes, while a forged ad-hoc result and a tampered source both fail — so a regression that lets an ungoverned number pass is caught."
+      "rationale": "A governed number is only trustworthy if you can prove it was computed the governed way; the budget gates that MetricResult.verify confirms the SQL was the layer's canonical compilation and the cited cells re-derive from the bytes, while a forged ad-hoc result and a tampered source both fail \u2014 so a regression that lets an ungoverned number pass is caught."
     },
     {
       "id": "semantic_layer_lineage_reaches_dataset",
@@ -360,7 +360,7 @@
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.data_plane.semantic_layer.lineage_reaches_dataset",
-      "rationale": "Right-to-erasure must reach structured data, not only documents and memories; the budget gates that a metric's lineage traces through the derived-column graph to its base columns and the source the dataset was ingested under, and that erasing that source drops the dataset from the catalog and records it in the content-bound proof — so a regression that leaves a subject's structured data behind is caught."
+      "rationale": "Right-to-erasure must reach structured data, not only documents and memories; the budget gates that a metric's lineage traces through the derived-column graph to its base columns and the source the dataset was ingested under, and that erasing that source drops the dataset from the catalog and records it in the content-bound proof \u2014 so a regression that leaves a subject's structured data behind is caught."
     },
     {
       "id": "tool_overhead_p50",
@@ -1995,32 +1995,32 @@
     {
       "id": "data_analysis_conformance_end_to_end",
       "category": "reliability",
-      "statement": "The data & analytics plane composes end-to-end as one system, not a pile of primitives: a single DataEngagement (app.data_engagement) threads the whole pipeline — register → profile → sample → screen → query → analyze → chart → governed metric → cite — behind one governed, audited call-path and seals it into one content-bound, signed DataNarrative whose hash chain links every stage, recomputes from the bytes alone, binds each artifact's own published commitment and a digest of its bytes, and re-verifies every captured artifact offline; one continuous signed audit narrative runs from the raw table to the cited deliverable on the same hash-chained log.",
+      "statement": "The data & analytics plane composes end-to-end as one system, not a pile of primitives: a single DataEngagement (app.data_engagement) threads the whole pipeline \u2014 register \u2192 profile \u2192 sample \u2192 screen \u2192 query \u2192 analyze \u2192 chart \u2192 governed metric \u2192 cite \u2014 behind one governed, audited call-path and seals it into one content-bound, signed DataNarrative whose hash chain links every stage, recomputes from the bytes alone, binds each artifact's own published commitment and a digest of its bytes, and re-verifies every captured artifact offline; one continuous signed audit narrative runs from the raw table to the cited deliverable on the same hash-chained log.",
       "metric": "families.data_analysis_conformance.conformance_verifies_offline",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.data_analysis_conformance.conformance_verifies_offline",
-      "rationale": "Seven rungs (4.1–4.7) delivered the data plane's primitives — tabular evidence and the compact encoder, profiling / sampling / fit-in-window and the quality rails, governed text-to-query, the analysis agent, content- and data-bound charts, streaming, and the semantic layer — each grounded, cited, and offline-verifiable on its own, but nothing presented the plane as one coherent system or proved it composes end-to-end. The budget gates that a complete engagement composes and seals into a narrative that verifies offline from the bytes alone (the chain links, the head and content hash recompute, the analyst's signature checks); companion budgets gate that the lifecycle threads every stage in order, that every captured artifact verifies and re-digests against its bound digest, that the engagement and every rung land on one continuous hash-chained audit log that recomputes, and that the facade is purely compositional (every primitive stays usable directly, byte-for-byte the same) — so the plane is proven a system, never a hosted query engine, a managed warehouse, or a notebook service."
+      "rationale": "Seven rungs (4.1\u20134.7) delivered the data plane's primitives \u2014 tabular evidence and the compact encoder, profiling / sampling / fit-in-window and the quality rails, governed text-to-query, the analysis agent, content- and data-bound charts, streaming, and the semantic layer \u2014 each grounded, cited, and offline-verifiable on its own, but nothing presented the plane as one coherent system or proved it composes end-to-end. The budget gates that a complete engagement composes and seals into a narrative that verifies offline from the bytes alone (the chain links, the head and content hash recompute, the analyst's signature checks); companion budgets gate that the lifecycle threads every stage in order, that every captured artifact verifies and re-digests against its bound digest, that the engagement and every rung land on one continuous hash-chained audit log that recomputes, and that the facade is purely compositional (every primitive stays usable directly, byte-for-byte the same) \u2014 so the plane is proven a system, never a hosted query engine, a managed warehouse, or a notebook service."
     },
     {
       "id": "data_analysis_conformance_data_bound",
       "category": "reliability",
-      "statement": "Every analytical finding a composed data engagement carries is data-bound: given the live catalog, each captured query, analysis, chart, and governed metric re-executes against the content-hashed source and re-derives the answer and every cited cell from the bytes, so the cited deliverable threaded from the raw table is provably grounded in the source it cites — the analytics analogue of a generated report's per-claim entailment, applied to the whole engagement.",
+      "statement": "Every analytical finding a composed data engagement carries is data-bound: given the live catalog, each captured query, analysis, chart, and governed metric re-executes against the content-hashed source and re-derives the answer and every cited cell from the bytes, so the cited deliverable threaded from the raw table is provably grounded in the source it cites \u2014 the analytics analogue of a generated report's per-claim entailment, applied to the whole engagement.",
       "metric": "families.data_analysis_conformance.conformance_artifacts_verify",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.data_analysis_conformance.conformance_artifacts_verify",
-      "rationale": "Composing the plane is only meaningful if the composed narrative carries the data plane's distinguishing guarantee — cell-level provenance — across every stage, not merely a chain of opaque digests. The budget gates that the whole engagement verifies with every artifact data-bound: the query result, the analysis narrative, the chart, and the governed metric each re-execute against the content-hashed source and re-derive every cited cell, and the engagement's data_bound verdict re-runs every binder — so a finding is carried only when it re-derives from the bytes, the verifier being the query plane's offline re-execution, never a model."
+      "rationale": "Composing the plane is only meaningful if the composed narrative carries the data plane's distinguishing guarantee \u2014 cell-level provenance \u2014 across every stage, not merely a chain of opaque digests. The budget gates that the whole engagement verifies with every artifact data-bound: the query result, the analysis narrative, the chart, and the governed metric each re-execute against the content-hashed source and re-derive every cited cell, and the engagement's data_bound verdict re-runs every binder \u2014 so a finding is carried only when it re-derives from the bytes, the verifier being the query plane's offline re-execution, never a model."
     },
     {
       "id": "data_analysis_conformance_tamper_evident",
       "category": "security",
-      "statement": "A tamper introduced anywhere in a composed data engagement is caught from the bytes alone: re-ordering a stage breaks the hash chain, editing a stage's digest or an underlying artifact's bytes fails the digest check, a tampered source breaks data-binding (the findings no longer re-derive), and a forged signature fails authentication — so the data-engagement narrative is an end-to-end integrity proof over the whole plane, not merely a transcript.",
+      "statement": "A tamper introduced anywhere in a composed data engagement is caught from the bytes alone: re-ordering a stage breaks the hash chain, editing a stage's digest or an underlying artifact's bytes fails the digest check, a tampered source breaks data-binding (the findings no longer re-derive), and a forged signature fails authentication \u2014 so the data-engagement narrative is an end-to-end integrity proof over the whole plane, not merely a transcript.",
       "metric": "families.data_analysis_conformance.conformance_tamper_caught",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.data_analysis_conformance.conformance_tamper_caught",
-      "rationale": "Composing the plane into one narrative is only meaningful if the narrative is tamper-evident: a transcript that cannot detect an edited stage, a swapped artifact, or a tampered source proves nothing. The budget gates that a re-ordered stage, an edited stage digest, an edited underlying artifact, a tampered source (caught by data-binding), and a forged analyst signature are each caught by verification; a companion budget gates that the whole engagement re-verifies offline with every artifact re-digested against its bound digest and every finding re-derived from the source — so the data-engagement narrative is a mechanical, reconstructable integrity proof over every primitive it threaded, never a trusted-party attestation."
+      "rationale": "Composing the plane into one narrative is only meaningful if the narrative is tamper-evident: a transcript that cannot detect an edited stage, a swapped artifact, or a tampered source proves nothing. The budget gates that a re-ordered stage, an edited stage digest, an edited underlying artifact, a tampered source (caught by data-binding), and a forged analyst signature are each caught by verification; a companion budget gates that the whole engagement re-verifies offline with every artifact re-digested against its bound digest and every finding re-derived from the source \u2014 so the data-engagement narrative is a mechanical, reconstructable integrity proof over every primitive it threaded, never a trusted-party attestation."
     },
     {
       "id": "computer_use_success_at_budget",
@@ -2195,32 +2195,62 @@
     {
       "id": "ergonomics_conciseness",
       "category": "quality",
-      "statement": "Each of the five jobs a newcomer actually has — grounded RAG Q&A, a tool-using agent, structured extraction, an eval, and a multi-step flow — plus the fluent Flow, is expressible through a single vincio.tasks entry point (rag / extractor / tool_agent / evaluation / chat / Flow), where the verbose ContextApp path takes a fistful of string-keyed builder calls.",
+      "statement": "Each of the five jobs a newcomer actually has \u2014 grounded RAG Q&A, a tool-using agent, structured extraction, an eval, and a multi-step flow \u2014 plus the fluent Flow, is expressible through a single vincio.tasks entry point (rag / extractor / tool_agent / evaluation / chat / Flow), where the verbose ContextApp path takes a fistful of string-keyed builder calls.",
       "metric": "families.ergonomics.conciseness_one_entry_point",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.ergonomics.conciseness_one_entry_point",
-      "rationale": "The platform is feature-complete but its power was buried: the canonical RAG path alone is six coupled calls where an LCEL chain, a LlamaIndex query engine, a DSPy module, or a Haystack pipeline each cost one line. The budget gates that every job is reachable through one task-shaped constructor returning the right facade (benchmarked head-to-head against those competitors in benchmarks/competitive.py); a companion budget gates the count of entry points — so the front door is a real, minimal top layer, never a partial sugar that still drops to the verbose path for the common case."
+      "rationale": "The platform is feature-complete but its power was buried: the canonical RAG path alone is six coupled calls where an LCEL chain, a LlamaIndex query engine, a DSPy module, or a Haystack pipeline each cost one line. The budget gates that every job is reachable through one task-shaped constructor returning the right facade (benchmarked head-to-head against those competitors in benchmarks/competitive.py); a companion budget gates the count of entry points \u2014 so the front door is a real, minimal top layer, never a partial sugar that still drops to the verbose path for the common case."
     },
     {
       "id": "ergonomics_compiles_byte_identical",
       "category": "reliability",
-      "statement": "Each one-line task lowers to the exact same governed ContextApp.run packet and RunResult as the verbose builder form: given the same inputs, the ad-hoc form (rag, the Flow pipeline, extractor) and the hand-written six-call form produce a byte-identical lowering signature — the same packet spec_hash and the same output, citations, eval scores, and token usage — so there is no behavioral fork.",
+      "statement": "Each one-line task lowers to the exact same governed ContextApp.run packet and RunResult as the verbose builder form: given the same inputs, the ad-hoc form (rag, the Flow pipeline, extractor) and the hand-written six-call form produce a byte-identical lowering signature \u2014 the same packet spec_hash and the same output, citations, eval scores, and token usage \u2014 so there is no behavioral fork.",
       "metric": "families.ergonomics.compiles_byte_identical",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.ergonomics.compiles_byte_identical",
-      "rationale": "A one-line front door is only safe to adopt if it changes nothing about what runs: retrieval, grounding, validation, rails, budgets, tracing, and the audit chain must all apply unchanged. The budget gates that the ad-hoc form and the verbose form compile to a byte-identical lowering signature, proven with the shared vincio.testing.run_signature harness (the same lowering harness the 5.2 single-pass feature arena uses for selection byte-identity); a companion budget gates the count of forms proven identical — so the facade is provably pure sugar over the existing governed path, never a parallel stack."
+      "rationale": "A one-line front door is only safe to adopt if it changes nothing about what runs: retrieval, grounding, validation, rails, budgets, tracing, and the audit chain must all apply unchanged. The budget gates that the ad-hoc form and the verbose form compile to a byte-identical lowering signature, proven with the shared vincio.testing.run_signature harness (the same lowering harness the 5.2 single-pass feature arena uses for selection byte-identity); a companion budget gates the count of forms proven identical \u2014 so the facade is provably pure sugar over the existing governed path, never a parallel stack."
     },
     {
       "id": "ergonomics_escape_hatch_total",
       "category": "reliability",
-      "statement": "Every task facade exposes .app, the fully-configured ContextApp, reaching every deep method — nothing is shadowed and nothing is unreachable — so the common case is one expression while the complex case drops to all of the platform's methods through the same object.",
+      "statement": "Every task facade exposes .app, the fully-configured ContextApp, reaching every deep method \u2014 nothing is shadowed and nothing is unreachable \u2014 so the common case is one expression while the complex case drops to all of the platform's methods through the same object.",
       "metric": "families.ergonomics.escape_hatch_total",
       "direction": "eq",
       "threshold": true,
       "enforced_by": "families.ergonomics.escape_hatch_total",
-      "rationale": "A minimal front door must never become a cage: the simplification is only acceptable if it adds no ceiling. The budget gates that every facade's .app is the full ContextApp and that the deep methods (rails, memory, optimization, governance, agents, the cross-org and data-engagement facades) are all reachable through it; a companion budget gates the count of deep methods checked — so the escape hatch is total, the one-liner a strict superset-in-reach of the verbose path."
+      "rationale": "A minimal front door must never become a cage: the simplification is only acceptable if it adds no ceiling. The budget gates that every facade's .app is the full ContextApp and that the deep methods (rails, memory, optimization, governance, agents, the cross-org and data-engagement facades) are all reachable through it; a companion budget gates the count of deep methods checked \u2014 so the escape hatch is total, the one-liner a strict superset-in-reach of the verbose path."
+    },
+    {
+      "id": "docs_conformance_link_integrity",
+      "category": "reliability",
+      "statement": "The documentation is a connected graph, not a pile of leaf pages: every internal link across all concept, guide, and reference pages resolves \u2014 both the file path and, for a Markdown target, the heading anchor \u2014 so a reader never hits a dead link and a renamed or moved page cannot silently strand a reference.",
+      "metric": "families.docs_conformance.docs_link_integrity",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.docs_conformance.docs_link_integrity",
+      "rationale": "The docs are ~80 leaf pages bound by one hand-ordered index; a substring gate only checked that a subsystem name appeared somewhere in the text, so a broken cross-link shipped undetected. The budget gates that every internal link under docs/ resolves (path + anchor), parsed from the authored pages (code blocks excluded), so the connective tissue the capability map and the Related blocks add is provably intact, not asserted."
+    },
+    {
+      "id": "docs_conformance_capability_map_coverage",
+      "category": "reliability",
+      "statement": "Every public app.* verb is bound to the concept that explains it, the guide that applies it, the example that demonstrates it, and the reference that specifies it: the generated capability map places every verb under one of the six capability facades, every verb is documented in api.md, and every concept page reaches a guide, an example, and a reference anchor \u2014 so a newly-added verb or an undocumented concept cannot ship.",
+      "metric": "families.docs_conformance.docs_capability_map_coverage",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.docs_conformance.docs_capability_map_coverage",
+      "rationale": "Before 5.4 the curated api.md documented only ~119 of the public app.* methods and the data-plane concepts reached neither a guide nor their example. The budget gates that the doc graph (vincio._docmap) places all ~203 public ContextApp methods in the capability map and api.md and that every concept reaches a guide + example + reference anchor; a companion budget gates that every concept is connected, so coverage is mechanical and complete rather than hand-maintained and drifting."
+    },
+    {
+      "id": "docs_conformance_navigation_reachability",
+      "category": "reliability",
+      "statement": "A reader traverses the docs laterally, not by returning to the index: every concept and guide carries a current, single-sourced Related cross-link block, the generated pages (capability map, learning path, api.md app-method index) are current, and no docs page is orphaned \u2014 every page is reachable from another page.",
+      "metric": "families.docs_conformance.docs_navigation_reachability",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.docs_conformance.docs_navigation_reachability",
+      "rationale": "The 16 concept pages had zero inbound links and no page connected laterally to the example that demonstrates it. The budget gates that every concept and guide carries the current generated Related block and that the generated pages are current; a companion budget gates that no docs page is orphaned (every page is linked from another), so the navigation graph stays connected and a regenerated artifact can never drift from what is committed."
     }
   ]
 }

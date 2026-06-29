@@ -656,6 +656,7 @@ class ContextApp:
         )
 
     def resolve_provider(self, run_config: RunConfig | None = None) -> ModelProvider:
+        """Resolve the model provider for a run, enforcing data residency first."""
         self.check_residency(run_config)
         name = (run_config.provider if run_config else None) or self._provider_name
         if self._provider_instance is not None and (
@@ -682,6 +683,7 @@ class ContextApp:
         return wrapped
 
     def principal_for(self, user_input: UserInput) -> Principal:
+        """Build the :class:`Principal` (user, tenant, scopes) for an input."""
         return Principal(
             user_id=user_input.user_id,
             tenant_id=user_input.tenant_id,
@@ -715,6 +717,7 @@ class ContextApp:
         insufficient_evidence_behavior: str | None = None,
         variables: dict[str, Any] | None = None,
     ) -> ContextApp:
+        """Configure the prompt and run defaults declaratively (objective, role, rules, …)."""
         update: dict[str, Any] = {}
         if objective is not None:
             update["objective"] = objective
@@ -740,6 +743,7 @@ class ContextApp:
         return self
 
     def set_policy(self, name: str, value: Any) -> ContextApp:
+        """Set a run policy (e.g. ``answer_only_from_sources``)."""
         self.policies.set(name, value)
         if name == "answer_only_from_sources" and value:
             self.policies.require_citations = True
@@ -1625,6 +1629,7 @@ class ContextApp:
         figures: list[Any] | None = None,
         catalog: Any | None = None,
     ):
+        """Build a cited report from an answer and its evidence (async) → a document artifact."""
         from ..generation.report import CitedReportBuilder
 
         if catalog is None and figures:
@@ -2363,6 +2368,7 @@ class ContextApp:
         store: Any | None = None,
         embedder: Any | None = None,
     ) -> ContextApp:
+        """Enable the scoped memory engine (hybrid vector+graph recall by default)."""
         if store is None:
             metadata_url = self.config.storage.metadata
             if metadata_url.startswith("sqlite"):
@@ -4947,6 +4953,7 @@ class ContextApp:
     # -- evaluators / optimizers ----------------------------------------------------------------------
 
     def add_evaluator(self, name: str | Callable) -> ContextApp:
+        """Register a metric (by name or callable) that scores every run."""
         if callable(name):
             from ..evals.metrics import METRICS
 
@@ -4963,6 +4970,7 @@ class ContextApp:
     def add_validator(
         self, name: str, validator: SemanticValidator, *, blocking: bool = True
     ) -> ContextApp:
+        """Register a semantic output validator (blocking by default)."""
         from ..output.schemas import ValidatorSpec
 
         self.semantic_validators[name] = validator
@@ -4970,6 +4978,7 @@ class ContextApp:
         return self
 
     def add_optimizer(self, name: str) -> ContextApp:
+        """Register an optimization dimension the improvement loop may tune."""
         known = {"context_budget", "prompt_format", "retrieval_config", "model_routing"}
         if name not in known:
             raise ConfigError(f"unknown optimizer {name!r}; known: {sorted(known)}")
@@ -5212,6 +5221,7 @@ class ContextApp:
         feature: str | None = None,
         config: RunConfig | None = None,
     ) -> RunResult:
+        """Run the full context-engineering pipeline asynchronously → :class:`RunResult`."""
         user_input = self._coerce_input(
             user_input,
             files=files,
@@ -5267,6 +5277,7 @@ class ContextApp:
         return RunHandle(task)
 
     def run(self, user_input: str | UserInput, **kwargs: Any) -> RunResult:
+        """Run the full context-engineering pipeline synchronously → :class:`RunResult`."""
         return run_sync(self._run_and_flush(user_input, **kwargs))
 
     async def _run_and_flush(self, user_input: str | UserInput, **kwargs: Any) -> RunResult:
@@ -5839,6 +5850,7 @@ class ContextApp:
     # -- workflows ------------------------------------------------------------------------------------------------
 
     def workflow(self, name: str) -> Workflow:
+        """Create a deterministic :class:`Workflow` builder bound to this app's tracer."""
         return Workflow(name, tracer=self.tracer)
 
     # -- evaluation -------------------------------------------------------------------------------
@@ -5939,6 +5951,7 @@ class ContextApp:
         gates: dict[str, str] | None = None,
         judges: list[Any] | None = None,
     ):
+        """Evaluate the app over a dataset and return an :class:`EvalReport`."""
         runner = EvalRunner(
             self,
             metrics=metrics or (self.evaluators or None),
@@ -7796,12 +7809,14 @@ class ContextApp:
     # -- maintenance -------------------------------------------------------------------------------------------------
 
     async def aclose(self) -> None:
+        """Close the app's providers and release their resources."""
         if self._provider_instance is not None:
             await self._provider_instance.aclose()
         for provider in self._built_providers.values():
             await provider.aclose()
 
     def stats(self) -> dict[str, Any]:
+        """Return a snapshot of the app's configured sources, tools, evaluators, and memory."""
         return {
             "name": self.name,
             "sources": {k: v.model_dump() for k, v in self.sources.items()},

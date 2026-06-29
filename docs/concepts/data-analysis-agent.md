@@ -153,3 +153,17 @@ is the offline `sqlite3` engine by default, and nothing is gated on model output
 grounding, the read-only guard, the budget, and verification are enforced in code,
 deterministically and offline. Charts and cited analytical artifacts are a later
 rung (see the [roadmap](../../ROADMAP.md)).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Analyze data](../guides/analyze-data.md)
+- [Example: 16_data_analysis_agent.py](../../examples/16_data_analysis_agent.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

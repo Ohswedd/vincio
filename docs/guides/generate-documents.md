@@ -158,3 +158,19 @@ The classification is **advisory**, the operator makes the final call. ISO/IEC
 `conformity_doc` audit event.
 
 See `examples/09_security_governance.py` for an end-to-end, offline run.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Charts & cited artifacts](../concepts/charts-and-cited-artifacts.md)
+- [Guide: Analyze data](analyze-data.md)
+- [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Example: 17_charts_cited_artifacts.py](../../examples/17_charts_cited_artifacts.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -272,4 +272,26 @@ vincio registry sync [PROVIDER] [--out OVERLAY.json] [--json]
     capabilities (default: openai/anthropic/google/mistral). Never mutates the
     catalog. Needs the providers' clients (extra `vincio[registry-sync]`) and
     credentials; offline-safe (a provider it cannot reach is skipped).
+
+vincio docs map [--check] [--json]
+    Regenerate the connected-docs artifacts from the doc graph (vincio._docmap):
+    the capability map (docs/reference/capability-map.md), the learning path
+    (docs/learning-path.md), the api.md app-method index, the single-sourced
+    Related cross-link block on every concept and guide, and llms.txt. With
+    --check it reports stale artifacts and exits non-zero without writing (CI
+    gate). Dependency-free.
+
+vincio docs check [--json] [--limit N]
+    Run the docs-graph check: link integrity (every internal link resolves, path
+    and anchor), capability-map coverage (every public app.* verb is mapped and
+    documented in api.md, every concept reaches a guide + example + reference),
+    navigation reachability (every concept and guide carries a current Related
+    block and the generated pages are current), no orphans, and llms.txt
+    freshness. Exits non-zero on any failure. Dependency-free.
+
+vincio docs serve [--host H] [--port P]
+    Serve the docs locally with a generated index and the docs-graph report.
+    Renders Markdown to HTML with the richer renderer from `vincio[docs]`
+    (markdown-it-py) when installed, and falls back to serving raw Markdown over
+    the standard library otherwise.
 ```

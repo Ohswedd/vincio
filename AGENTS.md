@@ -73,8 +73,10 @@ vincio/notebook       rich Jupyter reprs (enable_rich_reprs) for RunResult / Tra
 vincio/tui            interactive terminal inspector for runs / traces / memory; pure renderers + injectable IO
 vincio/server         FastAPI app (API key + JWT auth, real-token SSE streaming), health / readiness / Prometheus metrics, graceful shutdown, optional Redis-coherent rate-limit middleware
 vincio/realtime       (optional) voice / realtime, RealtimeSession, connect_realtime (in-process / OpenAI / Gemini), VAD, interruption, in-session tool calls through the permissioned runtime (app.realtime_session; extra vincio[realtime]); and the end-to-end VoiceAgent (app.voice_agent) wiring the session to the deep-research agent (in-session research tool), the memory OS, and the app's input/output rails
-vincio/cli            argparse CLI: init, config, packs, plugins, tui, run, eval, prompt, trace, optimize, loop, distill, index, memory, audit, governance, mcp, and serve (uvicorn HTTP launcher)
+vincio/cli            argparse CLI: init, config, packs, plugins, tui, run, eval, prompt, trace, optimize, loop, distill, index, memory, audit, governance, mcp, registry, docs, and serve (uvicorn HTTP launcher)
 vincio/stability      the API-stability contract, @deprecated / @experimental, deprecated_alias, stability_of, public_api, API_VERSION, and the Vincio deprecation / experimental warnings
+vincio/_apiref.py     docstring-driven public API reference generator (renders docs/reference/api-generated.md from vincio.__all__); the docstring-coverage and frozen-public-surface gates
+vincio/_docmap.py     the connected-docs doc graph: binds every public app.* verb to its concept / guide / example / reference (by capability facade) and renders docs/reference/capability-map.md, docs/learning-path.md, the api.md app-method index, the per-page Related blocks, and llms.txt; the docs-graph checks behind `vincio docs check`
 ```
 
 ## Commands

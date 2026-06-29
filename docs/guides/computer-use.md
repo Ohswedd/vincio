@@ -209,3 +209,16 @@ Two VincioBench SLOs hold the action plane (see the [SLO reference](../reference
 
 See [`examples/04_agents_and_tools.py`](../../examples/04_agents_and_tools.py)
 for the full runnable walkthrough.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 04_agents_and_tools.py](../../examples/04_agents_and_tools.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -961,3 +961,15 @@ snapshots, a verifiable resolution of an insolvency into who-gets-what by senior
 left to assume it is made whole, and a verifiable close-out of mutual obligations so a creditor
 recovers only its net exposure, not its gross claim while it still owes the estate the other side;
 how an obligation is paid is yours.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 12_cross_org_economy.py](../../examples/12_cross_org_economy.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

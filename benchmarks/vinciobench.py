@@ -11432,6 +11432,96 @@ async def bench_ergonomics() -> dict[str, Any]:
     }
 
 
+async def bench_docs_conformance() -> dict[str, Any]:
+    """DocsConformanceBench: the documentation as one connected graph, not ~80 leaf pages.
+
+    Every subsystem ships a concept, a guide, a reference entry, and a runnable example,
+    but those pages were held together by one hand-ordered index and little else. 5.4
+    adds the **connective tissue**: ``vincio._docmap`` is a single source of truth that
+    binds every public ``app.*`` verb to the concept that explains it, the guide that
+    applies it, the example that demonstrates it, and the reference that specifies it
+    (grouped by the six capability facades), and renders the capability map, the staged
+    learning path, a single-sourced Related cross-link block on every concept and guide,
+    the ``api.md`` app-method index, and ``llms.txt`` — all deterministically and
+    dependency-free.
+
+    This family gates the graph the way ``cross_org_conformance`` and
+    ``data_analysis_conformance`` gate their planes, on three guarantees:
+    **link integrity** (every internal docs link resolves, path and anchor),
+    **capability-map coverage** (every public ``app.*`` verb is placed in the map and
+    documented in ``api.md``, and every concept reaches a guide + an example + a
+    reference anchor), and **navigation reachability** (every concept and guide carries a
+    current Related block, the generated pages are current, and no page is orphaned). A
+    companion check proves the gate *bites* — a synthetic broken link, an unmapped verb,
+    and a stale generated page are each caught — and that ``llms.txt`` is regenerated from
+    ``vincio.__all__`` and current. Deterministic and offline."""
+    from vincio import _docmap
+
+    report = {c.name: c for c in _docmap.docs_graph_report()}
+    link = report["link_integrity"]
+    coverage = report["capability_map_coverage"]
+    nav = report["navigation_reachability"]
+    orphans = report["no_orphans"]
+    llms = report["llms_txt_current"]
+
+    verbs = _docmap.app_verbs()
+    concepts = _docmap.concept_pages()
+    guides = _docmap.guide_pages()
+
+    # Headline guarantees.
+    docs_link_integrity = bool(link.ok)
+    docs_capability_map_coverage = bool(coverage.ok)
+    docs_navigation_reachability = bool(nav.ok)
+
+    # Coverage detail: every verb mapped, every verb in api.md, every concept connected.
+    every_verb_mapped = not _docmap.uncovered_verbs()
+    api = _docmap._read(_docmap._API_REF)
+    every_verb_in_api = all(f"app.{v}" in api for v in verbs)
+    concept_connected = all(
+        any(t.guides for t in [t for t in _docmap.TOPICS if t.concept == c])
+        and any(t.examples for t in [t for t in _docmap.TOPICS if t.concept == c])
+        for c in concepts
+    )
+    docs_every_concept_connected = bool(every_verb_mapped and every_verb_in_api and concept_connected)
+
+    # No orphans + llms.txt regenerated from vincio.__all__ and current.
+    docs_no_orphans = bool(orphans.ok)
+    docs_llms_txt_current = bool(llms.ok)
+
+    # The gate bites: synthetic breakages are each caught, so a green check means
+    # something, not nothing.
+    broken_link = _docmap.MarkdownLink(
+        source="docs/README.md", text="x", target="../nope/missing.md"
+    )
+    detects_broken_link = _docmap._resolve_link(broken_link) is not None
+    detects_unmapped_verb = (
+        _docmap.topic_for_verb("a_verb_that_does_not_exist_anywhere") is None
+    )
+    sample = concepts[0]
+    original = _docmap._read(sample)
+    tampered = original.replace(_docmap._RELATED_END, "")  # break the managed block
+    detects_stale_related = (
+        _docmap._extract_block(tampered, _docmap._RELATED_BEGIN, _docmap._RELATED_END) == ""
+    )
+    docs_gate_detects_tamper = bool(
+        detects_broken_link and detects_unmapped_verb and detects_stale_related
+    )
+
+    return {
+        "docs_link_integrity": docs_link_integrity,
+        "docs_capability_map_coverage": docs_capability_map_coverage,
+        "docs_navigation_reachability": docs_navigation_reachability,
+        "docs_every_concept_connected": docs_every_concept_connected,
+        "docs_no_orphans": docs_no_orphans,
+        "docs_llms_txt_current": docs_llms_txt_current,
+        "docs_gate_detects_tamper": docs_gate_detects_tamper,
+        "docs_verbs_mapped": len(verbs),
+        "docs_concepts": len(concepts),
+        "docs_guides": len(guides),
+        "docs_facets": len(_docmap.FACETS),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -11479,6 +11569,7 @@ FAMILIES = {
     "arbitration": bench_arbitration,
     "reputation_portability": bench_reputation_portability,
     "cross_org_conformance": bench_cross_org_conformance,
+    "docs_conformance": bench_docs_conformance,
     "computer_use": bench_computer_use,
     "identity": bench_identity,
     "verified_reasoning": bench_verified_reasoning,

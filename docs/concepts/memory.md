@@ -111,3 +111,18 @@ memories with provenance that must earn their way into future packets.
 contradiction rate, staleness, and personalization lift against labeled
 cases; VincioBench runs it as the `memory` family and
 `benchmarks/budgets.json` gates the results in CI.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Build a chat product: the Assistant](../guides/assistant.md)
+- [Guide: close the loop](../guides/close-the-loop.md)
+- [Example: 03_memory.py](../../examples/03_memory.py)
+- [Concept: Context packets & long-horizon governance](context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

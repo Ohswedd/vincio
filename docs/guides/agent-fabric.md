@@ -107,3 +107,15 @@ duality the MCP and A2A clients already use.
 
 See the [API reference](../reference/api.md) (`vincio.registry`) and the runnable
 [`37_benchmarks_and_agent_fabric.py`](../../examples/07_evaluation_observability.py) example.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 10_interop_and_protocols.py](../../examples/10_interop_and_protocols.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#serving)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

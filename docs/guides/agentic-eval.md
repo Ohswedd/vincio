@@ -334,3 +334,19 @@ and the [run evals guide](run-evals.md), and run
 [`examples/07_evaluation_observability.py`](../../examples/07_evaluation_observability.py) and
 [`examples/07_evaluation_observability.py`](../../examples/07_evaluation_observability.py)
 end to end.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Evaluation & continuous quality](../concepts/evals.md)
+- [Guide: run evals](run-evals.md)
+- [Guide: test LLM apps with pytest](test-llm-apps.md)
+- [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
+- [Concept: Observability](../concepts/observability.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#optimization)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

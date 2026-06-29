@@ -477,5 +477,24 @@ governance verifier, so the autonomy stays inside the controls the platform alre
 enforces. The budgets gate full capability monotonicity and stay-in-policy safety,
 offline against the deterministic reference environments.
 
+## Connected docs & capability map
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| Every internal documentation link resolves — both the file path and, for a Markdown target, the heading anchor — across all concept, guide, and reference pages, so the docs are a connected graph rather than leaf pages bound by one index. | true | `families.docs_conformance.docs_link_integrity` |
+| Every public `app.*` verb is bound to the concept, guide, example, and reference that document it (the generated capability map places all of them under the six facades, every verb is documented in `api.md`, and every concept reaches a guide + example + reference anchor). | true | `families.docs_conformance.docs_capability_map_coverage` |
+| A reader traverses laterally: every concept and guide carries a current single-sourced Related block, the generated pages (capability map, learning path, `api.md` app-method index) are current, and no docs page is orphaned. | true | `families.docs_conformance.docs_navigation_reachability` |
+
+The docs are ~80 leaf pages — a concept, a guide, a reference entry, and a
+runnable example per subsystem. 5.4 adds the connective tissue: `vincio._docmap`
+is a single source of truth that binds every public `app.*` verb to the page that
+documents it and renders the [capability map](capability-map.md), the
+[learning path](../learning-path.md), a Related cross-link block on every concept
+and guide, and `llms.txt` (regenerated from `vincio.__all__`). Companion budgets
+gate that every concept is connected, that no page is orphaned, that `llms.txt` is
+current, and that the gate *bites* — a synthetic broken link, an unmapped verb,
+and a stale block are each caught. Run `vincio docs check` to reproduce it
+offline.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

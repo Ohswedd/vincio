@@ -37,6 +37,9 @@ Commands::
     vincio memory consolidate <session_id> --user u1
     vincio memory decay
     vincio audit verify .vincio/audit/audit.jsonl
+    vincio docs map [--check]            # regenerate the capability map & connected docs
+    vincio docs check                    # gate links, coverage, reachability, orphans, llms.txt
+    vincio docs serve [--port 8000]      # local docs preview (HTML via vincio[docs])
 """
 
 from __future__ import annotations
@@ -852,6 +855,137 @@ def cmd_registry_sync(args: argparse.Namespace) -> int:
                 print(json_dumps(candidate, indent=2))
         else:
             print("\nno new models — the catalog already covers the live lineup")
+    return 0
+
+
+def cmd_docs_map(args: argparse.Namespace) -> int:
+    """Regenerate the connected-docs artifacts from the doc graph.
+
+    Renders the capability map, the learning path, the api.md app-method index,
+    every concept/guide Related cross-link block, and llms.txt — all from
+    ``vincio._docmap`` (dependency-free). With ``--check`` it reports drift and
+    exits non-zero without writing, so CI can gate freshness.
+    """
+    from .. import _docmap
+
+    check = bool(args.check)
+    changed = _docmap.sync_docs(write=not check)
+    if args.json:
+        print(json_dumps({"changed": changed, "check": check}, indent=2))
+    elif check:
+        if changed:
+            print(f"{len(changed)} generated doc artifact(s) are stale — run `vincio docs map`:")
+            for path in changed:
+                print(f"  - {path}")
+        else:
+            print("docs artifacts are in sync")
+    else:
+        print(f"synced {len(changed)} doc artifact(s)" if changed else "docs already in sync")
+        for path in changed:
+            print(f"  - {path}")
+    return 1 if (check and changed) else 0
+
+
+def cmd_docs_check(args: argparse.Namespace) -> int:
+    """Run the docs-graph check: link integrity, capability-map coverage,
+    navigation reachability, no orphans, and llms.txt freshness.
+
+    Dependency-free; exits non-zero if any check fails. The richer linter behind
+    ``vincio[docs]`` is reached via ``vincio docs serve``.
+    """
+    from .. import _docmap
+
+    report = _docmap.docs_graph_report()
+    if args.json:
+        print(json_dumps(
+            {c.name: {"ok": c.ok, "problems": c.problems} for c in report}, indent=2
+        ))
+    else:
+        for check in report:
+            print(f"[{'PASS' if check.ok else 'FAIL'}] {check.name}")
+            for problem in check.problems[: args.limit]:
+                print(f"    - {problem}")
+            if len(check.problems) > args.limit:
+                print(f"    … and {len(check.problems) - args.limit} more")
+    return 0 if all(c.ok for c in report) else 1
+
+
+def cmd_docs_serve(args: argparse.Namespace) -> int:
+    """Serve the docs locally with a generated index and the docs-graph report.
+
+    Renders Markdown to HTML with the richer renderer from the ``vincio[docs]``
+    extra (markdown-it-py) when installed, and falls back to serving raw Markdown
+    over the standard library otherwise — so a preview always works offline.
+    """
+    import functools
+    import http.server
+
+    from .. import _docmap
+
+    root = Path(_docmap._ROOT).resolve()
+    try:
+        from markdown_it import MarkdownIt  # type: ignore
+
+        render = MarkdownIt("commonmark", {"html": False}).render
+        renderer = "markdown-it-py (vincio[docs])"
+    except ImportError:
+        render = None
+        renderer = 'raw Markdown (install `pip install "vincio[docs]"` for HTML rendering)'
+
+    report = _docmap.docs_graph_report()
+
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self) -> None:  # noqa: N802
+            path = self.path.split("?", 1)[0].lstrip("/")
+            if path in ("", "index.html"):
+                self._send_html(self._index())
+                return
+            target = (root / path).resolve()
+            if not str(target).startswith(str(root)) or not target.is_file():
+                self.send_error(404)
+                return
+            if render is not None and target.suffix == ".md":
+                self._send_html(render(target.read_text(encoding="utf-8")))
+                return
+            super().do_GET()
+
+        def _send_html(self, body: str) -> None:
+            payload = f"<!doctype html><meta charset=utf-8><body>{body}</body>".encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def _index(self) -> str:
+            rows = "".join(
+                f"<li>[{'PASS' if c.ok else 'FAIL'}] {c.name}"
+                + ("" if c.ok else "<ul>" + "".join(f"<li>{p}</li>" for p in c.problems[:20]) + "</ul>")
+                + "</li>"
+                for c in report
+            )
+            return (
+                "<h1>Vincio docs</h1>"
+                f"<p>Renderer: {renderer}</p>"
+                '<p><a href="docs/README.md">Documentation index</a> · '
+                '<a href="docs/learning-path.md">Learning path</a> · '
+                '<a href="docs/reference/capability-map.md">Capability map</a></p>'
+                f"<h2>Docs-graph check</h2><ul>{rows}</ul>"
+            )
+
+    handler = functools.partial(Handler, directory=str(root))
+    server = http.server.ThreadingHTTPServer((args.host, args.port), handler)
+    failed = [c.name for c in report if not c.ok]
+    if failed:
+        print(f"warning: docs-graph check failing: {failed} (run `vincio docs check`)", file=sys.stderr)
+    print(f"serving docs at http://{args.host}:{args.port} — {renderer}", file=sys.stderr)
+    print(f"  index: http://{args.host}:{args.port}/  ·  root: {root}", file=sys.stderr)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\nshutting down", file=sys.stderr)
+    finally:
+        server.server_close()
     return 0
 
 
@@ -2194,6 +2328,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_reg_sync.add_argument("--out", default=None, help="write the candidate overlay JSON here")
     p_reg_sync.add_argument("--json", action="store_true")
     p_reg_sync.set_defaults(fn=cmd_registry_sync)
+
+    p_docs = sub.add_parser(
+        "docs", help="connected docs: capability map, docs-graph check, and a local preview"
+    )
+    docs_sub = p_docs.add_subparsers(dest="docs_command", required=True)
+    p_docs_map = docs_sub.add_parser(
+        "map", help="regenerate the capability map, learning path, Related blocks & llms.txt"
+    )
+    p_docs_map.add_argument(
+        "--check", action="store_true",
+        help="report stale artifacts and exit non-zero without writing (CI gate)",
+    )
+    p_docs_map.add_argument("--json", action="store_true")
+    p_docs_map.set_defaults(fn=cmd_docs_map)
+    p_docs_check = docs_sub.add_parser(
+        "check", help="run the docs-graph check (links, coverage, reachability, orphans, llms.txt)"
+    )
+    p_docs_check.add_argument("--json", action="store_true")
+    p_docs_check.add_argument("--limit", type=int, default=20, help="max problems printed per check")
+    p_docs_check.set_defaults(fn=cmd_docs_check)
+    p_docs_serve = docs_sub.add_parser(
+        "serve", help="serve the docs locally (HTML rendering via vincio[docs], raw otherwise)"
+    )
+    p_docs_serve.add_argument("--host", default="127.0.0.1")
+    p_docs_serve.add_argument("--port", type=int, default=8000)
+    p_docs_serve.set_defaults(fn=cmd_docs_serve)
 
     return parser
 

@@ -132,3 +132,17 @@ answer = task.ask("What is the refund window?")   # all of the above now apply
 - [Structured output](../guides/structured-output.md) — the contract `extractor(...)` builds on.
 - [Run evals](../guides/run-evals.md) — the evaluation path `evaluation(...)` bundles.
 - [API stability](../reference/stability.md) — what `@experimental` means for these symbols.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Cookbook: task-shaped recipes](../guides/cookbook.md)
+- [Example: 00_one_liners.py](../../examples/00_one_liners.py)
+- [Concept: Prompt compiler](prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

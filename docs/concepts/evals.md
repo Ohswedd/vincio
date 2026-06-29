@@ -313,3 +313,19 @@ def test_refund_answer():
 def test_packet_shape(vincio_snapshot):      # plugin fixture
     vincio_snapshot.match_packet(compiled)   # refresh: pytest --vincio-update-snapshots
 ```
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: run evals](../guides/run-evals.md)
+- [Guide: test LLM apps with pytest](../guides/test-llm-apps.md)
+- [Guide: agentic evaluation & continuous quality](../guides/agentic-eval.md)
+- [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
+- [Concept: Observability](observability.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#optimization)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

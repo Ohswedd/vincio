@@ -105,3 +105,17 @@ register_pack(Pack(
 See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py) for a
 runnable tour, and the [cookbook](cookbook.md) for task-shaped recipes built on
 these packs.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+_Recipes & extending Vincio:_
+- [Cookbook: task-shaped recipes](cookbook.md)
+- [Integrations: providers, vector stores, and frameworks](integrations.md)
+- [Plugins: extend Vincio from a separate package](plugins.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

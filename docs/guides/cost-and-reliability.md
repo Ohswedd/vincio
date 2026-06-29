@@ -467,3 +467,19 @@ adds what a proxy structurally cannot: it refuses a capability-mismatched
 substitution, **gates** every swap on replayed golden traces with statistical
 significance, and qualifies a candidate on live shadow/canary traffic with
 automatic rollback. Offline-first, no vendor SDKs (core depends on `httpx` only).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Observability](../concepts/observability.md)
+- [Guide: Performance & streaming](performance.md)
+- [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
+- [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
+- [Example: 08_optimization_self_improvement.py](../../examples/08_optimization_self_improvement.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#optimization)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -247,3 +247,17 @@ see the [MCP guide](mcp.md).
 - coming from [LangChain](migrate-from-langchain.md), [LlamaIndex](migrate-from-llamaindex.md),
   [Ragas](migrate-from-ragas.md), [Mem0](migrate-from-mem0.md)
 - [retrieval concepts](../concepts/retrieval.md)
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+_Recipes & extending Vincio:_
+- [Cookbook: task-shaped recipes](cookbook.md)
+- [Plugins: extend Vincio from a separate package](plugins.md)
+- [Vertical packs: a regulated domain in one line](vertical-packs.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

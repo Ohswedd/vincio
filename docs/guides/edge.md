@@ -152,3 +152,15 @@ from the host environment) to generate; the packet and prompt are portable.
 
 The runnable example is
 [`examples/11_advanced_context.py`](https://github.com/Ohswedd/vincio/blob/main/examples/11_advanced_context.py).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#serving)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

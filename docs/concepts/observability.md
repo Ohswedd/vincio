@@ -161,3 +161,18 @@ still served from the recording while only the affected suffix re-executes, so a
 fix is validated against the exact failing run. Recordings are content-addressed
 and verifiable (`recording.put(store)` / `Recording.from_store`,
 `recording.verify()`); `vincio trace verify-recording <file>` checks one offline.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: Cost, reliability & scale](../guides/cost-and-reliability.md)
+- [Guide: Performance & streaming](../guides/performance.md)
+- [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
+- [Concept: Evaluation & continuous quality](evals.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#optimization)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

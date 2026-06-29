@@ -129,3 +129,15 @@ guarantee is checkable offline.
 The `privacy` VincioBench family holds the composition, refusal, and auditability
 SLOs. See [`60_differential_privacy_memory_training.py`](../../examples/08_optimization_self_improvement.py)
 for a runnable, fully-offline walkthrough.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 08_optimization_self_improvement.py](../../examples/08_optimization_self_improvement.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

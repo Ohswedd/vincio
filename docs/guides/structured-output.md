@@ -133,3 +133,16 @@ structure-only (facts are never invented), every cycle re-runs all
 validators, and the loop stops at the first valid output, `max_cycles`, or
 the cost ceiling. Cycles, cost, and outcome land on the trace and in the
 audit log.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 06_structured_output.py](../../examples/06_structured_output.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

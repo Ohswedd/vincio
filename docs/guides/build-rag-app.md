@@ -80,3 +80,18 @@ and cross-tenant access raises `TenantIsolationError`.
 3. The prompt carries the citation policy in the stable prefix.
 4. The output validator rejects citations that don't match real evidence ids.
 5. The `groundedness` evaluator measures supported-claim ratio per run.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: Retrieval (RAG)](../concepts/retrieval.md)
+- [Guide: Connect external data sources](connectors.md)
+- [Example: 02_retrieval_rag.py](../../examples/02_retrieval_rag.py)
+- [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

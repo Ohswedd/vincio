@@ -172,3 +172,15 @@ This is a library capability inside your process, not a hosted marketplace. Ther
 is no clearinghouse, no escrow service, no central order book, a negotiation is two
 agents exchanging typed offers under a budget, and a contract is a signed file you
 hold and verify yourself. Everything that looks operational is something you run.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 12_cross_org_economy.py](../../examples/12_cross_org_economy.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

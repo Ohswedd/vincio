@@ -54,3 +54,19 @@ These recipes compose the same primitives the rest of the docs cover in depth:
 [build a RAG app](build-rag-app.md), [structured output](structured-output.md),
 [reliability & guardrails](reliability-guardrails.md), and
 [generate documents & media](generate-documents.md).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Concept: The ergonomic front door](../concepts/ergonomic-surface.md)
+- [Guide: Performance & streaming](performance.md)
+- [Example: 01_quickstart.py](../../examples/01_quickstart.py)
+- [Example: 00_one_liners.py](../../examples/00_one_liners.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

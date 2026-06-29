@@ -32,6 +32,9 @@ the [root README](../README.md); for the source-tree map, see
 - **[Getting started](getting-started.md)**: install, scaffold a project, write
   your first app, run it offline with the deterministic mock provider, and run a
   first eval.
+- **[Learning path](learning-path.md)**: a staged route from your first grounded
+  app to the full platform — follow it top to bottom, or jump to the stage that
+  matches what you are building.
 - **[Cookbook](guides/cookbook.md)**: short, runnable, tested recipes for common
   tasks, each one a small end-to-end example you can copy.
 
@@ -222,6 +225,9 @@ Capabilities that extend Vincio beyond the default server path.
 
 - **[API](reference/api.md)**: the curated, grouped narrative of `ContextApp` and
   every subsystem entry point.
+- **[Capability map](reference/capability-map.md)**: every public `app.*` verb
+  bound to the concept, guide, example, and reference that document it, grouped
+  by the six capability facades (generated).
 - **[Public API index](reference/api-generated.md)**: the exhaustive,
   docstring-driven index of every name in `vincio.__all__` (generated).
 - **[CLI](reference/cli.md)**: every `vincio` command, from `init` to `serve`.

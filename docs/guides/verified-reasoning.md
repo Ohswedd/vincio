@@ -174,3 +174,15 @@ contracts and synthesized programs extend the proof discipline into the tool pla
 Together they take the platform from one whose per-answer signals are *probabilistic*
 to one that, where it is possible, emits **a proof you can check**, without a hosted
 prover, always offline, always additive on the frozen surface.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

@@ -89,3 +89,18 @@ reference, the text lives once on the IR, and
 `packet.evidence_text(id)` / `packet.materialize()` resolve it lazily.
 `packet.iter_json()` streams the serialized packet chunk by chunk. See the
 [performance guide](../guides/performance.md).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Guide: optimize prompts, context, and routing](../guides/optimize-context.md)
+- [Guide: Performance & streaming](../guides/performance.md)
+- [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
+- [Concept: Retrieval (RAG)](retrieval.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#knowledge)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

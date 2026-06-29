@@ -48,3 +48,16 @@ app = ContextApp(name="x", provider=provider, model="gpt-5.2")
 ```
 
 See [`examples/11_advanced_context.py`](../../examples/11_advanced_context.py).
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
+- [Concept: Prompt compiler](../concepts/prompt-compiler.md)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#runs)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

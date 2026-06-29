@@ -170,3 +170,15 @@ control as modeled*, it is not a whole-program proof of the Python implementatio
 and it does not replace the runtime guards or the adversarial ContainmentBench
 corpus. It is the rung beside them: a property checked by construction, ahead of any
 run, with a debuggable witness when it fails.
+
+<!-- BEGIN GENERATED: related (vincio._docmap) -->
+
+## Related
+
+- [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Reference: capability map](../reference/capability-map.md)
+- [Reference: API](../reference/api.md#governance)
+- [Documentation index](../README.md)
+- [Learning path](../learning-path.md)
+
+<!-- END GENERATED: related -->

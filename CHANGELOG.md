@@ -4,6 +4,56 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.4.0] - 2026-06-30
+
+The fourth and final fit-and-finish minor on the frozen 5.x platform — **make the docs navigable.** Every subsystem ships
+a concept, a guide, a reference entry, and a runnable example, but those ~80 leaf pages were held together by one
+hand-ordered index and little else: the 16 concept pages had zero inbound links, no data-plane concept reached the example
+that demonstrates it, the curated `api.md` documented only a fraction of the public `app.*` methods, and the completeness
+gate only checked that a literal substring appeared *somewhere* in the docs. 5.4 adds the **connective tissue, not a new
+domain**: a single source of truth (`vincio/_docmap.py`, rendered the way `vincio/_apiref.py` renders `api-generated.md`)
+binds every public `app.*` verb to the concept that explains it, the guide that applies it, the example that demonstrates
+it, and the reference anchor that specifies it, grouped by the six capability facades — and from it generates the capability
+map, a single-sourced Related cross-link block on every concept and guide, a staged learning path, the `api.md` app-method
+index, and `llms.txt`. Entirely additive and backward-compatible: **no public symbol changes** (`vincio.__all__` and
+`API_VERSION` are untouched), dependency-free, deterministic, and offline.
+
+### Added
+
+- **`vincio/_docmap.py`** — the doc graph: one reviewable source of truth (a `Topic` taxonomy) binding every public
+  `ContextApp` method to its concept / guide / example / reference, grouped by the six capability facades (`runs` /
+  `knowledge` / `governance` / `optimization` / `serving` / `training`). It renders the capability map, the Related blocks,
+  the learning path, the `api.md` app-method index, and `llms.txt`, and exposes the docs-graph checks. Dependency-free and
+  on the `mypy --strict` ladder.
+- **`docs/reference/capability-map.md`** (generated) — every public `app.*` verb bound to the page that documents it.
+- **`docs/learning-path.md`** (generated) — a staged getting-started → grow-into-depth spine replacing the flat "Next
+  steps" list; `getting-started.md`'s next steps now lead with it.
+- **A single-sourced `Related` cross-link block** on every concept and guide page, so a reader traverses laterally instead
+  of returning to the index.
+- **`vincio docs` CLI verb** — `vincio docs map [--check]` regenerates the artifacts (or gates freshness), `vincio docs
+  check` runs the docs-graph check, and `vincio docs serve` previews the docs locally (HTML rendering via the new
+  `vincio[docs]` extra, raw Markdown otherwise). The map and the check run dependency-free.
+- **The `vincio[docs]` extra** — bundles the richer Markdown renderer (`markdown-it-py`) behind `vincio docs serve`; the
+  capability map and the coverage check never require it.
+- **The `docs_conformance` VincioBench family** with three published SLOs — link integrity, capability-map coverage, and
+  navigation reachability — plus companion budgets (every concept connected, no orphans, `llms.txt` current, the gate
+  bites), proven by a fully-offline `examples/22_connected_docs.py`.
+- **Concise docstrings** for 15 previously-undocumented core `ContextApp` methods (`run`, `arun`, `configure`, `evaluate`,
+  `add_evaluator`, `add_validator`, `add_optimizer`, `add_memory`, `set_policy`, `workflow`, `stats`, `resolve_provider`,
+  `principal_for`, `aclose`, `acited_report`), so the capability map and `llms.txt` carry a summary for every verb.
+- **`docs/guides/analyze-data.md`** — a task-oriented guide for the data & analytics plane, the home the data-plane concept
+  pages now reach.
+
+### Changed
+
+- **`docs/reference/api.md`** now carries a generated, completeness-gated app-method index (every public `app.*` method,
+  grouped by facet), and the docs index links the capability map and the learning path.
+- **`llms.txt`** is now regenerated from `vincio.__all__` and the doc graph and gated for freshness, the way
+  `api-generated.md` and the error catalog are — no longer hand-maintained with no test references.
+- **The docs-completeness gate** deepens from a substring check into a docs-graph check (links resolve, every concept
+  reaches a guide + example + reference anchor, every `app.*` method appears in `api.md`, no orphans, `llms.txt` current)
+  in `tests/test_docs_graph.py`, bridged from `tests/test_docs_completeness.py`.
+
 ## [5.3.0] - 2026-06-29
 
 The third fit-and-finish minor on the frozen 5.x platform — **make the power one-line easy.** The platform is

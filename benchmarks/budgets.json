@@ -2283,6 +2283,33 @@
     },
     "families.ergonomics.deep_methods_reachable": {
       "gte": 12
+    },
+    "families.docs_conformance.docs_link_integrity": {
+      "eq": true
+    },
+    "families.docs_conformance.docs_capability_map_coverage": {
+      "eq": true
+    },
+    "families.docs_conformance.docs_navigation_reachability": {
+      "eq": true
+    },
+    "families.docs_conformance.docs_every_concept_connected": {
+      "eq": true
+    },
+    "families.docs_conformance.docs_no_orphans": {
+      "eq": true
+    },
+    "families.docs_conformance.docs_llms_txt_current": {
+      "eq": true
+    },
+    "families.docs_conformance.docs_gate_detects_tamper": {
+      "eq": true
+    },
+    "families.docs_conformance.docs_verbs_mapped": {
+      "gte": 200
+    },
+    "families.docs_conformance.docs_facets": {
+      "eq": 6
     }
   }
 }
