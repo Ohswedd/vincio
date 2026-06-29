@@ -85,6 +85,15 @@
     "families.data_plane.streaming.prefilter_bounds_pool": {
       "eq": true
     },
+    "families.data_plane.semantic_layer.governed_one_way": {
+      "eq": true
+    },
+    "families.data_plane.semantic_layer.metric_verifiable": {
+      "eq": true
+    },
+    "families.data_plane.semantic_layer.lineage_reaches_dataset": {
+      "eq": true
+    },
     "families.rag.recall_at_3.mean": {
       "gte": 0.8
     },

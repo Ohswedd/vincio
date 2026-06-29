@@ -54,6 +54,12 @@ would not fit.
   :func:`encode_stream` it in a single bounded pass whose footprint is invariant
   to the row count, or run an analytical transform over it at scale through the
   :class:`~vincio.providers.BatchRunner` with :func:`stream_map`.
+* :class:`SemanticLayer` — define :class:`Measure`\\s, :class:`Dimension`\\s, and
+  :class:`DerivedColumn`\\s **once** so a natural-language question maps to a
+  **governed metric** (:func:`query_metric` / :class:`MetricResult`) compiled one
+  way everywhere through the read-only-verified query plane, and a metric's
+  column-level provenance (:class:`MetricLineage`) reaches the lineage and
+  right-to-erasure machinery.
 
 Everything here is deterministic, dependency-free, and offline. ``Dataset`` and
 the schema types are exported from this subpackage (the top-level ``Dataset``
@@ -80,6 +86,7 @@ from ..core.errors import (
     DataError,
     DataQualityError,
     QueryError,
+    SemanticLayerError,
     StreamError,
     UnsafeQueryError,
 )
@@ -140,6 +147,17 @@ from .sampling import (
     stratified_sample,
     systematic_sample,
 )
+from .semantic import (
+    Aggregation,
+    DerivedColumn,
+    Dimension,
+    Measure,
+    MetricLineage,
+    MetricQuery,
+    MetricResult,
+    SemanticLayer,
+    query_metric,
+)
 from .streaming import (
     BulkMapResult,
     RowStream,
@@ -164,6 +182,7 @@ __all__ = [
     "UnsafeQueryError",
     "AnalysisError",
     "ChartError",
+    "SemanticLayerError",
     # profiling
     "HistogramBin",
     "ColumnProfile",
@@ -225,4 +244,14 @@ __all__ = [
     "encode_stream",
     "BulkMapResult",
     "stream_map",
+    # semantic layer & governed metrics
+    "Aggregation",
+    "DerivedColumn",
+    "Dimension",
+    "Measure",
+    "MetricQuery",
+    "MetricResult",
+    "MetricLineage",
+    "SemanticLayer",
+    "query_metric",
 ]

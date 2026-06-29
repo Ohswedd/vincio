@@ -300,6 +300,9 @@ class ContextApp:
             deny_on_unknown=self.config.governance.deny_on_unknown_region,
         )
         self.lineage = LineageIndex()
+        # Registered semantic layers, keyed by their grounding table — the governed
+        # metric definitions :meth:`query_metric` resolves against.
+        self._semantic_layers: dict[str, Any] = {}
         self.fertility = FertilityTracker(model=model or self.config.provider.model)
         self.content_marking = self.config.governance.content_marking
         # Optional signer for synthetic-content manifests (e.g. HmacSigner);
@@ -2114,6 +2117,20 @@ class ContextApp:
         if removed_artifacts:
             removed_ids["artifacts"] = removed_artifacts
 
+        # Registered tabular datasets ingested from the source — dropped from the
+        # data catalog so an erased source is erased as structured data too, and the
+        # semantic layers defined over them un-registered (their definitions can no
+        # longer ground to absent rows).
+        removed_datasets: list[str] = []
+        catalog = getattr(self, "_data_catalog_obj", None)
+        for table in list(record.datasets):
+            if catalog is not None and catalog.remove(table):
+                removed_datasets.append(table)
+            self._semantic_layers.pop(table, None)
+        if removed_datasets:
+            result.datasets_removed = len(removed_datasets)
+            removed_ids["datasets"] = removed_datasets
+
         # Caches: erasure correctness outweighs cache retention.
         for cache in (self.response_cache, self.context_compile_cache):
             backend = getattr(cache, "backend", None) or getattr(cache, "cache", None)
@@ -2134,6 +2151,7 @@ class ContextApp:
                 "documents_removed": result.documents_removed,
                 "memories_removed": result.memories_removed,
                 "artifacts_removed": result.artifacts_removed,
+                "datasets_removed": result.datasets_removed,
                 "indexes_swept": result.indexes_swept,
                 "caches_invalidated": result.caches_invalidated,
                 "per_index": per_index,
@@ -2152,6 +2170,7 @@ class ContextApp:
                     "documents": result.documents_removed,
                     "memories": result.memories_removed,
                     "artifacts": result.artifacts_removed,
+                    "datasets": result.datasets_removed,
                     "caches": result.caches_invalidated,
                 },
                 signer=self.content_signer,
@@ -6586,24 +6605,36 @@ class ContextApp:
         name: str = "",
         schema: Any | None = None,
         columns: list[str] | None = None,
+        source: str | None = None,
     ) -> str:
         """Register a dataset in the app's data catalog so :meth:`query_data` can
         ground and execute a query against it by name.
 
         ``data`` may be records, rows (with ``columns`` / ``schema``), a
         :class:`~vincio.data.Dataset`, a ``TableData``, or
-        :class:`~vincio.data.TableEvidence`. Returns the resolved table name. The
-        registration is audited (``data_register``)::
+        :class:`~vincio.data.TableEvidence`. Returns the resolved table name.
+
+        The dataset is recorded in the **lineage index** under ``source`` (defaulting
+        to the dataset's own ``source``, then its table name), with its columns — so
+        a governed metric's column-level provenance traces back to it and a
+        :meth:`erase_source` sweep removes it alongside the source's documents,
+        memories, and artifacts. The registration is audited (``data_register``)::
 
             app.register_dataset(rows, columns=["region", "revenue"], name="sales")
             result = app.query_data("total revenue by region", table="sales")
         """
         dataset = self._coerce_dataset(data, schema=schema, columns=columns, name=name)
         table = self.data_catalog().add(dataset, name=name)
+        resolved_source = source or dataset.source or table
+        self.lineage.record_dataset(resolved_source, table, dataset.column_names)
         self.audit.record(
             "data_register",
             resource=table,
-            details={"row_count": dataset.row_count, "column_count": dataset.width},
+            details={
+                "row_count": dataset.row_count,
+                "column_count": dataset.width,
+                "source": resolved_source,
+            },
         )
         return table
 
@@ -6829,6 +6860,229 @@ class ContextApp:
             },
         )
         return chart
+
+    # -- semantic layer & governed metrics ------------------------------
+
+    def semantic_layer(
+        self,
+        table: str,
+        *,
+        measures: list[Any] | None = None,
+        dimensions: list[Any] | None = None,
+        derived: list[Any] | None = None,
+        name: str = "",
+        description: str = "",
+        register: bool = True,
+        validate: bool = True,
+    ) -> Any:
+        """Define a :class:`~vincio.data.SemanticLayer` over a registered table —
+        measures, dimensions, and derived columns declared **once** so a question
+        maps to a **governed metric** rather than a raw column.
+
+        ``measures`` / ``dimensions`` / ``derived`` are :class:`~vincio.data.Measure`
+        / :class:`~vincio.data.Dimension` / :class:`~vincio.data.DerivedColumn`
+        instances (or mappings with the same fields). When ``register`` (the
+        default) the layer is kept on the app and resolved by :meth:`query_metric`
+        and :meth:`metric_lineage`; when ``validate`` and the table is registered,
+        every metric and dimension is dry-run-grounded against it. The definition is
+        audited (``semantic_layer_define``)::
+
+            app.register_dataset(rows, columns=["region", "price", "qty"], name="sales")
+            layer = app.semantic_layer(
+                "sales",
+                derived=[DerivedColumn(name="revenue", expression="price * qty")],
+                measures=[Measure(name="total_revenue", agg="sum", expression="revenue")],
+                dimensions=[Dimension(name="region")],
+            )
+            result = app.query_metric("total_revenue", by=["region"])
+
+        Returns the :class:`~vincio.data.SemanticLayer`.
+        """
+        from ..data import DerivedColumn, Dimension, Measure, SemanticLayer
+
+        def _coerce(items: list[Any] | None, cls: type[Any]) -> list[Any]:
+            out: list[Any] = []
+            for item in items or []:
+                out.append(item if isinstance(item, cls) else cls(**item))
+            return out
+
+        layer = SemanticLayer(
+            table=table,
+            name=name,
+            description=description,
+            derived=_coerce(derived, DerivedColumn),
+            dimensions=_coerce(dimensions, Dimension),
+            measures=_coerce(measures, Measure),
+        )
+        if validate and table in self.data_catalog():
+            layer.validate_against(self.data_catalog())
+        if register:
+            self._semantic_layers[table] = layer
+        self.audit.record(
+            "semantic_layer_define",
+            resource=table,
+            details={
+                "name": name or table,
+                "measures": layer.metric_names,
+                "dimensions": layer.dimension_names,
+                "derived": [d.name for d in layer.derived],
+                "registered": register,
+            },
+        )
+        return layer
+
+    def _resolve_layer(self, layer: Any | None, table: str | None) -> Any:
+        from ..core.errors import SemanticLayerError
+
+        if layer is not None:
+            return layer
+        if table is not None:
+            if table not in self._semantic_layers:
+                raise SemanticLayerError(
+                    f"no semantic layer registered for table {table!r}; call "
+                    "app.semantic_layer(...) first or pass layer="
+                )
+            return self._semantic_layers[table]
+        if len(self._semantic_layers) == 1:
+            return next(iter(self._semantic_layers.values()))
+        if not self._semantic_layers:
+            raise SemanticLayerError(
+                "no semantic layer registered; call app.semantic_layer(...) first "
+                "or pass layer="
+            )
+        raise SemanticLayerError(
+            "more than one semantic layer registered; pass table= or layer= to "
+            f"choose ({sorted(self._semantic_layers)})"
+        )
+
+    def query_metric(
+        self,
+        request: Any,
+        *,
+        layer: Any | None = None,
+        table: str | None = None,
+        by: list[str] | None = None,
+        where: list[str] | None = None,
+        order_by: str = "",
+        descending: bool = False,
+        limit: int | None = None,
+        dataset: Any | None = None,
+        max_rows: int = 10_000,
+        engine: Any | None = None,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+        raise_on_refusal: bool = True,
+    ) -> Any:
+        """Compute a **governed metric** — a measure resolved through a
+        :class:`~vincio.data.SemanticLayer` and computed **one way everywhere**.
+
+        ``request`` is a metric name, a list of metric names, a
+        :class:`~vincio.data.MetricQuery`, or a natural-language question the layer
+        grounds to a governed metric (the question is injection-screened first). The
+        metric compiles to a single read-only ``SELECT`` and runs through the same
+        governed, read-only-verified query plane :meth:`query_data` uses, so the
+        answer **cites the exact source cells** and re-derives from the bytes — and
+        :meth:`~vincio.data.MetricResult.verify` additionally proves the SQL was the
+        layer's canonical compilation, so an ad-hoc number cannot pass as the
+        governed one. The run is audited (``metric_query``)::
+
+            result = app.query_metric("total_revenue", by=["region"])
+            result.value(0)                         # the governed number
+            result.cite_refs(0)                     # the exact source cells
+            result.verify(layer, app.data_catalog())  # governed + re-derives
+
+        Resolve the layer explicitly (``layer=``), by ``table=``, or implicitly when
+        exactly one is registered. Pass ``dataset=`` to compute over an unregistered
+        table. Returns a :class:`~vincio.data.MetricResult` (or ``None`` when a
+        refusal is caught with ``raise_on_refusal=False``).
+        """
+        from ..core.errors import SemanticLayerError, UnsafeQueryError
+        from ..data import DataCatalog, query_metric
+
+        resolved = self._resolve_layer(layer, table)
+        if dataset is not None:
+            ds = self._coerce_dataset(dataset, schema=schema, columns=columns, name=name)
+            # Ground the one-shot dataset under the layer's table so the compiled
+            # metric SQL (which references it by name) resolves.
+            data: Any = DataCatalog.of(ds, name=name or resolved.table)
+        else:
+            data = self.data_catalog()
+        try:
+            result = query_metric(
+                request,
+                data,
+                layer=resolved,
+                by=by,
+                where=where,
+                order_by=order_by,
+                descending=descending,
+                limit=limit,
+                engine=engine,
+                max_rows=max_rows,
+            )
+        except (UnsafeQueryError, SemanticLayerError) as exc:
+            self.audit.record(
+                "metric_query",
+                decision="deny",
+                resource=resolved.table,
+                details={
+                    "refused": "unsafe" if isinstance(exc, UnsafeQueryError) else "ungrounded",
+                    "reason": str(exc)[:200],
+                },
+            )
+            if raise_on_refusal:
+                raise
+            return None
+        self.audit.record(
+            "metric_query",
+            decision="allow",
+            resource=resolved.table,
+            details={
+                "metrics": result.metrics,
+                "dimensions": result.dimensions,
+                "row_count": result.row_count,
+                "lineage_coverage": str(result.coverage),
+                "result_hash": result.result.result_hash,
+                "layer_hash": result.layer_hash,
+            },
+        )
+        return result
+
+    def metric_lineage(
+        self,
+        metric: str,
+        *,
+        layer: Any | None = None,
+        table: str | None = None,
+    ) -> Any:
+        """The **column-level provenance** of a governed metric — the base columns
+        and source it rests on, resolving the derived-column graph and any ratio
+        references.
+
+        Fills :attr:`~vincio.data.MetricLineage.source` from the lineage index (the
+        source the dataset was registered under), so a metric's provenance reaches
+        the same machinery a document's lineage and a subject's erasure do. Audited
+        (``metric_lineage``)::
+
+            lin = app.metric_lineage("total_revenue")
+            lin.base_columns                 # ['price', 'qty']
+            lin.source                       # the source the dataset was ingested under
+        """
+        resolved = self._resolve_layer(layer, table)
+        lineage = resolved.column_lineage(metric, catalog=self.data_catalog())
+        lineage.source = self.lineage.source_of_table(resolved.table) or resolved.table
+        self.audit.record(
+            "metric_lineage",
+            resource=resolved.table,
+            details={
+                "metric": metric,
+                "base_columns": lineage.base_columns,
+                "derived_via": lineage.derived_via,
+                "source": lineage.source,
+            },
+        )
+        return lineage
 
     # -- continuous assurance & production certification ----------------
 

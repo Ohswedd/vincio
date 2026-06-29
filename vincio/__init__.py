@@ -136,10 +136,12 @@ from .data import (
     QueryPlan,
     QueryResult,
     RowStream,
+    SemanticLayer,
     TableEvidence,
     analyze_dataset,
     generate_chart,
     query_dataset,
+    query_metric,
     stream_aggregate,
 )
 from .edge import (
@@ -524,7 +526,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.6.0"
+__version__ = "4.7.0"
 
 __all__ = [
     "ContextApp",
@@ -580,6 +582,8 @@ __all__ = [
     "generate_chart",
     "RowStream",
     "stream_aggregate",
+    "SemanticLayer",
+    "query_metric",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

@@ -468,6 +468,39 @@ app.run("export button 500s").output.label
   `app.aggregate_stream(...)`, `await app.map_stream(...)`. `StreamError` (code
   `DATA_ERROR`). Held by throughput (rows/s, tokens/s), memory-bounded, and
   prefilter-bounds-pool SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
+- **Semantic layer & governed metrics.** `from vincio.data import SemanticLayer,
+  Measure, Dimension, DerivedColumn, Aggregation, MetricQuery, MetricResult,
+  MetricLineage, query_metric` (also `from vincio import SemanticLayer, query_metric`).
+  Define the analytical vocabulary once over one registered table so a question maps
+  to a **governed metric** computed one way everywhere, reusing the governed query
+  plane (not a parallel stack). `SemanticLayer(table=).add_derived(name, expr)` (a
+  row-level calc, `revenue = price * qty`, composing) `.add_dimension(name, *,
+  expression=, synonyms=)` `.add_measure(name, agg=, expression=, *, numerator=,
+  denominator=, filters=, synonyms=)` — a `Measure` is an `Aggregation` (`sum`/`avg`/
+  `min`/`max`/`count`/`count_distinct`) over a column/derived column, or a **ratio**
+  of two measures (`avg_order_value = total_revenue / orders`). Names share one
+  namespace; a duplicate/non-identifier name, a derived/ratio cycle, a measure with
+  neither agg nor a complete ratio, or an expression with `;`/unbalanced parens →
+  `SemanticLayerError`. `layer.compile(MetricQuery(metrics=, dimensions=, filters=,
+  order_by=, descending=, limit=))` → one canonical read-only `SELECT` (derived
+  inlined, ratio zero-safe via `NULLIF`). `layer.query(request, data, *, by=, where=,
+  ...)` / `query_metric(request, data, *, layer=, ...)` / `app.query_metric(request,
+  *, layer=|table=, by=, where=, dataset=, ...)` resolve a metric name, a list, a
+  `MetricQuery`, or a NL question (grounded by names/synonyms, injection-screened,
+  returns nothing rather than guessing), compile, and run through `QueryPlan.for_sql`
+  (re-screened read-only, dry-run-grounded) → `MetricResult` (`.value()`/`.rows`/
+  `.columns`/`.cite_refs()`/`.coverage`/`.sql`). `MetricResult.verify(layer, data)`
+  proves the layer digest is unchanged, the SQL **is** the layer's canonical
+  compilation (an ad-hoc query is rejected), and the cited cells re-derive from the
+  hashed source. `layer.column_lineage(metric, *, catalog=)` / `app.metric_lineage
+  (metric, *, layer=|table=)` → `MetricLineage` (`base_columns`, `derived_via`,
+  `measures`, `source`, `expression_sql`) resolving the derived graph + ratios.
+  Governance: `app.register_dataset(..., source=)` records the dataset in the
+  `LineageIndex` (column-level); `app.erase_source(source)` now drops the registered
+  dataset (+ semantic layers over it) and records it in the signed `ErasureProof`
+  (`removed_ids["datasets"]`, `ErasureResult.datasets_removed`). `SemanticLayerError`
+  (code `SEMANTIC_LAYER_ERROR`). Held by governed-one-way, metric-verifiable, and
+  lineage-reaches-dataset SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`

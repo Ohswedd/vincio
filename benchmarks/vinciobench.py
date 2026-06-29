@@ -1625,16 +1625,124 @@ async def _charts_bench() -> dict[str, Any]:
     }
 
 
+def _semantic_layer_bench() -> dict[str, Any]:
+    """DataPlaneBench / semantic-layer: governed metrics measured three ways —
+    **governed one-way** (a metric defined once compiles to one canonical SQL and
+    computes the same number however the question is phrased), **metric
+    verifiable** (the result re-derives from the bytes *and* an ad-hoc query passed
+    off as the governed metric is rejected, a tampered source is caught), and
+    **lineage reaches the dataset plane** (a metric's column-level provenance
+    resolves to its base columns and registered source, and a right-to-erasure
+    sweep removes the dataset)."""
+    from vincio import ContextApp
+    from vincio.data import (
+        DataCatalog,
+        Dataset,
+        DerivedColumn,
+        Dimension,
+        Measure,
+        MetricQuery,
+        MetricResult,
+        SemanticLayer,
+    )
+    from vincio.providers.mock import MockProvider
+
+    rows = [
+        {"region": "NA", "product": "alpha", "price": 10.0, "qty": 3},
+        {"region": "EU", "product": "alpha", "price": 20.0, "qty": 2},
+        {"region": "NA", "product": "beta", "price": 5.0, "qty": 10},
+        {"region": "APAC", "product": "beta", "price": 8.0, "qty": 5},
+    ]
+    catalog = DataCatalog.of(Dataset.from_records(rows, name="sales"), name="sales")
+    layer = (
+        SemanticLayer(table="sales")
+        .add_derived("revenue", "price * qty")
+        .add_measure("total_revenue", "sum", "revenue", synonyms=["revenue", "sales"])
+        .add_measure("orders", "count")
+        .add_measure("avg_order_value", numerator="total_revenue", denominator="orders")
+        .add_dimension("region", synonyms=["geography"])
+    )
+
+    # 1. Governed one-way: two phrasings → one canonical SQL → equal results, and the
+    #    governed number matches an independent computation.
+    by_region = layer.query("total revenue by region", catalog)
+    phrased = layer.query("sales by geography", catalog)
+    expected = {"NA": 80.0, "EU": 40.0, "APAC": 40.0}
+    governed_one_way = (
+        by_region.sql == phrased.sql
+        and by_region.rows == phrased.rows
+        and {r[0]: r[1] for r in by_region.rows} == expected
+        and layer.compile(MetricQuery(metrics=["total_revenue"], dimensions=["region"]))
+        == layer.compile(MetricQuery(metrics=["total_revenue"], dimensions=["region"]))
+    )
+
+    # 2. Metric verifiable: every governed result re-derives; an ad-hoc query passed
+    #    off as the governed metric is rejected; a tampered source is caught.
+    from vincio.data import query_dataset
+
+    ratio = layer.query("avg_order_value", catalog)
+    adhoc = query_dataset(
+        "SELECT region, SUM(price) AS total_revenue FROM sales GROUP BY region", catalog
+    )
+    forged = MetricResult(
+        spec=MetricQuery(metrics=["total_revenue"], dimensions=["region"]),
+        result=adhoc,
+        layer_hash=layer.digest(),
+    )
+    tampered = DataCatalog.of(
+        Dataset.from_records([{**rows[0], "price": 999.0}, *rows[1:]], name="sales"), name="sales"
+    )
+    metric_verifiable = (
+        by_region.verify(layer, catalog)
+        and ratio.verify(layer, catalog)
+        and abs(ratio.value(0) - 40.0) < 1e-9
+        and forged.verify(layer, catalog) is False
+        and by_region.verify(layer, tampered) is False
+    )
+
+    # 3. Lineage reaches the dataset plane: a metric's column lineage resolves to its
+    #    base columns and source, and an erasure sweep removes the dataset.
+    app = ContextApp(name="semantic-bench", provider=MockProvider(default_text="x"))
+    app.register_dataset(rows, columns=list(rows[0]), name="sales", source="crm-export")
+    app.semantic_layer(
+        "sales",
+        derived=[DerivedColumn(name="revenue", expression="price * qty")],
+        measures=[Measure(name="total_revenue", agg="sum", expression="revenue")],
+        dimensions=[Dimension(name="region")],
+    )
+    lin = app.metric_lineage("total_revenue")
+    erased = app.erase_source("crm-export")
+    lineage_reaches_dataset = (
+        lin.base_columns == ["price", "qty"]
+        and lin.derived_via == ["revenue"]
+        and lin.source == "crm-export"
+        and erased.datasets_removed == 1
+        and "sales" not in app.data_catalog().names
+        and erased.proof is not None
+        and erased.proof.removed_ids.get("datasets") == ["sales"]
+    )
+
+    return {
+        "governed_one_way": bool(governed_one_way),
+        "metric_verifiable": bool(metric_verifiable),
+        "lineage_reaches_dataset": bool(lineage_reaches_dataset),
+        "metrics_defined": len(layer.metric_names),
+        "base_columns": lin.base_columns,
+    }
+
+
 async def bench_data_plane() -> dict[str, Any]:
     """DataPlaneBench: dataset profiling, representative sampling, fit-in-window,
     data-quality rails, governed text-to-query, the data-analysis agent, cited
-    analytical charts, and streaming / out-of-core bulk processing — fitting a
-    dataset far larger than the window into bounded, faithful, screened evidence,
-    querying it read-only with cell-level provenance, running a bounded multi-step
-    analysis that produces a cited, offline-verifiable narrative, rendering a
-    result into a content-bound, data-bound chart, and processing a dataset far
-    larger than memory in bounded passes at high throughput inside a fixed
-    footprint."""
+    analytical charts, streaming / out-of-core bulk processing, and the semantic
+    layer of governed metrics — fitting a dataset far larger than the window into
+    bounded, faithful, screened evidence, querying it read-only with cell-level
+    provenance, running a bounded multi-step analysis that produces a cited,
+    offline-verifiable narrative, rendering a result into a content-bound,
+    data-bound chart, processing a dataset far larger than memory in bounded passes
+    at high throughput inside a fixed footprint, and resolving a question to a
+    governed metric computed one way everywhere whose provenance reaches the
+    right-to-erasure machinery."""
     return {
         "fit_in_window": _fit_in_window_bench(),
         "profile": _profile_faithful_bench(),
@@ -1643,6 +1751,7 @@ async def bench_data_plane() -> dict[str, Any]:
         "analysis": await _data_analysis_bench(),
         "charts": await _charts_bench(),
         "streaming": await _streaming_bench(),
+        "semantic_layer": _semantic_layer_bench(),
     }
 
 

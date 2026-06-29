@@ -4,6 +4,65 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.7.0] - 2026-06-29
+
+The semantic layer & governed metrics — the seventh rung of the data & analytics plane: define the analytical vocabulary
+**once** (measures, dimensions, and derived columns) so a natural-language question maps to a *governed metric* rather than
+a raw column and is computed **one way everywhere**. A `SemanticLayer` compiles a metric to a single canonical read-only
+`SELECT` and runs it through the *existing* governed query plane, so the answer is cell-level cited and offline-verifiable;
+`MetricResult.verify` additionally proves the SQL was the layer's canonical compilation, so an ad-hoc number cannot pass as
+the governed one. Column-level data lineage carries a metric's provenance — and a subject's right-to-erasure — into the
+dataset plane. Additive in `vincio.data` (new `vincio/data/semantic.py`) and `vincio.governance`; entirely
+backward-compatible, dependency-free, deterministic, and offline. `API_VERSION` is unchanged at `"4.0"` — 4.7 extends the
+4.x surface additively (501 → 503 public symbols).
+
+### Added
+
+- **`SemanticLayer` — measures, dimensions, and derived columns defined once.** Built over one registered table from a
+  `DerivedColumn` (a row-level calculation, `revenue = price * qty`, that composes), a `Dimension` (a groupable attribute, a
+  column or an expression), and a `Measure` — the **governed metric**: an `Aggregation` (`sum` / `avg` / `min` / `max` /
+  `count` / `count_distinct`) over a column or derived column, an optional row filter, or a **ratio** of two other measures
+  (`avg_order_value = total_revenue / orders`). Names share one namespace; a duplicate or non-identifier name, a
+  derived-column or ratio-measure cycle, a measure declaring neither an aggregation nor a complete ratio, or an expression
+  that could break out of its clause is refused with a `SemanticLayerError`, and every metric is dry-run-grounded against the
+  table at definition. Build it declaratively or with the chaining `add_derived` / `add_dimension` / `add_measure` helpers.
+- **`query_metric` / `MetricQuery` / `MetricResult` — a question becomes a governed metric.** `SemanticLayer.query` (and the
+  free `query_metric` / `app.query_metric`) resolves a metric name, a list of names, a `MetricQuery`, or a natural-language
+  question (grounded by metric/dimension names and synonyms, injection-screened first, returning nothing rather than guessing)
+  to the governed measure, compiles it to **one canonical read-only `SELECT`** (derived columns inlined, ratios compiled
+  zero-safe with `NULLIF`), and runs it through the existing read-only-verified query plane — so the metric is computed one
+  way everywhere (two phrasings compile to byte-identical SQL), cell-level cited, and offline-verifiable. `MetricResult`
+  wraps the cited `QueryResult` with the `MetricQuery` and the layer's content hash; `MetricResult.verify` proves the
+  definitions are unchanged, the SQL **is** the layer's canonical compilation (an ad-hoc query is rejected), and the result
+  re-derives from the hashed source.
+- **`MetricLineage` — column-level provenance.** `SemanticLayer.column_lineage` (and `app.metric_lineage`) resolves a metric
+  through its derived-column graph and any ratio references to its **base columns**, the underlying measures, the governed
+  aggregate SQL, and the **source** the dataset was ingested under.
+- **Lineage & right-to-erasure reach the dataset plane.** `app.register_dataset(..., source=)` records the dataset in the
+  `LineageIndex` under its source with its columns; `LineageRecord` gains `datasets` / `dataset_columns` and the index gains
+  `record_dataset` / `source_of_table` / `datasets_for`. `app.erase_source` now drops a source's registered datasets (and any
+  semantic layer over them) from the data catalog, counted in `ErasureResult.datasets_removed` and recorded in the signed
+  `ErasureProof` (`removed_ids["datasets"]`). `DataCatalog.remove` drops a table.
+- **App surface.** `app.semantic_layer(table, *, measures=, dimensions=, derived=, name=, register=, validate=)` defines and
+  (by default) registers a layer; `app.query_metric(request, *, layer= / table=, by=, where=, order_by=, descending=, limit=,
+  dataset=, ...)` computes a governed metric (audited `metric_query`); `app.metric_lineage(metric, *, layer= / table=)` reports
+  its column-level provenance (audited `metric_lineage`). Defining a layer is audited (`semantic_layer_define`).
+- **Top-level surface.** `SemanticLayer` and `query_metric` are re-exported at the package top level; the rest (`Measure`,
+  `Dimension`, `DerivedColumn`, `Aggregation`, `MetricQuery`, `MetricResult`, `MetricLineage`) lives in `vincio.data`. New
+  error `SemanticLayerError` (its own `SEMANTIC_LAYER_ERROR` code, inheriting `DataError`).
+- **DataPlaneBench / semantic-layer.** A `semantic_layer` section of the **DataPlaneBench** family adds a governed-one-way SLO
+  (a metric compiles to one canonical SQL and returns the same number however the question is phrased), a metric-verifiable
+  SLO (the result re-derives from the bytes while a forged ad-hoc result and a tampered source both fail), and a
+  lineage-reaches-the-dataset-plane SLO (a metric's lineage resolves to its base columns and source, and an erasure sweep
+  removes the dataset and records it in the proof). The metric compiles to the same SQL a hand-written query would, so there
+  is no new performance-sensitive path.
+
+### Documentation
+
+- New concept page **[The semantic layer and governed metrics](concepts/semantic-layer-and-governed-metrics.md)** (under
+  `docs/`), a runnable **`examples/19_semantic_layer_governed_metrics.py`**, and updates to the README, `llms.txt`,
+  `SECURITY.md`, `AGENTS.md`, the SLO reference, and the ROADMAP (the 4.7 row moves from planned to shipped).
+
 ## [4.6.0] - 2026-06-29
 
 Streaming & out-of-core bulk processing — the sixth rung of the data & analytics plane: process a dataset *far larger

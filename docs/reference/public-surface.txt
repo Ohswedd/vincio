@@ -343,6 +343,7 @@ SelfImprovementPolicy
 SemanticCacheGate
 SemanticCachePolicy
 SemanticGateCase
+SemanticLayer
 Send
 SenioritySchedule
 SeniorityTranche
@@ -480,6 +481,7 @@ prove_solvency
 provider_trainer
 public_key_from_did
 query_dataset
+query_metric
 reconcile
 record_transitions
 resolve_insolvency

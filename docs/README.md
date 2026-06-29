@@ -68,6 +68,12 @@ between your input and the model's validated output.
   bounded-memory `stream_aggregate` group-by, a streaming compact encoder,
   the context compiler's streaming candidate pre-filter, and `app.map_stream`
   to run a transform over a stream at scale on the `BatchRunner`.
+- **[The semantic layer and governed metrics](concepts/semantic-layer-and-governed-metrics.md)**:
+  a `SemanticLayer` of measures, dimensions, and derived columns defined once so a
+  question maps to a governed metric (`app.query_metric`) compiled one way
+  everywhere through the read-only query plane, `MetricResult.verify` proving the
+  number is the governed one, and column-level `app.metric_lineage` reaching the
+  lineage and right-to-erasure machinery.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

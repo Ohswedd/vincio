@@ -470,12 +470,15 @@ guarantee where a global provider runs a request, the strongest posture is a
 region-pinned endpoint plus this client-side egress refusal.
 
 **Erasure is provable, not merely logged.** `app.erase_source` purges a source
-from every index, memory, and cache and returns a signed, content-bound
-`ErasureProof`: a manifest of exactly which chunk / document / memory /
-generated-artifact ids were removed, bound by SHA-256 over the sorted removed-id
-set (tampering breaks `verify_erasure_proof`), signed with the app's
+from every index, memory, cache, and **registered dataset** and returns a signed,
+content-bound `ErasureProof`: a manifest of exactly which chunk / document / memory /
+generated-artifact / dataset ids were removed, bound by SHA-256 over the sorted
+removed-id set (tampering breaks `verify_erasure_proof`), signed with the app's
 `content_signer`, and anchored to the audit chain's Merkle root — so a
-right-to-erasure claim is checkable offline against the precise removal. A
+right-to-erasure claim is checkable offline against the precise removal. The sweep
+reaches structured data too: a dataset registered under the source is dropped from
+the data catalog (and any semantic layer over it un-registered), so an erased
+subject is erased as evidence, memory, generated output, *and* tabular data. A
 `ConsentLedger` binds a data subject to a GDPR `Purpose` and `LawfulBasis`;
 `AccessController.check_purpose` consults it and memory recall drops any item whose
 purpose lost consent, so purpose limitation is enforced in code. Memory is
@@ -655,6 +658,36 @@ cited-report builder's per-figure binding makes this a contract: under
 `CitationContract(require_figure_binding=True)`, a figure that does not re-derive from
 its source raises `CitationValidationError`, so a deliverable cannot ship an unverifiable
 figure. The whole path is deterministic, dependency-free, and offline.
+
+### Semantic layer & governed metrics — governed, read-only, verifiable
+
+**A governed metric adds no new trust boundary and an ungoverned number cannot pass as
+the governed one.** A `SemanticLayer` defines measures, dimensions, and derived columns
+once; `app.query_metric` (`vincio.data.query_metric`) compiles a metric to a single
+read-only `SELECT` and runs it through the **same injection-screened, read-only-verified
+query plane** above:
+
+- **Compiled, then re-screened.** The compiled SQL is passed through
+  `assert_read_only_sql` and the deny-writes `sqlite3` authorizer like any other query,
+  so a metric — even one with a hostile expression — can never smuggle a write; a
+  measure expression containing a stacked statement or unbalanced parentheses is refused
+  at definition (`SemanticLayerError`) before it ever compiles.
+- **Question injection-screened.** A natural-language question is screened by the same
+  detector the text rails use *before* it grounds to a metric, and grounds to nothing
+  rather than guessing an undefined metric.
+- **Governed, provably.** `MetricResult.verify` re-derives the result and its cited
+  cells from the hashed source *and* confirms the SQL that ran is the layer's canonical
+  compilation of the metric — so an ad-hoc query passed off as the governed metric, a
+  redefined layer, or a tampered source is caught. The run lands on the audit log
+  (`metric_query`, with a `deny` entry pinpointing a refused or ungrounded request).
+
+**Right-to-erasure reaches the dataset plane.** A registered dataset is recorded in the
+lineage index under its source with its columns (`app.metric_lineage` resolves a metric
+to its base columns and that source), so `app.erase_source` now drops the dataset (and
+any semantic layer over it) alongside the source's documents, memories, and artifacts,
+recording exactly which dataset was removed in the signed, content-bound `ErasureProof`
+(`removed_ids["datasets"]`). A subject's structured data is erased as provably as a
+document is.
 
 ### Edge / WASM runtime — the same deterministic safety, offline
 
