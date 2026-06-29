@@ -58,6 +58,11 @@ between your input and the model's validated output.
   `app.analyze_data` plans, queries, inspects, and refines over a dataset through
   the governed query plane, producing a cited analytical narrative whose every
   finding points at the exact source cells and that `verify(catalog)`s offline.
+- **[Charts and cited analytical artifacts](concepts/charts-and-cited-artifacts.md)**:
+  `generate_chart` turns a cited query result into a spec-driven chart that is
+  content-bound (a C2PA credential bound to its bytes) and data-bound (a
+  back-reference to the exact source cells), and the cited-report builder extends
+  to figures so a deliverable is per-claim entailed and per-figure data-bound.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

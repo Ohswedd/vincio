@@ -409,6 +409,34 @@ app.run("export button 500s").output.label
   DABench adapters (`vincio.evals.DS1000Adapter`/`InfiAgentDABenchAdapter`/
   `DABenchAdapter`) under a task-success-at-budget SLO plus narrative-cited and
   verifiable SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
+- **Charts & cited analytical artifacts.** `from vincio.data import generate_chart,
+  Chart, ChartSpec, ChartType, ChartEncoding, ChartChannel, ChartRenderer,
+  VegaLiteRenderer, MatplotlibRenderer` (also `from vincio import generate_chart,
+  Chart, ChartSpec, ChartType`). `generate_chart(result, *, type=, x=, y=, color=,
+  title=, renderer=, signer=, infer_type=)` turns a cited `QueryResult` (or
+  `AnalysisResult`/`Dataset`) into a `Chart`; `app.generate_chart(result_or_question,
+  *, table=, type=, x=, y=, color=, title=, renderer=)` (audited `chart_generate`)
+  queries first when given a string. Encoding is inferred from the result schema (a
+  dimension on x, a measure on y, a second dimension as the color series); a temporal
+  x defaults to a line, else a bar; marks are `bar`/`line`/`point`/`area`/`arc`. The
+  `Chart` is **content-bound** (a C2PA `ProvenanceManifest` bound to its rendered
+  bytes via `mark_data_driven_content` — IPTC `dataDrivenMedia`, `is_synthetic=False`
+  — `content_bound()` checks it) and **data-bound** (`provenance`/`cite_refs()` →
+  `sales#r0!revenue`; `verify(catalog)` re-executes the source query, confirms the
+  figure faithfully projects the verified result, and re-binds the credential — an
+  edited spec/bytes, a stripped credential, or a tampered source → `False`). Default
+  `VegaLiteRenderer` emits a portable Vega-Lite v5 JSON spec (`to_vega_lite()`);
+  `MatplotlibRenderer` (behind `vincio[charts]`) rasterizes a PNG with the credential
+  embedded. The cited-report builder extends to figures: `from vincio.generation
+  import Figure, FigureBinding` (also `from vincio import Figure`),
+  `Figure.from_chart(chart)`/`Figure.from_table(query_result)`;
+  `CitedReportBuilder.build_report(answer, evidence, *, figures=, catalog=, contract=)`
+  and `app.cited_report(..., figures=, catalog=)` embed each figure under a `[F1]`
+  marker, render it, and verify it re-derives — `CitationContract(require_figure_binding=
+  True, min_figure_binding_rate=)` gates per-figure data binding (a non-deriving figure
+  → `CitationValidationError`). Held by data-bound, figure-cited, and content-bound
+  SLOs (DataPlaneBench). `ChartError` (code `CHART_ERROR`). Deterministic,
+  dependency-free, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`

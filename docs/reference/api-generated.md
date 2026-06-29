@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**493** public symbols.
+**498** public symbols.
 
 ## Classes
 
@@ -233,6 +233,18 @@ A typed, content-bound, offline-verifiable proof over an answer.
 ### `CertificationReport(**data)`
 
 The signed, content-bound certificate that an app is fit for production.
+
+### `Chart(**data)`
+
+A rendered chart, **content-bound and data-bound**.
+
+### `ChartSpec(**data)`
+
+A spec-driven chart definition: title, mark, channel encoding, the plotted columns, and the **values** it depicts (a projection of the source result onto the encoded columns). :meth:`to_vega_lite` renders it as a portable, embedded-data Vega-Lite v5 spec a consumer can render with any Vega-Lite runtime.
+
+### `ChartType(*args, **kwds)`
+
+The closed mark vocabulary a chart declares — the deterministic subset of Vega-Lite marks that also rasterizes cleanly through matplotlib.
 
 ### `Check(**data)`
 
@@ -673,6 +685,10 @@ The fleet-consensus low-rank subspace distilled from a secure aggregation.
 ### `FertilityTracker(model=…, baseline_language=…)`
 
 Track tokens-per-word per language to surface the non-English token tax.
+
+### `Figure(**data)`
+
+A chart or table embedded in a cited report, **data-bound** to its source.
 
 ### `FrontierEstimate(**data)`
 
@@ -1791,6 +1807,10 @@ Mark a function or class as experimental (no stability guarantee).
 ### `gather_reputation(subject, peers, directory=…, principal=…, config=…, verify_with=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, trust=…, trust_config=…, max_peers=…, audit=…, record_audit=…)`
 
 Pull signed attestations and revocations from a bounded set of peers.
+
+### `generate_chart(result, type=…, x=…, y=…, color=…, title=…, renderer=…, signer=…, infer_type=…)`
+
+Turn a cited query result into a **content-bound, data-bound** chart.
 
 ### `generate_redline(original, revised, format=…, title=…)`
 

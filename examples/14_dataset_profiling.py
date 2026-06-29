@@ -30,8 +30,8 @@ from vincio import ContextApp
 from vincio.data import (
     ColumnConstraint,
     ColumnSchema,
-    Dataset,
     DataQualityRails,
+    Dataset,
     DataType,
     fit_stream,
     profile_dataset,

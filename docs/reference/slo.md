@@ -71,6 +71,9 @@ portable.
 | The data-analysis agent reaches the correct answer within its step budget on the DS-1000 / InfiAgent-DABench / DABench-shaped batteries | true | `data_plane.analysis.success_at_budget` |
 | Every cell-traceable finding in a generated analytical narrative cites the exact source cells it rests on | true | `data_plane.analysis.narrative_cited` |
 | An analytical narrative and its cited cells re-derive from the bytes; a tampered source or narrative is caught | true | `data_plane.analysis.verifiable` |
+| A generated chart re-derives from the rows it was built from; a tampered source is caught | true | `data_plane.charts.data_bound` |
+| A generated chart cites the exact source cells it was built from, aggregates included | true | `data_plane.charts.figure_cited` |
+| A generated chart carries a C2PA credential bound to its rendered bytes; an edited byte stream is caught | true | `data_plane.charts.content_bound` |
 
 The fit-in-window guarantee is the headline of the profiling/sampling rung: a
 full-fidelity column profile (computed over every row in bounded memory) plus a

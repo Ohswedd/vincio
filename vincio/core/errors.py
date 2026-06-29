@@ -39,6 +39,7 @@ __all__ = [
     "QueryError",
     "UnsafeQueryError",
     "AnalysisError",
+    "ChartError",
     "RetrievalError",
     "IndexError_",
     "MemoryEngineError",
@@ -387,6 +388,16 @@ class AnalysisError(DataError):
     — objective raises :class:`UnsafeQueryError`, not this.)"""
 
     code = "ANALYSIS_ERROR"
+
+
+class ChartError(DataError):
+    """A chart could not be built from a query result — an empty or shapeless
+    result, an encoding that names a column the result does not carry, or a
+    renderer whose optional backend is not installed. Inherits :class:`DataError`
+    so ``except DataError`` catches the whole data plane; carries its own catalog
+    code for precise remediation."""
+
+    code = "CHART_ERROR"
 
 
 # --- retrieval --------------------------------------------------------------

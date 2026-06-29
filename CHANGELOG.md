@@ -4,6 +4,63 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.5.0] - 2026-06-29
+
+Charts & cited analytical artifacts — the fifth rung of the data & analytics plane: a cited query result becomes an
+analytical *artifact* a reader can trust. `generate_chart` turns a `QueryResult` into a spec-driven `Chart` that is
+**content-bound** (a C2PA *data-driven* credential bound to its rendered bytes, exactly the provenance a generated image
+carries) and **data-bound** (a back-reference to the exact source cells, verified by re-executing the source query and
+re-binding the credential). The cited-report builder extends to **figures**, so an analytical deliverable is per-claim
+entailed *and* per-figure data-bound. Additive in `vincio.data` and `vincio.generation`; entirely backward-compatible,
+dependency-free, deterministic, and offline. `API_VERSION` is unchanged at `"4.0"` — 4.5 extends the 4.x surface
+additively (494 → 499 public symbols).
+
+### Added
+
+- **`generate_chart` / `app.generate_chart` — spec-driven charts.** Turn a cited `QueryResult` (or an `AnalysisResult` /
+  bare `Dataset`) into a `Chart`. The encoding is inferred from the result schema when not pinned — a dimension on the x
+  axis, a measure on the y axis, a second dimension as the color series — a temporal x axis defaults to a line, everything
+  else to a bar, and the mark vocabulary is `bar` / `line` / `point` / `area` / `arc`. `app.generate_chart` runs a
+  natural-language question or SQL string through the governed query plane first when given one, and lands the run on the
+  hash-chained audit log (`chart_generate`).
+- **`Chart` — content-bound and data-bound, offline-verifiable.** Carries the `ChartSpec`, the rendered `data` bytes and
+  their media type, the C2PA `ProvenanceManifest` bound to those bytes, and the lineage back to the source rows
+  (`provenance`, `source_hashes`, `result_hash`, `chart_hash`). `cite_refs()` returns the exact source-cell locators the
+  figure rests on (`sales#r0!revenue`); `content_bound()` checks the credential still binds the bytes; `verify(catalog)`
+  re-executes the source query, confirms the plotted figure is a faithful projection of that verified result, and confirms
+  the credential binds the bytes — an edited spec, an edited byte stream, a stripped credential, or a tampered source flips
+  it to `False`. `to_evidence_item()` projects the figure into cited table evidence; `save(path)` writes the bytes (with a
+  `.c2pa.json` sidecar for the JSON spec).
+- **`VegaLiteRenderer` (default, dependency-free) and `MatplotlibRenderer` (behind the new `vincio[charts]` extra).** The
+  default renderer emits a portable Vega-Lite v5 JSON spec with the data embedded inline — no drawing library; the
+  matplotlib renderer rasterizes the same spec to a PNG that carries its credential embedded the way a generated image
+  does. `ChartRenderer` is the pluggable protocol.
+- **`mark_data_driven_content` — a content credential for data-driven media.** The C2PA marker sibling of
+  `mark_synthetic_content` for charts, rendered tables, and data exports: it binds the bytes by SHA-256 the same way but
+  carries the IPTC `dataDrivenMedia` digital-source-type and `is_synthetic=False` — a faithful rendering of real values is
+  not synthetic content. Exported from `vincio.governance`.
+- **The cited-report builder extends to figures.** `Figure` (`Figure.from_chart` / `Figure.from_table`) embeds a chart or a
+  table into a report: it gets a `[F1]`-style marker the narrative can reference, is rendered into the document, and — when
+  a catalog is supplied — is verified to re-derive from its source. `CitedReportBuilder.build_report(...)` and
+  `app.cited_report(...)` / `acited_report(...)` take `figures=` and an optional `catalog=` (the app default resolves the
+  registered datasets). `CitationContract(require_figure_binding=True, min_figure_binding_rate=)` gates per-figure data
+  binding — a non-deriving figure raises `CitationValidationError`, the per-figure analogue of per-claim entailment.
+  `CitationCoverage` gains `figures` / `data_bound_figures` / `figure_binding_rate`; `CitedReport` gains `figures`
+  (`FigureBinding` verdicts).
+- **Top-level surface.** `generate_chart`, `Chart`, `ChartSpec`, `ChartType`, and `Figure` are re-exported at the package
+  top level; the full surface (`ChartEncoding`, `ChartChannel`, `ChartRenderer`, `VegaLiteRenderer`, `MatplotlibRenderer`,
+  `FigureBinding`) lives in `vincio.data` / `vincio.generation`. New error code `CHART_ERROR` (`ChartError`).
+- **DataPlaneBench / charts.** A `charts` section of the **DataPlaneBench** family adds a `data_bound` SLO (the figure
+  re-derives and a tampered source is caught), a `figure_cited` SLO (the figure cites the exact source cells, aggregates
+  included), and a `content_bound` SLO (the credential binds the bytes and an edited byte stream is caught), all gated
+  `true`.
+
+### Documentation
+
+- New concept page **[Charts and cited analytical artifacts](concepts/charts-and-cited-artifacts.md)** (under `docs/`), a
+  runnable **`examples/17_charts_cited_artifacts.py`**, and updates to the README, `llms.txt`, `SECURITY.md`, the SLO
+  reference, and the ROADMAP (the 4.5 row moves from planned to shipped).
+
 ## [4.4.0] - 2026-06-29
 
 The data-analysis agent & multi-step EDA — the fourth rung of the data & analytics plane: a bounded analysis agent that
