@@ -24,194 +24,188 @@ groups (see :func:`discover_entry_points`), or by pointing
 
 from __future__ import annotations
 
+import json
 import os
 import warnings
+from datetime import date, timedelta
 from importlib.metadata import entry_points
 from pathlib import Path
 from typing import Any
+
+from pydantic import BaseModel, Field
 
 from ..core.types import ModelCapabilities, ModelLifecycle, ModelProfile
 from ..core.utils import utcnow
 
 __all__ = [
     "REGISTRY_VERSION",
+    "CATALOG_RELEASED",
+    "FRESHNESS_HORIZON_DAYS",
     "ModelUnknownWarning",
     "ModelRegistry",
+    "RegistryCoverageReport",
     "default_model_registry",
     "discover_entry_points",
 ]
 
-# Bumped whenever the built-in catalog's data shape or contents change in a way
-# consumers may want to detect (independent of the package SemVer).
-REGISTRY_VERSION = "2026.06"
+# ---------------------------------------------------------------------------
+# Built-in catalog — shipped, reviewable plain data (model_catalog.json beside
+# this module). It states, per exact model id, the capabilities each provider
+# previously guessed by substring and the pricing the cost tracker reads, so a
+# current-lineup model never falls back to a guess or silently bills $0. Loaded
+# once at import; ``_builtin_catalog()`` returns fresh ``ModelProfile`` instances
+# each call so callers may freely mutate/copy them.
+# ---------------------------------------------------------------------------
+
+_CATALOG_PATH = Path(__file__).with_name("model_catalog.json")
+
+
+def _load_catalog_data() -> dict[str, Any]:
+    with _CATALOG_PATH.open(encoding="utf-8") as fh:
+        data: dict[str, Any] = json.load(fh)
+    return data
+
+
+_CATALOG_DATA = _load_catalog_data()
+_CATALOG_MODELS: list[dict[str, Any]] = _CATALOG_DATA["models"]
+
+# The catalog's data-shape/contents version (independent of the package SemVer).
+REGISTRY_VERSION: str = _CATALOG_DATA["registry_version"]
+
+# The deterministic date the freshness horizon is evaluated against — the date
+# this catalog snapshot shipped, NOT the wall clock. A frozen release therefore
+# reports the same freshness verdict forever (a bug-fix release never "rots"
+# because months pass); only cutting a new catalog snapshot advances this date
+# and can surface a price that has drifted past the horizon.
+CATALOG_RELEASED: str = _CATALOG_DATA["released"]
+
+# How long after its ``priced_as_of`` date a price is still considered fresh,
+# measured against :data:`CATALOG_RELEASED`. ~6 months: long enough that a stable
+# rate card stays green, short enough that a stale snapshot is caught.
+FRESHNESS_HORIZON_DAYS = 180
 
 
 class ModelUnknownWarning(UserWarning):
     """Emitted once per process per unknown model id resolved against the registry."""
 
 
-def _caps(**kwargs: Any) -> ModelCapabilities:
-    return ModelCapabilities(**kwargs)
-
-
-# ---------------------------------------------------------------------------
-# Built-in catalog — plain data. Kept consistent with the prices the cost
-# tracker shipped (observability/costs.py) and the capabilities each provider
-# previously guessed by substring, now stated explicitly per exact id.
-# Lifecycle dates are populated from provider-published data; left ``None`` when
-# a provider publishes no date (honest by default — the registry fills them from the
-# live model-list endpoints).
-# ---------------------------------------------------------------------------
-
-_OPENAI_CHAT = dict(structured_output=True, tool_calling=True, prompt_caching=True,
-                     supports_system_message=True, supports_developer_message=True,
-                     input_modalities=["text", "image"])
-_ANTHROPIC_CHAT = dict(structured_output=True, tool_calling=True, vision=True,
-                       prompt_caching=True, max_context_tokens=200_000,
-                       supports_system_message=True, supports_developer_message=False,
-                       input_modalities=["text", "image"])
-_GOOGLE_CHAT = dict(structured_output=True, tool_calling=True, vision=True, audio=True,
-                    max_context_tokens=1_000_000, max_output_tokens=65_536,
-                    supports_system_message=True,
-                    input_modalities=["text", "image", "audio"])
-_MISTRAL_CHAT = dict(structured_output=True, tool_calling=True, max_context_tokens=131_072,
-                     max_output_tokens=8_192, supports_system_message=True)
-
-
 def _builtin_catalog() -> list[ModelProfile]:
-    return [
-        # ---- OpenAI ----
-        ModelProfile(name="gpt-5.2", provider="openai", model="gpt-5.2", tier="strong",
-                     capabilities=_caps(**_OPENAI_CHAT, vision=True, reasoning=True,
-                                        max_context_tokens=272_000, max_output_tokens=32_768),
-                     input_cost_per_mtok=1.25, output_cost_per_mtok=10.0,
-                     cached_input_cost_per_mtok=0.125,
-                     batch_input_cost_per_mtok=0.625, batch_output_cost_per_mtok=5.0),
-        ModelProfile(name="gpt-5.2-mini", provider="openai", model="gpt-5.2-mini", tier="default",
-                     capabilities=_caps(**_OPENAI_CHAT, vision=True, reasoning=True,
-                                        max_context_tokens=272_000, max_output_tokens=16_384),
-                     input_cost_per_mtok=0.25, output_cost_per_mtok=2.0,
-                     cached_input_cost_per_mtok=0.025,
-                     batch_input_cost_per_mtok=0.125, batch_output_cost_per_mtok=1.0),
-        ModelProfile(name="gpt-5.2-nano", provider="openai", model="gpt-5.2-nano", tier="fast",
-                     capabilities=_caps(**_OPENAI_CHAT, vision=True, reasoning=True,
-                                        max_context_tokens=272_000, max_output_tokens=16_384),
-                     input_cost_per_mtok=0.05, output_cost_per_mtok=0.4,
-                     cached_input_cost_per_mtok=0.005,
-                     batch_input_cost_per_mtok=0.025, batch_output_cost_per_mtok=0.2),
-        ModelProfile(name="gpt-4o", provider="openai", model="gpt-4o", tier="default",
-                     successor="gpt-5.2",
-                     capabilities=_caps(**_OPENAI_CHAT, vision=True, reasoning=False,
-                                        max_context_tokens=128_000, max_output_tokens=32_768),
-                     input_cost_per_mtok=2.5, output_cost_per_mtok=10.0,
-                     cached_input_cost_per_mtok=1.25,
-                     batch_input_cost_per_mtok=1.25, batch_output_cost_per_mtok=5.0),
-        ModelProfile(name="gpt-4o-mini", provider="openai", model="gpt-4o-mini", tier="fast",
-                     successor="gpt-5.2-mini",
-                     capabilities=_caps(**_OPENAI_CHAT, vision=True, reasoning=False,
-                                        max_context_tokens=128_000, max_output_tokens=16_384),
-                     input_cost_per_mtok=0.15, output_cost_per_mtok=0.6,
-                     cached_input_cost_per_mtok=0.075,
-                     batch_input_cost_per_mtok=0.075, batch_output_cost_per_mtok=0.3),
-        # ---- Anthropic ----
-        ModelProfile(name="claude-fable-5", provider="anthropic", model="claude-fable-5",
-                     tier="strong",
-                     capabilities=_caps(**_ANTHROPIC_CHAT, reasoning=True, max_output_tokens=64_000),
-                     input_cost_per_mtok=5.0, output_cost_per_mtok=25.0,
-                     cached_input_cost_per_mtok=0.5,
-                     batch_input_cost_per_mtok=2.5, batch_output_cost_per_mtok=12.5),
-        ModelProfile(name="claude-opus-4-8", provider="anthropic", model="claude-opus-4-8",
-                     tier="strong",
-                     capabilities=_caps(**_ANTHROPIC_CHAT, reasoning=True, max_output_tokens=64_000),
-                     input_cost_per_mtok=5.0, output_cost_per_mtok=25.0,
-                     cached_input_cost_per_mtok=0.5,
-                     batch_input_cost_per_mtok=2.5, batch_output_cost_per_mtok=12.5),
-        ModelProfile(name="claude-sonnet-4-6", provider="anthropic", model="claude-sonnet-4-6",
-                     tier="default",
-                     capabilities=_caps(**_ANTHROPIC_CHAT, reasoning=True, max_output_tokens=64_000),
-                     input_cost_per_mtok=3.0, output_cost_per_mtok=15.0,
-                     cached_input_cost_per_mtok=0.3,
-                     batch_input_cost_per_mtok=1.5, batch_output_cost_per_mtok=7.5),
-        ModelProfile(name="claude-haiku-4-5", provider="anthropic", model="claude-haiku-4-5",
-                     tier="fast",
-                     capabilities=_caps(**_ANTHROPIC_CHAT, reasoning=False, max_output_tokens=32_000),
-                     input_cost_per_mtok=1.0, output_cost_per_mtok=5.0,
-                     cached_input_cost_per_mtok=0.1,
-                     batch_input_cost_per_mtok=0.5, batch_output_cost_per_mtok=2.5),
-        # ---- Google ----
-        ModelProfile(name="gemini-3-pro", provider="google", model="gemini-3-pro", tier="strong",
-                     capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
-                     input_cost_per_mtok=2.0, output_cost_per_mtok=12.0,
-                     cached_input_cost_per_mtok=0.5,
-                     batch_input_cost_per_mtok=1.0, batch_output_cost_per_mtok=6.0),
-        ModelProfile(name="gemini-3-flash", provider="google", model="gemini-3-flash",
-                     tier="default",
-                     capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
-                     input_cost_per_mtok=0.3, output_cost_per_mtok=2.5,
-                     cached_input_cost_per_mtok=0.075,
-                     batch_input_cost_per_mtok=0.15, batch_output_cost_per_mtok=1.25),
-        ModelProfile(name="gemini-2.5-pro", provider="google", model="gemini-2.5-pro", tier="strong",
-                     capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
-                     input_cost_per_mtok=1.25, output_cost_per_mtok=10.0,
-                     cached_input_cost_per_mtok=0.31,
-                     batch_input_cost_per_mtok=0.625, batch_output_cost_per_mtok=5.0),
-        ModelProfile(name="gemini-2.5-flash", provider="google", model="gemini-2.5-flash",
-                     tier="default",
-                     capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
-                     input_cost_per_mtok=0.3, output_cost_per_mtok=2.5,
-                     cached_input_cost_per_mtok=0.075,
-                     batch_input_cost_per_mtok=0.15, batch_output_cost_per_mtok=1.25),
-        ModelProfile(name="gemini-2.5-flash-lite", provider="google",
-                     model="gemini-2.5-flash-lite", tier="fast",
-                     capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=True),
-                     input_cost_per_mtok=0.1, output_cost_per_mtok=0.4,
-                     cached_input_cost_per_mtok=0.025,
-                     batch_input_cost_per_mtok=0.05, batch_output_cost_per_mtok=0.2),
-        # Gemini 2.0 family is on the way out — successors published, dates filled
-        # best-effort here and reconciled by live discovery (providers.discovery).
-        ModelProfile(name="gemini-2.0-flash", provider="google", model="gemini-2.0-flash",
-                     tier="fast", successor="gemini-2.5-flash",
-                     deprecation_date="2026-02-05", retirement_date="2026-08-05",
-                     capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=False),
-                     input_cost_per_mtok=0.1, output_cost_per_mtok=0.4,
-                     cached_input_cost_per_mtok=0.025,
-                     batch_input_cost_per_mtok=0.05, batch_output_cost_per_mtok=0.2),
-        ModelProfile(name="gemini-2.0-flash-lite", provider="google",
-                     model="gemini-2.0-flash-lite", tier="fast",
-                     successor="gemini-2.5-flash-lite",
-                     deprecation_date="2026-02-25", retirement_date="2026-08-25",
-                     capabilities=_caps(**_GOOGLE_CHAT, prompt_caching=True, reasoning=False),
-                     input_cost_per_mtok=0.075, output_cost_per_mtok=0.3,
-                     batch_input_cost_per_mtok=0.0375, batch_output_cost_per_mtok=0.15),
-        # ---- Embedding models (cost-tracking entries; capabilities minimal) ----
-        ModelProfile(name="gemini-embedding-001", provider="google",
-                     model="gemini-embedding-001", tier="default",
-                     capabilities=_caps(max_context_tokens=2_048, max_output_tokens=0,
-                                        output_modalities=["embedding"]),
-                     input_cost_per_mtok=0.15),
-        ModelProfile(name="text-embedding-004", provider="google", model="text-embedding-004",
-                     tier="default",
-                     capabilities=_caps(max_context_tokens=2_048, max_output_tokens=0,
-                                        output_modalities=["embedding"]),
-                     input_cost_per_mtok=0.0),
-        # ---- Mistral ----
-        ModelProfile(name="mistral-large-latest", provider="mistral", model="mistral-large-latest",
-                     tier="strong", capabilities=_caps(**_MISTRAL_CHAT, vision=False),
-                     input_cost_per_mtok=2.0, output_cost_per_mtok=6.0),
-        ModelProfile(name="mistral-small-latest", provider="mistral", model="mistral-small-latest",
-                     tier="fast", capabilities=_caps(**_MISTRAL_CHAT, vision=False),
-                     input_cost_per_mtok=0.2, output_cost_per_mtok=0.6),
-        # ---- Local / self-hosted (free) ----
-        ModelProfile(name="local", provider="local", model="local", tier="default",
-                     capabilities=_caps(structured_output=True, tool_calling=True,
-                                        max_context_tokens=32_768, max_output_tokens=8_192)),
-        # ---- Deterministic offline mock (free; capabilities mirror MockProvider) ----
-        ModelProfile(name="mock", provider="mock", model="mock", tier="default",
-                     capabilities=_caps(structured_output=True, tool_calling=True, vision=True,
-                                        audio=True, prompt_caching=True, max_context_tokens=200_000,
-                                        max_output_tokens=32_768, supports_developer_message=True,
-                                        input_modalities=["text", "image", "audio"])),
-    ]
+    """Fresh ``ModelProfile`` instances parsed from the shipped catalog."""
+    return [ModelProfile.model_validate(m) for m in _CATALOG_MODELS]
+
+
+# ---------------------------------------------------------------------------
+# Coverage anchors — the frozen expectations the coverage_report() drift
+# detector holds the catalog to. Editing the catalog so any of these no longer
+# holds fails the registry_coverage VincioBench family rather than shipping a
+# silently degraded cost report.
+# ---------------------------------------------------------------------------
+
+# Providers whose models are free / self-hosted — exempt from the pricing rules.
+_FREE_PROVIDERS = frozenset({"local", "mock"})
+
+# First-party providers Vincio ships a native adapter for, mapped to the canonical
+# GA default model the coverage report proves resolves to a non-sparse, priced,
+# GA profile (so the router / cascades / energy accounting always have one).
+_PROVIDER_DEFAULTS: dict[str, str] = {
+    "openai": "gpt-5.2-mini",
+    "anthropic": "claude-sonnet-4-6",
+    "google": "gemini-2.5-flash",
+    "mistral": "mistral-small-latest",
+}
+
+# One representative id per substring family each provider's capability-heuristic
+# fallback branches on (vincio/providers/{openai,anthropic,google,mistral}.py).
+# Every one must resolve to a non-sparse, priced profile so the current lineup
+# never falls back to a guessed price or capability matrix.
+_CAPABILITY_FAMILIES: dict[str, list[str]] = {
+    "openai": ["gpt-5.2", "gpt-5", "gpt-4.1", "gpt-4o", "o1", "o3", "o4-mini",
+               "text-embedding-3-small"],
+    "anthropic": ["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5", "claude-fable-5",
+                  "claude-3-7-sonnet", "claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"],
+    "google": ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-pro",
+               "gemini-3-flash", "gemini-embedding-001"],
+    "mistral": ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest",
+                "codestral-latest", "pixtral-large-latest", "mistral-embed"],
+}
+
+# Canonical cheapest-capable picks the router, the cascades, and the energy
+# accounting depend on. A refresh that silently reorders which model is cheapest
+# would change what they select; the report re-derives each pick from the live
+# catalog (blended input+output $/Mtok) and flags any that moved.
+_ROUTING_ANCHORS: list[tuple[list[str], str]] = [
+    (["gpt-5.2", "gpt-5.2-mini", "gpt-5.2-nano"], "gpt-5.2-nano"),
+    (["claude-opus-4-8", "claude-sonnet-4-6", "claude-haiku-4-5"], "claude-haiku-4-5"),
+    (["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-flash-lite"], "gemini-2.5-flash-lite"),
+    (["mistral-large-latest", "mistral-small-latest"], "mistral-small-latest"),
+    (["gpt-5.2", "claude-sonnet-4-6", "gemini-2.5-flash"], "gemini-2.5-flash"),
+]
+
+
+def _is_sparse(profile: ModelProfile) -> bool:
+    """A profile carrying only the bare-default capability matrix (no real data)."""
+    return profile.capabilities == ModelCapabilities()
+
+
+def _is_embedding(profile: ModelProfile) -> bool:
+    return "embedding" in profile.capabilities.output_modalities
+
+
+def _is_priced(profile: ModelProfile) -> bool:
+    """Whether a profile carries a real (non-zero) price for what it bills on."""
+    if _is_embedding(profile):
+        return profile.input_cost_per_mtok > 0
+    return profile.input_cost_per_mtok > 0 and profile.output_cost_per_mtok > 0
+
+
+class RegistryCoverageReport(BaseModel):
+    """The verdict of :meth:`ModelRegistry.coverage_report` — a deterministic,
+    offline drift detector over the shipped catalog.
+
+    ``ok`` is the single gate: it holds only when every supported provider's
+    default and capability-heuristic families resolve to a non-sparse, priced
+    profile, every ``openai_compat`` preset's headline model is priced, no GA
+    billable model silently costs $0, no price has drifted past the freshness
+    horizon, and the canonical router/cascade picks are unchanged. The list
+    fields pinpoint exactly what failed.
+    """
+
+    as_of: str
+    released: str
+    horizon_days: int
+    model_count: int
+    provider_count: int
+    default_models_resolve: bool
+    capability_families_resolve: bool
+    presets_priced: bool
+    no_silent_zero: bool
+    no_stale_prices: bool
+    no_routing_drift: bool
+    coverage_complete: bool
+    ok: bool
+    gaps: list[str] = Field(default_factory=list)
+    unpriced: list[str] = Field(default_factory=list)
+    stale: list[str] = Field(default_factory=list)
+    drift: list[str] = Field(default_factory=list)
+
+    def summary(self) -> dict[str, Any]:
+        """Flat, JSON-friendly view for the bench gate and the CLI."""
+        return {
+            "ok": self.ok,
+            "coverage_complete": self.coverage_complete,
+            "default_models_resolve": self.default_models_resolve,
+            "capability_families_resolve": self.capability_families_resolve,
+            "presets_priced": self.presets_priced,
+            "no_silent_zero": self.no_silent_zero,
+            "no_stale_prices": self.no_stale_prices,
+            "no_routing_drift": self.no_routing_drift,
+            "model_count": self.model_count,
+            "provider_count": self.provider_count,
+            "gaps": self.gaps,
+            "unpriced": self.unpriced,
+            "stale": self.stale,
+            "drift": self.drift,
+        }
 
 
 class ModelRegistry:
@@ -427,6 +421,160 @@ class ModelRegistry:
 
     def profiles(self) -> list[ModelProfile]:
         return list(self._profiles.values())
+
+    # -- coverage / freshness --------------------------------------------------
+
+    def _priced_as_of(self, profile: ModelProfile) -> date | None:
+        if not profile.priced_as_of:
+            return None
+        try:
+            return date.fromisoformat(profile.priced_as_of[:10])
+        except ValueError:
+            return None
+
+    def coverage_report(
+        self,
+        *,
+        as_of: date | str | None = None,
+        horizon_days: int = FRESHNESS_HORIZON_DAYS,
+    ) -> RegistryCoverageReport:
+        """Prove the catalog is complete, honest, fresh, and routing-stable.
+
+        A deterministic, offline drift detector (no network, no wall clock):
+
+        * **coverage** — every supported provider's GA default and every
+          capability-heuristic family resolve to a non-sparse, priced profile,
+          and every ``openai_compat`` preset's headline model is priced;
+        * **no silent $0** — every GA billable model of a paid provider carries a
+          real price (input, and output for generative models);
+        * **freshness** — no GA price has drifted more than ``horizon_days`` past
+          its ``priced_as_of``, measured against ``as_of`` (the catalog's release
+          date by default, *never* the wall clock — so a frozen release is stable);
+        * **no routing drift** — the canonical cheapest-capable router/cascade
+          picks are unchanged.
+
+        ``as_of`` overrides the reference date for what-if checks (e.g. "is this
+        catalog still fresh a year from release?"); it never reads the clock on
+        its own.
+        """
+        from .openai_compat import PRESETS
+
+        if as_of is None:
+            ref = date.fromisoformat(CATALOG_RELEASED)
+        elif isinstance(as_of, str):
+            ref = date.fromisoformat(as_of[:10])
+        else:
+            ref = as_of
+        horizon = ref - timedelta(days=horizon_days)
+
+        profiles = self.profiles()
+        gaps: list[str] = []
+        unpriced: list[str] = []
+        stale: list[str] = []
+        drift: list[str] = []
+
+        def _covered(model_id: str, label: str) -> bool:
+            profile = self.resolve(model_id)
+            if profile is None:
+                gaps.append(f"{label}: {model_id} → unresolved")
+                return False
+            if _is_sparse(profile):
+                gaps.append(f"{label}: {model_id} → sparse (no real capabilities)")
+                return False
+            if not _is_priced(profile):
+                gaps.append(f"{label}: {model_id} → unpriced")
+                return False
+            return True
+
+        # Coverage: provider defaults must additionally be GA.
+        default_models_resolve = True
+        for provider, model_id in _PROVIDER_DEFAULTS.items():
+            ok = _covered(model_id, f"default[{provider}]")
+            profile = self.resolve(model_id)
+            if profile is not None and profile.lifecycle(as_of=ref) != "ga":
+                gaps.append(f"default[{provider}]: {model_id} → not GA")
+                ok = False
+            default_models_resolve = default_models_resolve and ok
+
+        capability_families_resolve = all(
+            _covered(model_id, f"family[{provider}]")
+            for provider, ids in _CAPABILITY_FAMILIES.items()
+            for model_id in ids
+        )
+
+        presets_priced = all(
+            _covered(preset.default_model, f"preset[{name}]")
+            for name, preset in PRESETS.items()
+            if preset.default_model
+        )
+
+        # No silent $0: every GA billable model of a paid provider must be priced.
+        for profile in profiles:
+            if profile.provider in _FREE_PROVIDERS:
+                continue
+            if profile.lifecycle(as_of=ref) != "ga":
+                continue
+            if not _is_priced(profile):
+                unpriced.append(profile.model)
+        no_silent_zero = not unpriced
+
+        # Freshness: every GA priced model of a paid provider must carry a
+        # ``priced_as_of`` within the horizon of the reference (release) date.
+        for profile in profiles:
+            if profile.provider in _FREE_PROVIDERS:
+                continue
+            if profile.lifecycle(as_of=ref) != "ga" or not _is_priced(profile):
+                continue
+            priced = self._priced_as_of(profile)
+            if priced is None:
+                stale.append(f"{profile.model}: missing priced_as_of")
+            elif priced < horizon:
+                stale.append(f"{profile.model}: priced {priced.isoformat()} < {horizon.isoformat()}")
+        no_stale_prices = not stale
+
+        # No routing drift: re-derive each canonical cheapest pick from the live
+        # catalog and compare against the frozen expectation.
+        for candidates, expected in _ROUTING_ANCHORS:
+            resolved = {c: self.resolve(c) for c in candidates}
+            if any(p is None for p in resolved.values()):
+                drift.append(f"{candidates} → a candidate is unresolved")
+                continue
+            blended = {
+                c: p.input_cost_per_mtok + p.output_cost_per_mtok
+                for c, p in resolved.items()
+                if p is not None
+            }
+            cheapest = min(candidates, key=lambda c: (blended[c], candidates.index(c)))
+            if cheapest != expected:
+                drift.append(f"{candidates} → cheapest is {cheapest}, expected {expected}")
+        no_routing_drift = not drift
+
+        coverage_complete = (
+            default_models_resolve
+            and capability_families_resolve
+            and presets_priced
+            and no_silent_zero
+        )
+        ok = coverage_complete and no_stale_prices and no_routing_drift
+        return RegistryCoverageReport(
+            as_of=ref.isoformat(),
+            released=CATALOG_RELEASED,
+            horizon_days=horizon_days,
+            model_count=len(profiles),
+            provider_count=len({p.provider for p in profiles}),
+            default_models_resolve=default_models_resolve,
+            capability_families_resolve=capability_families_resolve,
+            presets_priced=presets_priced,
+            no_silent_zero=no_silent_zero,
+            no_stale_prices=no_stale_prices,
+            no_routing_drift=no_routing_drift,
+            coverage_complete=coverage_complete,
+            ok=ok,
+            gaps=gaps,
+            unpriced=unpriced,
+            stale=stale,
+            drift=drift,
+        )
 
     def __contains__(self, model_id: str) -> bool:  # pragma: no cover - trivial
         return self.is_known(model_id)

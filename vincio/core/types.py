@@ -788,6 +788,13 @@ class ModelProfile(BaseModel):
     deprecation_date: str | None = None
     retirement_date: str | None = None
     knowledge_cutoff: str | None = None
+    # ISO date (YYYY-MM-DD) the pricing on this profile was last verified against
+    # the provider's published rate card. ``None`` for free / self-hosted models
+    # that have no rate to verify. The registry's freshness horizon is evaluated
+    # against this date and the catalog's release date — never the wall clock — so
+    # a frozen release reports the same freshness verdict forever (see
+    # :meth:`vincio.providers.registry.ModelRegistry.coverage_report`).
+    priced_as_of: str | None = None
     # Suggested successor model id once deprecated/retired (consumed by the
     # lifecycle watcher); harmless metadata until then.
     successor: str | None = None

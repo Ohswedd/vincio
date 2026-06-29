@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "5.0.0"
+version = "5.1.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -88,6 +88,12 @@ computer-use = ["playwright>=1.40"]
 # pure-Python RFC 8032 implementation is the dependency-free default; this extra
 # swaps in the audited C backend automatically when installed)
 crypto = ["cryptography>=42.0"]
+# 5.1 — review-only `vincio registry sync`. The shipped model catalog and the
+# `vincio registry coverage` gate are dependency-free; this extra bundles the
+# first-party provider clients so `registry sync` can reach every supported
+# provider's live model-list endpoint out of the box (it degrades gracefully to
+# the core httpx path for any provider reachable without an SDK).
+registry-sync = ["vincio[openai,anthropic,google,mistral]"]
 # verified reasoning — optional SMT / CAS backends for the certificate kernels
 # (the deterministic, dependency-free kernels are the default and need no extra)
 verify = ["z3-solver>=4.12", "sympy>=1.12"]

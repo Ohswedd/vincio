@@ -430,6 +430,33 @@ into the registry (offline-safe, the shipped catalog stands when no endpoint is
 available). A `GoogleBatchBackend` completes half-cost batch parity with
 OpenAI/Anthropic.
 
+### Honest pricing: the catalog coverage gate
+
+The registry's built-in catalog ships as reviewable data
+(`vincio/providers/model_catalog.json`) and prices the **real current lineup of
+every provider** — the OpenAI o-series / `gpt-5` / `gpt-4.1` families and
+`text-embedding-3-*`, the Anthropic 3.x tier beside 4.x / Fable, Mistral
+medium / codestral / pixtral / `mistral-embed`, the `openai_compat` presets, and
+Google reconciled to live reality — so a current model never resolves to nothing
+and silently bills $0. Each profile carries a `priced_as_of`, and freshness is
+held against an `as_of`-deterministic horizon measured from the catalog's
+**release date**, not the wall clock, so a frozen release reports the same
+verdict forever.
+
+```python
+from vincio import default_model_registry
+
+report = default_model_registry().coverage_report()
+assert report.ok          # complete, honest ($0-free), fresh, routing-stable
+```
+
+`vincio registry coverage` runs the same drift detector from the shell (exit
+non-zero on a gap), and `vincio registry sync <provider>` is a **review-only**
+helper that diffs a provider's live `list_models()` into a candidate overlay for
+you to price and merge — it never mutates the shipped catalog. An arbitrary model
+id the catalog does not cover still warns once via `ModelUnknownWarning` rather
+than billing $0.
+
 ## Edge over gateways
 
 LLM gateways (LiteLLM, Bifrost, Portkey) give you failover, circuit breaking,

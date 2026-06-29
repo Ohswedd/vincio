@@ -2121,6 +2121,36 @@
       "threshold": true,
       "enforced_by": "families.assurance.assurance_regression",
       "rationale": "An assurance argument that is checked once and filed away rots silently as the system changes around it; the value of a continuous assurance case is that a regression in any piece of its evidence fails the build before the change ships. The gate reuses the same machinery that blocks a quality regression, now over the safety argument itself. The budget gates that re-checking an unchanged case passes, that a claim falsified by a change is caught and fails the gate, that the regressed after-case does not hold, and that a signed incident makes the case demand a remediation proof before it re-validates \u2014 closing the loop from a production incident back into a stronger, re-verified safety argument, held offline."
+    },
+    {
+      "id": "registry_coverage_complete",
+      "category": "cost",
+      "statement": "Every supported provider's default model and capability-heuristic families, and every openai_compat preset's headline model, resolve to a non-sparse, priced profile in the shipped catalog.",
+      "metric": "families.registry_coverage.coverage_complete",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.registry_coverage.coverage_complete",
+      "rationale": "The data-driven ModelRegistry is the single source of truth the cost PriceTable, the capability guard, the cost/latency router, the model cascades, and the energy accounting all read from. A current-lineup model that resolves to nothing warns once and then bills $0 and falls back to a guessed capability matrix; gating coverage proves the catalog actually prices the real lineup of every provider Vincio supports rather than silently degrading the cost report."
+    },
+    {
+      "id": "registry_freshness",
+      "category": "cost",
+      "statement": "No GA billable price in the catalog has drifted more than the freshness horizon past its priced_as_of date, evaluated against the catalog's release date rather than the wall clock.",
+      "metric": "families.registry_coverage.no_stale_prices",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.registry_coverage.no_stale_prices",
+      "rationale": "A half-year-old price would otherwise ship green because the registry version was a hand-bumped string with no enforced horizon. Evaluating freshness against the deterministic release date (never the clock) keeps a frozen bug-fix release stable while a new catalog snapshot that carries a price drifted past the horizon fails the build, forcing a refresh."
+    },
+    {
+      "id": "registry_no_silent_zero",
+      "category": "cost",
+      "statement": "No GA billable model of a paid provider silently bills $0: every such model carries a real input price (and an output price for generative models).",
+      "metric": "families.registry_coverage.no_silent_zero",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.registry_coverage.no_silent_zero",
+      "rationale": "An unpriced billable model makes the cost report quietly wrong \u2014 the most expensive way to be inaccurate, because spend looks free. Gating that every GA billable model of a paid provider is priced makes the cost report honest by construction; genuinely free or self-hosted models (local, mock) are exempt, and an arbitrary uncatalogued id still warns once rather than billing $0 silently."
     }
   ]
 }

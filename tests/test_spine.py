@@ -272,6 +272,44 @@ class TestModelRegistry:
         cost = default_price_table().cost("gpt-5.2", TokenUsage(input_tokens=1_000_000))
         assert cost == pytest.approx(1.25)
 
+    def test_catalog_loads_from_shipped_json(self):
+        # The built-in catalog is shipped as reviewable data, not inline code.
+        from vincio.providers import registry as registry_mod
+
+        assert registry_mod._CATALOG_PATH.name == "model_catalog.json"
+        assert registry_mod._CATALOG_PATH.is_file()
+        reg = ModelRegistry()
+        assert len(reg) >= 45
+        # priced_as_of is populated on every billable, GA, paid-provider profile.
+        assert reg.resolve("gpt-5.2").priced_as_of == registry_mod.CATALOG_RELEASED
+
+    def test_current_lineup_is_priced(self):
+        # The families that previously resolved to nothing and billed $0 now price.
+        from vincio.core.types import TokenUsage
+        from vincio.observability.costs import default_price_table
+
+        pt = default_price_table()
+        # OpenAI o-series + gpt-4.1 + embeddings.
+        assert pt.cost("o3", TokenUsage(input_tokens=1_000_000)) == pytest.approx(2.0)
+        assert pt.cost("gpt-4.1", TokenUsage(output_tokens=1_000_000)) == pytest.approx(8.0)
+        assert pt.cost("text-embedding-3-small", TokenUsage(input_tokens=1_000_000)) == pytest.approx(0.02)
+        # Anthropic legacy tier + Mistral lineup.
+        assert pt.cost("claude-3-5-sonnet", TokenUsage(input_tokens=1_000_000)) == pytest.approx(3.0)
+        assert pt.cost("mistral-medium-latest", TokenUsage(output_tokens=1_000_000)) == pytest.approx(2.0)
+        # openai_compat presets: priced instead of $0.
+        assert pt.cost("deepseek-chat", TokenUsage(output_tokens=1_000_000)) == pytest.approx(1.1)
+        assert pt.cost("llama-3.3-70b-versatile", TokenUsage(input_tokens=1_000_000)) == pytest.approx(0.59)
+
+    def test_gemini_reconciled_to_live_reality(self):
+        # gemini-2.5-flash is the GA default; gemini-3-* are preview (future GA date).
+        reg = default_model_registry()
+        from datetime import date
+
+        as_of = date(2026, 6, 29)
+        assert reg.resolve("gemini-2.5-flash").lifecycle(as_of=as_of) == "ga"
+        assert reg.resolve("gemini-3-pro").ga_date == "2026-12-01"
+        assert reg.resolve("gemini-embedding-001").input_cost_per_mtok == pytest.approx(0.15)
+
     def test_batch_pricing_is_cheaper(self):
         from vincio.core.types import TokenUsage
         from vincio.observability.costs import default_price_table

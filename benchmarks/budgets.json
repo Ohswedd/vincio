@@ -31,6 +31,15 @@
     "families.cost.table_encoding.lossless": {
       "eq": true
     },
+    "families.registry_coverage.coverage_complete": {
+      "eq": true
+    },
+    "families.registry_coverage.no_stale_prices": {
+      "eq": true
+    },
+    "families.registry_coverage.no_silent_zero": {
+      "eq": true
+    },
     "families.data_plane.fit_in_window.within_budget": {
       "eq": true
     },

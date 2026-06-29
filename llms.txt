@@ -1067,10 +1067,24 @@ app.run("export button 500s").output.label
 - **ModelRegistry.** `from vincio import default_model_registry, ModelRegistry`,
   a versioned, config-overridable (`VINCIO_MODEL_REGISTRY` JSON/YAML) catalog
   keyed by exact model id binding `ModelProfile` (capabilities + standard/batch
-  pricing + context window + modalities + GA/deprecation/retirement). The cost
-  table (`PriceTable`) and capability guards derive from it; an unknown model
-  warns + emits `model.unknown` instead of billing $0. Token counters register
-  behind the `TokenCounter` Protocol (`register_token_counter`).
+  pricing + context window + modalities + GA/deprecation/retirement +
+  `priced_as_of`). Built-ins ship as reviewable data
+  (`vincio/providers/model_catalog.json`) pricing the real current lineup of
+  every provider (OpenAI o-series / gpt-5 / gpt-4.1 / `text-embedding-3-*`,
+  Anthropic 3.x beside 4.x/Fable, Mistral medium/codestral/pixtral/`mistral-embed`,
+  the `openai_compat` presets, Google reconciled to live reality). The cost table
+  (`PriceTable`) and capability guards derive from it; an unknown model warns +
+  emits `model.unknown` instead of billing $0. **Coverage gate (5.1):**
+  `registry.coverage_report(*, as_of=None)` → `RegistryCoverageReport` is an
+  offline drift detector — every provider default + capability-heuristic family +
+  `openai_compat` preset resolves to a non-sparse, priced profile, no GA billable
+  model silently bills $0, no price has drifted past the `as_of`-deterministic
+  freshness horizon (evaluated against the catalog's `CATALOG_RELEASED` date, not
+  the wall clock; `FRESHNESS_HORIZON_DAYS`), and the canonical router/cascade/energy
+  picks are unchanged (`vincio registry coverage`). `vincio registry sync` (extra
+  `vincio[registry-sync]`) is review-only: diffs a provider's live `list_models()`
+  into a candidate overlay to merge, never mutating the catalog. Token counters
+  register behind the `TokenCounter` Protocol (`register_token_counter`).
 - **Capability-aware failover.** `requirements_for` / `capability_check`
   intersect a request's needs (vision/tools/structured-output/reasoning/context)
   with `ModelCapabilities`. `FailoverChain` / `HealthAwareFailover` guard by

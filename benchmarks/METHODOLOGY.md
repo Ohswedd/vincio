@@ -39,6 +39,7 @@ where they are, so you can run it yourself and audit the claims.
 | **OutputBench** | recovery rate over malformed outputs vs raw parsing | `json.loads` |
 | **ReliabilityBench** | constrained-decode closure, mid-stream abort savings, self-correction, rails | validate-at-end |
 | **CostBench** | evidence-token reduction from the compiler; the compact data encoder's tabular token efficiency + losslessness | stuff-everything; `json.dumps` / Markdown |
+| **RegistryCoverageBench (5.1)** | the model pricing & capability registry held honest — the shipped catalog is complete (every provider default + capability family + openai_compat preset resolves to a non-sparse, priced profile), $0-free (no GA billable model silently bills $0), fresh (no price drifted past the release-date-relative horizon), and routing-stable (canonical router/cascade picks unchanged); each gate is shown to bite on a broken catalog | a hand-bumped version with no horizon; a current model that bills $0 |
 | **SecurityBench** | injection detection / false-positive rate, PII coverage | — |
 | **EvalBench** | metric agreement, red-team judging, synthetic determinism, A/B significance | naive target |
 | **AgenticEvalsBench** | trajectory/tool metric agreement, simulator determinism, drift sensitivity/specificity, κ tracking; (2.2) stateful-environment task-success oracle + deterministic hash-pinned replay of the nine benchmark adapters; κ-gated judge ensembles, Shapley causal regression attribution, verdict-preserving adaptive sampling | output-only eval |

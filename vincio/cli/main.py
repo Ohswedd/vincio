@@ -765,6 +765,96 @@ def cmd_providers_regress(args: argparse.Namespace) -> int:
     return 0 if verdict.passed else 1
 
 
+def cmd_registry_coverage(args: argparse.Namespace) -> int:
+    """Prove the shipped model catalog is complete, honest, fresh, and routing-stable."""
+    from ..providers.registry import default_model_registry
+
+    report = default_model_registry().coverage_report(as_of=args.as_of or None)
+    if args.json:
+        print(json_dumps(report.model_dump(mode="json"), indent=2))
+    else:
+        flag = "ok" if report.ok else "FAIL"
+        print(f"registry coverage [{flag}] — {report.model_count} models across "
+              f"{report.provider_count} providers, released {report.released}, "
+              f"horizon {report.horizon_days}d (as_of {report.as_of})")
+        checks = [
+            ("provider defaults resolve", report.default_models_resolve),
+            ("capability families resolve", report.capability_families_resolve),
+            ("openai_compat presets priced", report.presets_priced),
+            ("no silent $0", report.no_silent_zero),
+            ("no stale prices", report.no_stale_prices),
+            ("no routing drift", report.no_routing_drift),
+        ]
+        for label, passed in checks:
+            print(f"  [{'PASS' if passed else 'FAIL'}] {label}")
+        for bucket, label in (
+            (report.gaps, "gap"), (report.unpriced, "silent $0"),
+            (report.stale, "stale"), (report.drift, "routing drift"),
+        ):
+            for item in bucket:
+                print(f"    - {label}: {item}")
+    return 0 if report.ok else 1
+
+
+def cmd_registry_sync(args: argparse.Namespace) -> int:
+    """Review-only: diff a provider's live model list against the shipped catalog.
+
+    Emits a candidate overlay of models the live endpoint advertises that the
+    catalog does not yet price, for a human to fill in and merge. It never
+    mutates the shipped catalog — pricing and capabilities are a human decision.
+    """
+    from ..providers import build_provider
+    from ..providers.base import run_sync
+    from ..providers.registry import default_model_registry
+
+    providers = [args.provider] if args.provider else ["openai", "anthropic", "google", "mistral"]
+    registry = default_model_registry()
+    overlay: list[dict[str, Any]] = []
+    notes: list[str] = []
+    for name in providers:
+        try:
+            provider = build_provider(name, with_retries=False)
+            live = run_sync(provider.list_models())
+        except Exception as exc:  # noqa: BLE001 - a single provider must not abort the sweep
+            notes.append(f"{name}: skipped ({type(exc).__name__}: {exc})")
+            continue
+        if not live:
+            notes.append(f"{name}: live endpoint advertised no models (offline or no list API)")
+            continue
+        new = 0
+        aliases = 0
+        for profile in live:
+            resolved = registry.resolve(profile.model)
+            if resolved is None:
+                overlay.append(profile.model_dump(exclude_none=True))
+                new += 1
+            elif resolved.model != profile.model and profile.model not in resolved.aliases:
+                aliases += 1
+        notes.append(
+            f"{name}: {len(live)} live, {new} new candidate(s), "
+            f"{aliases} would fold in as alias(es)"
+        )
+
+    candidate = {"models": overlay}
+    if args.out:
+        Path(args.out).write_text(json_dumps(candidate, indent=2), encoding="utf-8")
+    if args.json:
+        print(json_dumps({"notes": notes, "candidate_overlay": candidate}, indent=2))
+    else:
+        for note in notes:
+            print(note)
+        if overlay:
+            print(f"\n{len(overlay)} candidate model(s) need a price + capabilities. "
+                  "Review and merge into model_catalog.json (or a VINCIO_MODEL_REGISTRY overlay):")
+            if args.out:
+                print(f"  written to {args.out}")
+            else:
+                print(json_dumps(candidate, indent=2))
+        else:
+            print("\nno new models — the catalog already covers the live lineup")
+    return 0
+
+
 def cmd_eval_report(args: argparse.Namespace) -> int:
     from ..evals.reports import EvalReport
 
@@ -2080,6 +2170,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_prov_regress.add_argument("--alpha", type=float, default=0.05)
     p_prov_regress.add_argument("--repeats", type=int, default=1)
     p_prov_regress.set_defaults(fn=cmd_providers_regress)
+
+    # registry — model pricing & capability catalog coverage + live sync.
+    p_registry = sub.add_parser(
+        "registry", help="model pricing & capability catalog coverage and sync"
+    )
+    registry_sub = p_registry.add_subparsers(dest="registry_command", required=True)
+
+    p_reg_cov = registry_sub.add_parser(
+        "coverage", help="prove the shipped catalog is complete, honest, fresh & routing-stable"
+    )
+    p_reg_cov.add_argument("--as-of", default=None, dest="as_of",
+                           help="reference date YYYY-MM-DD for the freshness horizon "
+                                "(default: catalog release date)")
+    p_reg_cov.add_argument("--json", action="store_true")
+    p_reg_cov.set_defaults(fn=cmd_registry_coverage)
+
+    p_reg_sync = registry_sub.add_parser(
+        "sync", help="review-only: diff a provider's live model list into a candidate overlay"
+    )
+    p_reg_sync.add_argument("provider", nargs="?", default=None,
+                            help="provider name (default: openai/anthropic/google/mistral)")
+    p_reg_sync.add_argument("--out", default=None, help="write the candidate overlay JSON here")
+    p_reg_sync.add_argument("--json", action="store_true")
+    p_reg_sync.set_defaults(fn=cmd_registry_sync)
 
     return parser
 
