@@ -26,7 +26,7 @@ def test_examples_present():
     # Guards against an example being dropped without notice. The suite covers
     # the whole platform end-to-end, one solid example per area (see
     # examples/README.md).
-    assert len(EXAMPLE_FILES) == 19
+    assert len(EXAMPLE_FILES) == 20
 
 
 @pytest.mark.parametrize("path", EXAMPLE_FILES, ids=lambda p: p.stem)

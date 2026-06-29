@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**502** public symbols.
+**507** public symbols.
 
 ## Classes
 
@@ -474,6 +474,22 @@ A named set of registered :class:`~vincio.data.Dataset`\s a query grounds agains
 
 Render tabular data header-once in a compact, token-oriented form.
 
+### `DataEngagement(app, dataset=…, question=…, analyst=…)`
+
+A purely-compositional facade threading the whole data plane in one call-path.
+
+### `DataEngagementSignature(**data)`
+
+One party's signature over a data-engagement narrative's content hash.
+
+### `DataEngagementVerification(**data)`
+
+The (non-raising) outcome of verifying a data engagement offline.
+
+### `DataNarrative(**data)`
+
+A signed, content-bound, hash-chained narrative of a whole data engagement.
+
 ### `DataQualityRails(constraints=…, detect_anomalies=…, anomaly_threshold=…, anomaly_action=…, max_examples=…, pii_detector=…, secret_scanner=…, injection_detector=…)`
 
 Screen tabular data deterministically against a set of column constraints, with optional numeric anomaly detection.
@@ -481,6 +497,10 @@ Screen tabular data deterministically against a set of column constraints, with 
 ### `DataQualityReport(**data)`
 
 The outcome of screening a dataset. ``allowed`` is false when any blocking rule fired; the violations carry the detail.
+
+### `DataStage(**data)`
+
+One step of a data engagement, bound into the narrative's hash chain.
 
 ### `Dataset(**data)`
 

@@ -1,4 +1,4 @@
-# Vincio 4.0 LTS frozen public surface.
+# Vincio 5.0 LTS frozen public surface.
 # The exact set of names SemVer is applied against (vincio.__all__), one per line,
 # sorted. Re-freeze deliberately: regenerate with `python -m vincio._apiref --freeze`
 # and review the diff. Guarded by tests/test_stability.py::test_public_surface_is_frozen.
@@ -119,8 +119,13 @@ CustodyAttestationVerification
 CycleReport
 DataCatalog
 DataEncoder
+DataEngagement
+DataEngagementSignature
+DataEngagementVerification
+DataNarrative
 DataQualityRails
 DataQualityReport
+DataStage
 Dataset
 DatasetProfile
 Delegation

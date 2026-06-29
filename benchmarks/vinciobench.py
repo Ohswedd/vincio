@@ -10219,6 +10219,158 @@ async def bench_cross_org_conformance() -> dict[str, Any]:
     }
 
 
+async def bench_data_analysis_conformance() -> dict[str, Any]:
+    """DataAnalysisConformanceBench: the data & analytics plane as one system.
+
+    Seven rungs (4.1–4.7) delivered the data plane's *primitives* — first-class
+    tabular evidence and the compact encoder, profiling / sampling / fit-in-window and
+    the quality rails, governed text-to-query with cell-level provenance, the
+    multi-step analysis agent, content- and data-bound charts, streaming out-of-core
+    processing, and the semantic layer's governed metrics — each grounded, cited, and
+    offline-verifiable on its own. This family holds the **capstone**: a single
+    :class:`~vincio.data.DataEngagement` (``app.data_engagement``) that threads the
+    whole pipeline — register → profile → sample → screen → query → analyze → chart →
+    governed metric → cite — behind one governed, audited call-path, and seals it into
+    one hash-linked, signed :class:`~vincio.data.DataNarrative`. It gates two
+    guarantees: **end-to-end conformance** (a complete engagement composes, every
+    artifact chains and verifies from the bytes alone, every analytical finding
+    re-derives from the content-hashed source it cites — the data plane's data-binding
+    guarantee — and one continuous signed audit narrative runs from the raw table to
+    the cited deliverable) and **conformance integrity** (a tamper introduced anywhere
+    — a re-ordered stage, an edited digest, an edited underlying artifact, a tampered
+    *source*, or a forged signature — is caught, and the facade is purely compositional
+    so every primitive stays usable directly). This is the proof that the plane is a
+    *system*, not a pile of primitives. Deterministic and offline."""
+    from vincio import ContextApp, DataNarrative, VincioConfig
+    from vincio.data import DerivedColumn, Dimension, Measure
+    from vincio.providers import MockProvider
+    from vincio.security.audit import HMACSigner
+
+    cfg = VincioConfig()
+    cfg.observability.exporter = "memory"
+    app = ContextApp(name="analyst", provider=MockProvider(default_text="ok"), config=cfg)
+
+    rows = [
+        {"region": "NA", "product": "alpha", "price": 10.0, "qty": 3},
+        {"region": "EU", "product": "alpha", "price": 8.0, "qty": 5},
+        {"region": "NA", "product": "beta", "price": 12.0, "qty": 2},
+        {"region": "EU", "product": "beta", "price": 9.0, "qty": 4},
+        {"region": "NA", "product": "alpha", "price": 11.0, "qty": 6},
+    ]
+    cols = ["region", "product", "price", "qty"]
+
+    # Thread the plane end to end: register → profile → sample → screen → query →
+    # analyze → chart → governed metric → cite.
+    eng = app.data_engagement(question="how does revenue break down by region?")
+    eng.register(rows, columns=cols, name="sales")
+    layer = app.semantic_layer(
+        "sales",
+        derived=[DerivedColumn(name="revenue", expression="price * qty")],
+        measures=[Measure(name="total_revenue", agg="sum", expression="revenue")],
+        dimensions=[Dimension(name="region")],
+    )
+    eng.profile()
+    eng.sample(4)
+    eng.screen()
+    result = eng.query("total qty by region")
+    eng.analyze("how does qty break down by region?")
+    chart = eng.chart(result, title="Qty by region")
+    metric = eng.query_metric("total_revenue", by=["region"])
+    eng.cite(title="Revenue analysis")
+    narrative = eng.seal()
+
+    # The lifecycle threads every stage into the narrative, in order.
+    expected_stages = [
+        "register",
+        "profile",
+        "sample",
+        "screen",
+        "query",
+        "analyze",
+        "chart",
+        "metric",
+        "cite",
+    ]
+    conformance_lifecycle_threads = bool(
+        narrative.stage_names == expected_stages
+        and result.row_count == 2
+        and metric.row_count == 2
+    )
+
+    # The narrative is a content-bound, hash-linked chain that verifies offline.
+    verified = narrative.verify(app.contract_signer)
+    conformance_narrative_chains = bool(verified.intact and verified.head_ok and verified.hash_ok)
+    conformance_verifies_offline = bool(verified.valid and verified.signed_by == ["analyst"])
+
+    # Every captured artifact verifies from the bytes alone, the engagement re-digests
+    # all of them against the bound digests, and — the data plane's distinguishing
+    # guarantee — every analytical finding re-derives from the content-hashed source.
+    catalog = app.data_catalog()
+    whole = eng.verify(app.contract_signer)
+    conformance_artifacts_verify = bool(
+        whole.valid
+        and whole.digests_ok
+        and whole.data_bound
+        and result.verify(catalog)
+        and chart.verify(catalog)
+        and metric.verify(layer, catalog)
+    )
+
+    # One continuous signed audit narrative: the engagement and every rung land on the
+    # same hash-chained log, which recomputes offline.
+    conformance_audit_continuous = bool(
+        narrative.audit_id is not None
+        and len(app.audit.query(action="data_engagement")) == 1
+        and len(app.audit.query(action="data_query")) >= 1
+        and len(app.audit.query(action="data_analysis")) == 1
+        and len(app.audit.query(action="chart_generate")) == 1
+        and app.audit.verify_chain()
+    )
+
+    # A tamper introduced anywhere is caught: a re-ordered stage and an edited digest
+    # break the chain, a forged signature fails authentication, a tampered *source*
+    # breaks data-binding (the findings no longer re-derive), and an edited underlying
+    # artifact fails the digest check.
+    reordered = DataNarrative.from_wire(narrative.to_wire())
+    reordered.stages[1], reordered.stages[2] = reordered.stages[2], reordered.stages[1]
+    edited = DataNarrative.from_wire(narrative.to_wire())
+    edited.stages[0].digest = "deadbeef"
+    stranger = HMACSigner("stranger-secret", key_id="stranger")
+    tampered_app = ContextApp(name="analyst", provider=MockProvider(default_text="ok"), config=cfg)
+    tampered_app.register_dataset(
+        [{**r, "qty": r["qty"] + 100} for r in rows], columns=cols, name="sales"
+    )
+    source_tamper_caught = (
+        eng.verify(app.contract_signer, catalog=tampered_app.data_catalog()).data_bound is False
+    )
+    metric.result.result_hash = "deadbeef"  # tamper a captured artifact after sealing
+    conformance_tamper_caught = bool(
+        not reordered.verify().valid
+        and not edited.verify().valid
+        and edited.verify().broken_at == 0
+        and not narrative.verify(stranger).valid
+        and source_tamper_caught
+        and not eng.verify(app.contract_signer).digests_ok
+    )
+
+    # Purely compositional: every primitive stays usable directly, byte-for-byte the same.
+    direct_app = ContextApp(name="analyst", provider=MockProvider(default_text="ok"), config=cfg)
+    direct_app.register_dataset(rows, columns=cols, name="sales")
+    direct = direct_app.query_data("total qty by region", table="sales")
+    conformance_compositional = bool(direct.verify(direct_app.data_catalog()))
+
+    return {
+        "conformance_lifecycle_threads": conformance_lifecycle_threads,
+        "conformance_narrative_chains": conformance_narrative_chains,
+        "conformance_verifies_offline": conformance_verifies_offline,
+        "conformance_artifacts_verify": conformance_artifacts_verify,
+        "conformance_audit_continuous": conformance_audit_continuous,
+        "conformance_tamper_caught": conformance_tamper_caught,
+        "conformance_compositional": conformance_compositional,
+        "conformance_stages": len(narrative.stages),
+    }
+
+
 async def bench_computer_use() -> dict[str, Any]:
     """ComputerUseBench: a grounded, verified, reversible computer-use action plane.
 
@@ -10940,6 +11092,7 @@ FAMILIES = {
     "reliability": bench_reliability,
     "cost": bench_cost,
     "data_plane": bench_data_plane,
+    "data_analysis_conformance": bench_data_analysis_conformance,
     "security": bench_security,
     "containment": bench_containment,
     "evals": bench_evals,

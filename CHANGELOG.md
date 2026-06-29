@@ -4,6 +4,63 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.0.0] - 2026-06-29
+
+The data & analytics capstone, and the second long-term-support major. Seven rungs (4.1–4.7) delivered the data plane's
+primitives — first-class tabular evidence and the compact encoder, profiling / sampling / fit-in-window and the quality
+rails, governed text-to-query with cell-level provenance, the multi-step analysis agent, content- and data-bound charts,
+streaming out-of-core processing, and the semantic layer's governed metrics — each grounded, cited, and offline-verifiable
+on its own. 5.0 unifies them: a `DataEngagement` facade (`app.data_engagement`) threads the whole plane behind one governed,
+audited call-path into a content-bound, signed, hash-chained `DataNarrative` that verifies offline from the bytes alone and
+is **data-bound** (every captured finding re-executes against the content-hashed source and re-derives), the analytics
+analogue of `CrossOrgEngagement`. It is then the next consolidation major: `API_VERSION` is promoted to `"5.0"`, the public
+surface — expanded additively across the 4.x line — is re-frozen (503 → 508 public symbols), the empty `vincio migrate 5.0`
+codemod table ships, and the data & analytics plane is declared **feature-complete and frozen**. Entirely additive and
+backward-compatible (a clean 4.x → 5.0 upgrade needs zero source changes), dependency-free, deterministic, and offline.
+
+### Added
+
+- **`DataEngagement` — the data & analytics plane threaded as one system.** `app.data_engagement(*, dataset="",
+  question="", analyst=None)` returns a purely-compositional facade whose lifecycle methods — `register`, `profile`,
+  `sample`, `fit`, `screen`, `query`, `analyze`, `chart`, `query_metric`, and `cite` — each delegate to the *same* `app.*`
+  primitive a caller would use directly (each unchanged and still usable on its own), capture the artifact they produced
+  (exposed as `eng.result` / `eng.analysis` / `eng.chart_` / `eng.metric` / …), and record it as a stage in one
+  hash-linked narrative. `cite` assembles the findings into a per-figure data-bound cited deliverable through the existing
+  cited-report builder. `eng.record_stage(stage, artifact, *, binder=None, **summary)` is an escape hatch for any other
+  artifact.
+- **`DataNarrative` — a content-bound, signed, hash-chained narrative of a whole engagement.** `eng.seal(*, sign=True,
+  record_audit=True)` mints it and lands it on the hash-chained audit log (action `data_engagement`); each `DataStage`
+  binds the lifecycle verb, the artifact's own published commitment (`result_hash` / `chart_hash` / `layer_hash`), and a
+  digest of its bytes into a link chaining to the previous one. `DataNarrative.verify(verifier=None, *, require=None,
+  artifacts=None)` recomputes the whole chain from the bytes alone — a re-ordered stage, an edited digest, a broken link, a
+  tampered head, or a forged signature is caught (`broken_at` pinpoints the first failing stage). `to_wire` / `from_wire` /
+  `require_valid` / `print_summary`.
+- **Data-binding — every analytical finding re-derives from the source it cites.** `eng.verify(verifier=None, *,
+  require=None, catalog=None)` re-digests every captured artifact against its bound digest *and*, given the live catalog
+  (defaulting to `app.data_catalog()`), re-executes every captured query, analysis, chart, and metric against the
+  content-hashed source and confirms each re-derives from the bytes (surfaced as `DataEngagementVerification.data_bound`),
+  so a tampered source is caught even when the chain itself is intact — the analytics analogue of a generated report's
+  per-claim entailment, applied to the whole engagement.
+- **New public symbols (5):** `DataEngagement`, `DataNarrative`, `DataStage`, `DataEngagementSignature`, and
+  `DataEngagementVerification`, re-exported from `vincio` and `vincio.data`.
+- **`data_analysis_conformance` VincioBench family** with end-to-end, data-bound, and tamper-evident SLOs, and a
+  whole-pipeline competitive comparison (`benchmarks/competitive.py::bench_data_engagement`) against pandas-ai, the
+  LlamaIndex query engine, the LangChain SQL agent, Vanna, and native DuckDB. A runnable example
+  (`examples/20_data_engagement.py`).
+
+### Changed
+
+- **`API_VERSION` promoted to `"5.0"`** and the package version to `5.0.0`. The public surface is **re-frozen** for the 5.x
+  line: `docs/reference/public-surface.txt` pins the exact 508-name surface and a build gate fails on any silent drift.
+- **`vincio migrate 5.0`** ships with an empty rename table (the 4.x line was additive end to end, so a clean 4.x → 5.0
+  upgrade needs zero source changes); see [`MIGRATION.md`](MIGRATION.md).
+- The data & analytics plane is **feature-complete and frozen** under the [stability policy](docs/reference/stability.md):
+  no further data-plane *primitive* is scheduled; subsequent data-plane work is bug-fix and standards-tracking only.
+
+### Removed
+
+- Nothing. The deprecation runway was empty across the entire 4.x line, so no public API reached its `removed_in` runway.
+
 ## [4.7.0] - 2026-06-29
 
 The semantic layer & governed metrics — the seventh rung of the data & analytics plane: define the analytical vocabulary

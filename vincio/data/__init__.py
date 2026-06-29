@@ -60,6 +60,13 @@ would not fit.
   way everywhere through the read-only-verified query plane, and a metric's
   column-level provenance (:class:`MetricLineage`) reaches the lineage and
   right-to-erasure machinery.
+* :class:`DataEngagement` — the capstone facade (``app.data_engagement``) that
+  threads the whole plane (register → profile → sample → fit → screen → query →
+  analyze → chart → governed metric → cite) behind one governed, audited
+  call-path and seals it into a hash-chained, signed :class:`DataNarrative` that
+  :meth:`DataNarrative.verify`\\s offline and is **data-bound** — every captured
+  finding re-executes against the content-hashed source. The analytics analogue
+  of :class:`~vincio.settlement.CrossOrgEngagement`.
 
 Everything here is deterministic, dependency-free, and offline. ``Dataset`` and
 the schema types are exported from this subpackage (the top-level ``Dataset``
@@ -111,6 +118,13 @@ from .charts import (
 )
 from .core import ColumnSchema, DataSchema, Dataset, DataType
 from .encoders import DataEncoder
+from .engagement import (
+    DataEngagement,
+    DataEngagementSignature,
+    DataEngagementVerification,
+    DataNarrative,
+    DataStage,
+)
 from .engines import DuckDbQueryEngine
 from .evidence import TableEvidence
 from .profile import (
@@ -254,4 +268,10 @@ __all__ = [
     "MetricLineage",
     "SemanticLayer",
     "query_metric",
+    # data & analytics capstone — the engagement lifecycle facade
+    "DataStage",
+    "DataEngagementSignature",
+    "DataEngagementVerification",
+    "DataNarrative",
+    "DataEngagement",
 ]

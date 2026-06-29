@@ -48,8 +48,10 @@ __all__ = [
 # The public-API contract version. Bumped only on a MAJOR release; it is the
 # promise SemVer is applied against, independent of the package patch level.
 # The public surface is frozen and evolves only under the mechanical
-# deprecation runway described above.
-API_VERSION = "4.0"
+# deprecation runway described above. 5.0 is the second long-term-support major:
+# it re-freezes the surface expanded additively across the 4.x data & analytics
+# plane (4.1–5.0) and declares that plane feature-complete and frozen.
+API_VERSION = "5.0"
 
 _STABILITY_ATTR = "__vincio_stability__"
 
