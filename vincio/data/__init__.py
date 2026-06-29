@@ -41,6 +41,13 @@ would not fit.
   a bounded, multi-step analysis agent that plans, queries, inspects, and refines
   over a dataset through the governed query plane, producing a **cited analytical
   narrative** that re-derives from the bytes via :meth:`AnalysisResult.verify`.
+* :func:`generate_chart` / :class:`Chart` / :class:`ChartSpec` — turn a cited
+  :class:`QueryResult` into a spec-driven chart that is **content-bound** (a C2PA
+  data-driven credential bound to its bytes) and **data-bound** (a back-reference
+  to the exact source cells it was built from), offline-verifiable via
+  :meth:`Chart.verify`. The default :class:`VegaLiteRenderer` is dependency-free;
+  :class:`MatplotlibRenderer` (behind the ``vincio[charts]`` extra) rasterizes the
+  same spec to a PNG.
 
 Everything here is deterministic, dependency-free, and offline. ``Dataset`` and
 the schema types are exported from this subpackage (the top-level ``Dataset``
@@ -63,6 +70,7 @@ from __future__ import annotations
 
 from ..core.errors import (
     AnalysisError,
+    ChartError,
     DataError,
     DataQualityError,
     QueryError,
@@ -75,6 +83,17 @@ from .analysis import (
     AnalysisStep,
     AnalysisStepKind,
     analyze_dataset,
+)
+from .charts import (
+    Chart,
+    ChartChannel,
+    ChartEncoding,
+    ChartRenderer,
+    ChartSpec,
+    ChartType,
+    MatplotlibRenderer,
+    VegaLiteRenderer,
+    generate_chart,
 )
 from .core import ColumnSchema, DataSchema, Dataset, DataType
 from .encoders import DataEncoder
@@ -128,6 +147,7 @@ __all__ = [
     "QueryError",
     "UnsafeQueryError",
     "AnalysisError",
+    "ChartError",
     # profiling
     "HistogramBin",
     "ColumnProfile",
@@ -172,4 +192,14 @@ __all__ = [
     "AnalysisResult",
     "AnalysisAgent",
     "analyze_dataset",
+    # charts & cited analytical artifacts
+    "ChartType",
+    "ChartChannel",
+    "ChartEncoding",
+    "ChartSpec",
+    "Chart",
+    "ChartRenderer",
+    "VegaLiteRenderer",
+    "MatplotlibRenderer",
+    "generate_chart",
 ]

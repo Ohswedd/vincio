@@ -52,6 +52,8 @@ from .report import (
     CitationCoverage,
     CitedReport,
     CitedReportBuilder,
+    Figure,
+    FigureBinding,
     ResolvedCitation,
 )
 from .speech import (
@@ -98,6 +100,8 @@ __all__ = [
     "CitationContract",
     "CitationCoverage",
     "ResolvedCitation",
+    "Figure",
+    "FigureBinding",
     # templates / forms
     "Slot",
     "fill_text_template",

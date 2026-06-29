@@ -125,6 +125,9 @@ from .data import (
     AnalysisAgent,
     AnalysisResult,
     CellCitation,
+    Chart,
+    ChartSpec,
+    ChartType,
     DataCatalog,
     DataEncoder,
     DataQualityRails,
@@ -134,6 +137,7 @@ from .data import (
     QueryResult,
     TableEvidence,
     analyze_dataset,
+    generate_chart,
     query_dataset,
 )
 from .edge import (
@@ -168,6 +172,7 @@ from .generation import (
     DocumentArtifact,
     DocumentBuilder,
     DocumentContract,
+    Figure,
     ImageGenRequest,
     ImageProvider,
     MockImageProvider,
@@ -517,7 +522,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.4.0"
+__version__ = "4.5.0"
 
 __all__ = [
     "ContextApp",
@@ -567,6 +572,10 @@ __all__ = [
     "AnalysisResult",
     "AnalysisAgent",
     "analyze_dataset",
+    "ChartType",
+    "ChartSpec",
+    "Chart",
+    "generate_chart",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",
@@ -921,6 +930,7 @@ __all__ = [
     "DocumentArtifact",
     "CitedReportBuilder",
     "CitationContract",
+    "Figure",
     "generate_redline",
     "ImageProvider",
     "ImageGenRequest",

@@ -273,6 +273,36 @@
       "rationale": "A cited narrative is only trustworthy if it is offline-verifiable; the budget gates that an analysis verifies against its source and that a tampered source flips verify() to false, the analytics analogue of a cited report's verification."
     },
     {
+      "id": "charts_data_bound",
+      "category": "quality",
+      "statement": "A generated chart re-derives from the rows it was built from — the figure re-executes its source query against the hashed source on verify(), and a tampered source is caught.",
+      "metric": "families.data_plane.charts.data_bound",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.charts.data_bound",
+      "rationale": "An analytical figure is only trustworthy if it depicts real, re-derivable data; the budget gates that a projection and an aggregate chart both verify against their source and that a tampered source flips verify() to false, so a figure can never silently depict altered numbers."
+    },
+    {
+      "id": "charts_figure_cited",
+      "category": "quality",
+      "statement": "A generated chart cites the exact source cells it was built from — the figure carries a back-reference to the precise cells, aggregates included.",
+      "metric": "families.data_plane.charts.figure_cited",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.charts.figure_cited",
+      "rationale": "A figure's provenance rests on cell-level citation; the budget gates that a chart carries source-cell references and that an aggregate bar cites exactly the cells it summarizes, so a figure can never be emitted ungrounded."
+    },
+    {
+      "id": "charts_content_bound",
+      "category": "security",
+      "statement": "A generated chart carries a C2PA credential bound to its rendered bytes — the credential verifies against the bytes, and an edited byte stream is caught.",
+      "metric": "families.data_plane.charts.content_bound",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.charts.content_bound",
+      "rationale": "A chart is content-bound media the way a generated image is; the budget gates that the data-driven credential binds the rendered bytes and that an edited byte stream flips content_bound() and verify() to false, so a tampered figure cannot pass as authentic."
+    },
+    {
       "id": "tool_overhead_p50",
       "category": "performance",
       "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",

@@ -59,6 +59,9 @@ CausalAttributor
 CellCitation
 Certificate
 CertificationReport
+Chart
+ChartSpec
+ChartType
 Check
 Choreography
 CircuitBreaker
@@ -169,6 +172,7 @@ FederatedPolicy
 FederatedRoundResult
 FederatedSubspace
 FertilityTracker
+Figure
 FrontierEstimate
 GGUFProvider
 GatheredReputation
@@ -449,6 +453,7 @@ edge_manifest
 enable_rich_reprs
 experimental
 gather_reputation
+generate_chart
 generate_redline
 guard_collateral
 installed_plugins

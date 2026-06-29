@@ -1441,19 +1441,104 @@ async def _data_analysis_bench() -> dict[str, Any]:
     }
 
 
+async def _charts_bench() -> dict[str, Any]:
+    """DataPlaneBench / charts: a cited query result rendered into a spec-driven
+    chart measured three ways — **data bound** (the figure re-derives from the
+    source on verify and a tampered source is caught), **figure cited** (the figure
+    cites the exact source cells it was built from), and **content bound** (the C2PA
+    credential binds the rendered bytes and an edited byte stream is caught). The
+    cited-report builder's per-figure binding is exercised too: a data-bound figure
+    embeds, a tampered one breaches the contract."""
+    from vincio.core.errors import CitationValidationError
+    from vincio.data import DataCatalog, Dataset, generate_chart, query_dataset
+    from vincio.generation.report import CitationContract, CitedReportBuilder, Figure
+
+    rows = [
+        {"region": "NA", "product": "alpha", "revenue": 1200.5},
+        {"region": "EU", "product": "alpha", "revenue": 980.0},
+        {"region": "NA", "product": "beta", "revenue": 300.0},
+        {"region": "APAC", "product": "beta", "revenue": 1500.25},
+    ]
+    catalog = DataCatalog.of(Dataset.from_records(rows, name="sales"), name="sales")
+    tampered = DataCatalog.of(
+        Dataset.from_records([{**r, "revenue": r["revenue"] + 1} for r in rows], name="sales"),
+        name="sales",
+    )
+
+    # A projection chart cites the exact source cells; an aggregate chart re-derives.
+    proj = query_dataset("SELECT region, revenue FROM sales ORDER BY region", catalog)
+    proj_chart = generate_chart(proj, title="Revenue by row")
+    agg = query_dataset(
+        "SELECT region, SUM(revenue) AS s FROM sales GROUP BY region ORDER BY region", catalog
+    )
+    agg_chart = generate_chart(agg, title="Total revenue by region")
+
+    na = next(i for i, row in enumerate(agg.rows) if row[0] == "NA")
+    cited_exact = set(agg.cite_refs(na, "s")) == {"sales#r0!revenue", "sales#r2!revenue"}
+    figure_cited = bool(proj_chart.cite_refs()) and cited_exact
+
+    data_bound = (
+        proj_chart.verify(catalog)
+        and not proj_chart.verify(tampered)
+        and agg_chart.verify(catalog)
+        and not agg_chart.verify(tampered)
+    )
+
+    edited = generate_chart(proj, title="Revenue by row")
+    edited.data = edited.data + b" "  # strip the credential's binding
+    content_bound = (
+        proj_chart.content_bound()
+        and agg_chart.content_bound()
+        and not edited.content_bound()
+        and not edited.verify(catalog)
+    )
+
+    # The cited-report builder binds each figure to its source.
+    builder = CitedReportBuilder()
+    report = await builder.build_report(
+        "NA leads revenue [F1]; the split is in [F2].",
+        [],
+        figures=[Figure.from_chart(agg_chart, caption="By region"), Figure.from_table(agg)],
+        catalog=catalog,
+        contract=CitationContract(min_coverage=0.0, require_figure_binding=True),
+    )
+    figure_binding = report.coverage.figure_binding_rate == 1.0
+    breached = False
+    try:
+        await builder.build_report(
+            "see [F1]",
+            [],
+            figures=[Figure.from_chart(agg_chart)],
+            catalog=tampered,
+            contract=CitationContract(min_coverage=0.0, require_figure_binding=True),
+        )
+    except CitationValidationError:
+        breached = True
+
+    return {
+        "data_bound": bool(data_bound),
+        "figure_cited": bool(figure_cited),
+        "content_bound": bool(content_bound),
+        "figure_binding_enforced": bool(figure_binding and breached),
+        "charts": 2,
+    }
+
+
 async def bench_data_plane() -> dict[str, Any]:
     """DataPlaneBench: dataset profiling, representative sampling, fit-in-window,
-    data-quality rails, governed text-to-query, and the data-analysis agent —
-    fitting a dataset far larger than the window into bounded, faithful, screened
-    evidence, querying it read-only with cell-level provenance, then running a
-    bounded multi-step analysis that produces a cited, offline-verifiable
-    narrative."""
+    data-quality rails, governed text-to-query, the data-analysis agent, and
+    cited analytical charts — fitting a dataset far larger than the window into
+    bounded, faithful, screened evidence, querying it read-only with cell-level
+    provenance, running a bounded multi-step analysis that produces a cited,
+    offline-verifiable narrative, and rendering a result into a content-bound,
+    data-bound chart."""
     return {
         "fit_in_window": _fit_in_window_bench(),
         "profile": _profile_faithful_bench(),
         "quality": _quality_rails_bench(),
         "text_to_query": await _text_to_query_bench(),
         "analysis": await _data_analysis_bench(),
+        "charts": await _charts_bench(),
     }
 
 

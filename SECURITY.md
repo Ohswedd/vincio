@@ -446,7 +446,11 @@ invisible-watermark hook is a point you supply. Document generation is grounded 
 construction: the `DocumentBuilder` consumes an already-validated result against a
 `DocumentContract`, repairs formatting only, never invents content, and fails
 loudly (`DocumentContractError`) rather than silently padding a deficient
-deliverable; the cited-report path verifies per-claim entailment.
+deliverable; the cited-report path verifies per-claim entailment and, for embedded
+charts and tables, per-figure data binding (see *Charts & cited analytical
+artifacts* below). A generated chart carries the same kind of byte-bound C2PA
+credential — marked *data-driven* rather than synthetic — and additionally
+re-derives from the exact source cells it was built from.
 
 ### Data rights & governance
 
@@ -606,6 +610,33 @@ Every run lands on the **hash-chained audit log** (`data_analysis`, with the ste
 cited-finding count, lineage coverage, and result hash; a `deny` entry pinpoints a
 refused objective). The whole path is deterministic and offline; the optional DuckDB
 engine runs the same verified SQL at scale without changing any of these guarantees.
+
+### Charts & cited analytical artifacts — content-bound and data-bound
+
+**A generated chart cannot silently misrepresent its data.** `generate_chart`
+(`app.generate_chart`) turns a cited `QueryResult` into a `Chart` that carries two
+tamper-evident bindings, and `Chart.verify(catalog)` checks both offline:
+
+- **Content-bound.** The rendered bytes carry a C2PA-style `ProvenanceManifest` bound to
+  them by SHA-256 (`mark_data_driven_content`), marked as *data-driven* media — the IPTC
+  `dataDrivenMedia` digital-source-type and `is_synthetic=False`, an honest credential
+  for a deterministic rendering rather than a false claim of AI generation. An edited
+  byte stream, or a stripped credential, flips `content_bound()` (and `verify`) to
+  `False`. The matplotlib renderer embeds the credential in the PNG the way generated
+  images do; the Vega-Lite JSON travels with a `.c2pa.json` sidecar.
+- **Data-bound.** The figure carries a back-reference to the **exact source cells** it
+  was built from. `verify` re-executes the source query against the content-hashed
+  source, confirms the plotted values are a faithful projection of that verified result,
+  and re-binds the credential — so an edited spec, a doctored value, or a tampered source
+  is caught.
+
+The app surface adds no new trust boundary: `app.generate_chart` runs a natural-language
+question or SQL string through the **same injection-screened, read-only-verified query
+plane** before charting, and lands the run on the audit log (`chart_generate`). The
+cited-report builder's per-figure binding makes this a contract: under
+`CitationContract(require_figure_binding=True)`, a figure that does not re-derive from
+its source raises `CitationValidationError`, so a deliverable cannot ship an unverifiable
+figure. The whole path is deterministic, dependency-free, and offline.
 
 ### Edge / WASM runtime — the same deterministic safety, offline
 

@@ -1583,13 +1583,18 @@ class ContextApp:
         title: str = "",
         contract: Any | None = None,
         entailment: Any | None = None,
+        figures: list[Any] | None = None,
+        catalog: Any | None = None,
     ):
         """Resolve ``[E1]`` citations into a rendered, footnoted, cited report.
 
         Synchronous wrapper over
         :class:`~vincio.generation.report.CitedReportBuilder`; use ``acited_report``
         from async code. Evidence defaults to an empty list (markers then resolve
-        to nothing and are reported as unresolved)."""
+        to nothing and are reported as unresolved). Pass ``figures=`` (a list of
+        :class:`~vincio.generation.Figure`) to embed **data-bound** charts/tables —
+        each verified to re-derive from its source against ``catalog`` (defaults to
+        the app's registered :meth:`data_catalog`)."""
         return run_sync(
             self.acited_report(
                 answer,
@@ -1598,6 +1603,8 @@ class ContextApp:
                 title=title,
                 contract=contract,
                 entailment=entailment,
+                figures=figures,
+                catalog=catalog,
             )
         )
 
@@ -1610,12 +1617,23 @@ class ContextApp:
         title: str = "",
         contract: Any | None = None,
         entailment: Any | None = None,
+        figures: list[Any] | None = None,
+        catalog: Any | None = None,
     ):
         from ..generation.report import CitedReportBuilder
 
+        if catalog is None and figures:
+            registered = self.data_catalog()
+            catalog = registered if registered.names else None
         builder = CitedReportBuilder(entailment=entailment, audit_log=self.audit)
         return await builder.build(
-            answer, list(evidence or []), format=cast("Any", format), title=title, contract=contract
+            answer,
+            list(evidence or []),
+            format=cast("Any", format),
+            title=title,
+            contract=contract,
+            figures=figures,
+            catalog=catalog,
         )
 
     async def agenerate_image(
@@ -6621,6 +6639,73 @@ class ContextApp:
             if raise_on_refusal:
                 raise
             return None
+
+    def generate_chart(
+        self,
+        result: Any,
+        *,
+        type: Any = "bar",
+        x: str | None = None,
+        y: str | None = None,
+        color: str | None = None,
+        title: str = "",
+        renderer: Any | None = None,
+        signer: Any | None = None,
+        infer_type: bool = True,
+        table: str | None = None,
+        max_rows: int = 10_000,
+        engine: Any | None = None,
+    ) -> Any:
+        """Turn a cited query result into a **content-bound, data-bound** chart — the
+        data plane's generated analytical artifact.
+
+        ``result`` may be a :class:`~vincio.data.QueryResult` (or
+        :class:`~vincio.data.AnalysisResult` / :class:`~vincio.data.Dataset`), or a
+        natural-language question / SQL string that is first run through the governed,
+        read-only-verified query plane (:meth:`query_data`, with ``table=``). The
+        figure carries a C2PA *data-driven* credential bound to its rendered bytes and
+        a back-reference to the **exact source cells** it was built from, and the run
+        lands on the audit chain (``chart_generate``)::
+
+            result = app.query_data("revenue by region", table="sales")
+            chart = app.generate_chart(result, title="Revenue by region")
+            chart.cite_refs()             # the exact source cells the figure rests on
+            chart.verify(app.data_catalog())   # re-derives + binds the credential
+
+        The default renderer is the dependency-free
+        :class:`~vincio.data.VegaLiteRenderer`; pass
+        ``renderer=MatplotlibRenderer()`` (with the ``vincio[charts]`` extra) for a
+        rasterized PNG. Returns a :class:`~vincio.data.Chart`."""
+        from ..data import generate_chart as _generate_chart
+
+        if isinstance(result, str):
+            result = self.query_data(result, table=table, max_rows=max_rows, engine=engine)
+        chart = _generate_chart(
+            result,
+            type=type,
+            x=x,
+            y=y,
+            color=color,
+            title=title,
+            renderer=renderer,
+            signer=signer,
+            infer_type=infer_type,
+        )
+        self.audit.record(
+            "chart_generate",
+            resource=title or chart.spec.mark.value,
+            details={
+                "chart_type": chart.spec.mark.value,
+                "renderer": chart.renderer,
+                "media_type": chart.media_type,
+                "points": chart.point_count,
+                "lineage_coverage": str(chart.coverage),
+                "result_hash": chart.result_hash,
+                "chart_hash": chart.chart_hash,
+                "content_sha256": chart.manifest.content_sha256 if chart.manifest else None,
+            },
+        )
+        return chart
 
     # -- continuous assurance & production certification ----------------
 

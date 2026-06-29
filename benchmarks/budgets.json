@@ -61,6 +61,15 @@
     "families.data_plane.analysis.verifiable": {
       "eq": true
     },
+    "families.data_plane.charts.data_bound": {
+      "eq": true
+    },
+    "families.data_plane.charts.figure_cited": {
+      "eq": true
+    },
+    "families.data_plane.charts.content_bound": {
+      "eq": true
+    },
     "families.rag.recall_at_3.mean": {
       "gte": 0.8
     },

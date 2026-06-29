@@ -127,6 +127,10 @@ without an entry here.
 
 **Data-analysis error.** The data-analysis agent had nothing to analyze. Register a dataset (or pass `dataset=`), and when the catalog holds more than one table pass `table=` to choose which one to analyze.
 
+### CHART_ERROR
+
+**Chart generation error.** A chart could not be built from the result. Confirm the result has rows and that any `x`/`y`/`color` you name are result columns; install `pip install "vincio[charts]"` for the matplotlib renderer (the dependency-free Vega-Lite renderer needs no extra).
+
 ### RETRIEVAL_ERROR
 
 **Retrieval failure.** A retrieval backend errored. Verify the index exists and the vector store URL in `storage.vector` is reachable.
