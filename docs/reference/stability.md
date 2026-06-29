@@ -33,10 +33,11 @@ Within a major version (`1.x.y`):
 | **MINOR** | `1.0.0 → 1.1.0` | Additive only: new symbols, new **optional** parameters with defaults. Existing code keeps working. |
 | **MAJOR** | `1.x → 2.0.0` | May remove or change public API, but only after the deprecation contract below. |
 
-`vincio.API_VERSION` (`"4.0"`) is the contract version SemVer is applied
-against; it changes only on a major bump. **4.0 is the long-term-support major:**
-the public surface is re-frozen for the 4.x line (see
-[The 4.0 long-term-support contract](#the-40-long-term-support-contract)).
+`vincio.API_VERSION` (`"5.0"`) is the contract version SemVer is applied
+against; it changes only on a major bump. **5.0 is the current long-term-support
+major:** the public surface — expanded additively across the 4.x data & analytics
+plane — is re-frozen for the 5.x line (see
+[The 5.0 long-term-support contract](#the-50-long-term-support-contract)).
 
 ## Deprecation contract
 
@@ -129,21 +130,25 @@ advance and shipped through the mechanical deprecation runway above. Nothing
 breaks *outside* such a window: across a minor or patch release, upgrading never
 breaks working code.
 
-## The 4.0 long-term-support contract
+## The 5.0 long-term-support contract
 
-4.0 was the one announced breaking window, and it **broke nothing**: every release
-from 1.0 → 3.49 was additive on a frozen surface, the deprecation policy above was
-followed mechanically, and no public API ever reached its `removed_in` runway, so
-the deprecation sweep removed nothing and a project that tracked 3.x cleanly
-upgrades with zero source changes.
+5.0 is the second long-term-support major. Like 4.0 before it, it **broke
+nothing**: every release from 1.0 → 5.0 was additive on a frozen surface, the
+deprecation policy above was followed mechanically, and no public API ever reached
+its `removed_in` runway, so the deprecation sweep removed nothing and a project
+that tracked 4.x cleanly upgrades with zero source changes. 5.0 concludes the data
+& analytics plane (built additively across 4.1 → 5.0) and declares it
+**feature-complete and frozen**.
 
-From 4.0 the public surface is **re-frozen for the 4.x line** and the freeze is
+From 5.0 the public surface is **re-frozen for the 5.x line** and the freeze is
 mechanical, not just documented: the exact surface is pinned in
 [`docs/reference/public-surface.txt`](public-surface.txt) and a build gate fails
 the moment `vincio.__all__` drifts from it (regenerate deliberately with
 `python -m vincio._apiref --freeze` and review the diff). Removal still takes a
-major: a symbol deprecated across a 4.x minor is removed no earlier than 5.0, with
-`vincio doctor` reporting any usage and `vincio migrate 5.0` rewriting it.
+major: a symbol deprecated across a 5.x minor is removed no earlier than 6.0, with
+`vincio doctor` reporting any usage and `vincio migrate 6.0` rewriting it. (4.0 was
+the first LTS major; `vincio migrate 4.0` and `vincio migrate 5.0` both report "no
+source changes required".)
 
 ## Currently deprecated
 

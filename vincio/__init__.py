@@ -130,9 +130,14 @@ from .data import (
     ChartType,
     DataCatalog,
     DataEncoder,
+    DataEngagement,
+    DataEngagementSignature,
+    DataEngagementVerification,
+    DataNarrative,
     DataQualityRails,
     DataQualityReport,
     DatasetProfile,
+    DataStage,
     QueryPlan,
     QueryResult,
     RowStream,
@@ -526,7 +531,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.7.0"
+__version__ = "5.0.0"
 
 __all__ = [
     "ContextApp",
@@ -584,6 +589,11 @@ __all__ = [
     "stream_aggregate",
     "SemanticLayer",
     "query_metric",
+    "DataStage",
+    "DataEngagementSignature",
+    "DataEngagementVerification",
+    "DataNarrative",
+    "DataEngagement",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

@@ -8,8 +8,8 @@ not maintained — upgrade to the latest release.
 
 | Version | Supported |
 | ------- | --------- |
-| 4.x     | ✅ |
-| < 4.0   | ❌ (upgrade to the latest 4.x release) |
+| 5.x     | ✅ |
+| < 5.0   | ❌ (upgrade to the latest 5.x release) |
 
 ## Threat model
 
@@ -688,6 +688,31 @@ any semantic layer over it) alongside the source's documents, memories, and arti
 recording exactly which dataset was removed in the signed, content-bound `ErasureProof`
 (`removed_ids["datasets"]`). A subject's structured data is erased as provably as a
 document is.
+
+### Data engagement lifecycle (capstone — data & analytics plane feature-complete & frozen)
+
+A data engagement (`DataEngagement` / `app.data_engagement`, in `vincio.data.engagement`) is a
+**purely-compositional facade that threads the whole data & analytics plane behind one governed, audited
+call-path and seals it into one content-bound, signed `DataNarrative`, never a hosted query engine, a
+managed warehouse, or a notebook service**. It adds **no new analytical logic and weakens no boundary**:
+every lifecycle method (`register` / `profile` / `sample` / `fit` / `screen` / `query` / `analyze` /
+`chart` / `query_metric` / `cite`) delegates to the *same* `app.*` primitive documented above — each with
+its own read-only screening, injection screening, cell-level provenance, signing, verification, refusal, and
+audit behavior unchanged — so the engagement's security properties are exactly the union of the primitives
+it composes. The facade only **captures and narrates** them. **Trust model:** the narrative is content-bound
+and offline-verifiable the way a `QueryResult` is. Each `DataStage` binds the lifecycle verb, the captured
+artifact's own published commitment (`result_hash` / `chart_hash` / `layer_hash`), and a digest of its bytes
+into a hash-chained link; `DataNarrative.verify` recomputes the entire chain from the bytes alone — a
+re-ordered stage, an edited digest, a broken link, a tampered head or content hash, or a forged analyst
+signature is caught (`broken_at` pinpoints the first failing stage) — and `eng.verify(verifier, catalog=)`
+additionally **re-executes every captured query, analysis, chart, and metric against the content-hashed
+source** and confirms each re-derives from the bytes (`data_bound`), so a tampered *source* is caught even
+when the chain is intact (and re-digesting the live artifacts catches a tamper to any underlying artifact).
+Sealing lands the engagement on the hash-chained audit log (action `data_engagement`, decision `sealed`),
+one continuous signed narrative from the raw table to the cited deliverable. With this capstone the data &
+analytics plane is **feature-complete and frozen** under the [stability policy](docs/reference/stability.md):
+no further data-plane *primitive* is scheduled, and subsequent data-plane work is bug-fix and
+standards-tracking only.
 
 ### Edge / WASM runtime — the same deterministic safety, offline
 

@@ -501,6 +501,28 @@ app.run("export button 500s").output.label
   (`removed_ids["datasets"]`, `ErasureResult.datasets_removed`). `SemanticLayerError`
   (code `SEMANTIC_LAYER_ERROR`). Held by governed-one-way, metric-verifiable, and
   lineage-reaches-dataset SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
+- **Data engagement (the data & analytics capstone).** `from vincio import DataEngagement, DataNarrative, DataStage,
+  DataEngagementSignature, DataEngagementVerification` (also `vincio.data`). The capstone that unifies the seven data-plane
+  rungs (4.1–4.7) into one coherent, conformance-proven system — the analytics analogue of `CrossOrgEngagement`.
+  `app.data_engagement(*, dataset="", question="", analyst=None)` → a `DataEngagement` facade threading the whole plane
+  behind one governed, audited call-path: `register(data, *, name="", source=None, **kw)` →table, `profile(data=None, **kw)`,
+  `sample(n, data=None, **kw)`, `fit(*, max_tokens, data=None, **kw)`, `screen(data=None, **kw)`, `query(request, *, table=,
+  dataset=, **kw)`, `analyze(objective, *, table=, dataset=, **kw)`, `chart(result=None, **kw)`, `query_metric(request, *,
+  layer=, table=, dataset=, **kw)`, and `cite(answer=None, *, figures=None, title="", contract=None,
+  require_figure_binding=True, **kw)` (builds a per-figure data-bound cited deliverable). **Purely compositional:** each
+  method delegates to the *same* `app.*` primitive (unchanged and usable directly), captures the artifact (exposed as
+  `eng.profile_`/`.result`/`.analysis`/`.chart_`/`.metric`/`.report`), and records it as a `DataStage`.
+  `eng.record_stage(stage, artifact, *, binder=None, **summary)` is an escape hatch. `eng.seal(*, sign=True,
+  record_audit=True)` → a content-bound, signed `DataNarrative` on the audit log (action `data_engagement`); each stage
+  binds the verb, the artifact's published commitment (`result_hash`/`chart_hash`/`layer_hash`), and a digest of its bytes
+  into a hash-chained link. `narrative.verify(verifier=None, *, require=None, artifacts=None)` recomputes the chain from the
+  bytes alone (`intact`/`head_ok`/`hash_ok`/`digests_ok`/`signatures_ok`/`data_bound`/`broken_at`); `eng.verify(verifier=None,
+  *, require=None, catalog=None)` adds **data-binding** — given the live catalog (default `app.data_catalog()`), it
+  re-executes every captured query/analysis/chart/metric against the content-hashed source and confirms each re-derives
+  (`data_bound`), so a tampered source is caught even when the chain is intact. `DataNarrative.from_wire`/`to_wire`,
+  `require_valid`, `print_summary`. Errors raise `DataError`. Held by end-to-end, data-bound, and tamper-evident SLOs
+  (`data_analysis_conformance`); benchmarked whole vs pandas-ai / LlamaIndex / LangChain SQL agent / Vanna / DuckDB.
+  Deterministic, dependency-free, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`
@@ -1991,8 +2013,8 @@ app.run("export button 500s").output.label
 
 ## Stability
 
-- SemVer on the public surface, **re-frozen for the 4.0 LTS major** (`vincio.__all__` /
-  `vincio.stability.public_api()`, `API_VERSION == "4.0"`); the exact surface is pinned in
+- SemVer on the public surface, **re-frozen for the 5.0 LTS major** (`vincio.__all__` /
+  `vincio.stability.public_api()`, `API_VERSION == "5.0"`); the exact surface is pinned in
   `docs/reference/public-surface.txt` and a build gate fails on silent drift. `from vincio import
   deprecated, experimental, stability_of` (`@deprecated(since=, removed_in=,
   alternative=)` / `@experimental(since=)` emit warnings, escalatable to errors).
@@ -2001,9 +2023,9 @@ app.run("export button 500s").output.label
   (replacement + removal version from `stability_of`) and config schema drift.
 - `vincio migrate <major> [path]` (`vincio.cli.migrate`) is the code-surface analogue of
   `vincio config migrate`: a static, `ast`-based codemod driven by a declarative per-major rename
-  table (`RENAMES`), with `--write` (apply), `--check` (CI gate), `--json`. The `"4.0"` table is
-  empty, the additive-only 3.x line reached no removal runway, so 3.x → 4.0 needs zero source
-  changes; see `MIGRATION.md`.
+  table (`RENAMES`), with `--write` (apply), `--check` (CI gate), `--json`. The `"4.0"` and `"5.0"`
+  tables are both empty — the additive-only line reached no removal runway, so 4.x → 5.0 (and 3.x →
+  4.0) needs zero source changes; see `MIGRATION.md`.
 - Typing: the package ships `py.typed` (PEP 561) and is type-checked end to end; a
   graduated, CI-enforced `mypy --strict` set (`stability`, `core.errors`,
   `core.error_catalog`, `core.config`, `core.config_migrations`, `_apiref`,

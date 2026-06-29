@@ -2098,6 +2098,30 @@
     "families.cross_org_conformance.conformance_stages": {
       "gte": 7
     },
+    "families.data_analysis_conformance.conformance_lifecycle_threads": {
+      "eq": true
+    },
+    "families.data_analysis_conformance.conformance_narrative_chains": {
+      "eq": true
+    },
+    "families.data_analysis_conformance.conformance_verifies_offline": {
+      "eq": true
+    },
+    "families.data_analysis_conformance.conformance_artifacts_verify": {
+      "eq": true
+    },
+    "families.data_analysis_conformance.conformance_audit_continuous": {
+      "eq": true
+    },
+    "families.data_analysis_conformance.conformance_tamper_caught": {
+      "eq": true
+    },
+    "families.data_analysis_conformance.conformance_compositional": {
+      "eq": true
+    },
+    "families.data_analysis_conformance.conformance_stages": {
+      "gte": 9
+    },
     "families.computer_use.success_at_budget": {
       "eq": true
     },

@@ -80,6 +80,9 @@ portable.
 | A governed metric defined once compiles to one canonical read-only SELECT and returns the same number however the question is phrased | true | `data_plane.semantic_layer.governed_one_way` |
 | A governed metric's result re-derives from the hashed source; an ad-hoc query passed off as the governed metric, or a tampered source, is rejected | true | `data_plane.semantic_layer.metric_verifiable` |
 | A metric's column-level lineage resolves to its base columns and source, and a right-to-erasure sweep removes the dataset it rests on | true | `data_plane.semantic_layer.lineage_reaches_dataset` |
+| The plane composes end-to-end as one system: a single `DataEngagement` threads register → profile → … → cite into one content-bound, signed `DataNarrative` that verifies offline from the bytes alone, with one continuous hash-chained audit narrative | true | `families.data_analysis_conformance.conformance_verifies_offline` |
+| Every analytical finding a composed engagement carries is data-bound: each captured query, analysis, chart, and metric re-executes against the content-hashed source and re-derives from the bytes | true | `families.data_analysis_conformance.conformance_artifacts_verify` |
+| A tamper introduced anywhere in a composed engagement is caught from the bytes alone: a re-ordered stage breaks the hash chain, an edited digest or underlying artifact fails the digest check, a tampered source breaks data-binding, and a forged signature fails authentication | true | `families.data_analysis_conformance.conformance_tamper_caught` |
 
 The fit-in-window guarantee is the headline of the profiling/sampling rung: a
 full-fidelity column profile (computed over every row in bounded memory) plus a
@@ -101,6 +104,16 @@ bounded exploration together), narrative citation completeness (every cell-trace
 finding carries the exact source cells it rests on, so a claim is never asserted
 without its lineage), and offline verifiability (an analysis re-executes against its
 hashed source and a tampered source or narrative flips `verify()` to false).
+
+The data-analysis conformance SLOs are the plane's capstone: each rung above is
+grounded, cited, and verifiable on its own, and these gate that they **compose**.
+A single `DataEngagement` threads the whole plane (register → profile → … → cite)
+into one signed, hash-chained `DataNarrative` — the budget gates that it verifies
+offline from the bytes alone, that every captured finding is data-bound (re-executes
+against the content-hashed source and re-derives), and that a tamper introduced
+anywhere (a re-ordered stage, an edited digest, a tampered source, a forged
+signature) is caught — so the plane is proven one verifiable system, the analytics
+analogue of the cross-org conformance capstone.
 
 ## Security
 

@@ -7,7 +7,7 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-4.0.0-B98B2E" alt="Vincio 4.0.0"></a>
+  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-5.0.0-B98B2E" alt="Vincio 5.0.0"></a>
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
@@ -177,6 +177,7 @@ high-level `ContextApp`, or reach for any engine directly.
 - Charts & cited artifacts: `app.generate_chart` turns a cited query result into a spec-driven `Chart` that is **content-bound** (a C2PA data-driven credential bound to its rendered bytes, exactly the provenance a generated image carries) and **data-bound** (a back-reference to the exact source cells that `verify(catalog)` re-derives offline). The default renderer emits a portable Vega-Lite spec — no drawing library — and `MatplotlibRenderer` rasterizes the same spec to a PNG behind the `vincio[charts]` extra. The cited-report builder extends to figures, so a `Figure` embeds a chart or table into a deliverable that is per-claim entailed *and* per-figure data-bound.
 - Streaming & out-of-core: a lazy, re-iterable `RowStream` processes a dataset far larger than memory in bounded passes — open a CSV / JSON-Lines file read line by line, iterate it in bounded chunks, and profile, fit, or sample it in a single pass whose footprint tracks columns, not rows. `stream_aggregate` is a bounded-memory group-by (one accumulator per group, never the rows); `encode_stream` renders the compact encoding header-once and gzip-compresses it; the context compiler's streaming candidate pre-filter (`max_candidates`) bounds a 10k+ evidence pool by a cheap relevance proxy before full scoring; and `app.map_stream` runs an analytical transform over a stream at scale through the `BatchRunner`.
 - Semantic layer & governed metrics: a `SemanticLayer` defines measures, dimensions, and derived columns *once* (`revenue = price × qty`) so a question maps to a **governed metric** rather than a raw column — `app.query_metric` resolves a name or natural-language question to the measure, compiles it to one canonical read-only `SELECT`, and runs it through the same governed query plane, so the metric is computed **one way everywhere**, cell-cited, and `MetricResult.verify` proves the number is the governed one (an ad-hoc query is rejected). Column-level `app.metric_lineage` resolves a metric to its base columns and source, and a right-to-erasure sweep (`app.erase_source`) reaches the dataset plane — so a metric's provenance and a subject's erasure both reach structured data.
+- Data engagement: `app.data_engagement` threads the whole analytics plane behind one governed, audited call-path — register → profile → sample → screen → query → analyze → chart → governed metric → cite — and seals it into a hash-chained, signed `DataNarrative`. The narrative `verify()`s offline from the bytes alone (a re-ordered stage, an edited digest, or a forged signature is caught), and — given the live catalog — every captured query, analysis, chart, and metric **re-executes against the content-hashed source and re-derives from the bytes**, so a tampered source is caught even when the chain is intact. Purely compositional: every step delegates to the same primitive a caller would use directly, each still usable on its own.
 
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates.
@@ -354,6 +355,7 @@ and teaches a whole theme end to end.
 | 17 | [`charts_cited_artifacts`](examples/17_charts_cited_artifacts.py) | `generate_chart` / `app.generate_chart` · Vega-Lite spec (matplotlib PNG behind the extra) · C2PA-credentialed bytes · cell-level back-reference · offline `verify()` · per-figure data-bound cited reports |
 | 18 | [`streaming_out_of_core`](examples/18_streaming_out_of_core.py) | `RowStream` over a source larger than memory · bounded chunks · `stream_aggregate` group-by in a fixed footprint · `encode_stream` (gzip) · the compiler's streaming candidate pre-filter · `app.map_stream` at scale on the `BatchRunner` |
 | 19 | [`semantic_layer_governed_metrics`](examples/19_semantic_layer_governed_metrics.py) | `SemanticLayer` of measures / dimensions / derived columns defined once · `app.query_metric` governed metric computed one way everywhere · ratio metrics · cell-cited · `MetricResult.verify` (ad-hoc rejected) · column-level `app.metric_lineage` · `app.erase_source` reaching the dataset plane |
+| 20 | [`data_engagement`](examples/20_data_engagement.py) | `app.data_engagement` threading the whole plane (register → profile → … → cite) into a hash-chained, signed `DataNarrative` · offline `verify()` · data-binding (every finding re-derives from the content-hashed source) · tamper detection · purely compositional |
 
 ```bash
 cd examples && python 01_quickstart.py            # offline, no keys
@@ -395,7 +397,8 @@ of each engine.
 
 ## Status
 
-Vincio 4.0 is **feature-complete and in long-term support**. The public API is frozen under
+Vincio 5.0 is **feature-complete and in long-term support**, with the data & analytics plane now
+complete. The public API is frozen under
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with a mechanical
 [deprecation policy](docs/reference/stability.md); performance and quality targets are
 [published as SLOs](docs/reference/slo.md) and gated by VincioBench; releases ship a CycloneDX SBOM

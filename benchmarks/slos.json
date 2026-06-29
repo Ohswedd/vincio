@@ -1993,6 +1993,36 @@
       "rationale": "Composing the fabric into one narrative is only meaningful if the narrative is tamper-evident: a transcript that cannot detect an edited stage or a swapped artifact proves nothing. The budget gates that a re-ordered stage, an edited stage digest, an edited underlying artifact, and a forged coordinator signature are each caught by verification; a companion budget gates that the whole engagement re-verifies offline with every artifact re-digested against its bound digest \u2014 so the engagement narrative is a mechanical, reconstructable integrity proof over every primitive it threaded, never a trusted-party attestation."
     },
     {
+      "id": "data_analysis_conformance_end_to_end",
+      "category": "reliability",
+      "statement": "The data & analytics plane composes end-to-end as one system, not a pile of primitives: a single DataEngagement (app.data_engagement) threads the whole pipeline — register → profile → sample → screen → query → analyze → chart → governed metric → cite — behind one governed, audited call-path and seals it into one content-bound, signed DataNarrative whose hash chain links every stage, recomputes from the bytes alone, binds each artifact's own published commitment and a digest of its bytes, and re-verifies every captured artifact offline; one continuous signed audit narrative runs from the raw table to the cited deliverable on the same hash-chained log.",
+      "metric": "families.data_analysis_conformance.conformance_verifies_offline",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_analysis_conformance.conformance_verifies_offline",
+      "rationale": "Seven rungs (4.1–4.7) delivered the data plane's primitives — tabular evidence and the compact encoder, profiling / sampling / fit-in-window and the quality rails, governed text-to-query, the analysis agent, content- and data-bound charts, streaming, and the semantic layer — each grounded, cited, and offline-verifiable on its own, but nothing presented the plane as one coherent system or proved it composes end-to-end. The budget gates that a complete engagement composes and seals into a narrative that verifies offline from the bytes alone (the chain links, the head and content hash recompute, the analyst's signature checks); companion budgets gate that the lifecycle threads every stage in order, that every captured artifact verifies and re-digests against its bound digest, that the engagement and every rung land on one continuous hash-chained audit log that recomputes, and that the facade is purely compositional (every primitive stays usable directly, byte-for-byte the same) — so the plane is proven a system, never a hosted query engine, a managed warehouse, or a notebook service."
+    },
+    {
+      "id": "data_analysis_conformance_data_bound",
+      "category": "reliability",
+      "statement": "Every analytical finding a composed data engagement carries is data-bound: given the live catalog, each captured query, analysis, chart, and governed metric re-executes against the content-hashed source and re-derives the answer and every cited cell from the bytes, so the cited deliverable threaded from the raw table is provably grounded in the source it cites — the analytics analogue of a generated report's per-claim entailment, applied to the whole engagement.",
+      "metric": "families.data_analysis_conformance.conformance_artifacts_verify",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_analysis_conformance.conformance_artifacts_verify",
+      "rationale": "Composing the plane is only meaningful if the composed narrative carries the data plane's distinguishing guarantee — cell-level provenance — across every stage, not merely a chain of opaque digests. The budget gates that the whole engagement verifies with every artifact data-bound: the query result, the analysis narrative, the chart, and the governed metric each re-execute against the content-hashed source and re-derive every cited cell, and the engagement's data_bound verdict re-runs every binder — so a finding is carried only when it re-derives from the bytes, the verifier being the query plane's offline re-execution, never a model."
+    },
+    {
+      "id": "data_analysis_conformance_tamper_evident",
+      "category": "security",
+      "statement": "A tamper introduced anywhere in a composed data engagement is caught from the bytes alone: re-ordering a stage breaks the hash chain, editing a stage's digest or an underlying artifact's bytes fails the digest check, a tampered source breaks data-binding (the findings no longer re-derive), and a forged signature fails authentication — so the data-engagement narrative is an end-to-end integrity proof over the whole plane, not merely a transcript.",
+      "metric": "families.data_analysis_conformance.conformance_tamper_caught",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_analysis_conformance.conformance_tamper_caught",
+      "rationale": "Composing the plane into one narrative is only meaningful if the narrative is tamper-evident: a transcript that cannot detect an edited stage, a swapped artifact, or a tampered source proves nothing. The budget gates that a re-ordered stage, an edited stage digest, an edited underlying artifact, a tampered source (caught by data-binding), and a forged analyst signature are each caught by verification; a companion budget gates that the whole engagement re-verifies offline with every artifact re-digested against its bound digest and every finding re-derived from the source — so the data-engagement narrative is a mechanical, reconstructable integrity proof over every primitive it threaded, never a trusted-party attestation."
+    },
+    {
       "id": "computer_use_success_at_budget",
       "category": "reliability",
       "statement": "A computer-use agent driving the grounded action plane reaches a verified end state within its action budget: on a deterministic, WebArena/OSWorld-shaped app it perceives the screen as typed, addressable elements, grounds each intent to a stable role+name selector (never a brittle pixel coordinate), acts, and post-verifies the effect, finishing the task within the declared step budget with success decided by an end-state oracle rather than turn-by-turn plausibility.",

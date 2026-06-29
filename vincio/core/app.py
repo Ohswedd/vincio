@@ -7084,6 +7084,47 @@ class ContextApp:
         )
         return lineage
 
+    # -- data & analytics capstone --------------------------------------
+
+    def data_engagement(
+        self,
+        *,
+        dataset: str = "",
+        question: str = "",
+        analyst: str | None = None,
+    ) -> Any:
+        """Thread the whole data & analytics plane behind one governed call-path.
+
+        Returns a :class:`~vincio.data.DataEngagement` — the capstone facade that
+        composes the entire pipeline (register → profile → sample → fit → screen →
+        query → analyze → chart → governed metric → cite) into one governed, audited,
+        hash-linked narrative. Each lifecycle method delegates to the *same* entry
+        point on this app a caller would use directly, so the primitives stay
+        unchanged and usable on their own; the facade only captures and **narrates**
+        them.
+
+        :meth:`~vincio.data.DataEngagement.seal` mints the content-bound, signed
+        :class:`~vincio.data.DataNarrative`, and
+        :meth:`~vincio.data.DataEngagement.verify` proves the whole chain — every
+        captured artifact's digest, and (given the catalog) every analytical answer's
+        re-derivation from the source it cites — verifies offline, so a tamper
+        introduced anywhere is caught::
+
+            eng = app.data_engagement(question="how does revenue break down by region?")
+            eng.register(rows, columns=["region", "price", "qty"], name="sales")
+            eng.profile()
+            eng.query("total revenue by region")
+            eng.analyze("how does revenue break down by region?")
+            eng.chart(eng.result, title="Revenue by region")
+            eng.cite(title="Revenue analysis")
+            narrative = eng.seal()
+            eng.verify(app.contract_signer).valid          # chain + digests + data-bound
+            narrative.verify(app.contract_signer).valid     # offline from the bytes alone
+        """
+        from ..data.engagement import DataEngagement
+
+        return DataEngagement(self, dataset=dataset, question=question, analyst=analyst)
+
     # -- continuous assurance & production certification ----------------
 
     def assurance_case(

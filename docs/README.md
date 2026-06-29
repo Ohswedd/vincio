@@ -74,6 +74,11 @@ between your input and the model's validated output.
   everywhere through the read-only query plane, `MetricResult.verify` proving the
   number is the governed one, and column-level `app.metric_lineage` reaching the
   lineage and right-to-erasure machinery.
+- **[The data engagement (the analytics capstone)](concepts/data-engagement.md)**:
+  `app.data_engagement` threads the whole plane (register → profile → … → cite) into
+  a hash-chained, signed `DataNarrative` that verifies offline and is data-bound —
+  every captured finding re-executes against the content-hashed source — the
+  analytics analogue of the cross-org engagement.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

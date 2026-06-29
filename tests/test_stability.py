@@ -23,12 +23,12 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "4.7.0"
+    assert vincio.__version__ == "5.0.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
-    # release, independent of the package minor/patch level. 4.0 is the
-    # long-term-support major: the public surface re-frozen for the 4.x line and
-    # only extended additively (4.1 adds the data plane behind a new subpackage).
-    assert API_VERSION == "4.0"
+    # release, independent of the package minor/patch level. 5.0 is the second
+    # long-term-support major: it re-freezes the surface expanded additively across
+    # the 4.x data & analytics plane (4.1–5.0) and declares that plane complete.
+    assert API_VERSION == "5.0"
 
 
 def test_package_version_matches_dunder_version():
@@ -58,7 +58,7 @@ def test_public_api_is_stable_surface():
 
 
 def test_public_surface_is_frozen():
-    """The live ``__all__`` must match the committed 4.0 LTS frozen surface.
+    """The live ``__all__`` must match the committed 5.0 LTS frozen surface.
 
     This is the mechanical re-freeze: any addition, removal, or rename of a
     public symbol must be a deliberate edit to ``docs/reference/public-surface.txt``

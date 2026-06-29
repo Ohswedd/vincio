@@ -56,13 +56,16 @@ class SymbolRename:
     note: str | None = None
 
 
-# The surface migration table, keyed by major target. Each entry maps a 3.x
-# public name to its 4.x canonical name. ``"4.0"`` is intentionally empty: the
-# additive-only 3.x contract was held end to end, so no symbol needed renaming
-# or removing across the major. Future 4.x consolidations append to a new key
-# (e.g. ``"5.0"``) — never mutate a shipped table.
+# The surface migration table, keyed by major target. Each entry maps an
+# older public name to its canonical name at that major. Both ``"4.0"`` and
+# ``"5.0"`` are intentionally empty: the additive-only contract was held end to
+# end across every minor, so no public symbol ever reached its removal runway and
+# no name needed renaming across either major — a clean upgrade needs no source
+# changes. Future consolidations append to a new key — never mutate a shipped
+# table.
 RENAMES: dict[str, tuple[SymbolRename, ...]] = {
     "4.0": (),
+    "5.0": (),
 }
 
 SUPPORTED_TARGETS: tuple[str, ...] = tuple(RENAMES)

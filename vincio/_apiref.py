@@ -148,7 +148,7 @@ def render_api_index() -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-# --- Frozen public surface (the 4.0 LTS re-freeze) -------------------------
+# --- Frozen public surface (the 5.0 LTS re-freeze) -------------------------
 
 _SURFACE_FILE = os.path.join(
     os.path.dirname(os.path.dirname(__file__)),
@@ -158,7 +158,7 @@ _SURFACE_FILE = os.path.join(
 )
 
 _SURFACE_HEADER = (
-    "# Vincio 4.0 LTS frozen public surface.\n"
+    "# Vincio 5.0 LTS frozen public surface.\n"
     "# The exact set of names SemVer is applied against (vincio.__all__), one per line,\n"
     "# sorted. Re-freeze deliberately: regenerate with `python -m vincio._apiref --freeze`\n"
     "# and review the diff. Guarded by tests/test_stability.py::test_public_surface_is_frozen.\n"
