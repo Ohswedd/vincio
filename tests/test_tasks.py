@@ -403,3 +403,86 @@ def test_tasks_namespace_exports_the_facades():
         "Evaluation",
     ):
         assert name in tasks.__all__
+
+
+# --------------------------------------------------------------------------- #
+# Edge cases & async variants
+# --------------------------------------------------------------------------- #
+async def test_async_verbs_match_their_sync_counterparts(documents):
+    task = rag(list(documents), provider=_provider(), model="mock-1")
+    assert "30 days" in (await task.aask("What is the refund window?")).output
+
+    get = extractor(TicketClassification, provider=_json_provider(), model="mock-1")
+    assert (await get.aextract("classify")).label == "billing"
+
+    flow = Flow(provider=_provider(), model="mock-1").retrieve(documents=list(documents)).ground()
+    assert "30 days" in (await flow.arun("What is the refund window?")).output
+
+
+def test_rag_accepts_a_source_spec_mapping_of_kwargs(documents):
+    task = rag(
+        {"policies": {"documents": list(documents), "retrieval": "bm25"}},
+        provider=_provider(),
+        model="mock-1",
+    )
+    assert "policies" in task.app.sources
+
+
+def test_rag_rejects_an_unusable_sources_argument():
+    with pytest.raises(TypeError, match="sources must be"):
+        rag(42, provider=_provider(), model="mock-1")
+
+
+def test_rag_rejects_an_unusable_source_spec():
+    with pytest.raises(TypeError, match="must be a path"):
+        rag({"bad": 42}, provider=_provider(), model="mock-1")
+
+
+def test_tool_agent_revoke_removes_a_standing_approval():
+    calls: list[str] = []
+    agent = tool_agent(
+        writes=[_ticket_tool(calls)],
+        approve=["create_ticket"],
+        provider=MockProvider(script=_tool_script()),
+        model="mock-1",
+    )
+    agent.revoke("create_ticket")
+    agent.run("Open a ticket")
+    assert calls == []  # revoked → denied again
+
+
+def test_tool_agent_chains_to_a_prior_app_approval_callback():
+    # An app that already auto-approves via its own callback: the ToolAgent
+    # surface chains to it rather than denying by default.
+    calls: list[str] = []
+    app = ContextApp(name="agent", provider=MockProvider(script=_tool_script()), model="mock-1")
+
+    async def always_allow(_request):
+        return True
+
+    app.tool_runtime.permissions.approval_callback = always_allow
+    app.add_tool(_ticket_tool(calls), approval_required=True, side_effects="write")
+    agent = tool_agent(app=app)
+    agent.run("Open a ticket")
+    assert calls == ["dup charge"]
+    assert [(a.tool, a.status) for a in agent.approvals] == [("create_ticket", "approved")]
+
+
+def test_extractor_app_argument_sets_the_schema_on_a_prebuilt_app():
+    prebuilt = ContextApp(name="custom", provider=_json_provider(), model="mock-1")
+    get = extractor(TicketClassification, app=prebuilt)
+    assert get.app is prebuilt
+    assert isinstance(get.extract("classify"), TicketClassification)
+
+
+def test_flow_over_wraps_a_prebuilt_app_and_call_sets_the_model(documents):
+    prebuilt = ContextApp(name="custom", provider=_provider(), model="mock-1")
+    flow = Flow.over(prebuilt).retrieve(documents=list(documents)).call(model="mock-1")
+    assert flow.app is prebuilt
+    assert flow.app.model == "mock-1"
+
+
+def test_facade_repr_names_the_app():
+    task = rag(provider=_provider(), model="mock-1", name="docs_qa")
+    assert "docs_qa" in repr(task)
+    assert "Flow" in repr(Flow(provider=_provider(), model="mock-1").retrieve("./docs"))
