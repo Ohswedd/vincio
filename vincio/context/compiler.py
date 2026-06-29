@@ -14,6 +14,7 @@ Context Packet, evidence ledger, excluded-context report, budget report.
 
 from __future__ import annotations
 
+import heapq
 import re
 from collections import defaultdict
 from collections.abc import AsyncIterator
@@ -49,6 +50,7 @@ from .scoring import (
     ContextScorer,
     ScoringWeights,
     _terms,
+    lexical_similarity,
 )
 
 __all__ = [
@@ -98,6 +100,17 @@ class ContextCompilerOptions(BaseModel):
     # the ceiling, recording each eviction in the excluded report. ``None``
     # leaves the footprint unbounded (the default).
     max_resident_bytes: int | None = None
+    # Streaming candidate pre-filter. When set and the evidence candidate pool
+    # exceeds this cap, a single streaming pass keeps the top ``max_candidates``
+    # by a cheap lexical relevance proxy (a bounded heap) and drops exact
+    # duplicates by a bounded content fingerprint, *before* the full multi-signal
+    # scoring, the O(n²) dedup/conflict passes, and any embedding materialization
+    # run — so the expensive stages and the resident vector footprint are bounded
+    # by the cap, not by the raw pool size, as a 10k+ candidate corpus grows.
+    # Each drop is recorded in the excluded report. ``None`` collects and scores
+    # every candidate (the default, behavior unchanged). Memory and tool-result
+    # candidates are never pre-filtered (they carry their own small caps).
+    max_candidates: int | None = None
 
 
 class CompiledContext(BaseModel):
@@ -232,6 +245,9 @@ class ContextCompiler:
         # whose inputs are unchanged (see ``reuse_candidate_set``).
         self.arena = CandidateArena() if self.options.reuse_candidate_set else None
         self.arena_hits = 0
+        # Count of candidates dropped by the streaming pre-filter (see
+        # ``max_candidates``) — observability for the bounded big-data path.
+        self.prefilter_drops = 0
         # The inline evidence compressor. Defaults to extractive
         # compression; a learned compressor (e.g. ``LLMLinguaCompressor``) is a
         # drop-in with the same signature, installed via
@@ -463,6 +479,76 @@ class ContextCompiler:
                 )
             )
         return candidates
+
+    # -- streaming candidate pre-filter -------------------------------------------
+
+    def _prefilter_candidates(
+        self,
+        candidates: list[ContextCandidate],
+        query: str,
+        excluded: list[dict[str, Any]],
+    ) -> list[ContextCandidate]:
+        """Bound the evidence candidate pool before full scoring.
+
+        When ``max_candidates`` is set and the evidence pool exceeds it, a single
+        streaming pass keeps only the most promising candidates so the expensive
+        stages downstream — the full multi-signal scoring, the O(n²) dedup and
+        conflict passes, and any per-candidate embedding materialization — never
+        see more than the cap, however large the raw corpus grows. The pass is
+        bounded in memory two ways: a min-heap of at most ``max_candidates``
+        survivors ranked by a cheap lexical relevance proxy against the query
+        (top-K, never the whole sorted pool), and a capped content-fingerprint
+        set that drops exact duplicates (a reservoir-style overflow stops the set
+        growing on a huge stream). Required candidates and non-evidence
+        candidates (memory, tool results) always pass through, and every drop is
+        recorded in the excluded report so the pruning is auditable. Returns the
+        survivors in their original order (full scoring re-ranks them).
+        """
+        cap = self.options.max_candidates
+        if cap is None or cap <= 0:
+            return candidates
+        evidence = [c for c in candidates if c.type == "evidence" and not c.required]
+        if len(evidence) <= cap:
+            return candidates
+
+        # Bounded exact-duplicate fingerprints: small ints, capped so the set
+        # never grows without bound on a huge stream (overflow stops adding —
+        # dedup becomes best-effort within the bound rather than unbounded).
+        seen: set[int] = set()
+        dedup_cap = max(cap * 8, 4096)
+        dedup_overflow = False
+        # Min-heap of (proxy_relevance, order_index, candidate). The order index
+        # makes the comparison total and breaks ties deterministically toward the
+        # earlier candidate, never reaching the candidate object itself.
+        heap: list[tuple[float, int, ContextCandidate]] = []
+        drops = 0
+        for index, candidate in enumerate(evidence):
+            fingerprint = hash(candidate.content)
+            if fingerprint in seen:
+                excluded.append({"id": candidate.id, "reason": "prefiltered_duplicate"})
+                drops += 1
+                continue
+            if not dedup_overflow:
+                seen.add(fingerprint)
+                if len(seen) > dedup_cap:
+                    dedup_overflow = True
+            proxy = lexical_similarity(candidate.content, query) if query else 0.0
+            if len(heap) < cap:
+                heapq.heappush(heap, (proxy, index, candidate))
+            elif (proxy, -index) > (heap[0][0], -heap[0][1]):
+                evicted = heapq.heapreplace(heap, (proxy, index, candidate))[2]
+                excluded.append({"id": evicted.id, "reason": "prefiltered_low_relevance"})
+                drops += 1
+            else:
+                excluded.append({"id": candidate.id, "reason": "prefiltered_low_relevance"})
+                drops += 1
+        self.prefilter_drops += drops
+        kept_ids = {candidate.id for _, _, candidate in heap}
+        return [
+            c
+            for c in candidates
+            if c.type != "evidence" or c.required or c.id in kept_ids
+        ]
 
     # -- normalization / dedup / conflicts ----------------------------------------
 
@@ -904,6 +990,15 @@ class ContextCompiler:
                     arena_key,
                     PreparedCandidates(candidates=candidates, excluded=static_excluded),
                 )
+
+        # 3.5. streaming candidate pre-filter: when the evidence pool exceeds
+        # ``max_candidates``, bound it by a cheap lexical relevance proxy and a
+        # fingerprint dedup *before* scoring, dedup/conflict, and embedding — so
+        # those stages and the resident vector footprint never see more than the
+        # cap. Query-dependent, so it runs per compile (never cached in the arena)
+        # and is a no-op when the cap is unset or the pool already fits.
+        if self.options.max_candidates is not None:
+            candidates = self._prefilter_candidates(candidates, query, excluded)
 
         # 4. score (with a per-compile scorer — semantic embeddings are installed
         # on a fresh scorer so the shared instance stays vector-less and concurrent

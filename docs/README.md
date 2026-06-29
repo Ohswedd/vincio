@@ -63,6 +63,11 @@ between your input and the model's validated output.
   content-bound (a C2PA credential bound to its bytes) and data-bound (a
   back-reference to the exact source cells), and the cited-report builder extends
   to figures so a deliverable is per-claim entailed and per-figure data-bound.
+- **[Streaming and out-of-core bulk processing](concepts/streaming-and-out-of-core.md)**:
+  a lazy, re-iterable `RowStream` over a source larger than memory, a
+  bounded-memory `stream_aggregate` group-by, a streaming compact encoder,
+  the context compiler's streaming candidate pre-filter, and `app.map_stream`
+  to run a transform over a stream at scale on the `BatchRunner`.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

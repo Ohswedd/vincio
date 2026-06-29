@@ -4,6 +4,67 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.6.0] - 2026-06-29
+
+Streaming & out-of-core bulk processing — the sixth rung of the data & analytics plane: process a dataset *far larger
+than memory* in **bounded passes**, inside a footprint that does not grow with the row count. A lazy, re-iterable,
+schema-bearing `RowStream` is profiled, fitted, sampled, aggregated, and encoded — each a single bounded pass;
+`stream_aggregate` is a bounded-memory group-by that tracks the number of *groups*, not rows; `encode_stream` renders the
+compact encoding header-once (optionally gzipped); the context compiler gains a **streaming candidate pre-filter** that
+bounds a 10k+ evidence pool before full scoring; and `stream_map` runs an analytical transform over a stream at scale
+through the existing `BatchRunner`. Additive in `vincio.data` (new `vincio/data/streaming.py`), `vincio.context`, and
+`vincio.core`; entirely backward-compatible, dependency-free, deterministic, and offline. `API_VERSION` is unchanged at
+`"4.0"` — 4.6 extends the 4.x surface additively (499 → 501 public symbols).
+
+### Added
+
+- **`RowStream` — a lazy, re-iterable, schema-bearing out-of-core handle.** The out-of-core analogue of a `Dataset`: it
+  never materializes its rows, holding a factory that produces a fresh row iterator on demand. Build one from records, rows,
+  a dataset, a re-iterable generator factory, or a file read line by line — `RowStream.from_csv` / `.from_jsonl` /
+  `.open(path, format=)`. The CSV reader infers each column's type from a bounded peek and coerces losslessly (a value that
+  does not round-trip exactly stays text); a bare generator object is single-use, while a sequence, a zero-argument callable,
+  or a file supports the multiple passes the operators need. `.chunks(size)` yields bounded `Dataset` chunks; `.profile()` /
+  `.fit(max_tokens=)` / `.sample(k)` reuse the existing `profile_stream` / `fit_stream` / `reservoir_sample` single-pass
+  kernels; `.aggregate(...)`, `.encode(compress=)`, and `.materialize()` round it out.
+- **`stream_aggregate` / `StreamAggregation` — a bounded-memory group-by.** Group a stream by one or more columns and reduce
+  measures (`sum` / `mean` / `min` / `max`; each group's row `count` always emitted) over each group in a single pass. The
+  working set holds one accumulator per distinct *group*, never the rows, so a table far larger than memory aggregates inside
+  a fixed footprint; a group cardinality beyond `max_groups` raises `StreamError` rather than growing without bound. The
+  result is a small `Dataset` (`to_dataset()` / `to_evidence_item()`).
+- **`encode_stream` — streaming compact encoding and compression.** Render a stream to the compact, lossless encoding
+  header-once, row-by-row, so a dataset larger than memory is encoded in one bounded pass. `compress=True` gzip-compresses the
+  output; a binary `sink=` streams the bytes straight to a file. The streaming header omits the row count, and
+  `decode_table` reads rows to end-of-input, so the round-trip stays exact. New low-level kernel helpers
+  `tabular.encode_header` / `tabular.encode_row`.
+- **Streaming candidate pre-filter in the context compiler.** `ContextCompilerOptions.max_candidates` (and the config field
+  `performance.max_context_candidates`): when the evidence pool exceeds the cap, a single streaming pass keeps the top-N by a
+  cheap lexical relevance proxy (a bounded heap) and drops exact duplicates by a bounded content fingerprint *before* the full
+  multi-signal scoring, the O(n²) dedup and conflict passes, and any embedding materialization — so the expensive stages and
+  the resident vector footprint never see more than the cap as a 10k+ corpus grows. Every drop is recorded in the excluded
+  report (`prefiltered_low_relevance` / `prefiltered_duplicate`); a `compiler.prefilter_drops` counter surfaces the count.
+  Off by default (`None`), so an unbounded compile is byte-for-byte unchanged.
+- **`stream_map` / `BulkMapResult` — analytical pipelines at scale on the `BatchRunner`.** Run a per-chunk transform over a
+  stream by chunking it into the existing provider Batch API (half-cost, bounded concurrency): each bounded chunk becomes one
+  request via `build_request(chunk, index)`, the set is dispatched, and the responses are reconciled by chunk index. A missing
+  or failed chunk surfaces as a failed result rather than being dropped.
+- **App surface.** `app.stream_dataset(source, *, schema= / columns=, name=, format=)` opens a stream from a file, records,
+  rows, or a dataset; `app.aggregate_stream(...)` runs the group-by; `await app.map_stream(...)` runs the BatchRunner map
+  (defaulting to the app's own provider). Thin wrappers over the `vincio.data` functions.
+- **Top-level surface.** `RowStream` and `stream_aggregate` are re-exported at the package top level; the rest
+  (`StreamAggregation`, `encode_stream`, `stream_map`, `BulkMapResult`) lives in `vincio.data`. New error `StreamError`
+  (inherits the `DATA_ERROR` code, so `except DataError` catches it).
+- **DataPlaneBench / streaming.** A `streaming` section of the **DataPlaneBench** family adds a throughput SLO (rows/s through
+  the streaming group-by, plus a tokens/s floor through the streaming encoder), a memory-stays-bounded SLO (the aggregation's
+  peak resident set for a 100×-larger stream stays within a small factor of the smaller one), and a pre-filter-bounds-pool SLO
+  (a 10,000-candidate corpus compiled under a cap keeps only the cap's worth while every relevant item survives).
+  `benchmarks/competitive.py` gains a `streaming` comparison (the streaming group-by's peak memory vs materialize-then-aggregate).
+
+### Documentation
+
+- New concept page **[Streaming and out-of-core bulk processing](concepts/streaming-and-out-of-core.md)** (under `docs/`), a
+  runnable **`examples/18_streaming_out_of_core.py`**, and updates to the README, `llms.txt`, `SECURITY.md`, `AGENTS.md`, the
+  SLO reference, and the ROADMAP (the 4.6 row moves from planned to shipped).
+
 ## [4.5.0] - 2026-06-29
 
 Charts & cited analytical artifacts — the fifth rung of the data & analytics plane: a cited query result becomes an

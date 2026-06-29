@@ -48,6 +48,12 @@ would not fit.
   :meth:`Chart.verify`. The default :class:`VegaLiteRenderer` is dependency-free;
   :class:`MatplotlibRenderer` (behind the ``vincio[charts]`` extra) rasterizes the
   same spec to a PNG.
+* :class:`RowStream` — a lazy, re-iterable, schema-bearing handle over a row
+  source larger than memory (records, a generator factory, or a CSV / JSON-Lines
+  file read line by line). Profile, fit, sample, :func:`stream_aggregate`, or
+  :func:`encode_stream` it in a single bounded pass whose footprint is invariant
+  to the row count, or run an analytical transform over it at scale through the
+  :class:`~vincio.providers.BatchRunner` with :func:`stream_map`.
 
 Everything here is deterministic, dependency-free, and offline. ``Dataset`` and
 the schema types are exported from this subpackage (the top-level ``Dataset``
@@ -74,6 +80,7 @@ from ..core.errors import (
     DataError,
     DataQualityError,
     QueryError,
+    StreamError,
     UnsafeQueryError,
 )
 from .analysis import (
@@ -133,6 +140,14 @@ from .sampling import (
     stratified_sample,
     systematic_sample,
 )
+from .streaming import (
+    BulkMapResult,
+    RowStream,
+    StreamAggregation,
+    encode_stream,
+    stream_aggregate,
+    stream_map,
+)
 from .window import WindowFit, fit_stream, fit_to_window
 
 __all__ = [
@@ -144,6 +159,7 @@ __all__ = [
     "TableEvidence",
     "DataError",
     "DataQualityError",
+    "StreamError",
     "QueryError",
     "UnsafeQueryError",
     "AnalysisError",
@@ -202,4 +218,11 @@ __all__ = [
     "VegaLiteRenderer",
     "MatplotlibRenderer",
     "generate_chart",
+    # streaming & out-of-core bulk processing
+    "RowStream",
+    "StreamAggregation",
+    "stream_aggregate",
+    "encode_stream",
+    "BulkMapResult",
+    "stream_map",
 ]

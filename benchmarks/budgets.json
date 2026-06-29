@@ -70,6 +70,21 @@
     "families.data_plane.charts.content_bound": {
       "eq": true
     },
+    "families.data_plane.streaming.throughput_rows_per_s": {
+      "gte": 20000
+    },
+    "families.data_plane.streaming.tokens_per_s": {
+      "gte": 1000000
+    },
+    "families.data_plane.streaming.memory_bounded": {
+      "eq": true
+    },
+    "families.data_plane.streaming.bounded_passes": {
+      "eq": true
+    },
+    "families.data_plane.streaming.prefilter_bounds_pool": {
+      "eq": true
+    },
     "families.rag.recall_at_3.mean": {
       "gte": 0.8
     },

@@ -135,10 +135,12 @@ from .data import (
     DatasetProfile,
     QueryPlan,
     QueryResult,
+    RowStream,
     TableEvidence,
     analyze_dataset,
     generate_chart,
     query_dataset,
+    stream_aggregate,
 )
 from .edge import (
     EdgeEnvironment,
@@ -522,7 +524,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.5.0"
+__version__ = "4.6.0"
 
 __all__ = [
     "ContextApp",
@@ -576,6 +578,8 @@ __all__ = [
     "ChartSpec",
     "Chart",
     "generate_chart",
+    "RowStream",
+    "stream_aggregate",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

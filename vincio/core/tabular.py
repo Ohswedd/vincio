@@ -55,6 +55,8 @@ __all__ = [
     "DecodedTable",
     "infer_dtype",
     "encode_table",
+    "encode_header",
+    "encode_row",
     "decode_table",
     "encode_records",
     "encode_value",
@@ -440,6 +442,62 @@ def encode_table(
         cells = [_format_value(row[j] if j < len(row) else None) for j in range(width)]
         lines.append(_encode_row(cells, opt.delimiter))
     return "\n".join(lines)
+
+
+def encode_header(
+    columns: list[str],
+    *,
+    types: list[str] | None = None,
+    units: list[str | None] | None = None,
+    nullable: list[bool] | None = None,
+    name: str = "",
+    row_count: int | None = None,
+    options: EncodeOptions | None = None,
+) -> str:
+    """The one-line schema header for a streaming encode — the name and the
+    ``{...}`` schema declared once, with no row body.
+
+    Pairs with :func:`encode_row` to emit a table whose length is not known up
+    front (a row stream larger than memory): the header is written first, then
+    each row is streamed. ``row_count`` is included only when known — a
+    single-pass stream passes ``None``, and :func:`decode_table` then reads rows
+    to end-of-input rather than to a declared count, so the round-trip is exact
+    either way. ``types`` default to ``"str"`` per column when omitted (a stream
+    cannot infer a type from rows it has not yet seen)."""
+    opt = options or EncodeOptions()
+    width = len(columns)
+    resolved_types = list(types) if types is not None else ["str"] * width
+    coldefs = []
+    for j, col in enumerate(columns):
+        dtype = resolved_types[j] if j < len(resolved_types) else "str"
+        unit = units[j] if (units is not None and j < len(units)) else None
+        is_null = nullable[j] if (nullable is not None and j < len(nullable)) else False
+        coldefs.append(_coldef(col, dtype, unit, is_null, opt))
+    head = ""
+    if opt.include_name and name:
+        head += _encode_header_token(name)
+    inner = (
+        [f"#{row_count}", *coldefs]
+        if (opt.include_count and row_count is not None)
+        else coldefs
+    )
+    head += "{" + ",".join(inner) + "}"
+    return head
+
+
+def encode_row(
+    row: list[Any], width: int, *, options: EncodeOptions | None = None
+) -> str:
+    """Encode one row to a single compact line (RFC-4180 minimal quoting, null
+    vs empty-string aware), padded to ``width`` columns. The streaming
+    counterpart of one body line of :func:`encode_table`; a row wider than
+    ``width`` raises :class:`~vincio.core.errors.DataError` (the extra cells
+    could not be encoded losslessly)."""
+    if len(row) > width:
+        raise DataError(f"schema declares {width} columns but a row has {len(row)} values")
+    opt = options or EncodeOptions()
+    cells = [_format_value(row[j] if j < len(row) else None) for j in range(width)]
+    return _encode_row(cells, opt.delimiter)
 
 
 def decode_table(text: str, *, options: EncodeOptions | None = None) -> DecodedTable:

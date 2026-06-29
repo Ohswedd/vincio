@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**498** public symbols.
+**500** public symbols.
 
 ## Classes
 
@@ -1266,6 +1266,10 @@ The outcome of comparing a set of liability roots for cross-creditor non-equivoc
 
 A registry-backed router: pick the cheapest / fastest / least-busy *capable* model per request, inside your own process and audit boundary.
 
+### `RowStream(source, schema, name=…, source_id=…)`
+
+A lazy, re-iterable, schema-bearing handle over an out-of-core row source.
+
 ### `RunConfig(**data)`
 
 Per-run overrides (A2).
@@ -1975,6 +1979,10 @@ Pause the graph until ``when`` (a datetime or ISO string), durably.
 ### `stability_of(obj)`
 
 Return the stability record for ``obj``.
+
+### `stream_aggregate(data, group_by, measures=…, max_groups=…)`
+
+Group a stream by one or more columns and reduce measures over each group in a single bounded-memory pass.
 
 ### `synthesize(spec, examples, require=…)`
 

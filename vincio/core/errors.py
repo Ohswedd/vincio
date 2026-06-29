@@ -36,6 +36,7 @@ __all__ = [
     "LoaderError",
     "DataError",
     "DataQualityError",
+    "StreamError",
     "QueryError",
     "UnsafeQueryError",
     "AnalysisError",
@@ -358,6 +359,14 @@ class DataQualityError(DataError):
     """A dataset failed a blocking data-quality rail (schema violation,
     constraint break, or anomaly). Inherits the ``DATA_ERROR`` code so it is
     caught by ``except DataError`` and resolved by the same catalog entry."""
+
+
+class StreamError(DataError):
+    """A streaming / out-of-core data operation could not run — a one-shot row
+    source iterated twice, an unreadable chunked source, a non-positive chunk
+    size, or a group-by aggregation whose key cardinality exceeded its bound.
+    Inherits the ``DATA_ERROR`` code so it is caught by ``except DataError`` and
+    resolved by the same catalog entry."""
 
 
 class QueryError(DataError):

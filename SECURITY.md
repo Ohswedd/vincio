@@ -543,6 +543,24 @@ deterministic and dependency-free, and the connector reservoir sample is opt-in 
 the default first-N behavior is unchanged, so enabling it changes representativeness,
 never the security posture.
 
+**Streaming and out-of-core processing change footprint, never the security
+posture.** A `RowStream` (`vincio.data.streaming`) reads a source larger than
+memory in bounded passes — a CSV / JSON-Lines file is parsed with the standard
+library only, no eval and no dynamic import, and the same `DataQualityRails`,
+profiling, and fit-in-window screen a streamed dataset exactly as they screen an
+in-memory one. `stream_aggregate` and `encode_stream` are deterministic,
+dependency-free, and add no egress channel; `stream_map` dispatches its chunks
+through the *same* permissioned, traced, budget-metered provider path a direct
+call rides, so batching changes cost and latency, never what is allowed to leave
+the process. The context compiler's **streaming candidate pre-filter**
+(`ContextCompilerOptions.max_candidates`) only ever **drops** evidence before
+scoring — it can never add, alter, or reorder a candidate into the model's view —
+so it cannot introduce an injection or a leak; every drop is recorded in the
+excluded report, and the full dedup, conflict-resolution, and rail screening still
+run on the survivors. It is off by default, so an unbounded compile is byte-for-byte
+unchanged; enabling it bounds compute and resident memory, never the security
+guarantees.
+
 ### Governed text-to-query — read-only by default, structurally
 
 **A generated query is a write path unless it is provably not one — so Vincio makes

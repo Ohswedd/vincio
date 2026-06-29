@@ -1247,6 +1247,107 @@ def _quality_rails_bench() -> dict[str, Any]:
     }
 
 
+async def _streaming_bench() -> dict[str, Any]:
+    """DataPlaneBench / streaming & out-of-core: a dataset far larger than memory
+    is processed in bounded passes at high throughput while the resident working
+    set stays invariant to the row count, and the context compiler's streaming
+    candidate pre-filter bounds a 10k+ evidence pool before full scoring.
+
+    Three guarantees: **throughput** (rows/s through a bounded-pass group-by, and
+    tokens/s through the streaming compact encoder), **memory stays bounded** (the
+    aggregation's peak resident set for a 100× larger stream is within a small
+    factor of the smaller one — it tracks the number of groups, not rows), and the
+    **pre-filter bounds the pool** (a 10k-candidate corpus compiled under a cap
+    keeps only the cap's worth, with the relevant evidence surviving)."""
+    import time
+    import tracemalloc
+
+    from vincio.context.compiler import ContextCompiler, ContextCompilerOptions
+    from vincio.core.tokens import count_tokens
+    from vincio.core.types import Budget, EvidenceItem, Objective, UserInput
+    from vincio.data import ColumnSchema, DataType, RowStream, encode_stream, stream_aggregate
+
+    schema = [
+        ColumnSchema(name="id", dtype=DataType.INT),
+        ColumnSchema(name="region", dtype=DataType.STR),
+        ColumnSchema(name="amount", dtype=DataType.FLOAT),
+    ]
+    regions = ["NA", "EU", "APAC", "LATAM"]
+
+    def gen(n: int) -> Any:
+        def factory() -> Any:
+            for i in range(n):
+                yield [i, regions[i % 4], float(i % 1000)]
+
+        return factory
+
+    # Throughput — a bounded-pass group-by and the streaming encoder.
+    n_rows = 200_000
+    stream = RowStream.from_rows(gen(n_rows), schema, name="txns")
+    start = time.perf_counter()
+    agg = stream_aggregate(stream, group_by="region", measures={"amount": ["sum", "mean", "min", "max"]})
+    agg_seconds = max(time.perf_counter() - start, 1e-6)
+    throughput_rows_per_s = n_rows / agg_seconds
+
+    start = time.perf_counter()
+    encoded = encode_stream(stream)
+    encode_seconds = max(time.perf_counter() - start, 1e-6)
+    tokens = count_tokens(encoded.decode())
+    tokens_per_s = tokens / encode_seconds
+
+    bounded_passes = agg.rows_processed == n_rows and agg.group_count == len(regions)
+
+    # Memory stays bounded as the dataset grows 100× — the aggregation's working
+    # set is one accumulator per group, never per row.
+    def peak_bytes(n: int) -> int:
+        tracemalloc.start()
+        stream_aggregate(RowStream.from_rows(gen(n), schema), group_by="region", measures={"amount": ["sum"]})
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        return peak
+
+    peak_small = peak_bytes(10_000)
+    peak_large = peak_bytes(1_000_000)
+    memory_bounded = peak_large <= peak_small * 4 + 1_048_576 and peak_large <= 8_388_608
+
+    # The streaming candidate pre-filter bounds a 10k+ evidence pool.
+    evidence: list[EvidenceItem] = []
+    for i in range(10_000):
+        if i % 1000 == 0:
+            evidence.append(EvidenceItem(id=f"e{i}", text=f"quarterly revenue grew in region {i}", source_id=f"s{i}"))
+        else:
+            evidence.append(EvidenceItem(id=f"e{i}", text=f"unrelated filler note {i} about the weather", source_id=f"s{i}"))
+    cap = 200
+    compiler = ContextCompiler(ContextCompilerOptions(max_candidates=cap))
+    compiled = await compiler.compile(
+        objective=Objective(text="analyze quarterly revenue growth", task_type="data_analysis"),
+        user_input=UserInput(text="what was the quarterly revenue growth?"),
+        evidence=evidence,
+        budget=Budget(max_input_tokens=4000),
+    )
+    final_ids = {e.id for e in compiled.ir.evidence}
+    relevant_survived = sum(1 for i in range(0, 10_000, 1000) if f"e{i}" in final_ids)
+    prefilter_bounds_pool = (
+        compiler.prefilter_drops > 0
+        and len(compiled.ir.evidence) <= cap
+        and relevant_survived == 10
+    )
+
+    return {
+        "throughput_rows_per_s": round(throughput_rows_per_s),
+        "tokens_per_s": round(tokens_per_s),
+        "bounded_passes": bounded_passes,
+        "memory_bounded": memory_bounded,
+        "prefilter_bounds_pool": prefilter_bounds_pool,
+        "rows_processed": agg.rows_processed,
+        "groups": agg.group_count,
+        "peak_small_bytes": peak_small,
+        "peak_large_bytes": peak_large,
+        "prefilter_drops": compiler.prefilter_drops,
+        "encoded_tokens": tokens,
+    }
+
+
 async def _text_to_query_bench() -> dict[str, Any]:
     """DataPlaneBench / text-to-query: governed text-to-SQL measured three ways —
     **execution accuracy** on a Spider/BIRD-shaped battery (the predicted query's
@@ -1526,12 +1627,14 @@ async def _charts_bench() -> dict[str, Any]:
 
 async def bench_data_plane() -> dict[str, Any]:
     """DataPlaneBench: dataset profiling, representative sampling, fit-in-window,
-    data-quality rails, governed text-to-query, the data-analysis agent, and
-    cited analytical charts — fitting a dataset far larger than the window into
-    bounded, faithful, screened evidence, querying it read-only with cell-level
-    provenance, running a bounded multi-step analysis that produces a cited,
-    offline-verifiable narrative, and rendering a result into a content-bound,
-    data-bound chart."""
+    data-quality rails, governed text-to-query, the data-analysis agent, cited
+    analytical charts, and streaming / out-of-core bulk processing — fitting a
+    dataset far larger than the window into bounded, faithful, screened evidence,
+    querying it read-only with cell-level provenance, running a bounded multi-step
+    analysis that produces a cited, offline-verifiable narrative, rendering a
+    result into a content-bound, data-bound chart, and processing a dataset far
+    larger than memory in bounded passes at high throughput inside a fixed
+    footprint."""
     return {
         "fit_in_window": _fit_in_window_bench(),
         "profile": _profile_faithful_bench(),
@@ -1539,6 +1642,7 @@ async def bench_data_plane() -> dict[str, Any]:
         "text_to_query": await _text_to_query_bench(),
         "analysis": await _data_analysis_bench(),
         "charts": await _charts_bench(),
+        "streaming": await _streaming_bench(),
     }
 
 

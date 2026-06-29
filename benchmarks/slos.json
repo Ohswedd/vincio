@@ -303,6 +303,36 @@
       "rationale": "A chart is content-bound media the way a generated image is; the budget gates that the data-driven credential binds the rendered bytes and that an edited byte stream flips content_bound() and verify() to false, so a tampered figure cannot pass as authentic."
     },
     {
+      "id": "streaming_throughput",
+      "category": "performance",
+      "statement": "Out-of-core processing sustains high throughput: a bounded-pass streaming group-by over a 200,000-row source completes at no less than 20,000 rows/s, and the streaming compact encoder renders it at no less than 1,000,000 tokens/s.",
+      "metric": "families.data_plane.streaming.throughput_rows_per_s",
+      "direction": "gte",
+      "threshold": 20000,
+      "enforced_by": "families.data_plane.streaming.throughput_rows_per_s",
+      "rationale": "A big-data path is only useful if it is fast; the budget gates a conservative 20,000 rows/s floor (with a companion tokens/s floor) so a throughput regression in the streaming aggregation or encoder is caught with ample headroom over the published promise."
+    },
+    {
+      "id": "streaming_memory_bounded",
+      "category": "performance",
+      "statement": "The resident working set of out-of-core processing stays bounded as the dataset grows 100×: a streaming group-by's peak memory for a 1,000,000-row source is within a small factor of its peak for a 10,000-row source — it tracks the number of groups, not the number of rows.",
+      "metric": "families.data_plane.streaming.memory_bounded",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.streaming.memory_bounded",
+      "rationale": "The promise of out-of-core processing is that memory does not grow with the rows; the budget gates that a 100×-larger stream's peak resident set stays within a small factor of the smaller one and under a hard ceiling, so a leak or an unintended materialization is caught."
+    },
+    {
+      "id": "streaming_prefilter_bounds_pool",
+      "category": "reliability",
+      "statement": "The context compiler's streaming candidate pre-filter bounds a 10,000+ evidence pool to its cap before full scoring while keeping the relevant evidence — a low-relevance corpus is dropped, never scored, and the answer-bearing items survive.",
+      "metric": "families.data_plane.streaming.prefilter_bounds_pool",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.streaming.prefilter_bounds_pool",
+      "rationale": "The pre-filter is the control that keeps a big-data candidate pool inside the compute and resident-memory budget; the budget gates that a 10,000-candidate corpus compiled under a cap keeps only the cap's worth, drops the rest into the excluded report, and still surfaces every relevant item — so a regression that either fails to bound the pool or drops answer-bearing evidence is caught."
+    },
+    {
       "id": "tool_overhead_p50",
       "category": "performance",
       "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",
