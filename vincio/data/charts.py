@@ -384,22 +384,37 @@ class Chart(BaseModel):
 
     # -- verification ----------------------------------------------------------
 
-    def content_bound(self) -> bool:
+    def content_bound(self, *, signer: ContentSigner | None = None) -> bool:
         """Whether the C2PA credential still binds the rendered bytes (the manifest's
-        SHA-256 matches ``data``). ``False`` when there is no manifest."""
-        return self.manifest is not None and verify_manifest(self.manifest, self.data)
+        SHA-256 matches ``data``). ``False`` when there is no manifest. When the
+        credential is **signed**, pass the matching ``signer`` to confirm the
+        signature too — without it a signed credential is not reported valid (an
+        unverifiable signature is never silently accepted)."""
+        return self.manifest is not None and verify_manifest(
+            self.manifest, self.data, signer=signer
+        )
 
-    def verify(self, catalog: DataCatalog, *, engine: QueryEngine | None = None) -> bool:
+    def verify(
+        self,
+        catalog: DataCatalog,
+        *,
+        engine: QueryEngine | None = None,
+        signer: ContentSigner | None = None,
+    ) -> bool:
         """Confirm the figure is **content-bound and data-bound** against *catalog*.
 
         Returns ``False`` on any divergence: an edited spec or bytes (the chart
         hash no longer recomputes), a stripped or mismatched credential (the manifest
         no longer binds the bytes), a tampered source (the source query no longer
         re-executes to the same result), or a figure whose plotted values are not a
-        faithful projection of that verified result."""
+        faithful projection of that verified result. When the credential is signed,
+        pass the matching ``signer`` to confirm the signature (a signed credential
+        without its verifier is not reported valid)."""
         if self._compute_hash() != self.chart_hash:
             return False
-        if self.manifest is not None and not verify_manifest(self.manifest, self.data):
+        if self.manifest is not None and not verify_manifest(
+            self.manifest, self.data, signer=signer
+        ):
             return False
         if self.source is not None:
             if not self.source.verify(catalog, engine=engine):

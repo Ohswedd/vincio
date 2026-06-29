@@ -265,6 +265,11 @@ def test_signed_credential_verifies_with_signer():
     assert verify_manifest(chart.manifest, chart.data, signer=signer)
     # without the signer a signed credential is not reported valid
     assert verify_manifest(chart.manifest, chart.data) is False
+    # the chart's own checks thread the signer through honestly
+    assert chart.content_bound(signer=signer) is True
+    assert chart.verify(cat, signer=signer) is True
+    assert chart.content_bound() is False  # a signed credential needs its verifier
+    assert chart.verify(cat) is False
 
 
 # --------------------------------------------------------------------------- #
