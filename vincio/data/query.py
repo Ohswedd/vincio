@@ -211,6 +211,66 @@ def _strip_for_keyword_scan(sql: str) -> str:
     return _QUOTED_IDENT_RE.sub(" _id_ ", _strip_sql_literals(sql))
 
 
+def _mask_for_scan(text: str) -> str:
+    """A copy of *text* with every comment, string literal, and quoted identifier
+    blanked to spaces of **equal length**, so a position found while scanning the
+    mask indexes the same character in *text*.
+
+    This lets :func:`_clauses` find clause boundaries without a keyword, comma, or
+    parenthesis that lives inside a literal or a quoted name affecting the scan,
+    while the clause text is still sliced from the original (literals intact) — so
+    a re-executed clause (a rowid rebuild or a group witness) carries the real
+    ``WHERE col = 'value'`` rather than a blanked one."""
+    out: list[str] = []
+    i, n = 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == "'":
+            j = i + 1
+            while j < n:
+                if text[j] == "'":
+                    if j + 1 < n and text[j + 1] == "'":
+                        j += 2
+                        continue
+                    j += 1
+                    break
+                j += 1
+            out.append(" " * (j - i))
+            i = j
+        elif ch in '"`':
+            quote = ch
+            j = i + 1
+            while j < n:
+                if text[j] == quote:
+                    if j + 1 < n and text[j + 1] == quote:
+                        j += 2
+                        continue
+                    j += 1
+                    break
+                j += 1
+            out.append(" " * (j - i))
+            i = j
+        elif ch == "[":
+            close = text.find("]", i + 1)
+            j = (close + 1) if close != -1 else n
+            out.append(" " * (j - i))
+            i = j
+        elif ch == "-" and i + 1 < n and text[i + 1] == "-":
+            close = text.find("\n", i)
+            j = close if close != -1 else n
+            out.append(" " * (j - i))
+            i = j
+        elif ch == "/" and i + 1 < n and text[i + 1] == "*":
+            close = text.find("*/", i + 2)
+            j = (close + 2) if close != -1 else n
+            out.append(" " * (j - i))
+            i = j
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
 def _statements(sql: str) -> list[str]:
     """Split *sql* (already literal-stripped) into non-empty top-level statements
     on a ``;`` that is not inside parentheses."""
@@ -295,25 +355,29 @@ def _clauses(sql: str) -> dict[str, str]:
     """Segment a single, simple ``SELECT`` into its top-level clauses. Returns an
     empty mapping when the shape is not a flat single-statement select (the caller
     then degrades to result-level lineage)."""
-    text = " ".join(_strip_sql_literals(sql).split())
-    lowered = text.lower()
+    # Scan a length-aligned mask (literals/comments/quoted names blanked) for the
+    # clause boundaries, but slice the clause text from the original (literals
+    # intact) so a re-executed clause carries the real ``WHERE col = 'value'``.
+    text = " ".join(sql.split())
+    mask = _mask_for_scan(text)
+    lowered = mask.lower()
     if not lowered.startswith("select "):
         return {}
     # Find each clause keyword at the top level, in order.
     marks: list[tuple[int, str]] = []
     depth = 0
     i = 0
-    while i < len(text):
-        ch = text[i]
+    while i < len(mask):
+        ch = mask[i]
         if ch == "(":
             depth += 1
         elif ch == ")":
             depth = max(0, depth - 1)
         if depth == 0:
             for kw in _CLAUSE_KEYWORDS:
-                if lowered.startswith(kw, i) and (i == 0 or not (text[i - 1].isalnum() or text[i - 1] == "_")):
+                if lowered.startswith(kw, i) and (i == 0 or not (mask[i - 1].isalnum() or mask[i - 1] == "_")):
                     after = i + len(kw)
-                    if after >= len(text) or not (text[after].isalnum() or text[after] == "_"):
+                    if after >= len(mask) or not (mask[after].isalnum() or mask[after] == "_"):
                         marks.append((i, kw))
                         i = after
                         break
@@ -394,7 +458,11 @@ def _analyze_shape(sql: str, catalog: DataCatalog, tables: list[str]) -> _Shape 
         return None
     table = tables[0]
     columns = catalog.columns(table)
-    select_text = clauses["select"].strip()
+    # Parse identifiers from a literal-stripped copy of the clauses (a string value
+    # must never be split on its embedded comma or mistaken for a column name); the
+    # real, literal-intact clauses (used by the rowid rebuild and group witness)
+    # stay in ``clauses`` for re-execution.
+    select_text = _strip_sql_literals(clauses["select"]).strip()
     distinct = select_text.lower().startswith("distinct ")
     if distinct:
         select_text = select_text[len("distinct ") :].strip()
@@ -409,7 +477,7 @@ def _analyze_shape(sql: str, catalog: DataCatalog, tables: list[str]) -> _Shape 
         select_bases.append(_base_columns(expr, columns))
     group_by: list[str] = []
     if "group by" in clauses:
-        for tok in _split_top_level(clauses["group by"], ","):
+        for tok in _split_top_level(_strip_sql_literals(clauses["group by"]), ","):
             base = _base_column(tok, columns)
             if base is None:
                 return None  # group key not a plain column → not cell-traceable

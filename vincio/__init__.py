@@ -122,6 +122,8 @@ from .cultivate import (
     library_capability,
 )
 from .data import (
+    AnalysisAgent,
+    AnalysisResult,
     CellCitation,
     DataCatalog,
     DataEncoder,
@@ -131,6 +133,7 @@ from .data import (
     QueryPlan,
     QueryResult,
     TableEvidence,
+    analyze_dataset,
     query_dataset,
 )
 from .edge import (
@@ -514,7 +517,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "4.3.0"
+__version__ = "4.4.0"
 
 __all__ = [
     "ContextApp",
@@ -561,6 +564,9 @@ __all__ = [
     "QueryResult",
     "CellCitation",
     "query_dataset",
+    "AnalysisResult",
+    "AnalysisAgent",
+    "analyze_dataset",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

@@ -235,6 +235,13 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "signal). Re-issue a single read-only `SELECT`; the read-only guard cannot "
             "be disabled.",
         ),
+        _entry(
+            "ANALYSIS_ERROR",
+            "Data-analysis error",
+            "The data-analysis agent had nothing to analyze. Register a dataset (or "
+            "pass `dataset=`), and when the catalog holds more than one table pass "
+            "`table=` to choose which one to analyze.",
+        ),
         # --- retrieval ---
         _entry(
             "RETRIEVAL_ERROR",

@@ -1356,16 +1356,104 @@ async def _text_to_query_bench() -> dict[str, Any]:
     }
 
 
+async def _data_analysis_bench() -> dict[str, Any]:
+    """DataPlaneBench / data-analysis agent: the bounded, multi-step EDA agent
+    measured three ways — **task success at budget** on DS-1000 / InfiAgent-DABench
+    / DABench-shaped batteries (the agent's answer matches the gold answer *and* the
+    analysis finishes within the step budget; solved fresh by the offline governed
+    agent, not replayed), **narrative cited** (every cell-traceable finding cites the
+    exact source cells it rests on), and **verifiable** (the narrative re-derives
+    from the bytes and a tampered source is caught)."""
+    from pathlib import Path
+
+    from vincio.data import AnalysisBudget, DataCatalog, Dataset, analyze_dataset
+    from vincio.data.provenance import LineageCoverage
+    from vincio.evals.benchmarks import load_benchmark
+
+    fixtures = Path(__file__).resolve().parent / "fixtures"
+
+    def _catalog_from(tables: dict[str, Any]) -> DataCatalog:
+        catalog = DataCatalog()
+        for name, spec in tables.items():
+            catalog.add(
+                Dataset.from_rows([list(r) for r in spec["rows"]], list(spec["columns"]), name=name),
+                name=name,
+            )
+        return catalog
+
+    def _solver(task: Any) -> dict[str, Any]:
+        catalog = _catalog_from(task.inputs["tables"])
+        budget = AnalysisBudget(max_steps=int(task.metadata.get("max_steps") or 10))
+        analysis = analyze_dataset(
+            task.prompt, catalog, table=task.metadata.get("table"), budget=budget
+        )
+        return {"answer": analysis.answer(), "steps": len(analysis.steps)}
+
+    success_at_budget = True
+    total = 0
+    solved = 0
+    for name in ("ds_1000", "infiagent_dabench", "dabench"):
+        report = await load_benchmark(name, fixture_path=fixtures / f"{name}.json").run(_solver)
+        total += report.n
+        solved += sum(1 for r in report.results if r.details["success_at_budget"])
+        success_at_budget = success_at_budget and all(
+            r.details["success_at_budget"] for r in report.results
+        )
+
+    # Narrative-cited + verifiable on a representative analysis.
+    catalog = DataCatalog.of(
+        Dataset.from_records(
+            [
+                {"region": "NA", "product": "alpha", "revenue": 1200.5},
+                {"region": "EU", "product": "alpha", "revenue": 980.0},
+                {"region": "NA", "product": "beta", "revenue": 300.0},
+                {"region": "APAC", "product": "beta", "revenue": 1500.25},
+            ],
+            name="sales",
+        ),
+        name="sales",
+    )
+    analysis = analyze_dataset("total revenue by region", catalog)
+    cell_steps = [s for s in analysis.steps if s.coverage is LineageCoverage.CELL]
+    narrative_cited = bool(cell_steps) and all(s.cite_refs for s in cell_steps)
+
+    tampered = DataCatalog.of(
+        Dataset.from_records(
+            [
+                {"region": "NA", "product": "alpha", "revenue": 9999.0},
+                {"region": "EU", "product": "alpha", "revenue": 980.0},
+                {"region": "NA", "product": "beta", "revenue": 300.0},
+                {"region": "APAC", "product": "beta", "revenue": 1500.25},
+            ],
+            name="sales",
+        ),
+        name="sales",
+    )
+    verifiable = analysis.verify(catalog) and not analysis.verify(tampered)
+
+    return {
+        "success_at_budget": success_at_budget,
+        "narrative_cited": narrative_cited,
+        "verifiable": verifiable,
+        "tasks": total,
+        "solved_at_budget": solved,
+        "success_rate": round(solved / total, 4) if total else 0.0,
+    }
+
+
 async def bench_data_plane() -> dict[str, Any]:
     """DataPlaneBench: dataset profiling, representative sampling, fit-in-window,
-    data-quality rails, and governed text-to-query — fitting a dataset far larger
-    than the window into bounded, faithful, screened evidence, then querying it
-    read-only with cell-level provenance."""
+    data-quality rails, governed text-to-query, and the data-analysis agent —
+    fitting a dataset far larger than the window into bounded, faithful, screened
+    evidence, querying it read-only with cell-level provenance, then running a
+    bounded multi-step analysis that produces a cited, offline-verifiable
+    narrative."""
     return {
         "fit_in_window": _fit_in_window_bench(),
         "profile": _profile_faithful_bench(),
         "quality": _quality_rails_bench(),
         "text_to_query": await _text_to_query_bench(),
+        "analysis": await _data_analysis_bench(),
     }
 
 

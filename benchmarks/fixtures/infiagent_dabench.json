@@ -1,0 +1,51 @@
+{
+  "name": "infiagent_dabench",
+  "description": "InfiAgent-DABench-shaped data-analysis-agent tasks with concrete, format-pinned answers over a small inline table, scored by task success at budget (answer match within the agent's step budget) over the governed query plane. Self-contained and offline; a miniature of the real benchmark whose full set loads via infiagent_dabench_tasks_from_export.",
+  "tasks": [
+    {
+      "id": "infiagent-total-amount",
+      "prompt": "What is the total amount?",
+      "gold": 100.0,
+      "recorded": {"answer": 100.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "tx": {
+            "columns": ["category", "amount"],
+            "rows": [["a", 10.0], ["b", 20.0], ["a", 30.0], ["b", 40.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "tx"}
+    },
+    {
+      "id": "infiagent-row-count",
+      "prompt": "How many rows are there?",
+      "gold": 4,
+      "recorded": {"answer": 4, "steps": 6},
+      "inputs": {
+        "tables": {
+          "tx": {
+            "columns": ["category", "amount"],
+            "rows": [["a", 10.0], ["b", 20.0], ["a", 30.0], ["b", 40.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "tx"}
+    },
+    {
+      "id": "infiagent-avg-amount",
+      "prompt": "What is the average amount?",
+      "gold": 25.0,
+      "recorded": {"answer": 25.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "tx": {
+            "columns": ["category", "amount"],
+            "rows": [["a", 10.0], ["b", 20.0], ["a", 30.0], ["b", 40.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "tx"}
+    }
+  ]
+}

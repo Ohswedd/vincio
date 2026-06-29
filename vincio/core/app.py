@@ -6554,6 +6554,74 @@ class ContextApp:
         )
         return result
 
+    def analyze_data(
+        self,
+        objective: str,
+        *,
+        dataset: Any | None = None,
+        table: str | None = None,
+        budget: Any | None = None,
+        max_steps: int | None = None,
+        engine: Any | None = None,
+        propose_followups: bool = True,
+        schema: Any | None = None,
+        columns: list[str] | None = None,
+        name: str = "",
+        raise_on_refusal: bool = True,
+    ) -> Any:
+        """Run a bounded, multi-step analysis over a registered dataset and return a
+        **cited analytical narrative** — the data plane's analyst agent.
+
+        The agent plans (an overview, the objective grounded to a query, the
+        measures' extremes and totals, a measure-by-dimension breakdown), queries
+        each step through the governed, **read-only-verified** query plane, inspects
+        the result, and refines by drilling into the group that dominates — bounded
+        by an :class:`~vincio.data.AnalysisBudget`. Every finding **cites the exact
+        source cells** it rests on, the narrative re-derives from the bytes via
+        :meth:`~vincio.data.AnalysisResult.verify`, and the whole run lands on the
+        audit chain (``data_analysis``)::
+
+            app.register_dataset(rows, columns=["region", "revenue"], name="sales")
+            analysis = app.analyze_data("how does revenue break down by region?", table="sales")
+            print(analysis.narrative)               # the cited narrative
+            analysis.verify(app.data_catalog())     # re-derives every finding from the bytes
+
+        The objective is screened by the same injection detector the text rails use
+        (a refusal raises :class:`~vincio.core.errors.UnsafeQueryError`); pass
+        ``dataset=`` for a one-shot over an unregistered table, ``budget=`` or
+        ``max_steps=`` to bound the run, and ``engine=`` (e.g.
+        :class:`~vincio.data.DuckDbQueryEngine`) to push the queries down at scale.
+        Returns an :class:`~vincio.data.AnalysisResult` (or ``None`` when a refusal
+        is caught with ``raise_on_refusal=False``).
+        """
+        from ..core.errors import AnalysisError, UnsafeQueryError
+        from ..data import AnalysisAgent, AnalysisBudget
+
+        if budget is None and max_steps is not None:
+            budget = AnalysisBudget(max_steps=max_steps)
+        ds = None
+        if dataset is not None:
+            ds = self._coerce_dataset(dataset, schema=schema, columns=columns, name=name)
+        elif not self.data_catalog().names:
+            raise AnalysisError(
+                "no dataset registered; pass dataset= or call app.register_dataset(...) first"
+            )
+        agent = AnalysisAgent(
+            self, budget=budget, engine=engine, propose_followups=propose_followups
+        )
+        try:
+            return agent.run(objective, table=table, dataset=ds)
+        except UnsafeQueryError as exc:
+            self.audit.record(
+                "data_analysis",
+                decision="deny",
+                resource=table or (ds.name if ds is not None else "dataset"),
+                details={"refused": "unsafe", "reason": str(exc)[:200]},
+            )
+            if raise_on_refusal:
+                raise
+            return None
+
     # -- continuous assurance & production certification ----------------
 
     def assurance_case(

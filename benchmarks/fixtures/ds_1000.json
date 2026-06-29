@@ -1,0 +1,51 @@
+{
+  "name": "ds_1000",
+  "description": "DS-1000-shaped data-science questions over a small inline table, scored by task success at budget (the agent's answer matches the gold answer and the analysis finishes within the step budget). Vincio answers each through the governed, read-only-verified query plane, so the score reflects governed analysis rather than raw code generation. Self-contained and offline; a miniature of the real DS-1000 task whose full set loads via ds_1000_tasks_from_export.",
+  "tasks": [
+    {
+      "id": "ds1000-total-revenue",
+      "prompt": "What is the total revenue?",
+      "gold": 600.0,
+      "recorded": {"answer": 600.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "sales": {
+            "columns": ["region", "revenue"],
+            "rows": [["NA", 100.0], ["EU", 200.0], ["APAC", 300.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "sales"}
+    },
+    {
+      "id": "ds1000-max-revenue",
+      "prompt": "What is the maximum revenue?",
+      "gold": 300.0,
+      "recorded": {"answer": 300.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "sales": {
+            "columns": ["region", "revenue"],
+            "rows": [["NA", 100.0], ["EU", 200.0], ["APAC", 300.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "sales"}
+    },
+    {
+      "id": "ds1000-avg-revenue",
+      "prompt": "What is the average revenue?",
+      "gold": 200.0,
+      "recorded": {"answer": 200.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "sales": {
+            "columns": ["region", "revenue"],
+            "rows": [["NA", 100.0], ["EU", 200.0], ["APAC", 300.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "sales"}
+    }
+  ]
+}

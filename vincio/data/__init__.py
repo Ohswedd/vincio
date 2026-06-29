@@ -34,7 +34,13 @@ would not fit.
   the standard-library ``sqlite3`` engine (:class:`InProcessSqlEngine`), whose
   answer **cites the exact source cells** it rests on
   (:class:`~vincio.data.provenance.CellCitation`) and re-derives from the bytes
-  via :meth:`QueryResult.verify`.
+  via :meth:`QueryResult.verify`. :class:`DuckDbQueryEngine` runs the same
+  verified SQL on DuckDB (behind the ``vincio[data]`` extra) for execution at
+  scale.
+* :func:`analyze_dataset` / :class:`AnalysisAgent` / :class:`AnalysisResult` —
+  a bounded, multi-step analysis agent that plans, queries, inspects, and refines
+  over a dataset through the governed query plane, producing a **cited analytical
+  narrative** that re-derives from the bytes via :meth:`AnalysisResult.verify`.
 
 Everything here is deterministic, dependency-free, and offline. ``Dataset`` and
 the schema types are exported from this subpackage (the top-level ``Dataset``
@@ -55,9 +61,24 @@ name belongs to :mod:`vincio.evals`); :class:`DataEncoder`,
 
 from __future__ import annotations
 
-from ..core.errors import DataError, DataQualityError, QueryError, UnsafeQueryError
+from ..core.errors import (
+    AnalysisError,
+    DataError,
+    DataQualityError,
+    QueryError,
+    UnsafeQueryError,
+)
+from .analysis import (
+    AnalysisAgent,
+    AnalysisBudget,
+    AnalysisResult,
+    AnalysisStep,
+    AnalysisStepKind,
+    analyze_dataset,
+)
 from .core import ColumnSchema, DataSchema, Dataset, DataType
 from .encoders import DataEncoder
+from .engines import DuckDbQueryEngine
 from .evidence import TableEvidence
 from .profile import (
     ColumnProfile,
@@ -106,6 +127,7 @@ __all__ = [
     "DataQualityError",
     "QueryError",
     "UnsafeQueryError",
+    "AnalysisError",
     # profiling
     "HistogramBin",
     "ColumnProfile",
@@ -142,4 +164,12 @@ __all__ = [
     "make_query_contract",
     "is_read_only_sql",
     "assert_read_only_sql",
+    "DuckDbQueryEngine",
+    # data-analysis agent & multi-step EDA
+    "AnalysisStepKind",
+    "AnalysisBudget",
+    "AnalysisStep",
+    "AnalysisResult",
+    "AnalysisAgent",
+    "analyze_dataset",
 ]

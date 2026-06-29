@@ -24,6 +24,8 @@ AlertManager
 AlertRule
 AlertSink
 AllowListGate
+AnalysisAgent
+AnalysisResult
 AnnexIVBuilder
 ApprovalRecord
 ArithmeticVerifier
@@ -415,6 +417,7 @@ Workflow
 WorldModel
 __version__
 admit
+analyze_dataset
 arbitrate
 assurance_regression_gate
 attest_custody

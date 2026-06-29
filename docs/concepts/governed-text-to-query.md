@@ -152,7 +152,8 @@ Governed text-to-query is the analyst rung of the data plane: it answers a
 question over a registered dataset, read-only and cell-cited. It is **not** a
 hosted query engine, a managed warehouse, or a notebook service — the in-process
 `sqlite3` engine is the offline-first default and a pushdown engine runs the same
-verified SQL where the data lives. The multi-step data-analysis agent and charts
-are later rungs (see the [roadmap](../../ROADMAP.md)). Nothing here is gated on
-model output: grounding, the read-only guard, cost bounds, and verification are
-enforced in code, deterministically and offline.
+verified SQL where the data lives. The [multi-step data-analysis agent](data-analysis-agent.md)
+builds the next rung on top of this one; charts are a later rung (see the
+[roadmap](../../ROADMAP.md)). Nothing here is gated on model output: grounding, the
+read-only guard, cost bounds, and verification are enforced in code,
+deterministically and offline.
