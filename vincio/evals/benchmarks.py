@@ -58,6 +58,9 @@ __all__ = [
     "MMLUProAdapter",
     "SpiderAdapter",
     "BIRDAdapter",
+    "DS1000Adapter",
+    "InfiAgentDABenchAdapter",
+    "DABenchAdapter",
     "BENCHMARK_ADAPTERS",
     "load_benchmark",
     "available_benchmarks",
@@ -74,6 +77,9 @@ __all__ = [
     "mmlu_pro_tasks_from_export",
     "spider_tasks_from_export",
     "bird_tasks_from_export",
+    "ds_1000_tasks_from_export",
+    "infiagent_dabench_tasks_from_export",
+    "dabench_tasks_from_export",
 ]
 
 
@@ -1129,6 +1135,141 @@ def bird_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]
     return tasks
 
 
+# ---------------------------------------------------------------------------
+# DS-1000 / InfiAgent-DABench / DABench  (data analysis; task success at budget)
+# ---------------------------------------------------------------------------
+
+
+def _coerce_number(value: Any) -> float | None:
+    """A best-effort float for an answer comparison (strips ``$``, ``%``, commas)."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", "").replace("$", "").replace("%", "")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _answers_match(pred: Any, gold: Any, *, tolerance: float = 1e-3) -> bool:
+    """Whether a predicted answer matches the gold one: numbers within a relative
+    tolerance, lists order-insensitively, anything else by normalized string."""
+    if isinstance(gold, (list, tuple)):
+        if not isinstance(pred, (list, tuple)):
+            return False
+        return sorted(pred, key=repr) == sorted(gold, key=repr)
+    gnum, pnum = _coerce_number(gold), _coerce_number(pred)
+    if gnum is not None and pnum is not None:
+        return abs(gnum - pnum) <= tolerance + tolerance * abs(gnum)
+    return str(pred).strip().lower() == str(gold).strip().lower()
+
+
+def _split_answer(output: Any) -> tuple[Any, int | None]:
+    """Extract ``(answer, steps)`` from a solver/recorded output — a bare answer
+    value, or a ``{"answer": ..., "steps": ...}`` mapping carrying the step count."""
+    if isinstance(output, dict) and "answer" in output:
+        steps = output.get("steps")
+        return output["answer"], int(steps) if isinstance(steps, (int, float)) else None
+    return output, None
+
+
+class _DataAnalysisAdapter(BenchmarkAdapter):
+    """Shared scoring for the data-analysis benchmark families: **task success at
+    budget** — the agent's answer must match the gold answer *and* the analysis
+    must finish within the task's step budget (``metadata["max_steps"]``).
+
+    ``prompt`` = the analytical question; ``inputs`` = ``{"tables": {name:
+    {"columns": [...], "rows": [[...]]}}}``; ``gold`` = the expected answer (a
+    number, a string, or a result-set list); ``output`` / ``recorded`` = the
+    agent's answer, optionally ``{"answer": ..., "steps": n}`` carrying the steps
+    it took so the budget can be checked.
+    """
+
+    async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
+        answer, steps = _split_answer(output)
+        correct = _answers_match(answer, task.gold)
+        max_steps = task.metadata.get("max_steps")
+        within_budget = True if (max_steps is None or steps is None) else steps <= int(max_steps)
+        return BenchmarkResult(
+            task_id=task.id,
+            success=bool(correct),
+            score=1.0 if correct else 0.0,
+            output=output,
+            details={
+                "correct": bool(correct),
+                "within_budget": bool(within_budget),
+                "success_at_budget": bool(correct and within_budget),
+                "steps": steps,
+                "max_steps": max_steps,
+            },
+        )
+
+
+class DS1000Adapter(_DataAnalysisAdapter):
+    """DS-1000: data-science questions over an inline table, scored by **task
+    success at budget** — the agent's answer matches the gold answer within the
+    step budget. Vincio answers each through the governed, read-only-verified query
+    plane, so the score reflects governed analysis, not raw code generation."""
+
+    name = "ds_1000"
+
+
+class InfiAgentDABenchAdapter(_DataAnalysisAdapter):
+    """InfiAgent-DABench: data-analysis-agent tasks with concrete, format-pinned
+    answers, scored by **task success at budget** (answer match within the agent's
+    step budget) over the governed query plane."""
+
+    name = "infiagent_dabench"
+
+
+class DABenchAdapter(_DataAnalysisAdapter):
+    """DABench: end-to-end data-analysis tasks scored by **task success at budget**
+    (the agent's answer matches the gold answer within its step budget)."""
+
+    name = "dabench"
+
+
+def _data_analysis_tasks_from_export(
+    records: list[dict[str, Any]], *, prefix: str
+) -> list[BenchmarkTask]:
+    tasks: list[BenchmarkTask] = []
+    for index, rec in enumerate(records):
+        gold = rec.get("answer", rec.get("gold"))
+        tasks.append(
+            BenchmarkTask(
+                id=str(rec.get("id", f"{prefix}-{index}")),
+                prompt=str(rec.get("question", rec.get("prompt", ""))),
+                gold=gold,
+                recorded=rec.get("recorded", gold),
+                inputs={"tables": rec.get("tables", {})},
+                metadata={
+                    "max_steps": rec.get("max_steps", rec.get("budget")),
+                    "table": rec.get("table"),
+                },
+            )
+        )
+    return tasks
+
+
+def ds_1000_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map DS-1000 records (``question`` / ``answer`` / ``tables`` / ``max_steps``)
+    onto :class:`BenchmarkTask`s for :class:`DS1000Adapter`."""
+    return _data_analysis_tasks_from_export(records, prefix="ds1000")
+
+
+def infiagent_dabench_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map InfiAgent-DABench records onto :class:`BenchmarkTask`s for
+    :class:`InfiAgentDABenchAdapter`."""
+    return _data_analysis_tasks_from_export(records, prefix="infiagent")
+
+
+def dabench_tasks_from_export(records: list[dict[str, Any]]) -> list[BenchmarkTask]:
+    """Map DABench records onto :class:`BenchmarkTask`s for :class:`DABenchAdapter`."""
+    return _data_analysis_tasks_from_export(records, prefix="dabench")
+
+
 BENCHMARK_ADAPTERS: dict[str, type[BenchmarkAdapter]] = {
     SWEBenchAdapter.name: SWEBenchAdapter,
     TauBenchAdapter.name: TauBenchAdapter,
@@ -1141,6 +1282,9 @@ BENCHMARK_ADAPTERS: dict[str, type[BenchmarkAdapter]] = {
     MMLUProAdapter.name: MMLUProAdapter,
     SpiderAdapter.name: SpiderAdapter,
     BIRDAdapter.name: BIRDAdapter,
+    DS1000Adapter.name: DS1000Adapter,
+    InfiAgentDABenchAdapter.name: InfiAgentDABenchAdapter,
+    DABenchAdapter.name: DABenchAdapter,
 }
 
 

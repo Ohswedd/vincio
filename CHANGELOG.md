@@ -4,6 +4,67 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [4.4.0] - 2026-06-29
+
+The data-analysis agent & multi-step EDA — the fourth rung of the data & analytics plane: a bounded analysis agent that
+plans, queries, inspects, and refines over a dataset through the *existing* governed query plane, producing a **cited
+analytical narrative** that re-derives from the bytes the way a cited report does. The exploration is bounded by an
+explicit budget, every step runs read-only-verified, and the verifier is the query plane's offline re-execution, not a
+model. Additive in the `vincio.data` subpackage; entirely backward-compatible, dependency-free, deterministic, and
+offline. `API_VERSION` is unchanged at `"4.0"` — 4.4 extends the 4.x surface additively (491 → 494 public symbols).
+
+### Added
+
+- **`analyze_dataset` / `app.analyze_data` — the data-analysis agent.** Runs a bounded loop — plan → query → inspect →
+  refine → synthesize — over a registered dataset: a deterministic, schema-grounded plan (an overview, the objective
+  grounded by the same `HeuristicQueryPlanner` text-to-query uses, each measure's extreme and total, a
+  measure-by-dimension breakdown, and a drill into the group that dominates) where **every step runs through the governed,
+  read-only-verified query plane**, so a finding is grounded by construction, never hallucinated. The objective is screened
+  by the same injection detector the text rails use (a refusal raises `UnsafeQueryError`), and the run lands on the
+  hash-chained audit log (`data_analysis`, with a `deny` entry pinpointing a refused objective).
+- **`AnalysisResult` — a cited analytical narrative, offline-verifiable.** Carries the `narrative` (one cited finding per
+  line), the executed `AnalysisStep`s (each with its `query`, `finding`, exact-cell `cite_refs`, and `coverage`), a
+  content-bound `result_hash`, and `answer()` / `primary_step()` accessors. `verify(catalog)` re-executes every step and
+  confirms the narrative and every cited cell re-derive from the bytes — a tampered source or a tampered narrative flips it
+  to `False`. `to_evidence_item()` projects the analysis into cited table evidence; `render("report")` shows each finding's
+  underlying query. The narrative's coverage is the weakest across its steps and is always stated, never silently
+  downgraded.
+- **`AnalysisBudget` — bounded by construction.** Caps the total step count (`max_steps`), the refinement drill-downs
+  (`max_refinements`), each query's result (`max_rows`), and the breakdown fan-out — there is no open-ended search. The
+  agent reuses the existing query plane for grounding and verification rather than growing a parallel search stack.
+- **`AnalysisAgent` — the app-wired agent.** Resolves the catalog (the app's registered datasets or a one-shot
+  `dataset=`), screens the objective, audits the run, and — when a model is configured — may ask it for additional
+  analytical follow-up questions, each still grounded and verified by the query plane (offline, or when the model returns
+  nothing groundable, the agent is byte-for-byte the deterministic core).
+- **`DuckDbQueryEngine` — execution at scale.** A drop-in `QueryEngine` (behind the new `vincio[data]` extra) that runs the
+  *same verified read-only SQL* on DuckDB, re-asserting read-only at the engine boundary. It reports result-level lineage
+  (the result still re-derives on `verify()`); the offline `sqlite3` engine remains the path that derives per-cell
+  citations.
+- **Top-level surface.** `AnalysisResult`, `AnalysisAgent`, and `analyze_dataset` are re-exported at the package top level;
+  the full surface (`AnalysisBudget`, `AnalysisStep`, `AnalysisStepKind`, `DuckDbQueryEngine`, `AnalysisError`) lives in
+  `vincio.data`. New error code `ANALYSIS_ERROR`.
+- **DS-1000 / InfiAgent-DABench / DABench adapters** (`vincio.evals.DS1000Adapter`, `InfiAgentDABenchAdapter`,
+  `DABenchAdapter`, with `ds_1000_tasks_from_export` / `infiagent_dabench_tasks_from_export` / `dabench_tasks_from_export`
+  and shipped fixtures) scored by **task success at budget** — the agent's answer matches the gold answer and the analysis
+  finishes within its step budget. An `analysis` section of the **DataPlaneBench** family adds a `success_at_budget` SLO, a
+  `narrative_cited` SLO, and a `verifiable` SLO, all gated `true`.
+
+### Fixed
+
+- **Cell-level lineage for a query with a string-literal `WHERE`.** The query plane's lineage witness (the rowid rebuild
+  for a projection / filter, and the group witness for a group-by aggregation) reused clause text that had its string
+  literals blanked for keyword scanning, so a `WHERE col = 'value'` produced empty cell citations. Clause text is now
+  sliced from the original SQL (literals intact) while keyword boundaries are still scanned on a length-aligned mask, so a
+  filtered or grouped query with a string literal now carries correct cell-exact provenance. (Queries with numeric `WHERE`
+  predicates or no `WHERE` were unaffected; this surfaced through the analysis agent's drill-downs.)
+
+### Documentation
+
+- New concept page **[Data-analysis agent and multi-step EDA](concepts/data-analysis-agent.md)** (under `docs/`), a runnable
+  **`examples/16_data_analysis_agent.py`**, and updates to the README, `llms.txt`, `SECURITY.md`, the SLO reference, and the
+  ROADMAP (the 4.4 row moves from planned to shipped). The 4.3 text-to-query concept's "what it is not" note is updated,
+  since the multi-step data-analysis agent now ships.
+
 ## [4.3.0] - 2026-06-28
 
 Governed text-to-query & cell-level provenance — the third rung of the data & analytics plane: the core analyst

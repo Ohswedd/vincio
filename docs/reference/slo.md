@@ -68,6 +68,9 @@ portable.
 | Governed text-to-query reaches ≥ 0.9 execution accuracy on the Spider/BIRD-shaped battery (generated query's result set equals the gold's) | ≥ 0.9 | `data_plane.text_to_query.execution_accuracy` |
 | Every generated write, DDL, stacked statement, or injection attempt is structurally refused before a query runs | true | `data_plane.text_to_query.read_only_enforced` |
 | An analytical answer and its cited source cells re-derive from the bytes; a tampered source is caught | true | `data_plane.text_to_query.provenance_verifiable` |
+| The data-analysis agent reaches the correct answer within its step budget on the DS-1000 / InfiAgent-DABench / DABench-shaped batteries | true | `data_plane.analysis.success_at_budget` |
+| Every cell-traceable finding in a generated analytical narrative cites the exact source cells it rests on | true | `data_plane.analysis.narrative_cited` |
+| An analytical narrative and its cited cells re-derive from the bytes; a tampered source or narrative is caught | true | `data_plane.analysis.verifiable` |
 
 The fit-in-window guarantee is the headline of the profiling/sampling rung: a
 full-fidelity column profile (computed over every row in bounded memory) plus a
@@ -81,6 +84,14 @@ on a Spider/BIRD-shaped battery (the budget gates 0.95, stricter than the publis
 injection attempts is refused, deterministically), and cell-level provenance is
 offline-verifiable (a result and its cited cells re-derive from the bytes, and a
 tampered source flips `verify()` to false).
+
+The data-analysis-agent SLOs gate the multi-step EDA rung three ways: task success
+at budget (the offline governed agent answers every DS-1000 / InfiAgent-DABench /
+DABench-shaped battery task correctly within its step budget — correctness and
+bounded exploration together), narrative citation completeness (every cell-traceable
+finding carries the exact source cells it rests on, so a claim is never asserted
+without its lineage), and offline verifiability (an analysis re-executes against its
+hashed source and a tampered source or narrative flips `verify()` to false).
 
 ## Security
 

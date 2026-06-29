@@ -577,6 +577,36 @@ re-executes the query against the content-hashed source and confirms the result 
 every cited cell re-derive from the bytes, so a tampered source or a doctored answer is
 caught. The whole path is deterministic and offline.
 
+### Data-analysis agent — bounded, read-only, verified
+
+**The multi-step analysis agent inherits the query plane's guarantees and adds bounded
+execution.** `app.analyze_data` (`vincio.data.analyze_dataset`) plans and runs a
+sequence of queries, but every one of those queries runs through the *same* governed
+query plane above — schema-grounded, read-only-screened, cost-bounded, executed by the
+read-only engine — so no step is a write path, and the generated analytical SQL is
+never model-authored free text but is built deterministically from the validated schema.
+Three properties keep the loop safe:
+
+- **Bounded by construction.** An `AnalysisBudget` caps the total step count, the number
+  of refinement drill-downs, and each query's row ceiling; the plan is truncated to fit.
+  There is no open-ended search and no unbounded re-querying.
+- **Objective screened once.** The user's objective is run through the same injection
+  detector the text rails use before any planning; an injection-bearing objective raises
+  `UnsafeQueryError` and is recorded as a `deny`. Model-proposed follow-up questions
+  (when a model is configured) are each re-grounded and re-verified by the query plane,
+  so the model can never introduce a query that bypasses the screen.
+- **Verified, not asserted.** The "verifier" is not the model — it is the query plane's
+  offline re-execution. `AnalysisResult.verify` re-runs every step against the
+  content-hashed source and confirms the narrative and every cited cell re-derive from
+  the bytes; a tampered source or a doctored narrative flips it to `False`. Because the
+  narrative is assembled deterministically from the verified findings, a claim can only
+  appear if its query ran and verified.
+
+Every run lands on the **hash-chained audit log** (`data_analysis`, with the step count,
+cited-finding count, lineage coverage, and result hash; a `deny` entry pinpoints a
+refused objective). The whole path is deterministic and offline; the optional DuckDB
+engine runs the same verified SQL at scale without changing any of these guarantees.
+
 ### Edge / WASM runtime — the same deterministic safety, offline
 
 **The edge runtime carries the deterministic rails to a constrained target without

@@ -382,6 +382,33 @@ app.run("export button 500s").output.label
   new Spider / BIRD adapters (`vincio.evals.SpiderAdapter`/`BIRDAdapter`) under an
   execution-accuracy SLO plus read-only-enforcement and provenance-verifiability
   SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
+- **Data-analysis agent & multi-step EDA.** `from vincio.data import
+  analyze_dataset, AnalysisAgent, AnalysisResult, AnalysisBudget, AnalysisStep,
+  AnalysisStepKind` (also `from vincio import analyze_dataset, AnalysisAgent,
+  AnalysisResult`). `app.analyze_data(objective, *, table=|dataset=, budget=|
+  max_steps=, engine=, propose_followups=)` (audited `data_analysis`) runs a
+  bounded loop — plan → query → inspect → refine → synthesize — over a registered
+  dataset: a deterministic, schema-grounded plan (overview, the objective grounded
+  by the same `HeuristicQueryPlanner`, each measure's extreme/total, a
+  measure-by-dimension breakdown, and a drill into the dominant group) where **every
+  step runs through the governed, read-only-verified query plane**, so a finding is
+  grounded by construction, never hallucinated. The `AnalysisResult` carries the
+  `narrative` (one cited finding per line), the executed `AnalysisStep`s (each with
+  its `query`, `finding`, `cite_refs` → `sales#r3!revenue`, and `coverage`), a
+  `result_hash`, `answer()`/`primary_step()`, `to_evidence_item()`, and
+  `verify(catalog)` that re-executes every step and confirms the narrative and every
+  cited cell re-derive from the bytes (a tampered source or narrative → `False`).
+  The loop is bounded by `AnalysisBudget(max_steps=, max_refinements=, max_rows=)`;
+  the verifier is **not a model** — it is the query plane's offline re-execution.
+  The objective is injection-screened; with a model configured the agent may propose
+  extra follow-up questions (each still grounded + verified — offline it degrades to
+  the deterministic core byte-for-byte). Execution is on a pluggable `QueryEngine`:
+  the default stdlib `sqlite3` engine derives cell-exact lineage offline;
+  `DuckDbQueryEngine` (behind `vincio[data]`) runs the same verified SQL at
+  result-level lineage for scale. Benchmarked by DS-1000 / InfiAgent-DABench /
+  DABench adapters (`vincio.evals.DS1000Adapter`/`InfiAgentDABenchAdapter`/
+  `DABenchAdapter`) under a task-success-at-budget SLO plus narrative-cited and
+  verifiable SLOs (DataPlaneBench). Deterministic, dependency-free, offline.
 - **Video understanding.** `from vincio.documents import MockVideoAnalyzer,
   video_evidence_items, load_video` (real path: `ProviderVideoAnalyzer` +
   `PyAVFrameExtractor` behind `vincio[video]`). Deterministic `sample_frame_times`

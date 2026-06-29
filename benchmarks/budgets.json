@@ -52,6 +52,15 @@
     "families.data_plane.text_to_query.provenance_verifiable": {
       "eq": true
     },
+    "families.data_plane.analysis.success_at_budget": {
+      "eq": true
+    },
+    "families.data_plane.analysis.narrative_cited": {
+      "eq": true
+    },
+    "families.data_plane.analysis.verifiable": {
+      "eq": true
+    },
     "families.rag.recall_at_3.mean": {
       "gte": 0.8
     },

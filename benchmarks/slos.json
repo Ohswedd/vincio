@@ -243,6 +243,36 @@
       "rationale": "Cell-level provenance is only trustworthy if it is offline-verifiable; the budget gates that a result re-executes to the same rows, a tampered cell flips verify() to false, and the cited cells point at source cells whose values still hold."
     },
     {
+      "id": "data_analysis_success_at_budget",
+      "category": "quality",
+      "statement": "The data-analysis agent reaches the correct analytical answer within its step budget on the DS-1000 / InfiAgent-DABench / DABench-shaped batteries — task success and bounded exploration, together.",
+      "metric": "families.data_plane.analysis.success_at_budget",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.analysis.success_at_budget",
+      "rationale": "A data-analysis agent is only useful if it is both correct and bounded; the budget gates that every battery task is answered correctly by the offline governed agent within its declared step budget, so a correctness or an unbounded-exploration regression is caught."
+    },
+    {
+      "id": "data_analysis_narrative_cited",
+      "category": "quality",
+      "statement": "Every cell-traceable finding in a generated analytical narrative cites the exact source cells it rests on — a claim is never asserted without its lineage.",
+      "metric": "families.data_plane.analysis.narrative_cited",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.analysis.narrative_cited",
+      "rationale": "The narrative's trustworthiness rests on cell-level citation; the budget gates that every cell-coverage step in a representative analysis carries the source cells it rests on, so a finding can never be emitted ungrounded."
+    },
+    {
+      "id": "data_analysis_verifiable",
+      "category": "quality",
+      "statement": "An analytical narrative and its cited cells re-derive from the bytes — the analysis re-executes against its hashed source, and a tampered source or narrative is caught.",
+      "metric": "families.data_plane.analysis.verifiable",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.analysis.verifiable",
+      "rationale": "A cited narrative is only trustworthy if it is offline-verifiable; the budget gates that an analysis verifies against its source and that a tampered source flips verify() to false, the analytics analogue of a cited report's verification."
+    },
+    {
       "id": "tool_overhead_p50",
       "category": "performance",
       "statement": "The permissioned tool runtime adds at most 50 ms p50 overhead per call.",

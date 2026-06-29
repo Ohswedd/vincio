@@ -38,6 +38,7 @@ __all__ = [
     "DataQualityError",
     "QueryError",
     "UnsafeQueryError",
+    "AnalysisError",
     "RetrievalError",
     "IndexError_",
     "MemoryEngineError",
@@ -375,6 +376,17 @@ class UnsafeQueryError(QueryError):
     catches it."""
 
     code = "UNSAFE_QUERY"
+
+
+class AnalysisError(DataError):
+    """The data-analysis agent could not run an analysis — no dataset to analyze,
+    an ambiguous table choice in a multi-table catalog, or an objective that
+    grounds to nothing analyzable. Inherits :class:`DataError` so
+    ``except DataError`` catches the whole data plane; carries its own catalog
+    code for precise remediation. (A refused — non-read-only or injection-bearing
+    — objective raises :class:`UnsafeQueryError`, not this.)"""
+
+    code = "ANALYSIS_ERROR"
 
 
 # --- retrieval --------------------------------------------------------------

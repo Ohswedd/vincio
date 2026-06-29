@@ -54,6 +54,10 @@ between your input and the model's validated output.
   `app.query_data` grounds a question to a read-only-verified, cost-bounded query
   executed by the standard-library SQL engine where the data lives, and a
   `QueryResult` that cites the exact source cells and `verify()`s offline.
+- **[Data-analysis agent and multi-step EDA](concepts/data-analysis-agent.md)**:
+  `app.analyze_data` plans, queries, inspects, and refines over a dataset through
+  the governed query plane, producing a cited analytical narrative whose every
+  finding points at the exact source cells and that `verify(catalog)`s offline.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

@@ -123,6 +123,10 @@ without an entry here.
 
 **Query refused as not read-only.** A generated query was structurally refused before it ran because it was not provably read-only (a write, DDL, multiple statements, or an injection signal). Re-issue a single read-only `SELECT`; the read-only guard cannot be disabled.
 
+### ANALYSIS_ERROR
+
+**Data-analysis error.** The data-analysis agent had nothing to analyze. Register a dataset (or pass `dataset=`), and when the catalog holds more than one table pass `table=` to choose which one to analyze.
+
 ### RETRIEVAL_ERROR
 
 **Retrieval failure.** A retrieval backend errored. Verify the index exists and the vector store URL in `storage.vector` is reachable.

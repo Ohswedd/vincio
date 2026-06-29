@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**490** public symbols.
+**493** public symbols.
 
 ## Classes
 
@@ -93,6 +93,14 @@ Base class for protocol classes.
 ### `AllowListGate(allow=…, deny=…, default_allow=…, action=…)`
 
 A reachability allow-list for the agent fabric.
+
+### `AnalysisAgent(app, budget=…, engine=…, propose_followups=…, max_followups=…)`
+
+Plan → query → inspect → refine → synthesize, cited and budget-bounded.
+
+### `AnalysisResult(**data)`
+
+A bounded, multi-step analysis rendered as a **cited analytical narrative**.
 
 ### `AnnexIVBuilder(classifier=…)`
 
@@ -1655,6 +1663,10 @@ Declare a signature output field.
 ### `admit(subject, reputation=…, ledger=…, standing=…, config=…)`
 
 Decide a counterparty's admitted exposure from its standing.
+
+### `analyze_dataset(objective, data, table=…, budget=…, engine=…, injection_detector=…, screen=…, extra_questions=…)`
+
+Run a bounded, multi-step analysis over a dataset and return a cited analytical narrative — the offline, deterministic core of the data-analysis agent.
 
 ### `arbitrate(records, contract_id=…, arbiter=…, verify_with=…)`
 

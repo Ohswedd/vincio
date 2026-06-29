@@ -1,0 +1,51 @@
+{
+  "name": "dabench",
+  "description": "DABench-shaped end-to-end data-analysis tasks over a small inline table, scored by task success at budget (the agent's answer matches the gold answer within its step budget). Self-contained and offline; a miniature of the real benchmark whose full set loads via dabench_tasks_from_export.",
+  "tasks": [
+    {
+      "id": "dabench-avg-score",
+      "prompt": "What is the average score?",
+      "gold": 90.0,
+      "recorded": {"answer": 90.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "scores": {
+            "columns": ["student", "score"],
+            "rows": [["x", 80.0], ["y", 90.0], ["z", 100.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "scores"}
+    },
+    {
+      "id": "dabench-highest-score",
+      "prompt": "What is the highest score?",
+      "gold": 100.0,
+      "recorded": {"answer": 100.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "scores": {
+            "columns": ["student", "score"],
+            "rows": [["x", 80.0], ["y", 90.0], ["z", 100.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "scores"}
+    },
+    {
+      "id": "dabench-total-score",
+      "prompt": "What is the total score?",
+      "gold": 270.0,
+      "recorded": {"answer": 270.0, "steps": 6},
+      "inputs": {
+        "tables": {
+          "scores": {
+            "columns": ["student", "score"],
+            "rows": [["x", 80.0], ["y", 90.0], ["z", 100.0]]
+          }
+        }
+      },
+      "metadata": {"max_steps": 10, "table": "scores"}
+    }
+  ]
+}
