@@ -250,3 +250,83 @@ def test_notebook_session_default_enables_rich_reprs():
         assert hasattr(QueryResult, "_repr_html_")
     finally:
         nb.disable_rich_reprs()
+
+
+def test_notebook_session_rich_false_does_not_enable_reprs():
+    nb.disable_rich_reprs()
+    app = _app()
+    nb.notebook_session(app, question=QUESTION, rich=False)
+    assert "_repr_html_" not in QueryResult.__dict__
+
+
+def test_notebook_session_full_lifecycle_surface():
+    # Exercise every lifecycle verb and accessor, and the markdown reprs.
+    from vincio.data import Dimension, Measure
+
+    app = _app()
+    session = nb.notebook_session(app, question=QUESTION, auto_display=False)
+    session.register(ROWS, columns=COLS, name="sales")
+    assert session.app is app
+    assert session.engagement is not None
+    assert "DatasetProfile" in type(session.profile()).__name__
+    assert session.sample(3) is not None
+    assert session.screen() is not None
+    query = session.query("total qty by region")
+    assert session.result is query
+    analysis = session.analyze(QUESTION)
+    assert session.analysis is analysis
+    chart = session.chart(query, title="Qty by region")
+    assert session.chart_ is chart
+    layer = app.semantic_layer(
+        "sales",
+        measures=[Measure(name="total_qty", agg="sum", expression="qty")],
+        dimensions=[Dimension(name="region")],
+    )
+    metric = session.query_metric("total_qty", layer=layer, by=["region"])
+    assert metric.rows
+    # seal directly, and render the session as markdown.
+    assert session.seal(record_audit=False) is not None
+    assert "dataset" in session._repr_markdown_()
+    session.verify()
+    assert "data-bound" in session._repr_markdown_()
+
+
+def test_data_narrative_markdown_without_verification():
+    app = _app()
+    narrative = _threaded_session(app).narrative
+    md = nb.data_narrative_markdown(narrative)
+    assert "chain intact" in md
+    assert narrative.audit_id in md
+
+
+def test_reprs_never_raise_on_partial_chart_or_narrative():
+    class _BadChart:
+        chart_hash = ""
+        media_type = ""
+        manifest = None
+        point_count = 0
+        spec = None
+
+        def cite_refs(self):
+            raise RuntimeError("boom")
+
+    class _BareNarrative:
+        stages: list = []
+        content_hash = ""
+        audit_id = None
+        analyst = ""
+        signed_by: list = []
+
+    assert "Chart" in nb.chart_html(_BadChart())
+    assert "chart_hash" in nb.chart_markdown(_BadChart())
+    assert "DataNarrative" in nb.data_narrative_html(_BareNarrative())
+    assert "content_hash" in nb.data_narrative_markdown(_BareNarrative())
+
+
+def test_display_falls_back_without_raising():
+    app = _app()
+    result = app.query_data(
+        "total qty by region", table=None, dataset=Dataset.from_records(ROWS, name="sales")
+    )
+    # display() works inside or outside IPython; it must never raise.
+    nb.display(result)
