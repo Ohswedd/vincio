@@ -3,13 +3,20 @@
 Vincio needs deterministic, fast token estimates for budgeting and scoring.
 The default counter is a calibrated heuristic that works offline with zero
 dependencies. When ``tiktoken`` is installed (``pip install "vincio[tokenizers]"``)
-exact BPE counts are used for known model families.
+exact BPE counts are used for known OpenAI model families.
 
-Provider-native exact counters (Anthropic ``count_tokens``, Gemini
-``countTokens``) sit behind the :class:`TokenCounter` Protocol and are selected
-by resolved model id via :func:`register_token_counter` — the registry
-foundation lets a provider plug in its exact counter without changing the
-offline default. ``count_tokens`` is memoized so repeated compiler passes and
+:func:`register_token_counter` is the extension point a provider uses to plug in
+its exact, offline counter, selected by resolved model id: when a provider that
+can count *exactly and offline* is built, it registers its counter here (the
+OpenAI provider registers ``tiktoken`` for the ``gpt-*`` / ``o*`` families; an
+in-process GGUF model registers its own tokenizer for its served model id), so
+counting becomes model-id-driven rather than tied to a single global default. A
+hosted provider whose only exact count is a network round-trip (Anthropic
+``count_tokens``, Gemini ``countTokens``) ships **no** hot-path counter — that
+round-trip is unsuitable for the per-candidate scoring loop — but a deployment
+that wants exact remote counts can register one through the same hook. With no
+exact counter registered for a model the offline heuristic (or ``tiktoken``) is
+used, unchanged. ``count_tokens`` is memoized so repeated compiler passes and
 incremental recompiles never re-tokenize the same text.
 """
 
@@ -80,22 +87,35 @@ class TiktokenCounter:
 
 
 # Registered provider-native counters, matched by model id. Each entry is a
-# (matcher, factory): matcher is a str prefix or a predicate over the model id;
-# factory builds the counter lazily. More-specific (longer-prefix) matches win.
+# (matcher, specificity, factory, key): matcher is a str prefix or a predicate
+# over the model id; factory builds the counter lazily; key (optional) makes a
+# registration idempotent so a provider built more than once registers once.
+# More-specific (longer-prefix) matches win.
 _Matcher = Callable[[str], bool]
-_REGISTERED: list[tuple[_Matcher, int, Callable[[str], TokenCounter]]] = []
+_REGISTERED: list[tuple[_Matcher, int, Callable[[str], TokenCounter], str | None]] = []
 
 
 def register_token_counter(
-    matcher: str | _Matcher, factory: Callable[[str], TokenCounter]
+    matcher: str | _Matcher,
+    factory: Callable[[str], TokenCounter],
+    *,
+    key: str | None = None,
 ) -> None:
     """Register a provider-native :class:`TokenCounter` for matching model ids.
 
-    *matcher* is a model-id prefix (e.g. ``"claude-"``) or a predicate; *factory*
+    *matcher* is a model-id prefix (e.g. ``"gpt-"``) or a predicate; *factory*
     receives the resolved model id and returns the counter. Selection prefers the
     longest matching prefix, then registration order. Offline default behavior is
     unchanged until a counter is registered.
+
+    Pass a stable *key* to make the registration idempotent: re-registering the
+    same key replaces the prior entry rather than appending a duplicate, so a
+    provider that registers its counter every time it is built (see
+    :func:`vincio.providers.register_provider_token_counters`) stays a single
+    entry.
     """
+    if key is not None:
+        _REGISTERED[:] = [entry for entry in _REGISTERED if entry[3] != key]
     if isinstance(matcher, str):
         prefix = matcher
         specificity = len(prefix)
@@ -103,9 +123,9 @@ def register_token_counter(
         def _match(model: str, _p: str = prefix) -> bool:
             return model.startswith(_p)
 
-        _REGISTERED.append((_match, specificity, factory))
+        _REGISTERED.append((_match, specificity, factory, key))
     else:
-        _REGISTERED.append((matcher, 0, factory))
+        _REGISTERED.append((matcher, 0, factory, key))
     # Invalidate both the counter cache and the per-text memo, so a counter
     # registered after some text was already counted takes effect.
     get_token_counter.cache_clear()
@@ -114,7 +134,7 @@ def register_token_counter(
 
 def _select_registered(model: str) -> Callable[[str], TokenCounter] | None:
     best: tuple[int, Callable[[str], TokenCounter]] | None = None
-    for matcher, specificity, factory in _REGISTERED:
+    for matcher, specificity, factory, _key in _REGISTERED:
         try:
             if matcher(model) and (best is None or specificity > best[0]):
                 best = (specificity, factory)

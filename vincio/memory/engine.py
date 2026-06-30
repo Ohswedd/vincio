@@ -919,6 +919,23 @@ class MemoryEngine:
             session_id, user_id=user_id, agent_id=agent_id
         )
 
+    async def promote_aged_episodes(
+        self,
+        *,
+        min_age_days: float = 7.0,
+        user_id: str | None = None,
+        summarizer: Any | None = None,
+    ) -> list[ConsolidationReport]:
+        """Consolidate every session whose episodic memories have all aged past
+        *min_age_days* — the periodic background tier transition (see
+        :meth:`~vincio.memory.consolidation.MemoryConsolidator.promote_aged_episodes`)."""
+        from .consolidation import MemoryConsolidator
+
+        consolidator = MemoryConsolidator(self, summarizer=summarizer)
+        return await consolidator.promote_aged_episodes(
+            min_age_days=min_age_days, user_id=user_id
+        )
+
     # -- stats / eval support ----------------------------------------------------
 
     def stats(self) -> dict[str, Any]:

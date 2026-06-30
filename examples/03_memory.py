@@ -160,6 +160,12 @@ async def consolidation(engine: MemoryEngine) -> None:
     # Dedup is part of every consolidation pass, but can also run standalone.
     merged = MemoryConsolidator(engine).dedup(owner_id="u1")
     print(f"  standalone dedup merged {merged} near-duplicate(s)")
+    # The periodic-maintenance form: sweep every session whose episodes have all
+    # aged past a threshold, in one call. On a ContextApp this is the
+    # `app.consolidate_memory(min_age_days=...)` verb — schedule it from your own
+    # job runner (a cron, a Temporal timer); Vincio runs no background loop itself.
+    swept = await engine.promote_aged_episodes(min_age_days=7.0, user_id="u1")
+    print(f"  aged-session sweep consolidated {len(swept)} session(s) past the window")
 
 
 # 7) AUDITED GDPR EDIT / FORGET / EXPORT / ERASE -----------------------------

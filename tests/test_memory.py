@@ -266,6 +266,59 @@ class TestConsolidation:
         assert report.promoted == 0
         assert engine.store.all_items(statuses=("archived",)) == []
 
+    @pytest.mark.asyncio
+    async def test_promote_aged_episodes_sweeps_only_aged_sessions(self):
+        from datetime import timedelta
+
+        from vincio.core.utils import utcnow
+
+        engine = MemoryEngine()
+        # An aged session (all episodes older than the window).
+        engine.remember("Customer reported a billing error on the Pro plan", session_id="old")
+        engine.remember("A refund was issued within the 30 day window", session_id="old")
+        for item in engine.store.all_items(scope=MemoryScope.SESSION, statuses=()):
+            item.updated_at = utcnow() - timedelta(days=30)
+            engine.store.put(item)
+        # A fresh session (just written) must not be swept.
+        engine.remember("New observation about the Basic plan", session_id="fresh")
+        engine.remember("Another fresh observation about onboarding", session_id="fresh")
+
+        reports = await engine.promote_aged_episodes(min_age_days=7.0, user_id="u1")
+        assert len(reports) == 1
+        assert reports[0].session_id == "old"
+        assert reports[0].promoted >= 1
+        # The fresh session's episodes are still active.
+        fresh = [
+            i
+            for i in engine.store.all_items(scope=MemoryScope.SESSION, statuses=("active",))
+            if i.owner_id == "fresh"
+        ]
+        assert len(fresh) == 2
+
+    @pytest.mark.asyncio
+    async def test_app_consolidate_memory_session_and_sweep(self):
+        from vincio import ContextApp
+        from vincio.memory import InMemoryMemoryStore
+
+        app = ContextApp("mem", provider="mock")
+        app.add_memory(store=InMemoryMemoryStore())  # isolate from any on-disk store
+        app.remember("We agreed to migrate the billing stack to Postgres", session_id="s1")
+        app.remember("The rollout deadline is March 15 next quarter", session_id="s1")
+
+        report = app.consolidate_memory(session_id="s1", user_id="u1")
+        assert report.examined == 2
+        assert report.promoted >= 1
+
+        swept = app.consolidate_memory(min_age_days=7.0)  # nothing aged yet
+        assert swept == []
+
+    def test_app_consolidate_memory_requires_memory(self):
+        from vincio import ContextApp
+        from vincio.core.errors import InputError
+
+        with pytest.raises(InputError):
+            ContextApp("mem", provider="mock").consolidate_memory(session_id="s1")
+
     def test_dedup_merges_near_duplicates_with_provenance(self):
         from vincio.core.types import MemoryItem as Item
         from vincio.memory import MemoryConsolidator

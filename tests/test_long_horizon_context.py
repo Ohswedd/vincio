@@ -240,6 +240,34 @@ class TestAppWiring:
         assert app.context_governor.budget.max_tokens == 150
         assert app.context_governor.budget.max_resident_bytes == 4000
 
+    def test_default_governor_uses_in_memory_store(self):
+        app = self._app()
+        app.use_context_governor(ContextBudget(max_tokens=200))
+        assert isinstance(app.context_governor.compactor.store, InMemoryEvidenceStore)
+
+    def test_blob_store_backs_cold_spans_across_processes(self, tmp_path):
+        from vincio.context.evidence_store import BlobEvidenceStore
+        from vincio.storage.base import FileBlobStore
+
+        blobs = FileBlobStore(str(tmp_path))
+        app = self._app()
+        app.use_context_governor(ContextBudget(max_tokens=200), blob_store=blobs)
+        compactor = app.context_governor.compactor
+        assert isinstance(compactor.store, BlobEvidenceStore)
+
+        span = RunSpan(text=NEEDLE, kind="observation")
+        digest = compactor.store_span(span)
+        assert digest == content_hash(NEEDLE)
+        # A fresh store over the same blobs (a restart / another worker) pages the
+        # cold span's full text back — the cross-process recovery slim packets use.
+        assert BlobEvidenceStore(blobs).get(digest) == NEEDLE
+
+    def test_explicit_evidence_store_is_used(self):
+        app = self._app()
+        store = InMemoryEvidenceStore()
+        app.use_context_governor(ContextBudget(max_tokens=200), evidence_store=store)
+        assert app.context_governor.compactor.store is store
+
     def test_govern_packet_admits_run_result_evidence(self):
         app = self._app()
         app.use_context_governor(ContextBudget(max_tokens=150))

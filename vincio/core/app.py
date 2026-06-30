@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import AsyncIterator, Callable, Iterator, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
@@ -2395,6 +2395,68 @@ class ContextApp:
             evidence.extend(items)
         return evidence
 
+    def retrieve_facts(
+        self,
+        query: str,
+        *,
+        facts: Sequence[str] | Sequence[Any] | Any,
+        task: str | None = None,
+        where: Any | None = None,
+        top_k: int = 12,
+        coverage_threshold: float = 0.15,
+        per_fact_top_k: int = 3,
+    ) -> Any:
+        """Retrieve by the facts a task *needs*, reporting per-fact coverage and gaps.
+
+        Reasoning retrieval, instead of one top-k by query similarity: a
+        :class:`~vincio.retrieval.FactSchema` declares the facts the task requires
+        (a refund decision needs the plan, the payment status, the refund policy),
+        and the engine retrieves the task query, then runs a targeted retrieval for
+        each fact still uncovered. The result is the merged evidence with a
+        :class:`~vincio.retrieval.FactCoverage` per fact and a ``complete`` flag that
+        is ``False`` while any *required* fact is missing — the signal an agent uses
+        to gather more evidence rather than answer on a gap (the
+        insufficient-evidence behaviour).
+
+        Index documents first with :meth:`add_source`. *facts* is a list of fact
+        names, a list of :class:`~vincio.retrieval.FactRequirement`, or a ready
+        :class:`~vincio.retrieval.FactSchema`. Returns a
+        :class:`~vincio.retrieval.FactRetrieval`::
+
+            app.add_source("kb", documents=docs)
+            result = app.retrieve_facts(
+                "should this refund be approved?",
+                facts=["refund_policy", "payment_status", "plan_tier"],
+            )
+            if not result.complete:
+                ask_for(result.missing_facts)
+        """
+        from ..retrieval.reasoning_retrieval import (
+            FactRequirement,
+            FactSchema,
+            ReasoningRetriever,
+        )
+
+        if self.retrieval is None:
+            raise InputError(
+                "retrieve_facts needs an indexed source; call add_source(...) first"
+            )
+        if isinstance(facts, FactSchema):
+            schema = facts
+        else:
+            items = list(facts)
+            schema_task = task or query
+            if items and isinstance(items[0], FactRequirement):
+                schema = FactSchema(task=schema_task, facts=list(items))
+            else:
+                schema = FactSchema.from_names(schema_task, [str(name) for name in items])
+        retriever = ReasoningRetriever(
+            self.retrieval,
+            coverage_threshold=coverage_threshold,
+            per_fact_top_k=per_fact_top_k,
+        )
+        return run_sync(retriever.retrieve_facts(query, schema, where=where, top_k=top_k))
+
     # -- memory ---------------------------------------------------------------------------------
 
     def add_memory(
@@ -2447,6 +2509,52 @@ class ContextApp:
         if self.memory is None:
             self.add_memory()
         return self.memory.recall(query, **kwargs)  # type: ignore[union-attr]
+
+    def consolidate_memory(
+        self,
+        *,
+        session_id: str | None = None,
+        user_id: str | None = None,
+        agent_id: str | None = None,
+        min_age_days: float = 7.0,
+        summarizer: Any | None = None,
+    ) -> Any:
+        """Run episodic→semantic memory consolidation as a maintenance pass.
+
+        The periodic background tier transition: a session's episodic memories
+        (observations, evidence, and tool write-backs) are summarized into a few
+        durable semantic memories promoted to the user (or agent) scope,
+        near-duplicates are merged, and the source episodes are archived with
+        provenance — never silently dropped. With a differential-privacy
+        accountant attached (:meth:`add_privacy_accountant`), a consolidation that
+        would exceed a subject's budget is refused and recorded rather than run.
+
+        Pass ``session_id`` to consolidate one session now (returns its
+        :class:`~vincio.memory.consolidation.ConsolidationReport`); omit it to
+        sweep every session whose episodes have all aged past ``min_age_days`` —
+        the scheduled-maintenance form, returning the list of reports for the
+        sessions consolidated. Schedule it from your own job runner (a cron, a
+        Temporal timer); Vincio stays a library and runs no background loop of its
+        own::
+
+            app.consolidate_memory(session_id="sess-42", user_id="u1")  # one now
+            app.consolidate_memory(min_age_days=7.0)                     # nightly sweep
+        """
+        if self.memory is None:
+            raise InputError(
+                "consolidate_memory needs the memory engine; call add_memory() first"
+            )
+        if session_id is not None:
+            return run_sync(
+                self.memory.consolidate(
+                    session_id, user_id=user_id, agent_id=agent_id, summarizer=summarizer
+                )
+            )
+        return run_sync(
+            self.memory.promote_aged_episodes(
+                min_age_days=min_age_days, user_id=user_id, summarizer=summarizer
+            )
+        )
 
     def enable_memory_os(
         self,
@@ -5595,7 +5703,14 @@ class ContextApp:
         self.reasoning_controller = controller
         return self
 
-    def use_context_governor(self, governor: Any | None = None, **kwargs: Any) -> ContextApp:
+    def use_context_governor(
+        self,
+        governor: Any | None = None,
+        *,
+        evidence_store: Any | None = None,
+        blob_store: Any | None = None,
+        **kwargs: Any,
+    ) -> ContextApp:
         """Install a long-horizon :class:`~vincio.context.ContextGovernor`.
 
         For million-token, multi-day, multi-session runs: the governor holds a
@@ -5614,7 +5729,24 @@ class ContextApp:
                 result = app.run(turn)
                 app.govern_packet(result)          # admits result.evidence
             report = app.context_budget_report()
+
+        By default a compacted span's full text pages back from a process-local
+        store, which a fresh worker or a restart cannot read. Pass a ``blob_store``
+        (any :class:`~vincio.storage.base.BlobStore`) and the compactor backs cold
+        spans with a content-addressed
+        :class:`~vincio.context.evidence_store.BlobEvidenceStore`, so a multi-day
+        run survives a restart and a multi-process run pages the same cold text
+        back across workers — the cross-process path slim packets use. Pass a ready
+        :class:`~vincio.context.evidence_store.EvidenceStore` as ``evidence_store``
+        to supply your own. These apply only when building the default governor;
+        a fully-built ``governor`` carries its own store::
+
+            from vincio.storage.base import FileBlobStore
+            app.use_context_governor(
+                ContextBudget(max_tokens=8000), blob_store=FileBlobStore("spans/")
+            )
         """
+        from ..context.evidence_store import BlobEvidenceStore
         from ..context.longhorizon import (
             ContextBudget,
             ContextCompactor,
@@ -5623,7 +5755,12 @@ class ContextApp:
 
         if not isinstance(governor, ContextGovernor):
             budget = governor if isinstance(governor, ContextBudget) else ContextBudget(**kwargs)
-            compactor = ContextCompactor(memory=getattr(self, "memory", None), owner_id=self.name)
+            store = evidence_store
+            if store is None and blob_store is not None:
+                store = BlobEvidenceStore(blob_store)
+            compactor = ContextCompactor(
+                memory=getattr(self, "memory", None), owner_id=self.name, store=store
+            )
             governor = ContextGovernor(budget, compactor=compactor)
         self.context_governor = governor
         return self

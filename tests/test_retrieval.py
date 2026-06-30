@@ -2,10 +2,12 @@
 
 import pytest
 
+from vincio import ContextApp
 from vincio.core.types import Chunk, Document
 from vincio.retrieval import (
     BM25Index,
     EntityGraph,
+    FactRetrieval,
     FactSchema,
     HeuristicReranker,
     LocalHashEmbedder,
@@ -175,3 +177,51 @@ class TestGraphAndReasoning:
         assert coverage_map["refund_policy"] is True
         assert coverage_map["dispute_status"] is False
         assert report["missing_facts"] == ["dispute_status"]
+
+    @pytest.mark.asyncio
+    async def test_reasoning_retriever_packages_typed_result(self):
+        chunks = make_chunks()
+        bm25 = BM25Index()
+        await bm25.add(chunks)
+        retriever = ReasoningRetriever(RetrievalEngine([bm25]))
+        schema = FactSchema.from_names("refund_decision", ["refund_policy", "dispute_status"])
+        result = await retriever.retrieve_facts("Can the customer get a refund?", schema)
+        assert isinstance(result, FactRetrieval)
+        assert result.facts_total == 2
+        assert result.covered("refund_policy") is True
+        assert result.missing_facts == ["dispute_status"]
+        assert result.complete is False
+
+    def test_app_retrieve_facts_verb(self):
+        app = ContextApp("facts", provider="mock")
+        app.add_source(
+            "kb",
+            documents=[
+                Document(
+                    id="d1",
+                    title="Refunds",
+                    text="The refund policy allows refunds within 30 days for the Pro plan.",
+                ),
+                Document(
+                    id="d2",
+                    title="Payments",
+                    text="Payment status: the customer paid on time and the invoice is settled.",
+                ),
+            ],
+        )
+        result = app.retrieve_facts(
+            "should this refund be approved?",
+            facts=["refund_policy", "payment_status", "serial_number_warranty_registration"],
+        )
+        assert isinstance(result, FactRetrieval)
+        assert result.covered("refund_policy") is True
+        # A fact no document supports is reported as a gap, not silently dropped.
+        assert "serial_number_warranty_registration" in result.missing_facts
+        assert result.complete is False
+
+    def test_app_retrieve_facts_requires_a_source(self):
+        from vincio.core.errors import InputError
+
+        app = ContextApp("facts", provider="mock")
+        with pytest.raises(InputError):
+            app.retrieve_facts("anything", facts=["a", "b"])

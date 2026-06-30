@@ -2441,6 +2441,36 @@
       "threshold": true,
       "enforced_by": "families.hygiene.observable_failure_gate_detects_tamper",
       "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the static detector flags a silent broad except and ignores a logged one, so the observable-failure guarantee is backed by a check that demonstrably catches the silent swallow it claims to prevent without over-reporting."
+    },
+    {
+      "id": "hygiene_wire_or_retire_conformant",
+      "category": "reliability",
+      "statement": "Every public capability is reachable through a production path: each entry in the wire-or-retire ledger resolves to a live reach (an app.* verb, an engine method, a registration helper, or a public class member) and — for a wired one — is referenced by production code outside its defining module, and the detector provably bites on an unreachable reach and a wired symbol with no production caller.",
+      "metric": "families.hygiene.wire_or_retire_conformant",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.wire_or_retire_conformant",
+      "rationale": "A capability that is public but that nothing can reach — no app.* verb, no example, no internal caller — reads as supported API while being dead. The budget gates the contract mechanically: the guard holds a frozen ledger of the formerly-unhooked capabilities and fails the build if one loses its production entry point, exactly as the surface gate freezes the two-level __all__ and the error-contract gate holds the verb surface to zero off-contract raises — so a capability stays wired (an app.* verb / an internal caller) or is retired from the surface, never left dead."
+    },
+    {
+      "id": "hygiene_wire_or_retire_clean",
+      "category": "reliability",
+      "statement": "Every capability in the wire-or-retire ledger is reachable: the guard reports no unreachable reach and no wired symbol that has become dead surface.",
+      "metric": "families.hygiene.wire_or_retire_clean",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.wire_or_retire_clean",
+      "rationale": "An unhooked public symbol reads as supported API while being unreachable. The budget gates that every listed capability keeps a production entry point, so the wire-or-retire debt cannot silently return."
+    },
+    {
+      "id": "hygiene_wire_or_retire_gate_detects_tamper",
+      "category": "reliability",
+      "statement": "The wire-or-retire detector provably bites: an injected check whose reach does not resolve, and an injected wired symbol with no production caller, are each reported — so a green check means the invariant was actually exercised.",
+      "metric": "families.hygiene.wire_or_retire_gate_detects_tamper",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.wire_or_retire_gate_detects_tamper",
+      "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the guard flags an unreachable reach and a dead wired symbol, so the wire-or-retire guarantee is backed by a check that demonstrably catches the unhooked capability it claims to prevent."
     }
   ]
 }

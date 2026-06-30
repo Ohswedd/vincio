@@ -42,7 +42,7 @@ from vincio import (
     VincioConfig,
 )
 from vincio.agents import ModelPredictivePlanner, WorldModel, record_transitions
-from vincio.context.evidence_store import content_hash
+from vincio.context.evidence_store import BlobEvidenceStore, content_hash
 from vincio.core.types import EvidenceItem, RunConfig
 from vincio.edge import EdgeProfile, EdgeRequest, EdgeRuntime, verify_edge_parity
 from vincio.evals.datasets import EvalCase
@@ -210,6 +210,22 @@ def section_long_horizon() -> None:
           f"tokens, within_budget={rep.within_budget}")
     hits = large.recall("Pro plan refund window days purchase", top_k=3)
     print(f"   recall@10x still finds the needle: {any('30 days' in h for h in hits)}")
+
+    # Cross-process / restart-safe paging: back the governor with a BlobStore and a
+    # compacted span's full text pages back from a fresh worker, not just this one.
+    import tempfile
+
+    from vincio.storage.base import FileBlobStore
+
+    blobs = FileBlobStore(tempfile.mkdtemp())
+    app = ContextApp("lh-demo", provider="mock")
+    app.use_context_governor(ContextBudget(max_tokens=400), blob_store=blobs)
+    digest = app.context_governor.compactor.store_span(
+        next(s for s in spans if _NEEDLE in s.text)
+    )
+    # A separate store over the same blobs (another process) reads the cold text.
+    paged = BlobEvidenceStore(blobs).get(digest)
+    print(f"   blob-backed cross-process page-in: {paged[:40]!r}…")
 
 
 # ---------------------------------------------------------------------------
@@ -442,6 +458,29 @@ async def section_compile_hot_path() -> None:
             objective=Objective("refunds"), user_input=UserInput(text=query), evidence=_EVIDENCE)
     print(f"   candidate-arena reuses (new query, same evidence): "
           f"{app.context_compiler.arena_hits}")
+
+    # Advanced deep-import API on ContextCompiler (no app.* verb): stream the
+    # compile so a consumer can begin on the always-included prefix *before* any
+    # candidate is scored, and recompile after a packet edit instead of
+    # re-collecting from scratch — cost proportional to the edit, not the packet.
+    compiler = app.context_compiler
+    event_types: list[str] = []
+    compiled = None
+    async for event in compiler.compile_streaming(
+        objective=Objective("refunds"), user_input=UserInput(text=question), evidence=_EVIDENCE
+    ):
+        event_types.append(event.type)  # CompileStreamEvent: prefix → evidence → done
+        if event.type == "done":
+            compiled = event.result
+    print(f"   compile_streaming emits: {' → '.join(event_types)}")
+    edited = await compiler.recompile(
+        compiled,
+        add_evidence=[
+            EvidenceItem(id="e4", source_id="D4", text="Enterprise refunds are within 60 days.")
+        ],
+    )
+    print(f"   recompile after +1 evidence: {len(compiled.packet.evidence_items)} → "
+          f"{len(edited.packet.evidence_items)} entries (edit-proportional, not re-collected)")
 
 
 # ---------------------------------------------------------------------------

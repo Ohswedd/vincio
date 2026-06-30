@@ -1283,6 +1283,7 @@ retrieval SUB Embedder
 retrieval SUB EntityGraph
 retrieval SUB FactCoverage
 retrieval SUB FactRequirement
+retrieval SUB FactRetrieval
 retrieval SUB FactSchema
 retrieval TOP FastEmbedEmbedder
 retrieval SUB FilterSpec
