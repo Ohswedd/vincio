@@ -70,6 +70,12 @@
     "families.data_plane.analysis.verifiable": {
       "eq": true
     },
+    "families.data_plane.notebook.repr_faithful": {
+      "eq": true
+    },
+    "families.data_plane.notebook.session_verifies": {
+      "eq": true
+    },
     "families.data_plane.charts.data_bound": {
       "eq": true
     },

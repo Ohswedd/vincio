@@ -1804,6 +1804,90 @@ async def _data_analysis_bench() -> dict[str, Any]:
     }
 
 
+async def _notebook_bench() -> dict[str, Any]:
+    """DataPlaneBench / notebook: the notebook-native analysis surface measured two
+    ways — **repr faithful** (the inline reprs of a ``QueryResult``, an
+    ``AnalysisResult``, a ``Chart``, and a ``DataNarrative`` surface the artifact's
+    *real*, verifiable facts — its content hash, the exact source cells it cites, the
+    audit id it was sealed under — and never a fabricated one: a tampered stage flips
+    the repr's integrity verdict from intact to broken), and **session verifies** (a
+    register → query → analyze → chart → cite session threads the same governed
+    primitives a script calls into one signed, audited ``DataNarrative`` whose
+    ``verify()`` re-derives every inline finding from the bytes, and a tampered source
+    flips the data-binding verdict)."""
+    import vincio.notebook as nb
+    from vincio import ContextApp
+    from vincio.data import DataCatalog, Dataset
+    from vincio.providers import MockProvider
+
+    rows = [
+        {"region": "NA", "product": "alpha", "price": 10.0, "qty": 3},
+        {"region": "EU", "product": "alpha", "price": 8.0, "qty": 5},
+        {"region": "NA", "product": "beta", "price": 12.0, "qty": 2},
+        {"region": "EU", "product": "beta", "price": 9.0, "qty": 4},
+    ]
+    cols = ["region", "product", "price", "qty"]
+    question = "how does qty break down by region?"
+
+    app = ContextApp(name="analyst", provider=MockProvider(), model="mock-1")
+    session = nb.notebook_session(app, question=question, auto_display=False)
+    session.register(rows, columns=cols, name="sales")
+    query = session.query("total qty by region")
+    analysis = session.analyze(question)
+    chart = session.chart(query, title="Qty by region")
+    session.cite(title="Qty analysis")
+    narrative = session.narrative
+
+    # Repr faithful: every real, verifiable fact is shown; nothing is invented.
+    q_html = nb.query_result_html(query)
+    a_html = nb.analysis_result_html(analysis)
+    c_html = nb.chart_html(chart)
+    n_html = nb.data_narrative_html(narrative)
+    query_refs = {r for i in range(query.row_count) for r in query.cite_refs(i)}
+    analysis_refs = {r for s in analysis.steps for r in s.cite_refs}
+    facts_shown = (
+        query.result_hash[:12] in q_html
+        and all(r in q_html for r in query_refs)
+        and analysis.result_hash[:12] in a_html
+        and all(r in a_html for r in analysis_refs)
+        and chart.chart_hash[:12] in c_html
+        and all(r in c_html for r in chart.cite_refs())
+        and narrative.content_hash[:12] in n_html
+        and (narrative.audit_id or "") in n_html
+        and all(s.stage in n_html for s in narrative.stages)
+    )
+    # The integrity verdict is recomputed from the bytes, not asserted: a tampered
+    # stage flips the repr from "chain intact" to "chain broken".
+    intact_shown = "chain intact" in n_html and "chain broken" not in n_html
+    tampered_narrative = narrative.model_copy(deep=True)
+    tampered_narrative.stages[1].digest = "tampered"
+    broken_shown = "chain broken" in nb.data_narrative_html(tampered_narrative)
+    repr_faithful = bool(facts_shown and intact_shown and broken_shown)
+
+    # Session verifies: data-bound against the live source, refuted against a tamper.
+    clean = session.verify()
+    tampered_catalog = DataCatalog.of(
+        Dataset.from_records([{**r, "qty": r["qty"] + 1} for r in rows], name="sales"),
+        name="sales",
+    )
+    tamper = session.verify(catalog=tampered_catalog)
+    session_verifies = bool(
+        clean.valid
+        and clean.data_bound is True
+        and clean.intact
+        and tamper.data_bound is False
+        and not tamper.valid
+        and narrative.audit_id is not None
+        and narrative.signed_by == ["analyst"]
+    )
+
+    return {
+        "repr_faithful": repr_faithful,
+        "session_verifies": session_verifies,
+        "stages": len(narrative.stages),
+    }
+
+
 async def _charts_bench() -> dict[str, Any]:
     """DataPlaneBench / charts: a cited query result rendered into a spec-driven
     chart measured three ways — **data bound** (the figure re-derives from the
@@ -2000,7 +2084,9 @@ async def bench_data_plane() -> dict[str, Any]:
     analytics, and the semantic layer of governed metrics — fitting a dataset far
     larger than the window into bounded, faithful, screened evidence, querying it
     read-only with cell-level provenance, running a bounded multi-step analysis
-    that produces a cited, offline-verifiable narrative, rendering a result into a
+    that produces a cited, offline-verifiable narrative, exposing that governed
+    analysis interactively through faithful notebook reprs and a session that seals
+    into the same signed narrative a script does, rendering a result into a
     content-bound, data-bound chart, processing a dataset far larger than memory in
     bounded passes at high throughput inside a fixed footprint, computing the
     profiling / query / metric / quality primitives window by window over an
@@ -2013,6 +2099,7 @@ async def bench_data_plane() -> dict[str, Any]:
         "quality": _quality_rails_bench(),
         "text_to_query": await _text_to_query_bench(),
         "analysis": await _data_analysis_bench(),
+        "notebook": await _notebook_bench(),
         "charts": await _charts_bench(),
         "streaming": await _streaming_bench(),
         "realtime": _realtime_analytics_bench(),

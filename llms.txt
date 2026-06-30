@@ -341,7 +341,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (537 public symbols)
+## Public API (539 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -619,6 +619,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `NegotiationPosition(**data)` — A party's private stance: per-issue preferences and a concession curve.
 - `NegotiationResult(**data)` — The outcome of a bounded negotiation, a deal, or a partial no-deal.
 - `NettingSet(**data)` — A content-bound, offline-verifiable multilateral clearing of a fleet's books.
+- `NotebookSession(engagement, auto_display=…)` — An interactive, governed data-analysis session for notebooks and REPLs.
 - `Objective(text=…, **data)` — What the application is trying to accomplish.
 - `Offer(**data)` — One move in a negotiation: a proposal, an acceptance, or a walk-away.
 - `OmissionBreach(**data)` — A creditor's proven claim the attested liabilities omit or under-state.
@@ -828,7 +829,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `draw_pool(pool, record, config=…)` — Settle one backed contract against a settlement record (draw or release).
 - `edge_environment()` — Detect the current runtime and report its edge-relevant capabilities.
 - `edge_manifest()` — Certify that the edge core imports no native/optional dependency.
-- `enable_rich_reprs()` — Attach ``_repr_html_`` / ``_repr_markdown_`` to the core result types.
+- `enable_rich_reprs()` — Attach ``_repr_html_`` / ``_repr_markdown_`` to the core and data-plane types.
 - `evaluation(dataset=…, metrics=…, gates=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)` — Build an offline evaluation in one expression.
 - `experimental(since, note=…)` — Mark a function or class as experimental (no stability guarantee).
 - `extractor(schema, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)` — Build a typed structured-extraction task from a schema in one expression.
@@ -852,6 +853,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `negotiation_a2a_server(party, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)` — Expose a local negotiating :class:`Party` over A2A.
 - `net_books(books, owner=…, verify_with=…, require_intact=…)` — Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
 - `net_settlements(records, owner=…, fleet=…, verify_with=…)` — Fold a fleet's settled contracts into a minimal cleared set of obligations.
+- `notebook_session(app, dataset=…, question=…, analyst=…, auto_display=…, rich=…)` — Open a governed, notebook-native analysis session over *app*.
 - `post_collateral_pool(contracts, poster=…, posted=…, decisions=…, fraction=…, config=…)` — Post one stake backing many contracts into an (unsigned) :class:`CollateralPool`.
 - `post_escrow(contract, decision=…, fraction=…, amount=…, poster=…, beneficiary=…, config=…)` — Post collateral against a contract into an (unsigned) :class:`Escrow`.
 - `prove_equivocation(first, second, verifier=…, first_creditor=…, second_creditor=…)` — Fold two conflicting liability attestations into a non-repudiable :class:`EquivocationProof`.

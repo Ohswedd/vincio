@@ -112,6 +112,33 @@ performance-sensitive path — it reuses the primitives, so its cost is their su
 With this capstone the data & analytics plane is **feature-complete and frozen**
 under the [stability policy](../reference/stability.md).
 
+## Explore it interactively
+
+The same governed engagement runs **interactively** in a notebook or REPL through the
+[`vincio.notebook`](../../vincio/notebook.py) surface — no hosted notebook service.
+`notebook_session(app, ...)` is a thin front over `app.data_engagement`: each verb
+delegates to the *same* primitive, renders the cited artifact inline (call
+`enable_rich_reprs()` and a `QueryResult`, an `AnalysisResult`, a `Chart`, and the
+sealed `DataNarrative` display as cards with clickable cell citations), and threads it
+into the engagement's narrative. Sealing `session.narrative` mints the same signed,
+audited `DataNarrative` a script does, and `session.verify()` re-derives every inline
+finding from the bytes — so an interactive exploration is reproducible and
+offline-verifiable by construction:
+
+```python
+import vincio.notebook as nb
+
+session = nb.notebook_session(app, question="how does revenue split by region?")
+session.register(rows, columns=cols, name="sales")
+session.query("total revenue by region")   # renders inline, cited
+session.analyze("how does revenue break down by region?")
+session.chart(session.result, title="Revenue by region")
+session.cite(title="Revenue analysis")
+session.verify()                            # data-bound, offline
+```
+
+See the fully-offline [`06_notebook_native_analysis.ipynb`](../../examples/notebooks/06_notebook_native_analysis.ipynb).
+
 ## See also
 
 - [The semantic layer and governed metrics](semantic-layer-and-governed-metrics.md) — the governed metric the engagement threads.

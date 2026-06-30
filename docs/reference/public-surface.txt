@@ -276,6 +276,7 @@ NegotiationBudget
 NegotiationPosition
 NegotiationResult
 NettingSet
+NotebookSession
 Objective
 Offer
 OmissionBreach
@@ -506,6 +507,7 @@ model_swap_regression
 negotiation_a2a_server
 net_books
 net_settlements
+notebook_session
 post_collateral_pool
 post_escrow
 prove_equivocation
