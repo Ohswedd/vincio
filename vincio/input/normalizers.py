@@ -1,5 +1,5 @@
-"""Input normalization (items 1–2): text cleanup and language
-detection. Pure-python, deterministic, offline."""
+"""Input normalization: text cleanup and language detection.
+Pure-python, deterministic, offline."""
 
 from __future__ import annotations
 

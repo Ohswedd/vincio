@@ -1,5 +1,5 @@
-"""Task/intent classification, file classification, ambiguity detection
-(items 3–5, 9; task router taxonomy)."""
+"""Task/intent classification, file classification, ambiguity detection,
+and the task-router taxonomy."""
 
 from __future__ import annotations
 
@@ -115,7 +115,7 @@ _FILE_KINDS: dict[str, str] = {
 
 
 def classify_file(file: FileRef | str) -> str:
-    """Coarse media classification by extension (item 5)."""
+    """Coarse media classification by extension."""
     path = file if isinstance(file, str) else file.path
     return _FILE_KINDS.get(Path(path).suffix.lower(), "unknown")
 
@@ -131,7 +131,7 @@ _UNRESOLVED_REF_RE = re.compile(r"(?i)\b(the (?:above|previous|earlier|attached|
 
 
 def detect_ambiguity(user_input: UserInput | str) -> AmbiguityReport:
-    """Heuristic ambiguity detection (item 9)."""
+    """Heuristic ambiguity detection."""
     text = user_input if isinstance(user_input, str) else (user_input.text or "")
     files = [] if isinstance(user_input, str) else user_input.files
     reasons: list[str] = []

@@ -813,33 +813,33 @@ class MemoryEngine:
         return new_item
 
     def delete(self, memory_id: str) -> bool:
-        item = self.store.get(memory_id)
-        if item is None:
-            return False
-        item.status = "deleted"
-        self.store.put(item)
-        removed = self.store.delete(memory_id)
-        self._record(
-            "memory_delete",
-            user_id=item.owner_id if item.scope == MemoryScope.USER else None,
-            resource=memory_id,
-            details={"scope": item.scope.value},
-        )
-        return removed
+        """Delete a memory by id (soft-mark then hard-remove). Audited.
 
-    def forget(self, memory_id: str, *, reason: str = "user_request") -> bool:
-        """Explicit user-driven deletion; the reason lands in the audit log."""
+        The unannotated form of :meth:`forget`: no reason is recorded.
+        """
+        return self.forget(memory_id, reason=None)
+
+    def forget(self, memory_id: str, *, reason: str | None = "user_request") -> bool:
+        """Explicit user-driven deletion; the reason lands in the audit log.
+
+        Soft-marks the item ``deleted`` then hard-removes it from the store and
+        records a ``memory_delete`` audit entry. A ``reason`` of ``None`` (how
+        :meth:`delete` calls in) records the deletion without a reason field.
+        """
         item = self.store.get(memory_id)
         if item is None:
             return False
         item.status = "deleted"
         self.store.put(item)
         removed = self.store.delete(memory_id)
+        details: dict[str, Any] = {"scope": item.scope.value}
+        if reason is not None:
+            details["reason"] = reason
         self._record(
             "memory_delete",
             user_id=item.owner_id if item.scope == MemoryScope.USER else None,
             resource=memory_id,
-            details={"scope": item.scope.value, "reason": reason},
+            details=details,
         )
         return removed
 

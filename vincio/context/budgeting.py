@@ -1,9 +1,12 @@
 """Token budget allocation.
 
-Splits the input-token budget across context blocks. Default allocation
+Splits the input-token budget across context blocks. The default allocation
 follows a fixed table; adaptive allocation reshapes it per task type
-(classification needs no evidence; document QA is evidence-heavy). Unused
-allocation from one block is redistributed to evidence and memory.
+(classification needs no evidence; document QA is evidence-heavy). Blocks whose
+size is already known — instructions, schema, the user task — are charged at
+cost, and the entire remaining budget is distributed across the flexible blocks
+(evidence, memory, tool results) proportionally to their fractions, so tokens a
+fixed block does not need flow to evidence and memory rather than going unused.
 """
 
 from __future__ import annotations
@@ -205,14 +208,3 @@ class BudgetAllocator:
                     block=name, fraction=share, tokens=int(remaining * share)
                 )
         return allocation
-
-    @staticmethod
-    def redistribute(allocation: BudgetAllocation, *, to: str = "evidence") -> None:
-        """Move unused tokens from finished blocks into *to* (maximize evidence)."""
-        if to not in allocation.blocks:
-            return
-        spare = sum(
-            b.remaining for name, b in allocation.blocks.items() if name != to and b.used_tokens > 0
-        )
-        if spare > 0:
-            allocation.blocks[to].tokens += spare

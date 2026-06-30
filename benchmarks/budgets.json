@@ -2389,6 +2389,21 @@
     "families.hygiene.wire_or_retire_gate_detects_tamper": {
       "eq": true
     },
+    "families.hygiene.docstring_parity_conformant": {
+      "eq": true
+    },
+    "families.hygiene.docstring_parity_budgeting": {
+      "eq": true
+    },
+    "families.hygiene.docstring_parity_compression": {
+      "eq": true
+    },
+    "families.hygiene.docstring_parity_consent": {
+      "eq": true
+    },
+    "families.hygiene.docstring_parity_memory": {
+      "eq": true
+    },
     "families.hygiene.hygiene_silent_swallows": {
       "lte": 0
     },

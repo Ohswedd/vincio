@@ -2471,6 +2471,56 @@
       "threshold": true,
       "enforced_by": "families.hygiene.wire_or_retire_gate_detects_tamper",
       "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the guard flags an unreachable reach and a dead wired symbol, so the wire-or-retire guarantee is backed by a check that demonstrably catches the unhooked capability it claims to prevent."
+    },
+    {
+      "id": "hygiene_docstring_parity_conformant",
+      "category": "reliability",
+      "statement": "Every docstring that advertises a behaviour either performs it or is corrected: the budget allocator exposes no reclaim it does not run, the compression tuner gates on the faithfulness metric its docstring names, the federated default-deny consent path refuses deterministically, and delete/forget share one body with audit semantics preserved — each re-derived from the live code.",
+      "metric": "families.hygiene.docstring_parity_conformant",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.docstring_parity_conformant",
+      "rationale": "A docstring that promises behaviour the code no longer performs is a quiet lie that misleads a reader who trusts it. The budget re-derives each reconciled claim from the live code, so a docstring and its behaviour cannot silently diverge again — the parity guarantee is backed by a check that exercises the very behaviour each docstring describes."
+    },
+    {
+      "id": "hygiene_docstring_parity_budgeting",
+      "category": "reliability",
+      "statement": "The token-budget allocator advertises no separate redistribute reclaim: the method is gone and the allocator hands every non-fixed token to the flexible blocks at allocation time, exactly as the module docstring describes.",
+      "metric": "families.hygiene.docstring_parity_budgeting",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.docstring_parity_budgeting",
+      "rationale": "The budgeting module docstring once promised a reclaim step that nothing invoked. The budget gates that the dead method stays gone and the described allocation actually distributes the whole remainder, so the claim cannot drift back into a promise the code does not keep."
+    },
+    {
+      "id": "hygiene_docstring_parity_compression",
+      "category": "reliability",
+      "statement": "The learned-compression docstring matches the gate: CompressionTuner reads the faithfulness eval metric it names, and compression_faithfulness / faithfulness_preserved are the offline fidelity measures, preserving answer-bearing units.",
+      "metric": "families.hygiene.docstring_parity_compression",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.docstring_parity_compression",
+      "rationale": "The llmlingua docstring claimed the tuner called the faithfulness helpers directly; it gates on a faithfulness eval metric instead. The budget gates that the tuner reads that metric and the helpers measure fidelity as described, so the documented adoption gate is the one the code runs."
+    },
+    {
+      "id": "hygiene_docstring_parity_consent",
+      "category": "privacy",
+      "statement": "The federated default-deny consent demonstration is deterministic: a store-less default-deny consent ledger refuses an ungranted subject and a grant flips it, regardless of any consent persisted to disk from an earlier run.",
+      "metric": "families.hygiene.docstring_parity_consent",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.docstring_parity_consent",
+      "rationale": "The example's default-deny refusal only fired against a pristine store, so a second run that loaded a persisted grant silently stopped refusing. The budget gates the enforcement semantics the example demonstrates — refuse without a grant, allow with one — so the guarantee fires every run, not only the first."
+    },
+    {
+      "id": "hygiene_docstring_parity_memory",
+      "category": "reliability",
+      "statement": "MemoryEngine.delete delegates to forget — one body — with the audit semantics preserved: a plain delete records no reason, forget records one.",
+      "metric": "families.hygiene.docstring_parity_memory",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.docstring_parity_memory",
+      "rationale": "delete and forget were near-duplicate bodies that could drift apart on edit. The budget gates that delete delegates to forget and the two audit details stay distinct, so the deletion path has one implementation and one place a bug can hide."
     }
   ]
 }

@@ -4,6 +4,60 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.4.0] - 2026-06-30
+
+**Docstring / behaviour parity — the hardening line (6.x) continues.** A standing internal audit found
+docstrings that advertised behaviour the code no longer performed, a handful of stale spec-numbering comments,
+and one example whose guarantee no longer fired. A docstring that promises behaviour the code does not perform
+is a quiet lie that misleads a reader who trusts it; this release makes each one either true or corrected and
+re-derives the reconciliation from the live code so it cannot drift back. Additive: the frozen top-level
+contract `vincio.__all__` is unchanged, so `API_VERSION` stays `5.0`, the `vincio migrate 6.x` codemod table
+stays empty, and a clean upgrade needs zero source changes.
+
+### Changed
+
+- **`vincio.context.budgeting` no longer advertises a `redistribute` reclaim that nothing invoked.** The module
+  docstring described reclaiming an under-used block's tokens for evidence and memory, but the allocator already
+  performs the meaningful redistribution at allocation time — fixed-size blocks are charged at cost and the
+  whole remainder is distributed across the flexible blocks (evidence, memory, tool results) proportionally to
+  their fractions. The docstring now says exactly that, and the verified-dead `BudgetAllocator.redistribute`
+  static method (referenced nowhere) is removed.
+- **`vincio.context.llmlingua`'s faithfulness docstring matches the gate.** It claimed
+  `vincio.optimize.compression_tuning` gated adoption on `compression_faithfulness` / `faithfulness_preserved`,
+  but the tuner reads a `faithfulness` eval metric. The docstring now separates the two truths accurately:
+  `compression_faithfulness` / `faithfulness_preserved` are the offline measures of answer-bearing survival
+  (the same fidelity check VincioBench uses), and `CompressionTuner` (`app.gate_compression`) gates installing
+  the compressor on answer quality, a `faithfulness` metric floor, and a verifiable token saving over the eval
+  suite.
+- **`MemoryEngine.delete` delegates to `forget`.** The two were near-duplicate bodies; `delete` is now the
+  unannotated form of `forget` (one body, with a plain delete recording no reason and `forget` recording one),
+  so the deletion path has a single implementation. `forget`'s `reason` widens to accept `None` (the form
+  `delete` calls in); the audit semantics of both are unchanged.
+- **Stale comments cleared.** The context-compiler pipeline step numbering is monotonic again (`# 7` budget
+  allocation, `# 8` selection — was `# 8` / `# 7+8`), the `vincio/input/*` module and function docstrings drop
+  the external-spec "item N" numbering, and the redundant second clause of the `prompts/lint.py` PROMPT001
+  vague-role check is removed (behaviour unchanged).
+
+### Fixed
+
+- **The federated default-deny consent demonstration now fires every run.** In `examples/13_data_and_analytics.py`
+  the consent ledger persisted its grant to the app's on-disk store, so a second run loaded the grant and the
+  default-deny refusal silently stopped firing — and the example smoke test, which runs each example once in a
+  fresh temp directory, never caught it. The demonstration now attaches a store-less `ConsentLedger`, so it
+  starts empty every run: the first contribution is refused for want of an `ANALYTICS` grant, then granted and
+  admitted, deterministically regardless of any consent persisted on disk.
+
+### Added
+
+- **HygieneBench docstring-parity SLOs.** The `hygiene` VincioBench family folds in `docstring_parity_conformant`
+  (with `docstring_parity_budgeting` / `docstring_parity_compression` / `docstring_parity_consent` /
+  `docstring_parity_memory`), each re-deriving a reconciled claim from the live code — the dead reclaim method
+  stays gone and the allocator distributes the whole remainder; the tuner reads the `faithfulness` metric its
+  docstring names; a store-less default-deny ledger refuses then admits; and `delete` delegates to `forget` with
+  the audit details preserved — held by `budgets.json` and published in `slos.json` / `docs/reference/slo.md`.
+  Guarded by `tests/test_docstring_parity.py`, including a regression that runs the federated section twice
+  against a persisted store and asserts the refusal both times.
+
 ## [6.3.0] - 2026-06-30
 
 **Wire-or-retire — the hardening line (6.x) continues.** A standing internal audit found capabilities that
