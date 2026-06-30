@@ -255,7 +255,7 @@ from .negotiation import (
     select_offer,
     seller_position,
 )
-from .notebook import enable_rich_reprs
+from .notebook import NotebookSession, enable_rich_reprs, notebook_session
 from .observability.energy import (
     EnergyEstimate,
     EnergyIntensityTable,
@@ -556,7 +556,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "5.8.0"
+__version__ = "5.9.0"
 
 __all__ = [
     "ContextApp",
@@ -909,6 +909,8 @@ __all__ = [
     "installed_plugins",
     "load_plugins",
     "enable_rich_reprs",
+    "notebook_session",
+    "NotebookSession",
     "BatchRunner",
     "CircuitBreaker",
     "HealthAwareFailover",

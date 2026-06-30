@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**537** public symbols.
+**539** public symbols.
 
 ## Classes
 
@@ -1098,6 +1098,10 @@ The outcome of a bounded negotiation, a deal, or a partial no-deal.
 
 A content-bound, offline-verifiable multilateral clearing of a fleet's books.
 
+### `NotebookSession(engagement, auto_display=…)`
+
+An interactive, governed data-analysis session for notebooks and REPLs.
+
 ### `Objective(text=…, **data)`
 
 What the application is trying to accomplish.
@@ -1926,7 +1930,7 @@ Certify that the edge core imports no native/optional dependency.
 
 ### `enable_rich_reprs()`
 
-Attach ``_repr_html_`` / ``_repr_markdown_`` to the core result types.
+Attach ``_repr_html_`` / ``_repr_markdown_`` to the core and data-plane types.
 
 ### `evaluation(dataset=…, metrics=…, gates=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)`
 
@@ -2019,6 +2023,10 @@ Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
 ### `net_settlements(records, owner=…, fleet=…, verify_with=…)`
 
 Fold a fleet's settled contracts into a minimal cleared set of obligations.
+
+### `notebook_session(app, dataset=…, question=…, analyst=…, auto_display=…, rich=…)`
+
+Open a governed, notebook-native analysis session over *app*.
 
 ### `post_collateral_pool(contracts, poster=…, posted=…, decisions=…, fraction=…, config=…)`
 

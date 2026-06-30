@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.9.0] - 2026-06-30
+
+Notebook-native analysis surface — **the fourth and final phase of the data & analytics extension line
+(5.6–5.9), completing the plane and the platform.** The governed, cited, offline-verifiable analysis you run
+in a script now runs **interactively**, without becoming a hosted notebook service. The existing
+`enable_rich_reprs` extends to the data artifacts — a `QueryResult`, an `AnalysisResult`, a `Chart`, and a
+sealed `DataNarrative` render inline as cards with clickable cell citations, the lineage verdict, and the
+audit id — and a `notebook_session(app, ...)` threads register → query → analyze → chart → cite through the
+*same* governed primitives a script calls (it is a thin front over `app.data_engagement`), sealing into the
+same signed, audited `DataNarrative`. Entirely additive — two new top-level symbols and a richer
+`vincio.notebook` module; `API_VERSION` stays `5.0`, the `vincio migrate 5.x` codemod table stays empty, and
+a clean upgrade needs zero source changes. Dependency-free and offline, like the rest of the plane.
+
+### Added
+
+- **Cited inline reprs for the data plane.** `enable_rich_reprs` now also attaches pure, offline
+  `_repr_html_` / `_repr_markdown_` to a `QueryResult`, an `AnalysisResult`, a `Chart`, and a `DataNarrative`.
+  A query result renders as a table whose cells are tooltipped with the source cells they rest on and whose
+  clickable disclosure lists every cell citation; an analysis renders each cited finding; a chart shows its
+  content-bound credential and source cells; a narrative shows its stage chain, the structural integrity
+  verdict recomputed from the bytes, and the audit id it was sealed under. The reprs are pure — they only ever
+  surface an artifact's real, verifiable facts and never re-execute or fabricate.
+- **`notebook_session(app, ...)` → `NotebookSession`** — a thin, interactive front over
+  `app.data_engagement`. Each verb (`register`, `profile`, `sample`, `screen`, `query`, `analyze`, `chart`,
+  `query_metric`, `cite`) delegates to the *same* governed primitive a script calls, renders the artifact
+  inline, and threads it into the engagement's hash-linked narrative. `session.narrative` seals the same
+  signed, audited `DataNarrative` a script produces; `session.verify()` recomputes the whole chain *and*
+  re-executes every inline finding against the content-hashed source (`data_bound`), and a tampered source
+  flips the verdict — so a notebook exploration is governed, reproducible, and offline-verifiable by
+  construction.
+- **Two new public symbols** exported at the top level and from `vincio.notebook`: `notebook_session` and
+  `NotebookSession`. Public surface 538 → 540. The data-artifact repr helpers (`query_result_html`,
+  `analysis_result_html`, `chart_html`, `data_narrative_html`, and their `_markdown` twins) are added to
+  `vincio.notebook.__all__`.
+- **DataPlaneBench** gains a `notebook` family — **repr-faithfulness** (every repr surfaces the artifact's
+  content hash and exact citations, and a tampered stage flips the narrative's integrity verdict) and
+  **notebook-session-verifies** (a threaded session seals a data-bound, signed narrative, refuted against a
+  tamper) — held by two new SLOs in `docs/reference/slo.md`.
+- **Docs & examples:** a fully-offline `examples/notebooks/06_notebook_native_analysis.ipynb`, the
+  notebook-native section in `SECURITY.md`, the published SLOs, and synchronized `README` / `ROADMAP` /
+  `llms.txt` / generated API index and the public-surface freeze.
+
+### Changed
+
+- **`vincio/notebook.py`** — `enable_rich_reprs` / `disable_rich_reprs` now bind the four data artifacts in
+  addition to the core result types; the binding list is shared so enabling and disabling stay symmetric.
+- **`benchmarks/vinciobench.py`** — `bench_data_plane` gains a `notebook` sub-key; `ROADMAP.md` (5.9 moved
+  from *Planned* to *What ships today*, the extension line declared shipped in full), `README.md`,
+  `SECURITY.md`, `benchmarks/README.md`, `llms.txt`, and the generated API index / public-surface freeze are
+  synchronized.
+
 ## [5.8.0] - 2026-06-30
 
 Forecasting & causal-inference verifier kernels — **the third phase of the data & analytics extension line

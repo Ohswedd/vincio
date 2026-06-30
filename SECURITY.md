@@ -736,9 +736,27 @@ source** and confirms each re-derives from the bytes (`data_bound`), so a tamper
 when the chain is intact (and re-digesting the live artifacts catches a tamper to any underlying artifact).
 Sealing lands the engagement on the hash-chained audit log (action `data_engagement`, decision `sealed`),
 one continuous signed narrative from the raw table to the cited deliverable. The data & analytics plane is
-**stable** under the [stability policy](docs/reference/stability.md); forward work is a scheduled,
-**additive, surface-preserving extension line** (real-time and federated analytics now shipped;
-forecasting-verifiers and notebook-native ahead) that opens no breaking window and weakens no boundary.
+**stable** under the [stability policy](docs/reference/stability.md); the scheduled, **additive,
+surface-preserving extension line** (real-time analytics, federated analytics, forecasting/causal verifiers,
+and the notebook-native surface) has shipped in full, opening no breaking window and weakening no boundary.
+
+### Notebook-native analysis — interactive, still governed
+
+**The notebook-native surface (`vincio.notebook`) exposes the governed data plane *interactively* without
+weakening a single boundary or adding any analytical logic.** `enable_rich_reprs` attaches pure, offline
+`_repr_html_` / `_repr_markdown_` to a `QueryResult`, an `AnalysisResult`, a `Chart`, and a `DataNarrative`;
+a repr only ever *reads* an artifact's already-computed, verifiable facts — its content hash, its lineage
+coverage, the exact cells it cites, the audit id it was sealed under — and renders them. It **never
+re-executes, mutates, or fabricates**: a citation shown in a repr is one the artifact carries, and the
+narrative's integrity verdict is recomputed from the bytes (a tampered stage reads as broken), so a repr can
+present neither an ungrounded citation nor a hardcoded verdict. `notebook_session(app, ...)` is a thin front
+over `app.data_engagement` — every verb delegates to the *same* governed primitive (read-only-verified
+queries, injection-screened analysis, the audit chain, the budgets) and captures it into the engagement's
+hash-linked narrative, so an interactive exploration is governed and auditable exactly as a script is.
+`session.verify()` recomputes the whole chain *and* re-executes every inline finding against the
+content-hashed source (`data_bound`), and a tampered source flips the verdict — the same offline,
+tamper-evident guarantee the scripted engagement carries. It is an interactive front for the governed
+analysis, **never a hosted notebook service**.
 
 ### Real-time & streaming analytics — windowed governance, offline-verified
 

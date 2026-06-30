@@ -1,6 +1,6 @@
 # Vincio notebooks (Google Colab-ready)
 
-Five interactive notebooks that teach Vincio in the browser — **one `pip install`,
+Six interactive notebooks that teach Vincio in the browser — **one `pip install`,
 no API keys, no setup**. Every notebook runs fully offline on the bundled
 deterministic mock provider; flip a single environment variable to run it against
 a real model.
@@ -12,6 +12,7 @@ a real model.
 | 03 | [`03_agents_and_tools.ipynb`](03_agents_and_tools.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/03_agents_and_tools.ipynb) | Permissioned tools, approval-gated writes, and the `tool_agent()` front door — a loop that cannot run away or fire a write unapproved. |
 | 04 | [`04_evaluation.ipynb`](04_evaluation.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/04_evaluation.ipynb) | Datasets, metrics, and CI gates — measure quality and block a regression, with `EvalRunner` and the `evaluation()` front door. |
 | 05 | [`05_data_analysis.ipynb`](05_data_analysis.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/05_data_analysis.ipynb) | The data plane — register a dataset, query it with cell-level provenance, analyze it into a cited narrative, and chart it, each `verify()`-ing offline. |
+| 06 | [`06_notebook_native_analysis.ipynb`](06_notebook_native_analysis.ipynb) | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Ohswedd/vincio/blob/main/examples/notebooks/06_notebook_native_analysis.ipynb) | Notebook-native analysis — a governed `notebook_session` threads register → query → analyze → chart → cite into one signed `DataNarrative`, with cited inline reprs and a `verify()` that re-derives every finding from the bytes. |
 
 ## Running locally
 

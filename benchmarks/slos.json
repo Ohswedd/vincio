@@ -273,6 +273,26 @@
       "rationale": "A cited narrative is only trustworthy if it is offline-verifiable; the budget gates that an analysis verifies against its source and that a tampered source flips verify() to false, the analytics analogue of a cited report's verification."
     },
     {
+      "id": "data_notebook_repr_faithful",
+      "category": "quality",
+      "statement": "The notebook-native reprs of a query result, an analysis, a chart, and a sealed narrative surface the artifact's real, verifiable facts — its content hash, the exact source cells it cites, and the audit id — and never a fabricated one: a tampered stage flips the repr's integrity verdict from intact to broken.",
+      "metric": "families.data_plane.notebook.repr_faithful",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.notebook.repr_faithful",
+      "rationale": "An inline repr is the analyst's window onto a governed artifact; it must show only what the artifact actually carries. The budget gates that each repr surfaces the artifact's content hash and every cell citation it rests on, and that the narrative's integrity verdict is recomputed from the bytes (a tampered stage reads as broken), so a repr can never present an ungrounded citation or a hardcoded verdict."
+    },
+    {
+      "id": "data_notebook_session_verifies",
+      "category": "quality",
+      "statement": "An interactive register → query → analyze → chart → cite notebook session threads the same governed primitives a script calls into one signed, audited narrative whose verify() re-derives every inline finding from the bytes (data-bound), and a tampered source flips the verdict.",
+      "metric": "families.data_plane.notebook.session_verifies",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.notebook.session_verifies",
+      "rationale": "A notebook exploration must be as governed and reproducible as a script. The budget gates that a threaded session seals a signed, audited DataNarrative that is data-bound against the live source and refuted against a tamper, so an interactive analysis is offline-verifiable by construction, not by convention."
+    },
+    {
       "id": "charts_data_bound",
       "category": "quality",
       "statement": "A generated chart re-derives from the rows it was built from \u2014 the figure re-executes its source query against the hashed source on verify(), and a tampered source is caught.",

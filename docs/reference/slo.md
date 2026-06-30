@@ -91,6 +91,8 @@ frozen release reports the same verdict forever.
 | The data-analysis agent reaches the correct answer within its step budget on the DS-1000 / InfiAgent-DABench / DABench-shaped batteries | true | `data_plane.analysis.success_at_budget` |
 | Every cell-traceable finding in a generated analytical narrative cites the exact source cells it rests on | true | `data_plane.analysis.narrative_cited` |
 | An analytical narrative and its cited cells re-derive from the bytes; a tampered source or narrative is caught | true | `data_plane.analysis.verifiable` |
+| The notebook-native reprs surface an artifact's real, verifiable facts — its content hash, exact cell citations, and audit id — and never a fabricated one; a tampered stage flips the repr's integrity verdict | true | `data_plane.notebook.repr_faithful` |
+| An interactive register → query → analyze → chart → cite session seals into one signed, audited narrative whose verify() re-derives every inline finding from the bytes; a tampered source flips the verdict | true | `data_plane.notebook.session_verifies` |
 | A generated chart re-derives from the rows it was built from; a tampered source is caught | true | `data_plane.charts.data_bound` |
 | A generated chart cites the exact source cells it was built from, aggregates included | true | `data_plane.charts.figure_cited` |
 | A generated chart carries a C2PA credential bound to its rendered bytes; an edited byte stream is caught | true | `data_plane.charts.content_bound` |
