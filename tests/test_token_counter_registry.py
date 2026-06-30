@@ -120,3 +120,59 @@ def test_gguf_in_process_tokenizer_counts_exactly():
 def test_gguf_without_model_registers_nothing():
     register_provider_token_counters(GGUFProvider(), models=("x",))
     assert tokens._REGISTERED == []
+
+
+def test_count_falls_back_when_registered_counter_raises():
+    # A registered counter that fails at *count* time (an in-process GGUF tokenizer
+    # loading lazily and failing) must never break counting — it falls back to the
+    # offline heuristic, observably.
+    class _Boom:
+        def count(self, text: str) -> int:
+            raise RuntimeError("model failed to load")
+
+    class _BoomProvider(ModelProvider):
+        name = "boom"
+
+        async def generate(self, request):  # pragma: no cover
+            raise NotImplementedError
+
+        def exact_token_counter(self, model: str):
+            return _Boom()
+
+    register_provider_token_counters(_BoomProvider(), models=("boom-model",))
+    expected = tokens.HeuristicTokenCounter().count("hello world example text")
+    assert tokens.count_tokens("hello world example text", "boom-model") == expected
+
+
+def test_gguf_unloadable_model_does_not_break_counting():
+    # A GGUF provider with a model_path registers its counter without loading the
+    # model; if the model cannot load on first count, counting falls back instead
+    # of raising in the hot path.
+    provider = GGUFProvider(model_path="/nonexistent/model.gguf")
+    register_provider_token_counters(provider, models=("broken-gguf",))
+    # Registered (model_path is set), but the count must not raise.
+    result = tokens.count_tokens("hello world example text", "broken-gguf")
+    assert result == tokens.HeuristicTokenCounter().count("hello world example text")
+
+
+def test_openai_subclass_serving_other_models_registers_nothing():
+    # MistralProvider subclasses OpenAIProvider but serves non-OpenAI models; the
+    # prefix-gated exact_token_counter must not claim a tiktoken counter for them.
+    from vincio.providers.mistral import MistralProvider
+
+    register_provider_token_counters(
+        MistralProvider(api_key="x"), models=("mistral-large-latest",)
+    )
+    assert tokens._REGISTERED == []
+
+
+def test_rebuild_is_idempotent_and_preserves_the_token_memo():
+    pytest.importorskip("tiktoken")
+    build_provider("openai", ProviderConfig(model="gpt-4o", max_retries=0), api_key="x")
+    keys = tokens._registered_keys()
+    # Prime the per-text memo, then rebuild: a no-op registration must not clear it.
+    tokens.count_tokens("warm this entry", "gpt-4o")
+    cached_before = tokens._count_cached.cache_info().currsize
+    build_provider("openai", ProviderConfig(model="gpt-4o", max_retries=0), api_key="x")
+    assert tokens._registered_keys() == keys  # nothing new registered
+    assert tokens._count_cached.cache_info().currsize >= cached_before  # memo intact

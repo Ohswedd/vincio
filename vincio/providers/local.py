@@ -31,11 +31,9 @@ class LocalProvider(OpenAIProvider):
 
     def token_id_prefixes(self) -> tuple[str, ...]:
         # A local OpenAI-compatible server (Ollama, vLLM, LM Studio) serves
-        # arbitrary models that are not OpenAI BPE, so claim no exact family.
+        # arbitrary models that are not OpenAI BPE, so claim no exact family — the
+        # inherited prefix-gated exact_token_counter then returns None.
         return ()
-
-    def exact_token_counter(self, model: str) -> TokenCounter | None:
-        return None
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}

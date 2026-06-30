@@ -50,8 +50,15 @@ class OpenAIProvider(HTTPProvider):
     def exact_token_counter(self, model: str) -> TokenCounter | None:
         """tiktoken's exact BPE count for OpenAI models (offline, hot-path-safe).
 
-        ``None`` when ``tiktoken`` is not installed, so the offline heuristic is
-        used unchanged."""
+        Returns a counter only for a model in one of this provider's
+        :meth:`token_id_prefixes` families — ``tiktoken`` silently falls back to
+        ``o200k_base`` for an unknown id, which is *not* exact for a non-OpenAI
+        model, so a subclass serving other models (``LocalProvider``,
+        ``OpenAICompatibleProvider``, ``MistralProvider``) claims no family and is
+        skipped here. ``None`` also when ``tiktoken`` is not installed, so the
+        offline heuristic is used unchanged."""
+        if not model.startswith(self.token_id_prefixes()):
+            return None
         from ..core.tokens import TiktokenCounter
 
         try:

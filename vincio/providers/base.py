@@ -30,7 +30,7 @@ from ..core.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
-from ..core.tokens import TokenCounter, register_token_counter
+from ..core.tokens import TokenCounter, _registered_keys, register_token_counter
 from ..core.types import (
     ModelCapabilities,
     ModelEvent,
@@ -309,15 +309,23 @@ def register_provider_token_counters(
 
         return match
 
+    # Skip keys already registered: a provider built once per request would
+    # otherwise re-register every build and each registration clears the shared
+    # token memo the compiler's hot loops depend on. Idempotent and side-effect-free
+    # when nothing is new.
+    existing = _registered_keys()
     cls = type(provider).__name__
     prefixes = tuple(provider.token_id_prefixes())
     if prefixes and provider.exact_token_counter(prefixes[0]) is not None:
         for prefix in prefixes:
-            register_token_counter(prefix, _factory, key=f"{cls}:prefix:{prefix}")
+            key = f"{cls}:prefix:{prefix}"
+            if key not in existing:
+                register_token_counter(prefix, _factory, key=key)
     for model in models:
-        if not model or provider.exact_token_counter(model) is None:
+        key = f"{cls}:model:{model}"
+        if not model or key in existing or provider.exact_token_counter(model) is None:
             continue
-        register_token_counter(_exact_match(model), _factory, key=f"{cls}:model:{model}")
+        register_token_counter(_exact_match(model), _factory, key=key)
 
 
 @runtime_checkable

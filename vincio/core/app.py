@@ -2444,7 +2444,9 @@ class ContextApp:
         if isinstance(facts, FactSchema):
             schema = facts
         else:
-            items = list(facts)
+            # A lone string is one fact name, not a sequence of single-character
+            # facts (a str is iterable) — coerce it so the footgun can't fire.
+            items: list[Any] = [facts] if isinstance(facts, str) else list(facts)
             schema_task = task or query
             if items and isinstance(items[0], FactRequirement):
                 schema = FactSchema(task=schema_task, facts=list(items))
@@ -2530,10 +2532,12 @@ class ContextApp:
         would exceed a subject's budget is refused and recorded rather than run.
 
         Pass ``session_id`` to consolidate one session now (returns its
-        :class:`~vincio.memory.consolidation.ConsolidationReport`); omit it to
-        sweep every session whose episodes have all aged past ``min_age_days`` —
-        the scheduled-maintenance form, returning the list of reports for the
-        sessions consolidated. Schedule it from your own job runner (a cron, a
+        :class:`~vincio.memory.consolidation.ConsolidationReport`), promoting to
+        ``user_id`` or ``agent_id`` when given; omit it to sweep every session
+        whose episodes have all aged past ``min_age_days`` — the
+        scheduled-maintenance form, returning the list of reports for the sessions
+        consolidated (each promoted to its own recorded user, so ``agent_id`` does
+        not apply to the sweep). Schedule it from your own job runner (a cron, a
         Temporal timer); Vincio stays a library and runs no background loop of its
         own::
 
@@ -5753,16 +5757,22 @@ class ContextApp:
             ContextGovernor,
         )
 
-        if not isinstance(governor, ContextGovernor):
-            budget = governor if isinstance(governor, ContextBudget) else ContextBudget(**kwargs)
-            store = evidence_store
-            if store is None and blob_store is not None:
-                store = BlobEvidenceStore(blob_store)
-            compactor = ContextCompactor(
-                memory=getattr(self, "memory", None), owner_id=self.name, store=store
-            )
-            governor = ContextGovernor(budget, compactor=compactor)
-        self.context_governor = governor
+        if isinstance(governor, ContextGovernor):
+            if evidence_store is not None or blob_store is not None:
+                raise InputError(
+                    "evidence_store / blob_store apply only when building a governor; "
+                    "the passed ContextGovernor already carries its own compactor store"
+                )
+            self.context_governor = governor
+            return self
+        budget = governor if isinstance(governor, ContextBudget) else ContextBudget(**kwargs)
+        store = evidence_store
+        if store is None and blob_store is not None:
+            store = BlobEvidenceStore(blob_store)
+        compactor = ContextCompactor(
+            memory=getattr(self, "memory", None), owner_id=self.name, store=store
+        )
+        self.context_governor = ContextGovernor(budget, compactor=compactor)
         return self
 
     def govern_packet(self, source: Any) -> Any:

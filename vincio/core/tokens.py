@@ -132,6 +132,13 @@ def register_token_counter(
     _count_cached.cache_clear()
 
 
+def _registered_keys() -> set[str]:
+    """The set of keys already registered, so an idempotent re-registration can be
+    skipped without clearing the shared token memo (see
+    :func:`vincio.providers.register_provider_token_counters`)."""
+    return {entry[3] for entry in _REGISTERED if entry[3] is not None}
+
+
 def _select_registered(model: str) -> Callable[[str], TokenCounter] | None:
     best: tuple[int, Callable[[str], TokenCounter]] | None = None
     for matcher, specificity, factory, _key in _REGISTERED:
@@ -167,7 +174,17 @@ def get_token_counter(model: str | None = None) -> TokenCounter:
 
 @lru_cache(maxsize=16_384)
 def _count_cached(text: str, model: str | None) -> int:
-    return get_token_counter(model).count(text)
+    counter = get_token_counter(model)
+    try:
+        return counter.count(text)
+    except Exception:
+        # A registered provider-native counter may fail at *count* time, not just
+        # at build time — an in-process GGUF tokenizer loads the model lazily on
+        # first count and raises if it cannot. Token counting is a hot, total path
+        # (budgeting, scoring); a failure must never break the run, so fall back to
+        # the offline heuristic, observably. Memoized like any other result.
+        note_suppressed("tokens.counter_count_failed")
+        return HeuristicTokenCounter().count(text)
 
 
 def count_tokens(text: str, model: str | None = None) -> int:
@@ -196,5 +213,12 @@ def count_tokens_many(texts: list[str], model: str | None = None) -> list[int]:
     counter = get_token_counter(model)
     batch = getattr(counter, "count_many", None)
     if batch is not None:
-        return [max(0, int(n)) if text else 0 for text, n in zip(texts, batch(texts), strict=True)]
+        try:
+            counts = batch(texts)
+        except Exception:
+            # Same best-effort contract as the per-text path: a native batch count
+            # that fails falls back to the guarded per-text path, never breaking.
+            note_suppressed("tokens.counter_count_many_failed")
+        else:
+            return [max(0, int(n)) if text else 0 for text, n in zip(texts, counts, strict=True)]
     return [_count_cached(text, model) if text else 0 for text in texts]

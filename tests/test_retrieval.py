@@ -225,3 +225,13 @@ class TestGraphAndReasoning:
         app = ContextApp("facts", provider="mock")
         with pytest.raises(InputError):
             app.retrieve_facts("anything", facts=["a", "b"])
+
+    def test_app_retrieve_facts_bare_string_is_one_fact(self):
+        app = ContextApp("facts", provider="mock")
+        app.add_source(
+            "kb",
+            documents=[Document(id="d1", title="Refunds", text="The refund policy allows refunds.")],
+        )
+        # A lone string is one fact name, not 13 single-character facts.
+        result = app.retrieve_facts("refund?", facts="refund_policy")
+        assert [c.fact for c in result.coverage] == ["refund_policy"]

@@ -268,6 +268,14 @@ class TestAppWiring:
         app.use_context_governor(ContextBudget(max_tokens=200), evidence_store=store)
         assert app.context_governor.compactor.store is store
 
+    def test_store_with_prebuilt_governor_is_rejected(self):
+        from vincio.core.errors import InputError
+
+        app = self._app()
+        built = ContextGovernor(ContextBudget(max_tokens=200), compactor=ContextCompactor())
+        with pytest.raises(InputError):
+            app.use_context_governor(built, evidence_store=InMemoryEvidenceStore())
+
     def test_govern_packet_admits_run_result_evidence(self):
         app = self._app()
         app.use_context_governor(ContextBudget(max_tokens=150))

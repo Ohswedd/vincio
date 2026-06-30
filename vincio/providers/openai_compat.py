@@ -22,7 +22,6 @@ from dataclasses import dataclass
 from typing import Any
 
 from ..core.errors import ConfigError
-from ..core.tokens import TokenCounter
 from .openai import OpenAIProvider
 
 __all__ = ["OpenAICompatibleProvider", "OpenAICompatPreset", "PRESETS", "openai_compatible"]
@@ -129,11 +128,9 @@ class OpenAICompatibleProvider(OpenAIProvider):
 
     def token_id_prefixes(self) -> tuple[str, ...]:
         # A compatible endpoint (Groq, Together, Fireworks, DeepSeek, …) serves
-        # non-OpenAI models, so claim no exact tiktoken family.
+        # non-OpenAI models, so claim no exact tiktoken family — the inherited
+        # prefix-gated exact_token_counter then returns None.
         return ()
-
-    def exact_token_counter(self, model: str) -> TokenCounter | None:
-        return None
 
 
 def openai_compatible(

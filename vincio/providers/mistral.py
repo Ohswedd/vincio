@@ -17,6 +17,11 @@ class MistralProvider(OpenAIProvider):
     default_base_url = "https://api.mistral.ai/v1"
     default_embedding_model = "mistral-embed"
 
+    def token_id_prefixes(self) -> tuple[str, ...]:
+        # Mistral models are not OpenAI BPE; don't claim the inherited tiktoken
+        # families (the prefix-gated exact_token_counter then returns None).
+        return ()
+
     def _payload(self, request: ModelRequest, *, stream: bool = False) -> dict[str, Any]:
         payload = super()._payload(request, stream=stream)
         # Mistral uses max_tokens, not max_completion_tokens.
