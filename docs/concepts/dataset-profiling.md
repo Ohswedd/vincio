@@ -142,7 +142,7 @@ the [roadmap](../../ROADMAP.md)). Nothing here calls a database or a network:
 ## Related
 
 - [Guide: Analyze data](../guides/analyze-data.md)
-- [Example: 14_dataset_profiling.py](../../examples/14_dataset_profiling.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

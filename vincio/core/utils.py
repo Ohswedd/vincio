@@ -15,7 +15,6 @@ __all__ = [
     "utcnow",
     "to_jsonable",
     "json_dumps",
-    "truncate_text",
     "slugify",
 ]
 
@@ -59,14 +58,6 @@ def stable_hash(value: Any, *, length: int = 16) -> str:
     """Deterministic content hash for prompts, packets, cache keys, versions."""
     payload = json.dumps(to_jsonable(value), sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()[:length]
-
-
-def truncate_text(text: str, max_chars: int, *, suffix: str = "…") -> str:
-    if len(text) <= max_chars:
-        return text
-    if max_chars <= len(suffix):
-        return text[:max_chars]
-    return text[: max_chars - len(suffix)] + suffix
 
 
 _SLUG_RE = re.compile(r"[^a-z0-9]+")

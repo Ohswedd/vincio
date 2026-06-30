@@ -11975,6 +11975,76 @@ async def bench_docs_conformance() -> dict[str, Any]:
     }
 
 
+async def bench_hygiene() -> dict[str, Any]:
+    """HygieneBench: the two-level public surface stays consistent and dead-symbol-free.
+
+    ``vincio.__all__`` is the frozen top-level contract, but each public subpackage
+    *also* declares its own ``__all__`` — and that surface had drifted: a handful of
+    names were exported yet referenced nowhere (dead surface that reads as supported
+    API), and the large gap between each subpackage's ``__all__`` and the top level
+    was real but **undeclared as such**, with no guard against a name in an
+    ``__all__`` that resolved to nothing. 6.0 removes the verified-dead symbols and
+    declares the subpackage-only public surface in
+    ``docs/reference/subpackage-surface.txt``.
+
+    This family gates that reconciliation the way ``docs_conformance`` gates the docs
+    graph, on three guarantees: **resolvable** (every subpackage ``__all__`` name is
+    a live attribute, with no duplicate/malformed entries — no dead surface),
+    **frozen** (the classified surface matches the committed manifest, so any
+    ``__all__`` change is a reviewed edit), and **classified** (each divergent symbol
+    is TOP / DUP / SUB, the intentional top-level name collisions pinned so a new one
+    cannot slip in). A companion check proves the gate *bites* — an injected dead
+    symbol, a duplicate, and a malformed ``__all__`` are each caught. Deterministic
+    and offline."""
+    from types import SimpleNamespace
+
+    import vincio
+    from vincio import _surface
+
+    problems = _surface.surface_problems()
+    surface_dead_symbol_free = not problems
+
+    committed = _surface.load_surface()
+    rendered = _surface.render_surface()
+    surface_frozen = committed == rendered
+
+    # The gate bites: synthetic breakages are each caught, so a green check means
+    # something, not nothing.
+    fake = SimpleNamespace(Real=object())
+    detects_dead = any(
+        "dead surface" in p for p in _surface._module_problems("fake", ["Real", "Ghost"], fake)
+    )
+    detects_duplicate = any(
+        "more than once" in p
+        for p in _surface._module_problems("fake", ["Real", "Real"], fake)
+    )
+    detects_malformed = bool(_surface._module_problems("fake", "not-a-list", fake))
+    surface_gate_detects_tamper = bool(detects_dead and detects_duplicate and detects_malformed)
+
+    surface = _surface.subpackage_surface()
+    rows = [(sub, tag) for sub, syms in surface.items() for _sym, tag in syms]
+    top_count = sum(1 for _sub, tag in rows if tag == "TOP")
+    dup_count = sum(1 for _sub, tag in rows if tag == "DUP")
+    sub_count = sum(1 for _sub, tag in rows if tag == "SUB")
+
+    surface_consistency = bool(
+        surface_dead_symbol_free and surface_frozen and surface_gate_detects_tamper
+    )
+
+    return {
+        "surface_consistency": surface_consistency,
+        "surface_dead_symbol_free": surface_dead_symbol_free,
+        "surface_frozen": surface_frozen,
+        "surface_gate_detects_tamper": surface_gate_detects_tamper,
+        "hygiene_subpackages_audited": len(surface),
+        "hygiene_subpackage_public_symbols": len(rows),
+        "hygiene_top_level_reexports": top_count,
+        "hygiene_subpackage_only_public": sub_count,
+        "hygiene_intentional_collisions": dup_count,
+        "hygiene_top_level_public_symbols": len([n for n in vincio.__all__ if n != "__version__"]),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -12029,6 +12099,7 @@ FAMILIES = {
     "skill_acquisition": bench_skill_acquisition,
     "assurance": bench_assurance,
     "ergonomics": bench_ergonomics,
+    "hygiene": bench_hygiene,
     "breaking_2_0": bench_breaking_2_0,
 }
 

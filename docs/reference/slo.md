@@ -517,5 +517,25 @@ current, and that the gate *bites* — a synthetic broken link, an unmapped verb
 and a stale block are each caught. Run `vincio docs check` to reproduce it
 offline.
 
+## Public-surface hygiene
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| The two-level public surface stays consistent: every public subpackage `__all__` resolves to a live attribute (no duplicate/malformed entries), the classified surface matches the committed manifest, and the gate provably bites on an injected dead symbol, duplicate, and malformed `__all__`. | true | `families.hygiene.surface_consistency` |
+| No public subpackage `__all__` exports a name that resolves to no attribute, lists a name twice, or is malformed — there is no dead public surface. | true | `families.hygiene.surface_dead_symbol_free` |
+| The classified two-level surface matches `docs/reference/subpackage-surface.txt` byte-for-byte, so any `__all__` change (a new symbol, a removed one, or a TOP/DUP/SUB reclassification) is a deliberate, reviewed edit. | true | `families.hygiene.surface_frozen` |
+| The surface-consistency gate provably bites: an injected dead symbol, a duplicate entry, and a malformed `__all__` are each reported. | true | `families.hygiene.surface_gate_detects_tamper` |
+
+`vincio.__all__` is the frozen top-level contract, but each public subpackage also
+declares its own `__all__` — the return types, dataclasses, and helpers reached by
+deep import. That surface had drifted: a few names were exported yet referenced
+nowhere (dead surface that reads as supported API), and the gap to the top level
+was real but undeclared. The hardening line's 6.0 phase removes the verified-dead
+symbols and declares the subpackage-only public surface in
+`docs/reference/subpackage-surface.txt`; `vincio._surface` classifies
+each symbol TOP (re-exported in `vincio.__all__`) / DUP (an intentional name
+collision) / SUB (subpackage-only) and freezes the result, so the interior surface
+can only change on review. Run `python -m vincio._surface` to reproduce it offline.
+
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

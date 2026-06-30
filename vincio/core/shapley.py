@@ -19,7 +19,7 @@ attribution spans.
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable, Hashable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Hashable, Iterable, Iterator, Sequence
 from itertools import combinations
 from math import factorial
 from typing import TypeVar
@@ -28,7 +28,6 @@ __all__ = [
     "coalitions",
     "shapley_from_cache",
     "shapley_values",
-    "ashapley_values",
     "is_efficient",
 ]
 
@@ -36,7 +35,6 @@ P = TypeVar("P", bound=Hashable)
 
 # A characteristic function: the value attainable by a coalition of players.
 ValueFn = Callable[[frozenset[P]], float]
-AsyncValueFn = Callable[[frozenset[P]], Awaitable[float]]
 
 
 def coalitions(players: Iterable[P]) -> Iterator[frozenset[P]]:
@@ -88,19 +86,6 @@ def shapley_values(
     for coalition in coalitions(names):
         if coalition not in cache:
             cache[coalition] = float(value_fn(coalition))
-    return shapley_from_cache(names, cache), cache
-
-
-async def ashapley_values(
-    players: Sequence[P], value_fn: AsyncValueFn[P]
-) -> tuple[dict[P, float], dict[frozenset[P], float]]:
-    """Async counterpart of :func:`shapley_values` for an awaitable ``value_fn``
-    (e.g. a coalition value computed by re-running an eval)."""
-    names = list(players)
-    cache: dict[frozenset[P], float] = {}
-    for coalition in coalitions(names):
-        if coalition not in cache:
-            cache[coalition] = float(await value_fn(coalition))
     return shapley_from_cache(names, cache), cache
 
 

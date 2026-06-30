@@ -166,7 +166,7 @@ See `examples/09_security_governance.py` for an end-to-end, offline run.
 - [Concept: Charts & cited artifacts](../concepts/charts-and-cited-artifacts.md)
 - [Guide: Analyze data](analyze-data.md)
 - [Example: 09_security_governance.py](../../examples/09_security_governance.py)
-- [Example: 17_charts_cited_artifacts.py](../../examples/17_charts_cited_artifacts.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Prompt compiler](../concepts/prompt-compiler.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#runs)

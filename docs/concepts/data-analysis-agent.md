@@ -159,7 +159,7 @@ rung (see the [roadmap](../../ROADMAP.md)).
 ## Related
 
 - [Guide: Analyze data](../guides/analyze-data.md)
-- [Example: 16_data_analysis_agent.py](../../examples/16_data_analysis_agent.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

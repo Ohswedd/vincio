@@ -382,7 +382,7 @@ so production traces give you the identical breakdown.
 - [Guide: Cost, reliability & scale](cost-and-reliability.md)
 - [Example: 01_quickstart.py](../../examples/01_quickstart.py)
 - [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
-- [Example: 18_streaming_out_of_core.py](../../examples/18_streaming_out_of_core.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Example: 07_evaluation_observability.py](../../examples/07_evaluation_observability.py)
 - [Concept: Prompt compiler](../concepts/prompt-compiler.md)
 - [Reference: capability map](../reference/capability-map.md)

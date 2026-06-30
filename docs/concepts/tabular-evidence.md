@@ -143,7 +143,7 @@ and offline.
 ## Related
 
 - [Guide: Analyze data](../guides/analyze-data.md)
-- [Example: 13_tabular_evidence.py](../../examples/13_tabular_evidence.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

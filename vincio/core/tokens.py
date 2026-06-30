@@ -24,7 +24,6 @@ __all__ = [
     "TokenCounter",
     "HeuristicTokenCounter",
     "TiktokenCounter",
-    "CallableTokenCounter",
     "register_token_counter",
     "get_token_counter",
     "count_tokens",
@@ -76,19 +75,6 @@ class TiktokenCounter:
         if not text:
             return 0
         return len(self._encoding.encode(text))
-
-
-class CallableTokenCounter:
-    """Adapt a plain ``Callable[[str], int]`` (e.g. a provider's exact counter)
-    to the :class:`TokenCounter` Protocol."""
-
-    def __init__(self, count_fn: Callable[[str], int]) -> None:
-        self._count_fn = count_fn
-
-    def count(self, text: str) -> int:
-        if not text:
-            return 0
-        return max(0, int(self._count_fn(text)))
 
 
 # Registered provider-native counters, matched by model id. Each entry is a

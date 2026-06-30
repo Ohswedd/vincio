@@ -373,8 +373,9 @@ install` and no setup:
 
 ### 2 · Feature tours — one program per subsystem
 
-Twenty-three complete, heavily-commented programs; each runs offline and teaches a whole theme end to
-end. Highlights (full index in [`examples/README.md`](examples/README.md)):
+Sixteen complete, heavily-commented programs (`00`–`15`); each runs offline and teaches a whole theme
+end to end — the entire data & analytics plane is one tour (`13`). Highlights (full index in
+[`examples/README.md`](examples/README.md)):
 
 | # | Example | What it covers |
 |--|---|---|
@@ -385,8 +386,9 @@ end. Highlights (full index in [`examples/README.md`](examples/README.md)):
 | 07 | [`evaluation_observability`](examples/07_evaluation_observability.py) | datasets · metrics · judges · red-team · drift · tracing · prompt registry |
 | 09 | [`security_governance`](examples/09_security_governance.py) | PII/injection/containment · audit · governance evidence · identity · verified reasoning · assurance |
 | 12 | [`cross_org_economy`](examples/12_cross_org_economy.py) | negotiation · contracts · durable sagas · settlement · arbitration · solvency proofs |
-| 13–23 | [data plane](examples/13_tabular_evidence.py) | tabular evidence · profiling · governed text-to-query · the analysis agent · cited charts · streaming · the semantic layer · the data engagement · real-time windowed analytics |
-| 22 | [`connected_docs`](examples/22_connected_docs.py) | the capability map · Related cross-links · the learning path · the docs-graph check |
+| 13 | [`data_and_analytics`](examples/13_data_and_analytics.py) | the whole data plane in one tour — tabular evidence · profiling · governed text-to-query · the analysis agent · cited charts · streaming · the semantic layer · the data engagement · real-time windowed analytics · federated analytics · statistical certificates |
+| 14 | [`model_pricing_registry`](examples/14_model_pricing_registry.py) | the data-driven `ModelRegistry` — real per-provider pricing, freshness horizons, and the coverage drift gate |
+| 15 | [`connected_docs`](examples/15_connected_docs.py) | the capability map · Related cross-links · the learning path · the docs-graph check |
 
 ### 3 · Applications — real-world backends
 

@@ -11,6 +11,11 @@ and what is intentionally out of scope. The complete release-by-release history 
 
 **Legend:** ✅ shipped · 🚧 planned (next)
 
+> The capability surface is complete and frozen. The **[hardening line
+> (6.x)](#-the-hardening-line-6x--in-progress)** — an additive, non-breaking paydown of interior quality
+> debt surfaced by a standing internal audit, not new capability — is underway: **6.0 (public-surface
+> hygiene) shipped**; 6.1 (error-contract conformance) is next.
+
 ## What "done" means here
 
 Vincio is a single, coherent context-engineering library: every subsystem is implemented, tested
@@ -254,8 +259,9 @@ shipped** (each in *What ships today*, above):
   docs-graph completeness gate surfaced through `vincio docs map` / `check` / `serve`, held by the **docs_conformance**
   VincioBench family.
 
-None was a 6.0 consolidation: the next breaking window opens only when a deprecation reaches its `removed_in` runway, which
-none of these created, so the `vincio migrate 5.x` codemod table stays empty and a clean upgrade needs zero source changes.
+None was a breaking consolidation major: the next breaking window opens only when a deprecation reaches its `removed_in`
+runway, which none of these created, so the `vincio migrate 5.x` codemod table stays empty and a clean upgrade needs zero
+source changes (the same holds for the non-breaking **6.x hardening line**: `vincio migrate 6.x` stays empty).
 The fit-and-finish line is followed by the **developer-experience capstone (5.5)** — the README, examples, and agent-facing
 context files rebuilt and gated (now in *What ships today*, above) — and the data & analytics extension line, the last
 scheduled work, which has now **shipped in full** (5.6 → 5.9, summarized below) rather than being carried as an open-ended
@@ -289,6 +295,170 @@ certify, grow, assure, and **analyze structured data** in batch, in real time, a
 statistical certificates, and interactively. Anything genuinely beyond this plan is proposed and gated from scratch — a real
 gap in the literature *and* in buyer demand, covered offline, held by VincioBench budgets and SLOs, demonstrated by a
 runnable example — never pulled from a standing backlog.
+
+---
+
+## 🚧 The hardening line (6.x) — in progress
+
+The platform is feature-complete and frozen under the [stability policy](docs/reference/stability.md):
+long-term support means **no breaking changes, not no improvement**. The 5.1–5.4 *fit-and-finish* line made
+the complete platform honest, fast, navigable, and one-line easy on its **surface**; the hardening line turns
+that same discipline **inward**, onto the codebase's interior. Every phase is additive, dependency-free, and
+**surface-preserving** — no public symbol is removed except on a published deprecation runway — and each is
+held by a new VincioBench **`hygiene`** family the way `docs_conformance` holds the docs graph, sequenced
+correctness-first. None of it changes a result; all of it is interior debt a long-lived platform pays down
+deliberately.
+
+A standing internal audit found the work. The core plane (`core` / `context` / `retrieval` / `memory` /
+`prompts` / `input`) was audited symbol-by-symbol with repo-wide reference checks; the rest of the tree was
+swept thematically. The recurring findings — each cited below with file:line evidence — are a handful of dead
+public symbols, a few capabilities implemented but unreachable, broad exceptions swallowed without a trace,
+docstrings that promise behavior the code no longer performs, off-contract built-in exceptions on public
+methods, load-bearing `assert`s that vanish under `python -O`, and a large drift between each subpackage's
+`__all__` and the frozen top-level `vincio.__all__`.
+
+> **Shipped in 6.0 — the line's opening, on the developer surface.** The fluent `Flow` was
+> refactored onto a single shared *lowering* module (`vincio.tasks._lowering`) so a one-line task and its
+> `Flow` twin emit identical builder calls **by construction** rather than by parallel maintenance across two
+> files — steps are now typed, self-applying values (Open/Closed: a new verb is a new step type, not a new
+> branch in a central `if/elif`), and a flow clones through one frozen `_FlowConfig` so a new field can never
+> be silently dropped. The 26 examples were consolidated to **16, one per macro-feature** — the entire data &
+> analytics plane is now a single offline tour (`examples/13_data_and_analytics.py`, eleven sections), with
+> the capability map, `llms.txt`, and every Related block regenerated and the docs-graph gate green. The wiki
+> generator's curated index was completed to title and order **all 88** docs pages (previously most of the
+> data-plane concepts and ~22 guides fell through to auto-titling). These are the surface analogue of the
+> interior phases below.
+
+| Phase | Theme | The paydown |
+|---|---|---|
+| **✅ 6.0 — Public-surface hygiene** | dead symbols + two-level `__all__` reconciliation | **Shipped.** Removed the verified-dead public symbols; reconciled each subpackage `__all__` against the frozen top-level `vincio.__all__` (classified and frozen in `docs/reference/subpackage-surface.txt`); added the two missing public exceptions; added the surface-consistency gate and the `hygiene` VincioBench family. |
+| **6.1 — Error-contract conformance** | every public raise is a `VincioError` | Convert the off-contract built-in exceptions raised on public methods to typed `VincioError` subclasses; lint the contract going forward. |
+| **6.2 — Observable failure** | no silent swallow | Keep every best-effort fallback but make it *observable* (a `debug`/`warning` log + a metric); forbid unlogged broad swallows by lint. |
+| **6.3 — Wire-or-retire** | unhooked capabilities | For each capability that exists but nothing can reach, either give it an `app.*` verb + an example section, or demote it from the public surface. |
+| **6.4 — Docstring / behaviour parity** | the docs match the code | Make every docstring that advertises a behaviour either true or deleted; fix the stale comments and the one example whose guarantee no longer fires. |
+| **6.5 — `-O` robustness** | load-bearing `assert` → guard | Replace runtime-significant `assert`s with explicit guards that raise a `VincioError`, so a `python -O` deployment fails loudly and correctly. |
+| **6.6 — Audit completion & standing guard** | finish + lock it in | Extend the symbol-by-symbol audit to every remaining subpackage with the same evidence discipline, and gate the whole hygiene family in CI so the debt cannot silently return. |
+
+### 6.0 — Public-surface hygiene ✅ Shipped
+
+The frozen public contract is `vincio.__all__` (540 symbols). Two inconsistencies sat beside it. First, a
+handful of symbols were in a subpackage `__all__` (or a class) yet referenced **nowhere** in `vincio/`,
+`tests/`, `examples/`, or `benchmarks/` — dead surface that read as supported API:
+
+- `vincio/core/concurrency.py` — `race_with_timeout` (in `__all__`, zero refs; the module docstring claims
+  "every concurrent fan-out goes through these helpers", but nothing routes through this one).
+- `vincio/core/tokens.py` — `CallableTokenCounter` (zero refs); `vincio/core/shapley.py` — `ashapley_values`
+  (the async twin of the used sync API, zero refs); `vincio/core/utils.py` — `truncate_text` (zero refs).
+- `vincio/prompts/templates.py` — `PromptSpec.build_ast()` (superseded by the stable/volatile AST split;
+  no caller). `vincio/input/classifiers.py` — `LLMTaskClassifier` (a type alias for a capability never wired
+  into `classify_task` / `route`). `vincio/retrieval/quantization.py` — `TwoStageIndex.stats()` (no caller);
+  `vincio/retrieval/prefetch.py` — `SpeculativePrefetcher(reranker=...)` (a constructor param assigned and
+  never read). `vincio/memory/engine.py` — `for_tenant` (zero refs; siblings `for_user` / `for_agent` /
+  `for_team` are all used).
+
+All nine were removed (tenant-scoped memory stays reachable via `remember(tenant_id=...)`; the surface gate
+below now stops dead surface from silently returning). Second, the **two-level surface drift**: subpackages
+export far more than the top level re-exports — `evals` +114, `optimize` +104, `data` +61, `providers` +60,
+`agents` +54, `observability` +53, `generation` +37, `settlement` +28 symbols present in the subpackage
+`__all__` but absent from `vincio.__all__`. The audit confirmed almost all of it is legitimate
+subpackage-level public surface (return types, dataclasses, enums, type aliases reached by deep import) with
+no underscore, unresolvable, or leaked-import names — it was simply **undeclared as such**. 6.0 declares it:
+`vincio._surface` enumerates every public subpackage's `__all__`, classifies each symbol **TOP** (re-exported
+in `vincio.__all__` — the same object), **DUP** (the name also exists at the top level but as a *different*
+object — an intentional collision such as the tabular `vincio.data.Dataset` beside the eval `vincio.Dataset`,
+the `vincio.verify.Constraint` beside the core one), or **SUB** (subpackage-only public), and freezes the
+classified result in `docs/reference/subpackage-surface.txt` (1,706 symbols across 45 subpackages). The gate
+(`tests/test_surface_consistency.py` + the `hygiene` VincioBench family) asserts every name resolves to a live
+attribute with no duplicate/malformed entries, that the surface matches the manifest byte-for-byte (any
+`__all__` change is a reviewed edit), and that the gate *bites* on an injected dead symbol, duplicate, and
+malformed `__all__` — the local `retrieval`/`memory` drift made a whole-tree invariant. The two public
+exceptions raised in shipped code but missing from `vincio/core/errors.__all__` — `IdentityError` and
+`GovernanceVerificationError` — were added in the same pass.
+
+### 6.1 — Error-contract conformance
+
+The library's stated contract is that every error derives from `VincioError`. Most built-in raises are
+legitimate internal input-validation (e.g. `vincio/verify/statistical.py` "a trend needs at least two
+points") and stay as they are. The violations are the ones on **public** methods that leak a bare built-in:
+`vincio/core/app.py:5791` (`ValueError` for an unknown `test_time_search` strategy → `InputError`/
+`OptimizationError`), `vincio/core/error_catalog.py:785` (`KeyError` in `register_error_locale` →
+`ConfigError`), and `vincio/retrieval/embeddings.py:675` (`MultimodalEmbedder` raising `NotImplementedError`
+from a non-`abc.ABC` class → either make it abstract or raise `ConfigError`). 6.1 converts these and adds a
+lint that flags a bare-built-in raise reachable from a public entry point, so the contract is mechanical.
+
+### 6.2 — Observable failure
+
+A best-effort fallback that catches `Exception` and continues is correct policy — a broken embedder or a
+rejected memory write must never break a run — but several do it **silently** behind a `# pragma: no cover`,
+with no log and no metric, so a real bug hides inside the fallback: `vincio/core/runtime.py:152,161,177,1011`
+(lineage / fertility record, content marking, region resolution), `vincio/context/compiler.py:311` (embedding
+failure) and `vincio/context/longhorizon.py:325` (memory rejection), plus unlogged swallows in `data` (×5),
+`storage` (×4), and `settlement` (×4). 6.2 keeps every fallback but makes it observable — a `logger.debug`/
+`warning` and a counter, the way `vincio/observability/events.py` already logs — and adds a lint forbidding a
+broad `except` whose body neither re-raises nor logs unless it carries a justifying `# noqa: BLE001`.
+
+### 6.3 — Wire-or-retire
+
+Several capabilities are implemented and even public, but nothing can reach them — no `app.*` verb, no
+example, no internal caller:
+
+- `vincio/retrieval/reasoning_retrieval.py` — `ReasoningRetriever` / `FactSchema` (public in `__all__`,
+  consumers are tests only) → add an `app.*` entry point + a section in the retrieval example, or demote.
+- `vincio/context/evidence_store.py` — `BlobEvidenceStore` (no production caller) → wire into the
+  slim-packet cross-process path beside `InMemoryEvidenceStore`, or mark deep-import-only.
+- `vincio/context/compiler.py` — `compile_streaming` / `CompileStreamEvent` / `recompile` (no `app.*` verb)
+  → surface or document as advanced API.
+- `vincio/core/tokens.py` — the provider-native token-counter registry (`register_token_counter` /
+  `_REGISTERED` / `CallableTokenCounter`) the module docstring advertises is wired to nothing; either register
+  the Anthropic / Gemini exact counters at provider init, or drop the claim.
+- `vincio/memory/consolidation.py` — `promote_aged_episodes` (+ its private `_session_user`) is "the periodic
+  background tier transition" that nothing schedules → wire to a maintenance verb, or remove both.
+
+### 6.4 — Docstring / behaviour parity
+
+Three docstrings promise behaviour the code no longer performs. `vincio/context/budgeting.py` (module
+docstring + `BudgetAllocator.redistribute`) advertises reclaiming an under-used block's tokens for evidence
+and memory, but `redistribute` is never invoked → wire it in after selection, or delete the claim.
+`vincio/context/llmlingua.py` says `vincio.optimize.compression_tuning` gates adoption on
+`compression_faithfulness` / `faithfulness_preserved`, but the tuner reads a plain `"faithfulness"` metric
+and never calls either → route the gate through them, or correct the docstring. The federated consent-refusal
+path is wired (`vincio/data/federated.py:1223-1232`) yet `examples/13_data_and_analytics.py`'s default-deny
+demonstration never triggers it → reconcile the example's `ledger.check(...)` setup with the enforcement
+semantics. 6.4 also clears the stale comments (the `context/compiler.py` pipeline step-numbering, the
+`input/*` "item N" external-spec numbering, the `prompts/lint.py:72` redundant PROMPT001 condition) and the
+`memory.delete` / `memory.forget` near-duplicate bodies (have one delegate to the other).
+
+### 6.5 — `-O` robustness
+
+Roughly thirty `assert`s in shipped code carry real control-flow weight and are stripped under `python -O`,
+turning a caught invariant into an opaque downstream `TypeError`: `core` (×9, incl. `runtime.py` streaming /
+cascade paths and `context/compiler.py:886 assert ceiling is not None`), `optimize` (×7), `mcp` (×4),
+`context` (×3), `governance` / `agents` (×2 each). 6.5 replaces each load-bearing `assert` with an explicit
+guard that raises the appropriate `VincioError`, leaving genuine never-happens invariants documented but safe.
+
+### 6.6 — Audit completion & standing guard
+
+6.0–6.5 act on the core plane (audited symbol-by-symbol) and the thematic whole-tree sweep. 6.6 finishes the
+job: it runs the same symbol-by-symbol rubric — define the intended public surface from `__init__`, then
+confirm every claim with a repo-wide reference check — across every remaining subpackage (`agents`,
+`optimize`, `evals`, `tools`, `workflows`, `data`, `generation`, `providers`, `storage`, `settlement`,
+`negotiation`, `choreography`, `governance`, `security`, `verify`, `observability`, and the rest), folding what
+it finds into the phases above. Then it locks the result in: a VincioBench **`hygiene`** family that fails CI
+on a dead public symbol, an unlogged broad swallow, a public bare-built-in raise, a load-bearing `assert`, or
+a two-level `__all__` divergence — so the interior quality the line buys cannot silently erode, exactly as
+`docs_conformance` keeps the docs graph honest and `registry coverage` keeps the model catalog honest.
+
+### Beyond the hardening line
+
+The hardening line is the only **scheduled** work; it opens no breaking window, so the `vincio migrate 6.x`
+codemod table stays empty and a clean upgrade needs zero source changes. Capability work beyond it stays
+governed by the rule above: proposed and **gated from scratch** — a real gap in the literature *and* in buyer
+demand, covered offline, held by VincioBench budgets and SLOs, demonstrated by a runnable example — never
+carried as a standing backlog. Two candidates that fit the platform's additive, offline-first shape and would
+be specified and gated afresh if taken up: **fluent-`Flow` breadth** (now that `Flow` lowers through one
+shared module, additional byte-identical verbs — `remember` / `tools` / a `branch`-`merge` fork — could join
+under the same lowering guarantee), and **a provider-native exact token-counter set** (the natural home for
+the 6.3 token-counter registry once it is wired). Neither is committed; both would re-earn their place.
 
 ---
 

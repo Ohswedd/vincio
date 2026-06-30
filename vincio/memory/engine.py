@@ -171,9 +171,6 @@ class MemoryEngine:
         which members may recall an item."""
         return ScopedMemory(self, scope=MemoryScope.TEAM, owner_id=team_id)
 
-    def for_tenant(self, tenant_id: str) -> ScopedMemory:
-        return ScopedMemory(self, scope=MemoryScope.TENANT, owner_id=tenant_id)
-
     def remember(
         self,
         content: str,

@@ -25,7 +25,7 @@ app.remember("User prefers concise technical answers", user_id="u1")
 app.recall("how should answers be written", user_id="u1")
 
 memory = app.memory
-user = memory.for_user("u1")        # also: for_agent, for_session, for_tenant
+user = memory.for_user("u1")        # also: for_agent, for_session, for_team
 user.remember("User works in the compliance department")
 user.recall("which department", top_k=3)
 user.export()                       # GDPR-style, audited

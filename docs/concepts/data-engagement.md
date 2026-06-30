@@ -150,7 +150,7 @@ See the fully-offline [`06_notebook_native_analysis.ipynb`](../../examples/noteb
 ## Related
 
 - [Guide: Analyze data](../guides/analyze-data.md)
-- [Example: 20_data_engagement.py](../../examples/20_data_engagement.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

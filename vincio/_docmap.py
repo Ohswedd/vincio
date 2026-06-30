@@ -259,7 +259,7 @@ TOPICS: tuple[Topic, ...] = (
         "the compiler scores token-cheap.",
         concept=_c("tabular-evidence"),
         guides=(_g("analyze-data"),),
-        examples=(_e("13_tabular_evidence"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("table_evidence", "register_dataset", "data_catalog"),
     ),
     Topic(
@@ -268,7 +268,7 @@ TOPICS: tuple[Topic, ...] = (
         "token budget, and deterministic quality screening.",
         concept=_c("dataset-profiling"),
         guides=(_g("analyze-data"),),
-        examples=(_e("14_dataset_profiling"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("profile_dataset", "sample_dataset", "fit_dataset", "screen_data"),
     ),
     Topic(
@@ -277,7 +277,7 @@ TOPICS: tuple[Topic, ...] = (
         "provenance that verifies offline.",
         concept=_c("governed-text-to-query"),
         guides=(_g("analyze-data"),),
-        examples=(_e("15_governed_text_to_query"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("query_data",),
     ),
     Topic(
@@ -286,7 +286,7 @@ TOPICS: tuple[Topic, ...] = (
         "narrative that verifies offline.",
         concept=_c("data-analysis-agent"),
         guides=(_g("analyze-data"),),
-        examples=(_e("16_data_analysis_agent"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("analyze_data",),
     ),
     Topic(
@@ -295,7 +295,7 @@ TOPICS: tuple[Topic, ...] = (
         "to the exact source cells).",
         concept=_c("charts-and-cited-artifacts"),
         guides=(_g("analyze-data"), _g("generate-documents")),
-        examples=(_e("17_charts_cited_artifacts"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("generate_chart",),
     ),
     Topic(
@@ -304,7 +304,7 @@ TOPICS: tuple[Topic, ...] = (
         "group-by, and a streaming candidate pre-filter.",
         concept=_c("streaming-and-out-of-core"),
         guides=(_g("analyze-data"), _g("performance")),
-        examples=(_e("18_streaming_out_of_core"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("map_stream", "stream_dataset", "aggregate_stream"),
     ),
     Topic(
@@ -313,7 +313,7 @@ TOPICS: tuple[Topic, ...] = (
         "governed metric computed one way everywhere.",
         concept=_c("semantic-layer-and-governed-metrics"),
         guides=(_g("analyze-data"),),
-        examples=(_e("19_semantic_layer_governed_metrics"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("semantic_layer", "query_metric", "metric_lineage"),
     ),
     Topic(
@@ -322,7 +322,7 @@ TOPICS: tuple[Topic, ...] = (
         "event stream, windowed (tumbling / sliding / session) inside a bounded footprint.",
         concept=_c("realtime-streaming-analytics"),
         guides=(_g("analyze-data"),),
-        examples=(_e("23_realtime_streaming_analytics"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("stream_analytics",),
     ),
     Topic(
@@ -331,7 +331,7 @@ TOPICS: tuple[Topic, ...] = (
         "DataNarrative that verifies offline.",
         concept=_c("data-engagement"),
         guides=(_g("analyze-data"),),
-        examples=(_e("20_data_engagement"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("data_engagement",),
     ),
     Topic(
@@ -341,7 +341,7 @@ TOPICS: tuple[Topic, ...] = (
         "a signed, data-bound FederatedNarrative that verifies offline.",
         concept=_c("federated-data-engagement"),
         guides=(_g("analyze-data"),),
-        examples=(_e("24_federated_analytics"),),
+        examples=(_e("13_data_and_analytics"),),
         verbs=("federated_data_engagement",),
     ),
     # ---- governance ----
@@ -401,7 +401,7 @@ TOPICS: tuple[Topic, ...] = (
         "an analytical claim and refute correlation stated as causation), runtime "
         "behaviour shielding, and proof-carrying synthesized programs.",
         guides=(_g("verified-reasoning"),),
-        examples=(_e("09_security_governance"), _e("25_statistical_certificates")),
+        examples=(_e("09_security_governance"), _e("13_data_and_analytics")),
         verbs=("verify_reasoning", "behavior_monitor", "shield", "use_shield", "synthesize_program"),
     ),
     Topic(

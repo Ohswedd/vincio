@@ -50,6 +50,7 @@ jobs:
           vincio/core/config.py
           vincio/core/config_migrations.py
           vincio/_apiref.py
+          vincio/_surface.py
           vincio/cli/doctor.py
 
   test:

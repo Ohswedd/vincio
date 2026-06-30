@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.0.0] - 2026-06-30
+
+**Public-surface hygiene — the opening of the hardening line (6.x).** The 5.1–5.4 fit-and-finish line made
+the complete platform honest, fast, navigable, and one-line easy on its *surface*; the hardening line turns
+that discipline *inward*, onto the codebase's interior. Every change here is additive, dependency-free, and
+**surface-preserving**: the frozen top-level contract `vincio.__all__` is unchanged (540 symbols), so
+`API_VERSION` stays `5.0`, the `vincio migrate 6.x` codemod table is empty, and a clean upgrade needs zero
+source changes. None of it changes a result.
+
+### Added
+
+- **Two-level surface-consistency gate** (`vincio._surface` + `docs/reference/subpackage-surface.txt`).
+  `vincio.__all__` is the frozen top level, but each public subpackage also declares its own `__all__` — and
+  that surface had drifted and was undeclared. The gate enumerates every public subpackage's `__all__`,
+  classifies each symbol `TOP` (re-exported in `vincio.__all__` — the same object), `DUP` (an intentional
+  top-level name collision, e.g. the tabular `vincio.data.Dataset` beside the eval `vincio.Dataset`), or `SUB`
+  (subpackage-only public), and freezes the classified result in a committed manifest. Three invariants are
+  enforced (`tests/test_surface_consistency.py`): every name resolves to a live attribute (no dead surface),
+  no duplicate/malformed entries, and the surface matches the manifest byte-for-byte — so any `__all__` change
+  is a deliberate, reviewed edit, exactly as `public-surface.txt` freezes the top level. Regenerate with
+  `python -m vincio._surface --freeze`.
+- **HygieneBench (`families.hygiene`)** — a new offline, deterministic VincioBench family folding the gate's
+  guarantees into a headline `surface_consistency` SLO (with `surface_dead_symbol_free`, `surface_frozen`, and
+  a `surface_gate_detects_tamper` "the gate bites" proof), held by `budgets.json` and published in `slos.json`
+  / `docs/reference/slo.md`, the way `docs_conformance` keeps the docs graph honest.
+- **Two public exceptions declared.** `IdentityError` and `GovernanceVerificationError` — both raised in
+  shipped, reachable code and present in the error catalog — are added to `vincio.core.errors.__all__` (they
+  were defined and raised but undeclared). The top-level surface still re-exports only the `VincioError` base,
+  unchanged.
+
+### Removed
+
+- **Nine verified-dead public symbols**, each referenced nowhere in `vincio/`, `tests/`, `examples/`, or
+  `benchmarks/` (dead surface that read as supported API): `vincio.core.concurrency.race_with_timeout`,
+  `vincio.core.tokens.CallableTokenCounter`, `vincio.core.shapley.ashapley_values`,
+  `vincio.core.utils.truncate_text`, `PromptSpec.build_ast` (superseded by the stable/volatile AST split),
+  the `vincio.input.classifiers.LLMTaskClassifier` type alias (never wired into `classify_task` / `route`),
+  `TwoStageIndex.stats`, the unused `SpeculativePrefetcher(reranker=...)` constructor parameter, and
+  `MemoryEngine.for_tenant` (tenant-scoped memory remains reachable via `remember(tenant_id=...)`). None was
+  part of the frozen top-level `vincio.__all__`; the surface-consistency gate now prevents dead surface from
+  silently returning.
+
+### Changed
+
+- **The hardening line's opening, on the developer surface** (already landed, now released). The fluent `Flow`
+  was refactored onto a single shared *lowering* module (`vincio.tasks._lowering`) so a one-line task and its
+  `Flow` twin emit identical builder calls by construction — steps are typed, self-applying values, and a flow
+  clones through one frozen config. The 26 examples were consolidated to **16, one per macro-feature** — the
+  entire data & analytics plane is now a single offline tour (`examples/13_data_and_analytics.py`) — and the
+  capability map, `llms.txt`, and every Related block were regenerated with the docs-graph gate green.
+
 ## [5.9.0] - 2026-06-30
 
 Notebook-native analysis surface — **the fourth and final phase of the data & analytics extension line
