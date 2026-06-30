@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **205** public `ContextApp` methods. It is gated for coverage:
+It covers **207** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -167,6 +167,7 @@ Concept: [Retrieval (RAG)](../concepts/retrieval.md) · Guides: [build a RAG app
 |---|---|
 | `app.add_source` | Register a knowledge source: load, chunk, and index documents. |
 | `app.ingest_files` | Ad-hoc file ingestion for run(files=[...]): load, chunk, index. |
+| `app.retrieve_facts` | Retrieve by the facts a task *needs*, reporting per-fact coverage and gaps. |
 
 ### Memory
 
@@ -177,6 +178,7 @@ Concept: [Memory](../concepts/memory.md) · Guides: [Build a chat product: the A
 | Method | What it does |
 |---|---|
 | `app.add_memory` | Enable the scoped memory engine (hybrid vector+graph recall by default). |
+| `app.consolidate_memory` | Run episodic→semantic memory consolidation as a maintenance pass. |
 | `app.enable_memory_os` | Expose self-editing memory (MemGPT/Letta-class) as permissioned tools. |
 | `app.recall` | Ergonomic memory recall over user/agent/session scopes. |
 | `app.remember` | Ergonomic memory write; creates the memory engine on first use. |

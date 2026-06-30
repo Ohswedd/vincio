@@ -234,7 +234,7 @@ TOPICS: tuple[Topic, ...] = (
         concept=_c("retrieval"),
         guides=(_g("build-rag-app"), _g("connectors")),
         examples=(_e("02_retrieval_rag"),),
-        verbs=("add_source", "ingest_files"),
+        verbs=("add_source", "ingest_files", "retrieve_facts"),
     ),
     Topic(
         "memory", "knowledge", "Memory",
@@ -243,7 +243,7 @@ TOPICS: tuple[Topic, ...] = (
         concept=_c("memory"),
         guides=(_g("assistant"), _g("close-the-loop")),
         examples=(_e("03_memory"),),
-        verbs=("add_memory", "remember", "recall", "enable_memory_os"),
+        verbs=("add_memory", "remember", "recall", "consolidate_memory", "enable_memory_os"),
     ),
     Topic(
         "inputs", "knowledge", "Rich inputs",

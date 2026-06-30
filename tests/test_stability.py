@@ -23,7 +23,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "6.2.0"
+    assert vincio.__version__ == "6.3.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -32,10 +32,13 @@ def test_version_and_api_contract():
     # quality debt — 6.0 (dead-symbol removal, two-level __all__ reconciliation, the
     # two missing public exceptions, the surface-consistency gate), 6.1
     # (error-contract conformance: off-contract built-in raises converted to
-    # VincioError, the contract frozen and gated), and 6.2 (observable failure: silent
-    # best-effort swallows made observable and a lint forbidding new ones) — with **no
-    # change to the frozen top-level surface**, so the contract stays "5.0" while the
-    # package version advances to 6.2.0.
+    # VincioError, the contract frozen and gated), 6.2 (observable failure: silent
+    # best-effort swallows made observable and a lint forbidding new ones), and 6.3
+    # (wire-or-retire: formerly-unhooked capabilities given an app.* verb / an
+    # internal caller — or documented as advanced API — and a guard holding them
+    # reachable) — all additive, with **no change to the frozen top-level surface**
+    # (the new entry points are ContextApp verbs and one subpackage-public type), so
+    # the contract stays "5.0" while the package version advances to 6.3.0.
     assert API_VERSION == "5.0"
 
 

@@ -12003,7 +12003,15 @@ async def bench_hygiene() -> dict[str, Any]:
     tree to **zero** unmarked silent swallows: every broad ``except`` re-raises,
     records its failure, or carries a justifying ``# noqa: BLE001``.
 
-    This family gates all three reconciliations the way ``docs_conformance`` gates the
+    6.3 adds the **wire-or-retire** half: a capability that is public but that nothing
+    can reach — no ``app.*`` verb, no example, no internal caller — reads as supported
+    API while being dead. Those are wired (an ``app.*`` verb / an internal caller) or,
+    where the primitive is a deliberate advanced deep-import API, documented as such,
+    and a guard (``vincio._wire_or_retire``) holds a frozen ledger of them: every
+    listed capability resolves to a live reach and (for a wired one) is referenced by
+    production code outside its defining module.
+
+    This family gates all four reconciliations the way ``docs_conformance`` gates the
     docs graph. **Surface:** resolvable (every ``__all__`` name is a live attribute,
     no duplicate/malformed entries), frozen (matches the committed manifest), and
     classified (TOP / DUP / SUB, collisions pinned), with a companion proof the gate
@@ -12013,7 +12021,10 @@ async def bench_hygiene() -> dict[str, Any]:
     built-in raise (``error_contract_gate_detects_tamper``). **Observable failure:**
     no public module swallows a broad exception silently (``observable_failure_clean``)
     and the detector provably flags an injected silent swallow while ignoring a logged
-    one (``observable_failure_gate_detects_tamper``). Deterministic and offline."""
+    one (``observable_failure_gate_detects_tamper``). **Wire-or-retire:** every public
+    capability is reachable (``wire_or_retire_clean``) and the detector provably bites
+    on an unreachable reach and a wired symbol with no production caller
+    (``wire_or_retire_gate_detects_tamper``). Deterministic and offline."""
     from types import SimpleNamespace
 
     import vincio
@@ -12093,6 +12104,41 @@ async def bench_hygiene() -> dict[str, Any]:
         observable_failure_clean and observable_failure_gate_detects_tamper
     )
 
+    # 6.3 — wire-or-retire. Every formerly-unhooked capability is reachable through
+    # a production path (an app.* verb, an internal caller, or a documented advanced
+    # API); the detector provably bites on an unreachable reach and a wired symbol
+    # with no production caller.
+    from vincio import _wire_or_retire
+
+    wire_problems = _wire_or_retire.reachability_problems()
+    wire_or_retire_clean = not wire_problems
+    wor_detects_bad_reach = bool(
+        _wire_or_retire.reachability_problems(
+            (
+                _wire_or_retire.WireCheck(
+                    "fake", "X", "x/y.py", "vincio.core.app:ContextApp.no_such_verb", "wired"
+                ),
+            )
+        )
+    )
+    wor_detects_dead_symbol = bool(
+        _wire_or_retire.reachability_problems(
+            (
+                _wire_or_retire.WireCheck(
+                    "dead",
+                    "NotReferencedAnywhereSymbol",
+                    "core/tokens.py",
+                    "vincio.core.app:ContextApp.retrieve_facts",
+                    "wired",
+                ),
+            )
+        )
+    )
+    wire_or_retire_gate_detects_tamper = bool(wor_detects_bad_reach and wor_detects_dead_symbol)
+    wire_or_retire_conformant = bool(
+        wire_or_retire_clean and wire_or_retire_gate_detects_tamper
+    )
+
     return {
         "surface_consistency": surface_consistency,
         "surface_dead_symbol_free": surface_dead_symbol_free,
@@ -12105,6 +12151,9 @@ async def bench_hygiene() -> dict[str, Any]:
         "observable_failure_conformant": observable_failure_conformant,
         "observable_failure_clean": observable_failure_clean,
         "observable_failure_gate_detects_tamper": observable_failure_gate_detects_tamper,
+        "wire_or_retire_conformant": wire_or_retire_conformant,
+        "wire_or_retire_clean": wire_or_retire_clean,
+        "wire_or_retire_gate_detects_tamper": wire_or_retire_gate_detects_tamper,
         "hygiene_subpackages_audited": len(surface),
         "hygiene_subpackage_public_symbols": len(rows),
         "hygiene_top_level_reexports": top_count,
@@ -12114,6 +12163,7 @@ async def bench_hygiene() -> dict[str, Any]:
         "hygiene_public_builtin_raises": len(contract_rows),
         "hygiene_error_contract_modules": len({row[0] for row in contract_rows}),
         "hygiene_silent_swallows": len(silent_swallows),
+        "hygiene_wired_capabilities": len(_wire_or_retire.WIRE_CHECKS),
     }
 
 

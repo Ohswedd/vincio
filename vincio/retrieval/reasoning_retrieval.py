@@ -18,7 +18,13 @@ from ..core.types import EvidenceItem
 from .engine import RetrievalEngine
 from .indexes import Where
 
-__all__ = ["FactRequirement", "FactSchema", "FactCoverage", "ReasoningRetriever"]
+__all__ = [
+    "FactRequirement",
+    "FactSchema",
+    "FactCoverage",
+    "FactRetrieval",
+    "ReasoningRetriever",
+]
 
 
 class FactRequirement(BaseModel):
@@ -49,6 +55,27 @@ class FactCoverage(BaseModel):
     covered: bool
     evidence_ids: list[str] = Field(default_factory=list)
     best_score: float = 0.0
+
+
+class FactRetrieval(BaseModel):
+    """Result of fact-grounded retrieval: merged evidence plus per-fact coverage.
+
+    ``complete`` is ``False`` while any *required* fact is still uncovered — the
+    signal an agent uses to ask for more evidence rather than answer on a gap.
+    """
+
+    query: str
+    task: str
+    evidence: list[EvidenceItem] = Field(default_factory=list)
+    coverage: list[FactCoverage] = Field(default_factory=list)
+    facts_total: int = 0
+    facts_covered: int = 0
+    missing_facts: list[str] = Field(default_factory=list)
+    complete: bool = True
+
+    def covered(self, fact: str) -> bool:
+        """Whether *fact* is covered by at least one retrieved evidence item."""
+        return any(c.fact == fact and c.covered for c in self.coverage)
 
 
 class ReasoningRetriever:
@@ -128,3 +155,26 @@ class ReasoningRetriever:
             ],
         }
         return list(collected.values()), coverages, report
+
+    async def retrieve_facts(
+        self,
+        query: str,
+        schema: FactSchema,
+        *,
+        where: Where | None = None,
+        top_k: int = 12,
+    ) -> FactRetrieval:
+        """:meth:`retrieve` packaged as a typed :class:`FactRetrieval` result."""
+        evidence, coverage, report = await self.retrieve(
+            query, schema, where=where, top_k=top_k
+        )
+        return FactRetrieval(
+            query=query,
+            task=schema.task,
+            evidence=evidence,
+            coverage=coverage,
+            facts_total=int(report["facts_total"]),
+            facts_covered=int(report["facts_covered"]),
+            missing_facts=list(report["missing_facts"]),
+            complete=bool(report["complete"]),
+        )

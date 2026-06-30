@@ -13,6 +13,7 @@ from .base import (
     ProviderRegistry,
     RetryingProvider,
     is_lifecycle_error,
+    register_provider_token_counters,
 )
 from .batch import (
     AnthropicBatchBackend,
@@ -214,6 +215,12 @@ def build_provider(
         provider = _registry.create(name, **kwargs)
     except TypeError as exc:
         raise ConfigError(f"invalid arguments for provider {name!r}: {exc}") from exc
+    # Wire the provider's exact, offline token counter into the global registry
+    # (idempotent) so counting for its model ids is exact rather than heuristic —
+    # the OpenAI provider's tiktoken families, an in-process GGUF model's own
+    # tokenizer for the resolved model. A provider with no offline-exact counter
+    # registers nothing and the offline default is unchanged.
+    register_provider_token_counters(provider, models=(config.model,))
     if with_retries and config.max_retries > 0:
         return RetryingProvider(provider, max_retries=config.max_retries)
     return provider

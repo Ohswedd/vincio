@@ -14,7 +14,7 @@ import random
 import re
 import time
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator, Iterator
+from collections.abc import AsyncIterator, Callable, Iterable, Iterator
 from typing import Any, Protocol, runtime_checkable
 
 import httpx
@@ -30,6 +30,7 @@ from ..core.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+from ..core.tokens import TokenCounter, _registered_keys, register_token_counter
 from ..core.types import (
     ModelCapabilities,
     ModelEvent,
@@ -218,6 +219,32 @@ class ModelProvider(ABC):
         profile = default_model_registry().resolve(model)
         return profile.capabilities if profile is not None else ModelCapabilities()
 
+    def exact_token_counter(self, model: str) -> TokenCounter | None:
+        """An exact, *offline* token counter for *model*, or ``None``.
+
+        The hook the :func:`~vincio.core.tokens.register_token_counter` registry
+        is wired through: a provider that can count a model's tokens exactly
+        without a network round-trip (the OpenAI provider via ``tiktoken``; an
+        in-process GGUF model via its own tokenizer) returns a counter here, and
+        it is registered for the provider's served model ids when the provider is
+        built (see :func:`register_provider_token_counters`). The default returns
+        ``None`` — the offline heuristic (or ``tiktoken``) is used, unchanged. A
+        hosted provider whose only exact count is a network call deliberately
+        returns ``None``, so the per-candidate scoring loop never blocks on the
+        network; a deployment that wants exact remote counts registers one
+        through the same public hook.
+        """
+        return None
+
+    def token_id_prefixes(self) -> tuple[str, ...]:
+        """Model-id prefixes whose tokens this provider counts exactly offline.
+
+        Registered as registry matchers (longest matching prefix wins) when the
+        provider is built, so a deployment can still register a more specific
+        counter that out-ranks the provider default. The base returns an empty
+        tuple — no family claimed."""
+        return ()
+
     def generate_sync(self, request: ModelRequest) -> ModelResponse:
         return run_sync(self.generate(request))
 
@@ -250,6 +277,55 @@ class ModelProvider(ABC):
     async def aclose(self) -> None:
         """Release underlying resources (HTTP clients)."""
         return None
+
+
+def register_provider_token_counters(
+    provider: ModelProvider, *, models: Iterable[str] = ()
+) -> None:
+    """Register *provider*'s exact, offline token counters into the global registry.
+
+    Called when a provider is built (see
+    :func:`~vincio.providers.build_provider`): registers a prefix matcher for each
+    family in ``provider.token_id_prefixes()`` and an exact-model matcher for each
+    id in *models* (the app's resolved model — covering an in-process GGUF model
+    whose id no prefix matches), skipping any family or model for which the
+    provider exposes no offline-exact :meth:`~ModelProvider.exact_token_counter`.
+    Idempotent: each registration is keyed by provider class and matcher, so a
+    provider built more than once stays a single registry entry and the offline
+    default is unchanged for a provider that supplies no exact counter.
+    """
+
+    def _factory(model: str) -> TokenCounter:
+        counter = provider.exact_token_counter(model)
+        if counter is None:  # pragma: no cover - guarded by the probes below
+            raise ProviderError(
+                f"no exact token counter for {model!r}", provider=provider.name
+            )
+        return counter
+
+    def _exact_match(model_id: str) -> Callable[[str], bool]:
+        def match(candidate: str) -> bool:
+            return candidate == model_id
+
+        return match
+
+    # Skip keys already registered: a provider built once per request would
+    # otherwise re-register every build and each registration clears the shared
+    # token memo the compiler's hot loops depend on. Idempotent and side-effect-free
+    # when nothing is new.
+    existing = _registered_keys()
+    cls = type(provider).__name__
+    prefixes = tuple(provider.token_id_prefixes())
+    if prefixes and provider.exact_token_counter(prefixes[0]) is not None:
+        for prefix in prefixes:
+            key = f"{cls}:prefix:{prefix}"
+            if key not in existing:
+                register_token_counter(prefix, _factory, key=key)
+    for model in models:
+        key = f"{cls}:model:{model}"
+        if not model or key in existing or provider.exact_token_counter(model) is None:
+            continue
+        register_token_counter(_exact_match(model), _factory, key=key)
 
 
 @runtime_checkable

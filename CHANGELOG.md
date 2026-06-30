@@ -4,6 +4,56 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.3.0] - 2026-06-30
+
+**Wire-or-retire — the hardening line (6.x) continues.** A standing internal audit found capabilities that
+were implemented and even public, but that nothing could reach — no `app.*` verb, no example, no internal
+caller — so dead weight read as supported API. This release wires each one to a production path (or, where the
+primitive is a deliberate advanced deep-import API, documents it as such) and adds a guard that fails the build
+if a wired capability ever loses its entry point. Additive: the frozen top-level contract `vincio.__all__` is
+unchanged (the new entry points are `ContextApp` verbs and one subpackage-public result type), so `API_VERSION`
+stays `5.0`, the `vincio migrate 6.x` codemod table stays empty, and a clean upgrade needs zero source changes.
+
+### Added
+
+- **`app.retrieve_facts`** — reasoning retrieval as a first-class verb. Instead of one top-k by query
+  similarity, a `FactSchema` declares the facts a task needs and the engine retrieves the task query, then runs
+  a targeted retrieval for each fact still uncovered, returning a typed `FactRetrieval` (merged evidence,
+  per-fact `FactCoverage`, and a `complete` flag that stays false while a *required* fact is missing — the
+  insufficient-evidence signal an agent acts on). `FactRetrieval` is exported from `vincio.retrieval`.
+- **`app.consolidate_memory`** — the episodic→semantic tier transition as a maintenance verb. Pass a
+  `session_id` to consolidate one session now, or omit it to sweep every session whose episodes have all aged
+  past `min_age_days` (the periodic form, wired through the new `MemoryEngine.promote_aged_episodes`). Schedule
+  it from your own job runner; Vincio runs no background loop of its own.
+- **`ModelProvider.exact_token_counter`** — the hook the token-counter registry is wired through. A provider
+  that can count a model's tokens exactly and offline registers its counter when it is built (the OpenAI
+  provider via `tiktoken`; an in-process GGUF model via its own tokenizer), so counting is model-id-driven
+  through `register_token_counter` rather than tied to one global default. `register_provider_token_counters`
+  performs the (idempotent) registration at provider init.
+- **Wire-or-retire guard** (`vincio._wire_or_retire`). A static guard holding a frozen ledger of the
+  formerly-unhooked capabilities: every listed capability must resolve to a live reach (an `app.*` verb, an
+  engine method, a registration helper, or a public class member) and — for a wired one — be referenced by
+  production code outside its defining module, so a capability cannot silently become dead surface again.
+  Guarded by `tests/test_wire_or_retire.py`; reproduce offline with `python -m vincio._wire_or_retire`.
+- **HygieneBench wire-or-retire SLOs.** The `hygiene` VincioBench family folds in `wire_or_retire_conformant`
+  (with `wire_or_retire_clean` and a `wire_or_retire_gate_detects_tamper` "the gate bites" proof, plus a
+  `hygiene_wired_capabilities` count), held by `budgets.json` and published in `slos.json` /
+  `docs/reference/slo.md`.
+
+### Changed
+
+- **`use_context_governor` backs cold-span paging with a blob store.** `use_context_governor(blob_store=…)`
+  (or `evidence_store=…`) wires `BlobEvidenceStore` into the long-horizon governor, so a compacted span's full
+  text pages back from a content-addressed blob store — across a restart or another worker — instead of only a
+  process-local store. The default (in-memory) path is unchanged.
+- **`vincio.core.tokens` docstring corrected.** It no longer claims Vincio ships Anthropic / Gemini exact
+  counters; it accurately describes `register_token_counter` as the extension point a provider plugs an exact,
+  offline counter into (a hosted provider whose only exact count is a network round-trip ships none, since that
+  round-trip is unsuitable for the per-candidate scoring loop).
+- **`compile_streaming` / `recompile` / `CompileStreamEvent` documented as advanced API.** These remain
+  deep-import primitives on `ContextCompiler` (a full run already streams end-to-end through `app.stream`); the
+  performance guide and the advanced-context example now frame and demonstrate them as such.
+
 ## [6.2.0] - 2026-06-30
 
 **Observable failure — the hardening line (6.x) continues.** A best-effort fallback that catches a broad

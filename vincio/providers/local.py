@@ -11,6 +11,7 @@ import asyncio
 from typing import Any
 
 from ..core.errors import ConfigError
+from ..core.tokens import TokenCounter
 from ..core.types import (
     ModelCapabilities,
     ModelRequest,
@@ -27,6 +28,12 @@ class LocalProvider(OpenAIProvider):
     name = "local"
     default_base_url = "http://localhost:11434/v1"  # Ollama default; override for vLLM etc.
     requires_api_key = False
+
+    def token_id_prefixes(self) -> tuple[str, ...]:
+        # A local OpenAI-compatible server (Ollama, vLLM, LM Studio) serves
+        # arbitrary models that are not OpenAI BPE, so claim no exact family — the
+        # inherited prefix-gated exact_token_counter then returns None.
+        return ()
 
     def _headers(self) -> dict[str, str]:
         headers = {"Content-Type": "application/json"}
@@ -54,6 +61,23 @@ class LocalProvider(OpenAIProvider):
             max_output_tokens=8_192,
             supports_system_message=True,
         )
+
+
+class _GGUFTokenCounter:
+    """Exact, in-process token count via the loaded GGUF model's own tokenizer.
+
+    Offline and hot-path-safe: ``llama.tokenize`` runs in-process with no network.
+    The model is loaded lazily on the first count (via the provider's ``_ensure``),
+    so registering this counter never forces a model load."""
+
+    def __init__(self, provider: GGUFProvider) -> None:
+        self._provider = provider
+
+    def count(self, text: str) -> int:
+        if not text:
+            return 0
+        llama = self._provider._ensure()
+        return len(llama.tokenize(text.encode("utf-8"), add_bos=False, special=False))
 
 
 def _message_text(content: Any) -> str:
@@ -185,3 +209,14 @@ class GGUFProvider(ModelProvider):
             max_output_tokens=4_096,
             supports_system_message=True,
         )
+
+    def exact_token_counter(self, model: str) -> TokenCounter | None:
+        """The loaded GGUF model's own exact tokenizer (offline, in-process).
+
+        Available once the provider has a model to load (an injected ``llama`` or a
+        ``model_path``); ``None`` otherwise, so nothing is registered for a provider
+        with no model. Registered against the app's resolved model id, since a GGUF
+        model id is opaque to a prefix match."""
+        if self._llama is None and not self.model_path:
+            return None
+        return _GGUFTokenCounter(self)

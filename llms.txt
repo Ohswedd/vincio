@@ -167,6 +167,7 @@ _Feed the compiler: sources, retrieval, memory, structured data, and the analyti
 - `app.add_source` — Register a knowledge source: load, chunk, and index documents.
 - `app.aggregate_stream` — Group a dataset larger than memory by one or more columns and reduce measures over each group in a single bounded-memory pass.
 - `app.analyze_data` — Run a bounded, multi-step analysis over a registered dataset and return a **cited analytical narrative** — the data plane's analyst agent.
+- `app.consolidate_memory` — Run episodic→semantic memory consolidation as a maintenance pass.
 - `app.context_budget_report` — The installed governor's live context-budget report (or ``None``).
 - `app.data_catalog` — The app's lazily-created :class:`~vincio.data.DataCatalog` — the grounding source for :meth:`query_data` and the catalog a :meth:`~vincio.data.QueryResult.verify` re-executes against.
 - `app.data_engagement` — Thread the whole data & analytics plane behind one governed call-path.
@@ -186,6 +187,7 @@ _Feed the compiler: sources, retrieval, memory, structured data, and the analyti
 - `app.recall` — Ergonomic memory recall over user/agent/session scopes.
 - `app.register_dataset` — Register a dataset in the app's data catalog so :meth:`query_data` can ground and execute a query against it by name.
 - `app.remember` — Ergonomic memory write; creates the memory engine on first use.
+- `app.retrieve_facts` — Retrieve by the facts a task *needs*, reporting per-fact coverage and gaps.
 - `app.sample_dataset` — Draw a representative sample of up to ``n`` rows that stands in for the whole dataset, replacing a biased first-N cutoff.
 - `app.screen_data` — Screen a tabular input for schema violations, constraint breaks, and anomalies on the same deterministic rail path PII and injection detection ride. The decision lands on the shared audit chain (``data_quality``).
 - `app.semantic_layer` — Define a :class:`~vincio.data.SemanticLayer` over a registered table — measures, dimensions, and derived columns declared **once** so a question maps to a **governed metric** rather than a raw column.

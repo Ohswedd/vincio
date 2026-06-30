@@ -243,6 +243,15 @@ Back-pressure is the async generator itself: scoring and rendering advance only
 as the consumer pulls. The terminal `done` event is authoritative and identical
 to `compile()` for the same inputs.
 
+`compile_streaming` and `recompile` are **advanced, deep-import APIs on
+`ContextCompiler`** (`app.context_compiler`), not `app.*` verbs: a full run
+already streams end-to-end through `app.stream`, so these are for callers driving
+the context compiler directly — assembling a packet for a custom transport, or
+editing a compiled packet between turns. `CompileStreamEvent` is exported from
+`vincio.context` for typing the stream. See
+[`examples/11_advanced_context.py`](../../examples/11_advanced_context.py) (the
+compile-hot-path section) for both in one offline run.
+
 ## Speculative retrieval prefetch
 
 Task classification is cheap and finishes before retrieval runs. With prefetch

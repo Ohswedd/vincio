@@ -51,7 +51,13 @@ from .quantization import (
     scalar_similarity,
 )
 from .query_understanding import QUERY_STRATEGIES, QueryExpansion, QueryUnderstanding
-from .reasoning_retrieval import FactCoverage, FactRequirement, FactSchema, ReasoningRetriever
+from .reasoning_retrieval import (
+    FactCoverage,
+    FactRequirement,
+    FactRetrieval,
+    FactSchema,
+    ReasoningRetriever,
+)
 from .rerankers import (
     AuthorityReranker,
     CohereReranker,
@@ -138,6 +144,7 @@ __all__ = [
     "QueryUnderstanding",
     "FactCoverage",
     "FactRequirement",
+    "FactRetrieval",
     "FactSchema",
     "ReasoningRetriever",
     "AuthorityReranker",

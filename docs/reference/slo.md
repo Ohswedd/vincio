@@ -531,6 +531,9 @@ offline.
 | Observable failure: no best-effort fallback swallows a broad exception silently — every broad `except` (or `contextlib.suppress(Exception)`) on a public module re-raises, records its failure observably (a logger call or `note_suppressed`), or carries a justifying `# noqa: BLE001`, and the detector provably catches an injected silent swallow while ignoring a logged one. | true | `families.hygiene.observable_failure_conformant` |
 | Every public module is free of unmarked silent broad-except swallows: the lint reports none tree-wide. | true | `families.hygiene.observable_failure_clean` |
 | The observable-failure detector provably bites: an injected silent broad swallow is reported while a logged one is not. | true | `families.hygiene.observable_failure_gate_detects_tamper` |
+| Wire-or-retire: every public capability is reachable through a production path — each entry in a frozen ledger resolves to a live reach (an `app.*` verb, an engine method, a registration helper, or a public class member) and, for a wired one, is referenced by production code outside its defining module, and the detector provably bites on an unreachable reach and a wired symbol with no production caller. | true | `families.hygiene.wire_or_retire_conformant` |
+| Every capability in the wire-or-retire ledger is reachable: the guard reports no unreachable reach and no wired symbol that has become dead surface. | true | `families.hygiene.wire_or_retire_clean` |
+| The wire-or-retire detector provably bites: an injected unreachable reach and a wired symbol with no production caller are each reported. | true | `families.hygiene.wire_or_retire_gate_detects_tamper` |
 
 `vincio.__all__` is the frozen top-level contract, but each public subpackage also
 declares its own `__all__` — the return types, dataclasses, and helpers reached by
@@ -565,6 +568,18 @@ holds the whole public tree to zero unmarked silent swallows: every broad `excep
 (or `contextlib.suppress(Exception)`) must re-raise, record its failure, or carry a
 justifying `# noqa: BLE001`. Run `python -m vincio._observable_failure` to reproduce
 it offline.
+
+The 6.3 phase makes **wire-or-retire** mechanical the same way. A capability that is
+public but that nothing can reach — no `app.*` verb, no example, no internal caller —
+reads as supported API while being dead. Those are wired to a production path
+(`app.retrieve_facts`, `app.consolidate_memory`, `use_context_governor(blob_store=…)`,
+and a provider-native token counter registered at provider init) or, where the
+primitive is a deliberate advanced deep-import API (`ContextCompiler.compile_streaming`
+/ `recompile` / `CompileStreamEvent`), documented as such; `vincio._wire_or_retire`
+holds a frozen ledger of them, requiring each to resolve to a live reach and — for a
+wired one — to be referenced by production code outside its defining module, so a
+capability cannot silently become dead surface again. Run
+`python -m vincio._wire_or_retire` to reproduce it offline.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

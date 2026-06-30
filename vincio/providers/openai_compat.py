@@ -126,6 +126,12 @@ class OpenAICompatibleProvider(OpenAIProvider):
         if default_embedding_model:
             self.default_embedding_model = default_embedding_model
 
+    def token_id_prefixes(self) -> tuple[str, ...]:
+        # A compatible endpoint (Groq, Together, Fireworks, DeepSeek, …) serves
+        # non-OpenAI models, so claim no exact tiktoken family — the inherited
+        # prefix-gated exact_token_counter then returns None.
+        return ()
+
 
 def openai_compatible(
     preset: str | None = None,

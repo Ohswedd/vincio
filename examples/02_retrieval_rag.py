@@ -17,6 +17,7 @@ import asyncio
 
 from _shared import example_provider
 
+from vincio import ContextApp
 from vincio.context.compiler import ContextCompiler
 from vincio.core.types import Chunk, Document, EvidenceItem, ImageRef
 from vincio.documents import MockVideoAnalyzer, video_evidence_items
@@ -258,6 +259,33 @@ async def multimodal_packet() -> None:
     print(f"  video clip cites a time range, e.g. {video_ev[-1].citation_ref}")
 
 
+# ── 8. Reasoning retrieval — retrieve by required facts ───────────────────────
+def reasoning_retrieval() -> None:
+    """Retrieve by the facts a decision *needs*, and report the gaps.
+
+    A single top-k by query similarity can return four passages that all restate
+    the same fact while the decision still hangs on one nobody retrieved. Reasoning
+    retrieval inverts that: a FactSchema declares the facts the task requires, and
+    `app.retrieve_facts` retrieves the task query, then runs a targeted retrieval
+    for each fact still uncovered. The result carries per-fact coverage and a
+    `complete` flag that stays False while a required fact is missing — so an agent
+    asks for the missing evidence instead of answering on a gap.
+    """
+    banner("8. Reasoning retrieval — retrieve by required facts, report gaps")
+    app = ContextApp("retrieval-demo", provider="mock")
+    app.add_source("kb", documents=DOCS)
+    result = app.retrieve_facts(
+        "Can a Pro-plan customer get a refund, and what SLA credit applies?",
+        # The corpus covers refunds and the SLA, but says nothing about a customer's
+        # dispute status — a required fact that stays a reported gap.
+        facts=["refund_policy", "sla_credit", "dispute_status"],
+    )
+    for coverage in result.coverage:
+        mark = "✓" if coverage.covered else "✗"
+        print(f"  {mark} {coverage.fact:<14} best_score={coverage.best_score}")
+    print(f"  complete={result.complete}  missing={result.missing_facts}")
+
+
 async def main() -> None:
     # Constructed once so the example is honestly "offline mock provider".
     example_provider()
@@ -268,8 +296,10 @@ async def main() -> None:
     await metadata_filter()
     await embedders()
     await multimodal_packet()
+    reasoning_retrieval()
     print("\nOne retrieval stack: complementary signals fused, queries understood,")
-    print("metadata enforced, and every modality scored and cited in the same packet.")
+    print("metadata enforced, every modality scored and cited in one packet, and")
+    print("retrieval driven by the facts a decision needs — with the gaps reported.")
 
 
 if __name__ == "__main__":

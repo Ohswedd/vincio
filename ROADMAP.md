@@ -14,8 +14,8 @@ and what is intentionally out of scope. The complete release-by-release history 
 > The capability surface is complete and frozen. The **[hardening line
 > (6.x)](#-the-hardening-line-6x--in-progress)** — an additive, non-breaking paydown of interior quality
 > debt surfaced by a standing internal audit, not new capability — is underway: **6.0 (public-surface
-> hygiene), 6.1 (error-contract conformance), and 6.2 (observable failure) shipped**; 6.3 (wire-or-retire)
-> is next.
+> hygiene), 6.1 (error-contract conformance), 6.2 (observable failure), and 6.3 (wire-or-retire)
+> shipped**; 6.4 (docstring / behaviour parity) is next.
 
 ## What "done" means here
 
@@ -335,7 +335,7 @@ methods, load-bearing `assert`s that vanish under `python -O`, and a large drift
 | **✅ 6.0 — Public-surface hygiene** | dead symbols + two-level `__all__` reconciliation | **Shipped.** Removed the verified-dead public symbols; reconciled each subpackage `__all__` against the frozen top-level `vincio.__all__` (classified and frozen in `docs/reference/subpackage-surface.txt`); added the two missing public exceptions; added the surface-consistency gate and the `hygiene` VincioBench family. |
 | **✅ 6.1 — Error-contract conformance** | every public raise is a `VincioError` | **Shipped.** Converted the three off-contract built-in exceptions leaked off public entry points to typed `VincioError` subclasses, and made the contract mechanical: `vincio._error_contract` freezes the classified baseline of accepted public built-in raises (`docs/reference/error-contract.txt`) and holds the `ContextApp` (`app.*` verb) surface to **zero** off-contract raises with an always-on gate, folded into the `hygiene` VincioBench family. |
 | **✅ 6.2 — Observable failure** | no silent swallow | **Shipped.** Made every silent best-effort fallback *observable* — `vincio.core.diagnostics.note_suppressed` logs the suppression on a dedicated `vincio.suppressed` channel and counts it by label — and added a lint (`vincio._observable_failure`) that holds the whole public tree to **zero** unmarked silent swallows: a broad `except` (or `contextlib.suppress(Exception)`) must re-raise, record its failure, or carry a justifying `# noqa: BLE001`, folded into the `hygiene` VincioBench family. |
-| **6.3 — Wire-or-retire** | unhooked capabilities | For each capability that exists but nothing can reach, either give it an `app.*` verb + an example section, or demote it from the public surface. |
+| **✅ 6.3 — Wire-or-retire** | unhooked capabilities | **Shipped.** Wired each formerly-unhooked capability to a production path: `app.retrieve_facts` (reasoning retrieval), `app.consolidate_memory` (the aged-episode tier transition), `use_context_governor(blob_store=…)` (cross-process cold-span paging through `BlobEvidenceStore`), and a provider-native token-counter registrant at provider init; `compile_streaming` / `recompile` / `CompileStreamEvent` are documented as advanced deep-import API. A standing guard (`vincio._wire_or_retire`) holds a frozen ledger of them reachable, folded into the `hygiene` VincioBench family. |
 | **6.4 — Docstring / behaviour parity** | the docs match the code | Make every docstring that advertises a behaviour either true or deleted; fix the stale comments and the one example whose guarantee no longer fires. |
 | **6.5 — `-O` robustness** | load-bearing `assert` → guard | Replace runtime-significant `assert`s with explicit guards that raise a `VincioError`, so a `python -O` deployment fails loudly and correctly. |
 | **6.6 — Audit completion & standing guard** | finish + lock it in | Extend the symbol-by-symbol audit to every remaining subpackage with the same evidence discipline, and gate the whole hygiene family in CI so the debt cannot silently return. |
@@ -426,22 +426,38 @@ accepted form, so a new silent swallow fails the build the moment it lands. The 
 (an injected silent swallow is flagged; a logged one is not), and the whole check is folded into the `hygiene`
 VincioBench family (`observable_failure_conformant`).
 
-### 6.3 — Wire-or-retire
+### 6.3 — Wire-or-retire ✅ Shipped
 
-Several capabilities are implemented and even public, but nothing can reach them — no `app.*` verb, no
-example, no internal caller:
+Several capabilities were implemented and even public, but nothing could reach them — no `app.*` verb, no
+example, no internal caller, so dead weight read as supported API. Each was wired to a production path (or,
+where the primitive is genuinely an advanced deep-import API, documented as such):
 
-- `vincio/retrieval/reasoning_retrieval.py` — `ReasoningRetriever` / `FactSchema` (public in `__all__`,
-  consumers are tests only) → add an `app.*` entry point + a section in the retrieval example, or demote.
-- `vincio/context/evidence_store.py` — `BlobEvidenceStore` (no production caller) → wire into the
-  slim-packet cross-process path beside `InMemoryEvidenceStore`, or mark deep-import-only.
-- `vincio/context/compiler.py` — `compile_streaming` / `CompileStreamEvent` / `recompile` (no `app.*` verb)
-  → surface or document as advanced API.
+- `vincio/retrieval/reasoning_retrieval.py` — `ReasoningRetriever` / `FactSchema` are now reachable through
+  **`app.retrieve_facts`**, which retrieves by the facts a task *needs* and returns a typed `FactRetrieval`
+  (merged evidence, per-fact coverage, and a `complete` flag that stays false while a required fact is
+  missing), with a section in the retrieval example.
+- `vincio/context/evidence_store.py` — `BlobEvidenceStore` is wired into the long-horizon cross-process path:
+  **`use_context_governor(blob_store=…)`** (or `evidence_store=…`) backs cold-span paging with a
+  content-addressed blob store, so a multi-day run survives a restart and a multi-process run pages the same
+  cold text back across workers — the path slim packets already use.
+- `vincio/context/compiler.py` — `compile_streaming` / `CompileStreamEvent` / `recompile` are **documented as
+  advanced, deep-import API on `ContextCompiler`** (a full run already streams end-to-end through `app.stream`),
+  demonstrated in the advanced-context example and the performance guide.
 - `vincio/core/tokens.py` — the provider-native token-counter registry (`register_token_counter` /
-  `_REGISTERED` / `CallableTokenCounter`) the module docstring advertises is wired to nothing; either register
-  the Anthropic / Gemini exact counters at provider init, or drop the claim.
-- `vincio/memory/consolidation.py` — `promote_aged_episodes` (+ its private `_session_user`) is "the periodic
-  background tier transition" that nothing schedules → wire to a maintenance verb, or remove both.
+  `_REGISTERED`) is now **wired at provider init**: a provider that can count a model's tokens exactly and
+  offline (the OpenAI provider via `tiktoken`, an in-process GGUF model via its own tokenizer) registers its
+  counter through the new `ModelProvider.exact_token_counter` hook, so counting is model-id-driven; a hosted
+  provider whose only exact count is a network round-trip ships none (unsuitable for the per-candidate scoring
+  loop), and the docstring is corrected to say so.
+- `vincio/memory/consolidation.py` — `promote_aged_episodes` is reachable through **`app.consolidate_memory`**
+  (and `MemoryEngine.promote_aged_episodes`): pass a `session_id` to consolidate one session, or omit it to
+  sweep every session whose episodes have all aged past a threshold — the periodic tier transition, scheduled
+  from your own job runner since Vincio runs no background loop of its own.
+
+The contract is then made **mechanical**, on the same freeze-and-gate idiom 6.0–6.2 use: `vincio._wire_or_retire`
+holds a frozen ledger of these capabilities and fails the build if one loses its production entry point (a
+reach that no longer resolves, or a wired symbol with no production caller), folded into the `hygiene`
+VincioBench family (`wire_or_retire_conformant`) and proven to *bite*.
 
 ### 6.4 — Docstring / behaviour parity
 
@@ -486,8 +502,10 @@ demand, covered offline, held by VincioBench budgets and SLOs, demonstrated by a
 carried as a standing backlog. Two candidates that fit the platform's additive, offline-first shape and would
 be specified and gated afresh if taken up: **fluent-`Flow` breadth** (now that `Flow` lowers through one
 shared module, additional byte-identical verbs — `remember` / `tools` / a `branch`-`merge` fork — could join
-under the same lowering guarantee), and **a provider-native exact token-counter set** (the natural home for
-the 6.3 token-counter registry once it is wired). Neither is committed; both would re-earn their place.
+under the same lowering guarantee), and **a provider-native exact token-counter set** (a set of exact remote
+counters — Anthropic `count_tokens`, Gemini `countTokens` — registered through the `exact_token_counter` hook
+6.3 wired, for a deployment that wants exact remote counts off the hot path). Neither is committed; both would
+re-earn their place.
 
 ---
 

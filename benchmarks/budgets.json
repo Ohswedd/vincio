@@ -2380,8 +2380,20 @@
     "families.hygiene.observable_failure_gate_detects_tamper": {
       "eq": true
     },
+    "families.hygiene.wire_or_retire_conformant": {
+      "eq": true
+    },
+    "families.hygiene.wire_or_retire_clean": {
+      "eq": true
+    },
+    "families.hygiene.wire_or_retire_gate_detects_tamper": {
+      "eq": true
+    },
     "families.hygiene.hygiene_silent_swallows": {
       "lte": 0
+    },
+    "families.hygiene.hygiene_wired_capabilities": {
+      "gte": 7
     },
     "families.hygiene.hygiene_subpackages_audited": {
       "gte": 40

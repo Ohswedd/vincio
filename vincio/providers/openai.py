@@ -13,6 +13,7 @@ from typing import Any, cast
 
 from ..core.errors import ProviderResponseError
 from ..core.media import audio_format_label, encode_audio_bytes, image_to_data_url
+from ..core.tokens import TokenCounter
 from ..core.types import (
     FinishReason,
     Message,
@@ -30,6 +31,9 @@ from .base import HTTPProvider, parse_sse_lines
 
 __all__ = ["OpenAIProvider"]
 
+# Model-id families OpenAI counts exactly offline via tiktoken's BPE encodings.
+_OPENAI_TOKEN_PREFIXES = ("gpt-", "o1", "o3", "o4", "chatgpt-", "text-embedding-")
+
 
 class OpenAIProvider(HTTPProvider):
     name = "openai"
@@ -39,6 +43,28 @@ class OpenAIProvider(HTTPProvider):
     def __init__(self, *args: Any, price_table: PriceTable | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
         self.price_table = price_table or default_price_table()
+
+    def token_id_prefixes(self) -> tuple[str, ...]:
+        return _OPENAI_TOKEN_PREFIXES
+
+    def exact_token_counter(self, model: str) -> TokenCounter | None:
+        """tiktoken's exact BPE count for OpenAI models (offline, hot-path-safe).
+
+        Returns a counter only for a model in one of this provider's
+        :meth:`token_id_prefixes` families — ``tiktoken`` silently falls back to
+        ``o200k_base`` for an unknown id, which is *not* exact for a non-OpenAI
+        model, so a subclass serving other models (``LocalProvider``,
+        ``OpenAICompatibleProvider``, ``MistralProvider``) claims no family and is
+        skipped here. ``None`` also when ``tiktoken`` is not installed, so the
+        offline heuristic is used unchanged."""
+        if not model.startswith(self.token_id_prefixes()):
+            return None
+        from ..core.tokens import TiktokenCounter
+
+        try:
+            return TiktokenCounter(model)
+        except ImportError:
+            return None
 
     # -- rendering -------------------------------------------------------------
 
