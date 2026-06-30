@@ -396,10 +396,12 @@ TOPICS: tuple[Topic, ...] = (
     ),
     Topic(
         "verified-reasoning", "governance", "Verified reasoning & shielding",
-        "Proof-carrying answers checked by deterministic kernels, runtime behaviour "
-        "shielding, and proof-carrying synthesized programs.",
+        "Proof-carrying answers checked by deterministic kernels (including the "
+        "statistical trend / correlation / interval / forecast kernels that certify "
+        "an analytical claim and refute correlation stated as causation), runtime "
+        "behaviour shielding, and proof-carrying synthesized programs.",
         guides=(_g("verified-reasoning"),),
-        examples=(_e("09_security_governance"),),
+        examples=(_e("09_security_governance"), _e("25_statistical_certificates")),
         verbs=("verify_reasoning", "behavior_monitor", "shield", "use_shield", "synthesize_program"),
     ),
     Topic(

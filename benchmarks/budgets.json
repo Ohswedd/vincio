@@ -2221,6 +2221,12 @@
     "families.verified_reasoning.certificate_soundness": {
       "eq": true
     },
+    "families.verified_reasoning.statistical_soundness": {
+      "eq": true
+    },
+    "families.verified_reasoning.refutes_spurious_causation": {
+      "eq": true
+    },
     "families.verified_reasoning.shield_prevents_violation": {
       "eq": true
     },

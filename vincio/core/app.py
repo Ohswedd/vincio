@@ -1398,6 +1398,7 @@ class ContextApp:
         evidence: Any | None = None,
         schema: dict[str, Any] | None = None,
         constraints: Any | None = None,
+        statistical_claims: Any | None = None,
         facts: dict[str, Any] | None = None,
         now: Any | None = None,
         regenerate: Any | None = None,
@@ -1422,23 +1423,41 @@ class ContextApp:
         same refuse-or-repair discipline structured output already uses, now over
         *reasoning* rather than *structure*. Ground the kernels with ``evidence``
         (citation entailment), ``schema`` (structural conformance), ``constraints``
-        (constraint satisfaction), ``facts`` and ``now``. The verdict lands on the
-        hash-chained audit log as a ``reasoning_verification`` decision unless
-        ``record`` is off; set ``raise_on_refute`` to raise
+        (constraint satisfaction), ``statistical_claims`` (the trend / correlation /
+        interval / forecast kernels, which recompute a stated statistic from the
+        cited cells and refuse a spurious causal claim), ``facts`` and ``now``. When
+        ``statistical_claims`` are supplied and ``verifiers`` is left default, the
+        statistical kernels are added to the default set automatically. Because a
+        statistical claim is grounded in the context rather than the answer text, a
+        ``regenerate`` callback may repair one by returning a corrected
+        :class:`~vincio.verify.StatisticalClaim` (or a list of them); the loop
+        re-grounds the context with the corrected claim before re-certifying, so the
+        same refuse-or-repair discipline drives the statistical kernels too. The
+        verdict lands on the hash-chained audit log as a ``reasoning_verification``
+        decision unless ``record`` is off; set ``raise_on_refute`` to raise
         :class:`~vincio.core.errors.CertificateRefutedError` instead.
         """
         from ..core.errors import CertificateRefutedError
         from ..verify import CompositeVerifier, VerificationContext, VerifiedAnswer
         from ..verify.kernels import default_verifiers
+        from ..verify.statistical import statistical_verifiers
 
-        verifier = CompositeVerifier(list(verifiers) if verifiers is not None else default_verifiers())
+        claims = list(statistical_claims) if statistical_claims else []
+        if verifiers is not None:
+            kernels = list(verifiers)
+        else:
+            kernels = default_verifiers() + (statistical_verifiers() if claims else [])
+        verifier = CompositeVerifier(kernels)
         context = VerificationContext(
             evidence=list(evidence) if evidence else [],
             schema=schema,
             constraints=list(constraints) if constraints else [],
+            statistical_claims=claims,
             facts=facts or {},
             now=now,
         )
+        from ..verify.statistical import StatisticalClaim
+
         current = answer
         certificate = verifier.certify(current, context)
         attempts = 1
@@ -1449,6 +1468,17 @@ class ContextApp:
             repaired = regenerate(current, critique)
             if repaired is None or repaired == current:
                 break
+            # A statistical claim is grounded in the context, not the answer text, so
+            # a repair that re-states the corrected claim(s) re-grounds the context
+            # before re-certifying; any other value is a replacement answer as before.
+            repaired_claims = (
+                [repaired] if isinstance(repaired, StatisticalClaim)
+                else list(repaired) if isinstance(repaired, list)
+                and repaired and all(isinstance(c, StatisticalClaim) for c in repaired)
+                else None
+            )
+            if repaired_claims is not None:
+                context = context.model_copy(update={"statistical_claims": repaired_claims})
             current = repaired
             certificate = verifier.certify(current, context)
             attempts += 1

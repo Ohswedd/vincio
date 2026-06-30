@@ -4,6 +4,65 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.8.0] - 2026-06-30
+
+Forecasting & causal-inference verifier kernels — **the third phase of the data & analytics extension line
+(5.6–5.9).** The verified-reasoning plane already gives an *arithmetic*-class claim a checkable certificate;
+this gives the **statistical** claims a data answer makes — a trend, a correlation, a confidence / prediction
+interval, a forecast — the same, on the same `Certificate` surface. Each kernel **recomputes** the stated
+statistic from the **cited cells** and refutes one the data does not bear out, and the correlation kernel
+**refuses a correlation stated as causation** that earns no warrant — no controls, or a confounder that, once
+partialled out, collapses the association. Entirely additive — a new `vincio.verify.statistical` module and a
+`statistical_claims=` argument on the existing `app.verify_reasoning`; `API_VERSION` stays `5.0`, the
+`vincio migrate 5.x` codemod table stays empty, and a clean upgrade needs zero source changes. The
+deterministic kernels are dependency-free; an optional CAS backend sits behind `vincio[verify]`.
+
+### Added
+
+- **`vincio.verify.statistical` — four deterministic statistical kernels** on the `ReasoningVerifier`
+  protocol: **`TrendVerifier`** recomputes an ordinary-least-squares slope / intercept and `R²` goodness-of-fit
+  and checks a stated trend and direction; **`CorrelationVerifier`** recomputes a Pearson correlation and, for
+  a causal claim, demands a warrant; **`IntervalVerifier`** recomputes a Student-t confidence interval for a
+  mean or an OLS prediction interval at a point; **`ForecastVerifier`** re-runs a declared deterministic model
+  (`naive` / `mean` / `drift` / `linear` / `moving_average` / `ses`) and checks the projection.
+- **Spurious-causation refutation.** A `CorrelationClaim` with `causal=True` is refused when it declares no
+  controls and no randomized design, and refuted when its declared confounders, once partialled out via the
+  **partial correlation** (recomputed from the cited series), collapse the association below a threshold — so a
+  confounded correlation reported as a cause is a deterministic refutation, while a genuine controlled
+  association and a randomized-design claim are verified.
+- **Statistics bound to cited cells.** A `CitedSeries` carries the `CellRef`s its values came from (build one
+  from a cell-cited `QueryResult` with `CitedSeries.from_cells(result.citations(row, col))`); a value swapped
+  after it was cited makes the series unbound and the kernel refuses, so a smuggled number cannot ride a real
+  citation.
+- **`app.verify_reasoning(..., statistical_claims=[...])`** adds the statistical kernels to the default set
+  automatically and records the verdict on the audit chain as before; a refuted statistical claim refuses to
+  emit and a `regenerate` callback may repair it by returning a corrected `StatisticalClaim`, which re-grounds
+  the context before re-certifying — the refuse-or-repair loop over *statistical reasoning*.
+- **Deterministic statistics core** (pure, offline, dependency-free): `ols_fit`, `pearson_r`,
+  `partial_correlation`, `mean_confidence_interval`, `prediction_interval`, `forecast`, and Student-t
+  quantiles (`student_t_ppf`) via the regularized incomplete beta function — no NumPy / SciPy.
+- **Optional `CasTrendVerifier`** (`vincio.verify.smt`, behind `vincio[verify]`) re-discharges the OLS trend
+  fit with exact `sympy.Rational` arithmetic — zero floating-point drift in the recomputation.
+- **Twelve new public symbols** exported at the top level and from `vincio.verify`: `CellRef`, `CitedSeries`,
+  `StatisticalClaim`, `TrendClaim`, `CorrelationClaim`, `IntervalClaim`, `ForecastClaim`, `TrendVerifier`,
+  `CorrelationVerifier`, `IntervalVerifier`, `ForecastVerifier`, and `statistical_verifiers`. Public surface
+  526 → 538. `VerificationContext` gains a `statistical_claims` field.
+- **VerifiedReasoningBench** gains `statistical_soundness` and `refutes_spurious_causation` (folded into the
+  existing `certificate_soundness`), held by a new **refutes-spurious-causation** SLO alongside the
+  certificate-soundness SLO in the `verified_reasoning` family.
+- **Docs & examples:** `examples/25_statistical_certificates.py` (a fully-offline walk of all four kernels
+  built from a cell-cited query result), a statistical-claims section in the verified-reasoning guide, the
+  published SLOs in `docs/reference/slo.md`, and synchronized `README` / `ROADMAP` / `SECURITY` / `AGENTS` /
+  `llms.txt` / capability map and the public-surface freeze.
+
+### Changed
+
+- **`benchmarks/vinciobench.py`** — `bench_verified_reasoning` certifies the statistical kernels and the
+  spurious-causation refutation; `README.md`, `ROADMAP.md` (5.8 moved from *Planned* to *What ships today*),
+  `SECURITY.md`, `AGENTS.md`, `llms.txt`, and the generated API index / public-surface freeze are synchronized.
+- **`app.verify_reasoning`** gains an optional `statistical_claims` keyword; the default behaviour with no
+  statistical claims is byte-identical (the statistical kernels are added only when claims are supplied).
+
 ## [5.7.0] - 2026-06-30
 
 Cross-org / federated analytics — **the second phase of the data & analytics extension line (5.6–5.9).**

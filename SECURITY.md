@@ -425,6 +425,21 @@ the fact is caught from the bytes alone. A refuted certificate **refuses to emit
 answer, and a `regenerate` callback drives the existing bounded self-correction loop to
 repair it — the refuse-or-repair discipline applied to *reasoning*.
 
+The same discipline extends to the **statistical** claims a data answer makes
+(`statistical_claims=`): the `TrendVerifier`, `CorrelationVerifier`, `IntervalVerifier`,
+and `ForecastVerifier` kernels recompute a stated trend, correlation, interval, or
+forecast from the **cited cells** and refute one the data does not bear out. Two
+properties matter for trust. First, the statistic is **bound to its cited cells**: a
+`CitedSeries` carries the source-cell references its values came from, and a value
+swapped after it was cited makes the series unbound and the kernel refuses, so a
+smuggled number cannot ride a real citation. Second, a causal claim must **earn its
+warrant**: a correlation stated as causation that declares no controls and no randomized
+design is refused, and a controlled claim whose association vanishes once the declared
+confounder is partialled out (the partial correlation collapses) is refuted as
+confounded — the common failure of reporting a confounded correlation as a cause is a
+deterministic refutation, not a probabilistic judge call. Held by a
+`refutes_spurious_causation` SLO alongside the certificate-soundness SLO.
+
 A `Shield` is the per-step, online counterpart of the ahead-of-run governance verifier.
 A `BehaviorSpec` states a property over an agent's trajectory (*never call a write tool
 before approval*, *retrieve before claiming*, *stay within residency*); a `RuntimeMonitor`
