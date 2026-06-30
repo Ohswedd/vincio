@@ -7139,6 +7139,52 @@ class ContextApp:
 
         return DataEngagement(self, dataset=dataset, question=question, analyst=analyst)
 
+    # -- real-time & streaming analytics --------------------------------
+
+    def stream_analytics(
+        self,
+        window: Any,
+        *,
+        table: str = "events",
+        layer: Any | None = None,
+    ) -> Any:
+        """Open a governed real-time analytics driver over an **unbounded event
+        stream** — the profiling, query, governed-metric, and quality primitives
+        re-expressed window by window.
+
+        Pass a :class:`~vincio.data.StreamWindow` (``tumbling`` / ``sliding`` /
+        ``session``) and get a :class:`~vincio.data.StreamingAnalytics`: drive a
+        replayed :class:`~vincio.data.RowStream` (or a live realtime session)
+        through :meth:`~vincio.data.StreamingAnalytics.profile`,
+        :meth:`~vincio.data.StreamingAnalytics.query`,
+        :meth:`~vincio.data.StreamingAnalytics.query_metric`,
+        :meth:`~vincio.data.StreamingAnalytics.screen`, or
+        :meth:`~vincio.data.StreamingAnalytics.aggregate`, each emitting one
+        result per closed window. The working set holds only the open windows, so
+        the footprint is invariant to how many events have flowed; every result
+        **cites the exact events** it rests on and ``verify()``s offline against
+        its bounded captured window; and each emitted window lands on the audit
+        chain (``stream_window``)::
+
+            from vincio.data import StreamWindow, ColumnSchema, DataType, RowStream
+
+            schema = [ColumnSchema(name="ts", dtype=DataType.INT),
+                      ColumnSchema(name="region", dtype=DataType.STR),
+                      ColumnSchema(name="amount", dtype=DataType.FLOAT)]
+            stream = RowStream.from_rows(event_log, schema, name="orders")
+            win = StreamWindow.tumbling(size=60, time_column="ts", table="orders")
+            analytics = app.stream_analytics(win, table="orders")
+            for wq in analytics.query(stream, "SELECT region, sum(amount) AS total "
+                                              "FROM orders GROUP BY region"):
+                print(wq.window.label(), wq.value(0, "total"))
+                wq.cite_events(0, "total")   # the exact events the figure rests on
+                assert wq.verify()           # re-derives from the captured window
+
+        Returns a :class:`~vincio.data.StreamingAnalytics`."""
+        from ..data.streaming_analytics import StreamingAnalytics
+
+        return StreamingAnalytics(self, window, table=table, layer=layer)
+
     # -- continuous assurance & production certification ----------------
 
     def assurance_case(

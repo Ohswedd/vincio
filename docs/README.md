@@ -77,6 +77,13 @@ between your input and the model's validated output.
   everywhere through the read-only query plane, `MetricResult.verify` proving the
   number is the governed one, and column-level `app.metric_lineage` reaching the
   lineage and right-to-erasure machinery.
+- **[Real-time and streaming analytics](concepts/realtime-streaming-analytics.md)**:
+  the profiling, query, governed-metric, and quality primitives re-expressed over
+  an unbounded event stream with `StreamWindow` (tumbling / sliding / session),
+  each closed window emitting a result that cites the exact source events
+  (`stream@<offset>`) and verifies offline against its bounded captured window;
+  `app.stream_analytics` audits every window and drives a live feed as readily as
+  a replayed log, inside a footprint invariant to the event volume.
 - **[The data engagement (the analytics capstone)](concepts/data-engagement.md)**:
   `app.data_engagement` threads the whole plane (register → profile → … → cite) into
   a hash-chained, signed `DataNarrative` that verifies offline and is data-bound —

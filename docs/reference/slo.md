@@ -97,6 +97,9 @@ frozen release reports the same verdict forever.
 | Out-of-core processing sustains ≥ 20,000 rows/s (and ≥ 1,000,000 tokens/s through the streaming encoder) | ≥ 20,000 | `data_plane.streaming.throughput_rows_per_s` |
 | The resident working set of a streaming group-by stays bounded as the dataset grows 100× (it tracks groups, not rows) | true | `data_plane.streaming.memory_bounded` |
 | The context compiler's streaming candidate pre-filter bounds a 10k+ evidence pool before full scoring while keeping the relevant evidence | true | `data_plane.streaming.prefilter_bounds_pool` |
+| Windowed analytics over an unbounded event stream are exact: the per-window group-by equals the brute-force ground truth of bucketing every event by its window | true | `data_plane.realtime.windowed_correct` |
+| The resident working set of windowed analytics is invariant to the event volume (a 100× longer stream stays within a small factor — only the open window is held) | true | `data_plane.realtime.memory_bounded` |
+| Every windowed result re-derives offline against its captured window, every cited event offset is in-window, and a tampered captured event is caught | true | `data_plane.realtime.provenance_sound` |
 | A governed metric defined once compiles to one canonical read-only SELECT and returns the same number however the question is phrased | true | `data_plane.semantic_layer.governed_one_way` |
 | A governed metric's result re-derives from the hashed source; an ad-hoc query passed off as the governed metric, or a tampered source, is rejected | true | `data_plane.semantic_layer.metric_verifiable` |
 | A metric's column-level lineage resolves to its base columns and source, and a right-to-erasure sweep removes the dataset it rests on | true | `data_plane.semantic_layer.lineage_reaches_dataset` |

@@ -60,6 +60,16 @@ would not fit.
   way everywhere through the read-only-verified query plane, and a metric's
   column-level provenance (:class:`MetricLineage`) reaches the lineage and
   right-to-erasure machinery.
+* :class:`StreamWindow` — the profiling, query, governed-metric, and quality
+  primitives re-expressed over an **unbounded event stream** instead of a bounded
+  :class:`Dataset`, computed one window at a time (``tumbling`` / ``sliding`` /
+  ``session``) so the working set stays invariant to the event volume. Each closed
+  window emits a result (:class:`WindowedProfile` / :class:`WindowedQueryResult` /
+  :class:`WindowedMetricResult` / :class:`WindowedQualityReport`) that cites the
+  exact source **events** it rests on (:class:`EventCitation`, ``stream@<offset>``)
+  and ``verify()``s offline against its bounded :class:`CapturedWindow`. The
+  app-governed :class:`StreamingAnalytics` (``app.stream_analytics``) audits each
+  window and drives a **live** realtime session as readily as a replayed log.
 * :class:`DataEngagement` — the capstone facade (``app.data_engagement``) that
   threads the whole plane (register → profile → sample → fit → screen → query →
   analyze → chart → governed metric → cite) behind one governed, audited
@@ -180,6 +190,18 @@ from .streaming import (
     stream_aggregate,
     stream_map,
 )
+from .streaming_analytics import (
+    CapturedWindow,
+    EventCitation,
+    StreamingAnalytics,
+    StreamWindow,
+    WindowedAggregation,
+    WindowedMetricResult,
+    WindowedProfile,
+    WindowedQualityReport,
+    WindowedQueryResult,
+    WindowKind,
+)
 from .window import WindowFit, fit_stream, fit_to_window
 
 __all__ = [
@@ -258,6 +280,17 @@ __all__ = [
     "encode_stream",
     "BulkMapResult",
     "stream_map",
+    # real-time & streaming analytics (windowed primitives)
+    "WindowKind",
+    "StreamWindow",
+    "CapturedWindow",
+    "EventCitation",
+    "WindowedProfile",
+    "WindowedQueryResult",
+    "WindowedMetricResult",
+    "WindowedQualityReport",
+    "WindowedAggregation",
+    "StreamingAnalytics",
     # semantic layer & governed metrics
     "Aggregation",
     "DerivedColumn",

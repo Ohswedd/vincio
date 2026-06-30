@@ -94,6 +94,18 @@
     "families.data_plane.streaming.prefilter_bounds_pool": {
       "eq": true
     },
+    "families.data_plane.realtime.windowed_correct": {
+      "eq": true
+    },
+    "families.data_plane.realtime.memory_bounded": {
+      "eq": true
+    },
+    "families.data_plane.realtime.provenance_sound": {
+      "eq": true
+    },
+    "families.data_plane.realtime.events_per_s": {
+      "gte": 10000
+    },
     "families.data_plane.semantic_layer.governed_one_way": {
       "eq": true
     },
