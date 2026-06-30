@@ -12034,7 +12034,21 @@ async def bench_hygiene() -> dict[str, Any]:
     detector provably bites on an injected bare ``assert`` while ignoring a marked one
     (``assert_robustness_gate_detects_tamper``).
 
-    This family gates all five reconciliations the way ``docs_conformance`` gates the
+    6.6 adds the **reachability** half and completes the audit. The surface gate
+    proves every public name *resolves*; this proves every public name is *used* —
+    referenced somewhere in the code corpus (``vincio`` + ``tests`` + ``examples`` +
+    ``benchmarks``), the audit's repo-wide reference check, mechanized over the whole
+    surface (top-level ``vincio.__all__`` plus every public subpackage ``__all__``).
+    A symbol an offline corpus cannot reach — an abstract base a user implements, an
+    optional-dep provider/backend, a socket/Redis/webhook-binding sink — is declared
+    with its reason in the frozen reachability baseline
+    (``docs/reference/reachability.txt``); a pure helper is exercised by a test
+    instead. The gate holds the whole surface to that contract
+    (``reachability_clean``), keeps the baseline exactly the live unreferenced set
+    (``reachability_frozen``), and provably bites on an injected dead-but-resolvable
+    symbol and a stale baseline entry (``reachability_gate_detects_tamper``).
+
+    This family gates all six reconciliations the way ``docs_conformance`` gates the
     docs graph. **Surface:** resolvable (every ``__all__`` name is a live attribute,
     no duplicate/malformed entries), frozen (matches the committed manifest), and
     classified (TOP / DUP / SUB, collisions pinned), with a companion proof the gate
@@ -12051,7 +12065,11 @@ async def bench_hygiene() -> dict[str, Any]:
     carries an unmarked ``assert`` that vanishes under ``python -O``
     (``assert_robustness_clean``) and the detector provably flags an injected bare
     ``assert`` while ignoring a marked one (``assert_robustness_gate_detects_tamper``).
-    Deterministic and offline."""
+    **Reachability:** no public symbol is referenced nowhere and undeclared
+    (``reachability_clean``), the baseline is the live unreferenced set rendered to
+    its committed manifest (``reachability_frozen``), and the detector provably flags
+    an injected dead symbol and a stale baseline entry
+    (``reachability_gate_detects_tamper``). Deterministic and offline."""
     from types import SimpleNamespace
 
     import vincio
@@ -12251,6 +12269,44 @@ async def bench_hygiene() -> dict[str, Any]:
     )
     marked_asserts = _assert_robustness.marked_assert_count()
 
+    # 6.6 — public-symbol reachability. The surface gate proves every public name
+    # *resolves*; this proves every public name is *used* — referenced somewhere in
+    # the code corpus (vincio/ + tests/ + examples/ + benchmarks/), the audit's
+    # repo-wide reference check, mechanized. A symbol an offline corpus cannot
+    # reach (an abstract base a user implements, an optional-dep provider, a socket-
+    # binding sink) is declared, with its reason, in the frozen reachability
+    # baseline; a pure helper is exercised by a test instead. The gate holds the
+    # whole surface to that contract and bites on an injected dead symbol.
+    from vincio import _reachability
+
+    reachability_violations = _reachability.reachability_problems()
+    reachability_clean = not reachability_violations
+    unreferenced = _reachability.unreferenced_public_symbols()
+    reachability_frozen = bool(
+        _reachability.render_manifest() == _reachability.load_manifest()
+        and set(_reachability.REACHABILITY_BASELINE) == set(unreferenced)
+    )
+    reach_detects_undeclared = any(
+        "BlobStore" in p and "referenced nowhere" in p
+        for p in _reachability.reachability_problems(baseline={})
+    )
+    reach_detects_stale = any(
+        "ContextApp" in p and "stale" in p
+        for p in _reachability.reachability_problems(baseline={"ContextApp": "BASE"})
+    )
+    reach_ignores_referenced = _reachability.referenced_symbols_in_source(
+        "x = Widget()\n", {"Widget"}
+    ) == {"Widget"}
+    reachability_gate_detects_tamper = bool(
+        reach_detects_undeclared and reach_detects_stale and reach_ignores_referenced
+    )
+    reachability_conformant = bool(
+        reachability_clean and reachability_frozen and reachability_gate_detects_tamper
+    )
+    surface_symbol_count = len(_reachability.public_surface())
+    referenced_count = surface_symbol_count - len(unreferenced)
+    baseline_categories = sorted(set(_reachability.REACHABILITY_BASELINE.values()))
+
     return {
         "surface_consistency": surface_consistency,
         "surface_dead_symbol_free": surface_dead_symbol_free,
@@ -12274,6 +12330,10 @@ async def bench_hygiene() -> dict[str, Any]:
         "assert_robustness_conformant": assert_robustness_conformant,
         "assert_robustness_clean": assert_robustness_clean,
         "assert_robustness_gate_detects_tamper": assert_robustness_gate_detects_tamper,
+        "reachability_conformant": reachability_conformant,
+        "reachability_clean": reachability_clean,
+        "reachability_frozen": reachability_frozen,
+        "reachability_gate_detects_tamper": reachability_gate_detects_tamper,
         "hygiene_subpackages_audited": len(surface),
         "hygiene_subpackage_public_symbols": len(rows),
         "hygiene_top_level_reexports": top_count,
@@ -12286,6 +12346,11 @@ async def bench_hygiene() -> dict[str, Any]:
         "hygiene_wired_capabilities": len(_wire_or_retire.WIRE_CHECKS),
         "hygiene_unmarked_asserts": len(unmarked_asserts),
         "hygiene_marked_asserts": marked_asserts,
+        "hygiene_public_symbols_audited": surface_symbol_count,
+        "hygiene_public_symbols_referenced": referenced_count,
+        "hygiene_unreferenced_public_symbols": len(unreferenced),
+        "hygiene_reachability_baseline": len(_reachability.REACHABILITY_BASELINE),
+        "hygiene_reachability_categories": baseline_categories,
     }
 
 

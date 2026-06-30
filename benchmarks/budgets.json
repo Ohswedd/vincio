@@ -2413,6 +2413,18 @@
     "families.hygiene.assert_robustness_gate_detects_tamper": {
       "eq": true
     },
+    "families.hygiene.reachability_conformant": {
+      "eq": true
+    },
+    "families.hygiene.reachability_clean": {
+      "eq": true
+    },
+    "families.hygiene.reachability_frozen": {
+      "eq": true
+    },
+    "families.hygiene.reachability_gate_detects_tamper": {
+      "eq": true
+    },
     "families.hygiene.hygiene_silent_swallows": {
       "lte": 0
     },
@@ -2424,6 +2436,12 @@
     },
     "families.hygiene.hygiene_subpackages_audited": {
       "gte": 40
+    },
+    "families.hygiene.hygiene_unreferenced_public_symbols": {
+      "lte": 22
+    },
+    "families.hygiene.hygiene_public_symbols_audited": {
+      "gte": 1700
     }
   }
 }

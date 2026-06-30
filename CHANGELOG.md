@@ -4,6 +4,57 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.6.0] - 2026-06-30
+
+**Audit completion & standing guard — the hardening line (6.x) closes.** 6.0–6.5 acted on the core plane
+(audited symbol-by-symbol) and swept the rest of the tree thematically. This release runs the same
+symbol-by-symbol reachability rubric across *every* remaining subpackage — define the intended public surface
+from `__init__`, then confirm every claim with a repo-wide reference check — and then locks the result in so the
+interior quality the whole line buys cannot silently erode. `vincio._surface` already proves every public
+`__all__` name *resolves*; it could not tell a live, *used* symbol from one that resolves yet is referenced
+nowhere — the dead-but-resolvable surface 6.0 removed by a one-time *manual* reference check that was never
+mechanized, so the exact debt was free to return. 6.6 mechanizes that check and gates the whole `hygiene`
+family in CI as a first-class, named standing guard. Additive: the frozen top-level contract `vincio.__all__`
+is unchanged (no public symbol is removed — the audit found none genuinely dead), so `API_VERSION` stays `5.0`,
+the `vincio migrate 6.x` codemod table stays empty, and a clean upgrade needs zero source changes.
+
+### Added
+
+- **`vincio._reachability` — the public-symbol reachability guard.** It enumerates the whole public surface
+  (the frozen top-level `vincio.__all__` plus every public subpackage's own `__all__`) and asks the audit's
+  question of each symbol: is it *used* anywhere in the code corpus (`vincio/` + `tests/` + `examples/` +
+  `benchmarks/`)? A use is a real load — an `ast.Name` load, an `obj.Symbol` attribute access, or an
+  `import ... as alias` then a load of the alias; a bare re-export and an `__all__` entry are declarations, not
+  uses. A symbol referenced nowhere is either *exercised by a new test* (the honest fix for a pure helper) or
+  *declared, with its structural reason, in the frozen baseline* `docs/reference/reachability.txt` — an abstract
+  base a user implements (`BASE`), an optional-dependency provider/backend (`OPTDEP`), or production wiring that
+  binds a socket / Redis / webhook (`WIRING`). The gate holds the whole surface to that contract and provably
+  bites on an injected dead-but-resolvable symbol and a stale baseline entry.
+- **`tests/test_public_surface_reachability.py` — the audit's evidence.** The audit found 41 public symbols that
+  resolved and were live capabilities yet were referenced nowhere in the corpus. Nineteen are pure,
+  offline-runnable helpers with no structural excuse (the caching layers, `SchemaRegistry`, `LINT_RULES`,
+  `SUPPORTED_EXTENSIONS`, the MCP OAuth helpers, `agui_sse`, `cache_hit_economics`, `analyze_ast_layout`,
+  `extract_markdown_metadata`, `as_search_fn`, `map_compliance`, `residency_violation`, `CallableSparseEncoder`,
+  `from_haystack_documents`, `MultiExporter`, `RoutingOptimizer`); each now has a focused behavioural test, which
+  is the evidence the symbol is a real, working capability and the reason it is *not* in the baseline. The other
+  twenty-two are structurally-unexercisable and declared in the baseline.
+- **A dedicated `hygiene` CI job** runs all six interior-quality lints directly (`python -m vincio._surface`,
+  `._error_contract`, `._observable_failure`, `._wire_or_retire`, `._assert_robustness`, `._reachability`) plus
+  the eight gate test modules — a fast, named standing guard independent of the heavier benchmark job, so a
+  hygiene regression shows a clear red check.
+- **The `hygiene` VincioBench family gains the reachability half** (`reachability_conformant` /
+  `reachability_clean` / `reachability_frozen` / `reachability_gate_detects_tamper`, plus the
+  `hygiene_public_symbols_audited` / `hygiene_public_symbols_referenced` / `hygiene_unreferenced_public_symbols`
+  / `hygiene_reachability_baseline` counts), with matching SLOs and at-least-as-strict budgets. The whole family
+  — surface, error contract, observable failure, wire-or-retire, docstring parity, `-O` robustness, and now
+  reachability — is gated in CI.
+
+### Changed
+
+- **`vincio._reachability` and `vincio._assert_robustness` join the `mypy --strict` set** (the regular
+  `mypy vincio` overrides and the dedicated strict CI step), so the new guard ships under the same inline-typed
+  contract as the rest of the hardening-line tooling.
+
 ## [6.5.0] - 2026-06-30
 
 **`-O` robustness — the hardening line (6.x) continues.** Python strips every `assert` statement under

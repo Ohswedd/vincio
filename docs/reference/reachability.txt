@@ -1,0 +1,34 @@
+# Vincio reachability baseline — the legitimately-unexercised public surface.
+# Every public symbol referenced nowhere in the code corpus (vincio/ + tests/ +
+# examples/ + benchmarks/), one per line, sorted by symbol, as:
+#   <home-subpackage> <category> <symbol>
+# Category is the structural reason an offline corpus cannot reference it:
+#   BASE   = an abstract base / Protocol a user implements;
+#   OPTDEP = a provider/backend whose real path needs an optional dependency;
+#   WIRING = production wiring that binds a socket / Redis / webhook.
+# A pure, offline-runnable helper has no entry here — it is exercised by a test
+# instead. Re-freeze deliberately: edit REACHABILITY_BASELINE in
+# vincio/_reachability.py, regenerate with `python -m vincio._reachability
+# --freeze`, and review the diff. Guarded by tests/test_reachability.py.
+vincio.storage BASE BlobStore
+vincio.documents BASE DocumentAI
+vincio.generation OPTDEP ElevenLabsSpeechProvider
+vincio.generation OPTDEP GoogleImageProvider
+vincio.generation OPTDEP GoogleSpeechProvider
+vincio.generation OPTDEP GoogleVideoProvider
+vincio.generation OPTDEP HTTPImageProvider
+vincio.generation OPTDEP HTTPVideoProvider
+vincio.storage BASE IdempotencyStore
+vincio.documents BASE OCREngine
+vincio.generation OPTDEP OpenAIImageProvider
+vincio.generation OPTDEP OpenAISpeechProvider
+vincio.generation OPTDEP OpenAIVideoProvider
+vincio.observability WIRING PagerDutyAlertSink
+vincio.agents WIRING RedisGraphCoordinator
+vincio.agents BASE RuntimeBackend
+vincio.observability WIRING SlackAlertSink
+vincio.documents OPTDEP TesseractOCR
+vincio.documents BASE VideoAnalyzer
+vincio.documents OPTDEP VisionModelOCR
+vincio.documents OPTDEP WhisperTranscriber
+vincio.observability WIRING serve_viewer
