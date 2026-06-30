@@ -2381,6 +2381,36 @@
       "threshold": true,
       "enforced_by": "families.hygiene.surface_gate_detects_tamper",
       "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the detector reports each synthetic breakage, so the consistency guarantee is backed by a check that demonstrably catches the failure it claims to prevent."
+    },
+    {
+      "id": "hygiene_error_contract_conformant",
+      "category": "reliability",
+      "statement": "Every error raised on a public entry point derives from VincioError: the ContextApp (app.* verb) surface raises no bare built-in, the classified baseline of accepted public built-in raises matches the committed manifest (docs/reference/error-contract.txt), and the detector provably catches an injected public built-in raise.",
+      "metric": "families.hygiene.error_contract_conformant",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.error_contract_conformant",
+      "rationale": "Vincio's contract is that one `except VincioError` catches the whole family and `.code` is the stable branch key. A bare built-in leaking off a public entry point breaks that contract silently. The budget gates the contract mechanically — the verb surface is held to zero off-contract raises and the rest is frozen — so a new bare-built-in raise must be converted to a VincioError or deliberately reviewed into the baseline, exactly as the surface gate freezes the two-level __all__."
+    },
+    {
+      "id": "hygiene_error_contract_app_verbs_clean",
+      "category": "reliability",
+      "statement": "No public method of the user-facing ContextApp facade (the app.* verb surface) raises a bare built-in exception; every raise there is a VincioError subclass.",
+      "metric": "families.hygiene.error_contract_app_verbs_clean",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.error_contract_app_verbs_clean",
+      "rationale": "The app.* verbs are the canonical public entry point. This is the always-on half of the error-contract gate — it needs no allowlist and bites the moment a verb leaks a raw ValueError/KeyError/NotImplementedError, so the surface a caller wraps in `except VincioError` never surprises them with an off-contract exception."
+    },
+    {
+      "id": "hygiene_error_contract_gate_detects_tamper",
+      "category": "reliability",
+      "statement": "The error-contract detector provably bites: an injected bare built-in raise on a public def is reported while an encapsulated private-def raise is not, so a green check means the invariant was actually exercised.",
+      "metric": "families.hygiene.error_contract_gate_detects_tamper",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.error_contract_gate_detects_tamper",
+      "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the static detector flags a public built-in raise and ignores an encapsulated one, so the error-contract guarantee is backed by a check that demonstrably catches the leak it claims to prevent without over-reporting."
     }
   ]
 }

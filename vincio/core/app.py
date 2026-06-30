@@ -80,7 +80,13 @@ from ..tools.registry import ToolRegistry
 from ..tools.runtime import ToolRuntime
 from ..workflows.engine import Workflow
 from .config import VincioConfig, load_config
-from .errors import AgentEngineError, ConfigError, ResidencyViolationError, ToolNotFoundError
+from .errors import (
+    AgentEngineError,
+    ConfigError,
+    InputError,
+    ResidencyViolationError,
+    ToolNotFoundError,
+)
 from .events import EventBus
 from .facades import (
     GovernanceFacade,
@@ -5788,7 +5794,7 @@ class ContextApp:
             return await search.best_of_n(n)
         if strategy == "self_consistency":
             return await search.self_consistency(n)
-        raise ValueError(
+        raise InputError(
             f"unknown test-time search strategy {strategy!r}; "
             f"expected 'best_of_n' or 'self_consistency'"
         )

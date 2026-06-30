@@ -14,7 +14,7 @@ and what is intentionally out of scope. The complete release-by-release history 
 > The capability surface is complete and frozen. The **[hardening line
 > (6.x)](#-the-hardening-line-6x--in-progress)** — an additive, non-breaking paydown of interior quality
 > debt surfaced by a standing internal audit, not new capability — is underway: **6.0 (public-surface
-> hygiene) shipped**; 6.1 (error-contract conformance) is next.
+> hygiene) and 6.1 (error-contract conformance) shipped**; 6.2 (observable failure) is next.
 
 ## What "done" means here
 
@@ -332,7 +332,7 @@ methods, load-bearing `assert`s that vanish under `python -O`, and a large drift
 | Phase | Theme | The paydown |
 |---|---|---|
 | **✅ 6.0 — Public-surface hygiene** | dead symbols + two-level `__all__` reconciliation | **Shipped.** Removed the verified-dead public symbols; reconciled each subpackage `__all__` against the frozen top-level `vincio.__all__` (classified and frozen in `docs/reference/subpackage-surface.txt`); added the two missing public exceptions; added the surface-consistency gate and the `hygiene` VincioBench family. |
-| **6.1 — Error-contract conformance** | every public raise is a `VincioError` | Convert the off-contract built-in exceptions raised on public methods to typed `VincioError` subclasses; lint the contract going forward. |
+| **✅ 6.1 — Error-contract conformance** | every public raise is a `VincioError` | **Shipped.** Converted the three off-contract built-in exceptions leaked off public entry points to typed `VincioError` subclasses, and made the contract mechanical: `vincio._error_contract` freezes the classified baseline of accepted public built-in raises (`docs/reference/error-contract.txt`) and holds the `ContextApp` (`app.*` verb) surface to **zero** off-contract raises with an always-on gate, folded into the `hygiene` VincioBench family. |
 | **6.2 — Observable failure** | no silent swallow | Keep every best-effort fallback but make it *observable* (a `debug`/`warning` log + a metric); forbid unlogged broad swallows by lint. |
 | **6.3 — Wire-or-retire** | unhooked capabilities | For each capability that exists but nothing can reach, either give it an `app.*` verb + an example section, or demote it from the public surface. |
 | **6.4 — Docstring / behaviour parity** | the docs match the code | Make every docstring that advertises a behaviour either true or deleted; fix the stale comments and the one example whose guarantee no longer fires. |
@@ -375,16 +375,31 @@ malformed `__all__` — the local `retrieval`/`memory` drift made a whole-tree i
 exceptions raised in shipped code but missing from `vincio/core/errors.__all__` — `IdentityError` and
 `GovernanceVerificationError` — were added in the same pass.
 
-### 6.1 — Error-contract conformance
+### 6.1 — Error-contract conformance ✅ Shipped
 
-The library's stated contract is that every error derives from `VincioError`. Most built-in raises are
-legitimate internal input-validation (e.g. `vincio/verify/statistical.py` "a trend needs at least two
-points") and stay as they are. The violations are the ones on **public** methods that leak a bare built-in:
-`vincio/core/app.py:5791` (`ValueError` for an unknown `test_time_search` strategy → `InputError`/
-`OptimizationError`), `vincio/core/error_catalog.py:785` (`KeyError` in `register_error_locale` →
-`ConfigError`), and `vincio/retrieval/embeddings.py:675` (`MultimodalEmbedder` raising `NotImplementedError`
-from a non-`abc.ABC` class → either make it abstract or raise `ConfigError`). 6.1 converts these and adds a
-lint that flags a bare-built-in raise reachable from a public entry point, so the contract is mechanical.
+The library's stated contract is that every error derives from `VincioError`, so a caller catches the whole
+family with one `except VincioError` and branches on the stable `.code`. Most built-in raises are legitimate
+internal input-validation (e.g. `vincio/verify/statistical.py` "a trend needs at least two points"), an
+abstract-base placeholder, or the `AttributeError` a `__getattr__` must raise so `hasattr` works — those stay
+as they are. The violations were the three that leaked a bare built-in off a **public** entry point:
+`vincio/core/app.py` (`ValueError` for an unknown `test_time_search` strategy → now `InputError`),
+`vincio/core/error_catalog.py` (`KeyError` in `register_error_locale` → now `ConfigError`, via a circular-safe
+function-local import), and `vincio/retrieval/embeddings.py` (`MultimodalEmbedder._multimodal_payload`, a
+non-`abc.ABC` base method reachable from the public `embed()` / `embed_multimodal()`, raising
+`NotImplementedError` → now `ConfigError` naming a concrete subclass). All three carry their catalog `.code`
+and remediation; `except VincioError` (the documented contract) was always the right catch and is unaffected.
+
+6.1 then makes the contract **mechanical**, on the same freeze-and-gate idiom 6.0 used for the two-level
+surface. `vincio._error_contract` statically scans every public module for a bare built-in raise on a public
+entry point (every enclosing function and class public; dunders like `__init__` count) and enforces two
+invariants, both folded into the `hygiene` VincioBench family and `tests/test_error_contract.py`: the
+`ContextApp` (`app.*` verb) surface — the canonical public entry point — is held to **zero** off-contract
+raises by an *always-on* check that needs no allowlist and bites the moment a verb leaks one; and the full
+classified baseline of accepted public built-in raises is **frozen** in `docs/reference/error-contract.txt`,
+so a new one is a deliberate, reviewed edit — convert it to a `VincioError` (it drops out) or, when it is
+genuinely internal input-validation, regenerate with `python -m vincio._error_contract --freeze` and review
+the diff. The detector is proven to *bite* (an injected public built-in raise is flagged; an encapsulated
+private-def raise is not), the way the surface gate proves itself.
 
 ### 6.2 — Observable failure
 

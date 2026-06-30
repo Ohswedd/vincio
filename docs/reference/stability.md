@@ -21,7 +21,14 @@ Everything else is internal and may change at any time without notice:
 - Modules and attributes not listed in the API reference.
 - Symbols marked [`@experimental`](#experimental-apis).
 - The exact wording of log lines, trace span internals, and error messages
-  (error *types* and `.code` values are stable; message strings are not).
+  (the `VincioError` subclass *types* and their `.code` values are stable;
+  message strings are not). The stable error contract is that every error Vincio
+  raises derives from `VincioError`, so `except VincioError` catches the family;
+  a bare built-in (`ValueError` / `KeyError`) that previously leaked off-contract
+  from a public method is *not* a stable type and may be converted to its proper
+  `VincioError` under the [hardening line](../../ROADMAP.md#the-hardening-line-6x--in-progress)
+  — `except VincioError` is unaffected. This contract is mechanically gated
+  (`vincio._error_contract`).
 
 ## Versioning guarantees
 

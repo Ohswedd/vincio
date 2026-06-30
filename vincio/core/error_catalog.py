@@ -777,12 +777,20 @@ def register_error_locale(locale: str, entries: dict[str, tuple[str, str]]) -> N
 
     Partial locales are allowed; any code without a translation falls back to
     the English reference text. The locale code is matched case-insensitively.
+    An entry naming a code not in the catalog raises
+    :class:`~vincio.core.errors.ConfigError` (on the ``VincioError`` contract),
+    so a typo in a locale registration is caught like any other configuration
+    mistake rather than leaking a bare ``KeyError``.
     """
+    # Imported lazily: errors.py imports from this module, so a top-level import
+    # would be circular. By call time both modules are fully loaded.
+    from .errors import ConfigError
+
     key = locale.lower()
     bucket = _LOCALES.setdefault(key, {})
     for code, pair in entries.items():
         if code not in ERROR_CATALOG:
-            raise KeyError(f"unknown error code in locale {locale!r}: {code!r}")
+            raise ConfigError(f"unknown error code in locale {locale!r}: {code!r}")
         bucket[code] = (pair[0], pair[1])
 
 

@@ -525,6 +525,9 @@ offline.
 | No public subpackage `__all__` exports a name that resolves to no attribute, lists a name twice, or is malformed — there is no dead public surface. | true | `families.hygiene.surface_dead_symbol_free` |
 | The classified two-level surface matches `docs/reference/subpackage-surface.txt` byte-for-byte, so any `__all__` change (a new symbol, a removed one, or a TOP/DUP/SUB reclassification) is a deliberate, reviewed edit. | true | `families.hygiene.surface_frozen` |
 | The surface-consistency gate provably bites: an injected dead symbol, a duplicate entry, and a malformed `__all__` are each reported. | true | `families.hygiene.surface_gate_detects_tamper` |
+| Error-contract conformance: every error raised on a public entry point derives from `VincioError` — the `ContextApp` (`app.*` verb) surface raises no bare built-in, the classified baseline of accepted public built-in raises matches the committed manifest, and the detector provably catches an injected leak. | true | `families.hygiene.error_contract_conformant` |
+| No public method of the user-facing `ContextApp` facade raises a bare built-in exception; every raise on the `app.*` verb surface is a `VincioError` subclass. | true | `families.hygiene.error_contract_app_verbs_clean` |
+| The error-contract detector provably bites: an injected bare built-in raise on a public def is reported while an encapsulated private-def raise is not. | true | `families.hygiene.error_contract_gate_detects_tamper` |
 
 `vincio.__all__` is the frozen top-level contract, but each public subpackage also
 declares its own `__all__` — the return types, dataclasses, and helpers reached by
@@ -536,6 +539,18 @@ symbols and declares the subpackage-only public surface in
 each symbol TOP (re-exported in `vincio.__all__`) / DUP (an intentional name
 collision) / SUB (subpackage-only) and freezes the result, so the interior surface
 can only change on review. Run `python -m vincio._surface` to reproduce it offline.
+
+The 6.1 phase makes the **error contract** mechanical the same way. Vincio's
+contract is that every error it raises derives from `VincioError`, so one
+`except VincioError` catches the family and `.code` is the stable branch key. A few
+public entry points leaked a bare built-in (`ValueError` / `KeyError` /
+`NotImplementedError`); those are converted, the `ContextApp` verb surface is held
+to zero off-contract raises by an always-on check, and the classified baseline of
+accepted public built-in raises (internal input-validation, abstract-base
+placeholders, the `AttributeError` a `__getattr__` must raise) is frozen in
+`docs/reference/error-contract.txt`. A new public bare-built-in raise must be
+converted to a `VincioError` or deliberately reviewed into the baseline. Run
+`python -m vincio._error_contract` to reproduce it offline.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

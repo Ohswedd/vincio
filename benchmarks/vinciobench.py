@@ -11976,7 +11976,7 @@ async def bench_docs_conformance() -> dict[str, Any]:
 
 
 async def bench_hygiene() -> dict[str, Any]:
-    """HygieneBench: the two-level public surface stays consistent and dead-symbol-free.
+    """HygieneBench: the public surface stays consistent and every public raise is typed.
 
     ``vincio.__all__`` is the frozen top-level contract, but each public subpackage
     *also* declares its own ``__all__`` — and that surface had drifted: a handful of
@@ -11987,19 +11987,27 @@ async def bench_hygiene() -> dict[str, Any]:
     declares the subpackage-only public surface in
     ``docs/reference/subpackage-surface.txt``.
 
-    This family gates that reconciliation the way ``docs_conformance`` gates the docs
-    graph, on three guarantees: **resolvable** (every subpackage ``__all__`` name is
-    a live attribute, with no duplicate/malformed entries — no dead surface),
-    **frozen** (the classified surface matches the committed manifest, so any
-    ``__all__`` change is a reviewed edit), and **classified** (each divergent symbol
-    is TOP / DUP / SUB, the intentional top-level name collisions pinned so a new one
-    cannot slip in). A companion check proves the gate *bites* — an injected dead
-    symbol, a duplicate, and a malformed ``__all__`` are each caught. Deterministic
-    and offline."""
+    6.1 adds the **error-contract** half: every error Vincio raises must derive from
+    ``VincioError``, yet a few public entry points leaked a bare built-in
+    (``ValueError`` / ``KeyError`` / ``NotImplementedError``). Those are converted,
+    and the contract is made mechanical the same freeze-and-gate way the surface is:
+    the classified baseline of accepted public built-in raises is frozen in
+    ``docs/reference/error-contract.txt`` and the ``ContextApp`` (``app.*`` verb)
+    surface is held to **zero** off-contract raises by an always-on check.
+
+    This family gates both reconciliations the way ``docs_conformance`` gates the
+    docs graph. **Surface:** resolvable (every ``__all__`` name is a live attribute,
+    no duplicate/malformed entries), frozen (matches the committed manifest), and
+    classified (TOP / DUP / SUB, collisions pinned), with a companion proof the gate
+    *bites*. **Error contract:** the verb surface raises only ``VincioError``
+    (``error_contract_app_verbs_clean``), the baseline matches its committed manifest
+    (``error_contract_frozen``), and the detector provably catches an injected public
+    built-in raise (``error_contract_gate_detects_tamper``). Deterministic and
+    offline."""
     from types import SimpleNamespace
 
     import vincio
-    from vincio import _surface
+    from vincio import _error_contract, _surface
 
     problems = _surface.surface_problems()
     surface_dead_symbol_free = not problems
@@ -12031,17 +12039,45 @@ async def bench_hygiene() -> dict[str, Any]:
         surface_dead_symbol_free and surface_frozen and surface_gate_detects_tamper
     )
 
+    # 6.1 — error-contract conformance. The app.* verb surface raises only
+    # VincioError; the public built-in-raise baseline matches its frozen manifest;
+    # and the detector provably bites on an injected public built-in raise.
+    error_contract_app_verbs_clean = not _error_contract.app_verb_violations()
+    error_contract_frozen = _error_contract.load_manifest() == _error_contract.render_manifest()
+    contract_detects_leak = ("Widget.build", "ValueError") in _error_contract.contract_raises_in_source(
+        "class Widget:\n    def build(self):\n        raise ValueError('boom')\n"
+    )
+    contract_ignores_private = (
+        _error_contract.contract_raises_in_source(
+            "class Widget:\n    def _hidden(self):\n        raise KeyError('x')\n"
+        )
+        == []
+    )
+    error_contract_gate_detects_tamper = bool(contract_detects_leak and contract_ignores_private)
+    error_contract_conformant = bool(
+        error_contract_app_verbs_clean
+        and error_contract_frozen
+        and error_contract_gate_detects_tamper
+    )
+    contract_rows = _error_contract.contract_rows()
+
     return {
         "surface_consistency": surface_consistency,
         "surface_dead_symbol_free": surface_dead_symbol_free,
         "surface_frozen": surface_frozen,
         "surface_gate_detects_tamper": surface_gate_detects_tamper,
+        "error_contract_conformant": error_contract_conformant,
+        "error_contract_app_verbs_clean": error_contract_app_verbs_clean,
+        "error_contract_frozen": error_contract_frozen,
+        "error_contract_gate_detects_tamper": error_contract_gate_detects_tamper,
         "hygiene_subpackages_audited": len(surface),
         "hygiene_subpackage_public_symbols": len(rows),
         "hygiene_top_level_reexports": top_count,
         "hygiene_subpackage_only_public": sub_count,
         "hygiene_intentional_collisions": dup_count,
         "hygiene_top_level_public_symbols": len([n for n in vincio.__all__ if n != "__version__"]),
+        "hygiene_public_builtin_raises": len(contract_rows),
+        "hygiene_error_contract_modules": len({row[0] for row in contract_rows}),
     }
 
 

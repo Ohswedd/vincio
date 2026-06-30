@@ -1,0 +1,105 @@
+# Vincio error-contract baseline.
+# Every bare built-in exception raised on a PUBLIC entry point under vincio/,
+# one per line, sorted by (module, qualname, exception), as:
+#   <module> <qualname> <Exception>
+# A public entry point is a raise whose every enclosing function and class is
+# public (non-underscore; dunders like __init__ count). These are the ACCEPTED,
+# reviewed built-in raises: internal input-validation (a numeric helper that
+# needs two points), abstract-base placeholders, and the AttributeError a
+# __getattr__ must raise so hasattr() works. They stay built-ins on purpose.
+#
+# The contract is that every error Vincio raises derives from VincioError. A
+# NEW public built-in raise must therefore be either converted to a VincioError
+# (it drops out of this baseline) or, when it is genuinely internal input-
+# validation, added here deliberately: regenerate with
+# `python -m vincio._error_contract --freeze` and review the diff. The ContextApp
+# (app.* verb) surface carries ZERO entries and is held there by an always-on
+# gate. Guarded by tests/test_error_contract.py and the hygiene VincioBench family.
+vincio.agents.research ResearchReport.render ValueError
+vincio.agents.selection CostAwareSelector.__init__ ValueError
+vincio.caching.kvreuse KVPrefixPool.__init__ ValueError
+vincio.caching.reasoning ReasoningTraceCache.__init__ ValueError
+vincio.caching.semantic SemanticCacheGate.__init__ ValueError
+vincio.caching.semantic ThresholdCalibrator.__init__ ValueError
+vincio.context.longhorizon ContextCompactor.compact ValueError
+vincio.core.facades CapabilityFacade.__getattr__ AttributeError
+vincio.data.query QueryEngine.dry_run NotImplementedError
+vincio.data.query QueryEngine.execute NotImplementedError
+vincio.documents.registry ParserRegistry.load KeyError
+vincio.evals.adaptive AdaptiveSampler.__init__ ValueError
+vincio.evals.annotation AnnotationQueue.label KeyError
+vincio.evals.annotation cohens_kappa ValueError
+vincio.evals.attribution CausalAttributor.__init__ ValueError
+vincio.evals.ensemble JudgeEnsemble.__init__ ValueError
+vincio.evals.ensemble JudgeEnsemble.calibrate ValueError
+vincio.evals.environment make_retail_environment ValueError
+vincio.evals.guardrails metric_guardrail KeyError
+vincio.evals.judges GEvalJudge.calibrate ValueError
+vincio.evals.judges HybridJudge.__init__ ValueError
+vincio.evals.judges build_judge ValueError
+vincio.evals.online OnlineEvaluator.__init__ KeyError
+vincio.evals.reports GateSpec.check ValueError
+vincio.evals.swap SwapGate.evaluate ValueError
+vincio.governance.privacy gaussian_rdp ValueError
+vincio.governance.privacy rdp_to_epsilon ValueError
+vincio.interop.dspy to_dspy_lm ValueError
+vincio.observability build_exporter ValueError
+vincio.observability.store IndexedTraceStore.rollup ValueError
+vincio.optimize.judge_calibration JudgeCalibrator.acalibrate ValueError
+vincio.optimize.reflective Reflector.reflect NotImplementedError
+vincio.optimize.retrieval_feedback RetrievalFeedback.__init__ ValueError
+vincio.optimize.retrieval_feedback recommend_chunking ValueError
+vincio.optimize.rewards RewardModel.__init__ ValueError
+vincio.optimize.routing EpsilonGreedyBandit.__init__ ValueError
+vincio.optimize.routing EpsilonGreedyBandit.update ValueError
+vincio.optimize.routing GuardedBanditRouter.__init__ ValueError
+vincio.optimize.routing LinUCB.__init__ ValueError
+vincio.optimize.routing LinUCB.update ValueError
+vincio.optimize.routing ModelCascade.model_post_init ValueError
+vincio.optimize.routing Router.__init__ ValueError
+vincio.optimize.routing Router.from_models ValueError
+vincio.optimize.routing UCB1Bandit.__init__ ValueError
+vincio.optimize.self_improvement deploy_candidate ValueError
+vincio.optimize.self_improvement successive_halving ValueError
+vincio.optimize.strategies build_strategy ValueError
+vincio.optimize.test_time TestTimeSearch.beam_search ValueError
+vincio.optimize.test_time TestTimeSearch.best_of_n ValueError
+vincio.optimize.trajectory_opt SoftmaxPolicy.__init__ ValueError
+vincio.optimize.trajectory_opt TrajectoryAdvantage.credit ValueError
+vincio.optimize.trajectory_opt TrajectoryOptimizer.alearn ValueError
+vincio.providers.circuit CircuitBreaker.__init__ ValueError
+vincio.providers.circuit HealthAwareFailover.__init__ ValueError
+vincio.providers.hosted_tools hosted_tool_specs KeyError
+vincio.providers.keypool KeyPool.__init__ ValueError
+vincio.retrieval.chunking chunk_document ValueError
+vincio.retrieval.engine RetrievalEngine.__init__ ValueError
+vincio.retrieval.filters range_ ValueError
+vincio.retrieval.quantization TwoStageIndex.__init__ ValueError
+vincio.retrieval.query_understanding QueryUnderstanding.expand ValueError
+vincio.retrieval.rerankers build_reranker ValueError
+vincio.retrieval.sharded ShardedIndex.__init__ ValueError
+vincio.security.audit Ed25519Signer.__init__ ImportError
+vincio.security.audit Ed25519Signer.__init__ ValueError
+vincio.security.audit Ed25519Signer.sign ValueError
+vincio.security.audit HMACSigner.__init__ ValueError
+vincio.security.audit merkle_proof IndexError
+vincio.security.locales get_locale_pack KeyError
+vincio.testing.asserts assert_eval AssertionError
+vincio.testing.asserts assert_grounded AssertionError
+vincio.testing.asserts assert_metric AssertionError
+vincio.tools.computer_environment ScreenBackend.observe NotImplementedError
+vincio.tools.computer_environment ScreenBackend.perform NotImplementedError
+vincio.tools.computer_use ComputerUseBackend.act NotImplementedError
+vincio.verify.kernels Constraint.compare ValueError
+vincio.verify.kernels safe_eval_arithmetic ValueError
+vincio.verify.kernels safe_eval_arithmetic.parse_atom ValueError
+vincio.verify.kernels safe_eval_arithmetic.parse_term ValueError
+vincio.verify.programs ProgramOp.apply ValueError
+vincio.verify.statistical forecast ValueError
+vincio.verify.statistical mean_confidence_interval ValueError
+vincio.verify.statistical ols_fit ValueError
+vincio.verify.statistical pearson_r ValueError
+vincio.verify.statistical prediction_interval ValueError
+vincio.verify.statistical student_t_cdf ValueError
+vincio.verify.statistical student_t_ppf ValueError
+vincio.verify.statistical t_critical ValueError
