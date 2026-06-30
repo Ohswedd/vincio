@@ -7139,6 +7139,44 @@ class ContextApp:
 
         return DataEngagement(self, dataset=dataset, question=question, analyst=analyst)
 
+    def federated_data_engagement(
+        self,
+        *,
+        query: Any | None = None,
+        coordinator: str | None = None,
+        layer: Any | None = None,
+    ) -> Any:
+        """Run a governed analytics query **across organizations** without pooling
+        the raw rows — the cross-org / federated twin of :meth:`data_engagement`.
+
+        Returns a :class:`~vincio.data.FederatedDataEngagement`: add each
+        participating org with
+        :meth:`~vincio.data.FederatedDataEngagement.add_member`, then thread the
+        lifecycle — negotiate the :class:`~vincio.data.FederatedQuery` into a signed
+        :class:`~vincio.negotiation.Contract`, choreograph a contract-governed
+        :class:`~vincio.choreography.Saga` so each org runs the governed metric
+        **locally** and returns only its aggregated, cell-cited
+        :class:`~vincio.data.MetricResult`, and reconcile the aggregates into one
+        signed, offline-verifiable :class:`~vincio.data.FederatedNarrative`. The raw
+        rows never cross the trust boundary; residency egress refusal, the consent
+        ledger's analytics purpose, the differential-privacy accountant, and the
+        ``min_members`` k-anonymity floor all apply at the boundary exactly as they
+        would to a local query::
+
+            from vincio.data import FederatedQuery
+
+            q = FederatedQuery.of("total_revenue", table="sales", by=["region"])
+            fed = app.federated_data_engagement(query=q)
+            fed.add_member("acme", acme_app, region="us-east-1")
+            fed.add_member("globex", globex_app, region="eu-west-1")
+            findings = fed.run()                 # negotiate → dispatch → reconcile
+            narrative = fed.seal()
+            fed.verify(app.contract_signer).valid   # chain + digests + data-bound
+        """
+        from ..data.federated import FederatedDataEngagement
+
+        return FederatedDataEngagement(self, query=query, coordinator=coordinator, layer=layer)
+
     # -- real-time & streaming analytics --------------------------------
 
     def stream_analytics(

@@ -106,6 +106,18 @@
     "families.data_plane.realtime.events_per_s": {
       "gte": 10000
     },
+    "families.data_plane.federated_analytics.rows_never_cross": {
+      "eq": true
+    },
+    "families.data_plane.federated_analytics.federated_data_binding": {
+      "eq": true
+    },
+    "families.data_plane.federated_analytics.governance_preservation": {
+      "eq": true
+    },
+    "families.data_plane.federated_analytics.reconciliation_exact": {
+      "eq": true
+    },
     "families.data_plane.semantic_layer.governed_one_way": {
       "eq": true
     },

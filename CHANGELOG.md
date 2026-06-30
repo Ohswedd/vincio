@@ -4,6 +4,65 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.7.0] - 2026-06-30
+
+Cross-org / federated analytics — **the second phase of the data & analytics extension line (5.6–5.9).**
+A governed metric run across **more than one organization's** data without pooling the raw rows into a
+shared warehouse — the analytics analogue of federated self-improvement and the data-plane twin of
+`CrossOrgEngagement`. The query is negotiated as a `Contract`, choreographed as a `Saga` whose steps run
+each org's governed query plane **locally** and return only the aggregated, cell-cited `MetricResult`, and
+reconciled into one signed, offline-verifiable `FederatedNarrative` whose every finding re-derives from each
+org's content-hashed source. Entirely additive — a new `vincio.data.federated` module and one app method
+behind it; `API_VERSION` stays `5.0`, the `vincio migrate 5.x` codemod table stays empty, and a clean
+upgrade needs zero source changes. Dependency-free, deterministic, and offline.
+
+### Added
+
+- **`FederatedQuery` — the shape of a cross-org governed metric** (`vincio.data.federated`): the measures
+  and dimensions, the source columns it touches, the residency posture, the budget, and a `min_members`
+  k-anonymity contributor floor. Its `digest()` is bound into a negotiated `Contract`'s hashed `scope`, so
+  the agreed query shape is tamper-evident. `validate_against` refuses a non-partition-decomposable measure
+  (`AVG` / `COUNT_DISTINCT` / ratio) at construction with guidance to federate its decomposable components.
+- **`FederatedDataEngagement`** (`app.federated_data_engagement`) — a governed, compositional facade over
+  several `FederatedMember`s (each an org id bound to its *own* `ContextApp`). `negotiate` binds the query
+  into a signed `Contract`; `dispatch` choreographs a contract-governed `Saga`, one step per member, each
+  running that org's `query_metric` **locally** and returning only the aggregated `MetricResult` — the raw
+  rows are never serialized into the dispatch, the journal, or the narrative; `reconcile` combines the
+  aggregates into one `FederatedFinding` per metric and group. `run` threads all three.
+- **Exact reconciliation** for the partition-decomposable aggregations: `SUM` and `COUNT` add across orgs,
+  `MIN` / `MAX` take the extremum, group by group — so a federated total is the true total. Every org must
+  compute the metric by the **same** layer definitions (an org whose layer digest differs is refused), and
+  the grouping attributes are the layer's governed *dimensions*, never raw identifiers.
+- **`FederatedNarrative` — signed, hash-chained, offline-verifiable**: the ordered chain of
+  `FederatedStage`s (negotiate → choreograph → per-org query → reconcile) carrying the reconciled findings.
+  `verify()` recomputes the chain from the bytes alone (a re-ordered stage, an edited digest, a tampered
+  head, or a forged signature is caught), and `FederatedDataEngagement.verify` additionally re-executes each
+  member's aggregate against its content-hashed source and re-derives every reconciled value — so a tamper
+  to any org's source or to the reconciliation is caught even when the chain is intact. Sealed onto the
+  audit chain (action `federated_data_engagement`).
+- **Governance crosses the boundary intact:** residency-aware egress refusal (reusing `ResidencyPolicy`),
+  the consent ledger's `ANALYTICS` purpose, and the differential-privacy accountant apply to a member's
+  contribution exactly as they would to a local query — a member outside the posture, without consent, or
+  over its budget is **refused and audited** (action `federated_query_governance`) — and a round below the
+  `min_members` contributor floor is refused so a single org is never singled out.
+- **`FederatedQuery`, `FederatedMember`, `FederatedContribution`, `FederatedFinding`, `FederatedStage`,
+  `FederatedSignature`, `FederatedVerification`, `FederatedNarrative`, and `FederatedDataEngagement`** are
+  exported at the top level and from `vincio.data`. Public surface 517 → 526.
+- **DataPlaneBench / `federated_analytics`** family with three SLOs — **rows-never-cross** (a per-row
+  sentinel reaches neither the saga journal nor the sealed narrative), **federated-data-binding** (every
+  finding re-derives from each org's source and the reconciled totals equal the brute-force totals over the
+  pooled rows, with a tampered reconciliation caught), and **governance-preservation** (residency, consent,
+  the privacy budget, and the contributor floor each refuse a non-compliant round).
+- **Docs & examples:** `examples/24_federated_analytics.py` (a fully-offline two-org walk),
+  `docs/concepts/federated-data-engagement.md`, a federated-analytics section in the analyze-data guide, the
+  capability-map topic, and the published SLOs in `docs/reference/slo.md`.
+
+### Changed
+
+- **`benchmarks/vinciobench.py`** — `bench_data_plane` gains the `federated_analytics` sub-family;
+  `README.md`, `ROADMAP.md` (5.7 moved from *Planned* to *What ships today*), `SECURITY.md`, `AGENTS.md`,
+  `llms.txt`, and the generated API index / public-surface freeze are synchronized.
+
 ## [5.6.0] - 2026-06-30
 
 Real-time & streaming analytics — **the first phase of the data & analytics extension line (5.6–5.9).**

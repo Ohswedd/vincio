@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **204** public `ContextApp` methods. It is gated for coverage:
+It covers **205** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -290,6 +290,16 @@ Concept: [Data engagement (the analytics capstone)](../concepts/data-engagement.
 | Method | What it does |
 |---|---|
 | `app.data_engagement` | Thread the whole data & analytics plane behind one governed call-path. |
+
+### Cross-org / federated analytics
+
+A governed metric run across organizations over the cross-org fabric: only the aggregated, cell-cited MetricResult crosses (never the raw rows), reconciled into a signed, data-bound FederatedNarrative that verifies offline.
+
+Concept: [Cross-org / federated analytics](../concepts/federated-data-engagement.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [24_federated_analytics.py](../../examples/24_federated_analytics.py) · Reference: [Knowledge](api.md#knowledge)
+
+| Method | What it does |
+|---|---|
+| `app.federated_data_engagement` | Run a governed analytics query **across organizations** without pooling the raw rows — the cross-org / federated twin of :meth:`data_engagement`. |
 
 ## Governance
 

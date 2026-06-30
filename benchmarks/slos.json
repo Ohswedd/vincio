@@ -363,6 +363,36 @@
       "rationale": "The data plane's promise is a cited answer that re-derives from the bytes; the budget gates that each window's result verifies against its bounded captured window, its event citations point only at events the window held, and a flipped captured value makes verify() fail \u2014 so a provenance or verification regression is caught."
     },
     {
+      "id": "federated_rows_never_cross",
+      "category": "privacy",
+      "statement": "A cross-org federated query never moves raw rows across a trust boundary: a unique per-row sentinel present in every organization's source data appears nowhere in the dispatched saga journal or the sealed FederatedNarrative — only group-by aggregates cross.",
+      "metric": "families.data_plane.federated_analytics.rows_never_cross",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.federated_analytics.rows_never_cross",
+      "rationale": "The promise of federated analytics is an answer computed without pooling raw data into a shared warehouse; the budget gates that only the aggregated, cell-cited MetricResult is transported and journaled, so a regression that leaks a raw row across the boundary is caught."
+    },
+    {
+      "id": "federated_data_binding",
+      "category": "reliability",
+      "statement": "Every finding in a federated engagement re-derives from each organization's content-hashed source: the engagement re-executes each org's aggregate against its catalog, the reconciled totals equal the brute-force totals over the pooled rows, the narrative verifies offline from the bytes, and a tampered reconciliation is caught.",
+      "metric": "families.data_plane.federated_analytics.federated_data_binding",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.federated_analytics.federated_data_binding",
+      "rationale": "A cross-org answer is only trustworthy if it provably re-derives from each org's bytes; the budget gates that data-binding holds, reconciliation is exact against an independent computation, the sealed narrative round-trips and verifies, and an edited reconciled value fails verify() — so a binding or reconciliation regression is caught."
+    },
+    {
+      "id": "federated_governance_preservation",
+      "category": "security",
+      "statement": "Every governance rail a local query passes applies to a cross-org query: residency egress refusal, the consent ledger's analytics purpose, the differential-privacy budget, and the k-anonymity contributor floor each refuse a non-compliant federated round.",
+      "metric": "families.data_plane.federated_analytics.governance_preservation",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.federated_analytics.governance_preservation",
+      "rationale": "Crossing a trust boundary must not weaken governance; the budget gates that an out-of-residency member, a member without analytics consent, a member over its privacy budget, and a round below the contributor floor are each refused and audited — so a regression that lets a non-compliant contribution through is caught."
+    },
+    {
       "id": "semantic_layer_governed_one_way",
       "category": "quality",
       "statement": "A metric defined once in the semantic layer is computed one way everywhere: a measure compiles to a single canonical read-only SELECT and returns the same number however the question is phrased.",
