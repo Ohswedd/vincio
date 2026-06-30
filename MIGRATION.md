@@ -10,12 +10,11 @@ confirm it for your project.
 
 ```bash
 pip install --upgrade vincio        # upgrade to the latest release
-vincio migrate <major>             # codemod: reports "no source changes required"
-vincio doctor                      # confirm a clean tree on the new version
+vincio doctor                       # confirm a clean tree on the new version
 ```
 
-If `vincio migrate` reports no changes (it will, for any project tracking a recent
-line) you are done.
+No breaking window is currently open, so there is no migration step to run — `vincio
+doctor` reports a clean tree and you are done.
 
 ## Why upgrades need no source changes
 
@@ -34,19 +33,21 @@ surface that working code depends on changes, so it stays stable across additive
 `vincio migrate <target>` is the code-surface analogue of `vincio config migrate`: a
 one-shot, **static** codemod (it parses your source with `ast`, never imports or runs it)
 that rewrites the public symbols a breaking window renames, driven by a declarative
-per-major rename table.
+per-major rename table. It accepts only a target that corresponds to a consolidation
+major it knows about — today `4.0` and `5.0`:
 
 ```bash
-vincio migrate <major> [path]      # dry run: print the plan (default)
-vincio migrate <major> --write     # apply the rewrites in place
-vincio migrate <major> --check     # CI gate: exit non-zero if a migration is available
-vincio migrate <major> --json      # machine-readable plan
+vincio migrate 5.0 [path]      # dry run: print the plan (default)
+vincio migrate 5.0 --write     # apply the rewrites in place
+vincio migrate 5.0 --check     # CI gate: exit non-zero if a migration is available
+vincio migrate 5.0 --json      # machine-readable plan
 ```
 
-The rename tables are currently **empty**, so the codemod reports *"no source changes are
-required for this release"* on any project. The machinery ships anyway: it gives the
-upgrade a truthful, automatable answer today, and it is the mechanism any future
-consolidation — or the removal of a deprecated symbol — would be delivered through.
+Both rename tables are **empty** (each consolidation was additive), so the codemod reports
+*"no source changes are required for this release"* on any project. The machinery ships
+anyway: it gives a truthful, automatable answer today, and it is the mechanism a future
+consolidation — or the removal of a deprecated symbol — would be delivered through, with
+its target added when that window is announced.
 
 ## Deprecations and the breaking-window contract
 

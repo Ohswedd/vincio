@@ -45,11 +45,11 @@ Within a major version (`1.x.y`):
 | **MINOR** | `1.0.0 → 1.1.0` | Additive only: new symbols, new **optional** parameters with defaults. Existing code keeps working. |
 | **MAJOR** | `1.x → 2.0.0` | May remove or change public API, but only after the deprecation contract below. |
 
-`vincio.API_VERSION` (`"5.0"`) is the frozen public-API **contract** version that
-SemVer is applied against. The package is versioned independently: `API_VERSION`
-bumps only when the contract surface that working code depends on changes, so it
-stays `5.0` across additive, non-breaking releases that only add new symbols or pay
-down interior quality debt (see
+SemVer governs the **package version** (the `pip install` version). `vincio.API_VERSION`
+(`"5.0"`) is a separate, frozen **public-API contract** marker: it bumps only when the
+contract surface that working code depends on changes, so it stays `5.0` across additive,
+non-breaking releases that only add new symbols or pay down interior quality debt — even
+as the package version advances (see
 [The long-term-support contract](#the-long-term-support-contract)).
 
 ## Deprecation contract

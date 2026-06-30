@@ -6,7 +6,7 @@ API so LLM behavior is tested like code: deterministic, offline, CI-gated.
 ## Assertions
 
 ```python
-from vincio.testing import assert_eval, assert_grounded, assert_safe
+from vincio.testing import assert_eval, assert_grounded, assert_metric, assert_safe
 
 def test_refund_answer(rag_app):
     result = rag_app.run("What is the refund window?")

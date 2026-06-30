@@ -6,8 +6,8 @@
 
 This is the public roadmap for the Vincio library — package `vincio`, CLI `vincio`,
 configuration `vincio.yaml`, benchmark suite **VincioBench**. It records what ships
-today, what is planned, and what is intentionally out of scope. The complete
-release-by-release history lives in the [CHANGELOG](CHANGELOG.md).
+today, the support posture for forward work, and what is intentionally out of scope.
+The complete release-by-release history lives in the [CHANGELOG](CHANGELOG.md).
 
 ## What "done" means here
 

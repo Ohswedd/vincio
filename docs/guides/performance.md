@@ -249,7 +249,7 @@ already streams end-to-end through `app.stream`, so these are for callers drivin
 the context compiler directly — assembling a packet for a custom transport, or
 editing a compiled packet between turns. `CompileStreamEvent` is exported from
 `vincio.context` for typing the stream. See
-[`examples/11_advanced_context.py`](../../examples/11_advanced_context.py) (the
+[`11_advanced_context.py`](../../examples/11_advanced_context.py) (the
 compile-hot-path section) for both in one offline run.
 
 ## Speculative retrieval prefetch

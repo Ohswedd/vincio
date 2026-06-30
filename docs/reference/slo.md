@@ -548,9 +548,11 @@ offline.
 | The reachability detector provably bites: an injected unreferenced symbol absent from the baseline is reported, a baselined symbol that is actually referenced is flagged stale, and a real load (including an aliased import) is credited as a use. | true | `families.hygiene.reachability_gate_detects_tamper` |
 
 The `hygiene` family holds the codebase's interior quality to the same mechanical,
-gated discipline the rest of the platform applies to its public surface. Each check
-ships as a lint runnable offline (`python -m vincio._<check>`) and a dedicated CI job
-runs all six directly, so the quality they buy cannot silently erode.
+gated discipline the rest of the platform applies to its public surface. Six of the
+checks ship as a lint runnable offline (`python -m vincio._<check>`), and a dedicated
+CI job runs all six directly; the seventh — docstring / behaviour parity — is enforced
+by VincioBench budgets that re-derive each documented claim from the live code. Together
+they ensure the quality they buy cannot silently erode.
 
 - **Public-surface hygiene** (`vincio._surface`). `vincio.__all__` is the frozen
   top-level contract, but each public subpackage also declares its own `__all__` — the
