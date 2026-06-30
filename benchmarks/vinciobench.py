@@ -1348,6 +1348,111 @@ async def _streaming_bench() -> dict[str, Any]:
     }
 
 
+def _realtime_analytics_bench() -> dict[str, Any]:
+    """DataPlaneBench / real-time analytics: the windowed data plane over an
+    unbounded event stream.
+
+    Three guarantees: **windowed correctness** (the windowed group-by over a
+    replayed event log equals the brute-force ground truth computed by bucketing
+    every event by its window), **memory stays bounded** (the per-window pipeline's
+    peak resident set for a 100x longer stream is within a small factor of the
+    shorter one — only the open window is held, never the stream), and
+    **incremental provenance is sound** (every window result re-derives offline
+    against its captured window, every cited event offset falls inside the window,
+    and a tampered captured event is caught)."""
+    import time
+    import tracemalloc
+
+    from vincio.data import ColumnSchema, DataType, RowStream, StreamWindow
+
+    schema = [
+        ColumnSchema(name="ts", dtype=DataType.INT),
+        ColumnSchema(name="region", dtype=DataType.STR),
+        ColumnSchema(name="amount", dtype=DataType.FLOAT),
+    ]
+    regions = ["NA", "EU", "APAC", "LATAM"]
+
+    def gen(n: int):
+        def factory():
+            for i in range(n):
+                yield [i, regions[i % 4], float(i % 1000)]
+
+        return factory
+
+    size = 1_000
+    win = StreamWindow.tumbling(size, time_column="ts", table="events")
+    sql = "SELECT region, sum(amount) AS total FROM events GROUP BY region"
+
+    # Windowed correctness: the windowed sums equal a full-materialization bucketing.
+    n = 20_000
+    windowed: dict[float, dict[str, float]] = {}
+    for wq in win.query(RowStream.from_rows(gen(n), schema, name="events"), sql):
+        windowed[wq.window.start] = {row[0]: row[1] for row in wq.rows}
+    truth: dict[float, dict[str, float]] = {}
+    for i in range(n):
+        start = float((i // size) * size)
+        bucket = truth.setdefault(start, {})
+        region = regions[i % 4]
+        bucket[region] = bucket.get(region, 0.0) + float(i % 1000)
+    windowed_correct = windowed == truth and len(windowed) == n // size
+
+    # Throughput — events per second through the windowed query pipeline.
+    start = time.perf_counter()
+    processed = sum(wq.row_count for wq in win.query(RowStream.from_rows(gen(n), schema, name="events"), sql))
+    elapsed = max(time.perf_counter() - start, 1e-6)
+    events_per_s = n / elapsed
+
+    # Bounded memory: the working set is invariant to the number of events — only
+    # one tumbling window's worth is resident at a time.
+    def peak_for(rows: int) -> int:
+        tracemalloc.start()
+        count = 0
+        for _ in win.query(RowStream.from_rows(gen(rows), schema, name="events"), sql):
+            count += 1
+        _, peak = tracemalloc.get_traced_memory()
+        tracemalloc.stop()
+        return peak
+
+    peak_small = peak_for(2_000)
+    peak_large = peak_for(200_000)
+    memory_bounded = peak_large <= peak_small * 4 + 1_048_576 and peak_large <= 8_388_608
+
+    # Incremental provenance: every window verifies offline against its capture,
+    # every cited offset is in-window, and a tampered captured event is caught.
+    all_verify = True
+    citations_in_window = True
+    sampled = 0
+    tamper_caught = True
+    for wq in win.query(RowStream.from_rows(gen(5_000), schema, name="events"), sql):
+        if not wq.verify():
+            all_verify = False
+        valid = set(wq.window.offsets)
+        for r in range(wq.row_count):
+            for cite in wq.event_citations(r, "total"):
+                if cite.offset not in valid:
+                    citations_in_window = False
+        sampled += 1
+    # Tamper detection on one captured window.
+    probe = next(iter(win.query(RowStream.from_rows(gen(size), schema, name="events"), sql)))
+    if not probe.verify():
+        tamper_caught = False
+    probe.window.dataset.cells[2][0] = -123456.0
+    if probe.verify():
+        tamper_caught = False
+    provenance_sound = all_verify and citations_in_window and tamper_caught and sampled == 5
+
+    return {
+        "windowed_correct": windowed_correct,
+        "memory_bounded": memory_bounded,
+        "provenance_sound": provenance_sound,
+        "events_per_s": round(events_per_s),
+        "windows": len(windowed),
+        "peak_small_bytes": peak_small,
+        "peak_large_bytes": peak_large,
+        "events_verified": processed,
+    }
+
+
 async def _text_to_query_bench() -> dict[str, Any]:
     """DataPlaneBench / text-to-query: governed text-to-SQL measured three ways —
     **execution accuracy** on a Spider/BIRD-shaped battery (the predicted query's
@@ -1734,15 +1839,17 @@ def _semantic_layer_bench() -> dict[str, Any]:
 async def bench_data_plane() -> dict[str, Any]:
     """DataPlaneBench: dataset profiling, representative sampling, fit-in-window,
     data-quality rails, governed text-to-query, the data-analysis agent, cited
-    analytical charts, streaming / out-of-core bulk processing, and the semantic
-    layer of governed metrics — fitting a dataset far larger than the window into
-    bounded, faithful, screened evidence, querying it read-only with cell-level
-    provenance, running a bounded multi-step analysis that produces a cited,
-    offline-verifiable narrative, rendering a result into a content-bound,
-    data-bound chart, processing a dataset far larger than memory in bounded passes
-    at high throughput inside a fixed footprint, and resolving a question to a
-    governed metric computed one way everywhere whose provenance reaches the
-    right-to-erasure machinery."""
+    analytical charts, streaming / out-of-core bulk processing, real-time windowed
+    analytics, and the semantic layer of governed metrics — fitting a dataset far
+    larger than the window into bounded, faithful, screened evidence, querying it
+    read-only with cell-level provenance, running a bounded multi-step analysis
+    that produces a cited, offline-verifiable narrative, rendering a result into a
+    content-bound, data-bound chart, processing a dataset far larger than memory in
+    bounded passes at high throughput inside a fixed footprint, computing the
+    profiling / query / metric / quality primitives window by window over an
+    unbounded event stream inside a footprint invariant to the event volume with
+    event-level provenance, and resolving a question to a governed metric computed
+    one way everywhere whose provenance reaches the right-to-erasure machinery."""
     return {
         "fit_in_window": _fit_in_window_bench(),
         "profile": _profile_faithful_bench(),
@@ -1751,6 +1858,7 @@ async def bench_data_plane() -> dict[str, Any]:
         "analysis": await _data_analysis_bench(),
         "charts": await _charts_bench(),
         "streaming": await _streaming_bench(),
+        "realtime": _realtime_analytics_bench(),
         "semantic_layer": _semantic_layer_bench(),
     }
 

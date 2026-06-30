@@ -165,6 +165,7 @@ ErasureResult
 Escrow
 EscrowConfig
 EscrowVerification
+EventCitation
 EventPattern
 Evidence
 EvidenceItem
@@ -379,6 +380,7 @@ StepBinding
 StepOutcome
 StepRecord
 StepRequest
+StreamWindow
 SubgraphScheduler
 SubgraphTask
 SwapGate
@@ -424,6 +426,7 @@ VincioExperimentalWarning
 Violation
 VoiceAgent
 WaterfallTranche
+WindowedQueryResult
 WorkerPoolBackend
 Workflow
 WorldModel

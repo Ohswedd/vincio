@@ -317,6 +317,15 @@ TOPICS: tuple[Topic, ...] = (
         verbs=("semantic_layer", "query_metric", "metric_lineage"),
     ),
     Topic(
+        "realtime-analytics", "knowledge", "Real-time & streaming analytics",
+        "The profiling, query, governed-metric, and quality primitives over an unbounded "
+        "event stream, windowed (tumbling / sliding / session) inside a bounded footprint.",
+        concept=_c("realtime-streaming-analytics"),
+        guides=(_g("analyze-data"),),
+        examples=(_e("23_realtime_streaming_analytics"),),
+        verbs=("stream_analytics",),
+    ),
+    Topic(
         "data-engagement", "knowledge", "Data engagement (the analytics capstone)",
         "The whole analytics plane threaded into a hash-chained, signed, data-bound "
         "DataNarrative that verifies offline.",

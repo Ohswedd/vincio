@@ -188,6 +188,7 @@ _Feed the compiler: sources, retrieval, memory, structured data, and the analyti
 - `app.sample_dataset` — Draw a representative sample of up to ``n`` rows that stands in for the whole dataset, replacing a biased first-N cutoff.
 - `app.screen_data` — Screen a tabular input for schema violations, constraint breaks, and anomalies on the same deterministic rail path PII and injection detection ride. The decision lands on the shared audit chain (``data_quality``).
 - `app.semantic_layer` — Define a :class:`~vincio.data.SemanticLayer` over a registered table — measures, dimensions, and derived columns declared **once** so a question maps to a **governed metric** rather than a raw column.
+- `app.stream_analytics` — Open a governed real-time analytics driver over an **unbounded event stream** — the profiling, query, governed-metric, and quality primitives re-expressed window by window.
 - `app.stream_dataset` — Open a dataset larger than memory as a lazy, schema-bearing :class:`~vincio.data.RowStream` — the out-of-core handle the streaming operators consume in bounded passes.
 - `app.table_evidence` — Build first-class tabular evidence — a typed, columnar dataset rendered header-once — from rows, records, a :class:`~vincio.data.Dataset`, or a legacy ``TableData``.
 - `app.use_context_governor` — Install a long-horizon :class:`~vincio.context.ContextGovernor`.
@@ -339,7 +340,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (513 public symbols)
+## Public API (516 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -507,6 +508,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `Escrow(**data)` — Posted collateral bound to a contract, held, released, or forfeited.
 - `EscrowConfig(**data)` — How a breach's measured shortfall maps to a bounded forfeiture.
 - `EscrowVerification(**data)` — The (non-raising) outcome of verifying an escrow offline.
+- `EventCitation(**data)` — A reference to one source *event* cell a windowed answer rests on.
 - `EventPattern(**data)` — A predicate that matches a :class:`BehaviorEvent`.
 - `Evidence(**data)` — A platform verdict bound by hash to discharge one sub-claim.
 - `EvidenceItem(**data)` — A provenance-aware unit of evidence (text, image, or table).
@@ -719,6 +721,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `StepOutcome(**data)` — A participant's result for one dispatched step.
 - `StepRecord(**data)` — One immutable, hash-chained entry in a :class:`SagaJournal`.
 - `StepRequest(**data)` — The typed envelope dispatched to a participant for one step, the handoff.
+- `StreamWindow(**data)` — A windowing policy over an unbounded event stream, carrying the streaming analogues of the data plane's batch primitives.
 - `SubgraphScheduler(workers=…, store=…, coordinator=…, lease_ttl_s=…, budget=…, deadline_s=…, clock=…)` — Runs independent sub-graphs concurrently under a fair-share budget + SLA.
 - `SubgraphTask(graph, input=…, id=…, thread_id=…, weight=…)` — One independent sub-graph to schedule.
 - `SwapGate(app, metrics=…, quality_metric=…, gates=…, alpha=…, drift_threshold=…, behavior_threshold=…, repeats=…, flake_quarantine=…)` — Gate a model/provider change on replayed golden traces + an eval/cost/ latency/behavioral diff with statistical backing.
@@ -764,6 +767,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `Violation(**data)` — A single property breach pinned to the event that caused it.
 - `VoiceAgent(app, backend=…, config=…, research=…, memory_os=…, rails=…, owner_id=…, research_tool=…, **backend_kwargs)` — A grounded, remembering, guarded voice session over a :class:`ContextApp`.
 - `WaterfallTranche(**data)` — The per-tranche distribution summary of an :class:`InsolvencyResolution`.
+- `WindowedQueryResult(**data)` — A governed query's result over one closed window, **event-level cited**.
 - `WorkerPoolBackend(workers=…, store=…, coordinator=…, lease_ttl_s=…)` — In-process reference distributed executor, lock-free, durable, fan-out.
 - `Workflow(name, tracer=…, approval_fn=…)` — A deterministic, resumable DAG of steps.
 - `WorldModel(transitions=…)` — A deterministic, offline-learned dynamics model of a tool environment.

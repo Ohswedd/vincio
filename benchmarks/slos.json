@@ -333,6 +333,36 @@
       "rationale": "The pre-filter is the control that keeps a big-data candidate pool inside the compute and resident-memory budget; the budget gates that a 10,000-candidate corpus compiled under a cap keeps only the cap's worth, drops the rest into the excluded report, and still surfaces every relevant item \u2014 so a regression that either fails to bound the pool or drops answer-bearing evidence is caught."
     },
     {
+      "id": "realtime_windowed_correctness",
+      "category": "quality",
+      "statement": "Windowed analytics over an unbounded event stream are exact: the per-window group-by computed by the tumbling/sliding/session windower over a replayed event log equals the brute-force ground truth obtained by bucketing every event by its window directly.",
+      "metric": "families.data_plane.realtime.windowed_correct",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.realtime.windowed_correct",
+      "rationale": "A live dashboard or alerting rule is only trustworthy if the windowed answer is the same one a full re-computation would give; the budget gates that a 20,000-event replayed log windowed into tumbling windows reproduces the exact per-window, per-group totals of a brute-force bucketing, so a windowing or assignment regression is caught."
+    },
+    {
+      "id": "realtime_bounded_memory",
+      "category": "performance",
+      "statement": "The resident working set of windowed analytics is invariant to the event volume: the per-window pipeline's peak memory for a 200,000-event stream is within a small factor of its peak for a 2,000-event stream \u2014 only the open window is held resident, never the stream.",
+      "metric": "families.data_plane.realtime.memory_bounded",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.realtime.memory_bounded",
+      "rationale": "The promise of streaming analytics is that an unbounded feed is processed inside a fixed footprint; the budget gates that a 100x-longer stream's peak resident set stays within a small factor of the shorter one and under a hard ceiling, so a leak or an unintended materialization of the whole stream is caught."
+    },
+    {
+      "id": "realtime_incremental_provenance",
+      "category": "reliability",
+      "statement": "Every windowed result carries sound incremental provenance: it re-derives offline against its captured window, every cited event offset falls inside that window, and a tampered captured event is caught by verify().",
+      "metric": "families.data_plane.realtime.provenance_sound",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.data_plane.realtime.provenance_sound",
+      "rationale": "The data plane's promise is a cited answer that re-derives from the bytes; the budget gates that each window's result verifies against its bounded captured window, its event citations point only at events the window held, and a flipped captured value makes verify() fail \u2014 so a provenance or verification regression is caught."
+    },
+    {
       "id": "semantic_layer_governed_one_way",
       "category": "quality",
       "statement": "A metric defined once in the semantic layer is computed one way everywhere: a measure compiles to a single canonical read-only SELECT and returns the same number however the question is phrased.",

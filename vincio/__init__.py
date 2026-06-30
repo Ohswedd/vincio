@@ -138,11 +138,14 @@ from .data import (
     DataQualityReport,
     DatasetProfile,
     DataStage,
+    EventCitation,
     QueryPlan,
     QueryResult,
     RowStream,
     SemanticLayer,
+    StreamWindow,
     TableEvidence,
+    WindowedQueryResult,
     analyze_dataset,
     generate_chart,
     query_dataset,
@@ -532,7 +535,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "5.5.0"
+__version__ = "5.6.0"
 
 __all__ = [
     "ContextApp",
@@ -590,6 +593,9 @@ __all__ = [
     "stream_aggregate",
     "SemanticLayer",
     "query_metric",
+    "StreamWindow",
+    "EventCitation",
+    "WindowedQueryResult",
     "DataStage",
     "DataEngagementSignature",
     "DataEngagementVerification",

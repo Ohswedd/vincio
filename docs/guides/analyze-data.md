@@ -117,6 +117,28 @@ app.map_stream(stream, transform, at_scale=True) # per-chunk, on the BatchRunner
 `aggregate_stream`'s working set tracks the number of groups, not rows. See
 [Streaming and out-of-core bulk processing](../concepts/streaming-and-out-of-core.md).
 
+## Analyze an unbounded event stream, window by window
+
+```python
+from vincio.data import StreamWindow
+
+win = StreamWindow.tumbling(size=60, time_column="ts", table="orders")
+analytics = app.stream_analytics(win, table="orders")
+for wq in analytics.query(stream, "SELECT region, sum(amount) AS total FROM orders GROUP BY region"):
+    dashboard.update(wq.window.label(), wq.rows)
+    wq.cite_events(0, "total")    # the exact source events this figure rests on
+    assert wq.verify()            # re-derives offline against the captured window
+```
+
+A `StreamWindow` (`tumbling` / `sliding` / `session`) computes the profiling,
+query, governed-metric, and quality primitives **one window at a time** over an
+unbounded stream — each closed window emits a result that cites the exact source
+**events** it rests on and verifies offline against its bounded captured window,
+inside a footprint invariant to the event volume. `app.stream_analytics` audits
+every window and drives a **live** async feed (a queue, a websocket, a realtime
+session's events) as readily as a replayed log. See
+[Real-time and streaming analytics](../concepts/realtime-streaming-analytics.md).
+
 ## Thread the whole plane into one signed narrative
 
 ```python
@@ -140,7 +162,9 @@ engagement. See [The data engagement](../concepts/data-engagement.md).
 
 Examples [13](../../examples/13_tabular_evidence.py) through
 [20](../../examples/20_data_engagement.py) are heavily-commented, fully-offline
-programs for each step above, ending with the engagement capstone.
+programs for each step above, ending with the engagement capstone;
+[23](../../examples/23_realtime_streaming_analytics.py) walks the windowed
+real-time plane over a replayed event log.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
@@ -153,6 +177,7 @@ programs for each step above, ending with the engagement capstone.
 - [Concept: Charts & cited artifacts](../concepts/charts-and-cited-artifacts.md)
 - [Concept: Streaming & out-of-core](../concepts/streaming-and-out-of-core.md)
 - [Concept: Semantic layer & governed metrics](../concepts/semantic-layer-and-governed-metrics.md)
+- [Concept: Real-time & streaming analytics](../concepts/realtime-streaming-analytics.md)
 - [Concept: Data engagement (the analytics capstone)](../concepts/data-engagement.md)
 - [Guide: Generate documents & media (`vincio.generation`)](generate-documents.md)
 - [Guide: Performance & streaming](performance.md)
@@ -163,6 +188,7 @@ programs for each step above, ending with the engagement capstone.
 - [Example: 17_charts_cited_artifacts.py](../../examples/17_charts_cited_artifacts.py)
 - [Example: 18_streaming_out_of_core.py](../../examples/18_streaming_out_of_core.py)
 - [Example: 19_semantic_layer_governed_metrics.py](../../examples/19_semantic_layer_governed_metrics.py)
+- [Example: 23_realtime_streaming_analytics.py](../../examples/23_realtime_streaming_analytics.py)
 - [Example: 20_data_engagement.py](../../examples/20_data_engagement.py)
 - [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)

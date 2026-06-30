@@ -720,10 +720,33 @@ additionally **re-executes every captured query, analysis, chart, and metric aga
 source** and confirms each re-derives from the bytes (`data_bound`), so a tampered *source* is caught even
 when the chain is intact (and re-digesting the live artifacts catches a tamper to any underlying artifact).
 Sealing lands the engagement on the hash-chained audit log (action `data_engagement`, decision `sealed`),
-one continuous signed narrative from the raw table to the cited deliverable. With this capstone the data &
-analytics plane is **feature-complete and frozen** under the [stability policy](docs/reference/stability.md):
-no further data-plane *primitive* is scheduled, and subsequent data-plane work is bug-fix and
-standards-tracking only.
+one continuous signed narrative from the raw table to the cited deliverable. The data & analytics plane is
+**stable** under the [stability policy](docs/reference/stability.md); forward work is a scheduled,
+**additive, surface-preserving extension line** (real-time / federated / forecasting-verifiers /
+notebook-native) that opens no breaking window and weakens no boundary.
+
+### Real-time & streaming analytics — windowed governance, offline-verified
+
+**The windowed real-time plane re-expresses the data primitives over an unbounded event stream without
+weakening a single boundary.** A `StreamWindow` (`vincio.data.streaming_analytics`, `tumbling` / `sliding` /
+`session`) computes the profiling, query, governed-metric, and quality primitives **one window at a time**:
+each closed window's events are captured into a bounded `CapturedWindow`, and the per-window operator
+delegates to the *same* governed primitive documented above — `query` runs the **read-only-verified** query
+plane (a write / DDL / stacked statement is structurally refused, the natural-language question is
+injection-screened), `query_metric` runs the governed semantic-layer compilation, and `screen` runs the same
+`DataQualityRails`. **Trust model:** each per-window result cites the exact source **events** it rests on
+(`EventCitation` → `orders@418!amount`) and `verify()`s **offline against the captured window** — it
+re-executes the operation against the captured events, confirms the answer and every cited event re-derive
+from the bytes, confirms every cited offset falls inside the window, and recomputes the window's content hash,
+so a tampered captured event is caught. **Bounded by construction:** only the *open* windows are resident
+(one per key for a tumbling window), so the footprint is invariant to the event volume; a late event for an
+already-closed window is **dropped and counted, never silently misfiled**, and a stream more out of order than
+the allowed lateness (or with unbounded key cardinality) is **refused** (`StreamError`) rather than growing
+without bound. The governed `StreamingAnalytics` driver (`app.stream_analytics`) lands **every emitted
+window** on the hash-chained audit log (action `stream_window`, with the operation, window bounds, event
+count, and content hash) and screens questions on the same injection rail, whether it replays a log or drives
+a **live** async source — a queue, a websocket, or a realtime session's events. It is a library-side windowed
+query, **never a hosted stream processor**.
 
 ### Edge / WASM runtime — the same deterministic safety, offline
 

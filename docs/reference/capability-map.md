@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **203** public `ContextApp` methods. It is gated for coverage:
+It covers **204** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -270,6 +270,16 @@ Concept: [Semantic layer & governed metrics](../concepts/semantic-layer-and-gove
 | `app.metric_lineage` | The **column-level provenance** of a governed metric — the base columns and source it rests on, resolving the derived-column graph and any ratio references. |
 | `app.query_metric` | Compute a **governed metric** — a measure resolved through a :class:`~vincio.data.SemanticLayer` and computed **one way everywhere**. |
 | `app.semantic_layer` | Define a :class:`~vincio.data.SemanticLayer` over a registered table — measures, dimensions, and derived columns declared **once** so a question maps to a **governed metric** rather than a raw column. |
+
+### Real-time & streaming analytics
+
+The profiling, query, governed-metric, and quality primitives over an unbounded event stream, windowed (tumbling / sliding / session) inside a bounded footprint.
+
+Concept: [Real-time & streaming analytics](../concepts/realtime-streaming-analytics.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [23_realtime_streaming_analytics.py](../../examples/23_realtime_streaming_analytics.py) · Reference: [Knowledge](api.md#knowledge)
+
+| Method | What it does |
+|---|---|
+| `app.stream_analytics` | Open a governed real-time analytics driver over an **unbounded event stream** — the profiling, query, governed-metric, and quality primitives re-expressed window by window. |
 
 ### Data engagement (the analytics capstone)
 

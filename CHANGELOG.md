@@ -4,6 +4,59 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.6.0] - 2026-06-30
+
+Real-time & streaming analytics — **the first phase of the data & analytics extension line (5.6–5.9).**
+The profiling, query, governed-metric, and quality plane re-expressed over an **unbounded event stream**
+rather than a bounded `Dataset`, computed one **window** at a time so the working set stays invariant to
+the event volume, with every per-window answer citing the exact events it rests on and re-deriving offline
+against the captured window. Entirely additive — a new `vincio.data.streaming_analytics` module and one
+new app method behind it; the frozen surface grows by three top-level symbols (`StreamWindow`,
+`EventCitation`, `WindowedQueryResult`), `API_VERSION` stays `5.0`, the `vincio migrate 5.x` codemod table
+stays empty, and a clean upgrade needs zero source changes. Dependency-free, deterministic, and offline.
+
+### Added
+
+- **`StreamWindow` — the windowing policy** (`vincio.data.streaming_analytics`): `tumbling` / `sliding` /
+  `session` windows over an unbounded `RowStream`, windowed by **event time** (a numeric `time_column`) or
+  processing time, partitioned by `key_by`, and closed on a **watermark** past the window end plus an
+  allowed `lateness`. A late event for an already-closed window is **dropped and counted**, never silently
+  misfiled; a stream more out of order than the lateness (or with unbounded key cardinality) is **refused**
+  by `max_open_windows` rather than growing the working set without bound.
+- **Windowed analogues of the batch primitives** — each a lazy iterator emitting one result per closed
+  window: `StreamWindow.profile` → `WindowedProfile`, `query` → `WindowedQueryResult` (over the
+  read-only-verified query plane), `query_metric` → `WindowedMetricResult` (over the governed semantic
+  layer), `screen` → `WindowedQualityReport` (`DataQualityRails` per window, with per-violation offending
+  event offsets), and a bounded-memory `aggregate` → `WindowedAggregation` (riding `stream_aggregate`).
+- **Event-level provenance & offline verification:** each closed window is captured into a bounded
+  `CapturedWindow` (the events as a schema-bearing `Dataset`, their stable stream offsets, the bounds, a
+  content hash). A windowed answer cites the exact source **events** via `EventCitation`
+  (`stream@<offset>!<column>`, the streaming analogue of `CellCitation`), and `verify()` re-executes against
+  the captured window, confirming the answer and every cited event re-derive from the bytes — a tampered
+  captured event is caught.
+- **`app.stream_analytics(window)`** → a governed `StreamingAnalytics` driver: audits every emitted window
+  on the hash-chained audit log (action `stream_window`), screens any natural-language question on the same
+  injection rail, and drives a **live** async source (a queue, a websocket, a realtime session's events) via
+  `drive(...)` exactly as it replays a log — with an `on_window` callback and `max_windows` bound for an
+  alerting rule.
+- **`StreamWindow`, `EventCitation`, and `WindowedQueryResult`** are exported at the top level (the full set
+  — `WindowKind`, `CapturedWindow`, the five `Windowed*` results, and `StreamingAnalytics` — from
+  `vincio.data`). Public surface 514 → 517.
+- **DataPlaneBench / `realtime`** family with three SLOs — **windowed-correctness** (the windowed group-by
+  equals the brute-force ground truth), **bounded-memory** (footprint invariant as the stream grows 100×),
+  and **incremental-provenance** (every window verifies offline, every cited offset is in-window, a tampered
+  event is caught) — plus an events/s throughput budget.
+- **Docs & examples:** `examples/23_realtime_streaming_analytics.py` (a fully-offline walk over a replayed
+  event log and a live async feed), `docs/concepts/realtime-streaming-analytics.md`, a streaming-analytics
+  section in the analyze-data guide, the capability-map topic, and the published SLOs in
+  `docs/reference/slo.md`.
+
+### Changed
+
+- **`benchmarks/vinciobench.py`** — `bench_data_plane` gains the `realtime` sub-family; `README.md`,
+  `ROADMAP.md` (5.6 moved from *Planned* to *What ships today*), `SECURITY.md`, `AGENTS.md`, `llms.txt`,
+  and the generated API index / public-surface freeze are synchronized.
+
 ## [5.5.0] - 2026-06-30
 
 The developer-experience capstone — **rebuild the on-ramp to match the platform behind it.** The

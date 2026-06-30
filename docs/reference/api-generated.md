@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**513** public symbols.
+**516** public symbols.
 
 ## Classes
 
@@ -657,6 +657,10 @@ How a breach's measured shortfall maps to a bounded forfeiture.
 ### `EscrowVerification(**data)`
 
 The (non-raising) outcome of verifying an escrow offline.
+
+### `EventCitation(**data)`
+
+A reference to one source *event* cell a windowed answer rests on.
 
 ### `EventPattern(**data)`
 
@@ -1506,6 +1510,10 @@ One immutable, hash-chained entry in a :class:`SagaJournal`.
 
 The typed envelope dispatched to a participant for one step, the handoff.
 
+### `StreamWindow(**data)`
+
+A windowing policy over an unbounded event stream, carrying the streaming analogues of the data plane's batch primitives.
+
 ### `SubgraphScheduler(workers=…, store=…, coordinator=…, lease_ttl_s=…, budget=…, deadline_s=…, clock=…)`
 
 Runs independent sub-graphs concurrently under a fair-share budget + SLA.
@@ -1685,6 +1693,10 @@ A grounded, remembering, guarded voice session over a :class:`ContextApp`.
 ### `WaterfallTranche(**data)`
 
 The per-tranche distribution summary of an :class:`InsolvencyResolution`.
+
+### `WindowedQueryResult(**data)`
+
+A governed query's result over one closed window, **event-level cited**.
 
 ### `WorkerPoolBackend(workers=…, store=…, coordinator=…, lease_ttl_s=…)`
 

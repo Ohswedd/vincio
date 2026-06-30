@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "5.5.0"
+version = "5.6.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -212,6 +212,7 @@ module = [
   "vincio.data.analysis",
   "vincio.data.charts",
   "vincio.data.streaming",
+  "vincio.data.streaming_analytics",
   "vincio.data.semantic",
   "vincio.data.engagement",
   "vincio.testing.lowering",
