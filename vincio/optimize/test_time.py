@@ -347,7 +347,7 @@ class TestTimeSearch:
         return _as_candidate(raw, index)
 
     async def _score(self, candidate: SearchCandidate) -> SearchCandidate:
-        assert self.verifier is not None
+        assert self.verifier is not None  # noqa: S101 - the caller scores only when a verifier is configured
         verdict = await self.verifier.averify(candidate)
         candidate.score = verdict.value
         candidate.confidence = verdict.confidence

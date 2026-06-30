@@ -359,7 +359,7 @@ class Choreography:
         """
         if not step.is_discovered:
             return step.participant, self._resolve(step.participant), None
-        assert self.binder is not None  # guaranteed by __init__ validation
+        assert self.binder is not None  # noqa: S101 - guaranteed by __init__ validation when discovery is used
         binding = self.binder.bind(step, available=set(self.participants))
         self._audit_bind(journal, binding)
         return binding.org, self._resolve(binding.org), binding

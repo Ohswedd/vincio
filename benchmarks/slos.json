@@ -2521,6 +2521,36 @@
       "threshold": true,
       "enforced_by": "families.hygiene.docstring_parity_memory",
       "rationale": "delete and forget were near-duplicate bodies that could drift apart on edit. The budget gates that delete delegates to forget and the two audit details stay distinct, so the deletion path has one implementation and one place a bug can hide."
+    },
+    {
+      "id": "hygiene_assert_robustness_conformant",
+      "category": "reliability",
+      "statement": "The library is robust under python -O: no public module carries an assert that carries control-flow weight and would silently vanish when assertions are stripped — every load-bearing assert is an explicit guard that raises a VincioError, and a genuine never-happens invariant kept as an assert carries a justifying # noqa: S101 — and the detector provably flags an injected bare assert while ignoring a marked one.",
+      "metric": "families.hygiene.assert_robustness_conformant",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.assert_robustness_conformant",
+      "rationale": "python -O (and -OO) strips every assert, so a load-bearing one — narrowing a value the code then dereferences, or checking a precondition a public operation depends on — vanishes in an optimized deployment, turning a caught invariant into an opaque downstream TypeError far from its cause. The budget gates the contract mechanically: each load-bearing assert is replaced by a guard that raises the appropriate VincioError so an optimized run fails loudly and correctly, and the lint holds the whole public tree to zero unmarked asserts, so a new one fails the build unless it is converted to a guard or deliberately marked — exactly as the observable-failure gate holds the tree to zero unmarked silent swallows and the error-contract gate holds the verb surface to zero off-contract raises."
+    },
+    {
+      "id": "hygiene_assert_robustness_clean",
+      "category": "reliability",
+      "statement": "Every public module is free of unmarked asserts: the lint reports none tree-wide, so nothing load-bearing is left to vanish under python -O.",
+      "metric": "families.hygiene.assert_robustness_clean",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.assert_robustness_clean",
+      "rationale": "An assert stripped under -O reads as a sound check while doing nothing in an optimized deployment. The budget gates that no public module carries an unmarked one, so a control-flow-significant invariant is always an explicit guard that raises a VincioError or an explicitly justified # noqa: S101 — the debt cannot silently return."
+    },
+    {
+      "id": "hygiene_assert_robustness_gate_detects_tamper",
+      "category": "reliability",
+      "statement": "The -O-robustness detector provably bites: an injected bare assert is reported while a marked one is not, so a green check means the invariant was actually exercised.",
+      "metric": "families.hygiene.assert_robustness_gate_detects_tamper",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.assert_robustness_gate_detects_tamper",
+      "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the static detector flags an unmarked assert and ignores a # noqa: S101-marked one, so the -O-robustness guarantee is backed by a check that demonstrably catches the stripped-under-O assert it claims to prevent without over-reporting."
     }
   ]
 }

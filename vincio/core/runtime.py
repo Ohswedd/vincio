@@ -24,7 +24,12 @@ from typing import TYPE_CHECKING, Any
 
 from ..context.compiler import CompiledContext
 from ..context.ir import OutputContractRef
-from ..core.errors import BudgetExceededError, EgressBlockedError, VincioError
+from ..core.errors import (
+    BudgetExceededError,
+    EgressBlockedError,
+    ProviderResponseError,
+    VincioError,
+)
 from ..core.types import (
     Budget,
     BudgetUsage,
@@ -236,7 +241,10 @@ class VincioRuntime:
                                 yield item
                             else:
                                 response = item
-                        assert response is not None
+                        if response is None:
+                            raise ProviderResponseError(
+                                "the streaming model loop completed without producing a response"
+                            )
                         await self._finalize(
                             prepared, response, result, run_id, user_input, policies
                         )
@@ -1399,7 +1407,10 @@ class VincioRuntime:
                     provider = self._cascade_provider(nxt.provider)
                     continue
             break
-        assert response is not None
+        if response is None:
+            raise ProviderResponseError(
+                "the model tool loop completed without producing a response"
+            )
         if cascade is not None:
             result.metadata.setdefault("cascade", {})["model"] = model
             result.metadata["cascade"]["escalations"] = escalations
@@ -1613,7 +1624,10 @@ class VincioRuntime:
                 enforce=enforce_caps,
                 stage="tool_round",
             )
-        assert response is not None
+        if response is None:
+            raise ProviderResponseError(
+                "the streaming model tool loop completed without producing a response"
+            )
         yield response
 
     # ------------------------------------------------------------------

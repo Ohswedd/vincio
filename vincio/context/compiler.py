@@ -885,7 +885,10 @@ class ContextCompiler:
         evidence.
         """
         ceiling = self.options.max_resident_bytes
-        assert ceiling is not None
+        if ceiling is None:
+            raise ContextCompileError(
+                "the resident-footprint fit requires a configured max_resident_bytes ceiling"
+            )
         memory_texts = [c.content for c in memory]
 
         def estimate(items: list[ContextCandidate], slim_flag: bool) -> int:

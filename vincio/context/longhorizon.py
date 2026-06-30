@@ -508,7 +508,7 @@ class ContextGovernor:
         return bool(batch) and sum(s.token_cost for s in batch) > 0
 
     def _compact_batch(self, batch: list[RunSpan]) -> None:
-        assert self.compactor is not None
+        assert self.compactor is not None  # noqa: S101 - the caller compacts only when a compactor is configured
         summary, record = self.compactor.compact(batch)
         # If the summary did not actually shrink the batch, fall back to eviction
         # of the coldest member to guarantee forward progress.

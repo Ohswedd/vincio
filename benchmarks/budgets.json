@@ -2404,7 +2404,19 @@
     "families.hygiene.docstring_parity_memory": {
       "eq": true
     },
+    "families.hygiene.assert_robustness_conformant": {
+      "eq": true
+    },
+    "families.hygiene.assert_robustness_clean": {
+      "eq": true
+    },
+    "families.hygiene.assert_robustness_gate_detects_tamper": {
+      "eq": true
+    },
     "families.hygiene.hygiene_silent_swallows": {
+      "lte": 0
+    },
+    "families.hygiene.hygiene_unmarked_asserts": {
       "lte": 0
     },
     "families.hygiene.hygiene_wired_capabilities": {

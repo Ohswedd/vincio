@@ -103,7 +103,7 @@ async def assert_backend_conformance(
             expected, got = reference.state[key], state.get(key)
             if key == "results" and isinstance(expected, list) and isinstance(got, list):
                 expected, got = sorted(expected), sorted(got)
-            assert got == expected, (
+            assert got == expected, (  # noqa: S101 - intentional conformance assertion (documented to raise AssertionError)
                 f"backend {name!r} diverged from the native engine on case "
                 f"{case_name!r}: state[{key!r}] = {got!r}, expected {expected!r}"
             )

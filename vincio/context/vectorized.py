@@ -79,7 +79,7 @@ def row_normalize(vectors: Sequence[Sequence[float]]) -> Any | None:
 
 def matrix_vector_cosine(normalized_matrix: Any, vector: Sequence[float]) -> list[float]:
     """Cosine of every row of a row-normalized matrix against *vector*."""
-    assert _np is not None  # only called on the NumPy path
+    assert _np is not None  # noqa: S101 - only called on the NumPy path (the caller returns None when NumPy is absent)
     vec = _np.asarray(vector, dtype=float)
     norm = _np.linalg.norm(vec)
     if norm == 0.0:

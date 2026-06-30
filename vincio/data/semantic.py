@@ -530,7 +530,7 @@ class SemanticLayer(BaseModel):
             den = self._measure_sql(self.measure(measure.denominator))
             # NULLIF guards a zero denominator (the ratio is NULL, never a crash).
             return f"(CAST({num} AS REAL) / NULLIF({den}, 0))"
-        assert measure.agg is not None  # guarded by the model validator
+        assert measure.agg is not None  # noqa: S101 - a non-ratio measure always has an agg (model validator)
         fn = _SQL_FN[measure.agg]
         if measure.agg is Aggregation.COUNT and not measure.expression.strip():
             inner = "*"

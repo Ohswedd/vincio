@@ -4,6 +4,58 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.5.0] - 2026-06-30
+
+**`-O` robustness — the hardening line (6.x) continues.** Python strips every `assert` statement under
+`python -O` (and `-OO`). A standing internal audit found a handful of `assert`s in shipped code that carried
+real control-flow weight — narrowing a value the code then dereferenced, or checking a precondition a public
+operation depended on — so in an optimized deployment they silently vanished, turning a caught invariant into
+an opaque downstream `TypeError` / `AttributeError` far from its cause. This release replaces each load-bearing
+`assert` with an explicit guard that raises the appropriate `VincioError`, so a `python -O` run fails loudly
+and correctly, and keeps the genuine never-happens invariants as documented, marked `assert`s. Additive: the
+frozen top-level contract `vincio.__all__` is unchanged, so `API_VERSION` stays `5.0`, the `vincio migrate 6.x`
+codemod table stays empty, and a clean upgrade needs zero source changes. `except VincioError` (the documented
+contract) was always the right catch and is unaffected — under `-O` it now *fires* where the stripped `assert`
+used to be silent.
+
+### Changed
+
+- **The streaming and cascade response paths in `vincio.core.runtime` raise `ProviderResponseError`.** After a
+  model tool loop completes, the runtime asserted a response had been produced (`assert response is not None`)
+  in three places — the streaming executor, the cascade loop, and the streaming tool loop. Each is now an
+  explicit guard: if the loop produced no response, it raises `ProviderResponseError` rather than relying on an
+  `assert` that disappears under `-O` and yields a downstream `AttributeError` on `None`.
+- **`vincio.context.compiler`'s resident-footprint fit raises `ContextCompileError`.** `_enforce_footprint`
+  asserted the `max_resident_bytes` ceiling was configured before comparing the packet's estimate against it;
+  it now raises `ContextCompileError` when invoked without a ceiling, so an `-O` deployment cannot silently
+  compare against `None`.
+- **`vincio.agents.graph`'s `CompiledGraph.ainvoke` raises `GraphError` on a missing terminal event.** The
+  public `ainvoke` asserted the run ended with a terminal (`done` / `interrupt`) event before returning its
+  payload; it now raises `GraphError` rather than returning `None` typed as a `GraphResult` under `-O`.
+- **`vincio.mcp.transport`'s stdio transport raises `MCPError` on a missing subprocess pipe.** The four
+  `assert proc.stdin/stdout is not None` checks across `_read_loop`, `_answer_server_request`, `request`, and
+  `notify` are now guards that raise `MCPError` when the subprocess was started without the expected pipe.
+- **Genuine never-happens invariants are documented and marked, not removed.** The remaining `assert`s — a
+  value guaranteed non-`None` by an adjacent caller guard, a model validator, or the immediately-preceding
+  assignment (e.g. `MemoryEngine._vectors_for`'s embedder, the governance ledgers' `_load` store, the optimize
+  evaluators' bound dataset, `Choreography._bind_step`'s binder, `SemanticLayer._measure_sql`'s aggregation) —
+  are kept as a cheap type-narrowing aid, each with a clarifying comment and a justifying `# noqa: S101`.
+
+### Added
+
+- **`vincio._assert_robustness` — the static `-O`-robustness gate.** It scans every public module for an
+  `assert` statement and holds the whole tree to **zero** unmarked ones: `# noqa: S101` (the standard "use of
+  `assert`" code) is the per-site marker affirming a reviewed never-happens invariant, the way `# noqa: BLE001`
+  marks a reviewed broad `except`. There is no frozen baseline — the inline marker is the accepted form, so a
+  new load-bearing `assert` fails the build the moment it lands unless it is converted to a guard. An `assert`
+  inside a docstring example is a string literal, not a statement, and is correctly ignored. Reproduce offline
+  with `python -m vincio._assert_robustness`.
+- **VincioBench `hygiene` family gains the 6.5 checks.** `assert_robustness_conformant` (clean tree **and** the
+  detector provably bites on an injected bare `assert` while ignoring a marked one), `assert_robustness_clean`,
+  and `assert_robustness_gate_detects_tamper`, plus the `hygiene_unmarked_asserts` (gated to `0`) and
+  `hygiene_marked_asserts` stats. Three new SLOs (`hygiene_assert_robustness_*`) are published and held by
+  at-least-as-strict budgets.
+
 ## [6.4.0] - 2026-06-30
 
 **Docstring / behaviour parity — the hardening line (6.x) continues.** A standing internal audit found

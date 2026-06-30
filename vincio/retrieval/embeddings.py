@@ -914,7 +914,7 @@ class ColBERTTokenEmbedder:
         self._ensure()
         if self._encode_fn is not None:
             return [list(map(float, v)) for v in self._encode_fn(texts)]
-        assert self._fallback_embedder is not None
+        assert self._fallback_embedder is not None  # noqa: S101 - _ensure() set it (no encode_fn implies the fallback path)
         return await self._fallback_embedder.embed(texts)
 
 

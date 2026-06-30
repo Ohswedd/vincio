@@ -12023,7 +12023,18 @@ async def bench_hygiene() -> dict[str, Any]:
     (``docstring_parity_consent``); and ``MemoryEngine.delete`` delegates to ``forget``
     with the audit semantics preserved (``docstring_parity_memory``).
 
-    This family gates all four reconciliations the way ``docs_conformance`` gates the
+    6.5 adds the **``-O`` robustness** half: Python strips every ``assert`` under
+    ``python -O``, so a *load-bearing* one — narrowing a value the code dereferences,
+    or checking a precondition a public operation depends on — silently vanishes in an
+    optimized deployment, turning a caught invariant into an opaque downstream error.
+    Each is now an explicit guard that raises the appropriate ``VincioError``; a
+    genuine *never-happens* invariant is kept as an ``assert`` with a justifying
+    ``# noqa: S101``. A lint (``vincio._assert_robustness``) holds the whole public
+    tree to **zero** unmarked ``assert``s (``assert_robustness_clean``), and the
+    detector provably bites on an injected bare ``assert`` while ignoring a marked one
+    (``assert_robustness_gate_detects_tamper``).
+
+    This family gates all five reconciliations the way ``docs_conformance`` gates the
     docs graph. **Surface:** resolvable (every ``__all__`` name is a live attribute,
     no duplicate/malformed entries), frozen (matches the committed manifest), and
     classified (TOP / DUP / SUB, collisions pinned), with a companion proof the gate
@@ -12036,7 +12047,11 @@ async def bench_hygiene() -> dict[str, Any]:
     one (``observable_failure_gate_detects_tamper``). **Wire-or-retire:** every public
     capability is reachable (``wire_or_retire_clean``) and the detector provably bites
     on an unreachable reach and a wired symbol with no production caller
-    (``wire_or_retire_gate_detects_tamper``). Deterministic and offline."""
+    (``wire_or_retire_gate_detects_tamper``). **``-O`` robustness:** no public module
+    carries an unmarked ``assert`` that vanishes under ``python -O``
+    (``assert_robustness_clean``) and the detector provably flags an injected bare
+    ``assert`` while ignoring a marked one (``assert_robustness_gate_detects_tamper``).
+    Deterministic and offline."""
     from types import SimpleNamespace
 
     import vincio
@@ -12208,6 +12223,34 @@ async def bench_hygiene() -> dict[str, Any]:
         and docstring_parity_memory
     )
 
+    # 6.5 — `-O` robustness. Python strips every `assert` under `python -O`, so a
+    # load-bearing one (narrowing a value the code dereferences, or checking a
+    # precondition) silently vanishes in an optimized deployment. Each is now an
+    # explicit guard that raises a VincioError; a genuine never-happens invariant is
+    # kept as an `assert` with a justifying S101 noqa marker. The lint holds the whole
+    # public tree to zero unmarked asserts, and the detector provably bites on an
+    # injected bare assert while ignoring a marked one.
+    from vincio import _assert_robustness
+
+    unmarked_asserts = _assert_robustness.unmarked_asserts()
+    assert_robustness_clean = not unmarked_asserts
+    ar_detects_bare = bool(
+        _assert_robustness.unmarked_asserts_in_source(
+            "def f(x):\n    assert x is not None\n    return x\n"
+        )
+    )
+    ar_ignores_marked = (
+        _assert_robustness.unmarked_asserts_in_source(
+            "def f(x):\n    assert x is not None  # noqa: S101 - invariant\n    return x\n"
+        )
+        == []
+    )
+    assert_robustness_gate_detects_tamper = bool(ar_detects_bare and ar_ignores_marked)
+    assert_robustness_conformant = bool(
+        assert_robustness_clean and assert_robustness_gate_detects_tamper
+    )
+    marked_asserts = _assert_robustness.marked_assert_count()
+
     return {
         "surface_consistency": surface_consistency,
         "surface_dead_symbol_free": surface_dead_symbol_free,
@@ -12228,6 +12271,9 @@ async def bench_hygiene() -> dict[str, Any]:
         "docstring_parity_compression": docstring_parity_compression,
         "docstring_parity_consent": docstring_parity_consent,
         "docstring_parity_memory": docstring_parity_memory,
+        "assert_robustness_conformant": assert_robustness_conformant,
+        "assert_robustness_clean": assert_robustness_clean,
+        "assert_robustness_gate_detects_tamper": assert_robustness_gate_detects_tamper,
         "hygiene_subpackages_audited": len(surface),
         "hygiene_subpackage_public_symbols": len(rows),
         "hygiene_top_level_reexports": top_count,
@@ -12238,6 +12284,8 @@ async def bench_hygiene() -> dict[str, Any]:
         "hygiene_error_contract_modules": len({row[0] for row in contract_rows}),
         "hygiene_silent_swallows": len(silent_swallows),
         "hygiene_wired_capabilities": len(_wire_or_retire.WIRE_CHECKS),
+        "hygiene_unmarked_asserts": len(unmarked_asserts),
+        "hygiene_marked_asserts": marked_asserts,
     }
 
 

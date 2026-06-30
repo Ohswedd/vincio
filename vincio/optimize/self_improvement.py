@@ -858,9 +858,9 @@ class SelfImprovementController:
 
     async def _meta_select(self) -> tuple[str, int, FitnessWeights | None]:
         """Pick (strategy, budget) by successive-halving and learn weights."""
-        assert self.dataset is not None
+        assert self.dataset is not None  # noqa: S101 - the re-eval phase returns early when no dataset is bound
         meta = self.policy.meta
-        assert meta is not None
+        assert meta is not None  # noqa: S101 - _meta_select runs only when policy.meta is enabled
         configs = [(s, b) for s in meta.strategies for b in meta.budgets]
         minibatch = self.dataset.sample(min(4, len(self.dataset)))
 
