@@ -334,6 +334,16 @@ TOPICS: tuple[Topic, ...] = (
         examples=(_e("20_data_engagement"),),
         verbs=("data_engagement",),
     ),
+    Topic(
+        "federated-analytics", "knowledge", "Cross-org / federated analytics",
+        "A governed metric run across organizations over the cross-org fabric: only the "
+        "aggregated, cell-cited MetricResult crosses (never the raw rows), reconciled into "
+        "a signed, data-bound FederatedNarrative that verifies offline.",
+        concept=_c("federated-data-engagement"),
+        guides=(_g("analyze-data"),),
+        examples=(_e("24_federated_analytics"),),
+        verbs=("federated_data_engagement",),
+    ),
     # ---- governance ----
     Topic(
         "compliance", "governance", "Cards, compliance & EU AI Act",

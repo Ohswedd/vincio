@@ -722,8 +722,8 @@ when the chain is intact (and re-digesting the live artifacts catches a tamper t
 Sealing lands the engagement on the hash-chained audit log (action `data_engagement`, decision `sealed`),
 one continuous signed narrative from the raw table to the cited deliverable. The data & analytics plane is
 **stable** under the [stability policy](docs/reference/stability.md); forward work is a scheduled,
-**additive, surface-preserving extension line** (real-time / federated / forecasting-verifiers /
-notebook-native) that opens no breaking window and weakens no boundary.
+**additive, surface-preserving extension line** (real-time and federated analytics now shipped;
+forecasting-verifiers and notebook-native ahead) that opens no breaking window and weakens no boundary.
 
 ### Real-time & streaming analytics — windowed governance, offline-verified
 
@@ -747,6 +747,34 @@ window** on the hash-chained audit log (action `stream_window`, with the operati
 count, and content hash) and screens questions on the same injection rail, whether it replays a log or drives
 a **live** async source — a queue, a websocket, or a realtime session's events. It is a library-side windowed
 query, **never a hosted stream processor**.
+
+### Cross-org / federated analytics — the raw rows never cross the boundary
+
+**A federated data engagement (`FederatedDataEngagement` / `app.federated_data_engagement`, in
+`vincio.data.federated`) runs one governed metric across organizations over the existing cross-org fabric
+without pooling the raw rows into a shared warehouse, and weakens no boundary.** A `FederatedQuery` is the
+*shape* of the metric run everywhere; its content digest is bound into a negotiated `Contract`'s **hashed
+scope**, so the agreed shape is tamper-evident in the signed contract. The query is choreographed as a
+contract-governed `Saga`, one step per member, each running that org's own `query_metric` **locally** and
+returning **only the aggregated, cell-cited `MetricResult`** — the raw rows are never serialized into the
+dispatch, the saga journal, or the sealed narrative; the only thing that crosses a trust boundary is a
+group-by aggregate. Because the metric runs through each org's `SemanticLayer`, the grouping attributes are
+the analyst-sanctioned governed **dimensions**, never arbitrary raw identifiers, and an org whose layer
+digest differs is **refused** — the metric is computed one way everywhere or not at all. **Trust model:** the
+reconciled answer (`FederatedFinding`) binds each member's aggregate to the content hash of the source it
+rests on; `FederatedNarrative.verify` recomputes the hash chain from the bytes alone (a re-ordered stage, an
+edited digest, a tampered head, or a forged coordinator signature is caught), and
+`FederatedDataEngagement.verify` additionally **re-executes every member's aggregate against its
+content-hashed source and re-derives every reconciled value**, so a tamper to any org's source — or to the
+reconciliation — is caught even when the chain is intact. **Governance crosses the boundary intact:**
+residency-aware egress refusal (reusing `ResidencyPolicy`), the consent ledger's `ANALYTICS` purpose, and the
+differential-privacy accountant apply to a member's contribution **exactly as they would to a local query** —
+a member outside the residency posture, without analytics consent, or over its privacy budget is **refused
+and audited** (action `federated_query_governance`), and a round below the `min_members` k-anonymity
+contributor floor is **refused** so a single org's aggregate is never singled out. Sealing lands the
+engagement on the hash-chained audit log (action `federated_data_engagement`, decision `sealed`); each org's
+local query is independently audited on its own chain. It is a library-side, offline computation, **never a
+hosted query federation, a shared warehouse, or a data clean-room service**.
 
 ### Edge / WASM runtime — the same deterministic safety, offline
 

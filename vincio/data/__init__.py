@@ -77,6 +77,17 @@ would not fit.
   :meth:`DataNarrative.verify`\\s offline and is **data-bound** — every captured
   finding re-executes against the content-hashed source. The analytics analogue
   of :class:`~vincio.settlement.CrossOrgEngagement`.
+* :class:`FederatedDataEngagement` — the cross-org facade
+  (``app.federated_data_engagement``) that runs a :class:`FederatedQuery` across
+  several organizations' data planes over the existing cross-org fabric:
+  negotiated as a :class:`~vincio.negotiation.Contract`, choreographed as a
+  :class:`~vincio.choreography.Saga` whose steps run each org's governed query
+  plane **locally** and return only the aggregated, cell-cited
+  :class:`MetricResult` — never the raw rows — reconciled into one signed,
+  offline-verifiable :class:`FederatedNarrative` whose every :class:`FederatedFinding`
+  re-derives from each org's content-hashed source. Residency egress refusal, the
+  consent ledger, and the differential-privacy accountant apply at the boundary
+  exactly as for a local query.
 
 Everything here is deterministic, dependency-free, and offline. ``Dataset`` and
 the schema types are exported from this subpackage (the top-level ``Dataset``
@@ -137,6 +148,17 @@ from .engagement import (
 )
 from .engines import DuckDbQueryEngine
 from .evidence import TableEvidence
+from .federated import (
+    FederatedContribution,
+    FederatedDataEngagement,
+    FederatedFinding,
+    FederatedMember,
+    FederatedNarrative,
+    FederatedQuery,
+    FederatedSignature,
+    FederatedStage,
+    FederatedVerification,
+)
 from .profile import (
     ColumnProfile,
     DatasetProfile,
@@ -307,4 +329,14 @@ __all__ = [
     "DataEngagementVerification",
     "DataNarrative",
     "DataEngagement",
+    # cross-org / federated analytics
+    "FederatedQuery",
+    "FederatedMember",
+    "FederatedContribution",
+    "FederatedFinding",
+    "FederatedStage",
+    "FederatedSignature",
+    "FederatedVerification",
+    "FederatedNarrative",
+    "FederatedDataEngagement",
 ]

@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**516** public symbols.
+**525** public symbols.
 
 ## Classes
 
@@ -690,21 +690,57 @@ Generate an Article 27 **fundamental-rights impact assessment** (FRIA).
 
 Local ONNX dense embedder via ``fastembed``.
 
+### `FederatedContribution(**data)`
+
+One organization's aggregated, source-bound contribution to a finding.
+
+### `FederatedDataEngagement(app, query=…, coordinator=…, layer=…)`
+
+A governed, compositional facade for analytics across organizations.
+
+### `FederatedFinding(**data)`
+
+A reconciled cross-org answer for one metric and one dimension group.
+
 ### `FederatedImprovement(app, policy=…, dataset=…, registry=…, embedder=…, base_model=…, reputation=…)`
 
 Drive one gated, privacy-preserving federated round for the adopting member.
+
+### `FederatedMember(org, app, table=…, layer=…, region=…, subject=…)`
+
+One organization participating in a federated analytics engagement.
+
+### `FederatedNarrative(**data)`
+
+A signed, content-bound, hash-chained narrative of a federated engagement.
 
 ### `FederatedPolicy(**data)`
 
 The opt-in contract for one gated federated-improvement round.
 
+### `FederatedQuery(**data)`
+
+The shape of one governed metric run across organizations.
+
 ### `FederatedRoundResult(**data)`
 
 The outcome of one gated federated-improvement round.
 
+### `FederatedSignature(**data)`
+
+One party's signature over a federated narrative's content hash.
+
+### `FederatedStage(**data)`
+
+One step of a federated engagement, bound into the narrative's hash chain.
+
 ### `FederatedSubspace(**data)`
 
 The fleet-consensus low-rank subspace distilled from a secure aggregation.
+
+### `FederatedVerification(**data)`
+
+The (non-raising) outcome of verifying a federated engagement offline.
 
 ### `FertilityTracker(model=…, baseline_language=…)`
 

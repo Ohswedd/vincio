@@ -171,6 +171,7 @@ _Feed the compiler: sources, retrieval, memory, structured data, and the analyti
 - `app.data_catalog` — The app's lazily-created :class:`~vincio.data.DataCatalog` — the grounding source for :meth:`query_data` and the catalog a :meth:`~vincio.data.QueryResult.verify` re-executes against.
 - `app.data_engagement` — Thread the whole data & analytics plane behind one governed call-path.
 - `app.enable_memory_os` — Expose self-editing memory (MemGPT/Letta-class) as permissioned tools.
+- `app.federated_data_engagement` — Run a governed analytics query **across organizations** without pooling the raw rows — the cross-org / federated twin of :meth:`data_engagement`.
 - `app.fit_dataset` — Fit a dataset far larger than the window into a fixed token budget: a full-fidelity column profile plus a representative sample sized to whatever budget the profile leaves.
 - `app.generate_chart` — Turn a cited query result into a **content-bound, data-bound** chart — the data plane's generated analytical artifact.
 - `app.govern_packet` — Admit a run's evidence into the installed long-horizon governor.
@@ -340,7 +341,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (516 public symbols)
+## Public API (525 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -516,10 +517,19 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `ExperimentProposer(app, targets=…, eval_budget=…, golden_suite=…, gates=…)` — Rank where the system is weakest and schedule the highest-ROI experiment.
 - `FRIAGenerator(classifier=…)` — Generate an Article 27 **fundamental-rights impact assessment** (FRIA).
 - `FastEmbedEmbedder(model_name=…, dim=…, encode_fn=…, model=…, fallback=…)` — Local ONNX dense embedder via ``fastembed``.
+- `FederatedContribution(**data)` — One organization's aggregated, source-bound contribution to a finding.
+- `FederatedDataEngagement(app, query=…, coordinator=…, layer=…)` — A governed, compositional facade for analytics across organizations.
+- `FederatedFinding(**data)` — A reconciled cross-org answer for one metric and one dimension group.
 - `FederatedImprovement(app, policy=…, dataset=…, registry=…, embedder=…, base_model=…, reputation=…)` — Drive one gated, privacy-preserving federated round for the adopting member.
+- `FederatedMember(org, app, table=…, layer=…, region=…, subject=…)` — One organization participating in a federated analytics engagement.
+- `FederatedNarrative(**data)` — A signed, content-bound, hash-chained narrative of a federated engagement.
 - `FederatedPolicy(**data)` — The opt-in contract for one gated federated-improvement round.
+- `FederatedQuery(**data)` — The shape of one governed metric run across organizations.
 - `FederatedRoundResult(**data)` — The outcome of one gated federated-improvement round.
+- `FederatedSignature(**data)` — One party's signature over a federated narrative's content hash.
+- `FederatedStage(**data)` — One step of a federated engagement, bound into the narrative's hash chain.
 - `FederatedSubspace(**data)` — The fleet-consensus low-rank subspace distilled from a secure aggregation.
+- `FederatedVerification(**data)` — The (non-raising) outcome of verifying a federated engagement offline.
 - `FertilityTracker(model=…, baseline_language=…)` — Track tokens-per-word per language to surface the non-English token tax.
 - `Figure(**data)` — A chart or table embedded in a cited report, **data-bound** to its source.
 - `Flow(provider=…, model=…, name=…, output_schema=…, app=…, config=…)` — An immutable, fluent pipeline that lowers to one governed run packet.

@@ -139,6 +139,15 @@ from .data import (
     DatasetProfile,
     DataStage,
     EventCitation,
+    FederatedContribution,
+    FederatedDataEngagement,
+    FederatedFinding,
+    FederatedMember,
+    FederatedNarrative,
+    FederatedQuery,
+    FederatedSignature,
+    FederatedStage,
+    FederatedVerification,
     QueryPlan,
     QueryResult,
     RowStream,
@@ -535,7 +544,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "5.6.0"
+__version__ = "5.7.0"
 
 __all__ = [
     "ContextApp",
@@ -601,6 +610,15 @@ __all__ = [
     "DataEngagementVerification",
     "DataNarrative",
     "DataEngagement",
+    "FederatedQuery",
+    "FederatedMember",
+    "FederatedContribution",
+    "FederatedFinding",
+    "FederatedStage",
+    "FederatedSignature",
+    "FederatedVerification",
+    "FederatedNarrative",
+    "FederatedDataEngagement",
     "ImprovementLoop",
     "LoopResult",
     "ContinuousImprovementController",

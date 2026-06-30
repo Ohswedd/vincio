@@ -199,7 +199,7 @@ high-level `ContextApp`, or reach for any engine directly.
 - Prompt compiler: typed prompt ASTs with `${variables}`, lint rules, cache-aware stable-prefix layout, versioning, hashing, and diffing.
 - Context compiler: scores every candidate (relevance, novelty, authority, freshness, provenance, token cost, leakage risk), deduplicates, resolves conflicts, compresses, and packs to a token budget, with an *excluded-context report* explaining every omission.
 - Tabular evidence: a typed, columnar `Dataset` and a deterministic `DataEncoder` that renders it header-once — lossless, columnar-accurate in token cost, far cheaper than `json.dumps` or a Markdown table; `TableEvidence` scores and cites it like any other evidence.
-- Governed text-to-query, a multi-step data-analysis agent, content- & data-bound charts, a streaming out-of-core path, a governed semantic layer, and **windowed real-time analytics** over an unbounded event stream (`StreamWindow` — tumbling / sliding / session) — the whole data & analytics plane, every answer citing the exact source cells or events and `verify()`-ing offline. See the [data analysis guide](docs/guides/analyze-data.md).
+- Governed text-to-query, a multi-step data-analysis agent, content- & data-bound charts, a streaming out-of-core path, a governed semantic layer, **windowed real-time analytics** over an unbounded event stream (`StreamWindow` — tumbling / sliding / session), and **cross-org federated analytics** (`app.federated_data_engagement`) — one governed metric run across organizations with only aggregated, cited results crossing the trust boundary, never the raw rows — the whole data & analytics plane, every answer citing the exact source cells or events and `verify()`-ing offline. See the [data analysis guide](docs/guides/analyze-data.md).
 
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates.
@@ -440,9 +440,9 @@ under [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with a mechanic
 [deprecation policy](docs/reference/stability.md); performance and quality targets are
 [published as SLOs](docs/reference/slo.md) and gated by VincioBench; releases ship a CycloneDX SBOM
 with SLSA provenance. New capabilities are added behind opt-in extras, never by breaking working
-code. The forward plan — a scheduled data & analytics extension line (real-time shipped; federated,
-forecasting/causal verifiers, notebook-native next) — is in [`ROADMAP.md`](ROADMAP.md); upgrades in
-[`MIGRATION.md`](MIGRATION.md).
+code. The forward plan — a scheduled data & analytics extension line (real-time and federated analytics
+shipped; forecasting/causal verifiers and notebook-native next) — is in [`ROADMAP.md`](ROADMAP.md);
+upgrades in [`MIGRATION.md`](MIGRATION.md).
 
 Vincio is, and stays, a **library**. The building blocks for production (audit chain, retention,
 tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own

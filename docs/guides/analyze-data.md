@@ -158,13 +158,38 @@ audited call-path and seals it into a hash-chained, signed `DataNarrative` that
 verifies offline and is **data-bound** — the analytics analogue of the cross-org
 engagement. See [The data engagement](../concepts/data-engagement.md).
 
+## Analyze across organizations without a shared warehouse
+
+```python
+from vincio import FederatedQuery
+
+query = FederatedQuery.of("total_revenue", table="sales", by=["region"], min_members=2)
+fed = app.federated_data_engagement(query=query)
+fed.add_member("acme", acme_app, region="us-east-1")     # each org keeps its own data
+fed.add_member("globex", globex_app, region="eu-west-1")
+findings = fed.run()                                     # negotiate → dispatch → reconcile
+fed.finding("total_revenue", region="NA").value          # the exact cross-org total
+fed.verify(app.contract_signer).data_bound               # re-derives from each org's source
+```
+
+`app.federated_data_engagement` runs one governed metric across organizations over
+the cross-org fabric: negotiated as a `Contract`, choreographed as a `Saga` whose
+steps run each org's governed query plane **locally** and return only the
+aggregated, cell-cited `MetricResult` — the raw rows never cross — reconciled into
+one signed `FederatedNarrative` whose every finding re-derives from each org's
+content-hashed source. Residency egress refusal, the consent ledger, and the
+differential-privacy budget apply at the boundary exactly as for a local query.
+See [Cross-org / federated analytics](../concepts/federated-data-engagement.md).
+
 ## Run it
 
 Examples [13](../../examples/13_tabular_evidence.py) through
 [20](../../examples/20_data_engagement.py) are heavily-commented, fully-offline
 programs for each step above, ending with the engagement capstone;
 [23](../../examples/23_realtime_streaming_analytics.py) walks the windowed
-real-time plane over a replayed event log.
+real-time plane over a replayed event log, and
+[24](../../examples/24_federated_analytics.py) runs a governed metric across two
+organizations.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
@@ -179,6 +204,7 @@ real-time plane over a replayed event log.
 - [Concept: Semantic layer & governed metrics](../concepts/semantic-layer-and-governed-metrics.md)
 - [Concept: Real-time & streaming analytics](../concepts/realtime-streaming-analytics.md)
 - [Concept: Data engagement (the analytics capstone)](../concepts/data-engagement.md)
+- [Concept: Cross-org / federated analytics](../concepts/federated-data-engagement.md)
 - [Guide: Generate documents & media (`vincio.generation`)](generate-documents.md)
 - [Guide: Performance & streaming](performance.md)
 - [Example: 13_tabular_evidence.py](../../examples/13_tabular_evidence.py)
@@ -190,6 +216,7 @@ real-time plane over a replayed event log.
 - [Example: 19_semantic_layer_governed_metrics.py](../../examples/19_semantic_layer_governed_metrics.py)
 - [Example: 23_realtime_streaming_analytics.py](../../examples/23_realtime_streaming_analytics.py)
 - [Example: 20_data_engagement.py](../../examples/20_data_engagement.py)
+- [Example: 24_federated_analytics.py](../../examples/24_federated_analytics.py)
 - [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

@@ -1453,6 +1453,163 @@ def _realtime_analytics_bench() -> dict[str, Any]:
     }
 
 
+def _federated_analytics_bench() -> dict[str, Any]:
+    """DataPlaneBench / federated analytics: one governed metric run across orgs.
+
+    Three guarantees: **rows never cross** (a unique per-row sentinel present in
+    every org's raw data appears nowhere in the dispatched saga journal or the
+    sealed narrative — only group-by aggregates cross the trust boundary),
+    **federated data-binding** (the engagement re-executes every org's aggregate
+    against its content-hashed source and the reconciled total equals the
+    brute-force total over the pooled rows), and **governance preservation**
+    (residency egress refusal, the consent ledger's analytics purpose, the
+    differential-privacy budget, and the k-anonymity contributor floor each refuse
+    a non-compliant round, exactly as a local query's governance would)."""
+    import json
+
+    from vincio import ContextApp, FederatedNarrative, FederatedQuery
+    from vincio.core.errors import DataError, ResidencyViolationError
+    from vincio.data import DerivedColumn, Dimension, Measure
+    from vincio.governance.consent import ConsentLedger
+    from vincio.governance.privacy import PrivacyBudgetError
+    from vincio.providers import MockProvider
+
+    cols = ["region", "price", "qty", "account"]
+    derived = [DerivedColumn(name="revenue", expression="price * qty")]
+    measures = [
+        Measure(name="total_revenue", agg="sum", expression="revenue"),
+        Measure(name="order_count", agg="count"),
+    ]
+    dimensions = [Dimension(name="region")]
+    sentinel = "ROW-SENTINEL-c3f9a"
+    acme_rows = [
+        {"region": "NA", "price": 10.0, "qty": 3, "account": f"{sentinel}-a1"},
+        {"region": "EU", "price": 8.0, "qty": 5, "account": f"{sentinel}-a2"},
+        {"region": "NA", "price": 11.0, "qty": 6, "account": f"{sentinel}-a3"},
+    ]
+    globex_rows = [
+        {"region": "EU", "price": 9.0, "qty": 4, "account": f"{sentinel}-g1"},
+        {"region": "APAC", "price": 7.0, "qty": 2, "account": f"{sentinel}-g2"},
+        {"region": "NA", "price": 12.0, "qty": 1, "account": f"{sentinel}-g3"},
+    ]
+
+    def org(name: str, rows: list[dict[str, Any]]) -> ContextApp:
+        app = ContextApp(name=name, provider=MockProvider(default_text="ok"))
+        app.register_dataset(rows, columns=cols, name="sales", source=f"{name}-crm")
+        app.semantic_layer("sales", derived=derived, measures=measures, dimensions=dimensions)
+        return app
+
+    def coordinator() -> ContextApp:
+        app = ContextApp(name="coordinator", provider=MockProvider(default_text="ok"))
+        app.semantic_layer(
+            "sales", derived=derived, measures=measures, dimensions=dimensions, validate=False
+        )
+        return app
+
+    # -- happy path: reconcile, seal, and prove rows-never-cross + data-binding --
+    coord = coordinator()
+    acme, globex = org("acme", acme_rows), org("globex", globex_rows)
+    query = FederatedQuery.of(
+        ["total_revenue", "order_count"], table="sales", by=["region"], min_members=2
+    )
+    fed = coord.federated_data_engagement(query=query)
+    fed.add_member("acme", acme, region="us-east-1")
+    fed.add_member("globex", globex, region="eu-west-1")
+    findings = fed.run()
+    narrative = fed.seal()
+
+    # rows-never-cross: no raw per-row sentinel reaches the journal or the narrative.
+    journal_blob = json.dumps(fed.delivery.journal.model_dump(mode="json"))
+    narrative_blob = json.dumps(narrative.to_wire())
+    rows_never_cross = sentinel not in journal_blob and sentinel not in narrative_blob
+
+    # federated data-binding: the engagement re-derives every finding from each
+    # org's content-hashed source AND the reconciled totals equal the ground truth.
+    bound = fed.verify(coord.contract_signer)
+    truth: dict[str, float] = {}
+    counts: dict[str, int] = {}
+    for r in (*acme_rows, *globex_rows):
+        truth[r["region"]] = truth.get(r["region"], 0.0) + r["price"] * r["qty"]
+        counts[r["region"]] = counts.get(r["region"], 0) + 1
+    fed_rev = {f.group["region"]: f.value for f in findings if f.metric == "total_revenue"}
+    fed_cnt = {f.group["region"]: f.value for f in findings if f.metric == "order_count"}
+    reconciliation_exact = fed_rev == truth and fed_cnt == counts
+    # offline-from-bytes round-trip still verifies and a tamper is caught.
+    restored_ok = (
+        FederatedNarrative.from_wire(narrative.to_wire()).verify(coord.contract_signer).valid
+    )
+    fed.findings[0].value = -999999.0
+    tamper_caught = fed.verify(coord.contract_signer).data_bound is False
+    federated_data_binding = (
+        bound.valid
+        and bound.data_bound is True
+        and reconciliation_exact
+        and restored_ok
+        and tamper_caught
+    )
+
+    # -- governance preservation: every rail refuses a non-compliant round -------
+    def refuses(build, exc) -> bool:
+        try:
+            build()
+            return False
+        except exc:
+            return True
+
+    def residency_round() -> None:
+        c = coordinator()
+        q = FederatedQuery.of("total_revenue", table="sales", residency=["eu"], min_members=1)
+        f = c.federated_data_engagement(query=q)
+        f.add_member("acme", org("acme", acme_rows), region="us-east-1")
+        f.run()
+
+    def consent_round() -> None:
+        c = coordinator()
+        m = org("strict", acme_rows)
+        m.use_consent_ledger(ConsentLedger(default_allow=False))
+        f = c.federated_data_engagement(
+            query=FederatedQuery.of("total_revenue", table="sales", min_members=1)
+        )
+        f.add_member("strict", m, subject="eu-data-subjects")
+        f.run()
+
+    def privacy_round() -> None:
+        c = coordinator()
+        m = org("acme", acme_rows)
+        m.use_privacy_accountant()
+        m.set_privacy_budget(subject_id="acme", epsilon=0.0001, on_breach="refuse")
+        f = c.federated_data_engagement(
+            query=FederatedQuery.of("total_revenue", table="sales", min_members=1)
+        )
+        f.add_member("acme", m)
+        f.run()
+
+    def floor_round() -> None:
+        c = coordinator()
+        f = c.federated_data_engagement(
+            query=FederatedQuery.of("total_revenue", table="sales", min_members=3)
+        )
+        f.add_member("acme", org("acme", acme_rows), region="us-east-1")
+        f.add_member("globex", org("globex", globex_rows), region="eu-west-1")
+        f.run()
+
+    governance_preservation = (
+        refuses(residency_round, ResidencyViolationError)
+        and refuses(consent_round, DataError)
+        and refuses(privacy_round, PrivacyBudgetError)
+        and refuses(floor_round, DataError)
+    )
+
+    return {
+        "rows_never_cross": rows_never_cross,
+        "federated_data_binding": federated_data_binding,
+        "governance_preservation": governance_preservation,
+        "members": len(fed.members),
+        "findings": len(findings),
+        "reconciliation_exact": reconciliation_exact,
+    }
+
+
 async def _text_to_query_bench() -> dict[str, Any]:
     """DataPlaneBench / text-to-query: governed text-to-SQL measured three ways —
     **execution accuracy** on a Spider/BIRD-shaped battery (the predicted query's
@@ -1859,6 +2016,7 @@ async def bench_data_plane() -> dict[str, Any]:
         "charts": await _charts_bench(),
         "streaming": await _streaming_bench(),
         "realtime": _realtime_analytics_bench(),
+        "federated_analytics": _federated_analytics_bench(),
         "semantic_layer": _semantic_layer_bench(),
     }
 
