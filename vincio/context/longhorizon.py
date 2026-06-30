@@ -39,6 +39,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.tokens import count_tokens
 from ..core.utils import new_id
 from .compression import extractive_compress, split_sentences
@@ -322,7 +323,8 @@ class ContextCompactor:
                 },
                 **kwargs,
             )
-        except Exception:  # noqa: BLE001 - a guarded-memory rejection never breaks compaction
+        except Exception:
+            note_suppressed("context.longhorizon.memory_write")
             return None
         return str(item.id)
 

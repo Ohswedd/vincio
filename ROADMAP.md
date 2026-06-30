@@ -14,7 +14,8 @@ and what is intentionally out of scope. The complete release-by-release history 
 > The capability surface is complete and frozen. The **[hardening line
 > (6.x)](#-the-hardening-line-6x--in-progress)** — an additive, non-breaking paydown of interior quality
 > debt surfaced by a standing internal audit, not new capability — is underway: **6.0 (public-surface
-> hygiene) and 6.1 (error-contract conformance) shipped**; 6.2 (observable failure) is next.
+> hygiene), 6.1 (error-contract conformance), and 6.2 (observable failure) shipped**; 6.3 (wire-or-retire)
+> is next.
 
 ## What "done" means here
 
@@ -333,7 +334,7 @@ methods, load-bearing `assert`s that vanish under `python -O`, and a large drift
 |---|---|---|
 | **✅ 6.0 — Public-surface hygiene** | dead symbols + two-level `__all__` reconciliation | **Shipped.** Removed the verified-dead public symbols; reconciled each subpackage `__all__` against the frozen top-level `vincio.__all__` (classified and frozen in `docs/reference/subpackage-surface.txt`); added the two missing public exceptions; added the surface-consistency gate and the `hygiene` VincioBench family. |
 | **✅ 6.1 — Error-contract conformance** | every public raise is a `VincioError` | **Shipped.** Converted the three off-contract built-in exceptions leaked off public entry points to typed `VincioError` subclasses, and made the contract mechanical: `vincio._error_contract` freezes the classified baseline of accepted public built-in raises (`docs/reference/error-contract.txt`) and holds the `ContextApp` (`app.*` verb) surface to **zero** off-contract raises with an always-on gate, folded into the `hygiene` VincioBench family. |
-| **6.2 — Observable failure** | no silent swallow | Keep every best-effort fallback but make it *observable* (a `debug`/`warning` log + a metric); forbid unlogged broad swallows by lint. |
+| **✅ 6.2 — Observable failure** | no silent swallow | **Shipped.** Made every silent best-effort fallback *observable* — `vincio.core.diagnostics.note_suppressed` logs the suppression on a dedicated `vincio.suppressed` channel and counts it by label — and added a lint (`vincio._observable_failure`) that holds the whole public tree to **zero** unmarked silent swallows: a broad `except` (or `contextlib.suppress(Exception)`) must re-raise, record its failure, or carry a justifying `# noqa: BLE001`, folded into the `hygiene` VincioBench family. |
 | **6.3 — Wire-or-retire** | unhooked capabilities | For each capability that exists but nothing can reach, either give it an `app.*` verb + an example section, or demote it from the public surface. |
 | **6.4 — Docstring / behaviour parity** | the docs match the code | Make every docstring that advertises a behaviour either true or deleted; fix the stale comments and the one example whose guarantee no longer fires. |
 | **6.5 — `-O` robustness** | load-bearing `assert` → guard | Replace runtime-significant `assert`s with explicit guards that raise a `VincioError`, so a `python -O` deployment fails loudly and correctly. |
@@ -401,16 +402,29 @@ genuinely internal input-validation, regenerate with `python -m vincio._error_co
 the diff. The detector is proven to *bite* (an injected public built-in raise is flagged; an encapsulated
 private-def raise is not), the way the surface gate proves itself.
 
-### 6.2 — Observable failure
+### 6.2 — Observable failure ✅ Shipped
 
 A best-effort fallback that catches `Exception` and continues is correct policy — a broken embedder or a
-rejected memory write must never break a run — but several do it **silently** behind a `# pragma: no cover`,
-with no log and no metric, so a real bug hides inside the fallback: `vincio/core/runtime.py:152,161,177,1011`
-(lineage / fertility record, content marking, region resolution), `vincio/context/compiler.py:311` (embedding
-failure) and `vincio/context/longhorizon.py:325` (memory rejection), plus unlogged swallows in `data` (×5),
-`storage` (×4), and `settlement` (×4). 6.2 keeps every fallback but makes it observable — a `logger.debug`/
-`warning` and a counter, the way `vincio/observability/events.py` already logs — and adds a lint forbidding a
-broad `except` whose body neither re-raises nor logs unless it carries a justifying `# noqa: BLE001`.
+rejected memory write must never break a run — but several did it **silently** behind a `# pragma: no cover`,
+with no log and no metric, so a real bug hid inside the fallback: lineage / fertility record, content marking,
+and region resolution in `core/runtime.py`; provable-erasure store deletes and the SBOM attach in
+`core/app.py`; the embedding fallback in `context/compiler.py` and the guarded-memory write in
+`context/longhorizon.py`; and the analogous best-effort swallows across `data`, `storage`, and `settlement`.
+
+6.2 keeps every fallback but makes it **observable** in one call. `vincio.core.diagnostics.note_suppressed`
+records the suppressed failure on a dedicated diagnostics log channel (`vincio.suppressed`, capturing the
+active exception's traceback) and increments a process-wide counter keyed by a stable label, so an operator
+both *watches* the failures (enable the channel at `DEBUG`) and *scrapes their rate*
+(`suppressed_failure_counts()`) without the fallback ever breaking the run. The contract is then made
+**mechanical**, on the same freeze-and-gate idiom 6.0 and 6.1 use: `vincio._observable_failure` statically
+scans every public module for a *broad* `except` (`Exception` / `BaseException` / a bare `except:` / a tuple
+containing one) and for `contextlib.suppress(Exception)`, and holds the whole tree to **zero** unmarked silent
+swallows by an always-on check — a broad handler must re-raise, record its failure observably (a logger call or
+`note_suppressed`), or carry a justifying `# noqa: BLE001` (the same inline marker the codebase already uses
+for a reviewed, deliberately-silent swallow). There is no frozen baseline: the inline marker is the per-site
+accepted form, so a new silent swallow fails the build the moment it lands. The detector is proven to *bite*
+(an injected silent swallow is flagged; a logged one is not), and the whole check is folded into the `hygiene`
+VincioBench family (`observable_failure_conformant`).
 
 ### 6.3 — Wire-or-retire
 

@@ -71,6 +71,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import DataError, ResidencyViolationError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .semantic import Aggregation, MetricQuery, MetricResult, SemanticLayer
@@ -129,14 +130,14 @@ def _artifact_wire(artifact: Any) -> Any:
     if callable(to_wire):
         try:
             return to_wire()
-        except Exception:  # pragma: no cover - defensive; fall through to dump
-            pass
+        except Exception:
+            note_suppressed("data.federated.artifact_to_wire")
     dump = getattr(artifact, "model_dump", None)
     if callable(dump):
         try:
             return dump(mode="json")
-        except Exception:  # pragma: no cover - non-serializable; coerce below
-            pass
+        except Exception:
+            note_suppressed("data.federated.artifact_model_dump")
     return to_jsonable(artifact)
 
 
@@ -380,7 +381,8 @@ class FederatedMember:
         """The content hash of the member's source table, bound into a finding."""
         try:
             return str(self.catalog().content_hashes().get(table, ""))
-        except Exception:  # pragma: no cover - defensive
+        except Exception:
+            note_suppressed("data.federated.source_hash")
             return ""
 
 
@@ -952,7 +954,7 @@ class FederatedDataEngagement:
             try:
                 return cast(SemanticLayer, resolver(None, query.table))
             except Exception:
-                pass
+                note_suppressed("data.federated.reference_layer")
         if self._members:
             return self._members[0].resolve_layer()
         raise DataError(
@@ -1471,6 +1473,7 @@ class FederatedDataEngagement:
         try:
             return bool(binder(catalogs))
         except Exception:
+            note_suppressed("data.federated.rebind")
             return False
 
     def _signer(self) -> Any:

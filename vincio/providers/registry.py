@@ -34,6 +34,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.types import ModelCapabilities, ModelLifecycle, ModelProfile
 from ..core.utils import utcnow
 
@@ -610,7 +611,8 @@ def discover_entry_points(group: str) -> dict[str, Any]:
     found: dict[str, Any] = {}
     try:
         eps = entry_points(group=group)
-    except Exception:  # pragma: no cover - importlib.metadata edge cases
+    except Exception:
+        note_suppressed("providers.entry_points")
         return found
     for ep in eps:
         try:

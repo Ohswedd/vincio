@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.utils import utcnow
 from ..observability.costs import PriceTable, default_price_table
 
@@ -81,7 +82,8 @@ def _eval_evidence(report: EvalReport | None) -> dict[str, float]:
         return {}
     try:
         summary = report.summary()
-    except Exception:  # pragma: no cover - defensive
+    except Exception:
+        note_suppressed("governance.cards.eval_summary")
         return {}
     return {name: round(stats.get("mean", 0.0), 4) for name, stats in summary.items()}
 
@@ -229,7 +231,8 @@ def generate_model_card(
             caps_obj = caps(model_id) if callable(caps) else caps
             if caps_obj is not None:
                 capabilities = caps_obj.model_dump() if hasattr(caps_obj, "model_dump") else dict(caps_obj)
-        except Exception:  # pragma: no cover - provider may be unconfigured offline
+        except Exception:
+            note_suppressed("governance.cards.capabilities")
             capabilities = {}
 
     out_of_scope = [

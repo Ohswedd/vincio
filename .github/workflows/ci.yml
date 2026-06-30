@@ -49,8 +49,11 @@ jobs:
           vincio/core/error_catalog.py
           vincio/core/config.py
           vincio/core/config_migrations.py
+          vincio/core/diagnostics.py
           vincio/_apiref.py
           vincio/_surface.py
+          vincio/_error_contract.py
+          vincio/_observable_failure.py
           vincio/cli/doctor.py
 
   test:

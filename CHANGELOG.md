@@ -4,6 +4,51 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.2.0] - 2026-06-30
+
+**Observable failure — the hardening line (6.x) continues.** A best-effort fallback that catches a broad
+`Exception` and continues is correct policy — a broken embedder or a rejected memory write must never break a
+run — but several did it *silently*, with no log and no metric, so a real bug could hide inside the fallback. A
+standing internal audit found them. This release makes every such fallback observable and adds a lint that
+forbids a new silent one. Additive and surface-preserving: the frozen top-level contract `vincio.__all__` is
+unchanged, so `API_VERSION` stays `5.0`, the `vincio migrate 6.x` codemod table stays empty, and a clean
+upgrade needs zero source changes.
+
+### Added
+
+- **Observable-failure primitive** (`vincio.core.diagnostics`). `note_suppressed(label, *, level=, detail=)`
+  records a suppressed best-effort failure in one call: it logs the suppression on a dedicated diagnostics
+  channel (`vincio.suppressed`, capturing the active exception's traceback) and increments a process-wide
+  counter keyed by a stable label. An operator both *watches* the failures (enable the channel at `DEBUG`) and
+  *scrapes their rate* (`suppressed_failure_counts()`) without the fallback ever breaking the run it guards. The
+  counter and channel are an observability surface, not a stable API contract.
+- **Observable-failure checker** (`vincio._observable_failure`). A static, AST-based scanner of every public
+  module for a *broad* `except` (`Exception` / `BaseException` / a bare `except:` / a tuple containing one) and
+  for `contextlib.suppress(Exception)`. It enforces one always-on invariant, the way `vincio._error_contract`
+  enforces the error contract: the whole public tree carries **zero** unmarked silent swallows — a broad
+  handler must re-raise, record its failure observably (a logger call or `note_suppressed`), or carry a
+  justifying `# noqa: BLE001` (the inline marker the codebase already uses for a reviewed, deliberately-silent
+  swallow). There is no frozen baseline; the inline marker is the per-site accepted form. Guarded by
+  `tests/test_observable_failure.py`; reproduce offline with `python -m vincio._observable_failure`.
+- **HygieneBench observable-failure SLOs.** The `hygiene` VincioBench family folds in
+  `observable_failure_conformant` (with `observable_failure_clean` and an
+  `observable_failure_gate_detects_tamper` "the gate bites" proof, plus a `hygiene_silent_swallows` count),
+  held by `budgets.json` and published in `slos.json` / `docs/reference/slo.md`.
+
+### Changed
+
+- **Silent best-effort swallows made observable.** The fallbacks that previously swallowed a broad exception
+  with no log or metric now call `note_suppressed` with a stable label, across `core/runtime.py` (lineage /
+  fertility record, content marking, region resolution), `core/app.py` (provable-erasure store deletes and
+  cache invalidation, the SBOM attach in `certify`), `core/tokens.py` (counter build fallbacks),
+  `context/compiler.py` (the embedding→lexical fallback), `context/longhorizon.py` (the guarded-memory write),
+  `data` (`engagement` / `federated` artifact serialization and re-bind, `analysis` follow-up planning),
+  `governance/cards.py`, `cli/doctor.py`, `plugins.py`, `providers/registry.py`, the `a2a` / `mcp` request
+  dispatchers (at `WARNING`), and `storage` / `settlement` best-effort persistence and probes. Behavior is
+  unchanged — each fallback still continues — but the suppression is now logged and counted. A handful of
+  fallbacks that surface the error into a returned result (a `401` response, a denied permission decision, a
+  failed-step outcome, a `PeerVisit` record) carry a justifying `# noqa: BLE001` instead.
+
 ## [6.1.0] - 2026-06-30
 
 **Error-contract conformance — the hardening line (6.x) continues.** Vincio's contract is that every error it

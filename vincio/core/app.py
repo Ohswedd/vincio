@@ -80,6 +80,7 @@ from ..tools.registry import ToolRegistry
 from ..tools.runtime import ToolRuntime
 from ..workflows.engine import Workflow
 from .config import VincioConfig, load_config
+from .diagnostics import note_suppressed
 from .errors import (
     AgentEngineError,
     ConfigError,
@@ -2120,8 +2121,8 @@ class ContextApp:
                 if hasattr(self.store, "delete") and self.store.delete("documents", doc_id):  # type: ignore[attr-defined]
                     result.documents_removed += 1
                     removed_docs.append(doc_id)
-            except Exception:  # pragma: no cover - store may not support delete
-                pass
+            except Exception:
+                note_suppressed("governance.erase.document_delete")
         if removed_docs:
             removed_ids["documents"] = removed_docs
 
@@ -2150,8 +2151,8 @@ class ContextApp:
                 try:
                     if hasattr(store_obj, "delete") and store_obj.delete(kind, artifact_key):  # type: ignore[attr-defined]
                         erased = True
-                except Exception:  # pragma: no cover - store may not support delete
-                    pass
+                except Exception:
+                    note_suppressed("governance.erase.artifact_delete")
             # The lineage link is severed regardless, which is the auditable fact.
             result.artifacts_removed += 1
             removed_artifacts.append(artifact_key)
@@ -2180,8 +2181,8 @@ class ContextApp:
                 try:
                     backend.clear()
                     result.caches_invalidated += 1
-                except Exception:  # pragma: no cover - defensive
-                    pass
+                except Exception:
+                    note_suppressed("governance.erase.cache_invalidate")
 
         entry = self.audit.record(
             "erase_source",
@@ -7373,8 +7374,8 @@ class ContextApp:
                 bom = generate_aibom(self)
                 prov.setdefault("vincio_version", bom.vincio_version)
                 prov["sbom"] = bom.to_cyclonedx()
-            except Exception:  # pragma: no cover - provenance is best-effort
-                pass
+            except Exception:
+                note_suppressed("assurance.certify.sbom")
         prov.setdefault("slsa", "SLSA build provenance attested by the release pipeline")
         chain_signer = self._resolve_contract_signer(signer, sign)
         report = _certify(

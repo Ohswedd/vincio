@@ -11995,19 +11995,29 @@ async def bench_hygiene() -> dict[str, Any]:
     ``docs/reference/error-contract.txt`` and the ``ContextApp`` (``app.*`` verb)
     surface is held to **zero** off-contract raises by an always-on check.
 
-    This family gates both reconciliations the way ``docs_conformance`` gates the
+    6.2 adds the **observable-failure** half: a best-effort fallback that catches a
+    broad ``Exception`` and continues is correct policy, but one that swallows it
+    *silently* (no re-raise, no log, no metric) hides a real bug. Those are made
+    observable (``vincio.core.diagnostics.note_suppressed`` logs and counts the
+    suppression) and a lint (``vincio._observable_failure``) holds the whole public
+    tree to **zero** unmarked silent swallows: every broad ``except`` re-raises,
+    records its failure, or carries a justifying ``# noqa: BLE001``.
+
+    This family gates all three reconciliations the way ``docs_conformance`` gates the
     docs graph. **Surface:** resolvable (every ``__all__`` name is a live attribute,
     no duplicate/malformed entries), frozen (matches the committed manifest), and
     classified (TOP / DUP / SUB, collisions pinned), with a companion proof the gate
     *bites*. **Error contract:** the verb surface raises only ``VincioError``
     (``error_contract_app_verbs_clean``), the baseline matches its committed manifest
     (``error_contract_frozen``), and the detector provably catches an injected public
-    built-in raise (``error_contract_gate_detects_tamper``). Deterministic and
-    offline."""
+    built-in raise (``error_contract_gate_detects_tamper``). **Observable failure:**
+    no public module swallows a broad exception silently (``observable_failure_clean``)
+    and the detector provably flags an injected silent swallow while ignoring a logged
+    one (``observable_failure_gate_detects_tamper``). Deterministic and offline."""
     from types import SimpleNamespace
 
     import vincio
-    from vincio import _error_contract, _surface
+    from vincio import _error_contract, _observable_failure, _surface
 
     problems = _surface.surface_problems()
     surface_dead_symbol_free = not problems
@@ -12061,6 +12071,28 @@ async def bench_hygiene() -> dict[str, Any]:
     )
     contract_rows = _error_contract.contract_rows()
 
+    # 6.2 — observable failure. No public module swallows a broad exception silently
+    # (every broad `except` re-raises, records its failure, or carries a justifying
+    # BLE001 noqa marker); the detector provably bites on an injected silent swallow
+    # and ignores a logged one.
+    silent_swallows = _observable_failure.silent_swallows()
+    observable_failure_clean = not silent_swallows
+    of_detects_silent = bool(
+        _observable_failure.silent_swallows_in_source(
+            "def f():\n    try:\n        g()\n    except Exception:\n        pass\n"
+        )
+    )
+    of_ignores_logged = (
+        _observable_failure.silent_swallows_in_source(
+            "def f():\n    try:\n        g()\n    except Exception:\n        log.debug('x')\n"
+        )
+        == []
+    )
+    observable_failure_gate_detects_tamper = bool(of_detects_silent and of_ignores_logged)
+    observable_failure_conformant = bool(
+        observable_failure_clean and observable_failure_gate_detects_tamper
+    )
+
     return {
         "surface_consistency": surface_consistency,
         "surface_dead_symbol_free": surface_dead_symbol_free,
@@ -12070,6 +12102,9 @@ async def bench_hygiene() -> dict[str, Any]:
         "error_contract_app_verbs_clean": error_contract_app_verbs_clean,
         "error_contract_frozen": error_contract_frozen,
         "error_contract_gate_detects_tamper": error_contract_gate_detects_tamper,
+        "observable_failure_conformant": observable_failure_conformant,
+        "observable_failure_clean": observable_failure_clean,
+        "observable_failure_gate_detects_tamper": observable_failure_gate_detects_tamper,
         "hygiene_subpackages_audited": len(surface),
         "hygiene_subpackage_public_symbols": len(rows),
         "hygiene_top_level_reexports": top_count,
@@ -12078,6 +12113,7 @@ async def bench_hygiene() -> dict[str, Any]:
         "hygiene_top_level_public_symbols": len([n for n in vincio.__all__ if n != "__version__"]),
         "hygiene_public_builtin_raises": len(contract_rows),
         "hygiene_error_contract_modules": len({row[0] for row in contract_rows}),
+        "hygiene_silent_swallows": len(silent_swallows),
     }
 
 

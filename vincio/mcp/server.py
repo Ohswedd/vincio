@@ -10,11 +10,13 @@ hash-chained audit log enforced on every inbound call.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from pydantic import BaseModel
 
+from ..core.diagnostics import note_suppressed
 from .protocol import (
     INTERNAL_ERROR,
     INVALID_PARAMS,
@@ -160,7 +162,8 @@ class MCPServer:
             result = await self._dispatch(method, params)
         except MCPError as exc:
             return jsonrpc_error(msg_id, exc.code, exc.message, exc.data)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
+            note_suppressed("mcp.dispatch", level=logging.WARNING, detail=type(exc).__name__)
             return jsonrpc_error(msg_id, INTERNAL_ERROR, f"{type(exc).__name__}: {exc}")
         if result is _METHOD_NOT_FOUND:
             return jsonrpc_error(msg_id, METHOD_NOT_FOUND, f"unknown method {method!r}")

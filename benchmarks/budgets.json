@@ -2371,6 +2371,18 @@
     "families.hygiene.error_contract_gate_detects_tamper": {
       "eq": true
     },
+    "families.hygiene.observable_failure_conformant": {
+      "eq": true
+    },
+    "families.hygiene.observable_failure_clean": {
+      "eq": true
+    },
+    "families.hygiene.observable_failure_gate_detects_tamper": {
+      "eq": true
+    },
+    "families.hygiene.hygiene_silent_swallows": {
+      "lte": 0
+    },
     "families.hygiene.hygiene_subpackages_audited": {
       "gte": 40
     }

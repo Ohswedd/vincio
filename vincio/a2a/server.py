@@ -9,9 +9,11 @@ raw A2A SDK does not provide.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any, cast
 
+from ..core.diagnostics import note_suppressed
 from .protocol import (
     A2AArtifact,
     A2AError,
@@ -85,7 +87,7 @@ class A2AServer:
             return None
         try:
             await self._validate(auth)
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001 - any validator failure maps to a 401-style response
             # Any validator (A2A, MCP, or custom) maps to a clean 401-style error.
             code = getattr(exc, "code", UNAUTHORIZED)
             data = getattr(exc, "data", None) or {"status": 401}
@@ -101,7 +103,8 @@ class A2AServer:
                 return jsonrpc_error(msg_id, METHOD_NOT_FOUND, f"unknown method {method!r}")
         except A2AError as exc:
             return jsonrpc_error(msg_id, exc.code, exc.message, exc.data)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
+            note_suppressed("a2a.dispatch", level=logging.WARNING, detail=type(exc).__name__)
             return jsonrpc_error(msg_id, INTERNAL_ERROR, f"{type(exc).__name__}: {exc}")
         return jsonrpc_response(msg_id, result)
 

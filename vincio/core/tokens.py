@@ -20,6 +20,8 @@ from collections.abc import Callable
 from functools import lru_cache
 from typing import Protocol
 
+from .diagnostics import note_suppressed
+
 __all__ = [
     "TokenCounter",
     "HeuristicTokenCounter",
@@ -134,11 +136,12 @@ def get_token_counter(model: str | None = None) -> TokenCounter:
         if factory is not None:
             try:
                 return factory(model)
-            except Exception:  # noqa: BLE001 - fall back if the native counter can't build
-                pass
+            except Exception:
+                note_suppressed("tokens.native_counter_build")
     try:
         return TiktokenCounter(model or "gpt-4o")
     except Exception:
+        note_suppressed("tokens.tiktoken_build")
         return HeuristicTokenCounter()
 
 

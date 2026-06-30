@@ -69,6 +69,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .record import SettlementRecord, SettlementSignature
@@ -947,8 +948,8 @@ class PortableReputation:
         if self.base is not None and _has_local_evidence(self.base, member_id):
             try:
                 return float(self.base.weight(member_id))
-            except Exception:  # noqa: BLE001 - a base miss should not break weighting
-                pass
+            except Exception:
+                note_suppressed("settlement.attestation.base_weight")
         return self.config.weight_of(self.reputation(member_id))
 
     def trust_in(self, issuer: str) -> float:
@@ -1134,13 +1135,14 @@ def _has_local_evidence(base: Any, member_id: str) -> bool:
     if callable(snapshot):
         try:
             return int(getattr(snapshot(member_id), "rounds", 0)) > 0
-        except Exception:  # noqa: BLE001 - fall through to a membership probe
-            pass
+        except Exception:
+            note_suppressed("settlement.attestation.membership_snapshot")
     members = getattr(base, "members", None)
     if callable(members):
         try:
             return member_id in members()
-        except Exception:  # noqa: BLE001
+        except Exception:
+            note_suppressed("settlement.attestation.membership_probe")
             return False
     return False
 
@@ -1352,7 +1354,8 @@ def _trust_multiplier(trust: Any | None, issuer: str) -> float:
             value = float(resolver(issuer))
         elif callable(trust):
             value = float(trust(issuer))
-    except Exception:  # noqa: BLE001 - a trust-source miss should not break weighting
+    except Exception:
+        note_suppressed("settlement.attestation.trust_source")
         return 1.0
     return min(1.0, max(0.0, value))
 
@@ -1399,7 +1402,8 @@ def build_trust_model(
                 continue
             try:
                 local_weight = float(base.weight(issuer))
-            except Exception:  # noqa: BLE001 - a base miss leaves the issuer unreached
+            except Exception:
+                note_suppressed("settlement.attestation.issuer_weight")
                 continue
             assessments[issuer] = IssuerTrust(
                 issuer=issuer,

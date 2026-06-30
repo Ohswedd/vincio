@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder, embed_texts
@@ -114,7 +115,8 @@ class _ElasticLikeIndex:
             try:
                 self.client.delete(index=self.index, id=chunk_id, refresh=True)
                 removed += 1
-            except Exception:  # noqa: BLE001 - id absent / already deleted
+            except Exception:
+                note_suppressed("storage.elasticsearch.delete")
                 continue
         return removed
 

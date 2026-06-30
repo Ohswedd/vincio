@@ -47,6 +47,8 @@ from typing import Any
 
 from pydantic import BaseModel
 
+from .core.diagnostics import note_suppressed
+
 __all__ = [
     "PLUGIN_API_VERSION",
     "PLUGIN_GROUPS",
@@ -118,7 +120,8 @@ def _iter_entry_points() -> Iterator[_EP]:
     seen: set[tuple[str, str, str]] = set()
     try:
         distributions = list(_md.distributions())
-    except Exception:  # pragma: no cover - importlib.metadata edge cases
+    except Exception:
+        note_suppressed("plugins.list_distributions")
         return
     for dist in distributions:
         try:

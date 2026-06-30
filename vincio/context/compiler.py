@@ -22,6 +22,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import ContextCompileError
 from ..core.tokens import count_tokens, count_tokens_many
 from ..core.types import (
@@ -308,7 +309,8 @@ class ContextCompiler:
             return fallback
         try:
             vectors_list = await self.embedder.embed(texts)
-        except Exception:  # noqa: BLE001 - fall back to lexical if embedding fails
+        except Exception:
+            note_suppressed("context.compile.embedding")
             return fallback
         vectors = {text: vec for text, vec in zip(texts, vectors_list, strict=False)}
         scorer = self._fresh_scorer(features)
