@@ -671,8 +671,16 @@ class MultimodalEmbedder(HTTPEmbedder):
 
     def _multimodal_payload(
         self, items: list[MultimodalInput], input_type: InputType | None
-    ) -> dict[str, Any]:  # pragma: no cover - overridden
-        raise NotImplementedError
+    ) -> dict[str, Any]:  # pragma: no cover - overridden by concrete subclasses
+        # MultimodalEmbedder is a base, not an abc.ABC, so this guards direct use
+        # or a subclass that forgot to override: a ConfigError (on the VincioError
+        # contract) rather than a bare NotImplementedError leaking from the public
+        # embed()/embed_multimodal() path.
+        raise ConfigError(
+            f"{type(self).__name__} does not implement multimodal payload encoding; "
+            "use a concrete MultimodalEmbedder subclass "
+            "(e.g. VoyageMultimodalEmbedder or CohereMultimodalEmbedder)"
+        )
 
     async def embed_multimodal(
         self, items: list[MultimodalInput], *, input_type: InputType | None = None

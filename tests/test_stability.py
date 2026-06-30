@@ -23,16 +23,18 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "6.0.0"
+    assert vincio.__version__ == "6.1.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
     # the 4.x data & analytics plane (4.1–5.0) and declares that plane complete. The
-    # 6.0 phase opens the hardening line — an additive, surface-preserving paydown of
-    # interior quality debt (dead-symbol removal, two-level __all__ reconciliation,
-    # the two missing public exceptions, the surface-consistency gate) — with **no
-    # change to the frozen top-level surface**, so the contract stays "5.0" while the
-    # package version advances to 6.0.0.
+    # 6.x hardening line is an additive, surface-preserving paydown of interior
+    # quality debt — 6.0 (dead-symbol removal, two-level __all__ reconciliation, the
+    # two missing public exceptions, the surface-consistency gate) and 6.1
+    # (error-contract conformance: off-contract built-in raises converted to
+    # VincioError, the contract frozen and gated) — with **no change to the frozen
+    # top-level surface**, so the contract stays "5.0" while the package version
+    # advances to 6.1.0.
     assert API_VERSION == "5.0"
 
 

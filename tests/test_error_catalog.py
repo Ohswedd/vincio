@@ -121,8 +121,11 @@ def test_internationalization_lookup_and_fallback():
     assert remediation_for("CONFIG_ERROR", locale="xx") == "Réparez"
     # A code without a translation falls back to English.
     assert remediation_for("PROVIDER_AUTH", locale="xx") == remediation_for("PROVIDER_AUTH")
-    # Unknown code in a locale registration is rejected.
-    with pytest.raises(KeyError):
+    # Unknown code in a locale registration is rejected with an on-contract
+    # ConfigError (a VincioError), not a bare KeyError (6.1 error-contract).
+    from vincio.core.errors import ConfigError
+
+    with pytest.raises(ConfigError):
         register_error_locale("xx", {"NOPE": ("a", "b")})
 
 

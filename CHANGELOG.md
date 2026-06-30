@@ -4,6 +4,44 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [6.1.0] - 2026-06-30
+
+**Error-contract conformance — the hardening line (6.x) continues.** Vincio's contract is that every error it
+raises derives from `VincioError`, so an application catches the whole family with one `except VincioError`
+and branches on the stable `.code`. A standing internal audit found three public entry points that leaked a
+bare built-in instead. This release converts them and makes the contract *mechanical*, on the same
+freeze-and-gate idiom 6.0 used for the two-level public surface. Additive and surface-preserving: the frozen
+top-level contract `vincio.__all__` is unchanged, so `API_VERSION` stays `5.0`, the `vincio migrate 6.x`
+codemod table stays empty, and a clean upgrade needs zero source changes.
+
+### Added
+
+- **Error-contract checker** (`vincio._error_contract` + `docs/reference/error-contract.txt`). A static,
+  AST-based scanner of every public module for a bare built-in raise on a public entry point (every enclosing
+  function and class public; dunders like `__init__` count). It enforces two invariants, the way
+  `vincio._surface` enforces the two-level surface: the `ContextApp` (`app.*` verb) surface is held to **zero**
+  off-contract raises by an always-on check that needs no allowlist, and the full classified baseline of
+  accepted public built-in raises (internal input-validation, abstract-base placeholders, the `AttributeError`
+  a `__getattr__` must raise) is frozen in a committed manifest, so a new public built-in raise is a deliberate,
+  reviewed edit. Guarded by `tests/test_error_contract.py`; regenerate with
+  `python -m vincio._error_contract --freeze`.
+- **HygieneBench error-contract SLOs.** The `hygiene` VincioBench family folds in `error_contract_conformant`
+  (with `error_contract_app_verbs_clean`, `error_contract_frozen`, and an `error_contract_gate_detects_tamper`
+  "the gate bites" proof), held by `budgets.json` and published in `slos.json` / `docs/reference/slo.md`.
+
+### Changed
+
+- **Three off-contract built-in raises converted to typed `VincioError` subclasses.** All three carry their
+  catalog `.code` and remediation; `except VincioError` (the documented contract) was always the correct catch
+  and is unaffected:
+  - `ContextApp.atest_time_search` / `test_time_search` now raise **`InputError`** (was `ValueError`) for an
+    unknown `strategy`.
+  - `register_error_locale` (`vincio.core.error_catalog`) now raises **`ConfigError`** (was `KeyError`) for a
+    code not in the catalog. Code that caught the bare `KeyError` specifically should catch `ConfigError` (or
+    `VincioError`) instead.
+  - `MultimodalEmbedder._multimodal_payload` — reachable from the public `embed()` / `embed_multimodal()` on a
+    non-`abc.ABC` base — now raises **`ConfigError`** naming a concrete subclass (was `NotImplementedError`).
+
 ## [6.0.0] - 2026-06-30
 
 **Public-surface hygiene — the opening of the hardening line (6.x).** The 5.1–5.4 fit-and-finish line made

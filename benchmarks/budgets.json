@@ -2359,6 +2359,18 @@
     "families.hygiene.surface_gate_detects_tamper": {
       "eq": true
     },
+    "families.hygiene.error_contract_conformant": {
+      "eq": true
+    },
+    "families.hygiene.error_contract_app_verbs_clean": {
+      "eq": true
+    },
+    "families.hygiene.error_contract_frozen": {
+      "eq": true
+    },
+    "families.hygiene.error_contract_gate_detects_tamper": {
+      "eq": true
+    },
     "families.hygiene.hygiene_subpackages_audited": {
       "gte": 40
     }
