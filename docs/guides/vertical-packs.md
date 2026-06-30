@@ -31,8 +31,8 @@ result = app.run("Screen this customer against sanctions and adverse media.")
 | `healthcare` | `clinical_answer` (`phi_detected`, `needs_clinician`) | PHI redact + secrets (output) | user-scoped | `us` |
 | `ediscovery` | `ediscovery_review` (`responsive`, `privileged`, `privilege_basis`) | secrets (output) | team-scoped | `us` |
 | `kyc` | `kyc_assessment` (`risk_rating`, `sanctions_hit`, `pep`, `sar_recommended`) | PII redact + secrets (output) | user-scoped | `us` |
-| `customer_support` | `support_resolution` (`category`, `priority`, `resolution_steps`) | PII redact + secrets (output) | user-scoped |, |
-| `code_review` | `code_review` (`findings[]`, `security_risk`, `approve`) | secrets (output) | team-scoped |, |
+| `customer_support` | `support_resolution` (`category`, `priority`, `resolution_steps`) | PII redact + secrets (output) | user-scoped | — |
+| `code_review` | `code_review` (`findings[]`, `security_risk`, `approve`) | secrets (output) | team-scoped | — |
 
 Each also sets retrieval knobs suited to the domain (e.g. `sentence_window`
 chunking for clinical notes, `parent_document` for long litigation records,

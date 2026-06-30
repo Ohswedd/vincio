@@ -64,12 +64,14 @@ path. Project a completed agent run onto a `RunOutput`, no re-instrumentation,
 and score the trajectory it actually took:
 
 ```python
-from vincio.evals import RunOutput
+from vincio.evals import EvalCase, RunOutput
 from vincio.evals.metrics import METRICS
 
 # Score a single finished run directly with the metric functions:
 state = app.agent(...).run(...)            # or RunOutput.from_crew_result / .from_trace
 run = RunOutput.from_agent_state(state)
+case = EvalCase(id="a1", input="...", expected="...",
+                rubric={"expected_tools": ["search", "summarize"]})
 METRICS["tool_call_accuracy"](case, run).value
 
 # ...or evaluate a whole golden set through the app, each run carries its

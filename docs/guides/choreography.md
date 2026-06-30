@@ -166,7 +166,7 @@ allow-list **and** have a participant binding (so they are reachable), the bindi
 prefers the one whose reputation and prior settlement record best fit the step's
 contract:
 
-- **Reputation**: a candidate's [`ReputationLedger`](../guides/negotiation.md)
+- **Reputation**: a candidate's [`ReputationLedger`](negotiation.md)
   standing (its no-regression / contract-fulfilment track record) weights its
   score, so a repeatedly-regressing vendor is discounted without being singled out.
 - **Settlement fit**: its [`SettlementBook`](settlement.md) history weights the

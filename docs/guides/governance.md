@@ -172,7 +172,7 @@ The built-in PII detector is English/US-centric. Non-English **locale packs**
 add national-ID and locale phone formats without changing the English path:
 
 ```python
-from vincio.security import PIIDetector, available_locales
+from vincio.security import PIIDetector
 
 detector = PIIDetector(locales=["fr", "in", "sg"])   # or governance.locales in config
 detector.detect("DNI 12345678Z, PAN ABCDE1234F, NRIC S1234567D")
@@ -217,7 +217,7 @@ print(report.telemetry(poisoned_ids={"bad1"}))   # precision/recall/FP/FN
 
 `app.erase_source` removes a source's chunks,
 documents, memories, and cache entries and logs it, and makes the removal **provable**.
-The sweep now returns a signed, content-bound `ErasureProof` on the result:
+The sweep returns a signed, content-bound `ErasureProof` on the result:
 
 ```python
 from vincio.governance import HmacSigner, verify_erasure_proof
@@ -270,7 +270,7 @@ scope gate **team-shared memory**, `engine.for_team("eng").remember(..., acl=["a
 surfaces only to listed readers. The VincioBench `governance` family gates
 erasure-proof verification, tamper detection, and consent enforcement; the
 `memory` family gates as-of recall and per-memory ACLs. See
-[`38_self_improvement_and_erasure.py`](../../examples/08_optimization_self_improvement.py).
+[`08_optimization_self_improvement.py`](../../examples/08_optimization_self_improvement.py).
 
 ## How it interconnects
 
@@ -281,7 +281,7 @@ burden. Residency and erasure are `PolicyViolation`s and audit entries on the
 same hash-chained path as every other decision. See the
 [threat model](../security/threat-model.md) for the trust boundaries these
 controls operate within, and the runnable
-[`30_governance_compliance.py`](../../examples/09_security_governance.py) example.
+[`09_security_governance.py`](../../examples/09_security_governance.py) example.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

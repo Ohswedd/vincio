@@ -22,7 +22,7 @@ pip install "vincio[realtime]"   # adds websockets for the hosted backends
 ## A session in one screen
 
 ```python
-from vincio.realtime import RealtimeSession, RealtimeConfig
+from vincio.realtime import RealtimeSession, RealtimeConfig, VADConfig
 
 session = RealtimeSession(config=RealtimeConfig(model="gpt-realtime", voice="alloy"))
 async with session:
@@ -59,7 +59,7 @@ async with session:
 
 ## In-session tools through the permissioned runtime
 
-The headline integration: wire a session from a `ContextApp` and its tool calls
+Wire a session from a `ContextApp` and its tool calls
 flow through the app's permissioned, sandboxed, audited tool runtime, exactly
 like a native tool call.
 

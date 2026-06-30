@@ -156,7 +156,7 @@ records) and `net_books` (over whole books) read only the existing signed,
 hash-chained records and produce a content-bound `NettingSet`:
 
 ```python
-from vincio import net_settlements, settle_contract
+from vincio import settle_contract
 
 # A cycle: acme owes vendor, vendor owes data, data owes acme.
 fleet = [
@@ -306,7 +306,6 @@ within its window by an importer-set half-life, its evidence mass halved each
 pooled prior rather than anchoring it forever:
 
 ```python
-from datetime import timedelta
 from vincio.core.utils import utcnow
 from vincio.settlement import AttestationConfig
 

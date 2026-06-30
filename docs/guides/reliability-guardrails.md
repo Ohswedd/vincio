@@ -1,6 +1,6 @@
 # Guide: reliability & guardrails
 
-Vincio makes reliability a guarantee, not a hope: deterministic rails before
+Vincio enforces reliability with deterministic rails before
 and after every generation, schema-constrained decoding, streaming
 validation, bounded self-correction, and typed signatures, all on the same
 packet, trace, and audit log as the rest of the pipeline.
@@ -115,8 +115,8 @@ report = await PromptOptimizer(evaluate_variant).optimize(spec, dataset)
 
 | Event | Trace | Audit log |
 |---|---|---|
-| Constrained decoding mode | `prompt_render` / `output_validation` span attrs |, |
-| Schema route chosen | `prompt_render` span (`schema=`) |, |
+| Constrained decoding mode | `prompt_render` / `output_validation` span attrs | — |
+| Schema route chosen | `prompt_render` span (`schema=`) | — |
 | Repair action | `repair` event on the validation span | `output_validation` entry (`decision=repair`) |
 | Validation failure | `validation_failed` events + span attrs | `output_validation` entry (`decision=deny`) |
 | Self-correction | `self_correction` event (cycles, cost, outcome) | `correction_cycles` in the entry details |

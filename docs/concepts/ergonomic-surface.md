@@ -1,6 +1,6 @@
 # The ergonomic surface — the one-line 'ad-hoc' front door
 
-The platform is feature-complete, but its power is broad: a
+The platform is broad: a
 [`ContextApp`](../../vincio/core/app.py) carries a couple hundred methods, and the
 five jobs a newcomer actually has — grounded **RAG Q&A**, a **tool-using agent**,
 **structured extraction**, an **eval**, and a **multi-step flow** — each take a
@@ -89,8 +89,8 @@ pre-configured `ContextApp` — the escape hatch, inbound.
 
 Because a constructor only replays public builder calls, the ad-hoc form lowers to
 a byte-identical packet and `RunResult`. The proof is mechanical: the shared
-[`run_signature`](../../vincio/testing/lowering.py) harness (the same one the 5.2
-single-pass feature arena uses to prove selection byte-identity) projects a run to
+[`run_signature`](../../vincio/testing/lowering.py) harness (the same one that proves
+the single-pass compiler's selection byte-identity) projects a run to
 its packet `spec_hash` plus its stable outputs (output, citations, eval scores,
 token usage), and the verbose form and the one-liner produce equal signatures when
 given the same inputs:

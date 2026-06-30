@@ -42,8 +42,6 @@ For lower-level control, listing, scopes, export, drive the engine
 directly:
 
 ```python
-from vincio import MemoryEngine, MemoryScope
-
 engine = app.memory
 user = engine.for_user("alex")          # also for_agent / for_session
 user.remember("Alex works on the billing team")

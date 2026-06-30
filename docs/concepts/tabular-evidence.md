@@ -132,11 +132,12 @@ preserved exactly.
 
 This is the encoding and evidence foundation. Profiling, representative sampling,
 fit-in-window, and data-quality rails build directly on it — see
-[Dataset profiling, sampling, and quality rails](dataset-profiling.md).
-Text-to-query, the data-analysis agent, charts, and cell-level provenance are
-later rungs of the data plane (see the [roadmap](../../ROADMAP.md)). Nothing here
-calls a database or a network: `vincio.data` is deterministic, dependency-free,
-and offline.
+[Dataset profiling, sampling, and quality rails](dataset-profiling.md) — and
+[governed text-to-query](governed-text-to-query.md), the
+[data-analysis agent](data-analysis-agent.md), and
+[charts](charts-and-cited-artifacts.md) build the rest of the data plane on top.
+Nothing here calls a database or a network: `vincio.data` is deterministic,
+dependency-free, and offline.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

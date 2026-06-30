@@ -44,7 +44,7 @@ print(result.trace_id)      # every run has a trace
 print(result.cost_usd)      # and a cost
 ```
 
-What happened under the hood (the 17-step runtime):
+What happened inside that single call:
 
 1. Your input was normalized, language-detected, and classified by task type.
 2. Policies ran (injection detection, PII redaction if enabled).

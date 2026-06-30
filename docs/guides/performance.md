@@ -325,7 +325,7 @@ A horizon-scaling SLO holds the guarantee: at 10× horizon the governed footprin
 stays within a bounded multiple of the 1× footprint (flat, not the ~linear growth
 of naïve accumulation) and a compacted fact is still recalled, see the
 `families.long_horizon` VincioBench family and example
-[`54_long_horizon_context.py`](https://github.com/Ohswedd/vincio/blob/main/examples/11_advanced_context.py).
+[`11_advanced_context.py`](../../examples/11_advanced_context.py).
 
 ## Zero-copy context packets
 

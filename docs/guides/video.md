@@ -92,7 +92,7 @@ priced by `video_cost` / `VideoPrice`, metered against the run `Budget`, and aud
 exactly the way generated images and audio are.
 
 ```python
-from vincio.generation.video import MockVideoProvider, VideoGenRequest
+from vincio.generation.video import MockVideoProvider
 from vincio.governance import verify_manifest
 
 response = app.generate_video("a 4-second product teaser", provider=MockVideoProvider(), seconds=4)

@@ -66,6 +66,8 @@ agent. An agent can **sub-delegate** to a sub-agent, and the links compose into 
 `DelegationChain`:
 
 ```python
+from vincio import DelegationChain
+
 to_agent = principal.delegate(agent, capabilities=["retrieve", "summarize"],
                               budget_usd=500.0, max_delegations=2)
 to_sub   = to_agent.delegate(agent, sub_agent, capabilities=["retrieve"], budget_usd=100.0)

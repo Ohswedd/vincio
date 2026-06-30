@@ -166,7 +166,7 @@ direction builds real framework objects and needs the matching extra
 from vincio.interop import (
     add_langchain_tool, from_llamaindex_reader,
     from_haystack_retriever, add_haystack_component,
-    from_dspy_module, from_dspy_retriever,
+    add_dspy_module, from_dspy_retriever,
 )
 
 add_langchain_tool(app, my_langchain_tool)        # register + enable
