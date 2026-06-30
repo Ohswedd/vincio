@@ -481,7 +481,7 @@ class MemoryEngine:
         return hashlib.sha256(text.encode("utf-8")).hexdigest()[:32]
 
     async def _vectors_for(self, texts: list[str]) -> list[list[float]]:
-        assert self.embedder is not None
+        assert self.embedder is not None  # noqa: S101 - the caller computes vectors only when an embedder is configured
         keys = [self._vector_key(text) for text in texts]
         missing = [(key, text) for key, text in zip(keys, texts, strict=True) if key not in self._embedding_cache]
         if missing:

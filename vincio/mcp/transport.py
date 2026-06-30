@@ -103,7 +103,8 @@ class StdioTransport(MCPTransport):
         return self._proc
 
     async def _read_loop(self, proc: asyncio.subprocess.Process) -> None:
-        assert proc.stdout is not None
+        if proc.stdout is None:
+            raise MCPError("the MCP stdio subprocess was started without a stdout pipe")
         while True:
             line = await proc.stdout.readline()
             if not line:
@@ -127,7 +128,8 @@ class StdioTransport(MCPTransport):
     async def _answer_server_request(self, message: dict[str, Any]) -> None:
         from .protocol import jsonrpc_error, jsonrpc_response
 
-        assert self._proc is not None and self._proc.stdin is not None
+        if self._proc is None or self._proc.stdin is None:
+            raise MCPError("the MCP stdio transport is not started (no stdin pipe)")
         try:
             if self.on_server_request is None:
                 raise MCPError(f"no client handler for {message.get('method')!r}")
@@ -143,7 +145,8 @@ class StdioTransport(MCPTransport):
 
     async def request(self, method: str, params: dict[str, Any] | None = None) -> Any:
         proc = await self._ensure()
-        assert proc.stdin is not None
+        if proc.stdin is None:
+            raise MCPError("the MCP stdio subprocess was started without a stdin pipe")
         async with self._lock:
             self._counter += 1
             msg_id = self._counter
@@ -159,7 +162,8 @@ class StdioTransport(MCPTransport):
 
     async def notify(self, method: str, params: dict[str, Any] | None = None) -> None:
         proc = await self._ensure()
-        assert proc.stdin is not None
+        if proc.stdin is None:
+            raise MCPError("the MCP stdio subprocess was started without a stdin pipe")
         proc.stdin.write(
             (json.dumps({"jsonrpc": "2.0", "method": method, "params": params or {}}) + "\n").encode("utf-8")
         )

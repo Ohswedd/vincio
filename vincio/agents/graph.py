@@ -668,7 +668,10 @@ class CompiledGraph:
         async for event in self.astream(input, thread_id=thread_id):
             if event.type in ("done", "interrupt"):
                 result = event.payload
-        assert result is not None  # _events always ends with a terminal event
+        if result is None:
+            raise GraphError(
+                f"graph {self.graph.name!r} produced no terminal (done / interrupt) event"
+            )
         return result
 
     def invoke(self, input: dict[str, Any] | None = None, *, thread_id: str | None = None) -> GraphResult:

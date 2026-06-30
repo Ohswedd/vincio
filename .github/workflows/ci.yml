@@ -55,6 +55,7 @@ jobs:
           vincio/_error_contract.py
           vincio/_observable_failure.py
           vincio/_wire_or_retire.py
+          vincio/_assert_robustness.py
           vincio/cli/doctor.py
 
   test:

@@ -2585,7 +2585,7 @@ class ContextApp:
 
         if self.memory is None:
             self.add_memory()
-        assert self.memory is not None  # add_memory() guarantees it
+        assert self.memory is not None  # noqa: S101 - add_memory() above guarantees it
         os = MemoryOS(self.memory, scope=scope, owner_id=owner_id, max_core_tokens=max_core_tokens)
         if register_tools:
             append, replace, search, archive = os.tools()

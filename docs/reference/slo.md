@@ -539,6 +539,9 @@ offline.
 | The learned-compression docstring matches the gate: `CompressionTuner` reads the `faithfulness` eval metric it names, and `compression_faithfulness` / `faithfulness_preserved` measure answer-bearing survival offline. | true | `families.hygiene.docstring_parity_compression` |
 | The federated default-deny consent demonstration is deterministic: a store-less default-deny ledger refuses an ungranted subject and a grant flips it, regardless of any consent persisted from an earlier run. | true | `families.hygiene.docstring_parity_consent` |
 | `MemoryEngine.delete` delegates to `forget` — one body — with the audit semantics preserved: a plain delete records no reason, `forget` records one. | true | `families.hygiene.docstring_parity_memory` |
+| `-O` robustness: no public module carries an `assert` that carries control-flow weight and would silently vanish under `python -O` — every load-bearing `assert` is an explicit guard that raises a `VincioError`, a genuine never-happens invariant kept as an `assert` carries a justifying `# noqa: S101`, and the detector provably flags an injected bare `assert` while ignoring a marked one. | true | `families.hygiene.assert_robustness_conformant` |
+| Every public module is free of unmarked `assert`s: the lint reports none tree-wide, so nothing load-bearing is left to vanish under `python -O`. | true | `families.hygiene.assert_robustness_clean` |
+| The `-O`-robustness detector provably bites: an injected bare `assert` is reported while a `# noqa: S101`-marked one is not. | true | `families.hygiene.assert_robustness_gate_detects_tamper` |
 
 `vincio.__all__` is the frozen top-level contract, but each public subpackage also
 declares its own `__all__` — the return types, dataclasses, and helpers reached by
@@ -599,6 +602,20 @@ measures); the federated default-deny consent demonstration refuses every run, n
 only against a pristine store; and `MemoryEngine.delete` delegates to `forget` so the
 deletion path has one body. The `families.hygiene.docstring_parity_*` budgets exercise
 each of these behaviours, so a docstring and its code cannot silently diverge again.
+
+The 6.5 phase makes **`-O` robustness** mechanical the same way. Python strips every
+`assert` under `python -O` (and `-OO`), so a *load-bearing* one — narrowing a value the
+code then dereferences, or checking a precondition a public operation depends on —
+silently vanishes in an optimized deployment, turning a caught invariant into an opaque
+downstream `TypeError` far from its cause. Each is replaced by an explicit guard that
+raises the appropriate `VincioError` (the streaming and cascade response paths in
+`core/runtime.py`, the resident-footprint ceiling in `context/compiler.py`, the
+terminal-event invariant in `agents/graph.py`, and the MCP stdio subprocess pipes in
+`mcp/transport.py`), so an optimized run fails loudly and correctly; a genuine
+*never-happens* invariant kept as an `assert` carries a justifying `# noqa: S101`.
+`vincio._assert_robustness` holds the whole public tree to zero unmarked `assert`s, so a
+new one fails the build unless it is converted to a guard or deliberately marked. Run
+`python -m vincio._assert_robustness` to reproduce it offline.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

@@ -211,7 +211,7 @@ def dag_from_plan_node(
     def emit(node: HTNPlanNode, upstream: list[str]) -> list[str]:
         if node.is_leaf:
             op = node.operator
-            assert op is not None
+            assert op is not None  # noqa: S101 - a leaf plan node always carries an operator (set by the planner)
             step_type: AgentStepType = op.step_type
             tool_name = op.tool_name
             if step_type == "tool" and (tool_name is None or tool_name not in tools):

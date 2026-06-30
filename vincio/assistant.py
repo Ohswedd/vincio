@@ -267,7 +267,7 @@ class Assistant:
         semantic fact — so the guarded write policy never treats two different
         turns as contradictory facts to reconcile.
         """
-        assert self.app.memory is not None
+        assert self.app.memory is not None  # noqa: S101 - the caller writes back only when memory is configured
         content = f"User said: {user_text.strip()}\nAssistant answered: {reply.strip()}"
         written: list[str] = []
         try:

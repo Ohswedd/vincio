@@ -247,7 +247,7 @@ class ConsentLedger:
         self.store.save("consent_records", row)
 
     def _load(self) -> None:
-        assert self.store is not None
+        assert self.store is not None  # noqa: S101 - _load runs only when a store is configured
         try:
             rows = self.store.query("consent_records", limit=10_000)
         except Exception:  # noqa: BLE001 - a store without the kind is simply empty

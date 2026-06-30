@@ -1063,7 +1063,7 @@ class FederatedImprovement:
     async def _eval_report(self, provider: ModelProvider) -> EvalReport:
         from ..evals.runners import EvalRunner
 
-        assert self.dataset is not None
+        assert self.dataset is not None  # noqa: S101 - the caller skips evaluation when no dataset is bound
         app = self.app
         original_provider = app._provider_instance
         original_write_back = app.config.memory.write_back

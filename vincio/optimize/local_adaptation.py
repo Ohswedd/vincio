@@ -526,7 +526,7 @@ class AdapterRegistry:
             self._load()
 
     def _load(self) -> None:
-        assert self.directory is not None
+        assert self.directory is not None  # noqa: S101 - _load runs only when a directory is configured
         for name_dir in sorted(p for p in self.directory.iterdir() if p.is_dir()):
             versions = sorted(
                 name_dir.glob("v*.json"), key=lambda p: int(p.stem[1:])
@@ -808,7 +808,7 @@ class ContinualAdaptation:
     async def _eval_report(self, provider: ModelProvider) -> EvalReport:
         from ..evals.runners import EvalRunner
 
-        assert self.dataset is not None
+        assert self.dataset is not None  # noqa: S101 - the caller skips evaluation when no dataset is bound
         app = self.app
         original_provider = app._provider_instance
         original_write_back = app.config.memory.write_back

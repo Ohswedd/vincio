@@ -737,7 +737,7 @@ class PrivacyAccountant:
             return
 
     def _load(self) -> None:
-        assert self.store is not None
+        assert self.store is not None  # noqa: S101 - _load runs only when a store is configured
         try:
             rows = self.store.query("privacy_spends", limit=100_000)
         except Exception:  # noqa: BLE001 - a store without the kind is simply empty

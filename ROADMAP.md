@@ -14,8 +14,9 @@ and what is intentionally out of scope. The complete release-by-release history 
 > The capability surface is complete and frozen. The **[hardening line
 > (6.x)](#-the-hardening-line-6x--in-progress)** — an additive, non-breaking paydown of interior quality
 > debt surfaced by a standing internal audit, not new capability — is underway: **6.0 (public-surface
-> hygiene), 6.1 (error-contract conformance), 6.2 (observable failure), 6.3 (wire-or-retire), and 6.4
-> (docstring / behaviour parity) shipped**; 6.5 (`-O` robustness) is next.
+> hygiene), 6.1 (error-contract conformance), 6.2 (observable failure), 6.3 (wire-or-retire), 6.4
+> (docstring / behaviour parity), and 6.5 (`-O` robustness) shipped**; 6.6 (audit completion & standing
+> guard) is next.
 
 ## What "done" means here
 
@@ -337,7 +338,7 @@ methods, load-bearing `assert`s that vanish under `python -O`, and a large drift
 | **✅ 6.2 — Observable failure** | no silent swallow | **Shipped.** Made every silent best-effort fallback *observable* — `vincio.core.diagnostics.note_suppressed` logs the suppression on a dedicated `vincio.suppressed` channel and counts it by label — and added a lint (`vincio._observable_failure`) that holds the whole public tree to **zero** unmarked silent swallows: a broad `except` (or `contextlib.suppress(Exception)`) must re-raise, record its failure, or carry a justifying `# noqa: BLE001`, folded into the `hygiene` VincioBench family. |
 | **✅ 6.3 — Wire-or-retire** | unhooked capabilities | **Shipped.** Wired each formerly-unhooked capability to a production path: `app.retrieve_facts` (reasoning retrieval), `app.consolidate_memory` (the aged-episode tier transition), `use_context_governor(blob_store=…)` (cross-process cold-span paging through `BlobEvidenceStore`), and a provider-native token-counter registrant at provider init; `compile_streaming` / `recompile` / `CompileStreamEvent` are documented as advanced deep-import API. A standing guard (`vincio._wire_or_retire`) holds a frozen ledger of them reachable, folded into the `hygiene` VincioBench family. |
 | **✅ 6.4 — Docstring / behaviour parity** | the docs match the code | **Shipped.** Made every docstring that advertised behaviour the code no longer performed either true or corrected: the budgeting module docstring describes the allocate-time redistribution it actually does (and the verified-dead `BudgetAllocator.redistribute` is removed); the learned-compression docstring no longer claims the tuner calls the faithfulness helpers; the federated default-deny consent demonstration fires every run; `delete` delegates to `forget`; and the stale comments (compiler step numbering, `input/*` spec numbering, the redundant `lint.py` PROMPT001 clause) are cleared. The `hygiene` VincioBench family folds in `docstring_parity_conformant`, re-deriving each reconciled claim from the live code. |
-| **6.5 — `-O` robustness** | load-bearing `assert` → guard | Replace runtime-significant `assert`s with explicit guards that raise a `VincioError`, so a `python -O` deployment fails loudly and correctly. |
+| **✅ 6.5 — `-O` robustness** | load-bearing `assert` → guard | **Shipped.** Replaced every runtime-significant `assert` stripped under `python -O` with an explicit guard that raises the appropriate `VincioError` — the streaming / cascade response paths in `core/runtime.py` (→ `ProviderResponseError`), the resident-footprint ceiling in `context/compiler.py` (→ `ContextCompileError`), the terminal-event invariant in `agents/graph.py` (→ `GraphError`), and the MCP stdio subprocess pipes in `mcp/transport.py` (→ `MCPError`); the genuine never-happens invariants (a value guaranteed non-`None` by an adjacent guard, a model validator, or the preceding assignment) are kept, documented, and marked `# noqa: S101`. A lint (`vincio._assert_robustness`) holds the whole public tree to **zero** unmarked `assert`s, folded into the `hygiene` VincioBench family and proven to *bite*. |
 | **6.6 — Audit completion & standing guard** | finish + lock it in | Extend the symbol-by-symbol audit to every remaining subpackage with the same evidence discipline, and gate the whole hygiene family in CI so the debt cannot silently return. |
 
 ### 6.0 — Public-surface hygiene ✅ Shipped
@@ -481,13 +482,31 @@ bodies (`delete` now delegates to `forget`). The contract is made **mechanical**
 idiom 6.0–6.3 use: the `hygiene` VincioBench family folds in `docstring_parity_conformant`, re-deriving each
 reconciled claim from the live code, so a docstring and its behaviour cannot silently diverge again.
 
-### 6.5 — `-O` robustness
+### 6.5 — `-O` robustness ✅ Shipped
 
-Roughly thirty `assert`s in shipped code carry real control-flow weight and are stripped under `python -O`,
-turning a caught invariant into an opaque downstream `TypeError`: `core` (×9, incl. `runtime.py` streaming /
-cascade paths and `context/compiler.py:886 assert ceiling is not None`), `optimize` (×7), `mcp` (×4),
-`context` (×3), `governance` / `agents` (×2 each). 6.5 replaces each load-bearing `assert` with an explicit
-guard that raises the appropriate `VincioError`, leaving genuine never-happens invariants documented but safe.
+Python strips every `assert` statement under `python -O` (and `-OO`). A handful of the `assert`s in shipped
+code carried real control-flow weight — narrowing a value the code then dereferenced, or checking a
+precondition a public operation depended on — so under `-O` they *vanished*, turning a caught invariant into
+an opaque downstream `TypeError` / `AttributeError` far from its cause. 6.5 audited every `assert` in the
+public tree (the docstring-example `assert`s in `core/app.py` and elsewhere are string literals, not
+statements, and are untouched) and split them in two. The **load-bearing** ones became explicit guards that
+raise the appropriate `VincioError`: the streaming and cascade response paths in `core/runtime.py` (→
+`ProviderResponseError`), the resident-footprint ceiling in `context/compiler.py` (→ `ContextCompileError`),
+the terminal-event invariant on the public `CompiledGraph.ainvoke` return in `agents/graph.py` (→
+`GraphError`), and the MCP stdio subprocess pipes in `mcp/transport.py` (→ `MCPError`). The **genuine
+never-happens invariants** — a value guaranteed non-`None` by an adjacent caller guard, a model validator, or
+the immediately-preceding assignment — are kept as `assert`s but documented and marked `# noqa: S101`, so they
+stay a cheap type-narrowing aid without reading as a load-bearing check.
+
+The contract is then made **mechanical**, on the same freeze-and-gate idiom 6.0–6.4 use: `vincio._assert_robustness`
+statically scans every public module and holds the whole tree to **zero** unmarked `assert`s — `# noqa: S101`
+(the standard "use of `assert`" code, the per-site marker the way `# noqa: BLE001` marks a reviewed broad
+`except`) is the reviewer's affirmation that an `assert` is a genuine never-happens invariant, so a new
+load-bearing `assert` fails the build the moment it lands unless it is converted to a guard. There is no frozen
+baseline: the inline marker is the accepted form, always-on with zero tolerance. The detector is proven to
+*bite* (an injected bare `assert` is flagged; a marked one and a docstring example are not), and the whole
+check is folded into the `hygiene` VincioBench family (`assert_robustness_conformant`). Run
+`python -m vincio._assert_robustness` to reproduce the check offline.
 
 ### 6.6 — Audit completion & standing guard
 
