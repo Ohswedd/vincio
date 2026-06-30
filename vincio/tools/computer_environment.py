@@ -746,7 +746,7 @@ class ComputerEnvironment:
         try:
             await self.backend.perform(action)
             outcome.performed = True
-        except Exception as exc:  # a driver failure is a failed, non-fatal step
+        except Exception as exc:  # noqa: BLE001 - a driver failure is surfaced on the outcome, not fatal
             outcome.ok = False
             outcome.error = str(exc)
             outcome.reason = f"action failed: {exc}"
@@ -777,7 +777,7 @@ class ComputerEnvironment:
             if self.auto_undo:
                 try:
                     outcome.undone = await self.backend.compensate(action, before)
-                except Exception as exc:  # pragma: no cover - compensation best-effort
+                except Exception as exc:  # noqa: BLE001 - compensation is best-effort; surfaced on the outcome
                     outcome.error = f"undo failed: {exc}"
                 restored = await self.observe()
                 outcome.observation = restored

@@ -13,10 +13,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from abc import ABC, abstractmethod
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from ..core.diagnostics import note_suppressed
 from .protocol import INTERNAL_ERROR, MCPError, jsonrpc_request
 
 __all__ = ["MCPTransport", "InProcessTransport", "StdioTransport", "StreamableHTTPTransport"]
@@ -133,7 +135,8 @@ class StdioTransport(MCPTransport):
             reply = jsonrpc_response(message["id"], result)
         except MCPError as exc:
             reply = jsonrpc_error(message["id"], exc.code, exc.message)
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:
+            note_suppressed("mcp.transport.dispatch", level=logging.WARNING, detail=type(exc).__name__)
             reply = jsonrpc_error(message["id"], INTERNAL_ERROR, str(exc))
         self._proc.stdin.write((json.dumps(reply) + "\n").encode("utf-8"))
         await self._proc.stdin.drain()

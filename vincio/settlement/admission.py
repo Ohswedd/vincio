@@ -47,6 +47,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 
@@ -581,7 +582,8 @@ def _resolve_source(source: Any, subject: str) -> Any:
 
     try:
         return base if _has_local_evidence(base, subject) else source
-    except Exception:  # noqa: BLE001 - a base probe must not break admission
+    except Exception:
+        note_suppressed("settlement.admission.local_evidence_probe")
         return source
 
 
@@ -592,7 +594,8 @@ def _read_float(source: Any, accessor: str, subject: str, *, default: float) -> 
         return default
     try:
         return float(fn(subject))
-    except Exception:  # noqa: BLE001 - a source miss must not break admission
+    except Exception:
+        note_suppressed("settlement.admission.source_value")
         return default
 
 
@@ -609,7 +612,8 @@ def _read_evidence(source: Any, subject: str) -> tuple[float, list[str]]:
     if callable(standing_fn):
         try:
             subject_standing = standing_fn(subject)
-        except Exception:  # noqa: BLE001
+        except Exception:
+            note_suppressed("settlement.admission.standing")
             subject_standing = None
         if subject_standing is not None:
             evidence = float(getattr(subject_standing, "evidence", 0.0) or 0.0)
@@ -619,7 +623,8 @@ def _read_evidence(source: Any, subject: str) -> tuple[float, list[str]]:
     if callable(snapshot_fn):
         try:
             snapshot = snapshot_fn(subject)
-        except Exception:  # noqa: BLE001
+        except Exception:
+            note_suppressed("settlement.admission.snapshot")
             snapshot = None
         if snapshot is not None:
             successes = float(getattr(snapshot, "successes", 0.0) or 0.0)

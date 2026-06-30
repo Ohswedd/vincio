@@ -53,6 +53,7 @@ from ..providers.cache_strategy import cache_hit_rate
 from ..retrieval.chunking import extract_entities
 from ..storage.base import asave
 from .concurrency import gather_bounded
+from .diagnostics import note_suppressed
 
 if TYPE_CHECKING:  # pragma: no cover
     from ..prompts.compiler import CompiledPrompt
@@ -149,8 +150,8 @@ class VincioRuntime:
         app = self.app
         try:
             app.lineage.record_run(result)
-        except Exception:  # pragma: no cover - defensive
-            pass
+        except Exception:
+            note_suppressed("runtime.lineage_record")
         try:
             if user_input.text:
                 app.fertility.record(
@@ -158,8 +159,8 @@ class VincioRuntime:
                     language=user_input.locale or "en",
                     tenant=user_input.tenant_id,
                 )
-        except Exception:  # pragma: no cover - defensive
-            pass
+        except Exception:
+            note_suppressed("runtime.fertility_record")
         if app.content_marking and result.raw_text:
             try:
                 from ..governance.transparency import ai_disclosure, mark_synthetic_content
@@ -174,8 +175,8 @@ class VincioRuntime:
                 result.metadata["ai_disclosure"] = ai_disclosure(
                     language=(user_input.locale or "en")
                 )
-            except Exception:  # pragma: no cover - defensive
-                pass
+            except Exception:
+                note_suppressed("runtime.content_marking")
 
     async def execute_stream(
         self, user_input: UserInput, run_config: RunConfig | None = None
@@ -1008,7 +1009,8 @@ class VincioRuntime:
             return override
         try:
             return self.app.residency.region_for(response.provider or "", model)
-        except Exception:  # pragma: no cover - region resolution must never break a run
+        except Exception:
+            note_suppressed("runtime.region_resolution")
             return None
 
     def _note_unknown_model(self, model: str, result: RunResult, span: Any) -> None:

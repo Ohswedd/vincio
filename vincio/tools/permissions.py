@@ -117,7 +117,7 @@ class ToolPermissionChecker:
             try:
                 self.access.check_tenant(principal, resource_tenant_id)
                 checks.append({"check": "tenant", "allowed": True})
-            except Exception as exc:  # TenantIsolationError
+            except Exception as exc:  # noqa: BLE001 - a tenant-boundary error is surfaced as a denied decision
                 checks.append({"check": "tenant", "allowed": False, "detail": str(exc)})
                 return ToolPermissionDecision(allowed=False, reason=str(exc), checks=checks)
 

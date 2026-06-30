@@ -528,6 +528,9 @@ offline.
 | Error-contract conformance: every error raised on a public entry point derives from `VincioError` — the `ContextApp` (`app.*` verb) surface raises no bare built-in, the classified baseline of accepted public built-in raises matches the committed manifest, and the detector provably catches an injected leak. | true | `families.hygiene.error_contract_conformant` |
 | No public method of the user-facing `ContextApp` facade raises a bare built-in exception; every raise on the `app.*` verb surface is a `VincioError` subclass. | true | `families.hygiene.error_contract_app_verbs_clean` |
 | The error-contract detector provably bites: an injected bare built-in raise on a public def is reported while an encapsulated private-def raise is not. | true | `families.hygiene.error_contract_gate_detects_tamper` |
+| Observable failure: no best-effort fallback swallows a broad exception silently — every broad `except` (or `contextlib.suppress(Exception)`) on a public module re-raises, records its failure observably (a logger call or `note_suppressed`), or carries a justifying `# noqa: BLE001`, and the detector provably catches an injected silent swallow while ignoring a logged one. | true | `families.hygiene.observable_failure_conformant` |
+| Every public module is free of unmarked silent broad-except swallows: the lint reports none tree-wide. | true | `families.hygiene.observable_failure_clean` |
+| The observable-failure detector provably bites: an injected silent broad swallow is reported while a logged one is not. | true | `families.hygiene.observable_failure_gate_detects_tamper` |
 
 `vincio.__all__` is the frozen top-level contract, but each public subpackage also
 declares its own `__all__` — the return types, dataclasses, and helpers reached by
@@ -551,6 +554,17 @@ placeholders, the `AttributeError` a `__getattr__` must raise) is frozen in
 `docs/reference/error-contract.txt`. A new public bare-built-in raise must be
 converted to a `VincioError` or deliberately reviewed into the baseline. Run
 `python -m vincio._error_contract` to reproduce it offline.
+
+The 6.2 phase makes **observable failure** mechanical the same way. A best-effort
+fallback that catches a broad `Exception` and continues is correct policy, but one
+that swallows it silently (no re-raise, no log, no metric) hides a real bug.
+`vincio.core.diagnostics.note_suppressed` makes such a fallback observable — it logs
+the suppression on a dedicated `vincio.suppressed` channel and counts it by label, so
+an operator can watch the failures or scrape their rate — and `vincio._observable_failure`
+holds the whole public tree to zero unmarked silent swallows: every broad `except`
+(or `contextlib.suppress(Exception)`) must re-raise, record its failure, or carry a
+justifying `# noqa: BLE001`. Run `python -m vincio._observable_failure` to reproduce
+it offline.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

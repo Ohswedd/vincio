@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import StorageError
 from ..core.types import Chunk
 from ..retrieval.embeddings import Embedder, embed_texts
@@ -54,7 +55,8 @@ class VespaVectorIndex:
             )
             total = response.json["root"]["fields"]["totalCount"]
             return int(total)
-        except Exception:  # noqa: BLE001 - fall back to the local counter
+        except Exception:
+            note_suppressed("storage.vespa.count")
             return self._count
 
     def _fields(self, chunk: Chunk, vector: list[float]) -> dict[str, Any]:
@@ -83,7 +85,8 @@ class VespaVectorIndex:
             try:
                 self.app.delete_data(schema=self.schema, data_id=chunk_id)
                 removed += 1
-            except Exception:  # noqa: BLE001 - id absent / already deleted
+            except Exception:
+                note_suppressed("storage.vespa.delete")
                 continue
         self._count = max(0, self._count - removed)
         return removed

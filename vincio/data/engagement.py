@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import DataError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 
@@ -86,14 +87,14 @@ def _artifact_wire(artifact: Any) -> Any:
     if callable(to_wire):
         try:
             return to_wire()
-        except Exception:  # pragma: no cover - defensive; fall through to dump
-            pass
+        except Exception:
+            note_suppressed("data.engagement.artifact_to_wire")
     dump = getattr(artifact, "model_dump", None)
     if callable(dump):
         try:
             return dump(mode="json")
-        except Exception:  # pragma: no cover - bytes that don't decode, etc.
-            pass
+        except Exception:
+            note_suppressed("data.engagement.artifact_model_dump")
     return to_jsonable(artifact)
 
 
@@ -964,6 +965,7 @@ class DataEngagement:
         try:
             return bool(binder(catalog))
         except Exception:
+            note_suppressed("data.engagement.rebind")
             return False
 
     def _signer(self) -> Any:

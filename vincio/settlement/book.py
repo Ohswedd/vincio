@@ -24,6 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .collateral import COLLATERAL_ACTION, CollateralPool, post_collateral_pool
@@ -1509,7 +1510,8 @@ class SettlementBook:
             return
         try:
             data = self.store.get(SETTLEMENT_STORE_KIND, self.id)
-        except Exception:  # noqa: BLE001 - a store without the kind is simply empty
+        except Exception:
+            note_suppressed("settlement.book.load")
             return
         if data:
             self.load_record(data)
@@ -1519,7 +1521,8 @@ class SettlementBook:
             return
         try:
             self.store.save(SETTLEMENT_STORE_KIND, self.to_record())
-        except Exception:  # noqa: BLE001 - persistence is best-effort
+        except Exception:
+            note_suppressed("settlement.book.persist")
             return
 
     def _audit(self, record: SettlementRecord) -> None:
@@ -1547,8 +1550,8 @@ class SettlementBook:
                     "balance_usd": record.balance_usd,
                 },
             )
-        except Exception:  # noqa: BLE001 - event delivery is best-effort
-            pass
+        except Exception:
+            note_suppressed("settlement.book.event_delivery")
 
     def _record_reputation(self, record: SettlementRecord, enabled: bool) -> None:
         if not enabled or self.reputation is None:

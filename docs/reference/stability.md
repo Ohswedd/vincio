@@ -29,6 +29,12 @@ Everything else is internal and may change at any time without notice:
   `VincioError` under the [hardening line](../../ROADMAP.md#the-hardening-line-6x--in-progress)
   — `except VincioError` is unaffected. This contract is mechanically gated
   (`vincio._error_contract`).
+- The suppressed-failure diagnostics surface — the `vincio.suppressed` log channel
+  and the `vincio.core.diagnostics.suppressed_failure_counts()` counter — is an
+  observability aid, not a stable API contract: the *fact* that a best-effort
+  fallback is observable is guaranteed (and mechanically gated by
+  `vincio._observable_failure`, which forbids a new silent broad `except`), but the
+  exact log wording and label spellings may change between releases.
 
 ## Versioning guarantees
 

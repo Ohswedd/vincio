@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from ..core.diagnostics import note_suppressed
 from ..stability import StabilityLevel, stability_of
 
 __all__ = [
@@ -111,7 +112,8 @@ def collect_deprecations(package: str = "vincio") -> dict[str, Deprecation]:
     deprecations: dict[str, Deprecation] = {}
     try:
         root = importlib.import_module(package)
-    except Exception:  # pragma: no cover - defensive
+    except Exception:
+        note_suppressed("doctor.import_package")
         return deprecations
 
     def consider(name: str, obj: Any) -> None:
@@ -127,7 +129,8 @@ def collect_deprecations(package: str = "vincio") -> dict[str, Deprecation]:
         for info in pkgutil.iter_modules(search_path):
             try:
                 module = importlib.import_module(f"{package}.{info.name}")
-            except Exception:  # pragma: no cover - optional deps
+            except Exception:
+                note_suppressed("doctor.import_module")
                 continue
             for name in getattr(module, "__all__", ()):
                 consider(name, getattr(module, name, None))

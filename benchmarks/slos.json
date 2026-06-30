@@ -2411,6 +2411,36 @@
       "threshold": true,
       "enforced_by": "families.hygiene.error_contract_gate_detects_tamper",
       "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the static detector flags a public built-in raise and ignores an encapsulated one, so the error-contract guarantee is backed by a check that demonstrably catches the leak it claims to prevent without over-reporting."
+    },
+    {
+      "id": "hygiene_observable_failure_conformant",
+      "category": "reliability",
+      "statement": "No best-effort fallback swallows a broad exception silently: every broad except (Exception / BaseException / a bare except / contextlib.suppress(Exception)) on a public module re-raises, records its failure observably (a logger call or note_suppressed), or carries a justifying # noqa: BLE001 — and the detector provably catches an injected silent swallow while ignoring a logged one.",
+      "metric": "families.hygiene.observable_failure_conformant",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.observable_failure_conformant",
+      "rationale": "A broad except that catches and continues is sound policy, but one that swallows the exception silently hides a real bug — a quietly degraded result with nothing to trace it to. The budget gates the contract mechanically: the lint holds the whole public tree to zero unmarked silent swallows, so a new silent swallow fails the build unless it is made observable (note_suppressed logs it on the vincio.suppressed channel and counts it) or deliberately marked, exactly as the surface gate freezes the two-level __all__ and the error-contract gate holds the verb surface to zero off-contract raises."
+    },
+    {
+      "id": "hygiene_observable_failure_clean",
+      "category": "reliability",
+      "statement": "Every public module is free of unmarked silent broad-except swallows: the lint reports none tree-wide.",
+      "metric": "families.hygiene.observable_failure_clean",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.observable_failure_clean",
+      "rationale": "A silent broad swallow reads as a sound fallback while hiding the failure it catches. The budget gates that no public module carries one, so a best-effort fallback is always observable (logged and counted) or explicitly justified with # noqa: BLE001 — the debt cannot silently return."
+    },
+    {
+      "id": "hygiene_observable_failure_gate_detects_tamper",
+      "category": "reliability",
+      "statement": "The observable-failure detector provably bites: an injected silent broad swallow is reported while a logged one is not, so a green check means the invariant was actually exercised.",
+      "metric": "families.hygiene.observable_failure_gate_detects_tamper",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.observable_failure_gate_detects_tamper",
+      "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the static detector flags a silent broad except and ignores a logged one, so the observable-failure guarantee is backed by a check that demonstrably catches the silent swallow it claims to prevent without over-reporting."
     }
   ]
 }

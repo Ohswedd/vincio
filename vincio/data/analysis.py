@@ -43,6 +43,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import AnalysisError, QueryError
 from ..core.utils import stable_hash
 from .core import Dataset, DataType
@@ -837,7 +838,8 @@ class AnalysisAgent:
             )
             response = run_sync(provider.generate(request))  # type: ignore[no-untyped-call]
             text = response.text or ""
-        except Exception:  # noqa: BLE001 - any provider failure → no extra steps
+        except Exception:
+            note_suppressed("data.analysis.followups")
             return []
         planner = HeuristicQueryPlanner()
         out: list[str] = []

@@ -160,7 +160,7 @@ class AutoCurriculum:
                 report = app.verify_governance(record=False)
             else:
                 return True, "no governance verifier configured"
-        except Exception as exc:  # a verifier failure must fail safe, not crash the loop
+        except Exception as exc:  # noqa: BLE001 - a verifier failure fails safe, surfaced in the result
             return False, f"governance verification error: {exc}"
         held = bool(getattr(report, "held", False))
         return held, "governance invariants hold" if held else "governance invariants violated"
