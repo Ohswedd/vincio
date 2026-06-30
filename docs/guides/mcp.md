@@ -75,7 +75,7 @@ command is used.
 ### Lower-level client
 
 ```python
-from vincio.mcp import connect_stdio, connect_http, connect_in_process
+from vincio.mcp import connect_stdio, connect_in_process
 
 client = connect_stdio(["python", "server.py"])
 await client.initialize()
@@ -234,8 +234,7 @@ client = connect_in_process(server)
 assert await client.call_tool("add", {"a": 2, "b": 3}) == "5"
 ```
 
-See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py),
-[`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py),
+See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py)
 and the [threat model](../security/threat-model.md) for the MCP trust boundary.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->

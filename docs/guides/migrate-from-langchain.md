@@ -101,9 +101,10 @@ checkpoints included; multi-specialist `AgentExecutor` setups map to
 # Before (LangGraph): StateGraph + add_conditional_edges + a checkpointer.
 graph = app.graph("escalation")
 graph.add_node("classify", classify)
+graph.add_node("approve", request_approval)   # high-severity tickets escalate
 graph.add_node("reply", draft_reply)
 graph.add_conditional_edge("classify", lambda s: s["severity"],
-                           {"high": "reply", "low": "reply"})
+                           {"high": "approve", "low": "reply"})
 flow = graph.compile()
 done = flow.invoke({"ticket": ticket_text})
 

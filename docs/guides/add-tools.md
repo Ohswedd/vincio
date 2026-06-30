@@ -46,8 +46,6 @@ a granted approval; every write gets an **idempotency key**, replays return
 the original result instead of double-executing:
 
 ```python
-from vincio.tools import ToolPermissionChecker
-
 async def approve(request):       # human-in-the-loop hook
     return await my_ui.confirm(f"{request.tool}({request.arguments})")
 

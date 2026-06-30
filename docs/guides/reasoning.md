@@ -7,7 +7,10 @@ Reasoning models expose a "think harder" control under different names. Vincio
 gives you **one** provider-neutral knob:
 
 ```python
+from vincio import ContextApp
 from vincio.core.types import RunConfig
+
+app = ContextApp(name="assistant")
 
 result = app.run("How many r's are in strawberry?",
                  config=RunConfig(reasoning_effort="high"))   # low | medium | high | minimal
@@ -41,6 +44,7 @@ tool calls without resending context. Chat Completions stays the portable
 default.
 
 ```python
+from vincio import ContextApp
 from vincio.providers import build_provider
 
 provider = build_provider("openai_responses", api_key="…")

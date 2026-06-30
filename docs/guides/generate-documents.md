@@ -1,10 +1,10 @@
 # Generate documents & media (`vincio.generation`)
 
-Vincio reads a DOCX, a PDF, and a scanned packet, and validates a JSON answer
-and closes the loop so the **deliverable** comes out under the same guarantees
-Vincio applies to text *in*: cited, structurally-validated, provenance-stamped,
-budget-metered, eval-gated artifacts, all on one trace and one audit chain,
-in-process and never a service.
+Vincio generates documents and media — DOCX, PDF, PPTX, HTML, and Markdown,
+along with images and speech — that flow *out* under the same governance,
+citation, and validation guarantees it applies to text flowing *in*: cited,
+structurally-validated, provenance-stamped, budget-metered, eval-gated artifacts,
+all on one trace and one audit chain, in-process and never a service.
 
 Install the renderer extras you need (Markdown and HTML are dependency-free):
 
@@ -114,7 +114,7 @@ Real backends: `OpenAIImageProvider` (`gpt-image-1`), `GoogleImageProvider`
 `GoogleSpeechProvider`, `ElevenLabsSpeechProvider`. The `Mock*` providers produce
 real PNG/WAV bytes for offline tests.
 
-`mark_synthetic_content` is now **media-aware**, it accepts raw bytes and binds
+`mark_synthetic_content` is **media-aware**: it accepts raw bytes and binds
 by SHA-256, marks edits with `compositeWithTrainedAlgorithmicMedia`, and pairs
 with `embed_provenance` (PNG metadata, dependency-free) and
 `write_sidecar_manifest` (a `*.c2pa.json` for any format).
@@ -125,7 +125,7 @@ OCR auto-fallback, audio transcripts, new formats, and forms close the
 documents-*in* gap so the classifier's promises match the loader's reality:
 
 ```python
-from vincio.documents import load_document, load_media, MockTranscriber, HeuristicFormExtractor
+from vincio.documents import load_document, load_pdf, load_media, MockTranscriber, HeuristicFormExtractor
 
 load_document("deck.pptx")             # PPTX/EPUB/RTF/ODT dependency-free; Parquet via vincio[parquet]
 load_pdf("scan.pdf", ocr_engine=ocr)   # low-text pages OCR'd (vincio[ocr]); extractor='ocr' per page
@@ -133,7 +133,7 @@ load_media("call.wav", transcriber=MockTranscriber())   # timestamped, diarized 
 HeuristicFormExtractor().extract("Name: Jane\nTotal: $5")  # offline KYC/invoice key-values
 ```
 
-Formats now register through a `ParserRegistry` (`register_loader(...)`), so new
+Formats register through a `ParserRegistry` (`register_loader(...)`), so new
 formats add additively instead of editing a suffix chain. HTML parses with a real
 structural path (table extraction); JSON/JSONL/YAML structure into
 sections/tables; PDF figure regions become citable evidence via `figure_evidence`.

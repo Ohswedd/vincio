@@ -26,9 +26,8 @@ Everything else is internal and may change at any time without notice:
   raises derives from `VincioError`, so `except VincioError` catches the family;
   a bare built-in (`ValueError` / `KeyError`) that previously leaked off-contract
   from a public method is *not* a stable type and may be converted to its proper
-  `VincioError` under the [hardening line](../../ROADMAP.md#the-hardening-line-6x--complete)
-  — `except VincioError` is unaffected. This contract is mechanically gated
-  (`vincio._error_contract`).
+  `VincioError` — `except VincioError` is unaffected. This contract is mechanically
+  gated (`vincio._error_contract`).
 - The suppressed-failure diagnostics surface — the `vincio.suppressed` log channel
   and the `vincio.core.diagnostics.suppressed_failure_counts()` counter — is an
   observability aid, not a stable API contract: the *fact* that a best-effort
@@ -46,11 +45,12 @@ Within a major version (`1.x.y`):
 | **MINOR** | `1.0.0 → 1.1.0` | Additive only: new symbols, new **optional** parameters with defaults. Existing code keeps working. |
 | **MAJOR** | `1.x → 2.0.0` | May remove or change public API, but only after the deprecation contract below. |
 
-`vincio.API_VERSION` (`"5.0"`) is the contract version SemVer is applied
-against; it changes only on a major bump. **5.0 is the current long-term-support
-major:** the public surface — expanded additively across the 4.x data & analytics
-plane — is re-frozen for the 5.x line (see
-[The 5.0 long-term-support contract](#the-50-long-term-support-contract)).
+SemVer governs the **package version** (the `pip install` version). `vincio.API_VERSION`
+(`"5.0"`) is a separate, frozen **public-API contract** marker: it bumps only when the
+contract surface that working code depends on changes, so it stays `5.0` across additive,
+non-breaking releases that only add new symbols or pay down interior quality debt — even
+as the package version advances (see
+[The long-term-support contract](#the-long-term-support-contract)).
 
 ## Deprecation contract
 
@@ -143,25 +143,22 @@ advance and shipped through the mechanical deprecation runway above. Nothing
 breaks *outside* such a window: across a minor or patch release, upgrading never
 breaks working code.
 
-## The 5.0 long-term-support contract
+## The long-term-support contract
 
-5.0 is the second long-term-support major. Like 4.0 before it, it **broke
-nothing**: every release from 1.0 → 5.0 was additive on a frozen surface, the
-deprecation policy above was followed mechanically, and no public API ever reached
-its `removed_in` runway, so the deprecation sweep removed nothing and a project
-that tracked 4.x cleanly upgrades with zero source changes. 5.0 concludes the data
-& analytics plane (built additively across 4.1 → 5.0) and declares it
-**feature-complete and frozen**.
+Vincio is **feature-complete and in long-term support**. Every release has been
+additive on a frozen surface: the deprecation policy above is followed mechanically,
+no public API in active use has reached its `removed_in` runway, and a project that
+tracks the library upgrades with zero source changes.
 
-From 5.0 the public surface is **re-frozen for the 5.x line** and the freeze is
-mechanical, not just documented: the exact surface is pinned in
-[`docs/reference/public-surface.txt`](public-surface.txt) and a build gate fails
-the moment `vincio.__all__` drifts from it (regenerate deliberately with
+The freeze is mechanical, not just documented: the exact public surface is pinned in
+[`docs/reference/public-surface.txt`](public-surface.txt) and a build gate fails the
+moment `vincio.__all__` drifts from it (regenerate deliberately with
 `python -m vincio._apiref --freeze` and review the diff). Removal still takes a
-major: a symbol deprecated across a 5.x minor is removed no earlier than 6.0, with
-`vincio doctor` reporting any usage and `vincio migrate 6.0` rewriting it. (4.0 was
-the first LTS major; `vincio migrate 4.0` and `vincio migrate 5.0` both report "no
-source changes required".)
+deliberate, announced breaking window: a symbol is deprecated in a minor (emitting a
+`VincioDeprecationWarning` that names its replacement and removal version), `vincio
+doctor` reports any usage, and `vincio migrate <target>` rewrites it. No such window
+is currently open — the `vincio migrate` rename tables are empty, so every upgrade
+reports "no source changes required".
 
 ## Currently deprecated
 

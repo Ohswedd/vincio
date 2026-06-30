@@ -78,7 +78,7 @@ alternative from any step with `flow.fork(checkpoint_id)`.
 
 ```python
 from vincio import compose
-from vincio.agents import branch, parallel
+from vincio.agents import branch
 
 pipeline = (
     compose(normalize)
@@ -112,7 +112,7 @@ cheapest capable model per step, and schedule independent sub-graphs concurrentl
 
 ```python
 from vincio import SubgraphScheduler, SubgraphTask, Budget
-from vincio.agents import HTNDomain, sleep_for, wait_for_event, TimerService
+from vincio.agents import HTNDomain, wait_for_event, TimerService
 
 # Hierarchical (HTN) plan + in-place repair + cost-aware selection in one agent.
 domain = (

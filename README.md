@@ -7,11 +7,10 @@
 </p>
 
 <p align="center">
-  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/badge/vincio-5.5.0-B98B2E" alt="Vincio 5.5.0"></a>
+  <a href="https://pypi.org/project/vincio/"><img src="https://img.shields.io/pypi/v/vincio?color=B98B2E&label=vincio" alt="PyPI version"></a>
   <a href="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml"><img src="https://github.com/Ohswedd/vincio/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/pypi/pyversions/vincio?logo=python&logoColor=white" alt="Python 3.11+">
   <img src="https://img.shields.io/badge/license-Apache%202.0-4C6EF5" alt="Apache 2.0">
-  <img src="https://img.shields.io/badge/tests-6421%20passing-2ea44f" alt="6421 tests passing">
   <img src="https://img.shields.io/badge/providers-OpenAI%20%C2%B7%20Anthropic%20%C2%B7%20Google%20%C2%B7%20Mistral%20%C2%B7%20local-B98B2E" alt="Providers: OpenAI, Anthropic, Google, Mistral, local, and OpenAI-compatible gateways">
 </p>
 
@@ -438,14 +437,13 @@ of each engine.
 
 ## Status
 
-Vincio is **feature-complete and in long-term support** on the 5.x surface. The public API is frozen
+Vincio is **feature-complete and in long-term support**. The public API is frozen
 under [Semantic Versioning](https://semver.org/spec/v2.0.0.html) with a mechanical
 [deprecation policy](docs/reference/stability.md); performance and quality targets are
 [published as SLOs](docs/reference/slo.md) and gated by VincioBench; releases ship a CycloneDX SBOM
 with SLSA provenance. New capabilities are added behind opt-in extras, never by breaking working
-code. The data & analytics extension line — real-time analytics, federated analytics, forecasting/causal
-verifiers, and the notebook-native surface — has shipped in full, and the platform is complete; the
-[`ROADMAP.md`](ROADMAP.md) records what ships today, and upgrades are in [`MIGRATION.md`](MIGRATION.md).
+code. The [`ROADMAP.md`](ROADMAP.md) records what ships today, and upgrade notes are in
+[`MIGRATION.md`](MIGRATION.md).
 
 Vincio is, and stays, a **library**. The building blocks for production (audit chain, retention,
 tenant isolation, RBAC/ABAC, a server) ship in the package for you to deploy on your own
@@ -488,7 +486,7 @@ Contributions are welcome. The test suite runs fully offline and must stay green
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest -q          # 6421 tests, no network or API keys required
+python -m pytest -q          # the full offline suite — no network or API keys required
 ruff check vincio/ tests/
 mypy vincio
 ```

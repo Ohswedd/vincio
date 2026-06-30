@@ -133,9 +133,9 @@ finding.
 Profiling, sampling, fit-in-window, and quality rails are the representation rung
 of the data plane. The analyst rung —
 [governed text-to-query and cell-level provenance](governed-text-to-query.md) —
-ships next on top of it; the data-analysis agent and charts are later rungs (see
-the [roadmap](../../ROADMAP.md)). Nothing here calls a database or a network:
-`vincio.data` is deterministic, dependency-free, and offline.
+builds on it, and the [data-analysis agent](data-analysis-agent.md) and
+[charts](charts-and-cited-artifacts.md) build on that. Nothing here calls a
+database or a network: `vincio.data` is deterministic, dependency-free, and offline.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

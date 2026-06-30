@@ -49,7 +49,7 @@ to LLM evaluation.
   a runtime rail with `app.add_metric_rail("toxicity", threshold=0.0)` (or
   `metric_guardrail(metric, threshold=...)`) and an optimizer fitness term
   via `AGENTIC_OBJECTIVES`. One definition gates tests, blocks live requests,
-  and drives optimization, interconnection a test-only library can't offer.
+  and drives optimization — a connection a test-only library can't offer.
 
 **Where DeepEval is a fit:** a broad catalog of LLM-judged metric variants
 and hosted dashboards via Confident AI. DeepEval metrics can be wrapped as

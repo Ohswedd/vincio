@@ -127,7 +127,7 @@ guarantee is checkable offline.
 | `app.use_privacy_accountant` / `set_privacy_budget` / `privacy_report` | The app surface |
 
 The `privacy` VincioBench family holds the composition, refusal, and auditability
-SLOs. See [`60_differential_privacy_memory_training.py`](../../examples/08_optimization_self_improvement.py)
+SLOs. See [`08_optimization_self_improvement.py`](../../examples/08_optimization_self_improvement.py)
 for a runnable, fully-offline walkthrough.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->

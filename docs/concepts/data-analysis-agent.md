@@ -151,8 +151,8 @@ analysis. It is **not** a notebook service, a hosted analytics dashboard, or an
 unbounded autonomous agent — the loop is bounded by an explicit budget, the engine
 is the offline `sqlite3` engine by default, and nothing is gated on model output:
 grounding, the read-only guard, the budget, and verification are enforced in code,
-deterministically and offline. Charts and cited analytical artifacts are a later
-rung (see the [roadmap](../../ROADMAP.md)).
+deterministically and offline. [Charts and cited analytical
+artifacts](charts-and-cited-artifacts.md) turn a cited result into a deliverable.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

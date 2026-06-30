@@ -247,6 +247,8 @@ world-average fallback. Override the model intensity, the grid factors, or the P
 for a measured deployment:
 
 ```python
+from vincio import EnergyProfile
+
 table = app.cost_tracker.energy_table
 table.set("my-model", EnergyProfile(wh_per_input_mtok=40, wh_per_output_mtok=400))
 app.use_energy_accounting(region="on_prem", carbon_intensity={"on_prem": 12.0}, pue=1.05)

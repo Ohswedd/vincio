@@ -1,53 +1,40 @@
-# Migrating to Vincio 5.0
+# Upgrading Vincio
 
-Vincio **5.0** is the second long-term-support major. It concludes the data &
-analytics plane built additively across the 4.x line (4.1 → 5.0), re-freezes the
-expanded public surface for the 5.x line, and promotes the contract version. This
-guide names every change and exactly how to apply it.
-
-**The upgrade is clean and mechanical, not a rewrite.** A project that built on
-4.x needs **zero source changes** to run on 5.0 — the entire 4.x line was additive
-on a frozen surface, so nothing was renamed or removed. See
-[Why there are no renames](#why-there-are-no-renames) below.
+**Upgrading is clean and mechanical, not a rewrite.** Every Vincio release has been
+additive on a frozen public surface — new symbols and new optional parameters with
+defaults, never a breaking rename of an API in active use — so a project that tracks
+the library upgrades with **zero source changes**. This guide explains why, and how to
+confirm it for your project.
 
 ## TL;DR
 
 ```bash
-pip install --upgrade vincio        # 4.x → 5.0.0
-vincio migrate 5.0                  # codemod: reports "no source changes required"
-vincio doctor                       # confirm a clean tree on the new major
+pip install --upgrade vincio        # upgrade to the latest release
+vincio doctor                       # confirm a clean tree on the new version
 ```
 
-If `vincio migrate 5.0` reports no changes (it will, for any project on 4.x) you
-are done.
+No breaking window is currently open, so there is no migration step to run — `vincio
+doctor` reports a clean tree and you are done.
 
-## What changed in 5.0
+## Why upgrades need no source changes
 
-| Area | 4.x | 5.0 | Action |
-| --- | --- | --- | --- |
-| Package version | `4.7.0` | `5.0.0` | none — `pip install --upgrade vincio` |
-| `vincio.API_VERSION` | `"4.0"` | `"5.0"` | none — read it if you branch on the contract version |
-| Public surface (`vincio.__all__`) | additive across 4.1–4.7 | **+5 symbols** (the data-engagement capstone) | none — purely additive |
-| New entry point | — | `app.data_engagement` → `DataEngagement` / `DataNarrative` | opt-in; existing code is unaffected |
-| Deprecated APIs removed | — | **none** (the runway was empty) | none |
-| Deprecation policy | next-major removal | unchanged | none |
-| Support window | 4.x | latest 5.x | upgrade off pre-5.0 for security fixes |
+Everything Vincio has shipped is **additive on a frozen public surface**. The
+[deprecation policy](docs/reference/stability.md) is followed mechanically, the surface
+is held consistent by a build gate, and no public API in active use has ever reached its
+`removed_in` runway. The "deprecation sweep" a major release usually performs therefore
+removes nothing — the discipline pays off, and a clean upgrade is the normal case.
 
-No capability was removed and no symbol was renamed. Every symbol added across the
-4.x data & analytics plane — and the 5.0 `DataEngagement` capstone — is additive,
-behind a new entry point or an opt-in extra. The data & analytics plane is now
-**feature-complete and frozen**.
+`vincio.API_VERSION` (`"5.0"`) is the frozen public-API **contract** version. The package
+is versioned independently under SemVer; `API_VERSION` bumps only when the contract
+surface that working code depends on changes, so it stays stable across additive releases.
 
-The five new public symbols in 5.0 (all re-exported from `vincio` and `vincio.data`):
-`DataEngagement`, `DataNarrative`, `DataStage`, `DataEngagementSignature`, and
-`DataEngagementVerification`.
+## The `vincio migrate` codemod
 
-## The `vincio migrate 5.0` codemod
-
-`vincio migrate <target>` is the code-surface analogue of `vincio config migrate`:
-a one-shot, **static** codemod (it parses with `ast`, never imports or runs your
-code) that rewrites the public symbols a major bump renames, driven by a
-declarative rename table.
+`vincio migrate <target>` is the code-surface analogue of `vincio config migrate`: a
+one-shot, **static** codemod (it parses your source with `ast`, never imports or runs it)
+that rewrites the public symbols a breaking window renames, driven by a declarative
+per-major rename table. It accepts only a target that corresponds to a consolidation
+major it knows about — today `4.0` and `5.0`:
 
 ```bash
 vincio migrate 5.0 [path]      # dry run: print the plan (default)
@@ -56,62 +43,40 @@ vincio migrate 5.0 --check     # CI gate: exit non-zero if a migration is availa
 vincio migrate 5.0 --json      # machine-readable plan
 ```
 
-For 5.0 the rename table is **empty**, so the codemod reports
-*“no source changes are required for this release”* on any project. The machinery
-ships anyway: it gives the upgrade a truthful, automatable answer today, and it is
-the mechanism any future consolidation — or the removal of a symbol deprecated
-across the 5.x line — will be delivered through.
+Both rename tables are **empty** (each consolidation was additive), so the codemod reports
+*"no source changes are required for this release"* on any project. The machinery ships
+anyway: it gives a truthful, automatable answer today, and it is the mechanism a future
+consolidation — or the removal of a deprecated symbol — would be delivered through, with
+its target added when that window is announced.
 
-## Why there are no renames
+## Deprecations and the breaking-window contract
 
-Everything shipped from 1.0 through 5.0 was **additive on a frozen public
-surface**: new symbols and new optional parameters with defaults, never a removal
-or a breaking rename. Because the [deprecation policy](docs/reference/stability.md)
-was followed mechanically and the surface was kept consistent across 50+ themes,
-**no public API ever reached its `removed_in` runway** and no entry point drifted
-badly enough to justify a breaking rename. The "deprecation sweep" a major usually
-performs therefore removes nothing — the discipline paid off.
+Removal always takes a deliberate, announced breaking window:
 
-5.0 is consequently a *consolidation* major in the strict sense the
-[roadmap](ROADMAP.md) set out: it re-freezes the (additively expanded) surface and
-promotes the contract version, without breaking working code.
+1. A public symbol is **never removed in a minor or patch release.** It is first marked
+   deprecated in a **minor**, emitting a `VincioDeprecationWarning` that names the version
+   it was deprecated in, the version scheduled for removal, and the replacement.
+2. While deprecated, `vincio doctor` reports any project usage, naming the symbol, its
+   replacement, and its removal version.
+3. Removal happens no earlier than the **next major**, applied by `vincio migrate`.
 
-## The 5.0 long-term-support contract
+No such window is currently open, so no public API is deprecated and no project needs to
+change anything to stay current.
 
-From 5.0 the public surface is re-frozen under
-[Semantic Versioning 2.0.0](https://semver.org/spec/v2.0.0.html), carrying every
-guarantee forward unchanged:
+## Pinning
 
-- **The frozen surface is mechanical.** `docs/reference/public-surface.txt` pins
-  the exact 508-name surface; a test fails the build if `vincio.__all__` drifts
-  from it, so no SemVer-significant change lands silently.
-- **Removal still takes a major.** A symbol is deprecated in a 5.x minor (emitting
-  `VincioDeprecationWarning` naming `since`, `removed_in`, and the replacement)
-  and removed no earlier than 6.0 — `vincio doctor` reports any usage, and
-  `vincio migrate 6.0` will rewrite it.
-- **Provenance is unchanged.** Every release still ships a CycloneDX SBOM and SLSA
-  build-provenance attestation; the published SLOs are held by at-least-as-strict
-  VincioBench budgets; the strict-typing ladder and completeness-gated error and
-  API references still gate the build.
-
-After 5.0 the platform is in long-term support: bug-fix, security, and
-standards-tracking releases on a stable 5.x surface.
-
-## Upgrading from 3.x
-
-4.0 was the first long-term-support major — the one announced breaking window,
-which broke nothing (the 1.0 → 3.49 surface was re-frozen unchanged). A project
-still on 3.x upgrades the same clean, mechanical way: `pip install --upgrade
-vincio`, `vincio migrate 4.0` then `vincio migrate 5.0` (both report "no source
-changes required"), `vincio doctor`. Pin `vincio>=5,<6` to stay on the
-long-term-stable surface.
+Pin a major range (for example `vincio>=6,<7`) to stay on a stable surface and pick up
+bug-fix, security, and additive releases without surprises. Every guarantee carries
+forward unchanged across the range: the published SLOs held by at-least-as-strict
+VincioBench budgets, the CycloneDX SBOM and SLSA build-provenance attestation on every
+release, the strict-typing ladder, and the completeness-gated error and API references.
 
 ## Troubleshooting
 
-- **`vincio migrate` says nothing changed** — expected for 5.0. Run
-  `vincio doctor` to confirm the tree is clean.
-- **A `VincioDeprecationWarning` appears after upgrading** — you are on a 5.x
-  minor that deprecated something; the warning names the replacement and the
-  removal version. Run `vincio migrate <next-major>` when one is available, or
-  apply the named replacement.
-- **Pinning** — pin `vincio>=5,<6` to stay on the long-term-stable surface.
+- **`vincio migrate` says nothing changed** — expected. Run `vincio doctor` to confirm
+  the tree is clean.
+- **A `VincioDeprecationWarning` appears after upgrading** — you are on a minor that
+  deprecated something; the warning names the replacement and the removal version. Apply
+  the named replacement, or run `vincio migrate <next-major>` when one is available.
+- **Confirming integrity** — `vincio doctor` also flags a `vincio.yaml` that is behind
+  the current config schema; run `vincio config migrate` to upgrade it.

@@ -62,7 +62,7 @@ portable.
 | Compact table encoding vs `json.dumps` | ≥ 40% fewer tokens | `cost.table_encoding.reduction_vs_json` |
 | Compact table encoding round-trips losslessly | true | `cost.table_encoding.lossless` |
 
-## Model pricing & capability registry (5.1)
+## Model pricing & capability registry
 
 The data-driven `ModelRegistry` is the single source of truth the cost
 `PriceTable`, the capability guard, the cost/latency router, the model cascades,
@@ -507,8 +507,8 @@ offline against the deterministic reference environments.
 | A reader traverses laterally: every concept and guide carries a current single-sourced Related block, the generated pages (capability map, learning path, `api.md` app-method index) are current, and no docs page is orphaned. | true | `families.docs_conformance.docs_navigation_reachability` |
 
 The docs are ~80 leaf pages — a concept, a guide, a reference entry, and a
-runnable example per subsystem. 5.4 adds the connective tissue: `vincio._docmap`
-is a single source of truth that binds every public `app.*` verb to the page that
+runnable example per subsystem. `vincio._docmap` is the connective tissue: a
+single source of truth that binds every public `app.*` verb to the page that
 documents it and renders the [capability map](capability-map.md), the
 [learning path](../learning-path.md), a Related cross-link block on every concept
 and guide, and `llms.txt` (regenerated from `vincio.__all__`). Companion budgets
@@ -547,90 +547,51 @@ offline.
 | The reachability baseline is exactly the live unreferenced public set — no missing entry (an undeclared dead symbol) and no stale one (a baselined symbol now referenced) — and the rendered manifest matches `docs/reference/reachability.txt` byte-for-byte. | true | `families.hygiene.reachability_frozen` |
 | The reachability detector provably bites: an injected unreferenced symbol absent from the baseline is reported, a baselined symbol that is actually referenced is flagged stale, and a real load (including an aliased import) is credited as a use. | true | `families.hygiene.reachability_gate_detects_tamper` |
 
-`vincio.__all__` is the frozen top-level contract, but each public subpackage also
-declares its own `__all__` — the return types, dataclasses, and helpers reached by
-deep import. That surface had drifted: a few names were exported yet referenced
-nowhere (dead surface that reads as supported API), and the gap to the top level
-was real but undeclared. The hardening line's 6.0 phase removes the verified-dead
-symbols and declares the subpackage-only public surface in
-`docs/reference/subpackage-surface.txt`; `vincio._surface` classifies
-each symbol TOP (re-exported in `vincio.__all__`) / DUP (an intentional name
-collision) / SUB (subpackage-only) and freezes the result, so the interior surface
-can only change on review. Run `python -m vincio._surface` to reproduce it offline.
+The `hygiene` family holds the codebase's interior quality to the same mechanical,
+gated discipline the rest of the platform applies to its public surface. Six of the
+checks ship as a lint runnable offline (`python -m vincio._<check>`), and a dedicated
+CI job runs all six directly; the seventh — docstring / behaviour parity — is enforced
+by VincioBench budgets that re-derive each documented claim from the live code. Together
+they ensure the quality they buy cannot silently erode.
 
-The 6.1 phase makes the **error contract** mechanical the same way. Vincio's
-contract is that every error it raises derives from `VincioError`, so one
-`except VincioError` catches the family and `.code` is the stable branch key. A few
-public entry points leaked a bare built-in (`ValueError` / `KeyError` /
-`NotImplementedError`); those are converted, the `ContextApp` verb surface is held
-to zero off-contract raises by an always-on check, and the classified baseline of
-accepted public built-in raises (internal input-validation, abstract-base
-placeholders, the `AttributeError` a `__getattr__` must raise) is frozen in
-`docs/reference/error-contract.txt`. A new public bare-built-in raise must be
-converted to a `VincioError` or deliberately reviewed into the baseline. Run
-`python -m vincio._error_contract` to reproduce it offline.
-
-The 6.2 phase makes **observable failure** mechanical the same way. A best-effort
-fallback that catches a broad `Exception` and continues is correct policy, but one
-that swallows it silently (no re-raise, no log, no metric) hides a real bug.
-`vincio.core.diagnostics.note_suppressed` makes such a fallback observable — it logs
-the suppression on a dedicated `vincio.suppressed` channel and counts it by label, so
-an operator can watch the failures or scrape their rate — and `vincio._observable_failure`
-holds the whole public tree to zero unmarked silent swallows: every broad `except`
-(or `contextlib.suppress(Exception)`) must re-raise, record its failure, or carry a
-justifying `# noqa: BLE001`. Run `python -m vincio._observable_failure` to reproduce
-it offline.
-
-The 6.3 phase makes **wire-or-retire** mechanical the same way. A capability that is
-public but that nothing can reach — no `app.*` verb, no example, no internal caller —
-reads as supported API while being dead. Those are wired to a production path
-(`app.retrieve_facts`, `app.consolidate_memory`, `use_context_governor(blob_store=…)`,
-and a provider-native token counter registered at provider init) or, where the
-primitive is a deliberate advanced deep-import API (`ContextCompiler.compile_streaming`
-/ `recompile` / `CompileStreamEvent`), documented as such; `vincio._wire_or_retire`
-holds a frozen ledger of them, requiring each to resolve to a live reach and — for a
-wired one — to be referenced by production code outside its defining module, so a
-capability cannot silently become dead surface again. Run
-`python -m vincio._wire_or_retire` to reproduce it offline.
-
-The 6.4 phase makes **docstring / behaviour parity** mechanical the same way. A
-docstring that advertises behaviour the code no longer performs is a quiet lie a
-reader trusts. The reconciled claims are re-derived from the live code so they cannot
-drift back: the budget allocator's module docstring no longer promises a separate
-`redistribute` reclaim nothing invoked (the dead method is gone, and the allocator
-hands the whole non-fixed remainder to the flexible blocks at allocation time); the
-learned-compression docstring no longer claims the tuner calls the faithfulness
-helpers directly (`CompressionTuner` gates adoption on the `faithfulness` eval metric,
-while `compression_faithfulness` / `faithfulness_preserved` are the offline fidelity
-measures); the federated default-deny consent demonstration refuses every run, not
-only against a pristine store; and `MemoryEngine.delete` delegates to `forget` so the
-deletion path has one body. The `families.hygiene.docstring_parity_*` budgets exercise
-each of these behaviours, so a docstring and its code cannot silently diverge again.
-
-The 6.5 phase makes **`-O` robustness** mechanical the same way. Python strips every
-`assert` under `python -O` (and `-OO`), so a *load-bearing* one — narrowing a value the
-code then dereferences, or checking a precondition a public operation depends on —
-silently vanishes in an optimized deployment, turning a caught invariant into an opaque
-downstream `TypeError` far from its cause. Each is replaced by an explicit guard that
-raises the appropriate `VincioError` (the streaming and cascade response paths in
-`core/runtime.py`, the resident-footprint ceiling in `context/compiler.py`, the
-terminal-event invariant in `agents/graph.py`, and the MCP stdio subprocess pipes in
-`mcp/transport.py`), so an optimized run fails loudly and correctly; a genuine
-*never-happens* invariant kept as an `assert` carries a justifying `# noqa: S101`.
-`vincio._assert_robustness` holds the whole public tree to zero unmarked `assert`s, so a
-new one fails the build unless it is converted to a guard or deliberately marked. Run
-`python -m vincio._assert_robustness` to reproduce it offline.
-
-The 6.6 phase completes the audit and makes **reachability** mechanical. The surface gate
-proves every public name *resolves*; it cannot tell a live, *used* symbol from one that
-resolves yet is referenced nowhere — the dead-but-resolvable surface 6.0 removed by a
-one-time manual reference check that was never mechanized. `vincio._reachability` runs that
-check over the whole surface on every build: a symbol used nowhere in the code corpus is
-either exercised by a test (a pure helper) or declared, with its structural reason
-(`BASE` / `OPTDEP` / `WIRING`), in the frozen `docs/reference/reachability.txt`, so a new
-dead public symbol fails the build the moment it lands. A dedicated `hygiene` CI job runs
-all six lints directly, so the whole family is a first-class standing guard. Run
-`python -m vincio._reachability` to reproduce it offline.
+- **Public-surface hygiene** (`vincio._surface`). `vincio.__all__` is the frozen
+  top-level contract, but each public subpackage also declares its own `__all__` — the
+  return types, dataclasses, and helpers reached by deep import. `vincio._surface`
+  classifies every such symbol TOP (re-exported in `vincio.__all__`) / DUP (an
+  intentional name collision) / SUB (subpackage-only) and freezes the result in
+  `docs/reference/subpackage-surface.txt`, so the interior surface stays free of dead
+  exports and can only change on review.
+- **Error-contract conformance** (`vincio._error_contract`). Every error Vincio raises
+  derives from `VincioError`, so one `except VincioError` catches the family and `.code`
+  is the stable branch key. The `ContextApp` verb surface is held to zero off-contract
+  raises by an always-on check, and the classified baseline of accepted public built-in
+  raises (internal input-validation, abstract-base placeholders, the `AttributeError` a
+  `__getattr__` must raise) is frozen in `docs/reference/error-contract.txt`.
+- **Observable failure** (`vincio._observable_failure`). A best-effort fallback that
+  catches a broad `Exception` and continues is correct policy, but one that swallows it
+  silently hides a real bug. `vincio.core.diagnostics.note_suppressed` makes a fallback
+  observable (logging on the `vincio.suppressed` channel and counting it by label), and
+  the lint holds the public tree to zero unmarked silent swallows: every broad `except`
+  must re-raise, record its failure, or carry a justifying `# noqa: BLE001`.
+- **Wire-or-retire** (`vincio._wire_or_retire`). A capability that is public but that
+  nothing can reach reads as supported API while being dead. The lint holds a frozen
+  ledger of capabilities, requiring each to resolve to a live reach (an `app.*` verb, an
+  engine method, or a registration helper) referenced by production code, so a capability
+  cannot silently become dead surface.
+- **Docstring / behaviour parity** (`docstring_parity_*`). A docstring that advertises
+  behaviour the code no longer performs is a quiet lie a reader trusts. The
+  `families.hygiene.docstring_parity_*` budgets re-derive each documented claim from the
+  live code, so a docstring and its behaviour cannot silently diverge.
+- **`-O` robustness** (`vincio._assert_robustness`). Python strips every `assert` under
+  `python -O`, so a load-bearing one silently vanishes in an optimized deployment. Every
+  runtime-significant `assert` is an explicit guard that raises a `VincioError`; a genuine
+  never-happens invariant kept as an `assert` carries a justifying `# noqa: S101`, and the
+  lint holds the public tree to zero unmarked `assert`s.
+- **Reachability** (`vincio._reachability`). The surface gate proves every public name
+  *resolves*; reachability proves it is *used*. A symbol referenced nowhere in the code
+  corpus is either exercised by a test or declared, with its structural reason (`BASE` /
+  `OPTDEP` / `WIRING`), in the frozen `docs/reference/reachability.txt`, so a new dead
+  public symbol fails the build the moment it lands.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

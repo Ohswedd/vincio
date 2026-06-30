@@ -1,8 +1,8 @@
 # Guide: close the loop
 
-Vincio ships the milestone no single-purpose library can: one continuous,
-reproducible improvement cycle, **trace → dataset → eval → optimize →
-promote**, plus the feedback paths that let every organ tune the others:
+Vincio provides one continuous, reproducible improvement cycle, **trace →
+dataset → eval → optimize → promote**, plus the feedback paths that let every
+organ tune the others:
 runs write grounded facts back to memory, eval-scored relevance tunes
 retrieval, the optimizer keeps a cost/quality Pareto frontier instead of one
 score, budget allocation is learned from eval outcomes, and richer offline
@@ -129,6 +129,7 @@ rules, a frontier point that regresses safety or fails a gate never wins.
 Per-task budget allocation tuned from eval outcomes instead of fixed tables:
 
 ```python
+from vincio import TaskType
 from vincio.optimize import BudgetLearner
 
 learner = BudgetLearner(evaluate_allocation)          # (fractions, dataset) -> EvalReport
@@ -145,10 +146,12 @@ other optimizer. Tasks without a learned table keep the fixed defaults.
 
 ## Context-aware offline search
 
-The evolution loop's candidate proposals can now condition on what already
+The evolution loop's candidate proposals can condition on what already
 scored well:
 
 ```python
+from vincio.optimize import ContextOptimizer
+
 result = await ContextOptimizer(evaluate_config).optimize(
     dataset, budget=12, strategy="hill_climb",   # or "anneal", "random"
 )
@@ -205,8 +208,8 @@ reproducible in tests and air-gapped runs.
 
 ## The distillation flywheel
 
-The one lever the rest of the field is missing: turn the runs you already make
-into *cheaper inference*. The faithful, flag-free path is to keep the
+Turn the runs you already make into *cheaper inference*. The faithful,
+flag-free path is to keep the
 `RunResult`s (they carry the full output and cited evidence, and the runtime
 stamps the input) and export from them:
 
@@ -540,7 +543,7 @@ result = app.deploy(
 directly when you want to wire one organ on its own. The `loop` family's
 `self_improvement` checks gate the streaming cycle, meta-optimization, and the
 canary-gated deploy. See
-[`38_self_improvement_and_erasure.py`](../../examples/08_optimization_self_improvement.py).
+[`08_optimization_self_improvement.py`](../../examples/08_optimization_self_improvement.py).
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

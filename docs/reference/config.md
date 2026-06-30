@@ -44,7 +44,7 @@ security:
   audit_dir: .vincio/audit
   retention_days: null
   egress_dlp: warn           # always-on egress DLP of the assembled request: off | warn | block
-  audit_signing_key: ""      # HMAC key → tamper-evident signed audit chain (empty = unsigned, 1.x behavior)
+  audit_signing_key: ""      # HMAC key → tamper-evident signed audit chain (empty = unsigned)
   audit_signing_key_id: hmac # key id recorded on each signed entry
 
 governance:                  # enterprise governance & compliance; all opt-in

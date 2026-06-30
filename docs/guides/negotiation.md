@@ -104,6 +104,8 @@ into a `Budget` the runtime already enforces, and `check()` compares delivered w
 against the terms:
 
 ```python
+from vincio import RunConfig
+
 config = RunConfig(budget=contract.to_budget())   # price → max_cost_usd, SLA → max_latency_ms
 delivered = app.run("...", config=config)
 

@@ -2,7 +2,7 @@
 
 Vincio's closed self-improvement loop (trace → dataset → eval → optimize → promote),
 RLVR, and the distillation flywheel all make an agent *better at known tasks*. This
-is the apex of that arc: **open-ended capability growth**. An agent proposes its own
+guide extends that loop to **open-ended capability growth**. An agent proposes its own
 tasks at the edge of its competence, distills successful trajectories into a
 reusable, versioned skill library, and bootstraps, Voyager / ADAS-shaped, under the
 *same* no-regression gate a promotion already clears, so growth is **safe and

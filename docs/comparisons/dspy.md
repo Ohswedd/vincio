@@ -39,7 +39,7 @@ and automatic prompt/weight optimization.
 - **The judge that gates the optimizer is itself optimized.**
   `JudgeCalibrator` reflectively tunes a `GEvalJudge`'s evaluation steps against
   κ-validated human labels, adopting a procedure only when its Cohen's κ beats
-  the incumbent, closing the loop on the loop.
+  the incumbent — so even the judge that gates the optimizer is itself optimized.
 - **The loop is closed.** `ImprovementLoop` runs trace → dataset →
   eval → optimize → promote as one reproducible cycle: production traces
   become the training data, the winner lands in the prompt registry tagged

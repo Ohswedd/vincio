@@ -15,15 +15,16 @@ pip install -e ".[dev]"
 ## Before you open a pull request
 
 The full test suite runs **fully offline** (no network or API keys) using the deterministic mock
-provider. Both of these must be green:
+provider. All of these must be green:
 
 ```bash
 ruff check vincio/ tests/      # lint
+mypy vincio                    # type check
 pytest -q                      # tests
 ```
 
-CI runs the same checks across Python 3.11, 3.12, and 3.13, plus a package build, so it is worth
-running them locally first.
+CI runs the same checks across Python 3.11, 3.12, and 3.13, plus a coverage floor, the VincioBench
+budgets, and a package build, so it is worth running them locally first.
 
 ## Project conventions
 

@@ -150,7 +150,7 @@ q.judge_trusted(threshold=0.6)         # bool; q.gating_weight(threshold=0.6) ->
 cohens_kappa([(0.9, 1.0), (0.2, 0.0)], bins=2)
 ```
 
-`GEvalJudge.calibrate(pairs)` now also returns `cohens_kappa`, and
+`GEvalJudge.calibrate(pairs)` returns `cohens_kappa`, and
 `judge.gating_weight(threshold=0.6)` returns `1.0` only once calibrated κ clears
 the bar. From the CLI:
 
@@ -331,7 +331,6 @@ object that guards live generations and that the optimizer maximizes. Offline an
 deterministic by default (mock provider, seed-deterministic simulator and
 environments), with no hosted dependency. See the [evaluation concepts](../concepts/evals.md)
 and the [run evals guide](run-evals.md), and run
-[`examples/07_evaluation_observability.py`](../../examples/07_evaluation_observability.py) and
 [`examples/07_evaluation_observability.py`](../../examples/07_evaluation_observability.py)
 end to end.
 
