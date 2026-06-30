@@ -12,11 +12,12 @@ and what is intentionally out of scope. The complete release-by-release history 
 **Legend:** ✅ shipped · 🚧 planned (next)
 
 > The capability surface is complete and frozen. The **[hardening line
-> (6.x)](#-the-hardening-line-6x--in-progress)** — an additive, non-breaking paydown of interior quality
-> debt surfaced by a standing internal audit, not new capability — is underway: **6.0 (public-surface
+> (6.x)](#-the-hardening-line-6x--complete)** — an additive, non-breaking paydown of interior quality
+> debt surfaced by a standing internal audit, not new capability — is **complete**: **6.0 (public-surface
 > hygiene), 6.1 (error-contract conformance), 6.2 (observable failure), 6.3 (wire-or-retire), 6.4
-> (docstring / behaviour parity), and 6.5 (`-O` robustness) shipped**; 6.6 (audit completion & standing
-> guard) is next.
+> (docstring / behaviour parity), 6.5 (`-O` robustness), and 6.6 (audit completion & standing guard) all
+> shipped**. The whole `hygiene` family is now gated in CI as a first-class standing guard, so the interior
+> quality the line buys cannot silently erode.
 
 ## What "done" means here
 
@@ -300,16 +301,17 @@ runnable example — never pulled from a standing backlog.
 
 ---
 
-## 🚧 The hardening line (6.x) — in progress
+## ✅ The hardening line (6.x) — complete
 
 The platform is feature-complete and frozen under the [stability policy](docs/reference/stability.md):
 long-term support means **no breaking changes, not no improvement**. The 5.1–5.4 *fit-and-finish* line made
-the complete platform honest, fast, navigable, and one-line easy on its **surface**; the hardening line turns
+the complete platform honest, fast, navigable, and one-line easy on its **surface**; the hardening line turned
 that same discipline **inward**, onto the codebase's interior. Every phase is additive, dependency-free, and
 **surface-preserving** — no public symbol is removed except on a published deprecation runway — and each is
-held by a new VincioBench **`hygiene`** family the way `docs_conformance` holds the docs graph, sequenced
+held by the VincioBench **`hygiene`** family the way `docs_conformance` holds the docs graph, sequenced
 correctness-first. None of it changes a result; all of it is interior debt a long-lived platform pays down
-deliberately.
+deliberately. With 6.6 the line is **complete**: the whole `hygiene` family is gated in CI as a standing
+guard, so the debt cannot silently return.
 
 A standing internal audit found the work. The core plane (`core` / `context` / `retrieval` / `memory` /
 `prompts` / `input`) was audited symbol-by-symbol with repo-wide reference checks; the rest of the tree was
@@ -339,7 +341,7 @@ methods, load-bearing `assert`s that vanish under `python -O`, and a large drift
 | **✅ 6.3 — Wire-or-retire** | unhooked capabilities | **Shipped.** Wired each formerly-unhooked capability to a production path: `app.retrieve_facts` (reasoning retrieval), `app.consolidate_memory` (the aged-episode tier transition), `use_context_governor(blob_store=…)` (cross-process cold-span paging through `BlobEvidenceStore`), and a provider-native token-counter registrant at provider init; `compile_streaming` / `recompile` / `CompileStreamEvent` are documented as advanced deep-import API. A standing guard (`vincio._wire_or_retire`) holds a frozen ledger of them reachable, folded into the `hygiene` VincioBench family. |
 | **✅ 6.4 — Docstring / behaviour parity** | the docs match the code | **Shipped.** Made every docstring that advertised behaviour the code no longer performed either true or corrected: the budgeting module docstring describes the allocate-time redistribution it actually does (and the verified-dead `BudgetAllocator.redistribute` is removed); the learned-compression docstring no longer claims the tuner calls the faithfulness helpers; the federated default-deny consent demonstration fires every run; `delete` delegates to `forget`; and the stale comments (compiler step numbering, `input/*` spec numbering, the redundant `lint.py` PROMPT001 clause) are cleared. The `hygiene` VincioBench family folds in `docstring_parity_conformant`, re-deriving each reconciled claim from the live code. |
 | **✅ 6.5 — `-O` robustness** | load-bearing `assert` → guard | **Shipped.** Replaced every runtime-significant `assert` stripped under `python -O` with an explicit guard that raises the appropriate `VincioError` — the streaming / cascade response paths in `core/runtime.py` (→ `ProviderResponseError`), the resident-footprint ceiling in `context/compiler.py` (→ `ContextCompileError`), the terminal-event invariant in `agents/graph.py` (→ `GraphError`), and the MCP stdio subprocess pipes in `mcp/transport.py` (→ `MCPError`); the genuine never-happens invariants (a value guaranteed non-`None` by an adjacent guard, a model validator, or the preceding assignment) are kept, documented, and marked `# noqa: S101`. A lint (`vincio._assert_robustness`) holds the whole public tree to **zero** unmarked `assert`s, folded into the `hygiene` VincioBench family and proven to *bite*. |
-| **6.6 — Audit completion & standing guard** | finish + lock it in | Extend the symbol-by-symbol audit to every remaining subpackage with the same evidence discipline, and gate the whole hygiene family in CI so the debt cannot silently return. |
+| **✅ 6.6 — Audit completion & standing guard** | finish + lock it in | **Shipped.** Ran the same symbol-by-symbol reachability rubric across every remaining subpackage and mechanized it: `vincio._reachability` proves every public symbol is *used* in the code corpus (not merely that it *resolves*), exercising the nineteen pure helpers the audit surfaced and declaring the structurally-unexercisable surface (abstract bases, optional-dep backends, socket/Redis/webhook wiring) in the frozen `docs/reference/reachability.txt`. A dedicated `hygiene` CI job runs all six lints directly, so the whole family — surface, error contract, observable failure, wire-or-retire, docstring parity, `-O` robustness, reachability — gates CI as a first-class standing guard. |
 
 ### 6.0 — Public-surface hygiene ✅ Shipped
 
@@ -508,17 +510,46 @@ baseline: the inline marker is the accepted form, always-on with zero tolerance.
 check is folded into the `hygiene` VincioBench family (`assert_robustness_conformant`). Run
 `python -m vincio._assert_robustness` to reproduce the check offline.
 
-### 6.6 — Audit completion & standing guard
+### 6.6 — Audit completion & standing guard ✅ Shipped
 
-6.0–6.5 act on the core plane (audited symbol-by-symbol) and the thematic whole-tree sweep. 6.6 finishes the
-job: it runs the same symbol-by-symbol rubric — define the intended public surface from `__init__`, then
-confirm every claim with a repo-wide reference check — across every remaining subpackage (`agents`,
-`optimize`, `evals`, `tools`, `workflows`, `data`, `generation`, `providers`, `storage`, `settlement`,
-`negotiation`, `choreography`, `governance`, `security`, `verify`, `observability`, and the rest), folding what
-it finds into the phases above. Then it locks the result in: a VincioBench **`hygiene`** family that fails CI
-on a dead public symbol, an unlogged broad swallow, a public bare-built-in raise, a load-bearing `assert`, or
-a two-level `__all__` divergence — so the interior quality the line buys cannot silently erode, exactly as
-`docs_conformance` keeps the docs graph honest and `registry coverage` keeps the model catalog honest.
+6.0–6.5 acted on the core plane (audited symbol-by-symbol) and swept the rest of the tree thematically. 6.6
+finished the job and locked it in. The surface gate (6.0) proves every public `__all__` name *resolves*, but it
+cannot tell a live, *used* symbol from one that resolves yet is referenced **nowhere** — the dead-but-resolvable
+surface 6.0 removed by a one-time *manual* repo-wide reference check (`ashapley_values`, `truncate_text`,
+`race_with_timeout` and the rest). That manual check was never mechanized, so the exact debt was free to return.
+6.6 mechanizes the rubric across every remaining subpackage: `vincio._reachability` enumerates the whole public
+surface (the frozen top-level `vincio.__all__` plus every public subpackage's own `__all__`) and asks the
+audit's question of each symbol — is it *used* anywhere in the code corpus (`vincio/` + `tests/` + `examples/` +
+`benchmarks/`)? A *use* is a real load (an `ast.Name` load, an `obj.Symbol` attribute access, or an
+`import … as alias` then a load of the alias); a bare re-export and an `__all__` entry are the declaration, not
+a reference to it.
+
+The audit found forty-one public symbols that resolved and were live capabilities yet were referenced nowhere.
+None were genuinely dead — they split in two. The **nineteen pure, offline-runnable helpers** (the caching
+layers, `SchemaRegistry`, `LINT_RULES`, `SUPPORTED_EXTENSIONS`, the MCP OAuth helpers, `agui_sse`,
+`cache_hit_economics`, `analyze_ast_layout`, `extract_markdown_metadata`, `as_search_fn`, `map_compliance`,
+`residency_violation`, `CallableSparseEncoder`, `from_haystack_documents`, `MultiExporter`, `RoutingOptimizer`)
+have no structural excuse for being unexercised, so the honest audit completion is to **exercise** them — each
+now has a focused behavioural test (`tests/test_public_surface_reachability.py`), which is the evidence the
+symbol is a real, working capability and the reason it drops out of the baseline. The other **twenty-two are
+structurally unexercisable** by an offline corpus — an abstract base or `Protocol` a *user* implements (`BASE`),
+a concrete provider/backend whose real path needs an optional dependency or a live endpoint (`OPTDEP`), or
+production wiring that binds a socket / Redis / outbound webhook (`WIRING`) — and are declared, each with its
+reason, in the frozen baseline `docs/reference/reachability.txt`.
+
+The contract is then made **mechanical**, on the same freeze-and-gate idiom 6.0–6.5 use: `vincio._reachability`
+holds two always-on invariants — *clean* (every unreferenced public symbol is classified in the baseline, so a
+new dead-but-resolvable symbol fails the build the moment it lands) and *frozen* (the baseline is exactly the
+live unreferenced set — no missing or stale entry — rendered to its committed manifest byte-for-byte) — proven
+to *bite* on an injected dead symbol and a stale baseline entry. It folds into the `hygiene` VincioBench family
+(`reachability_conformant`) with matching SLOs and budgets, joins the `mypy --strict` set, and — the standing
+guard — a dedicated **`hygiene` CI job** now runs all six lints directly (`python -m vincio._surface`,
+`._error_contract`, `._observable_failure`, `._wire_or_retire`, `._assert_robustness`, `._reachability`) beside
+their gate tests, so the whole family fails CI on a dead public symbol, an unlogged broad swallow, a public
+bare-built-in raise, a load-bearing `assert`, or a two-level `__all__` divergence — the interior quality the
+line buys cannot silently erode, exactly as `docs_conformance` keeps the docs graph honest and
+`registry coverage` keeps the model catalog honest. Run `python -m vincio._reachability` to reproduce the check
+offline.
 
 ### Beyond the hardening line
 

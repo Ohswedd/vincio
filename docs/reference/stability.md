@@ -26,7 +26,7 @@ Everything else is internal and may change at any time without notice:
   raises derives from `VincioError`, so `except VincioError` catches the family;
   a bare built-in (`ValueError` / `KeyError`) that previously leaked off-contract
   from a public method is *not* a stable type and may be converted to its proper
-  `VincioError` under the [hardening line](../../ROADMAP.md#the-hardening-line-6x--in-progress)
+  `VincioError` under the [hardening line](../../ROADMAP.md#the-hardening-line-6x--complete)
   — `except VincioError` is unaffected. This contract is mechanically gated
   (`vincio._error_contract`).
 - The suppressed-failure diagnostics surface — the `vincio.suppressed` log channel

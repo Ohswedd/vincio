@@ -8,8 +8,8 @@ not maintained — upgrade to the latest release.
 
 | Version | Supported |
 | ------- | --------- |
-| 5.x     | ✅ |
-| < 5.0   | ❌ (upgrade to the latest 5.x release) |
+| 6.x     | ✅ |
+| < 6.0   | ❌ (upgrade to the latest 6.x release) |
 
 ## Threat model
 

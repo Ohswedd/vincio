@@ -542,6 +542,10 @@ offline.
 | `-O` robustness: no public module carries an `assert` that carries control-flow weight and would silently vanish under `python -O` — every load-bearing `assert` is an explicit guard that raises a `VincioError`, a genuine never-happens invariant kept as an `assert` carries a justifying `# noqa: S101`, and the detector provably flags an injected bare `assert` while ignoring a marked one. | true | `families.hygiene.assert_robustness_conformant` |
 | Every public module is free of unmarked `assert`s: the lint reports none tree-wide, so nothing load-bearing is left to vanish under `python -O`. | true | `families.hygiene.assert_robustness_clean` |
 | The `-O`-robustness detector provably bites: an injected bare `assert` is reported while a `# noqa: S101`-marked one is not. | true | `families.hygiene.assert_robustness_gate_detects_tamper` |
+| Reachability: no dead-but-resolvable public surface — every public symbol (top-level `vincio.__all__` plus every public subpackage `__all__`) is either used somewhere in the code corpus or declared, with a structural reason, in the frozen reachability baseline (`docs/reference/reachability.txt`); the baseline is exactly the live unreferenced set, and the detector provably flags an injected dead symbol and a stale baseline entry. | true | `families.hygiene.reachability_conformant` |
+| No public symbol is referenced nowhere in the corpus and left undeclared: every unreferenced public symbol is classified in the reachability baseline, so there is no undeclared dead public surface tree-wide. | true | `families.hygiene.reachability_clean` |
+| The reachability baseline is exactly the live unreferenced public set — no missing entry (an undeclared dead symbol) and no stale one (a baselined symbol now referenced) — and the rendered manifest matches `docs/reference/reachability.txt` byte-for-byte. | true | `families.hygiene.reachability_frozen` |
+| The reachability detector provably bites: an injected unreferenced symbol absent from the baseline is reported, a baselined symbol that is actually referenced is flagged stale, and a real load (including an aliased import) is credited as a use. | true | `families.hygiene.reachability_gate_detects_tamper` |
 
 `vincio.__all__` is the frozen top-level contract, but each public subpackage also
 declares its own `__all__` — the return types, dataclasses, and helpers reached by
@@ -616,6 +620,17 @@ terminal-event invariant in `agents/graph.py`, and the MCP stdio subprocess pipe
 `vincio._assert_robustness` holds the whole public tree to zero unmarked `assert`s, so a
 new one fails the build unless it is converted to a guard or deliberately marked. Run
 `python -m vincio._assert_robustness` to reproduce it offline.
+
+The 6.6 phase completes the audit and makes **reachability** mechanical. The surface gate
+proves every public name *resolves*; it cannot tell a live, *used* symbol from one that
+resolves yet is referenced nowhere — the dead-but-resolvable surface 6.0 removed by a
+one-time manual reference check that was never mechanized. `vincio._reachability` runs that
+check over the whole surface on every build: a symbol used nowhere in the code corpus is
+either exercised by a test (a pure helper) or declared, with its structural reason
+(`BASE` / `OPTDEP` / `WIRING`), in the frozen `docs/reference/reachability.txt`, so a new
+dead public symbol fails the build the moment it lands. A dedicated `hygiene` CI job runs
+all six lints directly, so the whole family is a first-class standing guard. Run
+`python -m vincio._reachability` to reproduce it offline.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.
