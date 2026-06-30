@@ -341,7 +341,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (525 public symbols)
+## Public API (537 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -401,6 +401,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `CapabilityToken(**data)` — An unforgeable, capability-scoped grant minted from the user's request.
 - `CausalAttributor(app, dataset, factors, metric=…, aggregate=…, repeats=…, concurrency=…)` — Attribute a metric delta to the components a release changed, by Shapley counterfactual replay over the dataset.
 - `CellCitation(**data)` — A reference to one source cell an answer rests on.
+- `CellRef(**data)` — A reference to one source cell a series value came from.
 - `Certificate(**data)` — A typed, content-bound, offline-verifiable proof over an answer.
 - `CertificationReport(**data)` — The signed, content-bound certificate that an app is fit for production.
 - `Chart(**data)` — A rendered chart, **content-bound and data-bound**.
@@ -412,6 +413,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `CitationContract(**data)` — Field/claim-level citation requirements for a cited report.
 - `CitationVerifier(evidence=…)` — Checks every verifiable claim in an answer is entailed by cited evidence.
 - `CitedReportBuilder(entailment=…, audit_log=…, tenant_id=…)` — Resolve citations, verify per-claim support, render a cited report.
+- `CitedSeries(**data)` — A named numeric series bound to the source cells it was read from.
 - `Claim(**data)` — A node in the assurance argument: a statement, its decomposition, its evidence.
 - `ClaimStatus(**data)` — The re-derived verdict for one claim and its subtree.
 - `CollateralLedger(**data)` — A poster's cross-pool rehypothecation view, a bounded re-use guard.
@@ -446,6 +448,8 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `Contribution(**data)` — One member's privacy-preserving federated update, numeric, no raw traffic.
 - `ContributionBuilder(embedder=…, privacy=…)` — Build a :class:`Contribution` from a member's local data, never its text.
 - `ControllerDecision(**data)` — The record of one controller evaluation, stamped on the audit chain.
+- `CorrelationClaim(**data)` — A stated correlation between two cited series, optionally asserting causation.
+- `CorrelationVerifier(claims=…)` — Recomputes a correlation and refutes correlation-stated-as-causation.
 - `CostAwareSelector(models, registry=…, quality_floor=…, events=…)` — Picks the cheapest capable model per action, escalating on low confidence.
 - `CostBudget(**data)` — A spend limit on a scope, with an enforcement action on breach.
 - `CostLedger(price_table=…, store=…, max_events=…)` — In-process append-only ledger of attributed cost events.
@@ -533,6 +537,8 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `FertilityTracker(model=…, baseline_language=…)` — Track tokens-per-word per language to surface the non-English token tax.
 - `Figure(**data)` — A chart or table embedded in a cited report, **data-bound** to its source.
 - `Flow(provider=…, model=…, name=…, output_schema=…, app=…, config=…)` — An immutable, fluent pipeline that lowers to one governed run packet.
+- `ForecastClaim(**data)` — A stated projection from a declared deterministic forecast model.
+- `ForecastVerifier(claims=…)` — Re-runs a declared deterministic forecast over the cited series and checks it.
 - `FrontierEstimate(**data)` — Where a task sits relative to current competence.
 - `GGUFProvider(model_path=…, llama=…, n_ctx=…, embedding=…, lora_path=…, lora_scale=…, **kwargs)` — Native in-process GGUF / llama.cpp provider with on-device embedding.
 - `GatheredReputation(subject, visits, attestations, revocations, reputation, duplicates=…)` — A current prior assembled by pulling signed artifacts from a set of peers.
@@ -558,6 +564,8 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `InsolvencyResolution(**data)` — A signed, offline-verifiable resolution distributing reserves across ranked liabilities.
 - `InsolvencyResolutionVerification(**data)` — The (non-raising) outcome of verifying an insolvency resolution offline.
 - `Instruction(text=…, **data)` — !!! abstract "Usage Documentation" [Models](../concepts/models.md)
+- `IntervalClaim(**data)` — A stated interval over a cited series.
+- `IntervalVerifier(claims=…)` — Recomputes a stated confidence or prediction interval from the cited series.
 - `Invariant(id, statement, category, variables, predicate, explain=…)` — A formal governance property checked over a bounded, typed state space.
 - `InvariantResult(**data)` — The verdict of checking one :class:`Invariant` over its whole state space.
 - `IssuePreference(**data)` — A party's preference over one numeric issue.
@@ -727,6 +735,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `SpeechRequest(**data)` — !!! abstract "Usage Documentation" [Models](../concepts/models.md)
 - `StabilityLevel(*args, **kwds)` — Stability contract for a public symbol.
 - `StateGraph(name=…, state_schema=…, reducers=…, defaults=…)` — Build-time graph definition; ``compile()`` produces the runnable form.
+- `StatisticalClaim(**data)` — Base of the analytical-claim family the statistical kernels certify.
 - `StepBinding(**data)` — The resolved run-time binding for one capability step.
 - `StepOutcome(**data)` — A participant's result for one dispatched step.
 - `StepRecord(**data)` — One immutable, hash-chained entry in a :class:`SagaJournal`.
@@ -752,6 +761,8 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `TrajectoryAdvantage(value_fn, include=…, max_players=…)` — Attribute a trajectory's outcome reward to the steps that earned it.
 - `TrajectoryOptimizer(reward_model, policy=…, learning_rate=…, kl_max=…, iterations=…, group_normalize=…, min_reward_improvement=…)` — GRPO-style on-policy update over a deterministic policy, safety-gated.
 - `Transition(**data)` — One recorded ``(observation, action) → next_observation`` step.
+- `TrendClaim(**data)` — A stated linear trend over a cited series.
+- `TrendVerifier(claims=…)` — Recomputes a stated linear trend and its goodness-of-fit from cited cells.
 - `TrustConfig(**data)` — How the importer's trust in an issuer scales the evidence it contributes.
 - `TrustLabel(*args, **kwds)` — A typed information-flow label on a value or context candidate.
 - `TrustModel(assessments, config)` — The importer's bounded, transitive trust in each issuer, the Sybil-resistant kernel.
@@ -866,6 +877,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `sleep_for(state, seconds, clock=…)` — Pause the graph for ``seconds`` of wall-clock time, durably.
 - `sleep_until(state, when, clock=…)` — Pause the graph until ``when`` (a datetime or ISO string), durably.
 - `stability_of(obj)` — Return the stability record for ``obj``.
+- `statistical_verifiers()` — The four statistical kernels — trend, correlation, interval, forecast.
 - `stream_aggregate(data, group_by, measures=…, max_groups=…)` — Group a stream by one or more columns and reduce measures over each group in a single bounded-memory pass.
 - `synthesize(spec, examples, require=…)` — Verify ``spec``'s properties on ``examples`` and emit a proof-carrying program.
 - `task_goal_value(checks)` — A goal-value function: the fraction of an environment task's checks an observation's state satisfies (the planner's default verifier).

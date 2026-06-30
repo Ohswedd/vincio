@@ -385,9 +385,9 @@ Guides: [Formal verification of governance invariants](../guides/governance-veri
 
 ### Verified reasoning & shielding
 
-Proof-carrying answers checked by deterministic kernels, runtime behaviour shielding, and proof-carrying synthesized programs.
+Proof-carrying answers checked by deterministic kernels (including the statistical trend / correlation / interval / forecast kernels that certify an analytical claim and refute correlation stated as causation), runtime behaviour shielding, and proof-carrying synthesized programs.
 
-Guides: [Verified reasoning & neuro-symbolic certificates](../guides/verified-reasoning.md) · Examples: [09_security_governance.py](../../examples/09_security_governance.py) · Reference: [Governance](api.md#governance)
+Guides: [Verified reasoning & neuro-symbolic certificates](../guides/verified-reasoning.md) · Examples: [09_security_governance.py](../../examples/09_security_governance.py), [25_statistical_certificates.py](../../examples/25_statistical_certificates.py) · Reference: [Governance](api.md#governance)
 
 | Method | What it does |
 |---|---|

@@ -81,6 +81,62 @@ Pass `raise_on_refute=True` to raise `CertificateRefutedError` instead of return
 refused answer. Every verdict lands on the hash-chained audit log as a
 `reasoning_verification` decision.
 
+## Statistical claims — forecasting & causal inference
+
+A data answer concludes from numbers as well as retrieves them: a trend, a
+correlation, a confidence interval, a forecast. Each of those carries a checkable
+certificate the way an arithmetic claim does, recomputed from the **cited cells** —
+not judged by a model. Pass the claims as `statistical_claims=`; the statistical
+kernels are added to the default set automatically.
+
+| Kernel | Claim | Refutes |
+|---|---|---|
+| `TrendVerifier` | `TrendClaim` — OLS slope / intercept / R² / direction over a series | a slope, intercept, R², or direction the data does not bear out |
+| `CorrelationVerifier` | `CorrelationClaim` — Pearson `r` of two series, optionally causal | a wrong `r`, **or** a correlation stated as causation with no controls, **or** a controlled claim whose association collapses once the confounder is partialled out |
+| `IntervalVerifier` | `IntervalClaim` — a confidence (`mean`) or regression `prediction` interval | a stated interval that is too tight or too wide |
+| `ForecastVerifier` | `ForecastClaim` — a deterministic model's projection (`naive` / `mean` / `drift` / `linear` / `moving_average` / `ses`) | a projection the model does not produce |
+
+A statistic is **bound to its cited cells**: a `CitedSeries` carries the
+`CellRef`s its values came from (build one straight from a cell-cited
+`QueryResult` with `CitedSeries.from_cells(result.citations(row, col))`), and a
+value swapped after it was cited makes the series unbound and the kernel refuses —
+so a smuggled number cannot pass.
+
+```python
+from vincio import CitedSeries, TrendClaim
+
+series = CitedSeries(name="revenue", values=[12_000, 12_300, 12_650, 12_900, 13_300])
+out = app.verify_reasoning(
+    "Revenue is trending up about 320/month.",
+    statistical_claims=[TrendClaim(series=series, slope=320.0, direction="increasing")],
+)
+assert out.holds                                    # recomputed slope ≈ 320
+```
+
+The headline is **causal soundness**. A causal claim must earn its warrant — a
+declared randomized design, or declared controls *with* their series so the
+**partial correlation** can be recomputed. Correlation stated as causation with no
+warrant is refused, and a controlled claim whose association vanishes once the
+confounder is partialled out is refuted, while a genuine driver that survives the
+control is verified.
+
+```python
+from vincio import CorrelationClaim
+
+# Ice-cream sales and drownings both rise with temperature (the confounder).
+claim = CorrelationClaim(x=ice_cream, y=drownings, r=0.97, causal=True,
+                         controls=["temperature"], control_series=[temperature])
+verdict = app.verify_reasoning("Ice cream sales cause drownings.",
+                               statistical_claims=[claim])
+assert verdict.refused                              # partial r collapses ≈ 0
+```
+
+A refuted statistical claim drives the same self-correction loop: a `regenerate`
+callback may repair it by returning a corrected `StatisticalClaim`, and the loop
+re-grounds the context before re-certifying. The fully-offline
+[`25_statistical_certificates`](../../examples/25_statistical_certificates.py)
+example walks all four kernels end to end.
+
 ## Runtime verification & shielding
 
 The certificate proves a *result*; its behavioural, online analogue is a property
@@ -162,9 +218,11 @@ program.run([{"price": 2.0, "quantity": 10}])      # re-checks properties at run
 The deterministic kernels are the default and need no extra. For the cases that
 warrant a solver, proving a constraint system is *consistent* rather than that one
 assignment happens to satisfy it, or checking an equality with **exact** rational
-arithmetic, `vincio.verify.smt` provides `SmtConstraintVerifier` (Z3) and
-`CasArithmeticVerifier` (SymPy) behind `pip install "vincio[verify]"`. They are
-strictly opt-in: nothing on the offline path imports them.
+arithmetic, `vincio.verify.smt` provides `SmtConstraintVerifier` (Z3),
+`CasArithmeticVerifier` (SymPy), and `CasTrendVerifier` (SymPy — re-discharges an
+OLS trend fit with exact rational arithmetic, no floating-point drift) behind
+`pip install "vincio[verify]"`. They are strictly opt-in: nothing on the offline
+path imports them.
 
 ## How it composes
 
@@ -180,6 +238,7 @@ prover, always offline, always additive on the frozen surface.
 ## Related
 
 - [Example: 09_security_governance.py](../../examples/09_security_governance.py)
+- [Example: 25_statistical_certificates.py](../../examples/25_statistical_certificates.py)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#governance)
 - [Documentation index](../README.md)

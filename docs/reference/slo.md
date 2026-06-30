@@ -150,6 +150,19 @@ analogue of the cross-org conformance capstone.
 | PII coverage | ≥ 0.80 | `security.pii_coverage` |
 | Injection-containment escalation rate (adversarial corpus) | 0 | `containment.escalation_rate` |
 
+## Verified reasoning & statistical certificates
+
+| SLO | Target | VincioBench metric |
+|---|---|---|
+| An answer carries a content-bound `Certificate` a deterministic kernel set confirms — including the statistical kernels that recompute a stated trend / correlation / interval / forecast from the cited cells — `verified` only when a claim recomputed and held, and a tampered verdict is caught from the bytes. | true | `families.verified_reasoning.certificate_soundness` |
+| A correlation stated as causation with no controls or randomized design is refused, and a controlled claim whose association collapses once the declared confounder is partialled out is refuted, while a genuine controlled association and a randomized-design claim are verified. | true | `families.verified_reasoning.refutes_spurious_causation` |
+| A behaviour shield wired into the tool runtime blocks a policy-violating action (an unapproved write) before it executes, while letting an approved one through. | true | `families.verified_reasoning.shield_prevents_violation` |
+
+Correctness can be *certified*, not merely judged: the kernels recompute a claim
+and refuse to emit a refuted one, the statistical kernels bind a statistic to its
+cited cells and refute correlation stated as causation, and the shield refuses an
+unsafe action at the boundary — all deterministic and offline.
+
 ## Protocols & interoperability
 
 | SLO | Target | VincioBench metric |

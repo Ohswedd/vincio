@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**525** public symbols.
+**537** public symbols.
 
 ## Classes
 
@@ -226,6 +226,10 @@ Attribute a metric delta to the components a release changed, by Shapley counter
 
 A reference to one source cell an answer rests on.
 
+### `CellRef(**data)`
+
+A reference to one source cell a series value came from.
+
 ### `Certificate(**data)`
 
 A typed, content-bound, offline-verifiable proof over an answer.
@@ -269,6 +273,10 @@ Checks every verifiable claim in an answer is entailed by cited evidence.
 ### `CitedReportBuilder(entailment=…, audit_log=…, tenant_id=…)`
 
 Resolve citations, verify per-claim support, render a cited report.
+
+### `CitedSeries(**data)`
+
+A named numeric series bound to the source cells it was read from.
 
 ### `Claim(**data)`
 
@@ -405,6 +413,14 @@ Build a :class:`Contribution` from a member's local data, never its text.
 ### `ControllerDecision(**data)`
 
 The record of one controller evaluation, stamped on the audit chain.
+
+### `CorrelationClaim(**data)`
+
+A stated correlation between two cited series, optionally asserting causation.
+
+### `CorrelationVerifier(claims=…)`
+
+Recomputes a correlation and refutes correlation-stated-as-causation.
 
 ### `CostAwareSelector(models, registry=…, quality_floor=…, events=…)`
 
@@ -754,6 +770,14 @@ A chart or table embedded in a cited report, **data-bound** to its source.
 
 An immutable, fluent pipeline that lowers to one governed run packet.
 
+### `ForecastClaim(**data)`
+
+A stated projection from a declared deterministic forecast model.
+
+### `ForecastVerifier(claims=…)`
+
+Re-runs a declared deterministic forecast over the cited series and checks it.
+
 ### `FrontierEstimate(**data)`
 
 Where a task sits relative to current competence.
@@ -853,6 +877,14 @@ The (non-raising) outcome of verifying an insolvency resolution offline.
 ### `Instruction(text=…, **data)`
 
 !!! abstract "Usage Documentation" [Models](../concepts/models.md)
+
+### `IntervalClaim(**data)`
+
+A stated interval over a cited series.
+
+### `IntervalVerifier(claims=…)`
+
+Recomputes a stated confidence or prediction interval from the cited series.
 
 ### `Invariant(id, statement, category, variables, predicate, explain=…)`
 
@@ -1530,6 +1562,10 @@ Stability contract for a public symbol.
 
 Build-time graph definition; ``compile()`` produces the runnable form.
 
+### `StatisticalClaim(**data)`
+
+Base of the analytical-claim family the statistical kernels certify.
+
 ### `StepBinding(**data)`
 
 The resolved run-time binding for one capability step.
@@ -1629,6 +1665,14 @@ GRPO-style on-policy update over a deterministic policy, safety-gated.
 ### `Transition(**data)`
 
 One recorded ``(observation, action) → next_observation`` step.
+
+### `TrendClaim(**data)`
+
+A stated linear trend over a cited series.
+
+### `TrendVerifier(claims=…)`
+
+Recomputes a stated linear trend and its goodness-of-fit from cited cells.
 
 ### `TrustConfig(**data)`
 
@@ -2075,6 +2119,10 @@ Pause the graph until ``when`` (a datetime or ISO string), durably.
 ### `stability_of(obj)`
 
 Return the stability record for ``obj``.
+
+### `statistical_verifiers()`
+
+The four statistical kernels — trend, correlation, interval, forecast.
 
 ### `stream_aggregate(data, group_by, measures=…, max_groups=…)`
 

@@ -11012,21 +11012,34 @@ async def bench_verified_reasoning() -> dict[str, Any]:
     it recomputed a claim and it held, ``refuted`` when a recomputation disagreed —
     so a wrong answer the relevant kernel can see is *refused*, never silently
     passed — and the certificate re-derives its verdict from the bytes, catching a
-    flipped status. **Shield prevents violation:** a :class:`~vincio.verify.Shield`
-    wired into the tool runtime structurally blocks a policy-violating action (an
-    unapproved write) *before* it executes. Plus refuse-or-repair self-correction,
-    enforced tool contracts, and proof-carrying synthesized programs. Deterministic
-    and offline."""
+    flipped status. The same soundness now extends to the **statistical** claims a
+    data answer makes: the trend, correlation, interval, and forecast kernels
+    recompute a stated statistic from the cited cells and refute one the data does
+    not bear out. **Refutes spurious causation:** a correlation stated as causation
+    that declares no controls or randomization is refused, and a controlled claim
+    whose association vanishes once the declared confounder is partialled out (the
+    partial correlation collapses) is refuted — while a genuine controlled
+    association survives. **Shield prevents violation:** a
+    :class:`~vincio.verify.Shield` wired into the tool runtime structurally blocks a
+    policy-violating action (an unapproved write) *before* it executes. Plus
+    refuse-or-repair self-correction, enforced tool contracts, and proof-carrying
+    synthesized programs. Deterministic and offline."""
     from vincio import (
         ArithmeticVerifier,
         BehaviorSpec,
+        CellRef,
+        CitedSeries,
         CompositeVerifier,
         ContextApp,
+        CorrelationClaim,
         EventPattern,
+        ForecastClaim,
+        IntervalClaim,
         ProgramOp,
         ProgramProperty,
         ProgramSpec,
         ToolContract,
+        TrendClaim,
         UnitVerifier,
         VincioConfig,
     )
@@ -11035,6 +11048,12 @@ async def bench_verified_reasoning() -> dict[str, Any]:
     from vincio.providers import MockProvider
     from vincio.verify import Constraint, VerificationContext
     from vincio.verify.kernels import ConstraintVerifier, default_verifiers
+    from vincio.verify.statistical import forecast as run_forecast
+    from vincio.verify.statistical import (
+        mean_confidence_interval,
+        pearson_r,
+        statistical_verifiers,
+    )
 
     cfg = VincioConfig()
     cfg.observability.exporter = "memory"
@@ -11077,6 +11096,84 @@ async def bench_verified_reasoning() -> dict[str, Any]:
     cert.status = "verified"
     tamper_caught = not cert.verify()
 
+    # -- Statistical certificate soundness (forecasting & causal kernels) --
+    stat_cv = CompositeVerifier(statistical_verifiers())
+
+    def _stat(claims: list) -> str:
+        return stat_cv.certify("answer", VerificationContext(statistical_claims=claims)).status
+
+    rev = CitedSeries(name="rev", values=[1.0, 3.0, 5.0, 7.0, 9.0])  # y = 2x + 1
+    verifies_trend = _stat([
+        TrendClaim(series=rev, slope=2.0, intercept=1.0, r_squared=1.0, direction="increasing")
+    ]) == "verified"
+    refutes_bad_trend = _stat([TrendClaim(series=rev, slope=5.0)]) == "refuted"
+    ci_vals = [10.0, 12.0, 11.0, 13.0, 9.0, 10.0, 14.0, 12.0]
+    lo, hi = mean_confidence_interval(ci_vals, 0.95)
+    ci_series = CitedSeries(name="m", values=ci_vals)
+    verifies_interval = _stat([
+        IntervalClaim(series=ci_series, lower=round(lo, 3), upper=round(hi, 3), kind="mean")
+    ]) == "verified"
+    refutes_tight_interval = _stat([
+        IntervalClaim(series=ci_series, lower=11.0, upper=11.5, kind="mean")
+    ]) == "refuted"
+    f_series = CitedSeries(name="f", values=[10.0, 12.0, 14.0, 16.0, 18.0])
+    drift = run_forecast("drift", f_series.ys(), horizon=3)
+    verifies_forecast = _stat([
+        ForecastClaim(series=f_series, model="drift", predictions=drift)
+    ]) == "verified"
+    refutes_bad_forecast = _stat([
+        ForecastClaim(series=f_series, model="drift", predictions=[20.0, 20.0, 20.0])
+    ]) == "refuted"
+    # A value swapped after it was cited is refuted (the statistic is bound to cells).
+    smuggled = CitedSeries(
+        name="s", values=[1.0, 2.0, 3.0],
+        citations=[CellRef(ref="t#r0!a", value=1.0), CellRef(ref="t#r1!a", value=9.0),
+                   CellRef(ref="t#r2!a", value=3.0)],
+    )
+    refutes_unbound_series = _stat([TrendClaim(series=smuggled, slope=1.0)]) == "refuted"
+    statistical_soundness = bool(
+        verifies_trend and refutes_bad_trend and verifies_interval and refutes_tight_interval
+        and verifies_forecast and refutes_bad_forecast and refutes_unbound_series
+    )
+
+    # -- Refutes spurious causation ----------------------------------------
+    # Ice-cream sales and drownings both rise with temperature (the confounder),
+    # with orthogonal idiosyncrasies, so they correlate but neither causes the other.
+    temp = [50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105]
+    n1 = [1, -1, 1, -1, 1, -1, 1, -1, 1, -1, 1, -1]
+    n2 = [1, 1, -1, -1, 1, 1, -1, -1, 1, 1, -1, -1]
+    ice = [2.0 * t + 3 * i for t, i in zip(temp, n1, strict=True)]
+    drown = [0.5 * t + 3 * j for t, j in zip(temp, n2, strict=True)]
+    ice_s = CitedSeries(name="ice", values=ice)
+    drown_s = CitedSeries(name="drown", values=drown)
+    temp_s = CitedSeries(name="temp", values=[float(t) for t in temp])
+    raw_r = round(pearson_r(ice, drown), 2)
+    verifies_correlation = _stat([CorrelationClaim(x=ice_s, y=drown_s, r=raw_r)]) == "verified"
+    refutes_uncontrolled = _stat([
+        CorrelationClaim(x=ice_s, y=drown_s, r=raw_r, causal=True)
+    ]) == "refuted"
+    refutes_confounded = _stat([
+        CorrelationClaim(x=ice_s, y=drown_s, r=raw_r, causal=True,
+                         controls=["temperature"], control_series=[temp_s])
+    ]) == "refuted"
+    # A genuine controlled association survives partialling out the control.
+    gx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+    gz = [2, 1, 4, 3, 6, 5, 8, 7, 10, 9]
+    gy = [2.0 * xv + 0.1 * zv for xv, zv in zip(gx, gz, strict=True)]
+    survives_controls = _stat([
+        CorrelationClaim(
+            x=CitedSeries(name="x", values=[float(v) for v in gx]),
+            y=CitedSeries(name="y", values=gy),
+            r=round(pearson_r([float(v) for v in gx], gy), 2),
+            causal=True, controls=["z"],
+            control_series=[CitedSeries(name="z", values=[float(v) for v in gz])],
+        )
+    ]) == "verified"
+    refutes_spurious_causation = bool(
+        verifies_correlation and refutes_uncontrolled
+        and refutes_confounded and survives_controls
+    )
+
     certificate_soundness = bool(
         refutes_bad_arithmetic
         and verifies_good_arithmetic
@@ -11086,6 +11183,7 @@ async def bench_verified_reasoning() -> dict[str, Any]:
         and refutes_uncited
         and verify_before_tamper
         and tamper_caught
+        and statistical_soundness
     )
 
     # -- Refuse-or-repair self-correction ----------------------------------
@@ -11153,6 +11251,8 @@ async def bench_verified_reasoning() -> dict[str, Any]:
 
     return {
         "certificate_soundness": certificate_soundness,
+        "statistical_soundness": statistical_soundness,
+        "refutes_spurious_causation": refutes_spurious_causation,
         "shield_prevents_violation": shield_prevents_violation,
         "refuse_to_emit": bool(refuse_to_emit),
         "self_correction_repairs": bool(self_correction_repairs),

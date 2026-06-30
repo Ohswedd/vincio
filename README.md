@@ -220,7 +220,7 @@ high-level `ContextApp`, or reach for any engine directly.
 
 **Security & governance**
 - Security: deterministic PII / secret redaction (multilingual), prompt-injection defense and provable containment (taint tracking + capability tokens), RBAC / ABAC, tenant isolation, and a hash-chained, signed audit log with offline tamper verification.
-- Governance: model / system cards, an OWASP / NIST / MITRE / ISO compliance matrix, an AI-BOM, provable erasure, a consent ledger, data-residency enforcement, formal invariant verification, agent identity & delegation, verified-reasoning certificates, and continuous assurance cases.
+- Governance: model / system cards, an OWASP / NIST / MITRE / ISO compliance matrix, an AI-BOM, provable erasure, a consent ledger, data-residency enforcement, formal invariant verification, agent identity & delegation, verified-reasoning certificates — including statistical trend / correlation / interval / forecast kernels that certify an analytical claim from its cited cells and refute correlation stated as causation — and continuous assurance cases.
 
 **Interop**
 - Protocols: MCP (client *and* server), A2A agent-to-agent, and Agent Skills, all in-process.

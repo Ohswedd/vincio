@@ -16,12 +16,14 @@ from typing import Any
 from ..core.errors import LoaderError
 from .certificates import Check, VerificationContext
 from .kernels import _EQUALITY_RE, Constraint
+from .statistical import TrendClaim, _approx, _binding_check, _claims_of
 
 __all__ = [
     "smt_available",
     "cas_available",
     "SmtConstraintVerifier",
     "CasArithmeticVerifier",
+    "CasTrendVerifier",
 ]
 
 
@@ -149,4 +151,74 @@ class CasArithmeticVerifier:
         if not checks:
             return [Check(name="cas", kind=self.kind, status="inapplicable",
                           detail="no arithmetic equality found")]
+        return checks
+
+
+class CasTrendVerifier:
+    """Re-discharges a stated linear trend with **exact** rational arithmetic via SymPy.
+
+    The native :class:`~vincio.verify.statistical.TrendVerifier` recomputes the
+    ordinary-least-squares fit in floating point; this backend recomputes the same
+    slope and intercept as exact ``sympy.Rational`` values from the cited cells, so
+    there is zero floating-point drift in the recomputation — a stated slope is
+    confirmed (or refuted) against the exact fit within the claim's tolerance. It
+    is the harder-algebraic-check companion to the deterministic trend kernel and
+    requires ``vincio[verify]``.
+    """
+
+    kind = "cas_trend"
+
+    def __init__(self, claims: list[TrendClaim] | None = None) -> None:
+        self._claims = list(claims) if claims is not None else None
+
+    def check(self, answer: Any, context: VerificationContext) -> list[Check]:
+        _require("sympy", cas_available())
+        import sympy
+
+        claims = _claims_of(self._claims, context, TrendClaim)
+        if not claims:
+            return [Check(name="cas_trend", kind=self.kind, status="inapplicable",
+                          detail="no trend claim supplied")]
+        checks: list[Check] = []
+        for claim in claims:
+            binding = _binding_check(claim.series, self.kind)
+            if binding is not None:
+                checks.append(binding)
+                continue
+            label = claim.label or "trend"
+            xs = [sympy.Rational(str(v)) for v in claim.series.xs()]
+            ys = [sympy.Rational(str(v)) for v in claim.series.ys()]
+            n = len(xs)
+            if n < 2:
+                checks.append(Check(name=label, kind=self.kind, status="refuted",
+                                    detail="a trend needs at least two points"))
+                continue
+            x_mean = sum(xs) / n
+            y_mean = sum(ys) / n
+            sxx = sum((x - x_mean) ** 2 for x in xs)
+            if sxx == 0:
+                checks.append(Check(name=label, kind=self.kind, status="refuted",
+                                    detail="predictor has no spread; slope is undefined"))
+                continue
+            sxy = sum((x - x_mean) * (y - y_mean) for x, y in zip(xs, ys, strict=True))
+            slope = sxy / sxx
+            intercept = y_mean - slope * x_mean
+            if claim.slope is not None:
+                ok = _approx(float(slope), claim.slope, claim.rel_tol, claim.abs_tol)
+                checks.append(Check(
+                    name=f"{label}:slope", kind=self.kind,
+                    status="verified" if ok else "refuted",
+                    detail=f"exact slope = {slope} (≈ {float(slope):g}), claimed {claim.slope:g}",
+                ))
+            if claim.intercept is not None:
+                ok = _approx(float(intercept), claim.intercept, claim.rel_tol, claim.abs_tol)
+                checks.append(Check(
+                    name=f"{label}:intercept", kind=self.kind,
+                    status="verified" if ok else "refuted",
+                    detail=f"exact intercept = {intercept} (≈ {float(intercept):g}), "
+                           f"claimed {claim.intercept:g}",
+                ))
+            if claim.slope is None and claim.intercept is None:
+                checks.append(Check(name=label, kind=self.kind, status="inapplicable",
+                                    detail="trend claim stated no slope or intercept for the CAS check"))
         return checks

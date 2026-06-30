@@ -57,6 +57,7 @@ CapabilityBroker
 CapabilityToken
 CausalAttributor
 CellCitation
+CellRef
 Certificate
 CertificationReport
 Chart
@@ -68,6 +69,7 @@ CircuitBreaker
 CitationContract
 CitationVerifier
 CitedReportBuilder
+CitedSeries
 Claim
 ClaimStatus
 CollateralLedger
@@ -102,6 +104,8 @@ ContractVerification
 Contribution
 ContributionBuilder
 ControllerDecision
+CorrelationClaim
+CorrelationVerifier
 CostAwareSelector
 CostBudget
 CostLedger
@@ -189,6 +193,8 @@ FederatedVerification
 FertilityTracker
 Figure
 Flow
+ForecastClaim
+ForecastVerifier
 FrontierEstimate
 GGUFProvider
 GatheredReputation
@@ -215,6 +221,8 @@ InsolvencyBreach
 InsolvencyResolution
 InsolvencyResolutionVerification
 Instruction
+IntervalClaim
+IntervalVerifier
 Invariant
 InvariantResult
 IssuePreference
@@ -385,6 +393,7 @@ SpeechProvider
 SpeechRequest
 StabilityLevel
 StateGraph
+StatisticalClaim
 StepBinding
 StepOutcome
 StepRecord
@@ -410,6 +419,8 @@ TrainingSet
 TrajectoryAdvantage
 TrajectoryOptimizer
 Transition
+TrendClaim
+TrendVerifier
 TrustConfig
 TrustLabel
 TrustModel
@@ -520,6 +531,7 @@ signature
 sleep_for
 sleep_until
 stability_of
+statistical_verifiers
 stream_aggregate
 synthesize
 task_goal_value

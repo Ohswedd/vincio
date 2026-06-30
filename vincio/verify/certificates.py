@@ -76,9 +76,10 @@ class VerificationContext(BaseModel):
     Every field is optional; a kernel reads only what it needs and returns an
     ``inapplicable`` check when the grounding it requires is absent. ``evidence``
     grounds citation entailment, ``schema`` grounds structural conformance,
-    ``constraints`` ground constraint satisfaction, ``now`` anchors relative
-    temporal claims, and ``facts`` carries named known values a kernel can
-    cross-check an extracted claim against.
+    ``constraints`` ground constraint satisfaction, ``statistical_claims`` ground
+    the analytical kernels (trend / correlation / interval / forecast), ``now``
+    anchors relative temporal claims, and ``facts`` carries named known values a
+    kernel can cross-check an extracted claim against.
     """
 
     model_config = {"arbitrary_types_allowed": True, "populate_by_name": True}
@@ -86,6 +87,7 @@ class VerificationContext(BaseModel):
     evidence: list[EvidenceItem] = Field(default_factory=list)
     schema_: dict[str, Any] | None = Field(default=None, alias="schema")
     constraints: list[Any] = Field(default_factory=list)
+    statistical_claims: list[Any] = Field(default_factory=list)
     now: Any = None  # datetime | None
     facts: dict[str, Any] = Field(default_factory=dict)
     extra: dict[str, Any] = Field(default_factory=dict)
