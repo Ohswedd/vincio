@@ -2346,6 +2346,21 @@
     },
     "families.docs_conformance.docs_facets": {
       "eq": 6
+    },
+    "families.hygiene.surface_consistency": {
+      "eq": true
+    },
+    "families.hygiene.surface_dead_symbol_free": {
+      "eq": true
+    },
+    "families.hygiene.surface_frozen": {
+      "eq": true
+    },
+    "families.hygiene.surface_gate_detects_tamper": {
+      "eq": true
+    },
+    "families.hygiene.hygiene_subpackages_audited": {
+      "gte": 40
     }
   }
 }

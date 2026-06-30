@@ -56,9 +56,8 @@ class PrefetchHandle:
 class SpeculativePrefetcher:
     """Warms the embedding cache from a predicted query before retrieval runs."""
 
-    def __init__(self, embedder: Embedder, *, reranker: Any | None = None) -> None:
+    def __init__(self, embedder: Embedder) -> None:
         self.embedder = embedder
-        self.reranker = reranker
         self.warmed = 0
 
     def predict_queries(self, query: str, task_type: Any | None = None) -> list[str]:

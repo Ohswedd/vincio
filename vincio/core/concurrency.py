@@ -12,7 +12,7 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterable
 from typing import TypeVar, cast
 
-__all__ = ["gather_bounded", "map_bounded", "race_with_timeout", "DEFAULT_CONCURRENCY"]
+__all__ = ["gather_bounded", "map_bounded", "DEFAULT_CONCURRENCY"]
 
 T = TypeVar("T")
 R = TypeVar("R")
@@ -67,10 +67,3 @@ async def map_bounded(
     return await gather_bounded(
         (fn(item) for item in items), limit=limit, return_exceptions=return_exceptions
     )
-
-
-async def race_with_timeout(coro: Awaitable[T], timeout_s: float | None) -> T:
-    """Await *coro* under an optional deadline; raises ``asyncio.TimeoutError``."""
-    if timeout_s is None or timeout_s <= 0:
-        return await coro
-    return await asyncio.wait_for(coro, timeout=timeout_s)

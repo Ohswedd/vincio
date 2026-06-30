@@ -2341,6 +2341,46 @@
       "threshold": true,
       "enforced_by": "families.docs_conformance.docs_navigation_reachability",
       "rationale": "The 16 concept pages had zero inbound links and no page connected laterally to the example that demonstrates it. The budget gates that every concept and guide carries the current generated Related block and that the generated pages are current; a companion budget gates that no docs page is orphaned (every page is linked from another), so the navigation graph stays connected and a regenerated artifact can never drift from what is committed."
+    },
+    {
+      "id": "hygiene_surface_consistency",
+      "category": "reliability",
+      "statement": "The two-level public surface stays consistent: every public subpackage __all__ resolves to a live attribute with no duplicate or malformed entries, the classified surface matches the committed manifest (docs/reference/subpackage-surface.txt), and the gate provably bites on an injected dead symbol, duplicate, and malformed __all__.",
+      "metric": "families.hygiene.surface_consistency",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.surface_consistency",
+      "rationale": "vincio.__all__ is frozen, but each subpackage also declares its own __all__ — and that surface had drifted: a handful of names were exported yet referenced nowhere (dead surface that reads as supported API), and the gap to the top level was real but undeclared, with no guard against a name in an __all__ resolving to nothing. The budget gates that the reconciliation holds, so the interior surface cannot silently re-acquire dead symbols or diverge from the declared manifest — exactly as docs_conformance keeps the docs graph honest and registry coverage keeps the model catalog honest."
+    },
+    {
+      "id": "hygiene_dead_symbol_free",
+      "category": "reliability",
+      "statement": "No public subpackage __all__ exports a name that resolves to no attribute, lists a name twice, or is itself malformed — there is no dead public surface.",
+      "metric": "families.hygiene.surface_dead_symbol_free",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.surface_dead_symbol_free",
+      "rationale": "A name in __all__ that resolves to nothing reads as supported API while doing nothing. The budget gates resolvability tree-wide across every public subpackage, so a renamed or deleted symbol left behind in __all__ fails the build instead of shipping as phantom surface."
+    },
+    {
+      "id": "hygiene_surface_frozen",
+      "category": "reliability",
+      "statement": "The classified two-level surface matches docs/reference/subpackage-surface.txt byte-for-byte, so any addition, removal, or TOP/DUP/SUB reclassification of a subpackage __all__ symbol is a deliberate, reviewed edit.",
+      "metric": "families.hygiene.surface_frozen",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.surface_frozen",
+      "rationale": "The subpackage-only public surface was previously undeclared, so it could grow or shrink without review. The budget freezes it the way public-surface.txt freezes the top level: a regenerated manifest that differs from what is committed fails CI, so the interior surface can only change on purpose."
+    },
+    {
+      "id": "hygiene_gate_detects_tamper",
+      "category": "reliability",
+      "statement": "The surface-consistency gate provably bites: an injected dead symbol, a duplicate entry, and a malformed __all__ are each reported, so a green check means the invariants were actually exercised.",
+      "metric": "families.hygiene.surface_gate_detects_tamper",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.hygiene.surface_gate_detects_tamper",
+      "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the detector reports each synthetic breakage, so the consistency guarantee is backed by a check that demonstrably catches the failure it claims to prevent."
     }
   ]
 }

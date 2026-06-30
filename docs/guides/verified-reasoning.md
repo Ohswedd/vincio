@@ -134,8 +134,8 @@ assert verdict.refused                              # partial r collapses ≈ 0
 A refuted statistical claim drives the same self-correction loop: a `regenerate`
 callback may repair it by returning a corrected `StatisticalClaim`, and the loop
 re-grounds the context before re-certifying. The fully-offline
-[`25_statistical_certificates`](../../examples/25_statistical_certificates.py)
-example walks all four kernels end to end.
+[`13_data_and_analytics`](../../examples/13_data_and_analytics.py) example walks
+all four statistical kernels end to end (section 11).
 
 ## Runtime verification & shielding
 
@@ -238,7 +238,7 @@ prover, always offline, always additive on the frozen surface.
 ## Related
 
 - [Example: 09_security_governance.py](../../examples/09_security_governance.py)
-- [Example: 25_statistical_certificates.py](../../examples/25_statistical_certificates.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#governance)
 - [Documentation index](../README.md)

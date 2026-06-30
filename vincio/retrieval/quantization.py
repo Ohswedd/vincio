@@ -21,8 +21,6 @@ reference that proves the recall trade-off offline.
 
 from __future__ import annotations
 
-from typing import Any
-
 from ..core.types import Chunk
 from ..retrieval.filters import FilterSpec
 from .embeddings import Embedder, LocalHashEmbedder, cosine, embed_texts, mrl_truncate
@@ -164,11 +162,3 @@ class TwoStageIndex:
         ]
         scored.sort(key=lambda h: h.score, reverse=True)
         return scored[:top_k]
-
-    def stats(self) -> dict[str, Any]:
-        return {
-            "chunks": len(self.chunks),
-            "quantization": self.quantization,
-            "coarse_dims": self.coarse_dims,
-            "rerank_factor": self.rerank_factor,
-        }

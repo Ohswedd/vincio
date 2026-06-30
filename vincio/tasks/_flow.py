@@ -12,6 +12,19 @@ the one expression compiles byte-for-byte to the verbose builder form.
 escape hatch to every deep method). It is a pure top layer: a flow adds no new
 behavior, it only *spells the builder calls fluently*.
 
+Design notes (why this stays SOLID as it grows):
+
+* **One source of truth.** Each step lowers through :mod:`vincio.tasks._lowering`,
+  the *same* helpers the task-shaped constructors use — so a flow and its facade
+  twin emit identical builder calls by construction, never by parallel upkeep.
+* **Open for extension.** A step is a typed, immutable :class:`_Step` object that
+  knows how to :meth:`~_Step.apply` itself; adding a verb adds a step type, it
+  does not grow a central ``if/elif`` dispatcher.
+* **Immutable, robustly.** A flow carries its construction config in one frozen
+  :class:`_FlowConfig` and an append-only tuple of steps; :meth:`_extend` threads
+  exactly those two, so a new config field can never be silently dropped by a
+  hand-written clone.
+
 Example::
 
     answer = (
@@ -27,9 +40,11 @@ Example::
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
 from ..stability import experimental
+from . import _lowering as lower
 
 if TYPE_CHECKING:
     from ..core.app import ContextApp
@@ -39,53 +54,102 @@ if TYPE_CHECKING:
 
 __all__ = ["Flow"]
 
-# One pipeline step: a verb plus its keyword arguments, replayed as a builder
-# call when the flow is lowered to a ContextApp.
-_Step = tuple[str, dict[str, Any]]
+
+# --------------------------------------------------------------------------- #
+# Steps — one immutable, self-applying value per pipeline verb. Each `apply`
+# delegates to vincio.tasks._lowering, the single source of truth the facades
+# share, so a flow lowers byte-for-byte to the verbose builder form.
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True, slots=True)
+class _Step:
+    """A declared pipeline step: its verb and how to replay it as builder calls."""
+
+    verb: str
+
+    def apply(self, app: ContextApp) -> None:  # pragma: no cover - overridden
+        raise NotImplementedError
 
 
-def _apply_step(app: ContextApp, verb: str, params: dict[str, Any]) -> None:
-    """Replay one declared step as the public builder call it stands for."""
-    if verb == "retrieve":
-        path = params.get("path")
-        app.add_source(
-            params.get("name", "docs"),
-            path=str(path) if path is not None else None,
-            documents=params.get("documents"),
-            connector=params.get("connector"),
-            loader=params.get("loader"),
-            chunking=params.get("chunking"),
-            retrieval=params.get("retrieval", "hybrid"),
+@dataclass(frozen=True, slots=True)
+class _Retrieve(_Step):
+    name: str = "docs"
+    path: str | None = None
+    documents: tuple[Any, ...] | None = None
+    connector: Any | None = None
+    loader: str | None = None
+    chunking: str | None = None
+    retrieval: str = "hybrid"
+
+    def apply(self, app: ContextApp) -> None:
+        lower.add_source(
+            app,
+            self.name,
+            path=self.path,
+            documents=list(self.documents) if self.documents is not None else None,
+            connector=self.connector,
+            loader=self.loader,
+            chunking=self.chunking,
+            retrieval=self.retrieval,
         )
-    elif verb == "ground":
-        app.set_policy("answer_only_from_sources", bool(params.get("only_from_sources", True)))
-    elif verb == "call":
-        role = params.get("role")
-        objective = params.get("objective")
-        rules = params.get("rules")
-        if role is not None or objective is not None or rules is not None:
-            app.configure(
-                role=role,
-                objective=objective,
-                rules=list(rules) if rules is not None else None,
-            )
-        model = params.get("model")
-        if model is not None:
-            app.model = model
-    elif verb == "validate":
-        schema = params.get("schema")
-        if schema is not None:
-            # Mirror ContextApp(output_schema=...) exactly so the contract is
-            # byte-for-byte identical to the verbose form.
-            app.output_contract = app._build_contract(schema)
-        require_citations = params.get("require_citations")
-        if require_citations is not None:
-            app.set_policy("require_citations", bool(require_citations))
-    elif verb == "evaluate":
-        for metric in params.get("metrics", ()):
-            app.add_evaluator(metric)
-    else:  # pragma: no cover - guarded by the typed step constructors
-        raise ValueError(f"unknown flow step {verb!r}")
+
+
+@dataclass(frozen=True, slots=True)
+class _Ground(_Step):
+    only_from_sources: bool = True
+
+    def apply(self, app: ContextApp) -> None:
+        lower.apply_grounding(app, self.only_from_sources)
+
+
+@dataclass(frozen=True, slots=True)
+class _Call(_Step):
+    role: str | None = None
+    objective: str | None = None
+    rules: tuple[str, ...] | None = None
+    model: str | None = None
+
+    def apply(self, app: ContextApp) -> None:
+        lower.apply_persona(
+            app,
+            role=self.role,
+            objective=self.objective,
+            rules=self.rules,
+        )
+        if self.model is not None:
+            app.model = self.model
+
+
+@dataclass(frozen=True, slots=True)
+class _Validate(_Step):
+    schema: Any | None = None
+    require_citations: bool | None = None
+
+    def apply(self, app: ContextApp) -> None:
+        if self.schema is not None:
+            lower.apply_output_schema(app, self.schema)
+        if self.require_citations is not None:
+            lower.apply_require_citations(app, self.require_citations)
+
+
+@dataclass(frozen=True, slots=True)
+class _Evaluate(_Step):
+    metrics: tuple[str | Callable[..., Any], ...] = ()
+
+    def apply(self, app: ContextApp) -> None:
+        lower.add_evaluators(app, self.metrics)
+
+
+# --------------------------------------------------------------------------- #
+# Config — the construction inputs, in one frozen value so cloning is total.
+# --------------------------------------------------------------------------- #
+@dataclass(frozen=True)
+class _FlowConfig:
+    provider: ModelProvider | str | None = None
+    model: str | None = None
+    name: str = "flow"
+    output_schema: Any | None = None
+    base_app: ContextApp | None = None
+    config: VincioConfig | str | None = None
 
 
 @experimental(since="5.3")
@@ -99,6 +163,8 @@ class Flow:
     configured app is reachable via :attr:`app`, the escape hatch.
     """
 
+    __slots__ = ("_config", "_steps", "_built")
+
     def __init__(
         self,
         *,
@@ -109,12 +175,14 @@ class Flow:
         app: ContextApp | None = None,
         config: VincioConfig | str | None = None,
     ) -> None:
-        self._provider = provider
-        self._model = model
-        self._name = name
-        self._output_schema = output_schema
-        self._base_app = app
-        self._config = config
+        self._config = _FlowConfig(
+            provider=provider,
+            model=model,
+            name=name,
+            output_schema=output_schema,
+            base_app=app,
+            config=config,
+        )
         self._steps: tuple[_Step, ...] = ()
         self._built: ContextApp | None = None
 
@@ -124,18 +192,18 @@ class Flow:
         return cls(app=app)
 
     # -- immutability --------------------------------------------------------
-    def _extend(self, verb: str, **params: Any) -> Flow:
+    @classmethod
+    def _with_steps(cls, config: _FlowConfig, steps: tuple[_Step, ...]) -> Flow:
+        """Build a flow from its config + steps without re-parsing constructor args."""
+        flow = cls.__new__(cls)
+        flow._config = config
+        flow._steps = steps
+        flow._built = None
+        return flow
+
+    def _extend(self, step: _Step) -> Flow:
         """Return a new Flow with one more step; the receiver is unchanged."""
-        clone: Flow = Flow.__new__(Flow)
-        clone._provider = self._provider
-        clone._model = self._model
-        clone._name = self._name
-        clone._output_schema = self._output_schema
-        clone._base_app = self._base_app
-        clone._config = self._config
-        clone._steps = (*self._steps, (verb, params))
-        clone._built = None
-        return clone
+        return Flow._with_steps(self._config, (*self._steps, step))
 
     # -- steps ---------------------------------------------------------------
     def retrieve(
@@ -151,19 +219,21 @@ class Flow:
     ) -> Flow:
         """Add a knowledge source (``ContextApp.add_source``). Chain for several."""
         return self._extend(
-            "retrieve",
-            path=path,
-            documents=list(documents) if documents is not None else None,
-            name=name,
-            chunking=chunking,
-            retrieval=retrieval,
-            connector=connector,
-            loader=loader,
+            _Retrieve(
+                verb="retrieve",
+                name=name,
+                path=path,
+                documents=tuple(documents) if documents is not None else None,
+                connector=connector,
+                loader=loader,
+                chunking=chunking,
+                retrieval=retrieval,
+            )
         )
 
     def ground(self, only_from_sources: bool = True) -> Flow:
         """Answer only from retrieved sources, with citations (the grounding policy)."""
-        return self._extend("ground", only_from_sources=only_from_sources)
+        return self._extend(_Ground(verb="ground", only_from_sources=only_from_sources))
 
     def call(
         self,
@@ -175,20 +245,24 @@ class Flow:
     ) -> Flow:
         """Shape the generation: persona (role/objective/rules) and/or the model."""
         return self._extend(
-            "call",
-            role=role,
-            objective=objective,
-            rules=list(rules) if rules is not None else None,
-            model=model,
+            _Call(
+                verb="call",
+                role=role,
+                objective=objective,
+                rules=tuple(rules) if rules is not None else None,
+                model=model,
+            )
         )
 
     def validate(self, schema: Any | None = None, *, require_citations: bool | None = None) -> Flow:
         """Constrain the output: a typed schema and/or required citations."""
-        return self._extend("validate", schema=schema, require_citations=require_citations)
+        return self._extend(
+            _Validate(verb="validate", schema=schema, require_citations=require_citations)
+        )
 
     def evaluate(self, *metrics: str | Callable[..., Any]) -> Flow:
         """Score every run with these evaluators (``ContextApp.add_evaluator``)."""
-        return self._extend("evaluate", metrics=tuple(metrics))
+        return self._extend(_Evaluate(verb="evaluate", metrics=tuple(metrics)))
 
     # -- lowering ------------------------------------------------------------
     def _build(self) -> ContextApp:
@@ -197,17 +271,18 @@ class Flow:
             return self._built
         from ..core.app import ContextApp
 
-        app = self._base_app
+        cfg = self._config
+        app = cfg.base_app
         if app is None:
             app = ContextApp(
-                name=self._name,
-                provider=self._provider,
-                model=self._model,
-                output_schema=self._output_schema,
-                config=self._config,
+                name=cfg.name,
+                provider=cfg.provider,
+                model=cfg.model,
+                output_schema=cfg.output_schema,
+                config=cfg.config,
             )
-        for verb, params in self._steps:
-            _apply_step(app, verb, params)
+        for step in self._steps:
+            step.apply(app)
         self._built = app
         return app
 
@@ -219,7 +294,7 @@ class Flow:
     @property
     def steps(self) -> list[str]:
         """The pipeline verbs declared so far, in order."""
-        return [verb for verb, _ in self._steps]
+        return [step.verb for step in self._steps]
 
     def run(self, user_input: str, **kwargs: Any) -> RunResult:
         """Lower the pipeline to one governed run and execute it on ``user_input``."""

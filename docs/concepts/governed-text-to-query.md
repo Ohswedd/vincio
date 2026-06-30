@@ -163,7 +163,7 @@ deterministically and offline.
 ## Related
 
 - [Guide: Analyze data](../guides/analyze-data.md)
-- [Example: 15_governed_text_to_query.py](../../examples/15_governed_text_to_query.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

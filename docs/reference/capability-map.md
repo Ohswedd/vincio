@@ -196,7 +196,7 @@ Guides: [Connect external data sources](../guides/connectors.md), [Native video 
 
 A typed, columnar Dataset, a lossless header-once encoder, and TableEvidence the compiler scores token-cheap.
 
-Concept: [Tabular evidence](../concepts/tabular-evidence.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_tabular_evidence.py](../../examples/13_tabular_evidence.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Tabular evidence](../concepts/tabular-evidence.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -208,7 +208,7 @@ Concept: [Tabular evidence](../concepts/tabular-evidence.md) · Guides: [Analyze
 
 Bounded-memory profiling, reservoir/stratified sampling, fit-to-window under a token budget, and deterministic quality screening.
 
-Concept: [Profiling, sampling & quality rails](../concepts/dataset-profiling.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [14_dataset_profiling.py](../../examples/14_dataset_profiling.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Profiling, sampling & quality rails](../concepts/dataset-profiling.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -221,7 +221,7 @@ Concept: [Profiling, sampling & quality rails](../concepts/dataset-profiling.md)
 
 A question grounded to a read-only-verified, cost-bounded query with cell-level provenance that verifies offline.
 
-Concept: [Governed text-to-query](../concepts/governed-text-to-query.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [15_governed_text_to_query.py](../../examples/15_governed_text_to_query.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Governed text-to-query](../concepts/governed-text-to-query.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -231,7 +231,7 @@ Concept: [Governed text-to-query](../concepts/governed-text-to-query.md) · Guid
 
 A bounded plan → query → inspect → refine → synthesize loop producing a cited narrative that verifies offline.
 
-Concept: [Data-analysis agent](../concepts/data-analysis-agent.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [16_data_analysis_agent.py](../../examples/16_data_analysis_agent.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Data-analysis agent](../concepts/data-analysis-agent.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -241,7 +241,7 @@ Concept: [Data-analysis agent](../concepts/data-analysis-agent.md) · Guides: [A
 
 A spec-driven chart that is content-bound (C2PA) and data-bound (a back-reference to the exact source cells).
 
-Concept: [Charts & cited artifacts](../concepts/charts-and-cited-artifacts.md) · Guides: [Analyze data](../guides/analyze-data.md), [Generate documents & media (`vincio.generation`)](../guides/generate-documents.md) · Examples: [17_charts_cited_artifacts.py](../../examples/17_charts_cited_artifacts.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Charts & cited artifacts](../concepts/charts-and-cited-artifacts.md) · Guides: [Analyze data](../guides/analyze-data.md), [Generate documents & media (`vincio.generation`)](../guides/generate-documents.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -251,7 +251,7 @@ Concept: [Charts & cited artifacts](../concepts/charts-and-cited-artifacts.md) �
 
 A lazy, re-iterable RowStream over a source larger than memory, a bounded-memory group-by, and a streaming candidate pre-filter.
 
-Concept: [Streaming & out-of-core](../concepts/streaming-and-out-of-core.md) · Guides: [Analyze data](../guides/analyze-data.md), [Performance & streaming](../guides/performance.md) · Examples: [18_streaming_out_of_core.py](../../examples/18_streaming_out_of_core.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Streaming & out-of-core](../concepts/streaming-and-out-of-core.md) · Guides: [Analyze data](../guides/analyze-data.md), [Performance & streaming](../guides/performance.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -263,7 +263,7 @@ Concept: [Streaming & out-of-core](../concepts/streaming-and-out-of-core.md) · 
 
 Measures, dimensions, and derived columns defined once so a question maps to a governed metric computed one way everywhere.
 
-Concept: [Semantic layer & governed metrics](../concepts/semantic-layer-and-governed-metrics.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [19_semantic_layer_governed_metrics.py](../../examples/19_semantic_layer_governed_metrics.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Semantic layer & governed metrics](../concepts/semantic-layer-and-governed-metrics.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -275,7 +275,7 @@ Concept: [Semantic layer & governed metrics](../concepts/semantic-layer-and-gove
 
 The profiling, query, governed-metric, and quality primitives over an unbounded event stream, windowed (tumbling / sliding / session) inside a bounded footprint.
 
-Concept: [Real-time & streaming analytics](../concepts/realtime-streaming-analytics.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [23_realtime_streaming_analytics.py](../../examples/23_realtime_streaming_analytics.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Real-time & streaming analytics](../concepts/realtime-streaming-analytics.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -285,7 +285,7 @@ Concept: [Real-time & streaming analytics](../concepts/realtime-streaming-analyt
 
 The whole analytics plane threaded into a hash-chained, signed, data-bound DataNarrative that verifies offline.
 
-Concept: [Data engagement (the analytics capstone)](../concepts/data-engagement.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [20_data_engagement.py](../../examples/20_data_engagement.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Data engagement (the analytics capstone)](../concepts/data-engagement.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -295,7 +295,7 @@ Concept: [Data engagement (the analytics capstone)](../concepts/data-engagement.
 
 A governed metric run across organizations over the cross-org fabric: only the aggregated, cell-cited MetricResult crosses (never the raw rows), reconciled into a signed, data-bound FederatedNarrative that verifies offline.
 
-Concept: [Cross-org / federated analytics](../concepts/federated-data-engagement.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [24_federated_analytics.py](../../examples/24_federated_analytics.py) · Reference: [Knowledge](api.md#knowledge)
+Concept: [Cross-org / federated analytics](../concepts/federated-data-engagement.md) · Guides: [Analyze data](../guides/analyze-data.md) · Examples: [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Knowledge](api.md#knowledge)
 
 | Method | What it does |
 |---|---|
@@ -387,7 +387,7 @@ Guides: [Formal verification of governance invariants](../guides/governance-veri
 
 Proof-carrying answers checked by deterministic kernels (including the statistical trend / correlation / interval / forecast kernels that certify an analytical claim and refute correlation stated as causation), runtime behaviour shielding, and proof-carrying synthesized programs.
 
-Guides: [Verified reasoning & neuro-symbolic certificates](../guides/verified-reasoning.md) · Examples: [09_security_governance.py](../../examples/09_security_governance.py), [25_statistical_certificates.py](../../examples/25_statistical_certificates.py) · Reference: [Governance](api.md#governance)
+Guides: [Verified reasoning & neuro-symbolic certificates](../guides/verified-reasoning.md) · Examples: [09_security_governance.py](../../examples/09_security_governance.py), [13_data_and_analytics.py](../../examples/13_data_and_analytics.py) · Reference: [Governance](api.md#governance)
 
 | Method | What it does |
 |---|---|

@@ -21,11 +21,18 @@ capability.
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from ..assistant import ApprovalRecord
 from ..stability import experimental
+from ._lowering import (
+    add_evaluators,
+    add_sources,
+    apply_grounding,
+    apply_persona,
+    register_tools,
+    resolve_app,
+)
 
 if TYPE_CHECKING:
     from ..assistant import Assistant
@@ -52,121 +59,10 @@ __all__ = [
 # into "the evidence says so", measured.
 DEFAULT_RAG_EVALUATORS: tuple[str, str] = ("groundedness", "citation_accuracy")
 
-
-# --------------------------------------------------------------------------- #
-# Shared lowering helpers — the verbose builder calls, written once.
-# --------------------------------------------------------------------------- #
-def _resolve_app(
-    app: ContextApp | None,
-    *,
-    name: str,
-    provider: ModelProvider | str | None,
-    model: str | None,
-    output_schema: Any | None = None,
-    config: VincioConfig | str | None = None,
-) -> ContextApp:
-    """Return the app to configure: the supplied escape-hatch app, or a fresh one.
-
-    When ``app`` is supplied it is used as-is (the escape hatch — provider / model
-    / config are taken to already be set), with only an explicit ``output_schema``
-    layered on so a typed task can re-shape an existing app's contract.
-    """
-    from ..core.app import ContextApp
-
-    if app is not None:
-        if output_schema is not None:
-            # Mirror the constructor's normalization exactly so the contract is
-            # byte-for-byte what ``ContextApp(output_schema=...)`` would build.
-            app.output_contract = app._build_contract(output_schema)
-        return app
-    return ContextApp(
-        name=name,
-        provider=provider,
-        model=model,
-        output_schema=output_schema,
-        config=config,
-    )
-
-
-def _apply_persona(
-    app: ContextApp,
-    *,
-    role: str | None,
-    objective: str | None,
-    rules: Sequence[str] | None,
-) -> None:
-    """Apply an optional role / objective / rules persona via ``app.configure``."""
-    if role is None and objective is None and rules is None:
-        return
-    app.configure(
-        role=role,
-        objective=objective,
-        rules=list(rules) if rules is not None else None,
-    )
-
-
-def _register_tools(
-    app: ContextApp,
-    tools: Sequence[str | Callable[..., Any]],
-    writes: Sequence[str | Callable[..., Any]],
-) -> None:
-    """Enable read tools and approval-gated write tools (least privilege)."""
-    for tool in tools:
-        app.add_tool(tool)
-    for tool in writes:
-        app.add_tool(tool, approval_required=True, side_effects="write")
-
-
-def _add_one_source(
-    app: ContextApp, name: str, spec: Any, *, chunking: str | None, retrieval: str
-) -> None:
-    if isinstance(spec, (str, Path)):
-        app.add_source(name, path=str(spec), chunking=chunking, retrieval=retrieval)
-    elif isinstance(spec, Mapping):
-        kwargs: dict[str, Any] = dict(spec)
-        kwargs.setdefault("chunking", chunking)
-        kwargs.setdefault("retrieval", retrieval)
-        app.add_source(name, **kwargs)
-    elif isinstance(spec, Sequence):
-        app.add_source(name, documents=list(spec), chunking=chunking, retrieval=retrieval)
-    else:
-        raise TypeError(
-            f"source {name!r} must be a path, a list of documents, or an add_source "
-            f"kwargs mapping; got {type(spec).__name__}"
-        )
-
-
-def _add_sources(app: ContextApp, sources: Any, *, chunking: str | None, retrieval: str) -> None:
-    """Register knowledge sources from the ergonomic ``sources`` argument.
-
-    Accepts a single path, a list of paths and/or in-memory documents, or a
-    ``name -> spec`` mapping (spec = a path, a document list, or add_source
-    kwargs). A single path indexes one ``"docs"`` source — exactly the canonical
-    ``add_source("docs", path=..., chunking=..., retrieval=...)`` call.
-    """
-    if sources is None:
-        return
-    if isinstance(sources, (str, Path)):
-        app.add_source("docs", path=str(sources), chunking=chunking, retrieval=retrieval)
-        return
-    if isinstance(sources, Mapping):
-        for src_name, spec in sources.items():
-            _add_one_source(app, str(src_name), spec, chunking=chunking, retrieval=retrieval)
-        return
-    if isinstance(sources, Sequence):
-        paths = [s for s in sources if isinstance(s, (str, Path))]
-        documents = [s for s in sources if not isinstance(s, (str, Path))]
-        if documents:
-            app.add_source("docs", documents=documents, chunking=chunking, retrieval=retrieval)
-        single = len(paths) == 1 and not documents
-        for index, path in enumerate(paths):
-            src_name = "docs" if single else f"docs_{index}"
-            app.add_source(src_name, path=str(path), chunking=chunking, retrieval=retrieval)
-        return
-    raise TypeError(
-        "sources must be a path, a list of paths/documents, or a name->spec mapping; "
-        f"got {type(sources).__name__}"
-    )
+# The lowering of task config to governed builder calls lives in
+# :mod:`vincio.tasks._lowering` — the single source of truth the fluent ``Flow``
+# shares — so both front doors emit identical calls. The constructors below read
+# like the verbose path because they *are* the verbose path, written once.
 
 
 # --------------------------------------------------------------------------- #
@@ -419,15 +315,14 @@ def rag(
     returned :class:`RagTask` lowers to the same packet as the verbose form, and
     ``.app`` is the escape hatch.
     """
-    application = _resolve_app(
+    application = resolve_app(
         app, name=name, provider=provider, model=model, output_schema=output_schema, config=config
     )
-    _add_sources(application, sources, chunking=chunking, retrieval=retrieval)
+    add_sources(application, sources, chunking=chunking, retrieval=retrieval)
     if grounded:
-        application.set_policy("answer_only_from_sources", True)
-    for evaluator in evaluators:
-        application.add_evaluator(evaluator)
-    _apply_persona(application, role=role, objective=objective, rules=rules)
+        apply_grounding(application)
+    add_evaluators(application, evaluators)
+    apply_persona(application, role=role, objective=objective, rules=rules)
     return RagTask(application)
 
 
@@ -457,10 +352,10 @@ def extractor(
     Lowers to the same contract a ``ContextApp(output_schema=...)`` builds;
     ``.app`` is the escape hatch (e.g. ``app.enable_self_correction()``).
     """
-    application = _resolve_app(
+    application = resolve_app(
         app, name=name, provider=provider, model=model, output_schema=schema, config=config
     )
-    _apply_persona(application, role=role, objective=objective, rules=rules)
+    apply_persona(application, role=role, objective=objective, rules=rules)
     return Extractor(application)
 
 
@@ -493,9 +388,9 @@ def tool_agent(
     Lowers to the governed model+tool loop of ``ContextApp.run``; ``.app`` is the
     escape hatch to planners, budgets, and rails.
     """
-    application = _resolve_app(app, name=name, provider=provider, model=model, config=config)
-    _register_tools(application, tools, writes)
-    _apply_persona(application, role=role, objective=objective, rules=rules)
+    application = resolve_app(app, name=name, provider=provider, model=model, config=config)
+    register_tools(application, tools, writes)
+    apply_persona(application, role=role, objective=objective, rules=rules)
     return ToolAgent(application, auto_approve=approve)
 
 
@@ -526,10 +421,9 @@ def evaluation(
     Lowers to :meth:`~vincio.core.app.ContextApp.evaluate`; ``.app`` is the escape
     hatch (judges, adaptive sampling, regression gates).
     """
-    application = _resolve_app(app, name=name, provider=provider, model=model, config=config)
-    for metric in metrics:
-        application.add_evaluator(metric)
-    _apply_persona(application, role=role, objective=objective, rules=rules)
+    application = resolve_app(app, name=name, provider=provider, model=model, config=config)
+    add_evaluators(application, metrics)
+    apply_persona(application, role=role, objective=objective, rules=rules)
     return Evaluation(application, dataset=dataset, gates=gates)
 
 
@@ -566,9 +460,9 @@ def chat(
     ``tools`` / ``writes`` enable tools (writes approval-gated, ``approve=[...]``
     pre-allows); ``.app`` is the escape hatch.
     """
-    application = _resolve_app(app, name=name, provider=provider, model=model, config=config)
-    _register_tools(application, tools, writes)
-    _apply_persona(application, role=role, objective=objective, rules=rules)
+    application = resolve_app(app, name=name, provider=provider, model=model, config=config)
+    register_tools(application, tools, writes)
+    apply_persona(application, role=role, objective=objective, rules=rules)
     return application.assistant(
         user_id=user_id,
         tenant_id=tenant_id,

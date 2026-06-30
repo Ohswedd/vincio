@@ -201,24 +201,6 @@ class PromptSpec(BaseModel):
             ast.add(UserTaskNode(text=user_task))
         return ast
 
-    def build_ast(
-        self,
-        *,
-        user_task: str = "",
-        memory_items: list[dict[str, Any]] | None = None,
-        evidence_items: list[dict[str, Any]] | None = None,
-        tool_results: list[dict[str, Any]] | None = None,
-    ) -> PromptAST:
-        ast = self.build_stable_ast()
-        for node in self.build_volatile_ast(
-            user_task=user_task,
-            memory_items=memory_items,
-            evidence_items=evidence_items,
-            tool_results=tool_results,
-        ).nodes:
-            ast.add(node)
-        return ast
-
     @property
     def spec_hash(self) -> str:
         return stable_hash(self.model_dump(mode="json", exclude={"metadata"}))

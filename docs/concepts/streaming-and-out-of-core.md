@@ -163,7 +163,7 @@ memory head-to-head with loading every row first.
 
 - [Guide: Analyze data](../guides/analyze-data.md)
 - [Guide: Performance & streaming](../guides/performance.md)
-- [Example: 18_streaming_out_of_core.py](../../examples/18_streaming_out_of_core.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

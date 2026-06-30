@@ -183,13 +183,11 @@ See [Cross-org / federated analytics](../concepts/federated-data-engagement.md).
 
 ## Run it
 
-Examples [13](../../examples/13_tabular_evidence.py) through
-[20](../../examples/20_data_engagement.py) are heavily-commented, fully-offline
-programs for each step above, ending with the engagement capstone;
-[23](../../examples/23_realtime_streaming_analytics.py) walks the windowed
-real-time plane over a replayed event log, and
-[24](../../examples/24_federated_analytics.py) runs a governed metric across two
-organizations.
+[`13_data_and_analytics.py`](../../examples/13_data_and_analytics.py) is one
+heavily-commented, fully-offline tour of the entire data plane — a numbered
+section for each step above, from tabular evidence through the engagement
+capstone, the windowed real-time plane over a replayed event log, a governed
+metric across two organizations, and certified statistical claims.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
@@ -207,16 +205,7 @@ organizations.
 - [Concept: Cross-org / federated analytics](../concepts/federated-data-engagement.md)
 - [Guide: Generate documents & media (`vincio.generation`)](generate-documents.md)
 - [Guide: Performance & streaming](performance.md)
-- [Example: 13_tabular_evidence.py](../../examples/13_tabular_evidence.py)
-- [Example: 14_dataset_profiling.py](../../examples/14_dataset_profiling.py)
-- [Example: 15_governed_text_to_query.py](../../examples/15_governed_text_to_query.py)
-- [Example: 16_data_analysis_agent.py](../../examples/16_data_analysis_agent.py)
-- [Example: 17_charts_cited_artifacts.py](../../examples/17_charts_cited_artifacts.py)
-- [Example: 18_streaming_out_of_core.py](../../examples/18_streaming_out_of_core.py)
-- [Example: 19_semantic_layer_governed_metrics.py](../../examples/19_semantic_layer_governed_metrics.py)
-- [Example: 23_realtime_streaming_analytics.py](../../examples/23_realtime_streaming_analytics.py)
-- [Example: 20_data_engagement.py](../../examples/20_data_engagement.py)
-- [Example: 24_federated_analytics.py](../../examples/24_federated_analytics.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

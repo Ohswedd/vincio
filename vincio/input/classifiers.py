@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -64,10 +63,6 @@ def classify_task(user_input: UserInput | str, *, has_sources: bool = False) -> 
         signals.append("question form")
         return TaskClassification(task_type=TaskType.GENERAL, confidence=0.5, signals=signals)
     return TaskClassification(task_type=TaskType.GENERAL, confidence=0.4, signals=signals)
-
-
-# Optional async LLM classifier hook: receives text, returns a TaskType value.
-LLMTaskClassifier = Callable[[str], Awaitable[str]]
 
 
 _FILE_KINDS: dict[str, str] = {

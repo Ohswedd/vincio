@@ -133,7 +133,7 @@ credential binds the bytes and an edited byte stream is caught). See the
 
 - [Guide: Analyze data](../guides/analyze-data.md)
 - [Guide: Generate documents & media (`vincio.generation`)](../guides/generate-documents.md)
-- [Example: 17_charts_cited_artifacts.py](../../examples/17_charts_cited_artifacts.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

@@ -153,7 +153,7 @@ budget, and the contributor floor each refuse a non-compliant round).
 ## Related
 
 - [Guide: Analyze data](../guides/analyze-data.md)
-- [Example: 24_federated_analytics.py](../../examples/24_federated_analytics.py)
+- [Example: 13_data_and_analytics.py](../../examples/13_data_and_analytics.py)
 - [Concept: Context packets & long-horizon governance](context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)
