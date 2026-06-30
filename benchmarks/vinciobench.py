@@ -12011,6 +12011,18 @@ async def bench_hygiene() -> dict[str, Any]:
     listed capability resolves to a live reach and (for a wired one) is referenced by
     production code outside its defining module.
 
+    6.4 adds the **docstring / behaviour parity** half: a docstring that advertises
+    behaviour the code no longer performs is a quiet lie. The reconciled claims are
+    re-derived from the live code so they cannot drift back: the budget allocator
+    exposes no ``redistribute`` reclaim and hands every non-fixed token to the
+    flexible blocks (``docstring_parity_budgeting``); the compression tuner gates on
+    the ``faithfulness`` metric its docstring names while ``compression_faithfulness``
+    / ``faithfulness_preserved`` measure fidelity offline (``docstring_parity_compression``);
+    a store-less default-deny consent ledger refuses an ungranted subject and a grant
+    flips it — the federated default-deny demonstration, deterministically
+    (``docstring_parity_consent``); and ``MemoryEngine.delete`` delegates to ``forget``
+    with the audit semantics preserved (``docstring_parity_memory``).
+
     This family gates all four reconciliations the way ``docs_conformance`` gates the
     docs graph. **Surface:** resolvable (every ``__all__`` name is a live attribute,
     no duplicate/malformed entries), frozen (matches the committed manifest), and
@@ -12139,6 +12151,63 @@ async def bench_hygiene() -> dict[str, Any]:
         wire_or_retire_clean and wire_or_retire_gate_detects_tamper
     )
 
+    # 6.4 — docstring / behaviour parity. The docs match the code: the budget
+    # allocator advertises no reclaim it does not run, the compression tuner gates
+    # on the `faithfulness` metric its docstring names, the federated default-deny
+    # consent path refuses deterministically, and delete/forget share one body.
+    from vincio.context.budgeting import BudgetAllocator
+    from vincio.context.llmlingua import compression_faithfulness, faithfulness_preserved
+    from vincio.governance.consent import ConsentLedger, Purpose
+    from vincio.memory.engine import MemoryEngine
+    from vincio.memory.stores import InMemoryMemoryStore
+    from vincio.optimize.compression_tuning import CompressionTuner
+    from vincio.security.audit import AuditLog
+
+    alloc = BudgetAllocator().allocate(10_000, fixed_costs={"instructions": 1_000})
+    handed_out = sum(b.tokens for name, b in alloc.blocks.items() if name != "instructions")
+    docstring_parity_budgeting = bool(
+        not hasattr(BudgetAllocator, "redistribute")
+        and (9_000 - handed_out) < len(alloc.blocks)  # only per-block rounding is unspent
+        and alloc.block("evidence").tokens > 0
+    )
+
+    tuner_metric = CompressionTuner(lambda *_a, **_k: None).faithfulness_metric
+    docstring_parity_compression = bool(
+        tuner_metric == "faithfulness"
+        and compression_faithfulness("Pro plan 30 days", "Pro plan 30 days") == 1.0
+        and compression_faithfulness("Pro plan 30 days", "Pro plan days") < 1.0
+        and faithfulness_preserved(["The Pro plan refund is 30 days."], "Pro plan refund 30 days")
+        and not faithfulness_preserved(["The Pro plan refund is 30 days."], "the refund window")
+    )
+
+    consent_ledger = ConsentLedger(default_allow=False)
+    consent_denied = consent_ledger.check("org", Purpose.ANALYTICS).allowed
+    consent_ledger.grant("org", [Purpose.ANALYTICS])
+    consent_allowed = consent_ledger.check("org", Purpose.ANALYTICS).allowed
+    docstring_parity_consent = bool(consent_denied is False and consent_allowed is True)
+
+    parity_engine = MemoryEngine(store=InMemoryMemoryStore(), audit=AuditLog())
+    parity_a = parity_engine.remember("alpha")
+    parity_b = parity_engine.remember("beta")
+    parity_engine.delete(parity_a.id)
+    plain_detail = next(
+        e.details for e in reversed(parity_engine.audit.entries) if e.action == "memory_delete"
+    )
+    parity_engine.forget(parity_b.id, reason="user_request")
+    annotated_detail = next(
+        e.details for e in reversed(parity_engine.audit.entries) if e.action == "memory_delete"
+    )
+    docstring_parity_memory = bool(
+        "reason" not in plain_detail and annotated_detail.get("reason") == "user_request"
+    )
+
+    docstring_parity_conformant = bool(
+        docstring_parity_budgeting
+        and docstring_parity_compression
+        and docstring_parity_consent
+        and docstring_parity_memory
+    )
+
     return {
         "surface_consistency": surface_consistency,
         "surface_dead_symbol_free": surface_dead_symbol_free,
@@ -12154,6 +12223,11 @@ async def bench_hygiene() -> dict[str, Any]:
         "wire_or_retire_conformant": wire_or_retire_conformant,
         "wire_or_retire_clean": wire_or_retire_clean,
         "wire_or_retire_gate_detects_tamper": wire_or_retire_gate_detects_tamper,
+        "docstring_parity_conformant": docstring_parity_conformant,
+        "docstring_parity_budgeting": docstring_parity_budgeting,
+        "docstring_parity_compression": docstring_parity_compression,
+        "docstring_parity_consent": docstring_parity_consent,
+        "docstring_parity_memory": docstring_parity_memory,
         "hygiene_subpackages_audited": len(surface),
         "hygiene_subpackage_public_symbols": len(rows),
         "hygiene_top_level_reexports": top_count,

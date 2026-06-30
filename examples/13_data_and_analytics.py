@@ -82,7 +82,7 @@ from vincio.data import (
     stream_aggregate,
 )
 from vincio.generation.report import CitationContract
-from vincio.governance.consent import Purpose
+from vincio.governance.consent import ConsentLedger, Purpose
 from vincio.security.audit import HMACSigner
 from vincio.verify import ProgramOp
 from vincio.verify.statistical import forecast, mean_confidence_interval, ols_fit, pearson_r
@@ -569,8 +569,11 @@ def section_federated() -> None:
         print("   residency egress refused for a US org under an EU-only posture")
 
     # Consent: an org without ANALYTICS consent is refused, then granted contributes.
+    # A store-less ledger keeps this default-deny demonstration deterministic — it
+    # starts empty every run, so the first contribution is refused for want of a
+    # grant regardless of any consent persisted on disk from an earlier run.
     strict = build_org("strict", acme_rows)
-    strict.use_consent_ledger(default_allow=False)
+    strict.use_consent_ledger(ConsentLedger(audit=strict.audit, default_allow=False))
     fed3 = coordinator.federated_data_engagement(
         query=FederatedQuery.of("total_revenue", table="sales", min_members=1)
     )

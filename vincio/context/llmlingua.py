@@ -9,10 +9,17 @@ reaches a higher compression ratio than sentence extraction at the same budget.
 The scorer is deterministic and offline by default (an information-content
 heuristic over rarity, query relevance, and token class). An optional
 ``learned`` hook lets a real token-importance model drive it without changing
-the call site. Either way the pass is **faithfulness-gated**: it is only
-*adopted* (installed on the compiler) when it preserves the cited-fact set under
-eval — :func:`compression_faithfulness` and :func:`faithfulness_preserved`
-measure that, and :mod:`vincio.optimize.compression_tuning` gates the adoption.
+the call site.
+
+Adoption is gated, not assumed. :func:`compression_faithfulness` and
+:func:`faithfulness_preserved` are the offline measures of whether a compression
+keeps the answer-bearing units (numbers, amounts, citations, entities); applied
+directly they are the quick fidelity check, the same one VincioBench uses on a
+compressed packet. Installing the compressor on the compiler is a separate,
+stricter step: :class:`~vincio.optimize.compression_tuning.CompressionTuner`
+(``app.gate_compression``) re-runs the eval suite with the learned compressor
+against the extractive baseline and adopts it only when it holds answer quality
+and a ``faithfulness`` metric floor while verifiably saving tokens.
 
 The compressor matches the call signature of
 :func:`~vincio.context.compression.extractive_compress`, so it is a drop-in for

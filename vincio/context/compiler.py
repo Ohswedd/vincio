@@ -1054,7 +1054,7 @@ class ContextCompiler:
         # 6. conflicts
         candidates, conflicts = self._resolve_conflicts(candidates, excluded, scorer)
 
-        # 8. budget allocation (uses fixed costs for known blocks)
+        # 7. budget allocation (uses fixed costs for known blocks)
         instruction_tokens = sum(count_tokens(i.text) for i in instructions or [])
         constraint_tokens = sum(count_tokens(c.text) for c in constraints or [])
         example_tokens = sum(count_tokens(e.input + e.output) for e in examples or [])
@@ -1085,7 +1085,7 @@ class ContextCompiler:
         memory_pool = [c for c in candidates if c.type == "memory"]
         tool_pool = [c for c in candidates if c.type == "tool_result"]
 
-        # 7+8. select under per-block budgets (compression happens inline).
+        # 8. select under per-block budgets (compression happens inline).
         selected_evidence = self._select(
             evidence_pool,
             budget_tokens=allocation.block("evidence").tokens,

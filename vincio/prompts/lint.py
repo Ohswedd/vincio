@@ -69,17 +69,16 @@ def lint_spec(spec: PromptSpec, *, grounded_task: bool | None = None) -> list[Li
 
     # PROMPT001: vague role
     role_norm = _normalize(spec.role)
-    if not spec.role or role_norm in _VAGUE_ROLES or len(role_norm.split()) <= 2 and role_norm in {r for v in _VAGUE_ROLES for r in (v,)}:
-        if not spec.role or role_norm in _VAGUE_ROLES:
-            findings.append(
-                LintFinding(
-                    code="PROMPT001",
-                    severity="warning",
-                    message="vague or missing role",
-                    hint="Give the model a specific operating role, e.g. 'insurance_claim_decision_engine'.",
-                    location="role",
-                )
+    if not spec.role or role_norm in _VAGUE_ROLES:
+        findings.append(
+            LintFinding(
+                code="PROMPT001",
+                severity="warning",
+                message="vague or missing role",
+                hint="Give the model a specific operating role, e.g. 'insurance_claim_decision_engine'.",
+                location="role",
             )
+        )
 
     # PROMPT002: duplicate instruction
     seen: dict[str, int] = {}

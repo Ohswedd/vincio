@@ -534,6 +534,11 @@ offline.
 | Wire-or-retire: every public capability is reachable through a production path — each entry in a frozen ledger resolves to a live reach (an `app.*` verb, an engine method, a registration helper, or a public class member) and, for a wired one, is referenced by production code outside its defining module, and the detector provably bites on an unreachable reach and a wired symbol with no production caller. | true | `families.hygiene.wire_or_retire_conformant` |
 | Every capability in the wire-or-retire ledger is reachable: the guard reports no unreachable reach and no wired symbol that has become dead surface. | true | `families.hygiene.wire_or_retire_clean` |
 | The wire-or-retire detector provably bites: an injected unreachable reach and a wired symbol with no production caller are each reported. | true | `families.hygiene.wire_or_retire_gate_detects_tamper` |
+| Docstring / behaviour parity: every docstring that advertises a behaviour either performs it or is corrected — the budget allocator exposes no reclaim it does not run, the compression tuner gates on the faithfulness metric its docstring names, the federated default-deny consent path refuses deterministically, and `delete`/`forget` share one body — each re-derived from the live code. | true | `families.hygiene.docstring_parity_conformant` |
+| The token-budget allocator advertises no separate redistribute reclaim: the method is gone and the allocator hands every non-fixed token to the flexible blocks at allocation time. | true | `families.hygiene.docstring_parity_budgeting` |
+| The learned-compression docstring matches the gate: `CompressionTuner` reads the `faithfulness` eval metric it names, and `compression_faithfulness` / `faithfulness_preserved` measure answer-bearing survival offline. | true | `families.hygiene.docstring_parity_compression` |
+| The federated default-deny consent demonstration is deterministic: a store-less default-deny ledger refuses an ungranted subject and a grant flips it, regardless of any consent persisted from an earlier run. | true | `families.hygiene.docstring_parity_consent` |
+| `MemoryEngine.delete` delegates to `forget` — one body — with the audit semantics preserved: a plain delete records no reason, `forget` records one. | true | `families.hygiene.docstring_parity_memory` |
 
 `vincio.__all__` is the frozen top-level contract, but each public subpackage also
 declares its own `__all__` — the return types, dataclasses, and helpers reached by
@@ -580,6 +585,20 @@ holds a frozen ledger of them, requiring each to resolve to a live reach and —
 wired one — to be referenced by production code outside its defining module, so a
 capability cannot silently become dead surface again. Run
 `python -m vincio._wire_or_retire` to reproduce it offline.
+
+The 6.4 phase makes **docstring / behaviour parity** mechanical the same way. A
+docstring that advertises behaviour the code no longer performs is a quiet lie a
+reader trusts. The reconciled claims are re-derived from the live code so they cannot
+drift back: the budget allocator's module docstring no longer promises a separate
+`redistribute` reclaim nothing invoked (the dead method is gone, and the allocator
+hands the whole non-fixed remainder to the flexible blocks at allocation time); the
+learned-compression docstring no longer claims the tuner calls the faithfulness
+helpers directly (`CompressionTuner` gates adoption on the `faithfulness` eval metric,
+while `compression_faithfulness` / `faithfulness_preserved` are the offline fidelity
+measures); the federated default-deny consent demonstration refuses every run, not
+only against a pristine store; and `MemoryEngine.delete` delegates to `forget` so the
+deletion path has one body. The `families.hygiene.docstring_parity_*` budgets exercise
+each of these behaviours, so a docstring and its code cannot silently diverge again.
 
 Quality and security floors describe behavior on the reference corpora; measure
 on your own data with the same harness before depending on a number.

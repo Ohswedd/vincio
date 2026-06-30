@@ -14,8 +14,8 @@ and what is intentionally out of scope. The complete release-by-release history 
 > The capability surface is complete and frozen. The **[hardening line
 > (6.x)](#-the-hardening-line-6x--in-progress)** — an additive, non-breaking paydown of interior quality
 > debt surfaced by a standing internal audit, not new capability — is underway: **6.0 (public-surface
-> hygiene), 6.1 (error-contract conformance), 6.2 (observable failure), and 6.3 (wire-or-retire)
-> shipped**; 6.4 (docstring / behaviour parity) is next.
+> hygiene), 6.1 (error-contract conformance), 6.2 (observable failure), 6.3 (wire-or-retire), and 6.4
+> (docstring / behaviour parity) shipped**; 6.5 (`-O` robustness) is next.
 
 ## What "done" means here
 
@@ -336,7 +336,7 @@ methods, load-bearing `assert`s that vanish under `python -O`, and a large drift
 | **✅ 6.1 — Error-contract conformance** | every public raise is a `VincioError` | **Shipped.** Converted the three off-contract built-in exceptions leaked off public entry points to typed `VincioError` subclasses, and made the contract mechanical: `vincio._error_contract` freezes the classified baseline of accepted public built-in raises (`docs/reference/error-contract.txt`) and holds the `ContextApp` (`app.*` verb) surface to **zero** off-contract raises with an always-on gate, folded into the `hygiene` VincioBench family. |
 | **✅ 6.2 — Observable failure** | no silent swallow | **Shipped.** Made every silent best-effort fallback *observable* — `vincio.core.diagnostics.note_suppressed` logs the suppression on a dedicated `vincio.suppressed` channel and counts it by label — and added a lint (`vincio._observable_failure`) that holds the whole public tree to **zero** unmarked silent swallows: a broad `except` (or `contextlib.suppress(Exception)`) must re-raise, record its failure, or carry a justifying `# noqa: BLE001`, folded into the `hygiene` VincioBench family. |
 | **✅ 6.3 — Wire-or-retire** | unhooked capabilities | **Shipped.** Wired each formerly-unhooked capability to a production path: `app.retrieve_facts` (reasoning retrieval), `app.consolidate_memory` (the aged-episode tier transition), `use_context_governor(blob_store=…)` (cross-process cold-span paging through `BlobEvidenceStore`), and a provider-native token-counter registrant at provider init; `compile_streaming` / `recompile` / `CompileStreamEvent` are documented as advanced deep-import API. A standing guard (`vincio._wire_or_retire`) holds a frozen ledger of them reachable, folded into the `hygiene` VincioBench family. |
-| **6.4 — Docstring / behaviour parity** | the docs match the code | Make every docstring that advertises a behaviour either true or deleted; fix the stale comments and the one example whose guarantee no longer fires. |
+| **✅ 6.4 — Docstring / behaviour parity** | the docs match the code | **Shipped.** Made every docstring that advertised behaviour the code no longer performed either true or corrected: the budgeting module docstring describes the allocate-time redistribution it actually does (and the verified-dead `BudgetAllocator.redistribute` is removed); the learned-compression docstring no longer claims the tuner calls the faithfulness helpers; the federated default-deny consent demonstration fires every run; `delete` delegates to `forget`; and the stale comments (compiler step numbering, `input/*` spec numbering, the redundant `lint.py` PROMPT001 clause) are cleared. The `hygiene` VincioBench family folds in `docstring_parity_conformant`, re-deriving each reconciled claim from the live code. |
 | **6.5 — `-O` robustness** | load-bearing `assert` → guard | Replace runtime-significant `assert`s with explicit guards that raise a `VincioError`, so a `python -O` deployment fails loudly and correctly. |
 | **6.6 — Audit completion & standing guard** | finish + lock it in | Extend the symbol-by-symbol audit to every remaining subpackage with the same evidence discipline, and gate the whole hygiene family in CI so the debt cannot silently return. |
 
@@ -459,19 +459,27 @@ holds a frozen ledger of these capabilities and fails the build if one loses its
 reach that no longer resolves, or a wired symbol with no production caller), folded into the `hygiene`
 VincioBench family (`wire_or_retire_conformant`) and proven to *bite*.
 
-### 6.4 — Docstring / behaviour parity
+### 6.4 — Docstring / behaviour parity ✅ Shipped
 
-Three docstrings promise behaviour the code no longer performs. `vincio/context/budgeting.py` (module
-docstring + `BudgetAllocator.redistribute`) advertises reclaiming an under-used block's tokens for evidence
-and memory, but `redistribute` is never invoked → wire it in after selection, or delete the claim.
-`vincio/context/llmlingua.py` says `vincio.optimize.compression_tuning` gates adoption on
-`compression_faithfulness` / `faithfulness_preserved`, but the tuner reads a plain `"faithfulness"` metric
-and never calls either → route the gate through them, or correct the docstring. The federated consent-refusal
-path is wired (`vincio/data/federated.py:1223-1232`) yet `examples/13_data_and_analytics.py`'s default-deny
-demonstration never triggers it → reconcile the example's `ledger.check(...)` setup with the enforcement
-semantics. 6.4 also clears the stale comments (the `context/compiler.py` pipeline step-numbering, the
-`input/*` "item N" external-spec numbering, the `prompts/lint.py:72` redundant PROMPT001 condition) and the
-`memory.delete` / `memory.forget` near-duplicate bodies (have one delegate to the other).
+Three docstrings promised behaviour the code no longer performed. Each is now true or corrected, and the
+parity is re-derived from the live code so it cannot drift back. `vincio/context/budgeting.py` advertised
+reclaiming an under-used block's tokens for evidence and memory through a `BudgetAllocator.redistribute` step
+that nothing invoked — but the allocator already performs the meaningful redistribution at allocation time
+(fixed-size blocks are charged at cost and the whole remainder is distributed across the flexible blocks
+proportionally), so the module docstring now describes exactly that and the verified-dead method is removed.
+`vincio/context/llmlingua.py` said `vincio.optimize.compression_tuning` gated adoption on
+`compression_faithfulness` / `faithfulness_preserved`, but the tuner reads a `faithfulness` eval metric; the
+docstring now separates the two truths — those helpers are the offline fidelity measures (the same check
+VincioBench uses), while `CompressionTuner` (`app.gate_compression`) gates installing the compressor on
+quality, a `faithfulness` floor, and a verifiable token saving. The federated default-deny consent
+demonstration in `examples/13_data_and_analytics.py` only fired against a pristine store — the consent grant
+persisted to the app's on-disk store, so a second run loaded it and the refusal silently stopped — so it now
+attaches a store-less `ConsentLedger` and refuses every run. 6.4 also cleared the stale comments (the
+`context/compiler.py` pipeline step-numbering, the `input/*` "item N" external-spec numbering, the
+`prompts/lint.py` redundant PROMPT001 condition) and the `memory.delete` / `memory.forget` near-duplicate
+bodies (`delete` now delegates to `forget`). The contract is made **mechanical** on the same freeze-and-gate
+idiom 6.0–6.3 use: the `hygiene` VincioBench family folds in `docstring_parity_conformant`, re-deriving each
+reconciled claim from the live code, so a docstring and its behaviour cannot silently diverge again.
 
 ### 6.5 — `-O` robustness
 
