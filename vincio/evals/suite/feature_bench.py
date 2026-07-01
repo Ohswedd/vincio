@@ -176,8 +176,11 @@ class FeatureRun(BaseModel):
 
     @property
     def ran_live(self) -> bool:
-        """Whether a real competitor was actually measured (the head-to-head happened)."""
-        return any(m.kind == "competitor" and m.available for m in self.measurements)
+        """Whether the head-to-head actually happened: at least one competitor was
+        declared and *every* declared competitor was measured. Resolved the same way
+        as :attr:`tier`, so a run header can never disagree with its per-contest tier."""
+        competitors = [m for m in self.measurements if m.kind == "competitor"]
+        return bool(competitors) and all(m.available for m in competitors)
 
     @property
     def skipped(self) -> list[str]:
@@ -360,11 +363,18 @@ class FeatureSuite:
         if not specs:
             raise EvalSuiteError(f"no feature contest matched {names!r}")
         runs = [self._run_one(spec) for spec in specs]
-        suite_tier = ProvenanceTier.LIVE if runs and all(r.ran_live for r in runs) else ProvenanceTier.STATIC
+        # The suite tier is derived from what each contest actually resolved to — never a
+        # second, looser predicate — so the run header can never print a higher tier than
+        # any of its contests. Live iff every contest ran Live (every declared competitor
+        # executed); a single Static contest keeps the whole run Static.
+        suite_tier = (
+            ProvenanceTier.LIVE
+            if runs and all(r.tier is ProvenanceTier.LIVE for r in runs)
+            else ProvenanceTier.STATIC
+        )
         suite = FeatureSuiteRun(tier=suite_tier, environment=_environment(), runs=runs)
-        return FeatureSuiteRun(
-            run_id="feat_" + (suite.determinism_digest if runs else "empty"),
-            tier=suite_tier, environment=_environment(), runs=runs,
+        return suite.model_copy(
+            update={"run_id": "feat_" + (suite.determinism_digest if runs else "empty")}
         )
 
     def _run_one(self, spec: FeatureContest) -> FeatureRun:

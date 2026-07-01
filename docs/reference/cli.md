@@ -126,6 +126,27 @@ vincio eval suite compare RUN_A RUN_B --store DSN [--json]
     Diff two persisted suite runs: overall delta plus per-benchmark regressions
     and improvements.
 
+vincio bench list [--json]
+    List all three tracks' catalogs at a glance: the model track's benchmarks and
+    niches, the uplift benchmarks, and the feature contests.
+
+vincio bench model [BENCHMARK|NICHE|all]... [--app APP.py]
+        [--tier static|recorded|live] [--sample N] [--concurrency N]
+        [--format text|markdown|html|json|csv|pdf] [--output PATH] [--store DSN]
+        [--version TAG]
+    Track 1 — a model on the public benchmarks (an alias for `eval suite run`).
+
+vincio bench uplift [BENCHMARK|all]... [--tier static] [--format text|markdown] [--json]
+    Track 2 — the same model direct vs routed through Vincio, scored twice by the
+    identical scorer; prints the per-benchmark delta. This subcommand runs the
+    offline mockup (tier `static`); a live uplift run is driven from Python with
+    real `direct`/`vincio` targets.
+
+vincio bench feature [CONTEST|CAPABILITY|all]... [--format text|markdown] [--json]
+    Track 3 — a Vincio feature vs the same feature in a competitor library, measured
+    live on this machine. A missing competitor is reported skipped, never fabricated;
+    the contest then drops to the Static tier.
+
 vincio prompt lint PATH
     Lint prompt spec YAML files (PROMPT001–PROMPT009); exits non-zero on errors.
 

@@ -36,10 +36,18 @@ def test_provenance_tiers_match_provenance_tier() -> None:
     from vincio.evals.suite import ProvenanceTier
 
     codes = {t.code for t in ProvenanceTier}
+    by_code = {t.code: t for t in ProvenanceTier}
     tiers = COMMITTED["provenance_tiers"]
     assert set(tiers) == codes
     for code, cfg in tiers.items():
         assert {"name", "live", "reproducible", "gates_ci", "meaning"} <= set(cfg)
+        # The manifest's booleans must equal the enum's own properties — not merely be
+        # internally consistent — so a hand-edited manifest can never silently diverge
+        # from the ProvenanceTier that actually governs the honesty contract.
+        tier = by_code[code]
+        assert cfg["reproducible"] == tier.reproducible, f"tier {code} reproducible drift"
+        assert cfg["gates_ci"] == tier.gates_ci, f"tier {code} gates_ci drift"
+        assert cfg["live"] == (tier is ProvenanceTier.LIVE), f"tier {code} live drift"
         if cfg["gates_ci"]:
             assert cfg["reproducible"], f"tier {code} gates CI but is not reproducible"
         if cfg["live"]:

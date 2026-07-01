@@ -122,7 +122,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--provider", default="mock", help="anthropic | openai | google | mistral | openrouter | mock")
     parser.add_argument("--model", default=None, help="model id (defaults to a current SOTA model for the provider)")
     parser.add_argument("--benchmarks", nargs="+", default=["all"], help="ids / niches / 'all'")
-    parser.add_argument("--tier", default="static", help="static | recorded | live")
+    parser.add_argument("--tier", default="static", choices=["static", "recorded", "live", "S", "R", "L"],
+                        help="static | recorded | live")
     parser.add_argument("--dataset-dir", default=None, help="dir of <benchmark_id>.jsonl real datasets (recorded/live)")
     parser.add_argument("--sample", type=int, default=None, help="cap tasks per benchmark (deterministic)")
     parser.add_argument("--concurrency", type=int, default=8)
@@ -160,7 +161,14 @@ def main(argv: list[str] | None = None) -> int:
     datasets: dict[str, BenchmarkDataset] = {}
     if tier is not ProvenanceTier.STATIC:
         dataset_dir = Path(args.dataset_dir) if args.dataset_dir else None
-        datasets, skipped = _load_datasets(specs, tier, dataset_dir)
+        try:
+            datasets, skipped = _load_datasets(specs, tier, dataset_dir)
+        except (VincioError, ValueError) as exc:
+            # A malformed dataset file (unreadable, or invalid JSONL a task-loader rejects)
+            # is a clean user error, not a crash — mirror the rest of main().
+            message = getattr(exc, "message", str(exc))
+            print(f"error: {message}", file=sys.stderr)
+            return 2
         if skipped:
             print(
                 f"note: {len(skipped)} benchmark(s) have no dataset in "

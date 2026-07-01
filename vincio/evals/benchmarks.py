@@ -733,6 +733,17 @@ class MMLUProAdapter(BenchmarkAdapter):
 
     name = "mmlu_pro"
 
+    def render_prompt(self, task: BenchmarkTask) -> str:
+        """Question + lettered options (A–J) + an answer-with-the-letter instruction, so
+        a live model is shown the choices the extract-and-match scorer looks for. Without
+        this the live path would send a bare question and score ~0 by omission, not by
+        model weakness — mirrors the suite's multiple-choice adapters."""
+        options = task.inputs.get("options")
+        if not (isinstance(options, list) and options):
+            return task.prompt
+        labelled = "\n".join(f"{chr(ord('A') + i)}. {opt}" for i, opt in enumerate(options))
+        return f"{task.prompt}\n\n{labelled}\n\nAnswer with the letter of the correct option."
+
     async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
         predicted = _mmlu_extract(output)
         gold = _mmlu_gold_letter(task.gold)

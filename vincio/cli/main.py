@@ -2256,7 +2256,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_bu = bench_sub.add_parser("uplift", help="track 2: the same model through Vincio vs direct")
     p_bu.add_argument("benchmarks", nargs="*", default=["all"], help="uplift benchmark id / 'all'")
-    p_bu.add_argument("--tier", default="static", choices=["static", "recorded", "live", "S", "R", "L"])
+    # This subcommand runs the offline mockup (it supplies no direct/vincio targets), so
+    # only the Static tier is reachable; a live uplift run is driven from Python with real
+    # arms. Advertising 'recorded'/'live' here would offer tiers the engine always refuses.
+    p_bu.add_argument("--tier", default="static", choices=["static", "S"])
     p_bu.add_argument("--format", default="text", choices=["text", "markdown"])
     p_bu.add_argument("--json", action="store_true", help="emit JSON")
     p_bu.set_defaults(fn=cmd_bench_uplift)

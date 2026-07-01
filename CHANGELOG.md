@@ -70,16 +70,19 @@ deterministic core of all three tracks via `families.bench_tracks.*`.
 A full adversarial audit of the benchmark system produced 32 verified findings, all resolved:
 
 - **Honesty:** the uplift track no longer mislabels a fabricated mockup as `Recorded` — it refuses the
-  tier (mirroring the model track's `resolve_tier`), and a run's header tier can never contradict its
-  per-result tiers.
+  tier (mirroring the model track's `resolve_tier`); and on every track a run's header tier is derived
+  from its resolved per-result tiers (the feature suite folds *all* contests, not a looser
+  any-competitor predicate), so it can never print a higher tier than any contest earned.
 - **Robustness:** a feature contender that errors at runtime now degrades to a *skip* (never crashes the
   suite) and the contest drops to Static; feature contests use `run_sync` (safe inside an event loop)
   instead of bare `asyncio.run`; `benchmarks/eval_live.py` reports a clean error on a malformed dataset
   and always closes its run store; `check_budgets.py` handles an empty budget set; the chart rasterizer
   guards empty input.
 - **Consistency & dead code:** the new tracks' content hash is named `determinism_digest` to match the
-  model track; `UpliftBenchmark.higher_is_better` and `solver_mode` are honoured; `UpliftRegistry` gains
-  capability grouping; two dead helpers, a stale competitor reference, and a vacuous loop removed; the
+  model track; `UpliftBenchmark.higher_is_better` (per result *and* in the run-level overall) and
+  `solver_mode` are honoured; the `MMLU-Pro` adapter renders its options on the live path like the other
+  multiple-choice adapters; `UpliftRegistry` gains
+  capability grouping; a dead helper, a stale competitor reference, and a vacuous loop removed; the
   `FeatureSuiteRun` id now covers every contest, not just the first.
 - **Docs & tests:** stale four-plane references corrected to the three tracks; tests no longer pollute
   the process-wide registries, and new tests lock the honesty refusal, tier consistency,

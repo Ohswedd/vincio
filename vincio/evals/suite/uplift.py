@@ -94,6 +94,7 @@ class UpliftResult(BaseModel):
     title: str = ""
     capability: str = ""
     primary_metric: str = "accuracy"
+    higher_is_better: bool = True
     direct: float = 0.0
     vincio: float = 0.0
     delta: float = 0.0
@@ -120,7 +121,16 @@ class UpliftRun(BaseModel):
         return round(sum(r.vincio for r in self.results) / len(self.results), 4) if self.results else 0.0
 
     def overall_delta(self) -> float:
-        return round(self.overall_vincio() - self.overall_direct(), 4)
+        """The mean **direction-aware** uplift: each benchmark's gain is signed by its
+        own ``higher_is_better``, so a lower-is-better benchmark that *drops* counts as a
+        positive uplift. A run mixing directions therefore aggregates consistently with
+        the per-row ▲/▼ arrows (for an all-higher-is-better run this equals
+        ``overall_vincio() - overall_direct()``)."""
+        if not self.results:
+            return 0.0
+        gains = [(r.vincio - r.direct) if r.higher_is_better else (r.direct - r.vincio)
+                 for r in self.results]
+        return round(sum(gains) / len(gains), 4)
 
     @property
     def determinism_digest(self) -> str:
@@ -277,7 +287,8 @@ class UpliftSuite:
         significant = abs(delta) > 1e-9
         return UpliftResult(
             benchmark_id=spec.id, title=spec.title, capability=spec.capability,
-            primary_metric=spec.primary_metric, direct=round(direct_primary, 4),
+            primary_metric=spec.primary_metric, higher_is_better=spec.higher_is_better,
+            direct=round(direct_primary, 4),
             vincio=round(vincio_primary, 4), delta=delta,
             improved=better and significant, regressed=(not better) and significant,
             tier=effective, n=n,
