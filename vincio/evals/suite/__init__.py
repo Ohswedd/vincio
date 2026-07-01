@@ -23,6 +23,18 @@ from .adapters import (
 )
 from .datasets import BenchmarkDataset
 from .engine import BenchmarkSuite
+from .feature_bench import (
+    Contender,
+    FeatureContest,
+    FeatureMeasurement,
+    FeatureRegistry,
+    FeatureRun,
+    FeatureSuite,
+    FeatureSuiteRun,
+    available_feature_contests,
+    default_feature_registry,
+    register_feature_contest,
+)
 from .metrics import bleu, pass_at_k, rouge_l
 from .registry import (
     NICHES,
@@ -36,6 +48,18 @@ from .report import Leaderboard, LeaderboardRow, SuiteReport
 from .results import BenchmarkRun, ItemResult, SuiteRun
 from .store import RunStore
 from .tiers import ProvenanceTier, resolve_tier
+from .track_report import render_feature_report, render_uplift_report
+from .tracks import BenchmarkTrack
+from .uplift import (
+    UpliftBenchmark,
+    UpliftRegistry,
+    UpliftResult,
+    UpliftRun,
+    UpliftSuite,
+    available_uplift_benchmarks,
+    default_uplift_registry,
+    register_uplift_benchmark,
+)
 from .viz import (
     SuiteChart,
     confusion_matrix_chart,
@@ -48,6 +72,7 @@ from .viz import (
 __all__ = [
     "ProvenanceTier",
     "resolve_tier",
+    "BenchmarkTrack",
     "BenchmarkSpec",
     "BenchmarkRegistry",
     "register_benchmark",
@@ -62,11 +87,33 @@ __all__ = [
     "pass_at_k",
     "bleu",
     "rouge_l",
+    # track 2 — uplift (model through Vincio vs direct)
+    "UpliftSuite",
+    "UpliftBenchmark",
+    "UpliftResult",
+    "UpliftRun",
+    "UpliftRegistry",
+    "default_uplift_registry",
+    "register_uplift_benchmark",
+    "available_uplift_benchmarks",
+    # track 3 — feature (Vincio feature vs a competitor library)
+    "FeatureSuite",
+    "FeatureContest",
+    "FeatureRun",
+    "FeatureSuiteRun",
+    "FeatureMeasurement",
+    "Contender",
+    "FeatureRegistry",
+    "default_feature_registry",
+    "register_feature_contest",
+    "available_feature_contests",
     # reporting & leaderboard
     "SuiteReport",
     "Leaderboard",
     "LeaderboardRow",
     "RunStore",
+    "render_uplift_report",
+    "render_feature_report",
     # visualization
     "SuiteChart",
     "leaderboard_chart",

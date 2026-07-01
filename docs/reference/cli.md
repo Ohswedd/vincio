@@ -101,6 +101,10 @@ vincio eval regress DATASET.jsonl --app APP.py --candidate-model Y
     per-metric significance, the cost/latency trade, and worst-regressed slices.
     Exits non-zero on a significant quality regression.
 
+vincio eval suite list [--json]
+    List the open-evaluation-plane catalog grouped by niche, with each benchmark's
+    primary metric and the tiers it supports (S always; R/L when it has a loader).
+
 vincio eval suite run [BENCHMARK|NICHE|all]... [--app APP.py] [--tier static|recorded|live]
         [--sample N] [--concurrency N] [--format text|markdown|html|json|csv|pdf]
         [--output PATH] [--store DSN] [--version TAG]
@@ -108,7 +112,8 @@ vincio eval suite run [BENCHMARK|NICHE|all]... [--app APP.py] [--tier static|rec
     whole niche, or all). The default tier `static` replays the bundled fabricated
     fixtures fully offline; `recorded`/`live` need a dataset (and, for live, --app).
     Every number carries its provenance tier; a lower tier cannot print a higher
-    tier's label.
+    tier's label. For a Live run against a state-of-the-art model over a real
+    dataset, see `benchmarks/eval_live.py`.
 
 vincio eval suite leaderboard --store DSN [--model NAME]... [--limit N] [--json]
     Rank persisted suite runs (one row per model) over a shared benchmark set.
@@ -120,6 +125,27 @@ vincio eval suite report RUN.json|RUN_ID [--store DSN]
 vincio eval suite compare RUN_A RUN_B --store DSN [--json]
     Diff two persisted suite runs: overall delta plus per-benchmark regressions
     and improvements.
+
+vincio bench list [--json]
+    List all three tracks' catalogs at a glance: the model track's benchmarks and
+    niches, the uplift benchmarks, and the feature contests.
+
+vincio bench model [BENCHMARK|NICHE|all]... [--app APP.py]
+        [--tier static|recorded|live] [--sample N] [--concurrency N]
+        [--format text|markdown|html|json|csv|pdf] [--output PATH] [--store DSN]
+        [--version TAG]
+    Track 1 — a model on the public benchmarks (an alias for `eval suite run`).
+
+vincio bench uplift [BENCHMARK|all]... [--tier static] [--format text|markdown] [--json]
+    Track 2 — the same model direct vs routed through Vincio, scored twice by the
+    identical scorer; prints the per-benchmark delta. This subcommand runs the
+    offline mockup (tier `static`); a live uplift run is driven from Python with
+    real `direct`/`vincio` targets.
+
+vincio bench feature [CONTEST|CAPABILITY|all]... [--format text|markdown] [--json]
+    Track 3 — a Vincio feature vs the same feature in a competitor library, measured
+    live on this machine. A missing competitor is reported skipped, never fabricated;
+    the contest then drops to the Static tier.
 
 vincio prompt lint PATH
     Lint prompt spec YAML files (PROMPT001–PROMPT009); exits non-zero on errors.

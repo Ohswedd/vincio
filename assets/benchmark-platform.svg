@@ -1,0 +1,67 @@
+<svg width="860" height="430" viewBox="0 0 860 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pf_t pf_d">
+  <title id="pf_t">The Vincio benchmark platform</title>
+  <desc id="pf_d">Three benchmark tracks under one provenance-tier honesty contract: Model (a model on the public benchmarks), Uplift (the same model routed through Vincio vs direct), and Feature (a Vincio feature vs a competitor library). Each supports a Live run and an offline mockup; a lower tier can never print a higher tier label.</desc>
+  <defs>
+    <radialGradient id="pf_parch" cx="40%" cy="26%" r="88%">
+      <stop offset="0%" stop-color="#FBF4E2"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="pf_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="pf_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D9B354"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="857" height="427" rx="16" fill="url(#pf_parch)" stroke="#C49A3A" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="417" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">THE VINCIO BENCHMARK PLATFORM &#183; TIER-HONEST</text>
+    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#pf_goldtext)">Three tracks, one honesty contract</text>
+    <text x="40" y="102" font-size="13" fill="#6B5836">Every number carries a provenance tier &#183; each track runs live or as an offline mockup &#183; nothing fabricated.</text>
+    <rect x="40" y="122" width="251" height="176" rx="10" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
+    <text x="58" y="152" font-size="13" font-weight="700" letter-spacing="1" fill="#B98B2E">1 · MODEL</text>
+    <text x="58" y="200" font-size="44" font-weight="700" fill="url(#pf_goldtext)">29</text>
+    <text x="58" y="220" font-size="12" fill="#8A7551">benchmarks</text>
+    <text x="58" y="244" font-size="11.5" fill="#3A2E1C">a model on the public</text>
+    <text x="58" y="259" font-size="11.5" fill="#3A2E1C">benchmarks</text>
+    <text x="58" y="268" font-size="11" font-weight="700" fill="#9A721C">tiers S·R·L</text>
+    <text x="58" y="286" font-size="11" font-family="ui-monospace, monospace" fill="#6B5836">vincio bench model</text>
+    <rect x="304" y="122" width="251" height="176" rx="10" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
+    <text x="322" y="152" font-size="13" font-weight="700" letter-spacing="1" fill="#B98B2E">2 · UPLIFT</text>
+    <text x="322" y="200" font-size="44" font-weight="700" fill="url(#pf_goldtext)">4</text>
+    <text x="322" y="220" font-size="12" fill="#8A7551">uplift benchmarks</text>
+    <text x="322" y="244" font-size="11.5" fill="#3A2E1C">the same model, Vincio-routed</text>
+    <text x="322" y="259" font-size="11.5" fill="#3A2E1C">vs direct</text>
+    <text x="322" y="268" font-size="11" font-weight="700" fill="#9A721C">tiers S·L</text>
+    <text x="322" y="286" font-size="11" font-family="ui-monospace, monospace" fill="#6B5836">vincio bench uplift</text>
+    <rect x="568" y="122" width="251" height="176" rx="10" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
+    <text x="586" y="152" font-size="13" font-weight="700" letter-spacing="1" fill="#B98B2E">3 · FEATURE</text>
+    <text x="586" y="200" font-size="44" font-weight="700" fill="url(#pf_goldtext)">8</text>
+    <text x="586" y="220" font-size="12" fill="#8A7551">feature contests</text>
+    <text x="586" y="244" font-size="11.5" fill="#3A2E1C">a Vincio feature vs a</text>
+    <text x="586" y="259" font-size="11.5" fill="#3A2E1C">competitor library</text>
+    <text x="586" y="268" font-size="11" font-weight="700" fill="#9A721C">tiers S·L</text>
+    <text x="586" y="286" font-size="11" font-family="ui-monospace, monospace" fill="#6B5836">vincio bench feature</text>
+    <rect x="40" y="322" width="253" height="44" rx="9" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
+    <circle cx="64" cy="344" r="13" fill="url(#pf_gold)"/>
+    <text x="64" y="349" font-size="15" font-weight="700" fill="#FBF4E2" text-anchor="middle">L</text>
+    <text x="86" y="341" font-size="13" font-weight="700" fill="#3A2E1C">Live</text>
+    <text x="86" y="357" font-size="10" fill="#8A7551">the real thing ran end to end</text>
+    <rect x="306" y="322" width="253" height="44" rx="9" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
+    <circle cx="330" cy="344" r="13" fill="url(#pf_gold)"/>
+    <text x="330" y="349" font-size="15" font-weight="700" fill="#FBF4E2" text-anchor="middle">R</text>
+    <text x="352" y="341" font-size="13" font-weight="700" fill="#3A2E1C">Recorded</text>
+    <text x="352" y="357" font-size="10" fill="#8A7551">a hash-pinned replay</text>
+    <rect x="572" y="322" width="253" height="44" rx="9" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
+    <circle cx="596" cy="344" r="13" fill="url(#pf_gold)"/>
+    <text x="596" y="349" font-size="15" font-weight="700" fill="#FBF4E2" text-anchor="middle">S</text>
+    <text x="618" y="341" font-size="13" font-weight="700" fill="#3A2E1C">Static / Mockup</text>
+    <text x="618" y="357" font-size="10" fill="#8A7551">offline, reproducible, gates CI</text>
+    <text x="430" y="410" font-size="11.5" fill="#6B5836" text-anchor="middle">One command &#183; <tspan font-family="ui-monospace, monospace">vincio bench model | uplift | feature</tspan> &#183; the engine refuses to print a higher tier than the inputs support.</text>
+  </g>
+</svg>

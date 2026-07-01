@@ -212,7 +212,7 @@ high-level `ContextApp`, or reach for any engine directly.
 **Output, evaluation & observability**
 - Structured output: Pydantic contracts, constrained decoding, streaming validation with early abort, bounded self-correction that repairs structure only (never invents facts), and DSPy-style typed signatures.
 - Evaluation: golden datasets, 30+ metrics, deterministic / model / G-Eval judges, synthetic data, red-teaming, trajectory & tool-use scoring, drift detection, regression gates, and a `pytest` plugin.
-- Open evaluation plane: one pluggable harness for the standard public benchmarks (MMLU, GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by niche, with an enforced **provenance tier** (Static / Recorded / Live) on every number; deterministic, resumable runs; Markdown / HTML / JSON / CSV / PDF reports; a ranked leaderboard with charts; and a run store with model-version diffs. In-process, never a hosted leaderboard.
+- Benchmark platform: three tracks under one honesty contract — **model** (the standard public benchmarks: MMLU, GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, … by niche), **uplift** (the same model routed through Vincio vs called directly, per-benchmark delta), and **feature** (a Vincio feature — memory, RAG, output repair, … — vs the same feature in a competitor library, measured live). An enforced **provenance tier** (Live / Recorded / Static-mockup) on every number; reports, a ranked leaderboard, and a run store. Driven by `vincio bench`; in-process, never a hosted leaderboard.
 - Observability: full trace span trees, OpenTelemetry export, a local trace viewer, a versioned prompt registry, and per-run cost tracking — no account or hosted backend required.
 
 **The closed loop**
@@ -232,16 +232,68 @@ high-level `ContextApp`, or reach for any engine directly.
 
 ## Benchmarks
 
-Three suites ship in [`benchmarks/`](benchmarks), all reproducible on your own machine. Every number
-is measured live from both sides; a missing competitor is reported as skipped, never assumed.
-
-### Head-to-head vs. real libraries
-
-[`competitive.py`](benchmarks/competitive.py) runs Vincio against the *actual* library a team would
-otherwise use (Apple Silicon, Python 3.13; ratios are the portable signal, not wall-clock).
+Vincio's benchmark platform has **three tracks** under **one honesty contract**: every number carries a
+**provenance tier** that says, structurally, how real it is — so you never have to guess whether a
+figure is `LIVE`, `STATIC/FABRICATED`, or a self-measurement. One command drives all three:
+`vincio bench model | uplift | feature`. The map is
+[`benchmarks/PROVENANCE.md`](benchmarks/PROVENANCE.md); the machine-readable source of truth is
+[`benchmarks/manifest.json`](benchmarks/manifest.json).
 
 <p align="center">
-  <img src="assets/benchmark-headtohead.svg" alt="Head-to-head vs. real libraries: 30 to 40 times faster BM25 at 20k docs vs rank_bm25; 60 percent fewer tokens for the same answer vs LangChain and LlamaIndex; 1.4 to 1.8 times faster token counting vs tiktoken; 4 of 8 vs 1 of 8 malformed JSON recovered vs stdlib json" width="840">
+  <img src="assets/benchmark-platform.svg" alt="The Vincio benchmark platform: three tracks under one provenance-tier honesty contract. Track 1 Model — 29 public benchmarks; Track 2 Uplift — 4 uplift benchmarks (the same model routed through Vincio vs direct); Track 3 Feature — 8 feature contests (a Vincio feature vs a competitor library). Each supports a Live run and an offline mockup. Tiers: L Live (the real thing ran end to end), R Recorded (a hash-pinned replay), S Static/Mockup (offline, reproducible, gates CI)." width="840">
+</p>
+
+| Track | Question | Compares | Command |
+|---|---|---|---|
+| **1 · Model** | how good is a *model* on the public benchmarks? | a model vs the benchmark's verifiable gold | `vincio bench model` |
+| **2 · Uplift** | how much does routing a model *through Vincio* change it? | the same model, Vincio-routed vs direct | `vincio bench uplift` |
+| **3 · Feature** | how good is a Vincio *feature* (memory, RAG, …) vs the same feature elsewhere? | a Vincio feature vs a real competitor library | `vincio bench feature` |
+
+Every track supports **LIVE** (the real thing runs end to end) and an offline **MOCKUP**. Tiers: **L**
+Live (a live model, or the real competitor library on this machine — reported, never gated), **R**
+Recorded (a hash-pinned replay, gates CI), **S** Static/Mockup (offline, reproducible, gates CI —
+model scores *saturate by design*). A lower tier can never print a higher tier's label. A separate
+internal **VincioBench** gate keeps the library's own mechanisms honest and CI-gates the deterministic
+core of all three tracks.
+
+### Track 1 — Model: public benchmarks, tier-honest
+
+`vincio bench model` scores a model (or a model *version*) on the standard public benchmarks — one
+pluggable contract, **29 benchmarks across 10 niches**, an enforced provenance tier on every number.
+In-process, offline-first, **never a hosted leaderboard**.
+
+<p align="center">
+  <img src="assets/benchmark-plane.svg" alt="Track 1, the model track: 29 standard public benchmarks across 10 niches (Knowledge 5, Reasoning 3, Math 1, Coding 7, Instruction 1, Truthfulness 1, Safety 1, RAG 1, Agent 8, Long Context 1), each number carrying an enforced provenance tier — Static (fabricated fixture, gates CI), Recorded (hash-pinned real slice, gates CI), Live (a live state-of-the-art model, reported and never gated)." width="840">
+</p>
+
+```bash
+vincio bench list                                   # the whole platform at a glance
+vincio bench model all --tier static                # every benchmark, offline (Tier-S), gates CI
+python benchmarks/eval_live.py --provider anthropic --model claude-opus-4-8 \
+    --benchmarks knowledge.mmlu reasoning.gsm8k --tier live --dataset-dir ./datasets
+```
+
+Run live over real official dataset slices (OpenRouter, 2026-07-01, small `n` — a capability demo,
+reported not gated): `gpt-5.4-mini` scored **0.90** on a 20-item GSM8K slice and **0.60** on a 15-item
+MMLU slice; `gemini-3.5-flash` **0.70 / 0.93**. The engine **refuses** to let a fabricated fixture print
+a Recorded or Live label — a Tier-S mechanism check can never masquerade as a Tier-L score. Concept:
+[docs/concepts/open-evaluation-plane.md](docs/concepts/open-evaluation-plane.md); guide:
+[docs/guides/run-benchmark-suite.md](docs/guides/run-benchmark-suite.md).
+
+### Track 3 — Feature: a Vincio feature vs a competitor library <sub>· run `vincio bench feature`</sub>
+
+`vincio bench feature` runs a Vincio feature head-to-head against the *actual* competitor library a
+team would otherwise use — **measured live on this machine** across retrieval, tokenization, output
+repair, prompt safety, tabular encoding, context assembly, layered memory, and chunking. A missing
+competitor is reported *skipped*, never fabricated; the deterministic quality metric (not wall-clock)
+gates CI. Representative real results (Apple Silicon, Python 3.13; ratios are the portable signal):
+Vincio BM25 retrieval matches `rank_bm25`'s recall at **~12× the speed**; layered memory returns the
+*current* fact after a contradicting update at **precision 1.0 vs 0.5** for a naive keyword store;
+tabular encoding uses **~70% fewer tokens** than `json.dumps`. The richer offline driver with a few
+extra micro-benchmarks is [`competitive.py`](benchmarks/competitive.py).
+
+<p align="center">
+  <img src="assets/benchmark-headtohead.svg" alt="Feature track head-to-head vs. real libraries: BM25 retrieval matching rank_bm25 recall at roughly 12 times the speed; layered memory precision 1.0 vs 0.5 for a naive store; tabular encoding roughly 70 percent fewer tokens than json.dumps; token counting roughly 2 times faster than tiktoken (which is exact)." width="840">
 </p>
 
 <details>
@@ -268,20 +320,46 @@ pipeline, not a pile of single-purpose libraries.
 
 </details>
 
-### Orchestrator uplift: the same model, through Vincio
+### Track 2 — Uplift: the same model, through Vincio vs direct <sub>· run `vincio bench uplift`</sub>
 
-[`quality_uplift.py`](benchmarks/quality_uplift.py) measures what routing a model *through* Vincio
-adds versus calling it directly, against real models on 15 company-specific policy questions a model
-cannot know from pretraining (**4 models × 3 runs = 360 live calls**, OpenRouter, June 2026).
+`vincio bench uplift` runs each benchmark **twice by the identical scorer** — the model's direct answer
+vs its Vincio-routed answer — and reports the per-benchmark delta (grounding, injection containment,
+long-context needle recall, output validity); the mockup deltas gate CI. The *extended live-model
+driver* [`quality_uplift.py`](benchmarks/quality_uplift.py) measures the same on real models across 15
+company-specific policy questions a model cannot know from pretraining. Measured live against **current
+state-of-the-art models** (**4 models × 2 runs = 240 live calls**, OpenRouter, July 2026):
 
 <p align="center">
-  <img src="assets/benchmark-uplift.svg" alt="Grounded-answer accuracy, direct vs. through Vincio: gpt-4o-mini 2 to 100 percent; claude-3-haiku 0 to 91 percent; gemini-2.5-flash-lite 4 to 98 percent; llama-3.1-8b 2 to 89 percent; aggregate 2 to 95 percent" width="840">
+  <img src="assets/benchmark-uplift.svg" alt="Grounded-answer accuracy, the same model direct vs. through Vincio, on 15 company-specific questions: claude-opus-4.8 13 to 97 percent; gpt-5.4-mini 10 to 93 percent; gemini-3.5-flash 27 to 97 percent; llama-3.1-8b 3 to 93 percent; aggregate 13 to 95 percent. Every routed answer is cited." width="840">
 </p>
 
 <details>
 <summary><b>Show the numbers and the honest read</b></summary>
 
-**Deterministic mechanism metrics** (mechanical, so they hold for any model and run offline):
+**Grounded-answer quality on current SOTA models** (mean over 2 runs; 15 questions each, every routed
+answer cited):
+
+| Model: direct vs. through Vincio | Direct correct | **Via Vincio correct** | Direct failure mode | Cost per *correct* answer |
+|---|--:|--:|:--|:--|
+| `anthropic/claude-opus-4.8` | 13% | **97%** | abstains 100%¹ (never hallucinates) | **~30× cheaper** via Vincio |
+| `openai/gpt-5.4-mini` | 10% | **93%** | hallucinates 83% | **~16× cheaper** via Vincio |
+| `google/gemini-3.5-flash` | 27% | **97%** | hallucinates 63% | **~14× cheaper** via Vincio |
+| `meta-llama/llama-3.1-8b-instruct` | 3% | **93%** | hallucinates 50% | **~28× cheaper** via Vincio |
+| **Aggregate** | **13%** | **95%** | — | n/a |
+
+<sub>¹ Even the strongest current model, claude-opus-4.8, answers only ~13% of company-specific questions
+directly — but it correctly *abstains* the rest of the time rather than guessing (0% hallucination); the
+weaker models confidently fabricate instead. Either way the model *alone* is near-useless on private
+knowledge; the same model through Vincio's retrieval + grounding answers 93–97%, every answer cited.</sub>
+
+The cost line is the honest punchline: a direct call is cheaper *per call*, but it answers almost
+nothing correctly, so its cost **per correct answer** is 14–30× higher through Vincio's grounding across
+every model tested. These are live numbers (n=15, small sample — rerun with `VINCIO_PROVIDER=openrouter
+VINCIO_UPLIFT_MODELS=… python benchmarks/quality_uplift.py`); full per-metric breakdown in
+[`benchmarks/README.md`](benchmarks/README.md).
+
+**Deterministic mechanism metrics** (mechanical, so they hold for *any* model and run offline — the
+`vincio bench uplift` mockup gates these in CI):
 
 | Same model: direct vs. via Vincio | Direct | Via Vincio |
 |---|--:|--:|
@@ -289,33 +367,17 @@ cannot know from pretraining (**4 models × 3 runs = 360 live calls**, OpenRoute
 | Prompt-injection exfiltration via a tool call | compromised | **contained** |
 | Context tokens to keep an early fact at 160 turns | 1,267 (lost) | **33 (retained)** |
 
-**Grounded-answer quality on real models** (mean over runs, stochastic by a point or two):
-
-| Model: direct vs. through Vincio | Direct correct | **Via Vincio correct** | Direct hallucinated | Cost per *correct* answer |
-|---|--:|--:|--:|:--|
-| `openai/gpt-4o-mini` | 2% | **100%** | 64% | **~62× cheaper** via Vincio |
-| `anthropic/claude-3-haiku` | 0% | **91%** | 2%¹ | direct **never** correct (∞) |
-| `google/gemini-2.5-flash-lite` | 4% | **98%** | 29% | **~67× cheaper** via Vincio |
-| `meta-llama/llama-3.1-8b-instruct` | 2% | **89%** | 40% | **~29× cheaper** via Vincio |
-| **Aggregate** | **2%** | **95%** | n/a | n/a |
-
-<sub>¹ claude-3-haiku *abstains* (98% of the time) rather than guessing; better-aligned models say "I don't know," weaker ones confidently fabricate. Either way the model *alone* answers ~2%; the same model through Vincio's retrieval + grounding answers 89–100%, every answer cited.</sub>
-
-The cost line is the honest punchline: a direct call is cheaper *per call*, but it answers almost
-nothing correctly, so its cost **per correct answer** is 29–67× higher, or undefined when the model
-gets *nothing* right on its own. Full per-metric breakdown is in
-[`benchmarks/README.md`](benchmarks/README.md). Reproduce with `VINCIO_PROVIDER=openrouter … python
-benchmarks/quality_uplift.py`.
-
 </details>
 
-### VincioBench: the internal regression suite
+### VincioBench: the internal gate <sub>· not one of the three tracks</sub>
 
-[`vinciobench.py`](benchmarks/vinciobench.py) is **not a competitive claim**: it is the deterministic
-mechanism suite that gates CI. Its families assert that each engine still *works* on a bundled
-synthetic corpus, so a regression fails the build. The scores saturate by design (a small corpus
-built to exercise each mechanism), which proves *the mechanism is intact*, not real-world
-performance. The credible performance evidence is the two sections above.
+[`vinciobench.py`](benchmarks/vinciobench.py) is **not a competitive claim** and not one of the three
+tracks: it is the deterministic mechanism / regression gate that gates CI, and it also gates the
+**deterministic core of all three tracks** (`families.bench_tracks.*`). Its families assert that each
+engine still *works* on a bundled synthetic corpus, so a regression fails the build. The scores
+saturate by design (a small corpus built to exercise each mechanism), which proves *the mechanism is
+intact*, not real-world performance. The credible performance evidence is the three tracks above at
+their Live tier (Track 1/2 with a model key, Track 3 with a real competitor installed).
 
 ## How Vincio compares
 
@@ -409,7 +471,9 @@ pip install "vincio[server]" && cd examples/applications/rag_service && uvicorn 
 vincio init my-project --template rag   # scaffold config + app + golden set
 vincio run app.py --input "..."         # run an app
 vincio eval run golden.jsonl            # run an eval suite with CI gates + baseline compare
-vincio eval suite run knowledge.mmlu    # run a public benchmark, tier-honest, offline
+vincio bench list                       # the benchmark platform: model / uplift / feature tracks
+vincio bench feature                    # a Vincio feature vs a competitor library (LIVE)
+vincio bench model knowledge.mmlu       # a model on a public benchmark, tier-honest, offline
 vincio trace view trace_123             # TUI trace tree with scores + feedback
 vincio loop run --app app.py --gate groundedness=">= 0.8"   # one closed-loop cycle
 vincio docs check                       # gate the docs graph (links, coverage, llms.txt freshness)

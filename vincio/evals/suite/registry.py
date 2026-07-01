@@ -145,9 +145,11 @@ class BenchmarkRegistry:
         try:
             from ...plugins import load_plugins
 
-            for info in load_plugins(groups=["vincio.benchmarks"]):
-                if info.status == "loaded":
-                    continue
+            # Consuming the loader imports each installed ``vincio.benchmarks`` entry
+            # point, which self-registers its spec. Discovery failures must never break
+            # resolution (handled below).
+            for _info in load_plugins(groups=["vincio.benchmarks"]):
+                pass
         except Exception:  # noqa: BLE001 - plugin discovery must never break resolution
             from ...core.diagnostics import note_suppressed
 

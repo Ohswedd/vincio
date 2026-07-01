@@ -1,5 +1,13 @@
 """Competitive benchmarks: Vincio vs. real third-party libraries.
 
+    ▸ This is **Track 3 (Feature)** of the benchmark platform. The canonical,
+      tested, CI-gated implementation now lives in the library
+      (:mod:`vincio.evals.suite.feature_bench`); run it with ``vincio bench feature``
+      or ``python benchmarks/bench.py feature``. This script is the *extended*
+      offline driver — it keeps a few micro-benchmarks (data-engagement,
+      conciseness) that are not (yet) library contests. New feature contests should
+      be added to the library, not here.
+
 Unlike ``vinciobench.py`` (which compares each Vincio mechanism against a *naive
 in-house baseline*), this suite runs Vincio head-to-head against the actual
 libraries a team would otherwise reach for, on the handful of operations where a

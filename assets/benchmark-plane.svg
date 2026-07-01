@@ -1,0 +1,87 @@
+<svg width="860" height="486" viewBox="0 0 860 486" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pl_t pl_d">
+  <title id="pl_t">Track 1 — the model benchmark plane</title>
+  <desc id="pl_d">Track 1, the model plane: 29 standard public benchmarks across 10 niches, each carrying an enforced provenance tier — Static (fabricated fixture, gates CI), Recorded (hash-pinned real slice, gates CI), and Live (a live state-of-the-art model, reported).</desc>
+  <defs>
+    <radialGradient id="pl_parch" cx="40%" cy="26%" r="88%">
+      <stop offset="0%" stop-color="#FBF4E2"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="pl_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="pl_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#D9B354"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="857" height="483" rx="16" fill="url(#pl_parch)" stroke="#C49A3A" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="473" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">TRACK 1 &#183; MODEL &#183; PUBLIC BENCHMARKS</text>
+    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#pl_goldtext)">A model on the public benchmarks, tier-honest</text>
+    <text x="40" y="102" font-size="13" fill="#6B5836">29 benchmarks &#183; 10 niches &#183; in-process, offline-first, never a hosted leaderboard.</text>
+    <rect x="40" y="122" width="253" height="46" rx="9" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <circle cx="66" cy="145" r="14" fill="url(#pl_gold)"/>
+    <text x="66" y="150" font-size="16" font-weight="700" fill="#FBF4E2" text-anchor="middle">S</text>
+    <text x="90" y="142" font-size="14" font-weight="700" fill="#3A2E1C">Static / Mockup</text>
+    <text x="90" y="159" font-size="10.5" fill="#8A7551">offline, reproducible, gates CI</text>
+    <rect x="306" y="122" width="253" height="46" rx="9" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <circle cx="332" cy="145" r="14" fill="url(#pl_gold)"/>
+    <text x="332" y="150" font-size="16" font-weight="700" fill="#FBF4E2" text-anchor="middle">R</text>
+    <text x="356" y="142" font-size="14" font-weight="700" fill="#3A2E1C">Recorded</text>
+    <text x="356" y="159" font-size="10.5" fill="#8A7551">a hash-pinned replay</text>
+    <rect x="572" y="122" width="253" height="46" rx="9" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <circle cx="598" cy="145" r="14" fill="url(#pl_gold)"/>
+    <text x="598" y="150" font-size="16" font-weight="700" fill="#FBF4E2" text-anchor="middle">L</text>
+    <text x="622" y="142" font-size="14" font-weight="700" fill="#3A2E1C">Live</text>
+    <text x="622" y="159" font-size="10.5" fill="#8A7551">the real thing ran end to end</text>
+    <rect x="40" y="196" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="114" y="236" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">5</text>
+    <text x="114" y="258" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Knowledge</text>
+    <text x="114" y="278" font-size="9.5" fill="#8A7551" text-anchor="middle">C-Eval · CMMLU · GPQA</text>
+    <text x="114" y="291" font-size="9.5" fill="#8A7551" text-anchor="middle">· …</text>
+    <rect x="200" y="196" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="274" y="236" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">3</text>
+    <text x="274" y="258" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Reasoning</text>
+    <text x="274" y="278" font-size="9.5" fill="#8A7551" text-anchor="middle">ARC · GSM8K ·</text>
+    <text x="274" y="291" font-size="9.5" fill="#8A7551" text-anchor="middle">HellaSwag</text>
+    <rect x="360" y="196" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="434" y="236" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">1</text>
+    <text x="434" y="258" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Math</text>
+    <text x="434" y="278" font-size="9.5" fill="#8A7551" text-anchor="middle">MATH</text>
+    <rect x="520" y="196" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="594" y="236" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">7</text>
+    <text x="594" y="258" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Coding</text>
+    <text x="594" y="278" font-size="9.5" fill="#8A7551" text-anchor="middle">BIRD · DS-1000 ·</text>
+    <text x="594" y="291" font-size="9.5" fill="#8A7551" text-anchor="middle">HumanEval · …</text>
+    <rect x="680" y="196" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="754" y="236" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">1</text>
+    <text x="754" y="258" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Instruction</text>
+    <text x="754" y="278" font-size="9.5" fill="#8A7551" text-anchor="middle">IFEval</text>
+    <rect x="40" y="328" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="114" y="368" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">1</text>
+    <text x="114" y="390" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Truthfulness</text>
+    <text x="114" y="410" font-size="9.5" fill="#8A7551" text-anchor="middle">TruthfulQA (MC1)</text>
+    <rect x="200" y="328" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="274" y="368" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">1</text>
+    <text x="274" y="390" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Safety</text>
+    <text x="274" y="410" font-size="9.5" fill="#8A7551" text-anchor="middle">Prompt Injection</text>
+    <rect x="360" y="328" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="434" y="368" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">1</text>
+    <text x="434" y="390" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">RAG</text>
+    <text x="434" y="410" font-size="9.5" fill="#8A7551" text-anchor="middle">RAG Faithfulness</text>
+    <rect x="520" y="328" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="594" y="368" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">8</text>
+    <text x="594" y="390" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Agent</text>
+    <text x="594" y="410" font-size="9.5" fill="#8A7551" text-anchor="middle">AgentBench · BFCL ·</text>
+    <text x="594" y="423" font-size="9.5" fill="#8A7551" text-anchor="middle">DABench · …</text>
+    <rect x="680" y="328" width="148" height="118" rx="10" fill="#FCF6E8" stroke="url(#pl_gold)" stroke-width="1"/>
+    <text x="754" y="368" font-size="30" font-weight="700" fill="url(#pl_goldtext)" text-anchor="middle">1</text>
+    <text x="754" y="390" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">Long Context</text>
+    <text x="754" y="410" font-size="9.5" fill="#8A7551" text-anchor="middle">RULER</text>
+    <text x="430" y="464" font-size="11.5" fill="#6B5836" text-anchor="middle">One pluggable contract &#183; reusable metrics &#183; the engine refuses to print a higher tier than the inputs support.</text>
+  </g>
+</svg>

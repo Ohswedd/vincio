@@ -1,114 +1,151 @@
 # Guide: run a benchmark suite
 
-The open evaluation plane runs the standard public model benchmarks (MMLU, GPQA,
-GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by niche, with a
-[provenance tier](../concepts/open-evaluation-plane.md) on every number. This guide
-runs one, reads it, reports it, persists it, and extends it — fully offline on the
-bundled Tier-S fixtures.
+Vincio's [benchmark platform](../concepts/open-evaluation-plane.md) answers three
+questions as three **tracks**, each with a [provenance tier](../concepts/open-evaluation-plane.md)
+on every number:
 
-## Run a niche offline
+| Track | Question | CLI |
+|---|---|---|
+| **1 · Model** | how good is a *model* on the standard public benchmarks? | `vincio bench model` |
+| **2 · Uplift** | how much does routing a model *through Vincio* change its scores? | `vincio bench uplift` |
+| **3 · Feature** | how good is a Vincio *feature* vs a real competitor library? | `vincio bench feature` |
 
-`app.benchmark_suite` is the front door. The default tier `"static"` replays the
-bundled fabricated fixtures, so it needs no key and no network.
+This guide runs each track offline, runs Track 1 and Track 3 with real numbers,
+reads the reports, and registers a custom benchmark for every track. One command
+drives all three — `vincio bench <track>` — and `python benchmarks/bench.py <track>`
+is the equivalent script driver. The authoritative map is
+[`benchmarks/PROVENANCE.md`](../../benchmarks/PROVENANCE.md).
 
-```python
-from vincio import ContextApp
-from vincio.providers import MockProvider
+## See the whole platform
 
-app = ContextApp(name="eval", provider=MockProvider(), model="mock-1")
-
-run = app.benchmark_suite("knowledge", tier="static")
-run.overall()            # the mean primary score across the niche
-run.niche_scores()       # mean primary per niche (the radar axes)
-run.determinism_digest   # a content hash; identical across machines at Tier-S/R
-for r in run.runs:
-    print(r.benchmark_id, r.primary_metric, r.primary, "tier", r.tier.code)
+```bash
+vincio bench list            # all three tracks' catalogs (--json for machine form)
 ```
 
-`benchmarks` accepts a single id (`"knowledge.mmlu"`), a niche (`"knowledge"`),
-`"all"`, or a list. `BenchmarkSuite` is the underlying engine if you want it
-without an app:
+It prints the 29 model benchmarks across ten niches, the 4 uplift benchmarks, and
+the 8 feature contests — the whole system at a glance.
+
+## Run each track offline (Tier-S)
+
+Every track runs with no key and no network on its Tier-S / mockup inputs, which
+gate CI. These numbers saturate by design — they prove the mechanism, not a
+real-world score.
+
+```bash
+vincio bench model all --tier static     # track 1: fabricated fixtures, per-niche scores
+vincio bench uplift                       # track 2: two recorded arms, direct vs Vincio
+vincio bench feature                      # track 3: Vincio vs any installed competitor
+```
+
+Track 2 replays each benchmark's two recorded arms through the identical scorer and
+reports the per-benchmark delta:
+
+```text
+uplift run uplift_… · tier S · overall 0.125 → 1.000 (+0.875)
+  long_context.recall   needle_recall    0.000 -> 1.000  ^ +1.000
+  output.schema_valid   valid_rate       0.000 -> 1.000  ^ +1.000
+  rag.grounded          faithfulness     0.500 -> 1.000  ^ +0.500
+  safety.injection      contained_rate   0.000 -> 1.000  ^ +1.000
+```
+
+Track 3 tiers each contest by whether its competitor actually ran — `[L]` when the
+library is installed, `[S]` when it is absent (Vincio and the baseline still ran):
+
+```text
+feature run feat_… · suite tier S · 8 contests
+  [L] retrieval.bm25    recall_at_1↑   winner: vincio
+        vincio          1     0.60ms
+        rank_bm25       1     2.05ms
+  [S] memory.recall     current_fact_precision↑   winner: vincio
+        vincio          1
+        naive_keyword_store  0.5
+```
+
+## Track 3 with real numbers — live vs installed libraries
+
+Track 3 is genuinely **Live** on this machine: install a competitor and the
+head-to-head runs against it for real. The deterministic quality metric gates CI;
+the latency ratio is real but machine-specific, so rerun it on your hardware.
+
+```bash
+pip install rank_bm25 tiktoken json-repair jinja2 pandas   # the real competitors
+vincio bench feature                                       # now the contests report tier L
+vincio bench feature retrieval.bm25 tokenization.count     # or a subset by id / capability
+```
+
+A contest with an uninstalled competitor is reported *skipped*, never fabricated —
+so a partial install simply leaves those contests at Tier-S.
+
+## Track 1 with real numbers — a live model
+
+Track 1 Live needs a model key and a real dataset. The dedicated driver runs a
+provider over hash-loaded datasets:
+
+```bash
+python benchmarks/eval_live.py --provider anthropic --model claude-opus-4-8 \
+    --benchmarks knowledge.mmlu reasoning.gsm8k --tier live --dataset-dir ./datasets
+```
+
+The same track runs through the CLI over an app file (needed for `tier=live`):
+
+```bash
+vincio bench model knowledge.mmlu --tier live --app app.py --format markdown --output run.md
+```
+
+A bundled fixture is fabricated, so its ceiling is Tier-S; asking a fixture to print
+a higher tier is refused rather than faked:
 
 ```python
 from vincio.evals.suite import BenchmarkSuite
-
-suite = BenchmarkSuite(concurrency=8)
-run = suite.run(["knowledge", "reasoning.gsm8k"], tier="static")
-```
-
-## The tiers, and why a fixture can't lie
-
-The engine computes the tier a run may claim from its inputs and refuses to print a
-higher one. A bundled fixture is fabricated, so its ceiling is `S`:
-
-```python
 from vincio.core.errors import TierViolationError
 
+suite = BenchmarkSuite(concurrency=8)
 try:
     suite.run("knowledge.mmlu", tier="live")   # only a Tier-S fixture is available
 except TierViolationError as exc:
     print(exc)   # cannot report tier L: the run's inputs only support tier S …
 ```
 
-To run a **Recorded** or **Live** tier, supply the dataset yourself — a hash-pinned
-slice (Recorded) or the full dataset against a live model (Live):
+## Read the reports
+
+Each track renders to Markdown from the CLI, and to JSON with `--json`:
+
+```bash
+vincio bench uplift --format markdown          # render_uplift_report under the hood
+vincio bench feature --format markdown         # render_feature_report under the hood
+vincio bench uplift --json                      # the whole run as JSON
+```
+
+In-process, the report renderers and the Track-1 `SuiteReport` are public:
 
 ```python
-from vincio.evals.suite import BenchmarkDataset, ProvenanceTier
-from vincio.evals.suite.adapters import mmlu_tasks_from_export
-
-# A hash-pinned recorded slice (replayed against recorded outputs → gates CI).
-recorded = BenchmarkDataset.from_export(
-    records, loader=mmlu_tasks_from_export,
-    tier=ProvenanceTier.RECORDED, benchmark_id="knowledge.mmlu",
-    pinned_hash="…",   # drift in the task set is caught against this pin
+from vincio.evals.suite import (
+    UpliftSuite, FeatureSuite, BenchmarkSuite,
+    render_uplift_report, render_feature_report, SuiteReport,
 )
-run = suite.run("knowledge.mmlu", tier="recorded",
-                datasets={"knowledge.mmlu": recorded})
 
-# Live: the full dataset against a live model (reported, never gated).
-live = BenchmarkDataset.from_huggingface(            # needs vincio[eval-datasets]
-    "cais/mmlu", loader=mmlu_tasks_from_export, split="test")
-run = app.benchmark_suite("knowledge.mmlu", tier="live",
-                          datasets={"knowledge.mmlu": live})
-```
+print(render_uplift_report(UpliftSuite().run("all", tier="static")))
+print(render_feature_report(FeatureSuite().run("all")))
 
-## Report it — every format, every number tiered
-
-```python
-from vincio.evals.suite import SuiteReport
-
+run = BenchmarkSuite(concurrency=8).run(["knowledge", "reasoning.gsm8k"], tier="static")
 report = SuiteReport(run)
-report.to_markdown()        # also: to_html(), to_json(), to_csv()
-report.save("report.html")  # format inferred from the suffix
-report.save("report.pdf")   # PDF needs vincio[eval-pdf]
+report.to_markdown()          # also: to_html(), to_json(), to_csv()
+report.save("report.html")    # format inferred from the suffix; PDF needs vincio[eval-pdf]
 ```
 
-Every rendering carries the run's tier and cites the exact scored items (failing
-tasks are listed by id). The Markdown / HTML / JSON / CSV bytes are a pure function
-of the run, so a Tier-S report diffs cleanly across machines.
+Every Track-1 rendering carries the run's tier and cites the exact scored items
+(failing tasks by id), and its bytes are a pure function of the run, so a Tier-S
+report diffs cleanly across machines. `app.benchmark_suite("knowledge",
+tier="static")` is the in-process front door for Track 1; `Leaderboard` and
+`RunStore` rank and persist Track-1 runs for model-version comparison.
 
-## Compare models — leaderboard, charts, and a run store
+## Register a custom benchmark for each track
 
-```python
-from vincio.evals.suite import Leaderboard, RunStore, leaderboard_chart, radar_chart
+Each track has a single extension point; installing your package or importing your
+module is all it takes.
 
-board = Leaderboard.from_runs([run_a, run_b])   # ranked by overall primary
-board.to_markdown()
-leaderboard_chart(board).save("leaderboard.json")   # deterministic Vega-Lite
-radar_chart(run_a).save("radar.json")               # .png needs vincio[eval-viz]
-
-store = RunStore(".vincio/eval_runs.db")            # SQLite (stdlib)
-store.save(run_a, version="1.0")
-store.save(run_b, version="2.0")
-store.compare_runs(run_a.run_id, run_b.run_id)      # per-benchmark delta
-store.model_version_diff("my-model")                # did this version regress?
-```
-
-## Extend it — add a benchmark without touching the core
-
-Register a `BenchmarkSpec` in-process, or ship it as a `vincio.benchmarks`
-entry-point so installing your package is all it takes:
+**Track 1 — a public-benchmark adapter** (`register_benchmark`), in-process or as a
+`vincio.benchmarks` entry point:
 
 ```python
 from vincio.evals.suite import BenchmarkSpec, register_benchmark
@@ -125,23 +162,89 @@ register_benchmark(BenchmarkSpec(
     primary_metric="accuracy",
     static_tasks=[{"id": "t1", "prompt": "2+2?", "gold": "4", "recorded": "4"}],
 ))
+# vincio bench model custom.my_eval --tier static
 ```
 
-## From the CLI
+**Track 2 — a two-armed uplift benchmark** (`register_uplift_benchmark`): one
+adapter, and tasks that carry both a `recorded` (direct) and a `recorded_vincio`
+(routed) answer scored by the identical adapter:
+
+```python
+from vincio.evals.suite import UpliftBenchmark, register_uplift_benchmark
+from vincio.evals.benchmarks import BenchmarkAdapter, BenchmarkResult
+
+class ExactMatch(BenchmarkAdapter):
+    name = "exact_match"
+    async def score(self, task, output):
+        ok = str(output).strip() == str(task.gold).strip()
+        return BenchmarkResult(task_id=task.id, success=ok, score=1.0 if ok else 0.0)
+
+register_uplift_benchmark(UpliftBenchmark(
+    id="format.currency", title="Currency formatting", capability="output",
+    adapter=ExactMatch, primary_metric="accuracy",
+    tasks=[
+        {"id": "c1", "prompt": "Format 1000 as USD.", "gold": "$1,000.00",
+         "recorded": "1000 dollars",          # the direct arm gets it wrong
+         "recorded_vincio": "$1,000.00"},     # routed through Vincio's output contract
+    ],
+))
+# vincio bench uplift format.currency          # direct vs Vincio, per-benchmark delta
+```
+
+**Track 3 — a feature contest** (`register_feature_contest`): a `runner` returning
+the ordered `Contender`s, each producing a `FeatureMeasurement`. A `competitor`
+contender declares the modules it `requires`, so a missing library is skipped, never
+faked:
+
+```python
+from vincio.evals.suite import (
+    Contender, FeatureContest, FeatureMeasurement, register_feature_contest,
+)
+
+def _titlecase_contest() -> FeatureContest:
+    corpus = ["the context engine", "grounded by design"]
+    gold = ["The Context Engine", "Grounded By Design"]
+
+    def score(fn) -> FeatureMeasurement:
+        acc = sum(fn(t) == g for t, g in zip(corpus, gold)) / len(gold)
+        return FeatureMeasurement(primary=round(acc, 4), metrics={"accuracy": round(acc, 4)})
+
+    def vincio() -> FeatureMeasurement:
+        return score(str.title)                 # the Vincio feature under test
+
+    def competitor() -> FeatureMeasurement:
+        import titlecase                          # only imported when installed
+        return score(titlecase.titlecase)
+
+    def runner() -> list[Contender]:
+        return [
+            Contender("vincio", vincio, kind="vincio"),
+            Contender("titlecase", competitor, kind="competitor", requires=("titlecase",)),
+        ]
+
+    return FeatureContest(
+        id="text.titlecase", title="Title-casing", capability="text",
+        primary_metric="accuracy", runner=runner,
+    )
+
+register_feature_contest(_titlecase_contest())
+# vincio bench feature text.titlecase          # Live iff `titlecase` is installed, else Tier-S
+```
+
+## The CLI surface
 
 ```bash
-vincio eval suite run knowledge.mmlu --tier static          # text summary
-vincio eval suite run all --format markdown --output report.md
-vincio eval suite run knowledge --store runs.db             # persist the run
-vincio eval suite leaderboard --store runs.db               # rank persisted runs
-vincio eval suite report run.json --format pdf --output r.pdf
-vincio eval suite compare <runA> <runB> --store runs.db
+vincio bench list                                # all three tracks' catalogs
+vincio bench model all --tier static             # track 1 (Tier-S; also --tier live --app app.py)
+vincio bench model knowledge --format markdown --output r.md --store runs.db
+vincio bench uplift [ids…] [--tier static] [--format markdown] [--json]
+vincio bench feature [ids…] [--format markdown] [--json]
 ```
 
-The CLI commands `run` / `leaderboard` / `report` / `compare` live under
-`vincio eval suite`, beside the application-eval commands (`vincio eval run`,
-`vincio eval report`). See the [reference](../reference/cli.md) for every flag, and
-the [example](../../examples/16_open_evaluation_plane.py) for the full tour.
+Track 1 is also the **open evaluation plane**: the same runs are available under
+`vincio eval suite run|leaderboard|report|compare` and as `app.benchmark_suite(...)`
+in-process. See the [CLI reference](../reference/cli.md) for every flag, and the
+[example](../../examples/16_open_evaluation_plane.py) for the full Track-1 tour.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

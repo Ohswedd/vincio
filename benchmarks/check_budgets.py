@@ -58,6 +58,9 @@ def main() -> int:
         return 2
     report = json.loads(report_path.read_text())
     budgets = json.loads(Path(args.budgets).read_text())["budgets"]
+    if not budgets:
+        print("no budgets defined — nothing to check", file=sys.stderr)
+        return 0
 
     failures = 0
     skipped = 0

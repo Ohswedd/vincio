@@ -251,6 +251,14 @@ report.to_eval_report()       # project onto an EvalReport for gates / the optim
 (`"calls"` captures the agent's function calls from its event stream for BFCL);
 `make_env_solver(policy)` runs a policy through a τ-bench world.
 
+> These adapters are the low-level, single-benchmark API. The
+> [open evaluation plane](../concepts/open-evaluation-plane.md) wraps the same
+> `BenchmarkAdapter` contract (and these exact agentic adapters) in a catalog with
+> an enforced **provenance tier** on every number and one reporting/leaderboard
+> path — use it (`vincio eval suite run agent.gaia`, or `benchmarks/eval_live.py`
+> for a Live SOTA run) when you want tier-honest scores across many benchmarks; use
+> the adapters directly when you want one benchmark's `EvalReport` in the loop.
+
 And a retrieval-eval harness records a versioned artifact keyed on
 `(embedder, chunker, corpus hash)` and **gates a recall/nDCG regression on the same
 significance test as a model swap**, see the [run evals guide](run-evals.md).

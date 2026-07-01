@@ -41,10 +41,6 @@ _TIER_LEGEND = (
 )
 
 
-def _tier_cell(tier: ProvenanceTier) -> str:
-    return tier.code
-
-
 # ---------------------------------------------------------------------------
 # Leaderboard — rank several models / model versions over a shared benchmark set
 # ---------------------------------------------------------------------------
@@ -109,6 +105,7 @@ class Leaderboard(BaseModel):
         return "\n".join(lines) + "\n"
 
     def model_dump_json_indented(self) -> str:
+        """The leaderboard as pretty-printed JSON (a stable, diffable serialization)."""
         return json.dumps(self.model_dump(mode="json"), indent=2, default=str)
 
 

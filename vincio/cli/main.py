@@ -1087,6 +1087,117 @@ def cmd_eval_suite_report(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_eval_suite_list(args: argparse.Namespace) -> int:
+    """List the open-evaluation-plane catalog, grouped by niche, with each
+    benchmark's primary metric and tiers — so the catalog is legible at a glance."""
+    from ..evals.suite import NICHES, default_benchmark_registry
+
+    registry = default_benchmark_registry()
+    grouped = registry.niches()
+    if args.json:
+        payload = {
+            niche: [
+                {"id": s.id, "title": s.title, "primary_metric": s.primary_metric,
+                 "static": True, "recorded_or_live": s.loader is not None}
+                for s in specs
+            ]
+            for niche, specs in grouped.items()
+        }
+        print(json_dumps(payload, indent=2))
+        return 0
+    total = len(registry.ids())
+    print(f"open evaluation plane · {total} benchmarks · {len(grouped)} niches")
+    print("tiers: S Static (fixture, gates CI) · R Recorded (real slice) · L Live (live model)\n")
+    for niche, specs in grouped.items():
+        print(f"{NICHES.get(niche, niche)} ({niche})")
+        for s in specs:
+            tiers = "S·R·L" if s.loader is not None else "S"
+            print(f"  {s.id:30s} {s.primary_metric:18s} [{tiers}]  {s.title}")
+    return 0
+
+
+def cmd_bench_list(args: argparse.Namespace) -> int:
+    """List all three benchmark tracks' catalogs — the whole system at a glance."""
+    from ..evals.suite import (
+        NICHES,
+        default_benchmark_registry,
+        default_feature_registry,
+        default_uplift_registry,
+    )
+
+    model = default_benchmark_registry()
+    uplift = default_uplift_registry()
+    feature = default_feature_registry()
+    if args.json:
+        payload = {
+            "model": model.ids(),
+            "uplift": uplift.ids(),
+            "feature": feature.ids(),
+        }
+        print(json_dumps(payload, indent=2))
+        return 0
+    print("Vincio benchmark platform — three tracks\n")
+    print(f"1. MODEL  — a model on the public benchmarks ({len(model.ids())} benchmarks, {len(model.niches())} niches)")
+    for niche, specs in model.niches().items():
+        print(f"     {NICHES.get(niche, niche):14s} {', '.join(s.name for s in specs)}")
+    print(f"\n2. UPLIFT — the same model through Vincio vs direct ({len(uplift.ids())} benchmarks)")
+    for b in uplift.all():
+        print(f"     {b.id:24s} {b.title}")
+    print(f"\n3. FEATURE — a Vincio feature vs a competitor library ({len(feature.ids())} contests)")
+    for c in feature.all():
+        print(f"     {c.id:24s} {c.title}")
+    return 0
+
+
+def cmd_bench_uplift(args: argparse.Namespace) -> int:
+    from ..core.errors import VincioError
+    from ..evals.suite import UpliftSuite, render_uplift_report
+
+    try:
+        run = UpliftSuite().run(list(args.benchmarks) or "all", tier=args.tier)
+    except VincioError as exc:
+        return _fail(exc.message)
+    if args.json:
+        print(json_dumps(run.model_dump(mode="json"), indent=2))
+        return 0
+    if args.format == "markdown":
+        print(render_uplift_report(run))
+        return 0
+    print(f"uplift run {run.run_id} · tier {run.tier.code} · overall "
+          f"{run.overall_direct():.3f} → {run.overall_vincio():.3f} ({run.overall_delta():+.3f})")
+    for r in sorted(run.results, key=lambda r: r.benchmark_id):
+        arrow = "^" if r.improved else ("v" if r.regressed else "=")
+        print(f"  {r.benchmark_id:26s} {r.primary_metric:16s} {r.direct:.3f} -> {r.vincio:.3f}  {arrow} {r.delta:+.3f}")
+    return 0
+
+
+def cmd_bench_feature(args: argparse.Namespace) -> int:
+    from ..core.errors import VincioError
+    from ..evals.suite import FeatureSuite, render_feature_report
+
+    try:
+        run = FeatureSuite().run(list(args.contests) or "all")
+    except VincioError as exc:
+        return _fail(exc.message)
+    if args.json:
+        print(json_dumps(run.model_dump(mode="json"), indent=2))
+        return 0
+    if args.format == "markdown":
+        print(render_feature_report(run))
+        return 0
+    print(f"feature run {run.run_id} · suite tier {run.tier.code} · {len(run.runs)} contests")
+    for r in sorted(run.runs, key=lambda r: r.contest_id):
+        better = "↑" if r.higher_is_better else "↓"
+        print(f"  [{r.tier.code}] {r.contest_id:24s} {r.primary_metric}{better}  winner: {r.winner or '—'}")
+        for m in r.measurements:
+            if m.available:
+                lat = f"{m.latency_ms:.2f}ms" if m.latency_ms is not None else ""
+                print(f"        {m.contender:22s} {m.primary:<9g} {lat}")
+            else:
+                print(f"        {m.contender:22s} {m.note}")
+    return 0
+
+
 def cmd_eval_suite_compare(args: argparse.Namespace) -> int:
     from ..evals.suite import RunStore
 
@@ -2123,6 +2234,45 @@ def build_parser() -> argparse.ArgumentParser:
     p_es_compare.add_argument("--store", required=True, help="RunStore DSN/path")
     p_es_compare.add_argument("--json", action="store_true", help="emit JSON")
     p_es_compare.set_defaults(fn=cmd_eval_suite_compare)
+    p_es_list = eval_suite_sub.add_parser("list", help="list the benchmark catalog by niche")
+    p_es_list.add_argument("--json", action="store_true", help="emit JSON")
+    p_es_list.set_defaults(fn=cmd_eval_suite_list)
+
+    # The unified benchmark platform — three tracks under one command.
+    p_bench = sub.add_parser("bench", help="the benchmark platform: model | uplift | feature")
+    bench_sub = p_bench.add_subparsers(dest="bench_command", required=True)
+
+    p_bm = bench_sub.add_parser("model", help="track 1: a model on the public benchmarks")
+    p_bm.add_argument("benchmarks", nargs="*", default=["all"], help="benchmark id / niche / 'all'")
+    p_bm.add_argument("--app", default=None, help="app file (needed for tier=live)")
+    p_bm.add_argument("--tier", default="static", choices=["static", "recorded", "live", "S", "R", "L"])
+    p_bm.add_argument("--sample", type=int, default=None)
+    p_bm.add_argument("--concurrency", type=int, default=8)
+    p_bm.add_argument("--format", default="text", choices=["text", "markdown", "html", "json", "csv", "pdf"])
+    p_bm.add_argument("--output", default=None)
+    p_bm.add_argument("--store", default=None)
+    p_bm.add_argument("--version", default="")
+    p_bm.set_defaults(fn=cmd_eval_suite_run)  # track 1 is the open evaluation plane
+
+    p_bu = bench_sub.add_parser("uplift", help="track 2: the same model through Vincio vs direct")
+    p_bu.add_argument("benchmarks", nargs="*", default=["all"], help="uplift benchmark id / 'all'")
+    # This subcommand runs the offline mockup (it supplies no direct/vincio targets), so
+    # only the Static tier is reachable; a live uplift run is driven from Python with real
+    # arms. Advertising 'recorded'/'live' here would offer tiers the engine always refuses.
+    p_bu.add_argument("--tier", default="static", choices=["static", "S"])
+    p_bu.add_argument("--format", default="text", choices=["text", "markdown"])
+    p_bu.add_argument("--json", action="store_true", help="emit JSON")
+    p_bu.set_defaults(fn=cmd_bench_uplift)
+
+    p_bf = bench_sub.add_parser("feature", help="track 3: a Vincio feature vs a competitor library")
+    p_bf.add_argument("contests", nargs="*", default=["all"], help="contest id / capability / 'all'")
+    p_bf.add_argument("--format", default="text", choices=["text", "markdown"])
+    p_bf.add_argument("--json", action="store_true", help="emit JSON")
+    p_bf.set_defaults(fn=cmd_bench_feature)
+
+    p_bl = bench_sub.add_parser("list", help="list all three tracks' catalogs")
+    p_bl.add_argument("--json", action="store_true", help="emit JSON")
+    p_bl.set_defaults(fn=cmd_bench_list)
 
     p_prompt = sub.add_parser("prompt", help="prompt tooling")
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", required=True)

@@ -787,43 +787,43 @@
     "families.memory.memory_os.pager_bounded": {
       "eq": true
     },
-    "families.breaking_2_0.facade_delegates": {
+    "families.structural_guarantees.facade_delegates": {
       "eq": true
     },
-    "families.breaking_2_0.async_store_roundtrip": {
+    "families.structural_guarantees.async_store_roundtrip": {
       "eq": true
     },
-    "families.breaking_2_0.event_catalog_validates": {
+    "families.structural_guarantees.event_catalog_validates": {
       "eq": true
     },
-    "families.breaking_2_0.multimodal_modalities_selected": {
+    "families.structural_guarantees.multimodal_modalities_selected": {
       "gte": 3
     },
-    "families.breaking_2_0.cross_process_materialize": {
+    "families.structural_guarantees.cross_process_materialize": {
       "eq": true
     },
-    "families.breaking_2_0.tenant_scope_correct": {
+    "families.structural_guarantees.tenant_scope_correct": {
       "eq": true
     },
-    "families.breaking_2_0.filter_pushdown_compiles": {
+    "families.structural_guarantees.filter_pushdown_compiles": {
       "eq": true
     },
-    "families.breaking_2_0.native_pushdown_backends": {
+    "families.structural_guarantees.native_pushdown_backends": {
       "gte": 5
     },
-    "families.breaking_2_0.enterprise_sigv4_signed": {
+    "families.structural_guarantees.enterprise_sigv4_signed": {
       "eq": true
     },
-    "families.breaking_2_0.egress_dlp_blocks_secret": {
+    "families.structural_guarantees.egress_dlp_blocks_secret": {
       "eq": true
     },
-    "families.breaking_2_0.signed_chain_detects_forgery": {
+    "families.structural_guarantees.signed_chain_detects_forgery": {
       "eq": true
     },
-    "families.breaking_2_0.merkle_inclusion_verified": {
+    "families.structural_guarantees.merkle_inclusion_verified": {
       "eq": true
     },
-    "families.breaking_2_0.eval_unscoreable_skipped": {
+    "families.structural_guarantees.eval_unscoreable_skipped": {
       "eq": true
     },
     "families.scale.distributed.lease_prevents_double_execution": {
@@ -2469,6 +2469,45 @@
     },
     "families.hygiene.hygiene_public_symbols_audited": {
       "gte": 1700
+    },
+    "families.bench_tracks.uplift_overall_delta": {
+      "gte": 0.5
+    },
+    "families.bench_tracks.uplift_all_improved": {
+      "eq": true
+    },
+    "families.bench_tracks.uplift_grounding_delta": {
+      "gte": 0.4
+    },
+    "families.bench_tracks.uplift_injection_delta": {
+      "gte": 0.9
+    },
+    "families.bench_tracks.uplift_determinism_stable": {
+      "eq": true
+    },
+    "families.bench_tracks.feature_retrieval_recall": {
+      "gte": 0.9
+    },
+    "families.bench_tracks.feature_memory_precision": {
+      "gte": 0.9
+    },
+    "families.bench_tracks.feature_output_recovery": {
+      "gte": 0.4
+    },
+    "families.bench_tracks.feature_chunking_provenance": {
+      "eq": 1.0
+    },
+    "families.bench_tracks.feature_prompt_safety": {
+      "eq": 1.0
+    },
+    "families.bench_tracks.feature_encoding_tokens": {
+      "lte": 900
+    },
+    "families.bench_tracks.feature_assembly_tokens": {
+      "lte": 350
+    },
+    "families.bench_tracks.feature_contest_count": {
+      "gte": 8
     }
   }
 }

@@ -114,6 +114,18 @@ class _ChoiceAdapter(BenchmarkAdapter):
                 return match.group(1).upper()
         return ""
 
+    def render_prompt(self, task: BenchmarkTask) -> str:
+        """Question + lettered options + an answer-with-the-letter instruction, so a
+        live model sees the choices the extract-and-match scorer looks for."""
+        options = task.inputs.get("options")
+        if not (isinstance(options, list) and options):
+            return task.prompt
+        labelled = "\n".join(f"{chr(ord('A') + i)}. {opt}" for i, opt in enumerate(options))
+        return (
+            f"{task.prompt}\n\n{labelled}\n\n"
+            "Answer with the letter of the correct option."
+        )
+
     async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
         # A variable-length option list (TruthfulQA) overrides the class default.
         options = task.inputs.get("options")
@@ -590,6 +602,18 @@ class RAGFaithfulnessAdapter(BenchmarkAdapter):
     name = "rag_faithfulness"
     overlap_threshold: float = 0.6
 
+    def render_prompt(self, task: BenchmarkTask) -> str:
+        """The retrieved passages + the question, so a live model answers *from the
+        context* the faithfulness scorer grounds against."""
+        contexts = task.inputs.get("contexts") or []
+        if not contexts:
+            return task.prompt
+        joined = "\n\n".join(f"[{i + 1}] {c}" for i, c in enumerate(contexts))
+        return (
+            f"Context:\n{joined}\n\nQuestion: {task.prompt}\n\n"
+            "Answer using only the context above."
+        )
+
     async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
         if isinstance(output, dict):
             answer = str(output.get("answer", ""))
@@ -645,6 +669,14 @@ class RULERAdapter(BenchmarkAdapter):
     """
 
     name = "ruler"
+
+    def render_prompt(self, task: BenchmarkTask) -> str:
+        """The long context + the question, so a live model has the haystack to
+        recall the needle from."""
+        context = task.inputs.get("context")
+        if not context:
+            return task.prompt
+        return f"{context}\n\n{task.prompt}"
 
     async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
         needle = str(task.gold if task.gold is not None else "").strip().lower()

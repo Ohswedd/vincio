@@ -4,6 +4,150 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.2.0] - 2026-07-01
+
+**The benchmark platform — one system, three tracks.** The benchmark story had grown into four
+loosely-related things (the public-benchmark plane, a competitive script, an uplift script, and the
+internal VincioBench gate). `7.2` redesigns it into **one coherent platform with three tracks**, each
+answering a distinct question and each supporting a **live** run and an offline **mockup**, under the
+same provenance-tier honesty contract. All additive: new `vincio.evals.suite` symbols and a new
+`vincio bench` command, with **no existing symbol removed or changed**; `API_VERSION` stays `5.0`.
+
+The three tracks:
+
+- **Track 1 — Model** (`vincio bench model`): how good is a *model* on the standard public benchmarks?
+  The existing open evaluation plane — 29 benchmarks across 10 niches, Tier-S/R/L.
+- **Track 2 — Uplift** (`vincio bench uplift`): how much does routing a model *through Vincio* change
+  its scores? Each benchmark is scored **twice by the identical scorer** — the model's direct answer vs
+  its Vincio-routed answer — and the per-benchmark delta is the measured uplift (grounding,
+  prompt-injection containment, long-context needle recall, structured-output validity). Mockup replays
+  two recorded arms deterministically; Live uses a real model for both arms.
+- **Track 3 — Feature** (`vincio bench feature`): how good is a Vincio *feature* — memory, RAG,
+  tokenization, output repair, prompt safety, tabular encoding, context assembly, chunking — vs the
+  same feature in a competitor library? **Measured live on this machine** against the real library
+  (`rank_bm25`, `tiktoken`, `json_repair`, `jinja2`, `pandas`, …); a missing competitor is reported
+  *skipped*, never fabricated. The deterministic quality metric — not wall-clock — gates CI.
+
+Every number carries a provenance tier — **L** Live (the real thing ran end to end: a live model, or a
+real competitor library), **R** Recorded (a hash-pinned replay), **S** Static/Mockup (offline,
+reproducible, gates CI) — and a lower tier can never print a higher tier's label. The internal
+**VincioBench** gate is repositioned as exactly that (not a track) and now also CI-gates the
+deterministic core of all three tracks via `families.bench_tracks.*`.
+
+### Added
+
+- **The track dimension** `BenchmarkTrack` (`model` / `uplift` / `feature`) and a unified
+  **`vincio bench model|uplift|feature|list`** CLI, plus `python benchmarks/bench.py <track>`.
+- **Track 2 — Uplift**: `UpliftSuite`, `UpliftBenchmark`, `UpliftResult`, `UpliftRun`, `UpliftRegistry`,
+  `register_uplift_benchmark`, `render_uplift_report` (`vincio.evals.suite.uplift`). Four built-ins:
+  `rag.grounded`, `safety.injection`, `long_context.recall`, `output.schema_valid`.
+- **Track 3 — Feature**: `FeatureSuite`, `FeatureContest`, `Contender`, `FeatureMeasurement`,
+  `FeatureRun`, `FeatureSuiteRun`, `FeatureRegistry`, `register_feature_contest`,
+  `render_feature_report` (`vincio.evals.suite.feature_bench`). Eight built-in contests covering
+  retrieval, tokenization, output repair, prompt safety, tabular encoding, context assembly, layered
+  memory, and chunking — each vs a real competitor and/or a naive baseline.
+- **CI gating for the new tracks**: a `bench_tracks` VincioBench family + `families.bench_tracks.*`
+  budgets hold the deterministic, competitor-independent core of the uplift and feature tracks.
+- **`benchmarks/bench.py`** — the folder driver for all three tracks (mirrors `vincio bench`).
+
+### Changed
+
+- **`benchmarks/manifest.json` and `PROVENANCE.md`** rewritten around the three tracks (each catalog
+  folded live from its registry); the README benchmark section and the benchmark **assets are now all
+  generated from data** by `benchmarks/render_assets.py` (`benchmark-platform`, `-plane`, `-uplift`,
+  `-headtohead`) — no hand-transcribed numbers.
+- **`benchmarks/competitive.py`** and **`quality_uplift.py`** are repositioned as the *extended* Track 3
+  / Track 2 drivers; the canonical, tested, CI-gated logic now lives in the library.
+- **Live re-evaluated against current state-of-the-art models** (OpenRouter, 2026-07-01, pinned in
+  `benchmarks/reference/live_snapshot.json`): the uplift track — even `claude-opus-4.8` answers only
+  ~13% of company-specific questions directly (abstaining, never hallucinating) but **97%** through
+  Vincio's grounding, ~30× cheaper per correct answer; aggregate **13% → 95%** across four models. The
+  feature track ran live vs the real libraries (BM25 ~12× faster, memory precision 1.0 vs 0.5, ~70%
+  fewer tokens); the model track scored current models on real GSM8K/MMLU slices. Nothing fabricated.
+
+### Fixed (post-release audit hardening)
+
+A full adversarial audit of the benchmark system produced 32 verified findings, all resolved:
+
+- **Honesty:** the uplift track no longer mislabels a fabricated mockup as `Recorded` — it refuses the
+  tier (mirroring the model track's `resolve_tier`); and on every track a run's header tier is derived
+  from its resolved per-result tiers (the feature suite folds *all* contests, not a looser
+  any-competitor predicate), so it can never print a higher tier than any contest earned.
+- **Robustness:** a feature contender that errors at runtime now degrades to a *skip* (never crashes the
+  suite) and the contest drops to Static; feature contests use `run_sync` (safe inside an event loop)
+  instead of bare `asyncio.run`; `benchmarks/eval_live.py` reports a clean error on a malformed dataset
+  and always closes its run store; `check_budgets.py` handles an empty budget set; the chart rasterizer
+  guards empty input.
+- **Consistency & dead code:** the new tracks' content hash is named `determinism_digest` to match the
+  model track; `UpliftBenchmark.higher_is_better` (per result *and* in the run-level overall) and
+  `solver_mode` are honoured; the `MMLU-Pro` adapter renders its options on the live path like the other
+  multiple-choice adapters; `UpliftRegistry` gains
+  capability grouping; a dead helper, a stale competitor reference, and a vacuous loop removed; the
+  `FeatureSuiteRun` id now covers every contest, not just the first.
+- **Docs & tests:** stale four-plane references corrected to the three tracks; tests no longer pollute
+  the process-wide registries, and new tests lock the honesty refusal, tier consistency,
+  lower-is-better direction, runtime-crash resilience, and the report/error branches.
+
+## [7.1.0] - 2026-07-01
+
+**The evaluation plane, completed — provenance made legible, Recorded/Live made runnable.**
+`7.0` shipped the open evaluation plane; `7.1` is the fit-and-finish that makes it *legible* and
+*usable end to end*, and reconciles the rest of the benchmark story with it. All additive: no existing
+symbol removed or changed, `API_VERSION` stays `5.0`.
+
+The organizing idea is one honesty contract across **all four** benchmark planes, not just the new
+one. Vincio measures itself with VincioBench (the internal mechanism suite), a competitive suite (vs
+real libraries), an orchestrator-uplift suite (vs the raw model), and the open evaluation plane
+(public benchmarks). Until now only the plane carried a structural provenance tier; the others stated
+their honesty in prose. `7.1` gives every plane a machine-readable **evidence class** — Mechanism
+(Tier-S), Comparative, Uplift, Recorded, Live — so a reader never has to guess whether a number is
+`LIVE`, `STATIC/FABRICATED`, or a self-measurement.
+
+The plane's **Recorded** and **Live** tiers were defined in `7.0` but not runnable out of the box: the
+live path sent a bare question to the model without the multiple-choice options / RAG contexts /
+long-context haystack its scorer looks for, so a live MMLU run would have scored ~0 by a harness bug,
+not model weakness. `7.1` closes that: adapters render a **self-contained prompt** for the live path,
+and a `benchmarks/eval_live.py` harness wires a `ContextApp` to any provider and runs the suite Live
+against a current state-of-the-art model (`claude-opus-4-8`, `gpt-5.2`, `gemini-3-pro`, …) over a real
+dataset — reported, never gated, and never fabricated (it refuses without a real key).
+
+### Added
+
+- **Benchmark provenance manifest & map.** `benchmarks/manifest.json` (generated from the live suite
+  registry by `benchmarks/_manifest.py`) is the machine-readable source of truth for the four planes,
+  the six evidence classes, and the 29-benchmark plane catalog; `benchmarks/PROVENANCE.md` is its
+  human-readable "how real is each number?" map. `tests/test_benchmark_manifest.py` gates freshness and
+  manifest↔registry consistency, and that the S/R/L codes line up with `ProvenanceTier`.
+- **`BenchmarkAdapter.render_prompt(task)`** — the self-contained prompt a *live* solver sees. Overridden
+  by the multiple-choice adapters (lettered options + an answer instruction), RAG faithfulness (the
+  retrieved passages), and RULER (the long context), so a live model can actually answer and the
+  extract-and-match scorer is fair. The offline replay/Tier-S path is unchanged.
+- **`benchmarks/eval_live.py`** — run the plane Live against a SOTA model over a real dataset dir, with
+  honest tier labelling and a hard refusal (no fabrication) when a key or dataset is missing.
+- **`vincio eval suite list [--json]`** — the public-benchmark catalog by niche, each benchmark's primary
+  metric and supported tiers, so the catalog is legible at a glance.
+- **`benchmarks/render_assets.py`** — renders `assets/benchmark-plane.svg` deterministically from the
+  manifest (single source of truth), in the repo's house style; embedded in the README.
+- **`benchmarks/fixtures/README.md`** — states plainly that the fixtures are fabricated miniatures named
+  after real datasets, not real dataset slices.
+
+### Changed
+
+- **README benchmarks section** reframed around the four planes and the S/R/L provenance tiers, with a
+  new open-evaluation-plane subsection (catalog + the generated asset + a Live-SOTA example) and each
+  existing subsection labelled with its evidence class.
+- **Docs navigation** now surfaces the plane: `concepts/open-evaluation-plane.md` under Core concepts and
+  `guides/run-benchmark-suite.md` under Evaluate and improve; `docs/reference/cli.md` documents
+  `eval suite list`; `benchmarks/README.md` and `METHODOLOGY.md` cross-link the plane and the four-plane
+  provenance contract.
+- **Renamed** the VincioBench `breaking_2_0` family to `structural_guarantees` (a stable name for a
+  permanent invariant set), across `vinciobench.py`, `budgets.json`, and `slos.json`.
+
+### Fixed
+
+- `builtin.py`'s catalog docstring said "13 … 16" adapters; the actual catalog is 15 niche + 14 agentic
+  = 29 specs across ten niches.
+
 ## [7.0.0] - 2026-07-01
 
 **The open evaluation plane.** Vincio already shipped an evaluation subsystem for *your* application

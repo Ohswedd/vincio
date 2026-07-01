@@ -1,5 +1,13 @@
 """Orchestrator uplift: what does routing a model *through* Vincio add?
 
+    ▸ This is **Track 2 (Uplift)** of the benchmark platform. The canonical,
+      tested, CI-gated implementation lives in the library
+      (:mod:`vincio.evals.suite.uplift`); run it with ``vincio bench uplift`` or
+      ``python benchmarks/bench.py uplift``. This script is the *extended live-model
+      driver* — it keeps the real-model grounding harness (a dated OpenRouter run,
+      cost-per-correct-answer, the context-rot curve) that the deterministic library
+      track illustrates offline.
+
 This suite answers the question the competitive micro-benchmarks don't: if you
 take the *same model* and call it directly (the way Claude Code, an OpenCode
 agent, or a web chat does) versus calling it through Vincio's context-engineering

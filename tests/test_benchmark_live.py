@@ -48,6 +48,51 @@ async def test_gaia_live_run_with_a_real_agent():
 
 
 @pytest.mark.asyncio
+async def test_live_run_renders_self_contained_mcq_prompt():
+    # The live path must SHOW the model the options a multiple-choice scorer looks
+    # for — a bare question would score ~0 by a harness bug, not model weakness.
+    from vincio.evals.suite.adapters import MMLUAdapter, mmlu_tasks_from_export
+
+    tasks = mmlu_tasks_from_export(
+        [{"id": "q1", "question": "What is 2+2?", "choices": ["3", "4", "5", "6"], "answer": 1}]
+    )
+    seen: dict[str, str] = {}
+
+    async def echo_solver(task):
+        seen["prompt"] = task.prompt   # what a live model would actually receive
+        return "The answer is (B)."    # 'B' == index 1 == "4"
+
+    report = await MMLUAdapter(tasks).run(echo_solver)
+    # The rendered prompt carries the lettered options and an answer instruction.
+    assert "A. 3" in seen["prompt"] and "B. 4" in seen["prompt"]
+    assert "letter" in seen["prompt"].lower()
+    # And so the identical extract-and-match scorer grades it correctly.
+    assert report.success_rate == 1.0
+    # The *scored* task keeps its original terse prompt (options live in inputs).
+    assert tasks[0].prompt == "What is 2+2?"
+
+
+@pytest.mark.asyncio
+async def test_live_run_renders_rag_context_into_prompt():
+    from vincio.evals.benchmarks import BenchmarkTask
+    from vincio.evals.suite.adapters import RAGFaithfulnessAdapter
+
+    task = BenchmarkTask(
+        id="r1", prompt="When was the API released?",
+        inputs={"contexts": ["The API was released in March 2024 with SSO support."]},
+    )
+    seen: dict[str, str] = {}
+
+    async def echo_solver(t):
+        seen["prompt"] = t.prompt
+        return "The API was released in March 2024."
+
+    report = await RAGFaithfulnessAdapter([task]).run(echo_solver)
+    assert "March 2024" in seen["prompt"] and "Context:" in seen["prompt"]
+    assert report.success_rate == 1.0
+
+
+@pytest.mark.asyncio
 async def test_bfcl_live_run_extracts_agent_tool_calls():
     # The agent genuinely calls a tool; the live solver extracts the call from its
     # trajectory and the identical BFCL AST scorer grades it.
