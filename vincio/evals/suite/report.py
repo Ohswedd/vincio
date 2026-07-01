@@ -208,9 +208,15 @@ class SuiteReport:
 
     def to_pdf(self) -> bytes:
         """Render to PDF (requires ``vincio[eval-pdf]`` / reportlab)."""
+        from ...core.errors import GenerationError
         from ...generation import render
 
-        return render(self.to_document(), "pdf").content
+        try:
+            return render(self.to_document(), "pdf").content
+        except GenerationError as exc:  # the reportlab backend is absent
+            raise EvalSuiteError(
+                'PDF reports require reportlab: pip install "vincio[eval-pdf]"'
+            ) from exc
 
     def render(self, fmt: str = "markdown") -> str | bytes:
         """Render to ``fmt`` (``markdown`` / ``html`` / ``json`` / ``csv`` / ``pdf``)."""
