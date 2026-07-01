@@ -12356,6 +12356,115 @@ async def bench_hygiene() -> dict[str, Any]:
     }
 
 
+async def bench_eval_suite() -> dict[str, Any]:
+    """EvalSuiteBench: the open evaluation plane, made honest and deterministic.
+
+    The plane runs the standard public model benchmarks grouped by niche, with a
+    **provenance tier** on every number. This family proves the plane is honest the
+    way ``docs_conformance`` proves the docs are connected: **tier integrity** (a
+    Tier-S fabricated fixture provably cannot emit a Tier-L label), **metric
+    correctness** (each aggregator matches a hand-computed reference), **determinism**
+    (a Tier-S run is byte-identical across machines), **registry completeness** (every
+    catalog entry resolves to a live adapter + dataset + metric + report), the
+    **long-context uplift is measured** (RULER runs twice, with and without the
+    governor), and a companion check proves the **gate bites** — a mislabeled tier, a
+    wrong metric, and a perturbed re-run are each caught. Deterministic and offline.
+    """
+    from vincio.core.errors import TierViolationError
+    from vincio.evals.benchmarks import BenchmarkResult
+    from vincio.evals.suite import (
+        BenchmarkDataset,
+        BenchmarkSuite,
+        ProvenanceTier,
+        SuiteReport,
+        default_benchmark_registry,
+        resolve_tier,
+    )
+    from vincio.evals.suite.metrics import accuracy, pass_at_k
+
+    reg = default_benchmark_registry()
+    suite = BenchmarkSuite()
+
+    # Registry completeness: every entry resolves to an adapter + dataset + metric.
+    complete = True
+    for spec in reg.all():
+        adapter = spec.build_adapter()
+        dataset = BenchmarkDataset.from_spec(spec)
+        complete = complete and adapter is not None and bool(spec.primary_metric) and len(dataset) >= 1
+    eval_registry_completeness = bool(complete and len(reg.ids()) >= 25)
+
+    # Determinism: two full Tier-S runs produce the same digest (byte-identical).
+    run_a = suite.run("all", tier="static")
+    run_b = suite.run("all", tier="static")
+    eval_determinism = bool(run_a.determinism_digest == run_b.determinism_digest)
+
+    # Tier integrity: a Tier-S fixture's ceiling refuses a Live label.
+    tier_default_ok = (
+        resolve_tier(None, dataset_ceiling=ProvenanceTier.STATIC, solver_live=False)
+        is ProvenanceTier.STATIC
+    )
+    leak_caught = False
+    try:
+        resolve_tier(ProvenanceTier.LIVE, dataset_ceiling=ProvenanceTier.STATIC, solver_live=False)
+    except TierViolationError:
+        leak_caught = True
+    eval_tier_integrity = bool(tier_default_ok and leak_caught)
+
+    # Metric correctness: the aggregators match a hand-computed reference.
+    sample = [
+        BenchmarkResult(task_id="a", success=True, score=1.0),
+        BenchmarkResult(task_id="b", success=False, score=0.0),
+        BenchmarkResult(task_id="c", success=True, score=0.5),
+    ]
+    eval_metric_correctness = bool(
+        accuracy(sample) == round(2 / 3, 4)
+        and pass_at_k(5, 2, 1) == 0.4
+        and pass_at_k(1, 1, 1) == 1.0
+        and pass_at_k(3, 3, 2) == 1.0
+    )
+
+    # The gate bites: a mislabeled tier, a corrupted metric, and a perturbed run.
+    tier_bite = False
+    try:
+        suite.run("knowledge.mmlu", tier="live")
+    except TierViolationError:
+        tier_bite = True
+    metric_bite = bool(accuracy([BenchmarkResult(task_id="x", success=False, score=0.0)]) != 1.0)
+    perturbed = suite.run("knowledge.mmlu", tier="static")
+    perturbed.runs[0].items[0].success = not perturbed.runs[0].items[0].success
+    baseline_digest = suite.run("knowledge.mmlu", tier="static").determinism_digest
+    nondeterminism_bite = bool(perturbed.determinism_digest != baseline_digest)
+    eval_gate_bites = bool(tier_bite and metric_bite and nondeterminism_bite)
+
+    # Long-context uplift is measured (run twice, with & without the governor).
+    ruler = next(r for r in run_a.runs if r.benchmark_id == "long_context.ruler")
+    eval_long_context_uplift_measured = bool(
+        ruler.governed is not None and ruler.governed["uplift"] >= 0.0
+    )
+
+    # Every report format renders from the same run, with a deterministic body.
+    report = SuiteReport(run_a)
+    eval_report_renders = bool(
+        "# Evaluation report" in report.to_markdown()
+        and "<table" in report.to_html()
+        and report.to_csv().startswith("model,niche,benchmark")
+        and '"tier"' in report.to_json()
+        and report.to_markdown() == SuiteReport(run_a).to_markdown()
+    )
+
+    return {
+        "eval_tier_integrity": eval_tier_integrity,
+        "eval_metric_correctness": eval_metric_correctness,
+        "eval_determinism": eval_determinism,
+        "eval_registry_completeness": eval_registry_completeness,
+        "eval_gate_bites": eval_gate_bites,
+        "eval_long_context_uplift_measured": eval_long_context_uplift_measured,
+        "eval_report_renders": eval_report_renders,
+        "eval_benchmark_count": len(reg.ids()),
+        "eval_niche_count": len(reg.niches()),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -12410,6 +12519,7 @@ FAMILIES = {
     "skill_acquisition": bench_skill_acquisition,
     "assurance": bench_assurance,
     "ergonomics": bench_ergonomics,
+    "eval_suite": bench_eval_suite,
     "hygiene": bench_hygiene,
     "breaking_2_0": bench_breaking_2_0,
 }

@@ -282,6 +282,7 @@ _Make it better and cheaper: cost, evaluation, self-improvement, routing, cachin
 - `app.aflush_online` — Await any in-flight online evaluations (for tests and shutdown).
 - `app.agate_swap` — Gate a model swap on replayed golden traces + an eval/cost/latency/ behavioral diff with statistical backing. Returns a :class:`~vincio.evals.swap.SwapVerdict`.
 - `app.aswap_regression` — Swap only the model on a fixed dataset and return a statistically grounded :class:`~vincio.evals.swap.SwapRegressionReport`.
+- `app.benchmark_suite` — Run the open evaluation plane over this app and return a ``SuiteRun``.
 - `app.calibrate_judge` — Reflectively tune an LLM judge's evaluation steps for κ agreement.
 - `app.canary` — Ramp ``percent``% of live traffic onto ``candidate_model`` with online scoring and auto-rollback to the primary (and prompt-registry head) on regression. Returns the :class:`~vincio.providers.shadow.CanaryRouter`, which also becomes the app's provider.
 - `app.cost_report` — Roll up attributed model cost by ``tenant``/``feature``/``user``/ ``model``/``provider``/``run`` (returns a :class:`CostReport`).
@@ -343,7 +344,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (539 public symbols)
+## Public API (549 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -386,6 +387,10 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `BehaviorEvent(**data)` — One observable step in an agent's trajectory.
 - `BehaviorSpec(**data)` — A temporal-logic-lite property over an event trajectory, as plain data.
 - `BenchmarkAdapter(tasks=…, fixture_path=…)` — Base contract for a leaderboard adapter.
+- `BenchmarkDataset(**data)` — A pinned set of :class:`~vincio.evals.benchmarks.BenchmarkTask`s and its provenance tier ceiling.
+- `BenchmarkRegistry(with_builtins=…)` — A niche-grouped catalog of :class:`BenchmarkSpec`s.
+- `BenchmarkSpec(**data)` — One catalog entry: a benchmark, the adapter that scores it, and its provenance.
+- `BenchmarkSuite(registry=…, concurrency=…, seed=…, checkpoint_dir=…)` — Run benchmarks over a model or app, deterministically and resumably.
 - `BeneficiaryClaim(**data)` — One beneficiary's bounded claim on the poster's held capital.
 - `BindingCandidate(**data)` — One ranked candidate for a capability binding, the decision's evidence.
 - `BindingWeights(**data)` — How a candidate's signals combine into one ranking score.
@@ -582,6 +587,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `Keyring(document, seeds)` — Holds an identity's private keys and maintains its signed rotation chain.
 - `LLMLinguaCompressor(scorer=…, min_keep_ratio=…, coarse_overshoot=…)` — Token-importance compressor (callable, drop-in for ``extractive_compress``).
 - `LawfulBasis(*args, **kwds)` — GDPR Article 6(1) lawful bases for processing.
+- `Leaderboard(**data)` — A ranked comparison of models over a shared benchmark set.
 - `LearnedSemanticCache(embedder, policy=…, calibration=…, clock=…)` — Bounded, calibrated, auditable near-miss response cache.
 - `LearnedSkill(**data)` — A verified, content-addressed, versioned, composable learned procedure.
 - `LearnedSkillLibrary(skills=…)` — A content-addressed library of learned skills with versioning and dedup.
@@ -651,6 +657,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `PrometheusExporter(namespace=…)` — Scrape-friendly Prometheus metrics for the served plane.
 - `PromptSpec(**data)` — Declarative prompt definition compiled to an AST.
 - `ProvenanceManifest(**data)` — A C2PA-style content-provenance manifest for AI-generated output.
+- `ProvenanceTier(*args, **kwds)` — How real a benchmark number is — ordered ``STATIC < RECORDED < LIVE``.
 - `Purpose(*args, **kwds)` — Why personal data is processed (GDPR Art. 5(1)(b) purpose limitation).
 - `QueryPlan(**data)` — A schema-grounded, read-only-verified query that has **not yet run**.
 - `QueryResult(**data)` — A query's result, schema-bearing and **cell-level cited**.
@@ -692,6 +699,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `RunConfig(**data)` — Per-run overrides (A2).
 - `RunHandle(task)` — Handle to an in-flight run started by :meth:`ContextApp.submit`.
 - `RunResult(**data)` — Result of a ContextApp run.
+- `RunStore(dsn=…)` — Persist and query :class:`SuiteRun`s over SQLite (default) or Postgres.
 - `RunStreamEvent(**data)` — Event emitted by the streaming run flow (``ContextApp.astream``).
 - `RuntimeMonitor(specs)` — Checks a :class:`BehaviorSpec` set against a trajectory, step-by-step.
 - `Saga(**data)` — A cross-org compensating workflow: an ordered list of steps.
@@ -746,6 +754,8 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `StreamWindow(**data)` — A windowing policy over an unbounded event stream, carrying the streaming analogues of the data plane's batch primitives.
 - `SubgraphScheduler(workers=…, store=…, coordinator=…, lease_ttl_s=…, budget=…, deadline_s=…, clock=…)` — Runs independent sub-graphs concurrently under a fair-share budget + SLA.
 - `SubgraphTask(graph, input=…, id=…, thread_id=…, weight=…)` — One independent sub-graph to schedule.
+- `SuiteReport(run, title=…, cite_failures=…)` — Render one :class:`SuiteRun` to Markdown / HTML / JSON / CSV / PDF.
+- `SuiteRun(**data)` — A whole suite run: one model over a set of benchmarks at one tier.
 - `SwapGate(app, metrics=…, quality_metric=…, gates=…, alpha=…, drift_threshold=…, behavior_threshold=…, repeats=…, flake_quarantine=…)` — Gate a model/provider change on replayed golden traces + an eval/cost/ latency/behavioral diff with statistical backing.
 - `SwapVerdict(**data)` — PASS / FAIL verdict for promoting a model into the live path.
 - `SynthesizedProgram(**data)` — A verified transform paired with the certificate proving its properties.
@@ -867,6 +877,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `rag(sources=…, provider=…, model=…, name=…, grounded=…, evaluators=…, role=…, objective=…, rules=…, output_schema=…, chunking=…, retrieval=…, app=…, config=…)` — Build a grounded-RAG question answerer in one expression.
 - `reconcile(a, b, tolerance=…)` — Tie two independently-produced settlement records out against each other.
 - `record_transitions(env, action_sequences, include_failures=…)` — Drive ``env`` through each action sequence, recording every tool step.
+- `register_benchmark(spec, replace=…)` — Register a benchmark on the default registry — the public extension point.
 - `resolve_insolvency(custody, liabilities, schedule=…, poster=…, completeness=…, solvency=…, set_off=…, as_of=…, verifier=…)` — Distribute a poster's proven reserves across its ranked liabilities into a resolution.
 - `retrieval_regression(search_fn, golden, config, store=…, metrics=…, gates=…, top_k=…, alpha=…, min_delta=…, k_values=…)` — Evaluate ``config`` on ``golden``, record an artifact, and gate vs. baseline.
 - `revoke_attestation(attestation, subject=…, issuer=…, replacement=…, reason=…)` — Issue a revocation withdrawing a prior attestation by its hash.
@@ -895,7 +906,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 
 - `API_VERSION` — str(object='') -> str str(bytes_or_buffer[, encoding[, errors]]) -> str
 
-## Error catalog (96 codes)
+## Error catalog (98 codes)
 
 Every error derives from `VincioError` with a stable `.code`, a `.remediation`, and a `.docs_url`. Branch on `.code`.
 
@@ -961,6 +972,8 @@ Every error derives from `VincioError` with a stable `.code`, a `.remediation`, 
 - `DATASET_ERROR` — Dataset error. The dataset could not be loaded or is malformed. Validate the JSONL rows against the expected case schema.
 - `GATE_FAILED` — Quality gate failed. A CI gate threshold was not met (see `.failures`). Fix the regression, or adjust the gate expression if the new baseline is intended.
 - `BENCHMARK_ERROR` — Benchmark adapter error. A benchmark adapter failed to load or score. Confirm the task-set hash and that the recorded fixtures or live solver are wired correctly.
+- `EVAL_SUITE_ERROR` — Evaluation-suite error. An open-evaluation-plane run failed. Check the benchmark id resolves in the registry and that its dataset, metric, and report format are valid.
+- `TIER_VIOLATION` — Provenance-tier violation. A run executed under a lower provenance tier cannot be reported under a higher tier's label. Run the benchmark at a tier its dataset and solver support, or request the tier the inputs actually justify.
 - `OPTIMIZATION_ERROR` — Optimization error. An optimization run failed. Check the dataset, fitness weights, and that the prompt spec is valid before retrying.
 - `REWARD_ERROR` — Reward derivation error. A verifiable reward could not be derived from the sample. Provide the signal the reward needs (an environment verification, adapter gold, or judge inputs) before calling app.learn.
 - `CACHE_ERROR` — Cache error. A cache backend failed. Verify the cache URL in `storage.cache`; an in-memory cache (`memory://`) always works as a fallback.

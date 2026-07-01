@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **207** public `ContextApp` methods. It is gated for coverage:
+It covers **208** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -530,6 +530,16 @@ Concept: [Evaluation & continuous quality](../concepts/evals.md) · Guides: [run
 | `app.eval_target` | EvalRunner adapter: run one case through the app. |
 | `app.evaluate` | Evaluate the app over a dataset and return an :class:`EvalReport`. |
 | `app.experiment` | A production-style A/B over prompt/model/config variants of this app, compared on eval metrics *and* cost with significance tests. Returns an :class:`~vincio.evals.experiments.Experiment` handle; if ``variants`` and ``dataset`` are given, every variant is evaluated first:: |
+
+### The open evaluation plane
+
+One pluggable harness for the standard public model benchmarks (MMLU, GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by niche, scored by reused metrics, and reported the same way for every model and version — with a provenance tier on every number so a fabricated fixture can never print a live score. In-process and offline-reproducible; never a hosted leaderboard.
+
+Concept: [The open evaluation plane](../concepts/open-evaluation-plane.md) · Guides: [run a benchmark suite](../guides/run-benchmark-suite.md) · Examples: [16_open_evaluation_plane.py](../../examples/16_open_evaluation_plane.py) · Reference: [Optimization](api.md#optimization)
+
+| Method | What it does |
+|---|---|
+| `app.benchmark_suite` | Run the open evaluation plane over this app and return a ``SuiteRun``. |
 
 ### Self-improvement
 

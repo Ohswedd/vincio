@@ -517,6 +517,23 @@ current, and that the gate *bites* — a synthetic broken link, an unmapped verb
 and a stale block are each caught. Run `vincio docs check` to reproduce it
 offline.
 
+## Open evaluation plane
+
+| SLO | Target | VincioBench metric (enforced by) |
+|---|---|---|
+| The provenance tiers are airtight: a Tier-S fabricated fixture can never print a Tier-R or Tier-L label, so a result's tier is the tier its inputs actually justify and a static mechanism check can never masquerade as a live score. | true | `families.eval_suite.eval_tier_integrity` |
+| Two runs of the evaluation suite over the same fixtures produce a byte-identical result digest, so a Tier-S/Tier-R score is reproducible on any machine. | true | `families.eval_suite.eval_determinism` |
+| Every benchmark in the catalog resolves end to end — a live adapter, a dataset, a primary metric, and a report — so a catalog entry can never be a dangling name that looks runnable but is not. | true | `families.eval_suite.eval_registry_completeness` |
+| The plane's gates are non-vacuous: a mislabeled provenance tier, a wrong metric value, and a perturbed re-run are each provably caught. | true | `families.eval_suite.eval_gate_bites` |
+
+The [open evaluation plane](../concepts/open-evaluation-plane.md) runs the standard public
+model benchmarks grouped by niche, with a provenance tier on every number. The
+`eval_suite` VincioBench family proves the plane is honest the way
+`docs_conformance` proves the docs are connected: tier integrity, metric
+correctness, determinism, registry completeness, the measured long-context
+governor uplift, and a gate-bites companion. Run `vincio eval suite run all` to
+reproduce it offline.
+
 ## Public-surface hygiene
 
 | SLO | Target | VincioBench metric (enforced by) |

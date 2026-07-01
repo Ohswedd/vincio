@@ -212,6 +212,7 @@ high-level `ContextApp`, or reach for any engine directly.
 **Output, evaluation & observability**
 - Structured output: Pydantic contracts, constrained decoding, streaming validation with early abort, bounded self-correction that repairs structure only (never invents facts), and DSPy-style typed signatures.
 - Evaluation: golden datasets, 30+ metrics, deterministic / model / G-Eval judges, synthetic data, red-teaming, trajectory & tool-use scoring, drift detection, regression gates, and a `pytest` plugin.
+- Open evaluation plane: one pluggable harness for the standard public benchmarks (MMLU, GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by niche, with an enforced **provenance tier** (Static / Recorded / Live) on every number; deterministic, resumable runs; Markdown / HTML / JSON / CSV / PDF reports; a ranked leaderboard with charts; and a run store with model-version diffs. In-process, never a hosted leaderboard.
 - Observability: full trace span trees, OpenTelemetry export, a local trace viewer, a versioned prompt registry, and per-run cost tracking — no account or hosted backend required.
 
 **The closed loop**
@@ -408,6 +409,7 @@ pip install "vincio[server]" && cd examples/applications/rag_service && uvicorn 
 vincio init my-project --template rag   # scaffold config + app + golden set
 vincio run app.py --input "..."         # run an app
 vincio eval run golden.jsonl            # run an eval suite with CI gates + baseline compare
+vincio eval suite run knowledge.mmlu    # run a public benchmark, tier-honest, offline
 vincio trace view trace_123             # TUI trace tree with scores + feedback
 vincio loop run --app app.py --gate groundedness=">= 0.8"   # one closed-loop cycle
 vincio docs check                       # gate the docs graph (links, coverage, llms.txt freshness)

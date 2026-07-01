@@ -62,6 +62,7 @@ __all__ = [
     "InfiAgentDABenchAdapter",
     "DABenchAdapter",
     "BENCHMARK_ADAPTERS",
+    "compute_task_set_hash",
     "load_benchmark",
     "available_benchmarks",
     # live-run path: drive a real Vincio agent and load official task sets
@@ -92,6 +93,18 @@ class BenchmarkError(VincioError):
 # A solver turns a task into an adapter-specific output (a string answer, a
 # patch's test outcome, a list of actions, …). May be sync or async.
 Solver = Callable[["BenchmarkTask"], "Any | Awaitable[Any]"]
+
+
+def compute_task_set_hash(tasks: list[BenchmarkTask]) -> str:
+    """A stable content hash over ``(id, gold)`` of every task in ``tasks``.
+
+    The canonical pin shared by :meth:`BenchmarkAdapter.task_set_hash` and the
+    open-evaluation-plane dataset layer: a changed / added / removed task changes
+    the hash, so a silent task-set drift is caught against a recorded value.
+    """
+    canonical = [{"id": t.id, "gold": t.gold} for t in sorted(tasks, key=lambda t: t.id)]
+    blob = json.dumps(canonical, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 
 
 class BenchmarkTask(BaseModel):
@@ -189,11 +202,7 @@ class BenchmarkAdapter(ABC):
         Pins the task set: a changed/added/removed task changes the hash, so a
         silent task-set drift is caught against a recorded value.
         """
-        canonical = [
-            {"id": t.id, "gold": t.gold} for t in sorted(self._tasks, key=lambda t: t.id)
-        ]
-        blob = json.dumps(canonical, sort_keys=True, default=str, separators=(",", ":"))
-        return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+        return compute_task_set_hash(self._tasks)
 
     def _load_fixture(self, path: str | Path) -> list[BenchmarkTask]:
         data = json.loads(Path(path).read_text(encoding="utf-8"))

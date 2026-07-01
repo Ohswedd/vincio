@@ -23,7 +23,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "6.6.0"
+    assert vincio.__version__ == "7.0.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -45,10 +45,15 @@ def test_version_and_api_contract():
     # & standing guard: the reachability rubric mechanized so a dead-but-resolvable
     # public symbol fails the build, the pure helpers it surfaced now exercised by
     # tests, the structurally-unexercisable surface declared in a frozen baseline,
-    # and the whole hygiene family gated in CI) — all additive, with **no change to
-    # the frozen top-level surface** (the new entry points are ContextApp verbs and
-    # subpackage-public types), so the contract stays "5.0" while the package
-    # version advances to 6.6.0.
+    # and the whole hygiene family gated in CI). 7.0 opens the open evaluation plane
+    # — one pluggable harness for the standard public model benchmarks, with a
+    # provenance tier on every number — delivered **additively**: ten new top-level
+    # entry points (`BenchmarkSuite`, `BenchmarkRegistry`, `BenchmarkSpec`,
+    # `register_benchmark`, `BenchmarkDataset`, `ProvenanceTier`, `SuiteRun`,
+    # `SuiteReport`, `Leaderboard`, `RunStore`) plus the `app.benchmark_suite` verb,
+    # behind opt-in extras, with **no existing symbol removed or changed**. The
+    # surface grows by re-freezing it, never by breaking it, so the API contract
+    # generation stays "5.0" while the package version advances to 7.0.0.
     assert API_VERSION == "5.0"
 
 

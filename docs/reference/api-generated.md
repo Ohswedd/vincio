@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**539** public symbols.
+**549** public symbols.
 
 ## Classes
 
@@ -157,6 +157,22 @@ A temporal-logic-lite property over an event trajectory, as plain data.
 ### `BenchmarkAdapter(tasks=…, fixture_path=…)`
 
 Base contract for a leaderboard adapter.
+
+### `BenchmarkDataset(**data)`
+
+A pinned set of :class:`~vincio.evals.benchmarks.BenchmarkTask`s and its provenance tier ceiling.
+
+### `BenchmarkRegistry(with_builtins=…)`
+
+A niche-grouped catalog of :class:`BenchmarkSpec`s.
+
+### `BenchmarkSpec(**data)`
+
+One catalog entry: a benchmark, the adapter that scores it, and its provenance.
+
+### `BenchmarkSuite(registry=…, concurrency=…, seed=…, checkpoint_dir=…)`
+
+Run benchmarks over a model or app, deterministically and resumably.
 
 ### `BeneficiaryClaim(**data)`
 
@@ -942,6 +958,10 @@ Token-importance compressor (callable, drop-in for ``extractive_compress``).
 
 GDPR Article 6(1) lawful bases for processing.
 
+### `Leaderboard(**data)`
+
+A ranked comparison of models over a shared benchmark set.
+
 ### `LearnedSemanticCache(embedder, policy=…, calibration=…, clock=…)`
 
 Bounded, calibrated, auditable near-miss response cache.
@@ -1218,6 +1238,10 @@ Declarative prompt definition compiled to an AST.
 
 A C2PA-style content-provenance manifest for AI-generated output.
 
+### `ProvenanceTier(*args, **kwds)`
+
+How real a benchmark number is — ordered ``STATIC < RECORDED < LIVE``.
+
 ### `Purpose(*args, **kwds)`
 
 Why personal data is processed (GDPR Art. 5(1)(b) purpose limitation).
@@ -1381,6 +1405,10 @@ Handle to an in-flight run started by :meth:`ContextApp.submit`.
 ### `RunResult(**data)`
 
 Result of a ContextApp run.
+
+### `RunStore(dsn=…)`
+
+Persist and query :class:`SuiteRun`s over SQLite (default) or Postgres.
 
 ### `RunStreamEvent(**data)`
 
@@ -1597,6 +1625,14 @@ Runs independent sub-graphs concurrently under a fair-share budget + SLA.
 ### `SubgraphTask(graph, input=…, id=…, thread_id=…, weight=…)`
 
 One independent sub-graph to schedule.
+
+### `SuiteReport(run, title=…, cite_failures=…)`
+
+Render one :class:`SuiteRun` to Markdown / HTML / JSON / CSV / PDF.
+
+### `SuiteRun(**data)`
+
+A whole suite run: one model over a set of benchmarks at one tier.
 
 ### `SwapGate(app, metrics=…, quality_metric=…, gates=…, alpha=…, drift_threshold=…, behavior_threshold=…, repeats=…, flake_quarantine=…)`
 
@@ -2071,6 +2107,10 @@ Tie two independently-produced settlement records out against each other.
 ### `record_transitions(env, action_sequences, include_failures=…)`
 
 Drive ``env`` through each action sequence, recording every tool step.
+
+### `register_benchmark(spec, replace=…)`
+
+Register a benchmark on the default registry — the public extension point.
 
 ### `resolve_insolvency(custody, liabilities, schedule=…, poster=…, completeness=…, solvency=…, set_off=…, as_of=…, verifier=…)`
 

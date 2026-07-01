@@ -2347,6 +2347,33 @@
     "families.docs_conformance.docs_facets": {
       "eq": 6
     },
+    "families.eval_suite.eval_tier_integrity": {
+      "eq": true
+    },
+    "families.eval_suite.eval_metric_correctness": {
+      "eq": true
+    },
+    "families.eval_suite.eval_determinism": {
+      "eq": true
+    },
+    "families.eval_suite.eval_registry_completeness": {
+      "eq": true
+    },
+    "families.eval_suite.eval_gate_bites": {
+      "eq": true
+    },
+    "families.eval_suite.eval_long_context_uplift_measured": {
+      "eq": true
+    },
+    "families.eval_suite.eval_report_renders": {
+      "eq": true
+    },
+    "families.eval_suite.eval_benchmark_count": {
+      "gte": 25
+    },
+    "families.eval_suite.eval_niche_count": {
+      "gte": 10
+    },
     "families.hygiene.surface_consistency": {
       "eq": true
     },

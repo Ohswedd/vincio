@@ -75,6 +75,8 @@ __all__ = [
     "EvalError",
     "DatasetError",
     "GateFailedError",
+    "EvalSuiteError",
+    "TierViolationError",
     "OptimizationError",
     "CacheError",
     "SecurityError",
@@ -646,6 +648,22 @@ class GateFailedError(EvalError):
     def __init__(self, message: str, *, failures: list[Any] | None = None, **kw: Any) -> None:
         super().__init__(message, **kw)
         self.failures = failures or []
+
+
+class EvalSuiteError(EvalError):
+    """The open evaluation plane: a benchmark-suite registry, dataset, engine, or
+    report error."""
+
+    code = "EVAL_SUITE_ERROR"
+
+
+class TierViolationError(EvalSuiteError):
+    """A provenance-tier integrity breach: a run executed under a lower tier
+    (Static / Recorded) would be reported under a higher tier's label (Recorded /
+    Live). The engine refuses, so a fabricated fixture can never masquerade as a
+    live score."""
+
+    code = "TIER_VIOLATION"
 
 
 # --- optimization ------------------------------------------------------------

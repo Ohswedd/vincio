@@ -4,6 +4,66 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.0.0] - 2026-07-01
+
+**The open evaluation plane.** Vincio already shipped an evaluation subsystem for *your* application
+(golden datasets, 30+ metrics, calibrated judges) and a three-tier internal benchmark suite (VincioBench)
+that proves the library's own mechanisms. This release adds the third thing: one coherent, pluggable
+harness for running the **standard public model benchmarks** — MMLU, GPQA, GSM8K, HumanEval, IFEval,
+TruthfulQA, RULER, and more — grouped by eleven niches behind the unchanged `BenchmarkAdapter` contract,
+scored by reused metrics, and reported the same way for every model and every model *version*. It runs
+in-process over your own store and never becomes a hosted leaderboard. Delivered **additively**: ten new
+top-level entry points and the `app.benchmark_suite` verb, behind opt-in extras, with **no existing
+symbol removed or changed**, so `API_VERSION` stays `5.0` and a clean upgrade needs zero source changes.
+The 7.0 major marks the milestone, not a break.
+
+The organizing idea is the **provenance tier** on every number, made an enforced contract rather than a
+convention: **S — Static** (a bundled, *fabricated* fixture, reproducible/byte-identical, gates CI),
+**R — Recorded** (a hash-pinned slice of the real dataset replayed against recorded outputs, reproducible
+from the pin, gates CI), and **L — Live** (the full dataset against a live model, reported, never gated).
+The engine computes the tier a run may claim from the dataset's provenance and whether the solver is live,
+and **refuses** to let a lower tier print a higher tier's label — the project's honesty culture made
+structural. Two differentiators fall out of the reuse: prompt injection reports *contained vs compromised*
+(not merely attack-success), and every long-context benchmark runs twice, with and without the
+`ContextGovernor`, so the uplift is measured, not assumed.
+
+### Added
+
+- **`vincio/evals/suite/` — the open evaluation plane (eight layers).** A new subpackage composing
+  subsystems Vincio already ships: `BenchmarkSuite` (the deterministic, concurrent, resumable core engine
+  with seeded sampling and checkpoint/resume), `BenchmarkRegistry` + `register_benchmark` (the niche-grouped
+  catalog and the new `vincio.benchmarks` entry-point plugin group), `BenchmarkDataset` (content-addressed,
+  hash-pinned task sets with an optional Hugging Face fetch), `ProvenanceTier` + `resolve_tier` (the tier
+  contract), `SuiteRun`/`BenchmarkRun`/`ItemResult` (the tiered result models), `SuiteReport` (Markdown /
+  HTML / JSON / CSV / PDF renderers that cite the exact scored items), `Leaderboard` (model and
+  model-version ranking), the visualization builders (`leaderboard_chart`, `radar_chart`, `heatmap_chart`,
+  `confusion_matrix_chart`, `trend_chart` — Vega-Lite by default), and `RunStore` (run history,
+  `compare_runs`, `model_version_diff` over SQLite or Postgres).
+- **Thirteen niche adapters for the standard public benchmarks**, joining the 16 re-homed agentic /
+  text-to-query / data-analysis adapters under the unchanged `BenchmarkAdapter` contract: `MMLUAdapter`,
+  `GPQAAdapter`, `ARCAdapter`, `HellaSwagAdapter`, `CEvalAdapter`, `CMMLUAdapter`, `TruthfulQAAdapter`,
+  `GSM8KAdapter`, `MATHAdapter`, `HumanEvalAdapter`, `MBPPAdapter`, `IFEvalAdapter`, `PromptInjectionAdapter`,
+  `RAGFaithfulnessAdapter`, and `RULERAdapter`, each scoring the benchmark's own verifiable criterion with a
+  bundled Tier-S fabricated fixture and an official-export loader.
+- **`app.benchmark_suite(...)`** — the thin `ContextApp` front that runs the plane over an app and audits
+  the run on the hash-chained chain. `app.evaluate(...)` (golden-dataset eval → `EvalReport`) is unchanged.
+- **Ten new top-level symbols** in `vincio.__all__`: `BenchmarkSuite`, `BenchmarkRegistry`, `BenchmarkSpec`,
+  `register_benchmark`, `BenchmarkDataset`, `ProvenanceTier`, `SuiteRun`, `SuiteReport`, `Leaderboard`,
+  `RunStore`.
+- **CLI: `vincio eval suite {run,leaderboard,report,compare}`** — a sub-group beside the existing
+  application-eval commands (`vincio eval run`, `vincio eval report`).
+- **VincioBench `eval_suite` family + SLOs.** Proves the plane is honest the way `docs_conformance` proves
+  the docs are connected: tier integrity, metric correctness, determinism (a Tier-S run is byte-identical),
+  registry completeness, the measured long-context uplift, the report renderers, and a gate-bites companion
+  (a mislabeled tier, a wrong metric, and a perturbed run are each caught), with four published SLOs.
+- **Opt-in extras** keep the default dependency-free: `vincio[eval-datasets]` (Hugging Face `datasets`),
+  `vincio[eval-viz]` (matplotlib PNG), `vincio[eval-pdf]` (reportlab), `vincio[eval-store]` (Postgres —
+  SQLite is stdlib).
+- **Two new error codes** — `EVAL_SUITE_ERROR` and `TIER_VIOLATION` (a lower tier refusing a higher tier's
+  label) — each with a catalog entry and remediation.
+- Concept page `docs/concepts/open-evaluation-plane.md`, guide `docs/guides/run-benchmark-suite.md`, and the
+  runnable `examples/16_open_evaluation_plane.py`, wired into the docs graph.
+
 ## [6.6.0] - 2026-06-30
 
 **Audit completion & standing guard — the hardening line (6.x) closes.** 6.0–6.5 acted on the core plane

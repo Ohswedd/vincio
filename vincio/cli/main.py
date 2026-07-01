@@ -21,6 +21,10 @@ Commands::
     vincio eval dataset golden.jsonl [--group-by-session]
     vincio eval drift baseline.json current.json [--threshold 0.1]
     vincio eval annotate labels.jsonl [--threshold 0.6] [--bins 2]
+    vincio eval suite run knowledge.mmlu [--tier static] [--format markdown]
+    vincio eval suite leaderboard --store runs.db
+    vincio eval suite report <run.json> [--format pdf --output report.pdf]
+    vincio eval suite compare <runA> <runB> --store runs.db
     vincio prompt lint prompts/
     vincio prompt compile prompt.yaml
     vincio trace show <trace_id>
@@ -999,6 +1003,105 @@ def cmd_eval_report(args: argparse.Namespace) -> int:
             return _fail(f"no reports in {path}")
         path = candidates[-1]
     EvalReport.load(path).print_summary()
+    return 0
+
+
+# -- the open evaluation plane -------------------------------------------------
+
+
+def cmd_eval_suite_run(args: argparse.Namespace) -> int:
+    from ..core.errors import VincioError
+    from ..evals.suite import BenchmarkSuite, RunStore, SuiteReport
+
+    target = _load_app(args.app) if args.app else None
+    suite = BenchmarkSuite(concurrency=args.concurrency)
+    try:
+        run = suite.run(
+            list(args.benchmarks) or ["all"], target=target, tier=args.tier,
+            sample=args.sample, model=getattr(target, "model", None),
+        )
+    except VincioError as exc:
+        return _fail(exc.message)
+    if args.store:
+        RunStore(args.store).save(run, version=args.version)
+    report = SuiteReport(run)
+    if args.format == "text":
+        print(f"suite run {run.run_id} · tier {run.tier.code} · "
+              f"{len(run.runs)} benchmarks · overall {run.overall():.3f}")
+        for r in sorted(run.runs, key=lambda r: r.benchmark_id):
+            line = f"  {r.benchmark_id:34s} {r.tier.code}  {r.primary_metric:16s} {r.primary:.3f}  n={r.n}"
+            if r.governed is not None:
+                line += f"  uplift {r.governed['uplift']:+.3f}"
+            print(line)
+    else:
+        rendered = report.render(args.format)
+        if args.output:
+            report.save(args.output, format=args.format)
+            print(f"saved to {args.output}")
+        elif isinstance(rendered, bytes):
+            return _fail("binary format needs --output")
+        else:
+            print(rendered)
+    return 0
+
+
+def cmd_eval_suite_leaderboard(args: argparse.Namespace) -> int:
+    from ..evals.suite import Leaderboard, RunStore
+
+    store = RunStore(args.store)
+    models = args.model or [r["model"] for r in store.list_runs(limit=args.limit)]
+    runs = []
+    seen: set[str] = set()
+    for model in models:
+        for summary in store.list_runs(model=model, limit=1):
+            if summary["run_id"] not in seen:
+                seen.add(summary["run_id"])
+                runs.append(store.get(summary["run_id"]))
+    store.close()
+    if not runs:
+        return _fail("no runs in the store")
+    board = Leaderboard.from_runs(runs)
+    if args.json:
+        print(json_dumps(board.model_dump(mode="json"), indent=2))
+    else:
+        print(board.to_markdown())
+    return 0
+
+
+def cmd_eval_suite_report(args: argparse.Namespace) -> int:
+    from ..evals.suite import RunStore, SuiteReport, SuiteRun
+
+    if args.store:
+        run = RunStore(args.store).get(args.run)
+    else:
+        run = SuiteRun.model_validate(json.loads(Path(args.run).read_text(encoding="utf-8")))
+    report = SuiteReport(run)
+    if args.output:
+        report.save(args.output, format=args.format)
+        print(f"saved to {args.output}")
+        return 0
+    rendered = report.render(args.format)
+    if isinstance(rendered, bytes):
+        return _fail("binary format needs --output")
+    print(rendered)
+    return 0
+
+
+def cmd_eval_suite_compare(args: argparse.Namespace) -> int:
+    from ..evals.suite import RunStore
+
+    store = RunStore(args.store)
+    diff = store.compare_runs(args.run_a, args.run_b)
+    store.close()
+    if args.json:
+        print(json_dumps(diff, indent=2))
+        return 0
+    print(f"{diff['model_a']} → {diff['model_b']}: overall "
+          f"{diff['overall_from']:.3f} → {diff['overall_to']:.3f} ({diff['overall_delta']:+.3f})")
+    for kind in ("regressions", "improvements"):
+        for row in diff[kind]:
+            print(f"  {kind[:-1]:11s} {row['benchmark']:34s} {row['from']:.3f} → {row['to']:.3f} "
+                  f"({row['delta']:+.3f})")
     return 0
 
 
@@ -1985,6 +2088,41 @@ def build_parser() -> argparse.ArgumentParser:
                                 dest="no_flake_quarantine")
     p_eval_regress.add_argument("--output", default=None, help="save the regression report JSON")
     p_eval_regress.set_defaults(fn=cmd_eval_regress)
+    # the open evaluation plane — standard public benchmarks, niche-grouped, tier-honest
+    p_eval_suite = eval_sub.add_parser("suite", help="the open evaluation plane (public benchmarks)")
+    eval_suite_sub = p_eval_suite.add_subparsers(dest="eval_suite_command", required=True)
+    p_es_run = eval_suite_sub.add_parser("run", help="run a benchmark / niche / all (e.g. knowledge.mmlu)")
+    p_es_run.add_argument("benchmarks", nargs="*", default=["all"],
+                          help="benchmark id, niche, or 'all' (repeatable; default all)")
+    p_es_run.add_argument("--app", default=None, help="app file (needed for tier=live)")
+    p_es_run.add_argument("--tier", default="static", choices=["static", "recorded", "live", "S", "R", "L"])
+    p_es_run.add_argument("--sample", type=int, default=None, help="cap tasks per benchmark")
+    p_es_run.add_argument("--concurrency", type=int, default=8)
+    p_es_run.add_argument("--format", default="text",
+                          choices=["text", "markdown", "html", "json", "csv", "pdf"])
+    p_es_run.add_argument("--output", default=None, help="save the rendered report here")
+    p_es_run.add_argument("--store", default=None, help="RunStore DSN/path to persist the run")
+    p_es_run.add_argument("--version", default="", help="model-version tag for the store")
+    p_es_run.set_defaults(fn=cmd_eval_suite_run)
+    p_es_lb = eval_suite_sub.add_parser("leaderboard", help="rank persisted runs over a benchmark set")
+    p_es_lb.add_argument("--store", required=True, help="RunStore DSN/path")
+    p_es_lb.add_argument("--model", action="append", help="restrict to model (repeatable)")
+    p_es_lb.add_argument("--limit", type=int, default=20)
+    p_es_lb.add_argument("--json", action="store_true", help="emit JSON")
+    p_es_lb.set_defaults(fn=cmd_eval_suite_leaderboard)
+    p_es_report = eval_suite_sub.add_parser("report", help="render a saved suite run")
+    p_es_report.add_argument("run", help="suite-run JSON file (or a RunStore run id with --store)")
+    p_es_report.add_argument("--store", default=None, help="RunStore DSN/path (when 'run' is an id)")
+    p_es_report.add_argument("--format", default="markdown",
+                             choices=["markdown", "html", "json", "csv", "pdf"])
+    p_es_report.add_argument("--output", default=None, help="save the rendered report here")
+    p_es_report.set_defaults(fn=cmd_eval_suite_report)
+    p_es_compare = eval_suite_sub.add_parser("compare", help="diff two persisted suite runs")
+    p_es_compare.add_argument("run_a")
+    p_es_compare.add_argument("run_b")
+    p_es_compare.add_argument("--store", required=True, help="RunStore DSN/path")
+    p_es_compare.add_argument("--json", action="store_true", help="emit JSON")
+    p_es_compare.set_defaults(fn=cmd_eval_suite_compare)
 
     p_prompt = sub.add_parser("prompt", help="prompt tooling")
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", required=True)

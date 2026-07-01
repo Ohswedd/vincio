@@ -6145,6 +6145,69 @@ class ContextApp:
         )
         return runner.run(dataset)
 
+    def benchmark_suite(
+        self,
+        benchmarks: str | list[str] = "all",
+        *,
+        tier: str = "static",
+        sample: int | None = None,
+        datasets: dict[str, Any] | None = None,
+        concurrency: int = 8,
+        model: str | None = None,
+        solver_mode: str | None = None,
+        store: Any | None = None,
+        version: str = "",
+        record: bool = True,
+    ):
+        """Run the open evaluation plane over this app and return a ``SuiteRun``.
+
+        The pluggable harness for the **standard public model benchmarks** (MMLU,
+        GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by niche and
+        reported the same way for every model and version — distinct from
+        :meth:`evaluate`, which scores this app over a golden ``Dataset``. Every
+        number carries a **provenance tier**: the default ``"static"`` replays the
+        bundled fabricated fixtures fully offline (reproducible, gates CI);
+        ``"recorded"`` / ``"live"`` need a per-benchmark
+        :class:`~vincio.evals.suite.BenchmarkDataset` in ``datasets`` (and, for
+        ``"live"``, this app drives the model). The engine **refuses** to let a
+        lower tier print a higher tier's label, and runs each long-context
+        benchmark twice — with and without the context governor — so the uplift is
+        measured::
+
+            run = app.benchmark_suite("knowledge", tier="static")
+            run.overall(); run.niche_scores(); run.determinism_digest
+            from vincio.evals.suite import SuiteReport
+            SuiteReport(run).save("report.md")
+
+        ``benchmarks`` is an id (``"knowledge.mmlu"``), a niche (``"knowledge"``),
+        ``"all"``, or a list. Pass a :class:`~vincio.evals.suite.RunStore` as
+        ``store`` to persist the run (``version`` tags the model version for
+        :meth:`~vincio.evals.suite.RunStore.model_version_diff`). Returns a
+        :class:`~vincio.evals.suite.SuiteRun`.
+        """
+        from ..evals.suite import BenchmarkSuite
+
+        runner = BenchmarkSuite(concurrency=concurrency)
+        run = run_sync(
+            runner.arun(
+                benchmarks, target=self, model=model, tier=tier, sample=sample,
+                datasets=datasets, solver_mode=solver_mode,
+            )
+        )
+        if store is not None:
+            store.save(run, version=version)
+        if record and self.audit is not None:
+            self.audit.record(
+                "benchmark_suite",
+                decision="allow",
+                details={
+                    "run_id": run.run_id, "tier": run.tier.value,
+                    "benchmarks": len(run.runs), "overall": run.overall(),
+                    "gated": run.gated,
+                },
+            )
+        return run
+
     # -- closed loop ---------------------------------------------------------
 
     def improvement_loop(self, **kwargs: Any):
