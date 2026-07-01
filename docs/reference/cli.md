@@ -101,6 +101,26 @@ vincio eval regress DATASET.jsonl --app APP.py --candidate-model Y
     per-metric significance, the cost/latency trade, and worst-regressed slices.
     Exits non-zero on a significant quality regression.
 
+vincio eval suite run [BENCHMARK|NICHE|all]... [--app APP.py] [--tier static|recorded|live]
+        [--sample N] [--concurrency N] [--format text|markdown|html|json|csv|pdf]
+        [--output PATH] [--store DSN] [--version TAG]
+    Run public benchmarks from the open evaluation plane (e.g. knowledge.mmlu, or a
+    whole niche, or all). The default tier `static` replays the bundled fabricated
+    fixtures fully offline; `recorded`/`live` need a dataset (and, for live, --app).
+    Every number carries its provenance tier; a lower tier cannot print a higher
+    tier's label.
+
+vincio eval suite leaderboard --store DSN [--model NAME]... [--limit N] [--json]
+    Rank persisted suite runs (one row per model) over a shared benchmark set.
+
+vincio eval suite report RUN.json|RUN_ID [--store DSN]
+        [--format markdown|html|json|csv|pdf] [--output PATH]
+    Render a saved suite run to any format, citing the exact scored items.
+
+vincio eval suite compare RUN_A RUN_B --store DSN [--json]
+    Diff two persisted suite runs: overall delta plus per-benchmark regressions
+    and improvements.
+
 vincio prompt lint PATH
     Lint prompt spec YAML files (PROMPT001–PROMPT009); exits non-zero on errors.
 

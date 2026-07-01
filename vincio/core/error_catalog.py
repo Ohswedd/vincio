@@ -480,6 +480,19 @@ ERROR_CATALOG: dict[str, ErrorCatalogEntry] = {
             "A benchmark adapter failed to load or score. Confirm the task-set hash "
             "and that the recorded fixtures or live solver are wired correctly.",
         ),
+        _entry(
+            "EVAL_SUITE_ERROR",
+            "Evaluation-suite error",
+            "An open-evaluation-plane run failed. Check the benchmark id resolves in "
+            "the registry and that its dataset, metric, and report format are valid.",
+        ),
+        _entry(
+            "TIER_VIOLATION",
+            "Provenance-tier violation",
+            "A run executed under a lower provenance tier cannot be reported under a "
+            "higher tier's label. Run the benchmark at a tier its dataset and solver "
+            "support, or request the tier the inputs actually justify.",
+        ),
         # --- optimization ---
         _entry(
             "OPTIMIZATION_ERROR",

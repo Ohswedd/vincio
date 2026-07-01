@@ -186,6 +186,18 @@ from .evals.environment import (
     make_retail_environment,
 )
 from .evals.retrieval_eval import RetrievalEvaluator, RetrievalGoldenSet, retrieval_regression
+from .evals.suite import (
+    BenchmarkDataset,
+    BenchmarkRegistry,
+    BenchmarkSpec,
+    BenchmarkSuite,
+    Leaderboard,
+    ProvenanceTier,
+    RunStore,
+    SuiteReport,
+    SuiteRun,
+    register_benchmark,
+)
 from .evals.swap import SwapGate, SwapVerdict, model_swap_regression
 from .generation import (
     CitationContract,
@@ -556,7 +568,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "6.6.0"
+__version__ = "7.0.0"
 
 __all__ = [
     "ContextApp",
@@ -1036,6 +1048,18 @@ __all__ = [
     "make_retail_environment",
     "BenchmarkAdapter",
     "load_benchmark",
+    # the open evaluation plane — standard public benchmarks, niche-grouped,
+    # tier-honest, reported the same way for every model & version
+    "BenchmarkSuite",
+    "BenchmarkRegistry",
+    "BenchmarkSpec",
+    "register_benchmark",
+    "BenchmarkDataset",
+    "ProvenanceTier",
+    "SuiteRun",
+    "SuiteReport",
+    "Leaderboard",
+    "RunStore",
     # computer-use action plane
     "ComputerEnvironment",
     "ComputerTask",

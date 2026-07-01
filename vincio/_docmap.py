@@ -480,6 +480,18 @@ TOPICS: tuple[Topic, ...] = (
                "calibrate_judge"),
     ),
     Topic(
+        "open-evaluation-plane", "optimization", "The open evaluation plane",
+        "One pluggable harness for the standard public model benchmarks (MMLU, GPQA, "
+        "GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by niche, scored by "
+        "reused metrics, and reported the same way for every model and version — with a "
+        "provenance tier on every number so a fabricated fixture can never print a live "
+        "score. In-process and offline-reproducible; never a hosted leaderboard.",
+        concept=_c("open-evaluation-plane"),
+        guides=(_g("run-benchmark-suite"),),
+        examples=(_e("16_open_evaluation_plane"),),
+        verbs=("benchmark_suite",),
+    ),
+    Topic(
         "self-improvement", "optimization", "Self-improvement",
         "The closed loop — trace → dataset → eval → optimize → promote — with reflective "
         "optimization, learned compression, and learned budgets.",

@@ -40,6 +40,10 @@ BatchRunner
 BehaviorEvent
 BehaviorSpec
 BenchmarkAdapter
+BenchmarkDataset
+BenchmarkRegistry
+BenchmarkSpec
+BenchmarkSuite
 BeneficiaryClaim
 BindingCandidate
 BindingWeights
@@ -237,6 +241,7 @@ KeyRecord
 Keyring
 LLMLinguaCompressor
 LawfulBasis
+Leaderboard
 LearnedSemanticCache
 LearnedSkill
 LearnedSkillLibrary
@@ -307,6 +312,7 @@ ProgramSpec
 PrometheusExporter
 PromptSpec
 ProvenanceManifest
+ProvenanceTier
 Purpose
 QueryPlan
 QueryResult
@@ -348,6 +354,7 @@ RowStream
 RunConfig
 RunHandle
 RunResult
+RunStore
 RunStreamEvent
 RuntimeMonitor
 Saga
@@ -402,6 +409,8 @@ StepRequest
 StreamWindow
 SubgraphScheduler
 SubgraphTask
+SuiteReport
+SuiteRun
 SwapGate
 SwapVerdict
 SynthesizedProgram
@@ -519,6 +528,7 @@ query_metric
 rag
 reconcile
 record_transitions
+register_benchmark
 resolve_insolvency
 retrieval_regression
 revoke_attestation

@@ -15,6 +15,7 @@ Entry-point group   Kind                  Loaded object
 ``vincio.rerankers``   reranker           a reranker factory ``(**opts) -> Reranker``
 ``vincio.metrics``     metric             a metric ``(case, output) -> MetricResult``
 ``vincio.judges``      judge              a judge factory ``(**opts) -> Judge``
+``vincio.benchmarks``  benchmark          a :class:`~vincio.evals.suite.BenchmarkSpec` (or factory)
 ``vincio.packs``       pack               a :class:`~vincio.packs.Pack` (or factory)
 ==================  ====================  ==================================
 
@@ -77,6 +78,7 @@ PLUGIN_GROUPS: dict[str, str] = {
     "vincio.rerankers": "reranker",
     "vincio.metrics": "metric",
     "vincio.judges": "judge",
+    "vincio.benchmarks": "benchmark",
     "vincio.packs": "pack",
 }
 
@@ -240,6 +242,15 @@ def _register_judge(name: str, obj: Any) -> None:
     register_judge(name, obj)
 
 
+def _register_benchmark(name: str, obj: Any) -> None:
+    from .evals.suite import BenchmarkSpec, default_benchmark_registry
+
+    spec = obj() if (callable(obj) and not isinstance(obj, BenchmarkSpec)) else obj
+    if not isinstance(spec, BenchmarkSpec):
+        raise TypeError(f"benchmark plugin {name!r} did not resolve to a BenchmarkSpec")
+    default_benchmark_registry().register(spec, replace=True)
+
+
 def _register_pack(name: str, obj: Any) -> None:
     from .packs import Pack, register_pack
 
@@ -255,6 +266,7 @@ _REGISTRARS: dict[str, Callable[[str, Any], None]] = {
     "vincio.rerankers": _register_reranker,
     "vincio.metrics": _register_metric,
     "vincio.judges": _register_judge,
+    "vincio.benchmarks": _register_benchmark,
     "vincio.packs": _register_pack,
 }
 

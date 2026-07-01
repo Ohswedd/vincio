@@ -8,8 +8,8 @@ maintained — upgrade to the latest release.
 
 | Version | Supported |
 | ------- | --------- |
-| 6.x     | ✅ |
-| < 6.0   | ❌ (upgrade to the latest 6.x release) |
+| 7.x     | ✅ |
+| < 7.0   | ❌ (upgrade to the latest 7.x release) |
 
 ## Reporting a vulnerability
 

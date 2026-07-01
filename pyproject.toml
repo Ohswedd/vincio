@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "vincio"
-version = "6.6.0"
+version = "7.0.0"
 description = "Vincio: the context engineering platform for AI applications. Compiles prompts, memory, retrieval, tools, schemas, and policies into optimized, validated, observable model-ready context packets."
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -88,6 +88,15 @@ computer-use = ["playwright>=1.40"]
 # pure-Python RFC 8032 implementation is the dependency-free default; this extra
 # swaps in the audited C backend automatically when installed)
 crypto = ["cryptography>=42.0"]
+# 7.0 — the open evaluation plane. The core engine, the Tier-S fabricated
+# fixtures, the Vega-Lite renderer, the Markdown/HTML/JSON/CSV reporters, and the
+# SQLite run store are all dependency-free; these extras add only the optional
+# paths: a Hugging Face fetch for Recorded/Live datasets, a matplotlib PNG
+# rasterizer for charts, the reportlab PDF reporter, and a Postgres run store.
+eval-datasets = ["datasets>=2.16"]
+eval-viz = ["matplotlib>=3.7"]
+eval-pdf = ["reportlab>=4.0"]
+eval-store = ["psycopg[binary]>=3.1"]
 # 5.1 — review-only `vincio registry sync`. The shipped model catalog and the
 # `vincio registry coverage` gate are dependency-free; this extra bundles the
 # first-party provider clients so `registry sync` can reach every supported
@@ -116,7 +125,7 @@ dev = [
   "mypy>=1.9",
 ]
 all = [
-  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,haystack,dspy,bigquery,snowflake,gen-docx,gen-pdf,gen-pptx,ocr,video,parquet,data,charts,msg,computer-use,crypto,verify,docs,fastembed,splade,cross-encoder,gguf]",
+  "vincio[openai,anthropic,google,mistral,tokenizers,retrieval,graph,s3,gcs,postgres,duckdb,redis,chroma,pinecone,lancedb,weaviate,milvus,elasticsearch,opensearch,vespa,otel,server,pdf,pdf-layout,docx,realtime,langchain,llamaindex,haystack,dspy,bigquery,snowflake,gen-docx,gen-pdf,gen-pptx,ocr,video,parquet,data,charts,msg,computer-use,crypto,verify,docs,eval-datasets,eval-viz,eval-pdf,eval-store,fastembed,splade,cross-encoder,gguf]",
 ]
 
 [project.scripts]
@@ -228,6 +237,10 @@ module = [
   "vincio.tasks",
   "vincio.tasks._facades",
   "vincio.tasks._flow",
+  "vincio.evals.suite.tiers",
+  "vincio.evals.suite.metrics",
+  "vincio.evals.suite.results",
+  "vincio.evals.suite.store",
 ]
 disallow_untyped_defs = true
 disallow_incomplete_defs = true
