@@ -129,6 +129,7 @@ in-window, and a tampered captured event is caught).
 - [Governed text-to-query and cell-level provenance](governed-text-to-query.md) — the read-only-verified query plane each window runs through.
 - [Semantic layer and governed metrics](semantic-layer-and-governed-metrics.md) — the governed metric a window computes.
 - [Dataset profiling, sampling, and quality rails](dataset-profiling.md) — the bounded-pass profile and the rails applied per window.
+- [Cross-org federated analytics](federated-data-engagement.md) — the same governed-metric primitives run across organizations, only aggregated results crossing the trust boundary.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

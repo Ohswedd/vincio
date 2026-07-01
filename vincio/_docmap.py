@@ -1053,6 +1053,7 @@ def render_learning_path() -> str:
         "Turn quality into numbers, gate CI on them, and close the optimization loop.",
         "",
         f"- {c('evals', 'Evaluation')} → {g('run-evals', 'run evals')} → {g('test-llm-apps', 'test with pytest')}.",
+        f"- {c('open-evaluation-plane', 'The open evaluation plane')} → {g('run-benchmark-suite', 'run the three-track benchmark platform')} ({ex('16_open_evaluation_plane', 'example')}).",
         f"- {g('agentic-eval', 'Agentic evaluation & continuous quality')}.",
         f"- {g('close-the-loop', 'Close the loop')} and {g('optimize-context', 'optimize context')}.",
         f"- {g('cost-and-reliability', 'Cost, reliability & scale')} and {g('performance', 'performance')}.",

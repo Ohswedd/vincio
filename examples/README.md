@@ -22,7 +22,7 @@ each with an *Open in Colab* badge.
 
 ## 2. Feature tours — one program per subsystem
 
-Sixteen complete, heavily-commented programs (00–15) that exercise the whole platform. Each file is a
+Seventeen complete, heavily-commented programs (00–16) that exercise the whole platform. Each file is a
 guided tour: a module docstring states what it teaches, and numbered sections each demonstrate one
 capability and print a concrete result. Read them top to bottom.
 

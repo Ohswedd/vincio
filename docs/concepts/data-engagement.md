@@ -141,6 +141,7 @@ See the fully-offline [`06_notebook_native_analysis.ipynb`](../../examples/noteb
 
 ## See also
 
+- [Cross-org federated analytics](federated-data-engagement.md) — the cross-organization extension of this capstone: one governed metric across orgs, with only aggregated, cited results crossing the trust boundary.
 - [The semantic layer and governed metrics](semantic-layer-and-governed-metrics.md) — the governed metric the engagement threads.
 - [Charts and cited analytical artifacts](charts-and-cited-artifacts.md) — the data-bound figures the `cite` stage embeds.
 - [Governed text-to-query and cell-level provenance](governed-text-to-query.md) — the cell-level lineage every finding inherits.
