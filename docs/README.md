@@ -46,6 +46,9 @@ between your input and the model's validated output.
 - **[Context packets and the context compiler](concepts/context-packets.md)**:
   the central unit. How candidate evidence is scored, deduplicated, budgeted,
   and packed into a provider-neutral packet.
+- **[The ergonomic surface](concepts/ergonomic-surface.md)**: the one-line
+  `vincio.tasks` front door (`rag` / `extractor` / `tool_agent` / `evaluation` /
+  `chat`) and the fluent `Flow`, each lowering to the same governed `ContextApp` run.
 - **[Tabular evidence and the compact data encoder](concepts/tabular-evidence.md)**:
   a typed, columnar `Dataset`, a lossless `DataEncoder` that renders it
   header-once, and `TableEvidence` that scores and budgets a table token-cheap.
@@ -89,6 +92,10 @@ between your input and the model's validated output.
   a hash-chained, signed `DataNarrative` that verifies offline and is data-bound —
   every captured finding re-executes against the content-hashed source — the
   analytics analogue of the cross-org engagement.
+- **[Cross-org federated analytics](concepts/federated-data-engagement.md)**:
+  `app.federated_data_engagement` runs one governed metric across organizations over
+  the cross-org fabric so only aggregated, cited results cross the trust boundary —
+  never the raw rows — the cross-org extension of the data engagement.
 - **[Prompt compiler](concepts/prompt-compiler.md)**: how a typed `PromptSpec`
   becomes a cache-aware, lint-checked prompt with a stable prefix and a volatile
   suffix.

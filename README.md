@@ -188,7 +188,7 @@ Everything below is implemented, tested offline, and demonstrated by a runnable 
 high-level `ContextApp`, or reach for any engine directly.
 
 <p align="center">
-  <img src="assets/features.svg" alt="One platform, every layer: context and prompts; retrieval and memory; agents and orchestration; output and evaluation; the closed loop; security and governance; protocols and interop; cross-org economy, edge and federated reach" width="840">
+  <img src="assets/features.svg" alt="One platform, every layer: context and prompts; retrieval and memory; agents and orchestration; output and evaluation; data and analytics; the closed loop; security and governance; protocols and interop; cross-org economy, edge and federated reach" width="840">
 </p>
 
 <details>
@@ -435,7 +435,7 @@ install` and no setup:
 
 ### 2 · Feature tours — one program per subsystem
 
-Sixteen complete, heavily-commented programs (`00`–`15`); each runs offline and teaches a whole theme
+Seventeen complete, heavily-commented programs (`00`–`16`); each runs offline and teaches a whole theme
 end to end — the entire data & analytics plane is one tour (`13`). Highlights (full index in
 [`examples/README.md`](examples/README.md)):
 
@@ -451,6 +451,7 @@ end to end — the entire data & analytics plane is one tour (`13`). Highlights 
 | 13 | [`data_and_analytics`](examples/13_data_and_analytics.py) | the whole data plane in one tour — tabular evidence · profiling · governed text-to-query · the analysis agent · cited charts · streaming · the semantic layer · the data engagement · real-time windowed analytics · federated analytics · statistical certificates |
 | 14 | [`model_pricing_registry`](examples/14_model_pricing_registry.py) | the data-driven `ModelRegistry` — real per-provider pricing, freshness horizons, and the coverage drift gate |
 | 15 | [`connected_docs`](examples/15_connected_docs.py) | the capability map · Related cross-links · the learning path · the docs-graph check |
+| 16 | [`open_evaluation_plane`](examples/16_open_evaluation_plane.py) | the three-track benchmark platform · public benchmarks by niche · provenance tiers (Static / Recorded / Live) · leaderboard & run store |
 
 ### 3 · Applications — real-world backends
 

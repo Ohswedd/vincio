@@ -40,6 +40,7 @@ Add tools, typed output, guardrails, and the structured-data plane.
 Turn quality into numbers, gate CI on them, and close the optimization loop.
 
 - [Evaluation](concepts/evals.md) → [run evals](guides/run-evals.md) → [test with pytest](guides/test-llm-apps.md).
+- [The open evaluation plane](concepts/open-evaluation-plane.md) → [run the three-track benchmark platform](guides/run-benchmark-suite.md) ([example](../examples/16_open_evaluation_plane.py)).
 - [Agentic evaluation & continuous quality](guides/agentic-eval.md).
 - [Close the loop](guides/close-the-loop.md) and [optimize context](guides/optimize-context.md).
 - [Cost, reliability & scale](guides/cost-and-reliability.md) and [performance](guides/performance.md).
