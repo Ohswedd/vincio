@@ -1,0 +1,436 @@
+{
+  "_comment": "The benchmark provenance manifest \u2014 machine-readable source of truth for Vincio's three-track benchmark platform. Regenerate with `python benchmarks/_manifest.py`; gated by tests/test_benchmark_manifest.py. See benchmarks/PROVENANCE.md for the human-readable map.",
+  "schema_version": "2.0",
+  "provenance_tiers": {
+    "S": {
+      "name": "Static / Mockup",
+      "live": false,
+      "reproducible": true,
+      "gates_ci": true,
+      "meaning": "An offline, reproducible run \u2014 a fabricated fixture (model track), a recorded two-arm illustration (uplift), or a competitor-absent/baseline comparison (feature). Byte-identical across machines; gates CI. Model scores saturate by design \u2014 a mechanism check, not a real-world claim."
+    },
+    "R": {
+      "name": "Recorded",
+      "live": false,
+      "reproducible": true,
+      "gates_ci": true,
+      "meaning": "A hash-pinned slice of the real thing, replayed against recorded outputs."
+    },
+    "L": {
+      "name": "Live",
+      "live": true,
+      "reproducible": false,
+      "gates_ci": false,
+      "meaning": "The real thing ran end to end \u2014 a live model + provider (model / uplift), or the actual competitor library executed on this machine (feature). Reported, never gated; only exists from a real key or a real install."
+    }
+  },
+  "tracks": {
+    "model": {
+      "title": "Model",
+      "question": "how good is a model on the standard public benchmarks?",
+      "compares": "a model vs the benchmark's verifiable gold",
+      "location": "vincio/evals/suite (engine, adapters, builtin)",
+      "cli": "vincio bench model <benchmark|niche|all> [--tier static|recorded|live]",
+      "live_driver": "python benchmarks/eval_live.py --provider anthropic --model claude-opus-4-8",
+      "tiers": [
+        "S",
+        "R",
+        "L"
+      ],
+      "gates_ci": true,
+      "custom": "register_benchmark(BenchmarkSpec(...))",
+      "catalog": {
+        "total": 29,
+        "niches": {
+          "knowledge": {
+            "label": "Knowledge",
+            "benchmarks": [
+              {
+                "id": "knowledge.c_eval",
+                "title": "C-Eval",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "knowledge.cmmlu",
+                "title": "CMMLU",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "knowledge.gpqa",
+                "title": "GPQA",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "knowledge.mmlu",
+                "title": "MMLU",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "knowledge.mmlu_pro",
+                "title": "MMLU-Pro",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              }
+            ]
+          },
+          "reasoning": {
+            "label": "Reasoning",
+            "benchmarks": [
+              {
+                "id": "reasoning.arc",
+                "title": "ARC",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "reasoning.gsm8k",
+                "title": "GSM8K",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "reasoning.hellaswag",
+                "title": "HellaSwag",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              }
+            ]
+          },
+          "math": {
+            "label": "Math",
+            "benchmarks": [
+              {
+                "id": "math.math",
+                "title": "MATH",
+                "primary_metric": "accuracy",
+                "long_context": false,
+                "has_loader": true
+              }
+            ]
+          },
+          "coding": {
+            "label": "Coding",
+            "benchmarks": [
+              {
+                "id": "coding.bird",
+                "title": "BIRD",
+                "primary_metric": "execution_accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "coding.ds_1000",
+                "title": "DS-1000",
+                "primary_metric": "success_at_budget",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "coding.humaneval",
+                "title": "HumanEval",
+                "primary_metric": "pass@1",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "coding.livecodebench",
+                "title": "LiveCodeBench",
+                "primary_metric": "pass@1",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "coding.mbpp",
+                "title": "MBPP",
+                "primary_metric": "pass@1",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "coding.spider",
+                "title": "Spider",
+                "primary_metric": "execution_accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "coding.swe_bench",
+                "title": "SWE-bench Verified",
+                "primary_metric": "resolved_rate",
+                "long_context": false,
+                "has_loader": true
+              }
+            ]
+          },
+          "instruction": {
+            "label": "Instruction",
+            "benchmarks": [
+              {
+                "id": "instruction.ifeval",
+                "title": "IFEval",
+                "primary_metric": "strict_accuracy",
+                "long_context": false,
+                "has_loader": true
+              }
+            ]
+          },
+          "truthfulness": {
+            "label": "Truthfulness",
+            "benchmarks": [
+              {
+                "id": "truthfulness.truthfulqa",
+                "title": "TruthfulQA (MC1)",
+                "primary_metric": "mc1_accuracy",
+                "long_context": false,
+                "has_loader": true
+              }
+            ]
+          },
+          "safety": {
+            "label": "Safety",
+            "benchmarks": [
+              {
+                "id": "safety.prompt_injection",
+                "title": "Prompt Injection",
+                "primary_metric": "contained_rate",
+                "long_context": false,
+                "has_loader": false
+              }
+            ]
+          },
+          "rag": {
+            "label": "RAG",
+            "benchmarks": [
+              {
+                "id": "rag.rag_faithfulness",
+                "title": "RAG Faithfulness",
+                "primary_metric": "faithfulness",
+                "long_context": false,
+                "has_loader": false
+              }
+            ]
+          },
+          "agent": {
+            "label": "Agent",
+            "benchmarks": [
+              {
+                "id": "agent.agentbench",
+                "title": "AgentBench",
+                "primary_metric": "task_success",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "agent.bfcl",
+                "title": "BFCL",
+                "primary_metric": "call_accuracy",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "agent.dabench",
+                "title": "DABench",
+                "primary_metric": "success_at_budget",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "agent.gaia",
+                "title": "GAIA",
+                "primary_metric": "exact_match",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "agent.infiagent_dabench",
+                "title": "InfiAgent-DABench",
+                "primary_metric": "success_at_budget",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "agent.tau_bench",
+                "title": "\u03c4-bench",
+                "primary_metric": "task_success",
+                "long_context": false,
+                "has_loader": false
+              },
+              {
+                "id": "agent.toolbench",
+                "title": "ToolBench",
+                "primary_metric": "pass_rate",
+                "long_context": false,
+                "has_loader": true
+              },
+              {
+                "id": "agent.webarena",
+                "title": "WebArena",
+                "primary_metric": "task_success",
+                "long_context": false,
+                "has_loader": false
+              }
+            ]
+          },
+          "long_context": {
+            "label": "Long Context",
+            "benchmarks": [
+              {
+                "id": "long_context.ruler",
+                "title": "RULER",
+                "primary_metric": "needle_recall",
+                "long_context": true,
+                "has_loader": true
+              }
+            ]
+          }
+        }
+      }
+    },
+    "uplift": {
+      "title": "Uplift",
+      "question": "how much does routing a model through Vincio change its scores?",
+      "compares": "the same model, Vincio-routed vs direct \u2014 per-benchmark delta",
+      "location": "vincio/evals/suite/uplift.py",
+      "cli": "vincio bench uplift <benchmark|all> [--tier static|live]",
+      "live_driver": "UpliftSuite().run(..., tier='live', direct=<app>, vincio=<app>)",
+      "tiers": [
+        "S",
+        "L"
+      ],
+      "gates_ci": true,
+      "custom": "register_uplift_benchmark(UpliftBenchmark(...))",
+      "catalog": {
+        "total": 4,
+        "benchmarks": [
+          {
+            "id": "long_context.recall",
+            "title": "Long-context needle recall (governor)",
+            "capability": "long_context",
+            "primary_metric": "needle_recall"
+          },
+          {
+            "id": "output.schema_valid",
+            "title": "Structured-output validity",
+            "capability": "output",
+            "primary_metric": "valid_rate"
+          },
+          {
+            "id": "rag.grounded",
+            "title": "Grounded answering (RAG faithfulness)",
+            "capability": "rag",
+            "primary_metric": "faithfulness"
+          },
+          {
+            "id": "safety.injection",
+            "title": "Prompt-injection containment",
+            "capability": "safety",
+            "primary_metric": "contained_rate"
+          }
+        ]
+      }
+    },
+    "feature": {
+      "title": "Feature",
+      "question": "how does a Vincio feature compare to the same feature in a competitor library?",
+      "compares": "a Vincio feature vs a real competitor library (and a naive baseline)",
+      "location": "vincio/evals/suite/feature_bench.py",
+      "cli": "vincio bench feature <contest|capability|all>",
+      "live_driver": "vincio bench feature   (runs live vs whatever competitors are installed)",
+      "tiers": [
+        "S",
+        "L"
+      ],
+      "gates_ci": true,
+      "custom": "register_feature_contest(FeatureContest(...))",
+      "catalog": {
+        "total": 8,
+        "capabilities": [
+          "chunking",
+          "context",
+          "encoding",
+          "memory",
+          "output",
+          "prompt",
+          "retrieval",
+          "tokenization"
+        ],
+        "contests": [
+          {
+            "id": "chunking.split",
+            "title": "Document chunking",
+            "capability": "chunking",
+            "primary_metric": "provenance_carried",
+            "higher_is_better": true
+          },
+          {
+            "id": "context.assembly",
+            "title": "Context assembly",
+            "capability": "context",
+            "primary_metric": "tokens",
+            "higher_is_better": false
+          },
+          {
+            "id": "encoding.tabular",
+            "title": "Tabular encoding",
+            "capability": "encoding",
+            "primary_metric": "tokens",
+            "higher_is_better": false
+          },
+          {
+            "id": "memory.recall",
+            "title": "Layered memory recall",
+            "capability": "memory",
+            "primary_metric": "current_fact_precision",
+            "higher_is_better": true
+          },
+          {
+            "id": "output.json_repair",
+            "title": "Malformed-output repair",
+            "capability": "output",
+            "primary_metric": "recovery_rate",
+            "higher_is_better": true
+          },
+          {
+            "id": "prompt.templating",
+            "title": "Prompt template safety",
+            "capability": "prompt",
+            "primary_metric": "missing_var_caught",
+            "higher_is_better": true
+          },
+          {
+            "id": "retrieval.bm25",
+            "title": "Lexical retrieval (BM25)",
+            "capability": "retrieval",
+            "primary_metric": "recall_at_1",
+            "higher_is_better": true
+          },
+          {
+            "id": "tokenization.count",
+            "title": "Token counting",
+            "capability": "tokenization",
+            "primary_metric": "accuracy",
+            "higher_is_better": true
+          }
+        ]
+      }
+    }
+  },
+  "internal_gate": {
+    "title": "VincioBench",
+    "location": "benchmarks/vinciobench.py",
+    "role": "The internal mechanism / regression gate \u2014 not one of the three public tracks. It proves each Vincio mechanism still works against a naive baseline (offline, saturating) and CI-gates the deterministic core of all three tracks via the `families.bench_tracks.*` budgets.",
+    "run": "python benchmarks/vinciobench.py && python benchmarks/check_budgets.py"
+  }
+}

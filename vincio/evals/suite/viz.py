@@ -200,6 +200,11 @@ def _draw(chart: SuiteChart, ax: Any) -> None:  # pragma: no cover - rendering p
     import math
 
     rows = chart.rows
+    if not rows:
+        # An empty chart draws an empty axis rather than dividing by zero or
+        # indexing rows[0] (radar/heatmap/trend all assume at least one row).
+        ax.set_title(chart.title)
+        return
     if chart.kind == "leaderboard":
         ax.bar([r["model"] for r in rows], [r["overall"] for r in rows])
         ax.set_ylabel("overall")

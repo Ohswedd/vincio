@@ -37,9 +37,17 @@ budgets and SLOs, and demonstrated by a runnable example — never carried as an
 open-ended backlog. Long-term support means **no breaking changes, not no improvement**.
 The unified **open evaluation plane** shipped in `v7.0` (additive: ten new top-level
 entry points and the `app.benchmark_suite` verb, behind opt-in extras, with no existing
-symbol changed). One capability remains proposed and specified under
-[Forward work](#forward-work--proposed-capability) — a DS4 local-inference provider —
-additive, behind its own entry point or opt-in extra, gated by VincioBench budgets and
+symbol changed) and was **completed in `v7.1`** as fit-and-finish: a machine-readable
+benchmark provenance manifest and map spanning all four benchmark planes, the Recorded/Live
+tiers made runnable (self-contained live prompts + the `benchmarks/eval_live.py` SOTA runner),
+the `vincio eval suite list` catalog command, and the README/docs/asset reconciliation — all
+additive. In `v7.2` the benchmark story was **unified into one three-track platform**
+(`vincio bench model|uplift|feature`): the public-benchmark plane joined a new **uplift** track (the
+same model through Vincio vs direct) and a new **feature** track (a Vincio feature vs a competitor
+library, measured live), sharing the provenance tiers, one reporting/CLI surface, and CI gating —
+additive, no existing symbol changed. One capability remains proposed and specified under
+[Forward work](#forward-work--proposed-capability) — a DS4 local-inference provider (target
+`v7.3`) — additive, behind its own entry point or opt-in extra, gated by VincioBench budgets and
 SLOs, and preserving the frozen surface.
 
 ---
@@ -174,7 +182,7 @@ subsystems Vincio already ships*, not a parallel stack beside them. (The open ev
 plane, previously proposed here as Phase 1, shipped in `v7.0` — see
 [What ships today](#what-ships-today).)
 
-### DS4 local-inference provider (target `v7.1`)
+### DS4 local-inference provider (target `v7.3`)
 
 **Thesis.** [DS4](https://github.com/antirez/ds4) is antirez's self-contained inference
 engine for DeepSeek V4 (Flash and PRO) — C / CUDA / Metal, no GGML link, Metal on Apple

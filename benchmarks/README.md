@@ -1,32 +1,71 @@
-# VincioBench
+# Vincio benchmarks
 
-Benchmark suite for Vincio and baseline comparisons. Runs fully offline and
-deterministically (mock provider + deterministic metrics) so results are
-reproducible across machines and gate CI without API keys, quota, or network
-flakiness — the point is a stable, self-hostable measurement, not a hosted
-leaderboard.
+Vincio's benchmark platform has **three tracks**, under **one honesty contract**:
+every number carries a provenance tier that says, structurally, how real it is.
+You never have to guess whether a figure is `LIVE`, `STATIC/FABRICATED`, or a
+self-measurement. One command drives all three — `vincio bench <track>` (or
+`python benchmarks/bench.py <track>`).
 
-```bash
-python benchmarks/vinciobench.py             # all families
-python benchmarks/vinciobench.py rag cost    # selected families
-```
+> **Start here:** [**PROVENANCE.md**](PROVENANCE.md) is the map — how real each
+> number is and what it proves. [`manifest.json`](manifest.json) is the
+> machine-readable source of truth (`python benchmarks/_manifest.py` to regenerate).
 
-Results are printed as JSON and saved to `benchmarks/results/`.
+## Three tracks, one honesty contract
 
-## Three kinds of benchmark
-
-| Suite | File | Compares against | Question it answers |
+| Track | Question it answers | Compares | Command |
 |---|---|---|---|
-| **VincioBench** | `vinciobench.py` | a *naive in-house baseline* (stuff-everything, `json.loads`, single-index BM25, …) | does each Vincio mechanism do what it claims, deterministically? |
-| **Competitive** | `competitive.py` | the *actual third-party library* a team would otherwise use (tiktoken, rank_bm25, LangChain, LlamaIndex, …) | where Vincio meets or beats a specialist library head-to-head |
-| **Orchestrator uplift** | `quality_uplift.py` | calling the *same model directly* (no Vincio layer) | what routing a model through Vincio adds: output quality, token usage, context-rot resistance |
+| **1 · Model** | how good is a *model* on the standard public benchmarks? | a model vs the benchmark's verifiable gold | `vincio bench model` |
+| **2 · Uplift** | how much does routing a model *through Vincio* change its scores? | the same model, Vincio-routed vs direct — per-benchmark delta | `vincio bench uplift` |
+| **3 · Feature** | how good is a Vincio *feature* (memory, RAG, …) vs the same feature elsewhere? | a Vincio feature vs a real competitor library (+ a naive baseline) | `vincio bench feature` |
+
+Each track supports **LIVE** (the real thing runs end to end) and an offline
+**MOCKUP**. The three provenance tiers, enforced by the engine and used everywhere:
+
+- **S — Static / Mockup.** Offline, byte-identical, **gates CI**. A fabricated fixture (model), a recorded two-arm illustration (uplift), or a competitor-absent/baseline comparison (feature). Model scores *saturate by design*.
+- **R — Recorded.** A hash-pinned slice of the real thing, replayed. **Gates CI.**
+- **L — Live.** The real thing ran — a live model (e.g. `claude-opus-4-8`, `gpt-5.2`, `gemini-3-pro`) or the actual competitor library on this machine. **Reported, never gated.**
 
 ```bash
-python benchmarks/competitive.py             # all head-to-head comparisons
-python benchmarks/quality_uplift.py          # what the orchestration layer adds
-pip install tiktoken rank-bm25 json-repair jinja2 langchain-core \
-            langchain-text-splitters llama-index-core   # the competitors
+vincio bench list                            # the whole platform at a glance
+vincio bench feature                         # track 3: Vincio features vs competitors (LIVE)
+vincio bench uplift                          # track 2: the same model through Vincio vs direct
+vincio bench model all --tier static         # track 1: public benchmarks, offline
+python benchmarks/bench.py all               # the same, via the folder driver
+pip install tiktoken rank-bm25 json-repair jinja2 pandas   # feature-track competitors
 ```
+
+Track results are printed and saved to `benchmarks/results/`. The internal
+**VincioBench** gate (`python benchmarks/vinciobench.py`) keeps the library's own
+mechanisms honest and CI-gates the deterministic core of all three tracks.
+
+## The three tracks in detail
+
+### Track 1 — Model
+
+`vincio bench model` scores a model on **29 standard public benchmarks across 10
+niches**. Tier-S ships fabricated fixtures that gate CI; **Live** runs a real model
+over a real dataset via [`eval_live.py`](eval_live.py). See
+[the open evaluation plane](#the-open-evaluation-plane) below for the full catalog.
+
+### Track 2 — Uplift
+
+`vincio bench uplift` runs each benchmark twice by the identical scorer — the
+model's **direct** answer vs its **Vincio-routed** answer — and reports the
+per-benchmark delta: grounding (RAG faithfulness), prompt-injection containment,
+long-context needle recall (the context governor), and structured-output validity.
+Tier-S replays two recorded arms deterministically; Live uses a real model for both
+arms. The extended live-model driver (real-model grounding, cost-per-correct-answer,
+the context-rot curve) is [`quality_uplift.py`](quality_uplift.py).
+
+### Track 3 — Feature
+
+`vincio bench feature` runs a Vincio feature head-to-head against the real competitor
+library, **measured live on this machine** — retrieval (BM25 vs `rank_bm25`),
+tokenization (vs `tiktoken`), output repair (vs `json_repair`), prompt safety (vs
+`jinja2`), tabular encoding (vs `json.dumps`/`pandas`), context assembly, layered
+memory (vs a naive keyword store), and chunking. A missing competitor is *skipped*,
+never fabricated. The deterministic quality metric gates CI. The extended driver with
+a few extra micro-benchmarks is [`competitive.py`](competitive.py).
 
 ### Competitive — head-to-head vs. real libraries
 
@@ -100,39 +139,84 @@ Context-rot curve (deterministic; `window=256` tokens for illustration):
 
 **Grounded-answer quality, measured on real models** — 15 company-specific policy
 questions a model cannot know from pretraining (so the metric isolates the value
-of *supplying and enforcing evidence*, not parametric memory). 4 models × 3 runs =
-360 live calls (OpenRouter, June 2026); means over runs, stochastic by a point or
-two.
+of *supplying and enforcing evidence*, not parametric memory). 4 current SOTA models × 2 runs =
+240 live calls (OpenRouter, 2026-07-01, current SOTA models, pinned in
+[`reference/live_snapshot.json`](reference/live_snapshot.json)); small `n`, stochastic by a point or two.
 
 *Quality* — fraction correct, and how the model fails when called directly:
 
 | Model — direct → via Vincio | Direct correct | Via correct | Direct hallucinated | Direct abstained | Via cited |
 |---|--:|--:|--:|--:|--:|
-| `openai/gpt-4o-mini` | 2% | **100%** | 64% | 33% | 100% |
-| `anthropic/claude-3-haiku` | 0% | **91%** | 2% | 98% | 100% |
-| `google/gemini-2.5-flash-lite` | 4% | **98%** | 29% | 71% | 98% |
-| `meta-llama/llama-3.1-8b-instruct` | 2% | **89%** | 40% | 60% | 100% |
-| **aggregate** | **2%** | **95%** | — | — | — |
+| `anthropic/claude-opus-4.8` | 13% | **97%** | 0% | 100% | 100% |
+| `openai/gpt-5.4-mini` | 10% | **93%** | 83% | 7% | 100% |
+| `google/gemini-3.5-flash` | 27% | **97%** | 63% | 10% | 100% |
+| `meta-llama/llama-3.1-8b-instruct` | 3% | **93%** | 50% | 47% | 100% |
+| **aggregate** | **13%** | **95%** | — | — | — |
 
 *Efficiency* — tokens, latency, and cost per answer; and the figure that matters,
 cost per *correct* answer (µ$ = millionths of a dollar):
 
 | Model | Tokens/ans (direct→via) | Latency ms (direct→via) | µ$/answer (direct→via) | µ$/**correct** answer (direct→via) |
 |---|--:|--:|--:|--:|
-| `openai/gpt-4o-mini` | 97 → 130 | 1693 → **1408** | 46 → 33 | 2081 → **33** (~62× cheaper) |
-| `anthropic/claude-3-haiku` | 123 → 151 | 2495 → **1537** | 130 → 83 | ∞ → **91** (direct never correct) |
-| `google/gemini-2.5-flash-lite` | 202 → 136 | 1893 → **1293** | 76 → 25 | 1720 → **26** (~67× cheaper) |
-| `meta-llama/llama-3.1-8b-instruct` | 88 → 141 | 1706 → **1561** | 2.3 → 3.2 | 104 → **3.6** (~29× cheaper) |
+| `anthropic/claude-opus-4.8` | 325 → **188** | 6276 → **2711** | 56286 → **1905** (~30× cheaper) |
+| `openai/gpt-5.4-mini` | 112 → 133 | 1535 → **1156** | 4080 → **247** (~16× cheaper) |
+| `google/gemini-3.5-flash` | 1058 → **357** | 7811 → **2335** | 35295 → **2564** (~14× cheaper) |
+| `meta-llama/llama-3.1-8b-instruct` | 117 → 141 | 1222 → **967** | 95 → **3.4** (~28× cheaper) |
 
-The honest reading: called directly the model answers ~2% of company-specific
-questions correctly (better-aligned models abstain, weaker ones hallucinate up to
-64%); the same model through Vincio's retrieval + grounding answers 89–100%, every
-answer cited. A direct call is cheaper *per call*, but because it gets almost
-nothing right its cost *per correct answer* is **29–67× higher** — undefined for a
-model that never answers correctly on its own. Vincio is also **faster per answer**
-here (a concise cited reply beats a long wrong guess), and token usage is roughly a
-wash (it adds the evidence, but the direct arm often rambles). Rerun the command
-above on your own key to reproduce.
+The honest reading: called directly even the strongest current model answers only
+~13% of company-specific questions correctly (claude-opus-4.8 correctly *abstains*
+the rest of the time — 0% hallucination; weaker models fabricate up to 83%); the
+same model through Vincio's retrieval + grounding answers 93–97%, every answer
+cited. A direct call is cheaper *per call*, but because it gets almost nothing right
+its cost *per correct answer* is **14–30× higher** through Vincio's grounding across
+every model tested. Vincio is also **faster per answer** here (a concise cited reply
+beats a long wrong guess). Rerun the command above on your own key to reproduce.
+
+## The open evaluation plane
+
+`vincio/evals/suite/` is Vincio's harness for the **standard public model
+benchmarks** — one pluggable contract, 29 benchmarks across 10 niches, scored by
+reusable metrics, reported the same way for every model and every model version,
+with an **enforced provenance tier** (S/R/L) on every number. In-process and
+offline-first; **never a hosted leaderboard**. Full concept:
+[docs/concepts/open-evaluation-plane.md](../docs/concepts/open-evaluation-plane.md);
+guide: [docs/guides/run-benchmark-suite.md](../docs/guides/run-benchmark-suite.md).
+
+| Niche | Benchmarks |
+|---|---|
+| **Knowledge** | MMLU · GPQA · C-Eval · CMMLU · MMLU-Pro |
+| **Reasoning** | GSM8K · ARC · HellaSwag |
+| **Math** | MATH |
+| **Coding** | HumanEval · MBPP · SWE-bench Verified · LiveCodeBench · Spider · BIRD · DS-1000 |
+| **Instruction** | IFEval |
+| **Truthfulness** | TruthfulQA (MC1) |
+| **Safety** | Prompt Injection (contained vs compromised) |
+| **RAG** | RAG Faithfulness |
+| **Agent** | BFCL · τ-bench · GAIA · WebArena · AgentBench · ToolBench · InfiAgent-DABench · DABench |
+| **Long Context** | RULER (run with & without the context governor) |
+
+```bash
+vincio eval suite run all --tier static             # every benchmark, offline (Tier-S)
+vincio eval suite run knowledge.mmlu --format markdown
+vincio eval suite leaderboard --store runs.db       # rank persisted model runs
+```
+
+**Running it Live against a state-of-the-art model.** Tier-S ships fabricated
+fixtures that gate CI; a **Live** run needs a real dataset and a live model. The
+`benchmarks/eval_live.py` harness wires a `ContextApp` to any provider and runs
+the suite at tier Live — the numbers are *reported, never gated*, and require your
+own key (nothing is fabricated):
+
+```bash
+# Anthropic Claude Opus 4.8, OpenAI GPT-5.2, Google Gemini 3 Pro, …
+python benchmarks/eval_live.py --provider anthropic --model claude-opus-4-8 \
+  --benchmarks knowledge.mmlu reasoning.gsm8k --tier live --dataset-dir ./datasets
+```
+
+The engine **refuses** to let a fabricated fixture print a Recorded or Live label
+(`resolve_tier` → `TierViolationError`), so a Tier-S mechanism check can never
+masquerade as a Tier-L score. This mechanizes the [honesty rules](#a-note-on-claims)
+below.
 
 ## Families
 
@@ -221,7 +305,7 @@ Three honesty rules this suite holds itself to:
    target is a conservative floor, not a ceiling.
 2. **Competitive ratios vary by machine and run** (BM25 ~30–40×, token counting
    ~1.4–1.8× across runs here). The README quotes ranges; rerun on your hardware.
-3. **Real-model rows are a dated external run** (OpenRouter, June 2026) — they are
+3. **Real-model rows are a dated external run** (OpenRouter, 2026-07-01) — they are
    not reproducible from the bundled offline benchmarks, only from a live
    provider key. The offline harness ships a deterministic illustration.
 

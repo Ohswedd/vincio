@@ -5269,8 +5269,8 @@ async def bench_generation() -> dict[str, Any]:
     }
 
 
-async def bench_breaking_2_0() -> dict[str, Any]:
-    """Breaking2.0Bench: the 2.0 structural guarantees, all offline & deterministic —
+async def bench_structural_guarantees() -> dict[str, Any]:
+    """StructuralGuaranteesBench: the 2.0 structural guarantees, all offline & deterministic —
     facade decomposition, async-first stores, typed events, multimodal packet,
     FilterSpec pushdown + tenant scope, enterprise auth, egress DLP, signed audit."""
     import json as _json
@@ -12465,6 +12465,50 @@ async def bench_eval_suite() -> dict[str, Any]:
     }
 
 
+async def bench_tracks() -> dict[str, Any]:
+    """BenchmarkTracksBench: the uplift (track 2) and feature (track 3) tracks, made
+    deterministic and CI-gatable.
+
+    The two tracks the platform adds on top of the model plane are gated here on
+    their **competitor-independent** deterministic core, so CI holds them steady even
+    where a competitor library is not installed: the mockup **uplift** deltas (the
+    same model, direct vs through Vincio, must improve) and the **Vincio-side** feature
+    quality metrics (retrieval recall, memory precision, output recovery, chunking
+    provenance, prompt safety, and the compact token counts). Fully offline.
+    """
+    from vincio.evals.suite import FeatureSuite, UpliftSuite
+
+    # The suites are sync and drive their own event loops internally; run them in a
+    # worker thread so their asyncio.run() does not collide with this family's loop.
+    up = await asyncio.to_thread(lambda: UpliftSuite().run("all", tier="static"))
+    up_again = await asyncio.to_thread(lambda: UpliftSuite().run("all", tier="static"))
+    feat = await asyncio.to_thread(lambda: FeatureSuite().run("all"))
+
+    def vincio_primary(contest_id: str) -> float:
+        run = next(r for r in feat.runs if r.contest_id == contest_id)
+        m = next(x for x in run.measurements if x.contender == "vincio")
+        return round(float(m.primary), 4)
+
+    by_id = {r.benchmark_id: r for r in up.results}
+    return {
+        # track 2 — uplift (deterministic mockup)
+        "uplift_overall_delta": up.overall_delta(),
+        "uplift_all_improved": all(r.improved for r in up.results),
+        "uplift_grounding_delta": by_id["rag.grounded"].delta,
+        "uplift_injection_delta": by_id["safety.injection"].delta,
+        "uplift_determinism_stable": up_again.determinism_digest == up.determinism_digest,
+        # track 3 — feature (Vincio-side deterministic quality)
+        "feature_retrieval_recall": vincio_primary("retrieval.bm25"),
+        "feature_memory_precision": vincio_primary("memory.recall"),
+        "feature_output_recovery": vincio_primary("output.json_repair"),
+        "feature_chunking_provenance": vincio_primary("chunking.split"),
+        "feature_prompt_safety": vincio_primary("prompt.templating"),
+        "feature_encoding_tokens": vincio_primary("encoding.tabular"),
+        "feature_assembly_tokens": vincio_primary("context.assembly"),
+        "feature_contest_count": len(feat.runs),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -12520,8 +12564,9 @@ FAMILIES = {
     "assurance": bench_assurance,
     "ergonomics": bench_ergonomics,
     "eval_suite": bench_eval_suite,
+    "bench_tracks": bench_tracks,
     "hygiene": bench_hygiene,
-    "breaking_2_0": bench_breaking_2_0,
+    "structural_guarantees": bench_structural_guarantees,
 }
 
 

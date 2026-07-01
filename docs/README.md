@@ -103,6 +103,9 @@ between your input and the model's validated output.
 - **[Evaluation](concepts/evals.md)**: datasets, metrics, judges, the runner and
   gates, online and drift evaluation, and the rule that every metric is also a
   guardrail and an optimizer term.
+- **[The open evaluation plane](concepts/open-evaluation-plane.md)**: one
+  pluggable harness for the standard public model benchmarks, grouped by niche,
+  with an enforced provenance tier (Static / Recorded / Live) on every number.
 - **[Observability](concepts/observability.md)**: one trace, one cost, and one
   hash-chained audit entry per run, with OpenTelemetry export and an offline
   viewer.
@@ -154,6 +157,11 @@ building.
   assertions.
 - **[Agentic evaluation and continuous quality](guides/agentic-eval.md)**: score
   trajectories and tool use, run online evaluation, and watch for drift.
+- **[Run a benchmark suite](guides/run-benchmark-suite.md)**: the three-track
+  benchmark platform (`vincio bench model | uplift | feature`) — a model on the
+  public benchmarks, the uplift Vincio adds, and a feature vs a competitor library;
+  offline or Live, tier-honest — with the
+  [benchmark provenance map](../benchmarks/PROVENANCE.md).
 - **[Close the loop](guides/close-the-loop.md)**: one continuous improvement loop
   from production traces to a gated, promoted configuration.
 

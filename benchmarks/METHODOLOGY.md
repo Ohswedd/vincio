@@ -1,10 +1,19 @@
 # VincioBench methodology
 
-VincioBench is the measurement system behind Vincio's published guarantees. It
-is designed to be **reproducible by anyone, on their own machine, with no API
-keys** — there is no hosted leaderboard and no number you have to take on
-trust. This document explains what it measures, how, and why the thresholds are
-where they are, so you can run it yourself and audit the claims.
+VincioBench is the **internal mechanism / regression gate** behind Vincio's
+published guarantees — not one of the three public benchmark tracks. It is
+designed to be **reproducible by anyone, on their own machine, with no API keys**
+— there is no hosted leaderboard and no number you have to take on trust. This
+document explains what it measures, how, and why the thresholds are where they
+are, so you can run it yourself and audit the claims.
+
+> VincioBench is the internal gate, distinct from the three-track benchmark
+> platform (**model** / **uplift** / **feature**, run with `vincio bench`). For how
+> it relates to those tracks — and the shared **S/R/L provenance tiers** that
+> classify every number — read [**PROVENANCE.md**](PROVENANCE.md). VincioBench's
+> deterministic families are Tier-S (fabricated inputs, saturating scores, offline,
+> CI-gating), and it also CI-gates the deterministic core of all three tracks via
+> the `families.bench_tracks.*` budgets.
 
 ## Principles
 

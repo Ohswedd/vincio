@@ -23,7 +23,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.0.0"
+    assert vincio.__version__ == "7.2.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -51,9 +51,19 @@ def test_version_and_api_contract():
     # entry points (`BenchmarkSuite`, `BenchmarkRegistry`, `BenchmarkSpec`,
     # `register_benchmark`, `BenchmarkDataset`, `ProvenanceTier`, `SuiteRun`,
     # `SuiteReport`, `Leaderboard`, `RunStore`) plus the `app.benchmark_suite` verb,
-    # behind opt-in extras, with **no existing symbol removed or changed**. The
-    # surface grows by re-freezing it, never by breaking it, so the API contract
-    # generation stays "5.0" while the package version advances to 7.0.0.
+    # behind opt-in extras, with **no existing symbol removed or changed**. 7.1
+    # completes that line as fit-and-finish: the benchmark provenance manifest and
+    # PROVENANCE map, the Recorded/Live tiers made runnable (self-contained live
+    # prompts + the `benchmarks/eval_live.py` SOTA runner), the `vincio eval suite
+    # list` catalog command, and the README/docs/asset reconciliation — all additive.
+    # 7.2 redesigns the benchmark system into a unified **three-track platform**
+    # (`vincio bench model|uplift|feature`): the model plane joins a new **uplift**
+    # track (the same model through Vincio vs direct) and a new **feature** track (a
+    # Vincio feature vs a competitor library, measured live), sharing the provenance
+    # tiers, one reporting/CLI surface, and CI gating (`families.bench_tracks.*`) —
+    # additive: new `vincio.evals.suite` symbols + the `vincio bench` command, no
+    # existing symbol removed. The surface grows by re-freezing it, never by breaking
+    # it, so the API contract generation stays "5.0" while the package advances to 7.2.0.
     assert API_VERSION == "5.0"
 
 

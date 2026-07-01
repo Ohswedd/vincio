@@ -7,10 +7,10 @@ determinism gate has something to bite on. The fixtures are *invented*, never a
 slice of the real dataset; the Recorded and Live tiers come from a hash-pinned
 export or a live model via each spec's ``loader``.
 
-The 13 standard-public-benchmark adapters (:mod:`vincio.evals.suite.adapters`)
-join the 16 re-homed agentic / text-to-query / data-analysis adapters
+The 15 standard-public-benchmark adapters (:mod:`vincio.evals.suite.adapters`)
+join the 14 re-homed agentic / text-to-query / data-analysis adapters
 (:mod:`vincio.evals.benchmarks`) under the unchanged ``BenchmarkAdapter``
-contract.
+contract — 29 built-in specs in total across ten niches.
 """
 
 from __future__ import annotations

@@ -225,13 +225,35 @@ class BenchmarkAdapter(ABC):
     async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
         """Score one task output against its verifiable gold."""
 
+    # -- prompt rendering -----------------------------------------------------
+
+    def render_prompt(self, task: BenchmarkTask) -> str:
+        """The **self-contained** prompt a live solver should see for this task.
+
+        The default is ``task.prompt`` verbatim. An adapter whose scorer depends on
+        data the model must be *shown* — the labelled options of a multiple-choice
+        task, the retrieved passages of a RAG task, the long context of a
+        needle-in-a-haystack task — overrides this to fold that data into the prompt,
+        so a live model can actually answer and the extract-and-match scorer is fair.
+        Only :meth:`run` (the live path) uses it; :meth:`replay` scores the recorded
+        output directly and is unaffected.
+        """
+        return task.prompt
+
     # -- run paths ------------------------------------------------------------
 
     async def run(self, solver: Solver, *, tasks: list[BenchmarkTask] | None = None) -> BenchmarkReport:
-        """Solve each task with ``solver`` and score the fresh outputs."""
+        """Solve each task with ``solver`` and score the fresh outputs.
+
+        The solver is handed a task whose ``prompt`` is the self-contained
+        :meth:`render_prompt` string (so a live model sees the options / contexts it
+        needs); scoring uses the original task's gold.
+        """
         results: list[BenchmarkResult] = []
         for task in tasks or self._tasks:
-            output = solver(task)
+            rendered = self.render_prompt(task)
+            solve_task = task if rendered == task.prompt else task.model_copy(update={"prompt": rendered})
+            output = solver(solve_task)
             if hasattr(output, "__await__"):
                 output = await output  # type: ignore[assignment]
             results.append(await self.score(task, output))

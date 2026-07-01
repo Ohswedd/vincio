@@ -101,6 +101,10 @@ vincio eval regress DATASET.jsonl --app APP.py --candidate-model Y
     per-metric significance, the cost/latency trade, and worst-regressed slices.
     Exits non-zero on a significant quality regression.
 
+vincio eval suite list [--json]
+    List the open-evaluation-plane catalog grouped by niche, with each benchmark's
+    primary metric and the tiers it supports (S always; R/L when it has a loader).
+
 vincio eval suite run [BENCHMARK|NICHE|all]... [--app APP.py] [--tier static|recorded|live]
         [--sample N] [--concurrency N] [--format text|markdown|html|json|csv|pdf]
         [--output PATH] [--store DSN] [--version TAG]
@@ -108,7 +112,8 @@ vincio eval suite run [BENCHMARK|NICHE|all]... [--app APP.py] [--tier static|rec
     whole niche, or all). The default tier `static` replays the bundled fabricated
     fixtures fully offline; `recorded`/`live` need a dataset (and, for live, --app).
     Every number carries its provenance tier; a lower tier cannot print a higher
-    tier's label.
+    tier's label. For a Live run against a state-of-the-art model over a real
+    dataset, see `benchmarks/eval_live.py`.
 
 vincio eval suite leaderboard --store DSN [--model NAME]... [--limit N] [--json]
     Rank persisted suite runs (one row per model) over a shared benchmark set.
