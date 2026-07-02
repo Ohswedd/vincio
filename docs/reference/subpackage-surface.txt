@@ -191,10 +191,13 @@ connectors SUB register_connector
 context SUB BlockBudget
 context SUB BudgetAllocation
 context SUB BudgetAllocator
+context SUB BudgetSummary
 context SUB CompactionRecord
+context SUB CompileReceipt
 context SUB CompileStreamEvent
 context SUB CompiledContext
 context SUB CompressionResult
+context SUB ConflictSummary
 context TOP ContextBudget
 context SUB ContextBudgetReport
 context SUB ContextCandidate
@@ -209,7 +212,10 @@ context SUB ContextScores
 context SUB DEFAULT_ALLOCATION
 context TOP LLMLinguaCompressor
 context SUB OutputContractRef
+context SUB PrivacySummary
+context SUB ReceiptItem
 context TOP RelevanceDecay
+context SUB RenderInfo
 context SUB RunSpan
 context SUB ScoringWeights
 context SUB TokenImportanceScorer

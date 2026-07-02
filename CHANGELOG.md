@@ -4,6 +4,45 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.3.0] - 2026-07-02
+
+**The packet compile receipt — prove *why* a packet was compiled, text-light.** Vincio already
+treats the context packet as the governed boundary and traces the stages that produce it, but the
+missing operational artifact — the one a reviewer wants when a run is surprising (a bad answer, stale
+memory, a privacy-scope mismatch, budget trimming, or a replay divergence) — is a compact *receipt*
+that explains the compile decision without exposing raw prompt or evidence text. `7.3` adds it. All
+additive: new `vincio.context` symbols, one new `vincio trace receipt` command, and a new numbered
+example, with **no existing symbol removed or changed**; `API_VERSION` stays `5.0`.
+
+- **`CompileReceipt`** (new, in `vincio/context/receipt.py`, re-exported from `vincio.context`) — a
+  fingerprint-heavy, text-light manifest of one context-packet compile: `packet_id` / `run_id` /
+  `trace_id` (the pointer back to the trace), `compiler_version`, `policy_profile`, the
+  `input_fingerprint`, a per-block **budget** summary, the **included** items with their citation
+  locator, content hash, and selection scores (`score` / `relevance` / `authority` / `freshness`), the
+  **excluded** items with their reason and `superseded_by`, the resolved and unresolved **conflicts**
+  as winner / loser / rule, a **privacy** summary (scope, PII redaction count, scope-exclusion count,
+  and the constant `omitted_raw_text: true`), and the **render** identity (provider, model,
+  `context_ir_hash`, `rendered_packet_hash`). It carries ids, hashes, scores, and summaries — never raw
+  text — so it is safe to attach to a PR, an incident note, or a bug report. Supporting models
+  `ReceiptItem` / `ConflictSummary` / `BudgetSummary` / `PrivacySummary` / `RenderInfo` are re-exported
+  too.
+- **Deterministic, verifiable, diffable.** `receipt.receipt_hash` is a stable digest of the compile
+  *decision* (excluding the per-run ids), so recompiling identical inputs yields the same hash and a
+  changed source yields a different one; `receipt.diverges_from(baseline)` returns a structured
+  divergence (items added/removed, score changes, budget delta, render change); `receipt.verify()`
+  re-derives the receipt from its own bytes and checks its invariants.
+- **Emitted and linked.** The packet and compiler carry the per-item selection scores and content
+  hashes the receipt reads (`ContextPacket.compile_receipt(...)`, `CompiledContext.receipt(...)`), and
+  every run builds a receipt and **links it from the trace** (set on the `prompt_render` span) and
+  returns it on `result.metadata["compile_receipt"]`. Building the receipt is best-effort — it never
+  breaks the run it observes.
+- **CLI.** `vincio trace receipt <trace_id>` prints the receipt linked from a stored run's trace, with
+  `--json` for the full artifact.
+- **Docs, example, benchmarks.** A new concept, guide, and runnable example
+  (`examples/17_compile_receipt.py`); a new `compile_receipt` VincioBench family and four published
+  SLOs (deterministic, verifies-from-bytes, omits-raw-text, divergence-detected) held by
+  at-least-as-strict budgets.
+
 ## [7.2.0] - 2026-07-01
 
 **The benchmark platform — one system, three tracks.** The benchmark story had grown into four

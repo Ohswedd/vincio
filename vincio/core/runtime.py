@@ -772,6 +772,35 @@ class VincioRuntime:
             if reasoning_decision is not None:
                 span.set(reasoning_reason=reasoning_decision.reason)
 
+            # Packet compile receipt: a compact, text-light manifest of *why*
+            # this packet was compiled, linked from the trace (this render span
+            # carries it) and returned on the run result. Best-effort — a receipt
+            # is an observability artifact and must never break the run.
+            try:
+                from ..context.receipt import RenderInfo
+
+                redacted = 0
+                for violation in check.violations:
+                    if violation.policy == "pii_redaction":
+                        redacted = int(violation.details.get("count", 0))
+                receipt = compiled_context.receipt(
+                    run_id=run_id,
+                    trace_id=result.trace_id,
+                    redacted_count=redacted,
+                    render=RenderInfo(
+                        provider=app._provider_name,
+                        model=model,
+                        context_ir_hash=compiled_context.ir.ir_hash,
+                        rendered_packet_hash=compiled_prompt.rendered_hash,
+                        prompt_spec_hash=compiled_prompt.prompt_spec_hash,
+                    ),
+                )
+                export = receipt.to_export()
+                span.set(compile_receipt=export, receipt_hash=receipt.receipt_hash)
+                result.metadata["compile_receipt"] = export
+            except Exception:  # noqa: BLE001 - receipt is best-effort observability
+                note_suppressed("runtime.compile_receipt")
+
         # Pre-flight input-token cap: estimate the full first-call input
         # against ``max_input_tokens`` before spending a single token, at the
         # same choke point as policy and the cost SLO. Batch runs are exempt

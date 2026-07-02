@@ -29,6 +29,27 @@ def _text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
 
 
+def _content_hash(text: str) -> str | None:
+    """Full ``sha256:…`` fingerprint of an item's content for the compile
+    receipt, or ``None`` for empty content."""
+    if not text:
+        return None
+    return "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _stamp_scores(
+    entry: dict[str, Any], scores: dict[str, float] | None
+) -> dict[str, Any]:
+    """Stamp an included item's selection scores (total utility, authority,
+    freshness) onto its packet entry, so a compile receipt can report them
+    without re-running the scorer. A no-op when no scores were threaded in."""
+    if scores:
+        for key in ("score", "authority", "freshness", "relevance"):
+            if key in scores:
+                entry[key] = scores[key]
+    return entry
+
+
 _STREAMED_FIELDS = (
     "evidence_items",
     "evidence_ledger",
@@ -81,7 +102,9 @@ class ContextPacket(BaseModel):
         token_count: int = 0,
         slim: bool = False,
         evidence_store: EvidenceStore | None = None,
+        included_scores: dict[str, dict[str, float]] | None = None,
     ) -> ContextPacket:
+        included_scores = included_scores or {}
         evidence_items: list[dict[str, Any]] = []
         for e in ir.evidence:
             entry: dict[str, Any] = {
@@ -99,6 +122,11 @@ class ContextPacket(BaseModel):
                 # a table, or a video clip — and can cite each uniformly.
                 "modality": e.modality,
             }
+            # Selection fingerprint carried onto the packet so a compile receipt
+            # can explain *why* this item was kept (its total utility and the
+            # scoring signals) and reference it by content hash — never its text.
+            entry["source_hash"] = _content_hash(e.scorable_text)
+            _stamp_scores(entry, included_scores.get(e.id))
             # Temporal locator carried onto the packet so a clip-grounded answer
             # cites the moment it came from, not just the document.
             if e.time_range is not None:
@@ -125,7 +153,16 @@ class ContextPacket(BaseModel):
             user_input=ir.input,
             constraints=[c.text for c in ir.constraints],
             memory_included=[
-                {"id": m.id, "content": m.content, "scope": m.scope, "confidence": m.confidence}
+                _stamp_scores(
+                    {
+                        "id": m.id,
+                        "content": m.content,
+                        "scope": m.scope,
+                        "confidence": m.confidence,
+                        "source_hash": _content_hash(m.content),
+                    },
+                    included_scores.get(m.id),
+                )
                 for m in ir.memory
             ],
             memory_excluded=memory_excluded or [],
@@ -282,3 +319,16 @@ class ContextPacket(BaseModel):
     def approx_size_bytes(self) -> int:
         """Approximate serialized size, computed without building the blob."""
         return sum(len(chunk.encode("utf-8")) for chunk in self.iter_json())
+
+    def compile_receipt(self, **kwargs: Any) -> Any:
+        """The packet's compile receipt — a compact, text-light manifest of *why*
+        this exact packet was compiled (inclusions, exclusions, scores, budget,
+        privacy, conflicts, and a pointer back to the trace).
+
+        See :class:`~vincio.context.CompileReceipt`. Run-context enrichments
+        (``run_id``, ``trace_id``, ``render``, ``redacted_count``) are forwarded
+        to :meth:`CompileReceipt.from_packet`.
+        """
+        from .receipt import CompileReceipt
+
+        return CompileReceipt.from_packet(self, **kwargs)

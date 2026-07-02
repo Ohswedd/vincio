@@ -114,7 +114,7 @@ class PolicyEngine:
                         policy="pii_redaction",
                         severity="warn",
                         message=f"redacted {len(matches)} PII span(s) from context",
-                        details={"types": sorted({m.type for m in matches})},
+                        details={"types": sorted({m.type for m in matches}), "count": len(matches)},
                     )
                 )
 

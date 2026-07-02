@@ -30,6 +30,7 @@ Commands::
     vincio trace show <trace_id>
     vincio trace replay <trace_id>
     vincio trace diff <trace_a> <trace_b>
+    vincio trace receipt <trace_id>
     vincio optimize run --app app.py --dataset golden.jsonl --target groundedness
     vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"
     vincio index build ./docs
@@ -1347,6 +1348,56 @@ def cmd_trace_show(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_trace_receipt(args: argparse.Namespace) -> int:
+    """Print the packet compile receipt linked from a run's trace."""
+    trace = _load_trace(args.trace_id, args.traces_dir)
+    receipt: dict[str, Any] | None = None
+    for span in trace.spans:
+        candidate = span.attributes.get("compile_receipt")
+        if isinstance(candidate, dict):
+            receipt = candidate
+            break
+    if receipt is None:
+        raise VincioError(
+            f"no compile receipt found on trace {trace.id!r} "
+            "(the run may predate the receipt, or content capture is off)"
+        )
+    if getattr(args, "json", False):
+        print(json_dumps(receipt, indent=2))
+        return 0
+
+    budget = receipt.get("budget", {})
+    privacy = receipt.get("privacy", {})
+    print(f"compile receipt  packet={receipt.get('packet_id')}  run={receipt.get('run_id')}")
+    print(f"  receipt_hash: {receipt.get('receipt_hash')}")
+    print(f"  compiler: {receipt.get('compiler_version')}  policy: {receipt.get('policy_profile')}")
+    print(f"  budget: {budget.get('used_tokens')}/{budget.get('max_input_tokens')} tokens")
+    render = receipt.get("render") or {}
+    print(f"  render: {render.get('provider')} {render.get('model')}")
+    print("  included:")
+    for item in receipt.get("included", []):
+        print(
+            f"    + {item.get('id')} [{item.get('kind')}] "
+            f"score={item.get('score')} ({item.get('reason')})"
+        )
+    print("  excluded:")
+    for item in receipt.get("excluded", []):
+        superseded = item.get("superseded_by")
+        tail = f" -> {superseded}" if superseded else ""
+        print(f"    - {item.get('id')} [{item.get('kind')}] {item.get('reason')}{tail}")
+    for conflict in receipt.get("conflicts", []):
+        print(
+            f"  conflict: {conflict.get('winner')} beat {conflict.get('loser')} "
+            f"({conflict.get('rule')})"
+        )
+    print(
+        f"  privacy: scope={privacy.get('privacy_scope')} "
+        f"redacted={privacy.get('redacted_count')} "
+        f"omitted_raw_text={privacy.get('omitted_raw_text')}"
+    )
+    return 0
+
+
 def cmd_trace_replay(args: argparse.Namespace) -> int:
     from ..observability.traces import trace_replay_plan
 
@@ -2354,6 +2405,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_trace_verify_rec.add_argument("path", help="path to a recording JSON file")
     p_trace_verify_rec.set_defaults(fn=cmd_trace_verify_recording)
+    p_trace_receipt = trace_sub.add_parser(
+        "receipt", help="print the packet compile receipt linked from a run's trace"
+    )
+    p_trace_receipt.add_argument("trace_id", help="trace id (result.trace_id)")
+    p_trace_receipt.add_argument("--json", action="store_true", help="print the full JSON receipt")
+    p_trace_receipt.add_argument("--traces-dir", default=".vincio/traces")
+    p_trace_receipt.set_defaults(fn=cmd_trace_receipt)
 
     p_optimize = sub.add_parser("optimize", help="optimization commands")
     optimize_sub = p_optimize.add_subparsers(dest="optimize_command", required=True)
