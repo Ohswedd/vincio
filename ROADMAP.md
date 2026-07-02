@@ -49,10 +49,13 @@ additive, no existing symbol changed. `v7.3` added the **packet compile receipt*
 text-light `CompileReceipt` (in `vincio.context`, with a `vincio trace receipt` command) that proves
 *why* a context packet was compiled (inclusions, exclusions, per-item scores, budget, privacy, and
 conflict winners), linked from the run trace and safe to attach to a PR or incident — additive, no
-existing symbol changed. One capability remains proposed and specified under
-[Forward work](#forward-work--proposed-capability) — a DS4 local-inference provider — additive, behind
-its own entry point or opt-in extra, gated by VincioBench budgets and SLOs, and preserving the frozen
-surface.
+existing symbol changed. `v7.4` added the **DS4 local-inference provider** — a running `ds4-server`
+(antirez's self-contained engine for DeepSeek V4) as a first-class Vincio provider, flowing through the
+same registry, capability guards, cost table, reasoning controller (thinking modes), residency
+(fail-closed on-prem), and audit chain as every other provider, with the DS4 models priced at an honest
+self-hosted `$0` — additive, no new hard dependency, no existing symbol changed. There is currently
+**no proposed capability** on the roadmap; the platform is feature-complete, and new capability is
+proposed from scratch when it meets a real need (see [Forward work](#forward-work)).
 
 ---
 
@@ -135,7 +138,7 @@ offline.
 
 | Subsystem | Capability |
 |---|---|
-| **Providers and storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an auth strategy, a deterministic mock, and local neural models. A data-driven `ModelRegistry` whose shipped catalog prices the current lineup of every provider is the single source of truth for the cost table, the capability guard, the router, the cascades, and energy accounting; a coverage gate proves no current model resolves to nothing and silently bills $0. Pluggable metadata, blob, analytics, vector, and graph backends with Redis shared state. |
+| **Providers and storage** | OpenAI, Anthropic, Google, Mistral, any OpenAI-compatible endpoint, enterprise endpoints behind an auth strategy, a deterministic mock, local neural models, and a self-hosted **DS4 DeepSeek V4** box (antirez's `ds4-server`) as a first-class provider — thinking modes driven by the reasoning controller, disk-KV cache accounting, fail-closed on-prem residency, and an honest self-hosted `$0`. A data-driven `ModelRegistry` whose shipped catalog prices the current lineup of every provider is the single source of truth for the cost table, the capability guard, the router, the cascades, and energy accounting; a coverage gate proves no current model resolves to nothing and silently bills $0 (a self-hosted model legitimately at $0 carries an explicit `self_hosted` flag). Pluggable metadata, blob, analytics, vector, and graph backends with Redis shared state. |
 | **Cost and reliability** | Half-cost batch execution, circuit breaking, health-aware failover, key pooling, model cascades, cost attribution with budget SLOs, prompt caching, incremental and sharded indexing, a capability-aware router, a swap gate, and a lifecycle watcher. |
 | **Runtime performance** | A single-pass vectorized scorer (NumPy-optional, pure-Python fallback) and a per-compile feature arena that derives each candidate's terms, shingles, and blocking tokens once and threads them through every pass; compiled render programs and warm candidate arenas; streaming-first compilation; speculative retrieval prefetch; and a per-app resident-memory budget. The single-pass path is byte-identical to the per-pass derivation, and its speedup is held by a ratio floor so an erased win fails the build. |
 | **Test-time compute** | A reasoning controller that sets thinking effort and a token budget per step under a hard ceiling, reasoning-trace-aware caching, a learned semantic cache that serves a near-miss only above a learned precision bar, and a verifier-guided test-time search (best-of-N, self-consistency, beam) over tool-use trajectories. |
@@ -174,74 +177,23 @@ offline.
 
 ---
 
-## Forward work — proposed capability
+## Forward work
 
 Vincio is feature-complete and in long-term support, so new capability is the exception,
-not a backlog. The phase below is proposed against a real need and held to the same bar as
-everything that ships today: **covered offline**, gated by **VincioBench budgets and
-published SLOs**, demonstrated by a **runnable example**, and **additive** — delivered
-behind a new entry point or opt-in extra so the frozen `vincio.__all__` contract and the
-dependency-free, offline-first default are preserved. It is designed as a *composition of
-subsystems Vincio already ships*, not a parallel stack beside them. (The open evaluation
-plane, previously proposed here as Phase 1, shipped in `v7.0` — see
-[What ships today](#what-ships-today).)
+not a backlog. **There is currently no proposed capability.** New capability is proposed
+against a real need and held to the same bar as everything that ships today: **covered
+offline**, gated by **VincioBench budgets and published SLOs**, demonstrated by a **runnable
+example**, and **additive** — delivered behind a new entry point or opt-in extra so the frozen
+`vincio.__all__` contract and the dependency-free, offline-first default are preserved, and
+designed as a *composition of subsystems Vincio already ships*, not a parallel stack beside
+them.
 
-### DS4 local-inference provider (target `v7.3`)
-
-**Thesis.** [DS4](https://github.com/antirez/ds4) is antirez's self-contained inference
-engine for DeepSeek V4 (Flash and PRO) — C / CUDA / Metal, no GGML link, Metal on Apple
-silicon and CUDA / ROCm on Linux. It serves an **OpenAI- and Anthropic-compatible** HTTP API
-(`/v1/chat/completions`, `/v1/completions`, `/v1/responses`, `/v1/messages`, `/v1/models`) on
-`127.0.0.1:8000`, with SSE streaming, tool calling (DeepSeek DSML, converted to/from
-OpenAI/Anthropic JSON server-side), thinking / non-thinking generation, and a disk-backed KV
-cache. This phase makes a running `ds4-server` a **first-class Vincio provider** — online
-inference against your own DeepSeek V4 box, flowing through the same registry, capability
-guards, swap gate, residency, cost table, reasoning controller, and audit chain as every
-other provider.
-
-**Design — two surfaces, both additive, no new hard dependency.** Because DS4 speaks OpenAI,
-the one-line path is a **preset** in `openai_compat.PRESETS` — `ds4` →
-`http://127.0.0.1:8000/v1`, no API key, default model `deepseek-v4-flash` — usable through
-the generic passthrough. On top of it sits a first-class **`Ds4Provider`** (subclassing
-`OpenAICompatibleProvider`, the way the enterprise providers subclass the base) registered as
-`_registry.register("ds4", Ds4Provider)` so it resolves through the same `build_provider`
-factory and `RetryingProvider` wrapping — and expresses the DeepSeek-specific capabilities the
-generic passthrough cannot:
-
-- **Thinking modes → the reasoning controller.** DS4's thinking / non-thinking path is driven
-  by Vincio's existing `ReasoningController`: `reasoning_effort` and `thinking_budget_tokens`
-  map onto DS4's reasoning generation, so test-time-compute orchestration drives a local
-  DeepSeek V4 natively.
-- **Disk KV cache ↔ the cache-aware prompt layout.** The provider advertises `prompt_caching`,
-  and the prompt compiler's stable-prefix layout — already built to maximize cache hits —
-  lines up with DS4's session KV reuse, so `PromptCacheStrategy` / `cache_hit_rate` account
-  for it and Vincio's prefix ordering *raises* DS4's disk-KV hit rate. A real synergy, not a
-  checkbox.
-- **The model catalog, honestly $0.** `deepseek-v4-flash`, `deepseek-v4-pro`, and the quant
-  variants register in `model_catalog.json` under a `ds4` provider key, priced at **$0 with an
-  explicit `self_hosted` flag**, plus an energy-intensity figure for the energy/carbon
-  accounting. The registry coverage gate — which forbids a *paid* model silently billing $0 —
-  is extended so a *self-hosted* model legitimately at $0 is the correct answer, not a drift
-  bug: `ds4` joins `local` / `mock` in `_FREE_PROVIDERS`.
-- **Residency, fail-closed.** A localhost endpoint resolves to the `on_prem` region (the
-  local/mock precedent), so residency applies fail-closed and the offline path still runs —
-  include `on_prem` in `allowed_regions`.
-- **Fleet health.** DS4's distributed (multi-machine layer-split) and SSD expert-streaming
-  modes surface through the existing `LifecycleWatcher` and `HealthAwareFailover` — a fleet
-  member going down is a health event, and the `CircuitBreaker` guards an SSD-streaming cold
-  start.
-
-**Offline-first.** Like every provider, `Ds4Provider` is testable offline via `MockProvider`
-(no DS4 binary in CI) and adds **no hard dependency** — it is plain HTTP over the existing
-`HTTPProvider` transport, so there is no new extra, exactly as `vllm` / `ollama` / `local`
-need none. The live path simply points at a running `ds4-server` (`VINCIO_PROVIDER=ds4`).
-
-**How it gates itself.** A `providers` family entry `ds4_provider`: the provider round-trips a
-recorded DS4 fixture (chat, Anthropic-messages, and streaming) byte-faithfully through the
-permissioned runtime; the DS4 models resolve to a priced, `self_hosted`-flagged profile so the
-coverage gate stays green; the thinking-mode path drives the reasoning controller; and the
-stable-prefix layout yields a measurable KV-reuse signal — with the residency `on_prem`
-fail-closed check and a runnable `examples/NN_ds4_local_inference.py`.
+The two capabilities previously proposed here have shipped: the open evaluation plane in `v7.0`,
+and the **DS4 local-inference provider** in `v7.4` (a running `ds4-server` as a first-class
+provider — thinking modes on the reasoning controller, disk-KV accounting, fail-closed on-prem
+residency, an honest self-hosted `$0`, gated by the `ds4_provider` VincioBench family with six
+published SLOs, and a runnable `examples/18_ds4_local_inference.py`). Both are now in
+[What ships today](#what-ships-today).
 
 ---
 

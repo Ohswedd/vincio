@@ -140,7 +140,8 @@ hits = app.recall("contact preference", user_id="u1")
   are enforced in code, not by the model.
 - **Provider breadth without rewrites**: `openai_compatible("groq")` and
   `build_provider("groq")` reach groq, together, fireworks, openrouter,
-  deepseek, perplexity, xai, nvidia, or any OpenAI-compatible gateway.
+  deepseek, perplexity, xai, nvidia, or any OpenAI-compatible gateway — plus a
+  self-hosted DS4 DeepSeek V4 box (`build_provider("ds4")`), keyless on localhost.
 - **A closed improvement loop**: eval-scored runs feed dataset curation and
   gated prompt/context/routing optimization, so scores change the system.
 

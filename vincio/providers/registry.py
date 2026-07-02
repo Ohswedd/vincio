@@ -103,7 +103,10 @@ def _builtin_catalog() -> list[ModelProfile]:
 # ---------------------------------------------------------------------------
 
 # Providers whose models are free / self-hosted — exempt from the pricing rules.
-_FREE_PROVIDERS = frozenset({"local", "mock"})
+# ``ds4`` (a DS4 DeepSeek-V4 box the operator runs) joins ``local`` / ``mock``:
+# its models legitimately bill $0, so a $0 there is the correct answer, not a
+# paid model silently drifting to zero.
+_FREE_PROVIDERS = frozenset({"local", "mock", "ds4"})
 
 # First-party providers Vincio ships a native adapter for, mapped to the canonical
 # GA default model the coverage report proves resolves to a non-sparse, priced,
@@ -157,6 +160,16 @@ def _is_priced(profile: ModelProfile) -> bool:
     if _is_embedding(profile):
         return profile.input_cost_per_mtok > 0
     return profile.input_cost_per_mtok > 0 and profile.output_cost_per_mtok > 0
+
+
+def _is_free(profile: ModelProfile) -> bool:
+    """Whether a model is free by construction, so a $0 on it is correct.
+
+    True for a self-hosted model (the ``self_hosted`` flag, e.g. a DS4 DeepSeek-V4
+    box) or any model of a free/self-hosted provider (``local`` / ``mock`` /
+    ``ds4``). The pricing, silent-$0, and freshness rules do not apply to these —
+    there is no metered rate card to verify."""
+    return profile.self_hosted or profile.provider in _FREE_PROVIDERS
 
 
 class RegistryCoverageReport(BaseModel):
@@ -482,7 +495,9 @@ class ModelRegistry:
             if _is_sparse(profile):
                 gaps.append(f"{label}: {model_id} → sparse (no real capabilities)")
                 return False
-            if not _is_priced(profile):
+            # A self-hosted / free model is correct at $0, so it must resolve to a
+            # non-sparse profile but is not required to carry a price.
+            if not _is_free(profile) and not _is_priced(profile):
                 gaps.append(f"{label}: {model_id} → unpriced")
                 return False
             return True
@@ -511,7 +526,7 @@ class ModelRegistry:
 
         # No silent $0: every GA billable model of a paid provider must be priced.
         for profile in profiles:
-            if profile.provider in _FREE_PROVIDERS:
+            if _is_free(profile):
                 continue
             if profile.lifecycle(as_of=ref) != "ga":
                 continue
@@ -522,7 +537,7 @@ class ModelRegistry:
         # Freshness: every GA priced model of a paid provider must carry a
         # ``priced_as_of`` within the horizon of the reference (release) date.
         for profile in profiles:
-            if profile.provider in _FREE_PROVIDERS:
+            if _is_free(profile):
                 continue
             if profile.lifecycle(as_of=ref) != "ga" or not _is_priced(profile):
                 continue

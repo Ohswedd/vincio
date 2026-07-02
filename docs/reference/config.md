@@ -17,6 +17,7 @@ project: contract_ai
 
 provider:
   default: openai            # openai | anthropic | google | mistral | local | mock
+                             # self-hosted: ds4 (a DeepSeek V4 box; keyless localhost)
                              # + OpenAI-compatible presets: groq | together | fireworks |
                              #   openrouter | deepseek | perplexity | xai | nvidia (keys via <NAME>_API_KEY)
   model: gpt-5.2

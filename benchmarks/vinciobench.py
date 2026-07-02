@@ -11683,11 +11683,17 @@ async def bench_registry_coverage() -> dict[str, Any]:
         for m in ("gpt-5.2", "o3", "gpt-4.1", "claude-3-5-sonnet", "mistral-medium-latest",
                   "gemini-2.5-flash", "deepseek-chat")
     )
-    # Every openai_compat preset prices its headline model instead of billing $0.
+    # Every openai_compat preset either prices its headline model or is a
+    # self-hosted preset (DS4) that legitimately bills $0 with a self_hosted flag —
+    # never a silent, unflagged $0.
+    def _preset_headline_ok(model_id: str) -> bool:
+        profile = reg.resolve(model_id)
+        if profile is None:
+            return False
+        return profile.input_cost_per_mtok > 0 if not profile.self_hosted else profile.input_cost_per_mtok == 0.0
+
     presets_priced = all(
-        reg.resolve(p.default_model) is not None and reg.resolve(p.default_model).input_cost_per_mtok > 0
-        for p in PRESETS.values()
-        if p.default_model
+        _preset_headline_ok(p.default_model) for p in PRESETS.values() if p.default_model
     )
 
     # The three gates must FAIL on a deliberately broken catalog — proof they bite.
@@ -12613,6 +12619,252 @@ async def bench_compile_receipt() -> dict[str, Any]:
     }
 
 
+async def bench_ds4_provider() -> dict[str, Any]:
+    """Ds4ProviderBench: a self-hosted DeepSeek V4 box as a first-class provider.
+
+    A running ``ds4-server`` (antirez's DS4 engine) flows through the same
+    registry, capability guards, cost table, reasoning controller, residency, and
+    audit chain as every hosted provider. This family proves the integration on a
+    recorded DS4 fixture, entirely offline (no DS4 binary), via an injected
+    transport:
+
+    * **round-trips byte-faithfully** — a recorded chat response replays through
+      the permissioned runtime to the same answer text (with the DeepSeek thinking
+      trace correctly excluded), and a recorded SSE stream reconstructs the same
+      text and usage;
+    * **thinking modes drive the reasoning controller** — ``reasoning_effort`` /
+      ``thinking_budget_tokens`` reach DS4's thinking switch (on, with a budget) and
+      a plain request turns thinking off explicitly;
+    * **honest $0, self-hosted** — the DS4 models resolve to a priced,
+      ``self_hosted``-flagged $0 profile and the registry coverage gate stays green,
+      while the silent-$0 gate still bites a genuinely paid model at $0;
+    * **residency fail-closed** — a localhost endpoint pins to ``on_prem``, admitted
+      when the policy allows it and refused (blocked) when it does not;
+    * **disk-KV reuse signal** — DS4's ``prompt_cache_hit_tokens`` fold into the
+      cache-hit telemetry, and the stable-prefix layout keeps a long byte-identical
+      prefix across two requests that differ only in the tail, so the KV cache is
+      reusable — a measurable synergy, not a checkbox.
+
+    Deterministic and offline.
+    """
+    import json as _json
+
+    from vincio.core.types import Message, ModelRequest
+    from vincio.governance.residency import infer_region_from_url, residency_violation
+    from vincio.providers import Ds4Provider
+    from vincio.providers.cache_strategy import cache_hit_rate
+    from vincio.providers.registry import ModelRegistry
+
+    # -- a recorded DS4 exchange (chat + streaming), replayed via a fake client --
+
+    class _Resp:
+        def __init__(self, payload: dict[str, Any]) -> None:
+            self._payload = payload
+            self.status_code = 200
+            self.text = _json.dumps(payload)
+            self.headers: dict[str, str] = {}
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    class _StreamCtx:
+        def __init__(self, lines: list[str]) -> None:
+            self._lines = lines
+            self.status_code = 200
+
+        async def __aenter__(self) -> "_StreamCtx":
+            return self
+
+        async def __aexit__(self, *exc: object) -> bool:
+            return False
+
+        async def aiter_lines(self):
+            for line in self._lines:
+                yield line
+
+        async def aread(self) -> bytes:
+            return b""
+
+    class _FakeClient:
+        def __init__(self, *, response=None, lines=None) -> None:
+            self.is_closed = False
+            self._response = response
+            self._lines = lines or []
+            self.last_json: dict[str, Any] | None = None
+
+        async def post(self, url, *, headers=None, content=None, json=None):  # noqa: A002
+            self.last_json = json
+            return _Resp(self._response or {})
+
+        def stream(self, method, url, *, headers=None, content=None, json=None):  # noqa: A002
+            self.last_json = json
+            return _StreamCtx(self._lines)
+
+        async def aclose(self) -> None:
+            self.is_closed = True
+
+    chat_fixture = {
+        "id": "ds4-1",
+        "model": "deepseek-v4-flash",
+        "choices": [
+            {
+                "message": {
+                    "content": "Bordeaux is in south-western France.",
+                    "reasoning_content": "The user asks where Bordeaux is located...",
+                },
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {
+            "prompt_tokens": 1200,
+            "completion_tokens": 9,
+            "prompt_cache_hit_tokens": 1024,
+            "completion_tokens_details": {"reasoning_tokens": 40},
+        },
+    }
+    stream_lines = [
+        "data: " + _json.dumps({"model": "deepseek-v4-flash", "choices": [{"delta": {"content": "Bordeaux is in "}}]}),
+        "data: " + _json.dumps({"model": "deepseek-v4-flash", "choices": [{"delta": {"content": "France."}}]}),
+        "data: "
+        + _json.dumps(
+            {
+                "model": "deepseek-v4-flash",
+                "choices": [{"delta": {}, "finish_reason": "stop"}],
+                "usage": {"prompt_tokens": 1200, "completion_tokens": 3, "prompt_cache_hit_tokens": 1024},
+            }
+        ),
+        "data: [DONE]",
+    ]
+
+    # -- chat round-trip through the permissioned runtime --
+    app = ContextApp(
+        name="ds4_bench",
+        provider=Ds4Provider(client=_FakeClient(response=chat_fixture)),
+        model="deepseek-v4-flash",
+    )
+    run = await app.arun("Where is Bordeaux?")
+    chat_round_trips = bool(
+        run.raw_text == "Bordeaux is in south-western France."  # thinking trace excluded
+        and "reasoning_content" not in run.raw_text
+        and run.cost_usd == 0.0  # self-hosted bills nothing
+    )
+
+    # -- direct provider chat + streaming round-trip (byte-faithful) --
+    chat_provider = Ds4Provider(client=_FakeClient(response=chat_fixture))
+    chat_resp = await chat_provider.generate(
+        ModelRequest(model="deepseek-v4-flash", messages=[Message(role="user", content="q")])
+    )
+    chat_faithful = bool(
+        chat_resp.text == "Bordeaux is in south-western France."
+        and chat_resp.provider == "ds4"
+        and chat_resp.usage.reasoning_tokens == 40
+        and chat_resp.usage.cached_input_tokens == 1024
+    )
+
+    stream_provider = Ds4Provider(client=_FakeClient(lines=stream_lines))
+    events = [
+        e
+        async for e in stream_provider.stream(
+            ModelRequest(model="deepseek-v4-flash", messages=[Message(role="user", content="q")])
+        )
+    ]
+    stream_text = "".join(e.text for e in events if e.type == "text_delta")
+    done_events = [e for e in events if e.type == "done"]
+    stream_round_trips = bool(
+        stream_text == "Bordeaux is in France."
+        and done_events
+        and done_events[-1].response.usage.cached_input_tokens == 1024
+    )
+
+    # -- thinking modes drive the reasoning controller --
+    plain_payload = chat_provider._payload(
+        ModelRequest(model="deepseek-v4-flash", messages=[Message(role="user", content="hi")])
+    )
+    think_payload = chat_provider._payload(
+        ModelRequest(
+            model="deepseek-v4-flash",
+            messages=[Message(role="user", content="prove it")],
+            reasoning_effort="high",
+            thinking_budget_tokens=4096,
+        )
+    )
+    thinking_drives_reasoning = bool(
+        plain_payload["chat_template_kwargs"]["thinking"] is False
+        and think_payload["chat_template_kwargs"]["thinking"] is True
+        and think_payload["chat_template_kwargs"]["thinking_budget"] == 4096
+        and think_payload.get("reasoning_effort") == "high"
+    )
+
+    # -- honest $0, self-hosted, coverage green --
+    reg = ModelRegistry()
+    report = reg.coverage_report()
+    ds4_profiles = [reg.resolve(m) for m in
+                    ("deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-q4", "deepseek-v4-pro-q4")]
+    self_hosted_priced_zero = bool(
+        report.ok
+        and report.presets_priced
+        and all(p is not None and p.self_hosted and p.input_cost_per_mtok == 0.0 for p in ds4_profiles)
+        and not any("deepseek-v4" in m for m in report.unpriced)
+    )
+
+    # The silent-$0 gate still bites a genuinely paid model at $0 (non-vacuous).
+    from vincio.core.types import ModelCapabilities, ModelProfile
+
+    paid_zero = ModelRegistry()
+    paid_zero.register(ModelProfile(name="ghost", provider="openai", model="ghost-chat",
+                                    capabilities=ModelCapabilities(tool_calling=True)))
+    silent_zero_gate_still_bites = bool(
+        paid_zero.coverage_report().no_silent_zero is False
+        and "ghost-chat" in paid_zero.coverage_report().unpriced
+    )
+
+    # -- residency fail-closed on-prem --
+    loopback_on_prem = infer_region_from_url("http://127.0.0.1:8000/v1") == "on_prem"
+    admitted = residency_violation(
+        provider="ds4", model="deepseek-v4-flash", allowed_regions=["on_prem"]
+    ) is None
+    refused = residency_violation(
+        provider="ds4", model="deepseek-v4-flash", allowed_regions=["eu"]
+    )
+    residency_on_prem_fail_closed = bool(
+        loopback_on_prem and admitted and refused is not None and refused.severity == "block"
+    )
+
+    # -- disk-KV reuse signal --
+    # DS4's disk-KV hits fold into the cache-hit telemetry.
+    kv_hit_rate = cache_hit_rate(chat_resp.usage.input_tokens, chat_resp.usage.cached_input_tokens)
+    # The stable-prefix layout keeps a long byte-identical prefix across two
+    # requests that differ only in the tail — so the KV cache is reusable.
+    shared = [
+        Message(role="system", content="You are a careful geography assistant. Cite sources."),
+        Message(role="user", content="Context: France is a country in western Europe."),
+    ]
+    render_a = _json.dumps(chat_provider._render_messages([*shared, Message(role="user", content="Where is Bordeaux?")]))
+    render_b = _json.dumps(chat_provider._render_messages([*shared, Message(role="user", content="Where is Lyon?")]))
+    common = 0
+    for ca, cb in zip(render_a, render_b):
+        if ca != cb:
+            break
+        common += 1
+    stable_prefix_ratio = round(common / min(len(render_a), len(render_b)), 4)
+    kv_reuse_signal = round(min(kv_hit_rate, 1.0), 4)
+
+    return {
+        # gated guarantees
+        "chat_round_trips": chat_round_trips,
+        "chat_faithful": chat_faithful,
+        "stream_round_trips": stream_round_trips,
+        "thinking_drives_reasoning": thinking_drives_reasoning,
+        "self_hosted_priced_zero": self_hosted_priced_zero,
+        "residency_on_prem_fail_closed": residency_on_prem_fail_closed,
+        "kv_reuse_signal": kv_reuse_signal,
+        # supporting facts / non-vacuous proofs
+        "silent_zero_gate_still_bites": silent_zero_gate_still_bites,
+        "stable_prefix_ratio": stable_prefix_ratio,
+        "ds4_model_count": len([p for p in ds4_profiles if p is not None]),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -12623,6 +12875,7 @@ FAMILIES = {
     "reliability": bench_reliability,
     "cost": bench_cost,
     "registry_coverage": bench_registry_coverage,
+    "ds4_provider": bench_ds4_provider,
     "data_plane": bench_data_plane,
     "data_analysis_conformance": bench_data_analysis_conformance,
     "security": bench_security,

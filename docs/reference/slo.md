@@ -78,6 +78,22 @@ frozen release reports the same verdict forever.
 | No price has drifted past the freshness horizon (vs release date) | true | `registry_coverage.no_stale_prices` |
 | No GA billable model of a paid provider silently bills $0 | true | `registry_coverage.no_silent_zero` |
 
+## DS4 local-inference provider
+
+A running `ds4-server` (self-hosted DeepSeek V4, antirez's DS4 engine) flows through
+the same registry, cost table, reasoning controller, residency, and audit chain as
+every hosted provider — proven offline on a recorded fixture via an injected
+transport (`vincio bench` / the `ds4_provider` VincioBench family), no DS4 binary.
+
+| SLO | Target | VincioBench metric |
+|---|---|---|
+| A recorded DS4 chat response replays through the permissioned runtime to the same answer, thinking trace excluded | true | `ds4_provider.chat_round_trips` |
+| A recorded DS4 SSE stream reconstructs the same text and disk-KV usage | true | `ds4_provider.stream_round_trips` |
+| Thinking modes are driven by the reasoning controller (effort/budget on; plain request off) | true | `ds4_provider.thinking_drives_reasoning` |
+| The DS4 models resolve to a priced, self_hosted-flagged $0 with the coverage gate green, while the silent-$0 gate still bites a paid model at $0 | true | `ds4_provider.self_hosted_priced_zero` |
+| A DS4 localhost endpoint pins to on_prem: admitted when allowed, refused (blocked) when not | true | `ds4_provider.residency_on_prem_fail_closed` |
+| DS4's disk-KV hits fold into the cache telemetry and the stable-prefix layout keeps a reusable prefix | ≥ 0.4 | `ds4_provider.kv_reuse_signal` |
+
 ## Data & analytics plane
 
 | SLO | Target | VincioBench metric |

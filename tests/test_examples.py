@@ -25,9 +25,9 @@ EXAMPLE_FILES = sorted(p for p in EXAMPLES_DIR.glob("[0-9]*.py"))
 def test_examples_present():
     # Guards against an example being dropped without notice. The suite covers
     # the whole platform end-to-end, one solid example per macro-feature (see
-    # examples/README.md) — the data & analytics plane is one tour (13), and the
-    # open evaluation plane is one tour (16).
-    assert len(EXAMPLE_FILES) == 18
+    # examples/README.md) — the data & analytics plane is one tour (13), the
+    # open evaluation plane is one tour (16), and DS4 local inference is one (18).
+    assert len(EXAMPLE_FILES) == 19
 
 
 @pytest.mark.parametrize("path", EXAMPLE_FILES, ids=lambda p: p.stem)

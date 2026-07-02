@@ -35,11 +35,19 @@ __all__ = ["ResidencyPolicy", "residency_violation", "infer_region_from_url"]
 
 # Best-effort default region mapping. Most hosted providers are global, so their
 # region is whatever the operator declares or the endpoint reveals. On-prem /
-# self-hosted is the one we can assert by construction.
+# self-hosted is the one we can assert by construction — the deterministic mock,
+# a local OpenAI-compatible server, and a DS4 DeepSeek-V4 box all run in the
+# operator's own process/network, so egress to them never leaves the premises.
 _DEFAULT_PROVIDER_REGIONS: dict[str, str] = {
     "local": "on_prem",
     "mock": "on_prem",
+    "ds4": "on_prem",
 }
+
+# Loopback / link-local hosts: a request to one of these never leaves the box, so
+# the region is ``on_prem`` regardless of which provider adapter sends it (a DS4
+# server, a local vLLM, or an OpenAI-compatible passthrough pointed at localhost).
+_LOOPBACK_HOSTS = ("localhost", "127.0.0.1", "0.0.0.0", "::1", "[::1]")
 
 # AWS-style region token, e.g. us-east-1, eu-west-1, ap-southeast-2, ca-central-1.
 _AWS_REGION_RE = re.compile(r"\b([a-z]{2}(?:-gov)?-[a-z]+-\d)\b")
@@ -71,6 +79,17 @@ def infer_region_from_url(url: str | None) -> str | None:
     if not url:
         return None
     lowered = url.lower()
+    # A loopback endpoint is on-prem by construction — the request never leaves
+    # the host — so it resolves fail-closed to ``on_prem`` before any hosted-region
+    # heuristic runs (a sovereign-gateway jurisdiction token could otherwise be a
+    # false positive on a localhost URL).
+    host = lowered.split("://", 1)[-1].split("/", 1)[0].split("@")[-1]
+    if host.startswith("["):  # bracketed IPv6, e.g. [::1]:8000 — port follows "]"
+        hostname = host[: host.find("]") + 1] if "]" in host else host
+    else:  # strip a trailing :port only when it is unambiguous (IPv4/hostname)
+        hostname = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
+    if hostname in _LOOPBACK_HOSTS or hostname.endswith(".localhost"):
+        return "on_prem"
     aws = _AWS_REGION_RE.search(lowered)
     if aws:
         return aws.group(1)
