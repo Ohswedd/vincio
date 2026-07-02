@@ -33,13 +33,63 @@ from vincio.providers.mock import MockProvider
 _NOW = datetime(2026, 7, 1, tzinfo=UTC)
 _OLD = datetime(2019, 1, 1, tzinfo=UTC)
 
-# The raw text that must NEVER appear in an exported receipt.
-_RAW_TEXTS = [
-    "Refunds are allowed within 30 days",
-    "within 14 days",
-    "Bananas are rich in potassium",
-    "internal-only note",
+# The raw prompt/evidence strings fed into the contradiction compile, kept as a
+# single source of truth so the text-leak regression can guard *exactly* the text
+# that entered the compiler rather than a hand-maintained denylist that could
+# drift from the fixture.
+_USER_QUESTION = "What is the refund window?"
+_INSTRUCTION = "Answer only from the provided sources"
+_EVIDENCE_CURRENT = "Refunds are allowed within 30 days of purchase."
+_EVIDENCE_OLD = "Refunds are allowed within 14 days of purchase."
+_EVIDENCE_IRRELEVANT = "Bananas are rich in potassium."
+
+# Every raw string a receipt of ``_compile_contradiction`` must NEVER carry.
+_CONTRADICTION_RAW_TEXTS = [
+    _USER_QUESTION,
+    _INSTRUCTION,
+    _EVIDENCE_CURRENT,
+    _EVIDENCE_OLD,
+    _EVIDENCE_IRRELEVANT,
 ]
+
+
+def _iter_export_strings(obj):
+    """Yield every string anywhere in a JSON-safe export — dict keys, dict values,
+    and list elements, recursively.
+
+    The text-leak regression walks these instead of eyeballing a few known fields,
+    so a *new* receipt field that ever carried free-form prompt/evidence text is
+    caught structurally rather than slipping through a fixed denylist."""
+    if isinstance(obj, str):
+        yield obj
+    elif isinstance(obj, dict):
+        for key, value in obj.items():
+            yield key
+            yield from _iter_export_strings(value)
+    elif isinstance(obj, list):
+        for value in obj:
+            yield from _iter_export_strings(value)
+
+
+def assert_export_text_light(export, raw_texts):
+    """Assert the trust boundary: no raw prompt/evidence string appears anywhere in
+    an exported receipt — neither as a whole leaf nor as a substring of one — and
+    the structural ``omitted_raw_text`` guarantee is set.
+
+    ``export`` is the dict from :meth:`CompileReceipt.to_export`; ``raw_texts`` are
+    the exact prompt/evidence strings fed into the compile."""
+    leaves = list(_iter_export_strings(export))
+    for raw in raw_texts:
+        assert raw, "empty raw text is not a meaningful guard"
+        for leaf in leaves:
+            assert raw not in leaf, (
+                f"raw text leaked into a receipt export field: {raw!r} in {leaf!r}"
+            )
+    # Belt-and-suspenders: the serialized form carries none of it either.
+    blob = json.dumps(export)
+    for raw in raw_texts:
+        assert raw not in blob, f"raw text leaked into the serialized receipt: {raw!r}"
+    assert export["privacy"]["omitted_raw_text"] is True
 
 
 async def _compile_contradiction(**opts):
@@ -49,13 +99,13 @@ async def _compile_contradiction(**opts):
     compiler = ContextCompiler(ContextCompilerOptions(**opts))
     return await compiler.compile(
         objective=Objective("refund window", task_type=TaskType.DOCUMENT_QA),
-        user_input=UserInput(text="What is the refund window?"),
-        instructions=[Instruction("Answer only from the provided sources")],
+        user_input=UserInput(text=_USER_QUESTION),
+        instructions=[Instruction(_INSTRUCTION)],
         evidence=[
             EvidenceItem(
                 id="D1",
                 source_id="refunds.md",
-                text="Refunds are allowed within 30 days of purchase.",
+                text=_EVIDENCE_CURRENT,
                 authority=0.9,
                 relevance=0.95,
                 created_at=_NOW,
@@ -64,7 +114,7 @@ async def _compile_contradiction(**opts):
             EvidenceItem(
                 id="D9",
                 source_id="refunds_old.md",
-                text="Refunds are allowed within 14 days of purchase.",
+                text=_EVIDENCE_OLD,
                 authority=0.4,
                 relevance=0.9,
                 created_at=_OLD,
@@ -72,7 +122,7 @@ async def _compile_contradiction(**opts):
             EvidenceItem(
                 id="D3",
                 source_id="misc.md",
-                text="Bananas are rich in potassium.",
+                text=_EVIDENCE_IRRELEVANT,
                 authority=0.5,
                 relevance=0.01,
             ),
@@ -133,9 +183,7 @@ class TestCompileReceiptDecision:
     @pytest.mark.asyncio
     async def test_export_carries_no_raw_text(self):
         compiled = await _compile_contradiction()
-        blob = json.dumps(compiled.receipt().to_export())
-        for raw in _RAW_TEXTS:
-            assert raw not in blob
+        assert_export_text_light(compiled.receipt().to_export(), _CONTRADICTION_RAW_TEXTS)
 
     @pytest.mark.asyncio
     async def test_unresolved_conflict_does_not_leak_disputed_values(self):
@@ -184,6 +232,10 @@ class TestCompileReceiptDecision:
         excluded = {it.id: it for it in receipt.excluded}
         assert excluded["M_foreign"].reason == "privacy_scope_mismatch"
         assert excluded["M_foreign"].kind == "memory"
+        # The scope-excluded memory's content is never echoed into the receipt.
+        assert_export_text_light(
+            receipt.to_export(), ["Tenant Acme pays 50k annually (internal-only note)"]
+        )
 
 
 class TestCompileReceiptDeterminism:
@@ -271,6 +323,107 @@ class TestCompileReceiptDeterminism:
         restored = CompileReceipt.model_validate(receipt.to_export())
         assert restored.receipt_hash == receipt.receipt_hash
         assert restored.verify() is True
+
+
+class TestCompileReceiptTrustBoundary:
+    """The regression fixture from the 7.3 review (issue #140).
+
+    A reviewer attaches a receipt to a PR or an incident precisely because it lets
+    them reason about the compile — including *the exact bytes that rendered* — with
+    no access to the underlying evidence text. The boundary they lean on has two
+    halves that must hold *together*: a changed render identity (the
+    ``rendered_packet_hash`` and the other render-identity fields) is surfaced as an
+    **explicit** divergence, while ``to_export()`` provably carries **no** raw prompt
+    or evidence text. This fixture nails both, so neither can regress silently."""
+
+    # Each render-identity field paired with a changed value. Any one of these
+    # moving must (a) change the receipt hash, (b) surface as ``render_changed`` in
+    # the divergence, and (c) leave the *selection* decision untouched — the render
+    # identity moved alone.
+    _RENDER_FIELDS = [
+        ("rendered_packet_hash", "sha256:pkt_rerendered"),
+        ("context_ir_hash", "sha256:ir_v2"),
+        ("prompt_spec_hash", "sha256:spec_v2"),
+        ("provider", "anthropic"),
+        ("model", "other-model"),
+    ]
+
+    @staticmethod
+    def _base_render():
+        return RenderInfo(
+            provider="mock",
+            model="m1",
+            context_ir_hash="sha256:ir_v1",
+            rendered_packet_hash="sha256:pkt_v1",
+            prompt_spec_hash="sha256:spec_v1",
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("field,new_value", _RENDER_FIELDS)
+    async def test_render_identity_change_diverges_while_export_stays_text_light(
+        self, field, new_value
+    ):
+        # Same compile decision, rendered two different ways: only the render
+        # identity differs between the baseline and the re-render.
+        compiled = await _compile_contradiction()
+        base_render = self._base_render()
+        rerendered_render = base_render.model_copy(update={field: new_value})
+
+        baseline = compiled.receipt(run_id="run_a", trace_id="trace_a", render=base_render)
+        rerendered = compiled.receipt(
+            run_id="run_b", trace_id="trace_b", render=rerendered_render
+        )
+
+        # A different render identity is a different compile-decision hash...
+        assert rerendered.receipt_hash != baseline.receipt_hash
+
+        # ...surfaced as an *explicit* divergence flagging the render change, with
+        # the selection decision itself provably untouched (render moved alone).
+        divergence = rerendered.diverges_from(baseline)
+        assert divergence is not None
+        assert divergence["render_changed"] is True
+        assert divergence["input_fingerprint_changed"] is False
+        assert divergence["included_added"] == [] and divergence["included_removed"] == []
+        assert divergence["excluded_added"] == [] and divergence["excluded_removed"] == []
+        assert divergence["score_changes"] == [] and divergence["content_changes"] == []
+        assert divergence["used_tokens_delta"] == 0
+
+        # The divergence rides along on the stamped receipt for the reviewer.
+        stamped = rerendered.with_divergence(baseline)
+        assert stamped.divergence is not None
+        assert stamped.divergence["render_changed"] is True
+
+        # The other half of the boundary: no export — baseline, re-render, or the
+        # divergence-stamped copy — carries any raw prompt or evidence text, and
+        # each still verifies from its own bytes.
+        for receipt in (baseline, rerendered, stamped):
+            assert_export_text_light(receipt.to_export(), _CONTRADICTION_RAW_TEXTS)
+            assert receipt.verify() is True
+
+    @pytest.mark.asyncio
+    async def test_export_is_text_light_over_the_whole_export_tree(self):
+        # The text-light half on its own, exhaustively: walk *every* string in the
+        # export (with a render identity present so the render block is covered),
+        # not a fixed denylist, so a future receipt field that carried text fails.
+        compiled = await _compile_contradiction()
+        receipt = compiled.receipt(
+            run_id="run_x", trace_id="trace_x", render=self._base_render()
+        )
+        assert_export_text_light(receipt.to_export(), _CONTRADICTION_RAW_TEXTS)
+
+    def test_text_light_guard_has_teeth(self):
+        # A guard that can never fail proves nothing. This asserts the text-leak
+        # guard *catches* a real leak — a raw evidence string smuggled into a nested
+        # export field — so the whole fixture above is meaningful, not vacuous.
+        clean = {"privacy": {"omitted_raw_text": True}, "included": [{"reason": "selected"}]}
+        assert_export_text_light(clean, _CONTRADICTION_RAW_TEXTS)  # a clean export passes
+
+        leaked = {
+            "privacy": {"omitted_raw_text": True},
+            "included": [{"reason": "selected", "note": _EVIDENCE_CURRENT}],
+        }
+        with pytest.raises(AssertionError):
+            assert_export_text_light(leaked, _CONTRADICTION_RAW_TEXTS)
 
 
 class TestCompileReceiptRuntimeLinkage:

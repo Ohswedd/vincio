@@ -23,7 +23,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.4.0"
+    assert vincio.__version__ == "7.4.1"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -70,8 +70,12 @@ def test_version_and_api_contract():
     # preset, four catalog models, the `ModelProfile.self_hosted` flag), flowing
     # through the same registry, reasoning controller, residency, and audit chain as
     # every provider — additively, no new hard dependency, no existing symbol changed.
+    # 7.4.1 is a test-only hardening patch: the compile-receipt trust-boundary
+    # regression fixture (issue #140) proving `to_export()` never carries raw
+    # prompt/evidence text while a changed render identity (`rendered_packet_hash`)
+    # still surfaces as an explicit divergence — no public symbol added or changed.
     # The surface grows by re-freezing it, never by breaking it, so the API contract
-    # generation stays "5.0" while the package advances to 7.4.0.
+    # generation stays "5.0" while the package advances to 7.4.1.
     assert API_VERSION == "5.0"
 
 

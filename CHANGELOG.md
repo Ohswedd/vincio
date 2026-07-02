@@ -4,6 +4,31 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.4.1] - 2026-07-02
+
+**Compile-receipt trust-boundary regression fixture — the two halves of the boundary, proven
+together.** A follow-up to the `7.3` packet compile receipt, hardening the property a reviewer
+actually leans on when they attach a receipt to a PR or an incident ([#140](https://github.com/Ohswedd/vincio/issues/140)).
+Test-only: **no public symbol added, removed, or changed**, no behavior change; `API_VERSION` stays
+`5.0`. A patch, honestly — it ships a regression fixture, not surface.
+
+- **`to_export()` is text-light, proven exhaustively.** The raw-text guard no longer eyeballs a
+  hand-maintained denylist; it walks *every* string in the exported receipt — dict keys, values, and
+  list elements, recursively — and asserts none of the exact prompt/evidence strings fed into the
+  compile appear, as a whole leaf or a substring. A future receipt field that ever carried free-form
+  text now fails the fixture structurally instead of slipping through. The raw strings are a single
+  source of truth shared with the compile fixture, so the guard can never drift from what entered the
+  compiler.
+- **A changed render identity is an explicit divergence, not a silent one.** A new parametrized
+  fixture drives each render-identity field (`rendered_packet_hash`, `context_ir_hash`,
+  `prompt_spec_hash`, `provider`, `model`) and proves that changing any one of them changes the
+  `receipt_hash` and surfaces `render_changed` in `diverges_from()` — while the *selection* decision
+  (included / excluded / scores / budget) is provably untouched, i.e. the render identity moved alone.
+- **Both halves, in one fixture.** The trust boundary is the two properties *together*: the same
+  fixture asserts the render-identity divergence and that the baseline, the re-render, and the
+  divergence-stamped receipt each export with zero raw prompt/evidence text and still `verify()` from
+  their own bytes. Neither half can regress silently now.
+
 ## [7.4.0] - 2026-07-02
 
 **DS4 local-inference provider — online inference against your own DeepSeek V4 box.**
