@@ -795,6 +795,13 @@ class ModelProfile(BaseModel):
     # a frozen release reports the same freshness verdict forever (see
     # :meth:`vincio.providers.registry.ModelRegistry.coverage_report`).
     priced_as_of: str | None = None
+    # Whether this model runs on infrastructure the operator owns (a local /
+    # self-hosted engine such as an in-process GGUF model or a DS4 DeepSeek-V4
+    # box) rather than a metered hosted API. A self-hosted model legitimately
+    # bills ``$0`` — so the registry coverage gate treats a self-hosted profile at
+    # $0 as *correct*, not as a paid model silently drifting to zero. The flag is
+    # the honest, machine-checkable expression of that: it makes the $0 explicit.
+    self_hosted: bool = False
     # Suggested successor model id once deprecated/retired (consumed by the
     # lifecycle watcher); harmless metadata until then.
     successor: str | None = None

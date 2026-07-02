@@ -40,6 +40,27 @@
     "families.registry_coverage.no_silent_zero": {
       "eq": true
     },
+    "families.ds4_provider.chat_round_trips": {
+      "eq": true
+    },
+    "families.ds4_provider.stream_round_trips": {
+      "eq": true
+    },
+    "families.ds4_provider.thinking_drives_reasoning": {
+      "eq": true
+    },
+    "families.ds4_provider.self_hosted_priced_zero": {
+      "eq": true
+    },
+    "families.ds4_provider.residency_on_prem_fail_closed": {
+      "eq": true
+    },
+    "families.ds4_provider.silent_zero_gate_still_bites": {
+      "eq": true
+    },
+    "families.ds4_provider.kv_reuse_signal": {
+      "gte": 0.5
+    },
     "families.data_plane.fit_in_window.within_budget": {
       "eq": true
     },

@@ -44,6 +44,29 @@ provider:
 The local/self-hosted path (Ollama, vLLM, llama.cpp, LM Studio) is unchanged,
 use the `local`, `ollama`, or `vllm` provider names.
 
+### DS4 — a self-hosted DeepSeek V4 box
+
+A running [`ds4-server`](https://github.com/antirez/ds4) (antirez's self-contained
+inference engine for DeepSeek V4) is a **first-class provider**, not just a generic
+passthrough. It is keyless and defaults to `http://127.0.0.1:8000/v1`:
+
+```python
+from vincio import ContextApp
+
+app = ContextApp(name="qa", provider="ds4", model="deepseek-v4-flash")   # or VINCIO_PROVIDER=ds4
+```
+
+Beyond plain OpenAI-compatible chat it wires DeepSeek's specifics into Vincio: the
+`ReasoningController` drives DS4's **thinking / non-thinking** generation
+(`reasoning_effort` / `thinking_budget_tokens` turn thinking on with a budget, off
+for a plain request); DS4's **disk-KV cache** hits fold into the cache-hit telemetry,
+so the stable-prefix prompt layout raises the reuse rate; the `deepseek-v4-flash` /
+`deepseek-v4-pro` (and `-q4` quant) models are catalogued at an honest, `self_hosted`
+`$0`; and a **localhost endpoint is on-prem by construction**, so a residency policy
+that includes `on_prem` admits it and one that does not refuses egress, fail-closed.
+The generic one-line passthrough is also available via `openai_compatible("ds4")`.
+See [`examples/18_ds4_local_inference.py`](../../examples/18_ds4_local_inference.py).
+
 ## Embedders
 
 `build_embedder` returns an embedder for local hashing, a hosted embedding API

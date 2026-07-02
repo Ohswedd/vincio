@@ -164,13 +164,14 @@ in. The deterministic mock is a development convenience, not the product: pass i
 the whole pipeline with no key and no cost before you point it at a real model.
 
 <p align="center">
-  <img src="assets/providers.svg" alt="Providers and models: one interface over OpenAI, Anthropic, Google, Mistral, local models, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex, and Azure OpenAI. Model operations: unified reasoning control, batch at about half cost, prompt caching, circuit breaker and failover, key pool, and per-run cost tracking. With the bundled mock, the whole pipeline runs for dev, tests, and CI." width="840">
+  <img src="assets/providers.svg" alt="Providers and models: one interface over OpenAI, Anthropic, Google, Mistral, local models, a self-hosted DS4 DeepSeek V4 box, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex, and Azure OpenAI. Model operations: unified reasoning control, batch at about half cost, prompt caching, circuit breaker and failover, key pool, and per-run cost tracking. With the bundled mock, the whole pipeline runs for dev, tests, and CI." width="840">
 </p>
 
 <details>
 <summary><b>Providers, model operations, and the mock</b></summary>
 
 - **Providers**: OpenAI, Anthropic, Google (Gemini), Mistral, local models, and any OpenAI-compatible gateway (Groq, Together, Fireworks, OpenRouter, and the like) through one `ModelProvider` interface.
+- **Self-hosted DeepSeek V4**: point at your own [DS4](https://github.com/antirez/ds4) box (antirez's `ds4-server`) as a first-class provider (`provider="ds4"`) — thinking modes on the reasoning controller, disk-KV cache accounting, fail-closed on-prem residency, and an honest self-hosted `$0` in the cost table.
 - **Enterprise auth**: Amazon Bedrock, Google Vertex, and Azure OpenAI via pluggable auth strategies (SigV4, service-account, Azure AD / key).
 - **Model operations**: unified reasoning/thinking control across providers, batch backends (~50% cost), prompt-cache strategy, a circuit breaker with health-aware failover, a key pool, and a data-driven `ModelRegistry` (capabilities, pricing, lifecycle) that drives capability guards and shadow / canary dispatch. Its shipped catalog prices the current lineup of every provider and is held by a coverage gate, so no current model silently bills $0.
 - **The mock**: `MockProvider` is deterministic and emits schema-valid output, so the full pipeline (retrieval, validation, evals, traces, cost) runs offline in CI with no key and no cost. Pass it explicitly for development and tests; use a real provider in production.

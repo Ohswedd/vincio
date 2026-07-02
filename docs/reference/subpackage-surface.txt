@@ -1225,6 +1225,7 @@ providers SUB CapabilityVerdict
 providers TOP CircuitBreaker
 providers SUB CircuitState
 providers SUB CoalescingProvider
+providers SUB Ds4Provider
 providers SUB FailoverChain
 providers SUB FineTuneBackend
 providers SUB FineTuneJob

@@ -4,6 +4,49 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.4.0] - 2026-07-02
+
+**DS4 local-inference provider — online inference against your own DeepSeek V4 box.**
+[DS4](https://github.com/antirez/ds4) is antirez's self-contained inference engine for DeepSeek V4
+(Flash / PRO). A running `ds4-server` serves an OpenAI- and Anthropic-compatible HTTP API on
+`127.0.0.1:8000`, with SSE streaming, tool calling, thinking / non-thinking generation, and a
+disk-backed KV cache. `7.4` makes it a **first-class Vincio provider** — flowing through the same
+registry, capability guards, swap gate, residency, cost table, reasoning controller, and audit chain
+as every other provider. All additive: one new `vincio.providers` symbol, one preset, four catalog
+models, one `ModelProfile` field, and a numbered example, with **no existing symbol removed or
+changed**; `API_VERSION` stays `5.0`.
+
+- **`Ds4Provider`** (new, in `vincio/providers/ds4.py`, re-exported from `vincio.providers`) — a
+  first-class provider subclassing `OpenAICompatibleProvider`, registered as `ds4` so it resolves
+  through the same `build_provider` factory and `RetryingProvider` wrapping. It defaults to
+  `http://127.0.0.1:8000/v1`, needs no API key, and expresses the DeepSeek-specific behaviors the
+  generic passthrough cannot: **thinking modes** driven by the existing `ReasoningController`
+  (`reasoning_effort` / `thinking_budget_tokens` map onto DS4's thinking switch, off for a plain
+  request), **disk-KV accounting** (DS4's `prompt_cache_hit_tokens` fold into `cached_input_tokens` so
+  `cache_hit_rate` and the cost/energy report see the reuse the stable-prefix layout earns), and a
+  clear refusal to embed (ds4-server serves generation, not embeddings).
+- **`ds4` preset** in `openai_compat.PRESETS` — the one-line passthrough path
+  (`openai_compatible("ds4")`), keyless. The `OpenAICompatPreset.requires_api_key` field is now
+  load-bearing (wired through `openai_compatible()` and the registry factory), so a keyless endpoint no
+  longer demands a key at call time.
+- **Catalog, honestly $0.** `deepseek-v4-flash` / `deepseek-v4-pro` and the `-q4` quant variants
+  register under the `ds4` provider key, priced at `$0` with a new **`ModelProfile.self_hosted`** flag
+  plus a tier that drives the energy/carbon accounting. `ds4` joins `local` / `mock` in the registry's
+  free-providers set, and the coverage gate now treats a `self_hosted` $0 as correct rather than a
+  silent drift — while the silent-$0 gate still bites a genuinely paid model at $0.
+- **Residency, fail-closed.** A loopback endpoint (`127.0.0.1`, `localhost`, `[::1]`, `0.0.0.0`)
+  resolves to the `on_prem` region by construction, and `ds4` maps to `on_prem` in the default provider
+  regions, so an in-jurisdiction policy admits a self-hosted box and refuses a run whose region it does
+  not allow — client-side, before any request leaves the process.
+- **Offline-first, no new dependency.** `Ds4Provider` is plain HTTP over the existing `HTTPProvider`
+  transport (no new extra) and is fully testable offline via an injected transport (no DS4 binary in
+  CI). The live path simply points at a running `ds4-server` (`VINCIO_PROVIDER=ds4`).
+- **Gated and demonstrated.** A new `ds4_provider` VincioBench family proves the chat and streaming
+  round-trips replay byte-faithfully through the permissioned runtime, the thinking path drives the
+  reasoning controller, the self-hosted $0 keeps the coverage gate green, residency is on-prem
+  fail-closed, and the stable-prefix layout yields a measurable disk-KV reuse signal — with six new
+  published SLOs and budgets, and a runnable `examples/18_ds4_local_inference.py`.
+
 ## [7.3.0] - 2026-07-02
 
 **The packet compile receipt — prove *why* a packet was compiled, text-light.** Vincio already

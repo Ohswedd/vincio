@@ -2283,6 +2283,66 @@
       "rationale": "An unpriced billable model makes the cost report quietly wrong \u2014 the most expensive way to be inaccurate, because spend looks free. Gating that every GA billable model of a paid provider is priced makes the cost report honest by construction; genuinely free or self-hosted models (local, mock) are exempt, and an arbitrary uncatalogued id still warns once rather than billing $0 silently."
     },
     {
+      "id": "ds4_chat_round_trip",
+      "category": "reliability",
+      "statement": "A recorded DS4 (self-hosted DeepSeek V4) chat response replays through the permissioned runtime to the same answer text, with the DeepSeek thinking trace excluded from the answer.",
+      "metric": "families.ds4_provider.chat_round_trips",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ds4_provider.chat_round_trips",
+      "rationale": "A first-class provider must round-trip byte-faithfully through the same registry, cost table, and audit chain as every hosted provider. Replaying a recorded fixture offline proves the OpenAI-dialect parse is correct \u2014 including that DeepSeek's separate reasoning_content never leaks into the answer text \u2014 without needing a DS4 binary in CI."
+    },
+    {
+      "id": "ds4_stream_round_trip",
+      "category": "reliability",
+      "statement": "A recorded DS4 SSE stream reconstructs the same answer text and token usage as its non-streamed form, including the disk-KV cache-hit count.",
+      "metric": "families.ds4_provider.stream_round_trips",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ds4_provider.stream_round_trips",
+      "rationale": "Streaming is the default interactive path; gating that the incremental deltas reassemble to the same text and usage as the batch response protects the streaming contract against a regression in SSE parsing or usage accounting."
+    },
+    {
+      "id": "ds4_thinking_controlled",
+      "category": "reliability",
+      "statement": "DS4's thinking / non-thinking generation is driven by the reasoning controller: reasoning_effort and thinking_budget_tokens turn thinking on with a budget, and a plain request turns thinking off explicitly.",
+      "metric": "families.ds4_provider.thinking_drives_reasoning",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ds4_provider.thinking_drives_reasoning",
+      "rationale": "Test-time-compute orchestration is only real if the controller's decision actually reaches the model. Gating that the effort and budget land on DS4's thinking switch \u2014 and that a plain call is explicitly non-thinking \u2014 proves the local DeepSeek V4 is driven natively rather than the control being silently dropped."
+    },
+    {
+      "id": "ds4_self_hosted_zero",
+      "category": "cost",
+      "statement": "The DS4 models resolve to a priced, self_hosted-flagged $0 profile and the registry coverage gate stays green, while the silent-$0 gate still bites a genuinely paid model at $0.",
+      "metric": "families.ds4_provider.self_hosted_priced_zero",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ds4_provider.self_hosted_priced_zero",
+      "rationale": "A self-hosted model legitimately bills $0, so the coverage gate must treat that as correct rather than a drift bug \u2014 but only because the self_hosted flag makes the $0 explicit. Gating both directions (self-hosted $0 is fine, paid $0 still fails) keeps the cost report honest without a blanket exemption that would blind it to a real paid-model regression."
+    },
+    {
+      "id": "ds4_residency_fail_closed",
+      "category": "security",
+      "statement": "A DS4 localhost endpoint pins to the on_prem region: egress is admitted when the residency policy allows on_prem and refused (blocked) when it does not.",
+      "metric": "families.ds4_provider.residency_on_prem_fail_closed",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.ds4_provider.residency_on_prem_fail_closed",
+      "rationale": "Residency is a deterministic policy decision, never a model judgment. Resolving a loopback endpoint to on_prem by construction lets an in-jurisdiction policy admit a self-hosted box and refuse a run whose region it does not allow, client-side, before any request leaves the process."
+    },
+    {
+      "id": "ds4_kv_reuse",
+      "category": "performance",
+      "statement": "DS4's disk-backed KV cache is accounted for: its reported prompt-cache hits fold into the cache-hit telemetry, and the stable-prefix layout keeps a measurable shared prefix across requests, so the cache is reusable.",
+      "metric": "families.ds4_provider.kv_reuse_signal",
+      "direction": "gte",
+      "threshold": 0.4,
+      "enforced_by": "families.ds4_provider.kv_reuse_signal",
+      "rationale": "The prompt compiler's stable-prefix layout lines up with DS4's session KV reuse, so Vincio's ordering raises the disk-KV hit rate rather than merely tolerating it. Gating a floor on the measured reuse signal keeps that synergy real \u2014 a checkbox that advertised prompt_caching without accounting for the hits would fail the floor."
+    },
+    {
       "id": "single_pass_selection_identical",
       "category": "performance",
       "statement": "The single-pass feature arena selects byte-identical context to the per-pass derivation: the same evidence, the same exclusions, the same conflicts, and the same budget.",

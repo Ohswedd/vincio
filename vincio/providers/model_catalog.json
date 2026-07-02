@@ -328,6 +328,27 @@
     },
 
     {
+      "name": "deepseek-v4-flash", "provider": "ds4", "model": "deepseek-v4-flash", "tier": "fast",
+      "self_hosted": true,
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": true, "prompt_caching": true, "max_context_tokens": 163840, "max_output_tokens": 65536}
+    },
+    {
+      "name": "deepseek-v4-pro", "provider": "ds4", "model": "deepseek-v4-pro", "tier": "strong",
+      "self_hosted": true,
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": true, "prompt_caching": true, "max_context_tokens": 163840, "max_output_tokens": 65536}
+    },
+    {
+      "name": "deepseek-v4-flash-q4", "provider": "ds4", "model": "deepseek-v4-flash-q4", "tier": "fast",
+      "self_hosted": true,
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": true, "prompt_caching": true, "max_context_tokens": 163840, "max_output_tokens": 65536}
+    },
+    {
+      "name": "deepseek-v4-pro-q4", "provider": "ds4", "model": "deepseek-v4-pro-q4", "tier": "default",
+      "self_hosted": true,
+      "capabilities": {"structured_output": true, "tool_calling": true, "reasoning": true, "prompt_caching": true, "max_context_tokens": 163840, "max_output_tokens": 65536}
+    },
+
+    {
       "name": "local", "provider": "local", "model": "local", "tier": "default",
       "capabilities": {"structured_output": true, "tool_calling": true, "max_context_tokens": 32768, "max_output_tokens": 8192}
     },

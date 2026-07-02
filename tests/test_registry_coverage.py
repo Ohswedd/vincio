@@ -75,7 +75,13 @@ def test_every_preset_headline_model_is_priced(reg: ModelRegistry):
     for preset in priced:
         profile = reg.resolve(preset.default_model)
         assert profile is not None, preset.default_model
-        assert profile.input_cost_per_mtok > 0, preset.default_model
+        # A hosted-gateway preset must price its headline model; a self-hosted
+        # preset (DS4) legitimately bills $0 and is exempt — the flag makes the $0
+        # explicit rather than a silent drift.
+        if profile.self_hosted:
+            assert profile.input_cost_per_mtok == 0.0, preset.default_model
+        else:
+            assert profile.input_cost_per_mtok > 0, preset.default_model
 
 
 def test_priced_as_of_on_every_billable_paid_ga_model(reg: ModelRegistry):

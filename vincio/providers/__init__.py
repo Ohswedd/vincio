@@ -37,6 +37,7 @@ from .capabilities import (
 )
 from .circuit import CircuitBreaker, CircuitState, HealthAwareFailover
 from .discovery import discover_models
+from .ds4 import Ds4Provider
 from .enterprise import (
     AzureKeyAuth,
     AzureOpenAIProvider,
@@ -143,6 +144,7 @@ __all__ = [
     "MistralProvider",
     "LocalProvider",
     "GGUFProvider",
+    "Ds4Provider",
     "MockProvider",
     "instance_from_schema",
     "default_registry",
@@ -171,6 +173,10 @@ _registry.register("mock", lambda **kw: MockProvider(**{k: v for k, v in kw.item
 # presets (groq, together, fireworks, openrouter, deepseek, perplexity, xai,
 # nvidia). Their API keys resolve from the conventional <NAME>_API_KEY env var.
 _registry.register("openai_compat", OpenAICompatibleProvider)
+# DS4 (self-hosted DeepSeek V4). A first-class provider — thinking modes, disk-KV
+# accounting, keyless localhost — registered ahead of the preset loop so it, not
+# the generic passthrough factory, owns the ``ds4`` name in build_provider.
+_registry.register("ds4", Ds4Provider)
 # enterprise deployment endpoints behind the pluggable AuthStrategy —
 # routed through the same registry, capability guards, swap gate, residency, and
 # audit chain as every other provider. Bedrock requires (region + AWS creds),
@@ -179,7 +185,10 @@ _registry.register("bedrock", BedrockProvider)
 _registry.register("vertex", VertexProvider)
 _registry.register("azure", AzureOpenAIProvider)
 for _preset in PRESETS:
-    _registry.register(_preset, _preset_factory(_preset))
+    # A first-class provider (ds4) already owns its name — do not let the generic
+    # preset factory shadow it; the preset stays reachable via openai_compatible().
+    if _preset not in _registry.names:
+        _registry.register(_preset, _preset_factory(_preset))
 
 # Third-party providers shipped as separate pip packages auto-register via the
 # ``vincio.providers`` entry-point group (importlib.metadata). Built-ins take

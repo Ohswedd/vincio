@@ -1,6 +1,6 @@
 <svg width="860" height="240" viewBox="0 0 860 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="prov_t prov_d">
   <title id="prov_t">Providers and models</title>
-  <desc id="prov_d">Vincio calls real models through one interface across every major provider: OpenAI, Anthropic, Google, Mistral, local models, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex, and Azure OpenAI. Model operations included: unified reasoning control, batch at about half cost, prompt caching, circuit breaker and failover, key pool, and per-run cost tracking. With no API key, a deterministic mock runs the whole pipeline for dev, tests, and CI.</desc>
+  <desc id="prov_d">Vincio calls real models through one interface across every major provider: OpenAI, Anthropic, Google, Mistral, local models, a self-hosted DS4 DeepSeek V4 box, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex, and Azure OpenAI. Model operations included: unified reasoning control, batch at about half cost, prompt caching, circuit breaker and failover, key pool, and per-run cost tracking. With no API key, a deterministic mock runs the whole pipeline for dev, tests, and CI.</desc>
   <defs>
     <radialGradient id="prov_parch" cx="40%" cy="26%" r="86%">
       <stop offset="0%" stop-color="#FBF4E2"/>
@@ -23,7 +23,7 @@
   <g font-family="Georgia, 'Times New Roman', serif">
     <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">PROVIDERS &amp; MODELS</text>
     <text x="40" y="78" font-size="26" font-weight="700" fill="url(#prov_goldtext)">Bring any model</text>
-    <text x="40" y="100" font-size="13" fill="#6B5836">One interface over every major provider, local models, and any OpenAI-compatible gateway.</text>
+    <text x="40" y="100" font-size="13" fill="#6B5836">One interface over every major provider, local and self-hosted models (incl. a DS4 DeepSeek V4 box), and any OpenAI-compatible gateway.</text>
     <text x="40" y="118" font-size="13" fill="#6B5836">No API key yet? A deterministic mock runs the whole pipeline for dev, tests, and CI.</text>
 
     <!-- provider pills -->
@@ -34,6 +34,7 @@
       <rect x="418" y="138" width="76"  height="30" rx="15" fill="#FCF6E8"/>
       <rect x="510" y="138" width="64"  height="30" rx="15" fill="#FCF6E8"/>
       <rect x="590" y="138" width="146" height="30" rx="15" fill="#FCF6E8"/>
+      <rect x="744" y="138" width="72"  height="30" rx="15" fill="#FCF6E8"/>
     </g>
     <g fill="#3A2E1C" font-size="12.5" text-anchor="middle">
       <text x="163" y="157">OpenAI</text>
@@ -42,6 +43,7 @@
       <text x="456" y="157">Mistral</text>
       <text x="542" y="157">Local</text>
       <text x="663" y="157">OpenAI-compatible</text>
+      <text x="780" y="157">DS4</text>
     </g>
 
     <text x="430" y="190" font-size="11" fill="#8A7551" text-anchor="middle">Enterprise auth: Amazon Bedrock &#183; Google Vertex &#183; Azure OpenAI</text>

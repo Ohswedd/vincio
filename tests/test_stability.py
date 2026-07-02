@@ -23,7 +23,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.3.0"
+    assert vincio.__version__ == "7.4.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -62,8 +62,16 @@ def test_version_and_api_contract():
     # Vincio feature vs a competitor library, measured live), sharing the provenance
     # tiers, one reporting/CLI surface, and CI gating (`families.bench_tracks.*`) —
     # additive: new `vincio.evals.suite` symbols + the `vincio bench` command, no
-    # existing symbol removed. The surface grows by re-freezing it, never by breaking
-    # it, so the API contract generation stays "5.0" while the package advances to 7.3.0.
+    # existing symbol removed. 7.3 adds the **packet compile receipt** — a compact,
+    # text-light `CompileReceipt` (in `vincio.context`, with a `vincio trace receipt`
+    # command) proving *why* a packet compiled — additively, no existing symbol
+    # changed. 7.4 adds the **DS4 local-inference provider** — a running `ds4-server`
+    # (self-hosted DeepSeek V4) as a first-class provider (`Ds4Provider`, the `ds4`
+    # preset, four catalog models, the `ModelProfile.self_hosted` flag), flowing
+    # through the same registry, reasoning controller, residency, and audit chain as
+    # every provider — additively, no new hard dependency, no existing symbol changed.
+    # The surface grows by re-freezing it, never by breaking it, so the API contract
+    # generation stays "5.0" while the package advances to 7.4.0.
     assert API_VERSION == "5.0"
 
 

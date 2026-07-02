@@ -90,6 +90,19 @@ PRESETS: dict[str, OpenAICompatPreset] = {
         embedding_model="nvidia/nv-embedqa-e5-v5",
         default_model="meta/llama-3.3-70b-instruct",
     ),
+    # A DS4 DeepSeek-V4 box you run yourself — antirez's self-contained inference
+    # engine, OpenAI-compatible on 127.0.0.1:8000, no API key. This preset is the
+    # one-line passthrough path; the first-class ``Ds4Provider`` (registered as
+    # ``ds4``) adds the DeepSeek-specific capabilities the generic passthrough
+    # cannot express (thinking modes, disk-KV accounting). Its headline model is
+    # priced at $0 with a ``self_hosted`` flag in the catalog, which the coverage
+    # gate treats as correct rather than a drift bug.
+    "ds4": OpenAICompatPreset(
+        "http://127.0.0.1:8000/v1",
+        "DS4_API_KEY",
+        requires_api_key=False,
+        default_model="deepseek-v4-flash",
+    ),
 }
 
 
@@ -110,6 +123,7 @@ class OpenAICompatibleProvider(OpenAIProvider):
         *args: Any,
         name: str | None = None,
         default_embedding_model: str | None = None,
+        requires_api_key: bool | None = None,
         **kwargs: Any,
     ) -> None:
         # base_url is keyword-only on HTTPProvider, and this class inherits
@@ -125,6 +139,10 @@ class OpenAICompatibleProvider(OpenAIProvider):
             self.name = name
         if default_embedding_model:
             self.default_embedding_model = default_embedding_model
+        # A keyless endpoint (a local server, a DS4 box) must not demand an API key
+        # at call time; honor the preset's declared requirement when one is given.
+        if requires_api_key is not None:
+            self.requires_api_key = requires_api_key
 
     def token_id_prefixes(self) -> tuple[str, ...]:
         # A compatible endpoint (Groq, Together, Fireworks, DeepSeek, …) serves
@@ -157,6 +175,7 @@ def openai_compatible(
             base_url=base_url or spec.base_url,
             name=preset,
             default_embedding_model=spec.embedding_model,
+            requires_api_key=spec.requires_api_key,
             **kwargs,
         )
     if not base_url:
@@ -170,6 +189,7 @@ def _preset_factory(preset_name: str):
 
     def factory(**kwargs: Any) -> OpenAICompatibleProvider:
         kwargs.setdefault("base_url", spec.base_url)
+        kwargs.setdefault("requires_api_key", spec.requires_api_key)
         return OpenAICompatibleProvider(
             name=preset_name, default_embedding_model=spec.embedding_model, **kwargs
         )
