@@ -12509,6 +12509,110 @@ async def bench_tracks() -> dict[str, Any]:
     }
 
 
+async def bench_compile_receipt() -> dict[str, Any]:
+    """CompileReceiptBench: the packet compile receipt is deterministic,
+    re-verifies from its own bytes, hides raw text, and surfaces a changed source
+    as an explicit divergence — all measured offline, deterministically.
+
+    A receipt is the compact, text-light manifest of *why* a packet was compiled
+    (inclusions, exclusions, per-item scores, budget, privacy, conflict winners,
+    and a pointer back to the trace). The guarantees gated here are what make it
+    trustworthy as a review/incident artifact: recompiling identical inputs yields
+    a byte-identical receipt hash, the receipt re-verifies from its serialized
+    bytes, it never carries raw prompt/evidence text, and a changed source
+    diverges rather than silently differing."""
+    import json
+    import time
+    from datetime import UTC, datetime
+
+    from vincio.context import ContextCompiler, ContextCompilerOptions
+    from vincio.core.types import (
+        Budget,
+        EvidenceItem,
+        Instruction,
+        Objective,
+        TaskType,
+        UserInput,
+    )
+
+    now = datetime(2026, 7, 1, tzinfo=UTC)
+    old = datetime(2019, 1, 1, tzinfo=UTC)
+
+    def _evidence(window: str) -> list[EvidenceItem]:
+        return [
+            EvidenceItem(
+                id="D1",
+                source_id="refunds.md",
+                text=f"Refunds are allowed within {window} of purchase.",
+                authority=0.9,
+                relevance=0.95,
+                created_at=now,
+                page=2,
+            ),
+            EvidenceItem(
+                id="D9",
+                source_id="refunds_old.md",
+                text="Refunds are allowed within 14 days of purchase.",
+                authority=0.4,
+                relevance=0.9,
+                created_at=old,
+            ),
+            EvidenceItem(
+                id="D3",
+                source_id="misc.md",
+                text="Bananas are rich in potassium.",
+                authority=0.5,
+                relevance=0.01,
+            ),
+        ]
+
+    async def _receipt(window: str):
+        compiler = ContextCompiler(ContextCompilerOptions())
+        compiled = await compiler.compile(
+            objective=Objective("refund window", task_type=TaskType.DOCUMENT_QA),
+            user_input=UserInput(text="What is the refund window?"),
+            instructions=[Instruction("Answer only from the provided sources")],
+            evidence=_evidence(window),
+            budget=Budget(max_input_tokens=2000),
+        )
+        return compiled, compiled.receipt()
+
+    _, receipt_a = await _receipt("30 days")
+    _, receipt_b = await _receipt("30 days")
+    _, receipt_changed = await _receipt("45 days")
+
+    receipt_deterministic = receipt_a.receipt_hash == receipt_b.receipt_hash
+    receipt_verifies = bool(receipt_a.verify())
+    divergence_detected = bool(receipt_changed.diverges_from(receipt_a))
+
+    # Raw text must never leak into the exportable receipt.
+    blob = json.dumps(receipt_a.to_export())
+    no_raw_text = all(
+        raw not in blob
+        for raw in ("Refunds are allowed", "Bananas", "potassium", "14 days")
+    )
+
+    # Overhead of building a receipt from an already-compiled context, amortized
+    # over repeated builds so a single noisy sample does not dominate.
+    compiled, _ = await _receipt("30 days")
+    rounds = 200
+    start = time.perf_counter()
+    for _ in range(rounds):
+        compiled.receipt()
+    overhead_ms = round((time.perf_counter() - start) / rounds * 1000, 4)
+
+    return {
+        "receipt_deterministic": receipt_deterministic,
+        "receipt_verifies": receipt_verifies,
+        "divergence_detected": 1.0 if divergence_detected else 0.0,
+        "no_raw_text": no_raw_text,
+        "overhead_ms": overhead_ms,
+        "receipts_checked": 4,
+        "included_count": len(receipt_a.included),
+        "excluded_count": len(receipt_a.excluded),
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -12567,6 +12671,7 @@ FAMILIES = {
     "bench_tracks": bench_tracks,
     "hygiene": bench_hygiene,
     "structural_guarantees": bench_structural_guarantees,
+    "compile_receipt": bench_compile_receipt,
 }
 
 

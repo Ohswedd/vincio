@@ -97,7 +97,7 @@ reference, the text lives once on the IR, and
 - [Guide: optimize prompts, context, and routing](../guides/optimize-context.md)
 - [Guide: Performance & streaming](../guides/performance.md)
 - [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
-- [Concept: Retrieval (RAG)](retrieval.md)
+- [Concept: Packet compile receipt](compile-receipt.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)
 - [Documentation index](../README.md)

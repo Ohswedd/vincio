@@ -1483,6 +1483,46 @@
       "rationale": "A recording shared across processes must be tamper-evident; verifying the digest and every edge's content address before replay prevents a corrupted recording from producing a misleading run."
     },
     {
+      "id": "compile_receipt_deterministic",
+      "category": "reliability",
+      "statement": "Recompiling identical inputs yields a byte-identical compile receipt hash, so the receipt can be diffed across compile changes and a replay of the same inputs is provably unchanged.",
+      "metric": "families.compile_receipt.receipt_deterministic",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.compile_receipt.receipt_deterministic",
+      "rationale": "A receipt is only a useful review/incident artifact if the same compile decision always produces the same receipt; a stable hash is what lets a divergence be detected rather than lost in noise."
+    },
+    {
+      "id": "compile_receipt_verifies",
+      "category": "reliability",
+      "statement": "A compile receipt re-verifies offline from its own serialized bytes: it round-trips to the same hash, its budget is not overspent, its included and excluded sets are disjoint, and it carries no raw text.",
+      "metric": "families.compile_receipt.receipt_verifies",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.compile_receipt.receipt_verifies",
+      "rationale": "An audit artifact attached to a PR or incident must be self-checking; verifying from bytes proves the receipt is internally consistent and was not tampered with in transit."
+    },
+    {
+      "id": "compile_receipt_omits_raw_text",
+      "category": "privacy",
+      "statement": "An exported compile receipt never contains raw prompt or evidence text — only ids, content hashes, scores, and summaries — so it is safe to attach to a pull request, an incident note, or a user bug report.",
+      "metric": "families.compile_receipt.no_raw_text",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.compile_receipt.no_raw_text",
+      "rationale": "The receipt exists precisely so the compile decision can be shared without shipping sensitive context; leaking raw text would defeat its purpose and its privacy posture."
+    },
+    {
+      "id": "compile_receipt_divergence_detected",
+      "category": "reliability",
+      "statement": "When a source changes, the resulting compile receipt no longer matches its baseline hash and the difference is reported as an explicit, structured divergence rather than a silent change.",
+      "metric": "families.compile_receipt.divergence_detected",
+      "direction": "gte",
+      "threshold": 1.0,
+      "enforced_by": "families.compile_receipt.divergence_detected",
+      "rationale": "The receipt's value in triage is surfacing what changed between two compiles; a changed source must diverge loudly so a surprising run can be diffed against a known-good baseline."
+    },
+    {
       "id": "semantic_cache_hit_quality",
       "category": "quality",
       "statement": "An accepted near-miss served from the learned semantic cache is at-least-as-good as the live answer the same request would have produced, at a fixed (near-zero) budget.",

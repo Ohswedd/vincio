@@ -23,7 +23,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.2.0"
+    assert vincio.__version__ == "7.3.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -63,7 +63,7 @@ def test_version_and_api_contract():
     # tiers, one reporting/CLI surface, and CI gating (`families.bench_tracks.*`) —
     # additive: new `vincio.evals.suite` symbols + the `vincio bench` command, no
     # existing symbol removed. The surface grows by re-freezing it, never by breaking
-    # it, so the API contract generation stays "5.0" while the package advances to 7.2.0.
+    # it, so the API contract generation stays "5.0" while the package advances to 7.3.0.
     assert API_VERSION == "5.0"
 
 

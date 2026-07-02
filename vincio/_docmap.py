@@ -228,6 +228,16 @@ TOPICS: tuple[Topic, ...] = (
         verbs=("govern_packet", "use_context_governor", "context_budget_report"),
     ),
     Topic(
+        "compile_receipt", "knowledge", "Packet compile receipt",
+        "A compact, text-light manifest of why a context packet was compiled — "
+        "inclusions, exclusions, per-item scores, budget, privacy, and conflict "
+        "winners, with a pointer back to the trace — safe to attach to a PR or "
+        "incident and diffable across compile changes.",
+        concept=_c("compile-receipt"),
+        guides=(_g("compile-receipt"),),
+        examples=(_e("17_compile_receipt"),),
+    ),
+    Topic(
         "retrieval", "knowledge", "Retrieval (RAG)",
         "BM25 + dense + learned-sparse + late-interaction fused in one RRF, query "
         "understanding, chunking, GraphRAG, and pushed-down filters.",

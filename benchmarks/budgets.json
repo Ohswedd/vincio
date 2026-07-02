@@ -1276,6 +1276,21 @@
     "families.record_replay.branch_suffix_reexecuted": {
       "eq": true
     },
+    "families.compile_receipt.receipt_deterministic": {
+      "eq": true
+    },
+    "families.compile_receipt.receipt_verifies": {
+      "eq": true
+    },
+    "families.compile_receipt.no_raw_text": {
+      "eq": true
+    },
+    "families.compile_receipt.divergence_detected": {
+      "gte": 1.0
+    },
+    "families.compile_receipt.overhead_ms": {
+      "lte": 5.0
+    },
     "families.semantic_cache.calibrated": {
       "eq": true
     },

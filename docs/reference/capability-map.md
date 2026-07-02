@@ -157,6 +157,12 @@ Concept: [Context packets & long-horizon governance](../concepts/context-packets
 | `app.govern_packet` | Admit a run's evidence into the installed long-horizon governor. |
 | `app.use_context_governor` | Install a long-horizon :class:`~vincio.context.ContextGovernor`. |
 
+### Packet compile receipt
+
+A compact, text-light manifest of why a context packet was compiled — inclusions, exclusions, per-item scores, budget, privacy, and conflict winners, with a pointer back to the trace — safe to attach to a PR or incident and diffable across compile changes.
+
+Concept: [Packet compile receipt](../concepts/compile-receipt.md) · Guides: [Attach a compile receipt to a PR or incident](../guides/compile-receipt.md) · Examples: [17_compile_receipt.py](../../examples/17_compile_receipt.py) · Reference: [Knowledge](api.md#knowledge)
+
 ### Retrieval (RAG)
 
 BM25 + dense + learned-sparse + late-interaction fused in one RRF, query understanding, chunking, GraphRAG, and pushed-down filters.

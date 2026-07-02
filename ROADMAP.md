@@ -45,10 +45,14 @@ additive. In `v7.2` the benchmark story was **unified into one three-track platf
 (`vincio bench model|uplift|feature`): the public-benchmark plane joined a new **uplift** track (the
 same model through Vincio vs direct) and a new **feature** track (a Vincio feature vs a competitor
 library, measured live), sharing the provenance tiers, one reporting/CLI surface, and CI gating —
-additive, no existing symbol changed. One capability remains proposed and specified under
-[Forward work](#forward-work--proposed-capability) — a DS4 local-inference provider (target
-`v7.3`) — additive, behind its own entry point or opt-in extra, gated by VincioBench budgets and
-SLOs, and preserving the frozen surface.
+additive, no existing symbol changed. `v7.3` added the **packet compile receipt** — a compact,
+text-light `CompileReceipt` (in `vincio.context`, with a `vincio trace receipt` command) that proves
+*why* a context packet was compiled (inclusions, exclusions, per-item scores, budget, privacy, and
+conflict winners), linked from the run trace and safe to attach to a PR or incident — additive, no
+existing symbol changed. One capability remains proposed and specified under
+[Forward work](#forward-work--proposed-capability) — a DS4 local-inference provider — additive, behind
+its own entry point or opt-in extra, gated by VincioBench budgets and SLOs, and preserving the frozen
+surface.
 
 ---
 

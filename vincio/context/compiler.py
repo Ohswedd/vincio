@@ -46,7 +46,7 @@ from .features import FeatureArena
 from .footprint import estimate_resident_bytes
 from .ir import ContextIR, OutputContractRef
 from .llmlingua import salient_units
-from .packet import ContextPacket
+from .packet import ContextPacket, _content_hash
 from .scoring import (
     ContextCandidate,
     ContextScorer,
@@ -141,6 +141,15 @@ class CompiledContext(BaseModel):
     source_evidence: list[EvidenceItem] = Field(default_factory=list, exclude=True)
     source_memory: list[MemoryItem] = Field(default_factory=list, exclude=True)
     source_tool_results: list[ToolResult] = Field(default_factory=list, exclude=True)
+
+    def receipt(self, **kwargs: Any) -> Any:
+        """The compile receipt for this compiled context — a compact, text-light
+        manifest of why the packet was compiled. See
+        :class:`~vincio.context.CompileReceipt`; run-context enrichments are
+        forwarded to :meth:`CompileReceipt.from_packet`."""
+        from .receipt import CompileReceipt
+
+        return CompileReceipt.from_packet(self.packet, **kwargs)
 
 
 class CompileStreamEvent(BaseModel):
@@ -1033,6 +1042,19 @@ class ContextCompiler:
                     PreparedCandidates(candidates=candidates, excluded=static_excluded),
                 )
 
+        # Index every candidate's kind and content fingerprint before any stage
+        # can drop it, so the compile receipt can describe an *excluded* item by
+        # kind and content hash (its text is never on the packet). Captured after
+        # the privacy screen and before the pre-filter, so it covers every later
+        # exclusion (pre-filter, dedup, conflict, low-relevance, budget, footprint).
+        # Privacy-scope-mismatched items are screened out *above* this point and
+        # deliberately carry no content fingerprint: they are rejected at the trust
+        # boundary regardless of their content, so the receipt records only the fact
+        # of the exclusion (id + reason + kind), never a hash of cross-scope content.
+        content_index: dict[str, tuple[str, str]] = {
+            c.id: (c.type, c.content) for c in candidates
+        }
+
         # 3.5. streaming candidate pre-filter: when the evidence pool exceeds
         # ``max_candidates``, bound it by a cheap lexical relevance proxy and a
         # fingerprint dedup *before* scoring, dedup/conflict, and embedding — so
@@ -1180,6 +1202,28 @@ class ContextCompiler:
             + allocation.block("tool_results").used_tokens
         )
 
+        # Compile-receipt enrichment. The per-included selection scores let the
+        # receipt report *why* each kept item was chosen; the excluded records
+        # gain the item's kind and a content hash so the receipt can name a
+        # dropped item without ever carrying its text.
+        included_scores: dict[str, dict[str, float]] = {}
+        for candidate in selected_evidence + selected_memory + selected_tools:
+            included_scores[candidate.id] = {
+                "score": round(candidate.scores.total, 6),
+                "relevance": round(candidate.scores.relevance, 6),
+                "authority": round(candidate.scores.authority, 6),
+                "freshness": round(candidate.scores.freshness, 6),
+            }
+        for record in excluded:
+            indexed = content_index.get(record.get("id", ""))
+            if indexed is not None:
+                record.setdefault("kind", indexed[0])
+                if "source_hash" not in record:
+                    # Same content-hash scheme as the included items, so an item
+                    # that moves between kept and dropped across compiles keeps a
+                    # comparable fingerprint.
+                    record["source_hash"] = _content_hash(indexed[1])
+
         # 10-11. render + validate packet.
         if token_count > budget.max_input_tokens:
             raise ContextCompileError(
@@ -1196,6 +1240,7 @@ class ContextCompiler:
             trace_parent_id=trace_parent_id,
             token_count=token_count,
             slim=effective_slim,
+            included_scores=included_scores,
         )
         resident_bytes = estimate_resident_bytes(
             [c.content for c in selected_evidence],

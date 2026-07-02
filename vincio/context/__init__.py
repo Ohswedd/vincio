@@ -32,6 +32,14 @@ from .longhorizon import (
     RunSpan,
 )
 from .packet import ContextPacket
+from .receipt import (
+    BudgetSummary,
+    CompileReceipt,
+    ConflictSummary,
+    PrivacySummary,
+    ReceiptItem,
+    RenderInfo,
+)
 from .scoring import (
     ContextCandidate,
     ContextScorer,
@@ -71,6 +79,13 @@ __all__ = [
     "RunSpan",
     "CompactionRecord",
     "ContextPacket",
+    # compile receipt
+    "CompileReceipt",
+    "ReceiptItem",
+    "ConflictSummary",
+    "BudgetSummary",
+    "PrivacySummary",
+    "RenderInfo",
     "ContextCandidate",
     "ContextScorer",
     "ContextScores",

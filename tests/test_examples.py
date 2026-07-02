@@ -27,7 +27,7 @@ def test_examples_present():
     # the whole platform end-to-end, one solid example per macro-feature (see
     # examples/README.md) — the data & analytics plane is one tour (13), and the
     # open evaluation plane is one tour (16).
-    assert len(EXAMPLE_FILES) == 17
+    assert len(EXAMPLE_FILES) == 18
 
 
 @pytest.mark.parametrize("path", EXAMPLE_FILES, ids=lambda p: p.stem)
