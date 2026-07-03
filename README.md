@@ -203,7 +203,7 @@ high-level `ContextApp`, or reach for any engine directly.
 
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates. `embedder="auto"` (semantic when a local ONNX model is installed, deterministic hash otherwise) and grow-only adaptive `top_k` are opt-in, byte-identical defaults.
-- Context anchors: mark a source `anchor=True` to keep a PRD / spec / brand frame **always-present across a whole multi-call task** — it's distilled once into a compact, constraint-first, content-hash-cached brief injected as **pinned** evidence into every call at a flat few-hundred-token cost (~32× smaller than the corpus), guaranteed into the packet at every drop point without ever exceeding the budget, while on-demand detail still flows through normal retrieval. Beats "paste every MD file every call" (token-hungry) and "pure per-query RAG" (drops the constraint on a lexical miss). Inspect it with `app.task_brief()`.
+- Context anchors: mark a source `anchor=True` to keep a PRD / spec / brand frame **always-present across a whole multi-call task** — it's distilled once into a compact, constraint-first, content-hash-cached brief injected as **pinned** evidence into every call at a flat few-hundred-token cost (~28× smaller than the corpus), guaranteed into the packet at every drop point without ever exceeding the budget, while on-demand detail still flows through normal retrieval. Beats "paste every MD file every call" (token-hungry) and "pure per-query RAG" (drops the constraint on a lexical miss). Inspect it with `app.task_brief()`.
 - Layered memory: session → episodic → semantic → tenant → graph, with a guarded write pipeline, confidence decay, contradiction resolution, bi-temporal recall, per-memory ACLs, and audited GDPR-style edit/forget/export.
 
 **Agents & orchestration**
@@ -397,7 +397,7 @@ live (OpenRouter, 2026-07-03, `python benchmarks/rag_anchor_uplift_live.py`):
 
 <sub>Anchors match stuffing on adherence (100%) at **~3× fewer input tokens per call**, while pure
 per-query RAG drops the globally-binding rule to 50% on the tasks that don't lexically match it. On a
-larger corpus the token gap widens; the offline `rag_anchors` family gates the mechanism (32× brief
+larger corpus the token gap widens; the offline `rag_anchors` family gates the mechanism (~28× brief
 reduction, frame guaranteed at every drop point, never over budget).</sub>
 
 </details>
@@ -488,7 +488,7 @@ end to end — the entire data & analytics plane is one tour (`13`). Highlights 
 | 17 | [`compile_receipt`](examples/17_compile_receipt.py) | the packet compile receipt — why a packet compiled the way it did · `receipt_hash` · offline `verify()` · `diverges_from()` between runs |
 | 18 | [`ds4_local_inference`](examples/18_ds4_local_inference.py) | a self-hosted DS4 DeepSeek V4 box as a first-class provider — thinking modes · disk-KV cache accounting · on-prem residency · honest self-hosted $0 |
 | 19 | [`web_browser_search`](examples/19_web_browser_search.py) | universal web browsing & search — governed `web_search` / `web_read` for every model · token-budgeted page reading · the text protocol for models without tool calling · pre-egress policy · offline-verifiable evidence |
-| 20 | [`context_anchors`](examples/20_context_anchors.py) | context anchors — keep a PRD / spec / brand frame across a whole coding task · `anchor=True` distills it once into a compact cached brief · pinned into every call at a flat cost (~27× smaller) · present even on a query that never mentions it and under a tiny window · on-demand detail still retrieves |
+| 20 | [`context_anchors`](examples/20_context_anchors.py) | context anchors — keep a PRD / spec / brand frame across a whole coding task · `anchor=True` distills it once into a compact cached brief · pinned into every call at a flat cost (~26× smaller) · present even on a query that never mentions it and under a tiny window · on-demand detail still retrieves |
 
 ### 3 · Applications — real-world backends
 

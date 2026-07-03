@@ -179,8 +179,16 @@ class _KnowledgeVerbs:
         self.sources[name] = source
         # Task frame: register the anchor's documents so its always-on brief is
         # (re)built and cached; the same docs also stay indexed for on-demand detail.
-        if anchor and docs:
-            self.anchors.add(name, docs, brief_tokens=brief_tokens)
+        if anchor:
+            if docs:
+                self.anchors.add(name, docs, brief_tokens=brief_tokens)
+            else:
+                # anchor=True but the load produced nothing (empty dir, every file
+                # failed its loader, connector returned []): surface it rather than
+                # leave the user believing the frame is pinned while runs go frameless.
+                from ..core.diagnostics import note_suppressed
+
+                note_suppressed("anchors.empty_source")
         return self
 
     def task_brief(self: ContextApp) -> str | None:  # type: ignore[misc]

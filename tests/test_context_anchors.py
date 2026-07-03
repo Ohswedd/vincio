@@ -267,5 +267,97 @@ def test_adaptive_top_k_default_off_in_config():
     assert VincioConfig().retrieval.embedder == "local"  # default not env-dependent
 
 
+# -- regressions for the adversarial-review findings -----------------------------------------
+
+
+def test_token_count_includes_the_pinned_frame():
+    # #1: the frame tokens must be counted in token_count, so the over-budget guard
+    # is not fooled by an undercount and cost accounting is honest.
+    from vincio.core.tokens import count_tokens
+
+    frame = build_anchor_brief(
+        [Document(title="Spec", text="You MUST always sign every reply. " * 60)], brief_tokens=600
+    ).as_evidence()
+    result = _compile([frame], Budget(max_input_tokens=8000))
+    frame_tokens = next(count_tokens(e.get("text") or "")
+                        for e in result.packet.evidence_items if e.get("id") == frame.id)
+    assert result.token_count >= frame_tokens  # frame is in the total, not dropped from it
+
+
+def test_multiple_pinned_items_all_included_order_independent():
+    # #2: several pinned items over the cap → every one stays present (shrunk), and
+    # the surviving set does not depend on input order.
+    a = EvidenceItem(id="pin:a", source_id="s", text="alpha " * 80, relevance=0.9, pinned=True)
+    b = EvidenceItem(id="pin:b", source_id="s", text="bravo " * 80, relevance=0.9, pinned=True)
+    budget = Budget(max_input_tokens=200)
+    ids_ab = set(_ids(_compile([a, b], budget)))
+    ids_ba = set(_ids(_compile([b, a], budget)))
+    assert {"pin:a", "pin:b"} <= ids_ab, "a pinned item was dropped"
+    assert ids_ab == ids_ba, "which pinned item survives depends on input order"
+
+
+def test_laddered_frame_keeps_receipt_verifiable():
+    # #3: a compressed/truncated frame is INCLUDED → must not appear in the excluded
+    # report (receipt.verify() requires included/excluded to be disjoint).
+    frame = build_anchor_brief(
+        [Document(title="Spec", text="You MUST sign every reply. " * 80)], brief_tokens=400
+    ).as_evidence()
+    result = _compile([frame], Budget(max_input_tokens=600))  # cap 300 < frame → laddered
+    included = {e.get("id") for e in result.packet.evidence_items}
+    excluded = {e.get("id") for e in result.excluded_report}
+    assert frame.id in included and frame.id not in excluded
+    assert not (included & excluded)
+
+
+def test_non_anchor_compile_has_no_anchor_budget_line():
+    # #5: a compile with no pinned evidence must not gain an "anchor" budget block.
+    result = _compile([EvidenceItem(id="e", source_id="s", text="a plain body", relevance=0.9)],
+                      Budget(max_input_tokens=8000))
+    blocks = result.budget_report.get("blocks", {}) if isinstance(result.budget_report, dict) else {}
+    assert "anchor" not in blocks
+
+
+def test_erased_anchor_source_stops_injecting_the_frame(tmp_path):
+    # #7: erase_source must purge the anchor so the frame stops reaching prompts.
+    app = ContextApp(name="er", provider=MockProvider(), model="mock-1", config=_offline_config(tmp_path))
+    app.add_source("hr", documents=[Document(title="HR", text="Never disclose salaries. Always redact PII.")],
+                   anchor=True)
+    assert app.task_brief() and "Never disclose" in app.task_brief()
+    app.erase_source("hr", prove=False)
+    assert app.task_brief() is None and not app.anchors
+
+
+def test_brief_survives_large_corpus_with_constraint_dense_small_doc():
+    # #6 + #11: a big prose corpus plus a tiny rules file — the rules survive, the
+    # brief stays under budget, and it never ends mid-word.
+    prose = " ".join(f"Section {i}: narrative background, no rules." for i in range(400))
+    docs = [Document(title="README", text="A long readme. " + prose),
+            Document(title="Rules", text="Secrets must never be committed. Deletes must be soft for 30 days.")]
+    brief = build_anchor_brief(docs, brief_tokens=200)
+    assert brief.tokens <= 200
+    assert "must never be committed" in brief.text and "Deletes must be soft" in brief.text
+
+
+def test_content_hash_is_over_rendered_text():
+    # #8: the id is the content hash of the rendered frame text (not just inputs).
+    import hashlib
+    brief = build_anchor_brief([Document(title="A", text="Always ship tests.")], brief_tokens=200)
+    assert brief.content_hash == hashlib.sha256(brief.text.encode("utf-8")).hexdigest()
+
+
+def test_empty_anchor_source_is_diagnosed_not_silent(tmp_path):
+    # #12: add_source(anchor=True) with no docs must not silently register a frame.
+    app = ContextApp(name="empty", provider=MockProvider(), model="mock-1", config=_offline_config(tmp_path))
+    app.add_source("prd", documents=[], anchor=True)
+    assert app.task_brief() is None
+
+
+def test_build_embedder_auto_never_raises_raw_error():
+    # #15: auto resolution must not leak a non-Vincio error from find_spec.
+    from vincio.retrieval.embeddings import build_embedder
+
+    build_embedder("auto")
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

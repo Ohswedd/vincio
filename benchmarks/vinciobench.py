@@ -13259,7 +13259,8 @@ async def bench_rag_anchors() -> dict[str, Any]:
 
     # determinism + cache
     b_a = build_anchor_brief(corpus, brief_tokens=160)
-    s = AnchorSet(); s.add("spec", corpus, brief_tokens=160)
+    s = AnchorSet()
+    s.add("spec", corpus, brief_tokens=160)
     brief_deterministic = (
         b_a.text == brief.text and b_a.content_hash == brief.content_hash
         and s.brief() is s.brief()  # cached

@@ -668,6 +668,14 @@ class _GovernanceVerbs:
             result.datasets_removed = len(removed_datasets)
             removed_ids["datasets"] = removed_datasets
 
+        # Anchor frame: a source pinned as a context anchor injects its distilled
+        # brief into every subsequent prompt, so erasure must drop it here too —
+        # otherwise verbatim sentences from the "erased" source keep flowing to the
+        # model. Dropping it also invalidates the cached brief.
+        if self.anchors.remove(source):
+            removed_ids["anchors"] = [source]
+            result.found = True
+
         # Caches: erasure correctness outweighs cache retention.
         for cache in (self.response_cache, self.context_compile_cache):
             backend = getattr(cache, "backend", None) or getattr(cache, "cache", None)

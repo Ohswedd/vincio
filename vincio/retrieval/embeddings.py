@@ -852,22 +852,35 @@ class FastEmbedEmbedder:
             from fastembed import TextEmbedding
 
             self._model = TextEmbedding(model_name=self.model_name)
-        except Exception as exc:  # noqa: BLE001 - any load failure degrades observably
-            # Not just ImportError: an offline box with no model cache raises a
-            # download error here. With fallback on, degrade to the deterministic
-            # hash embedder observably rather than crashing the run.
+        except ImportError as exc:
+            # fastembed not installed.
             if self._fallback:
-                from ..core.diagnostics import note_suppressed
-
-                note_suppressed("embeddings.fastembed_load_failed")
-                self._fallback_embedder = LocalHashEmbedder(dim=self.dim)
+                self._degrade_to_fallback("not_installed")
                 return
-            if isinstance(exc, ImportError):
-                raise ConfigError(
-                    'the local ONNX embedder requires: pip install "vincio[fastembed]" '
-                    "(or construct with fallback=True / inject encode_fn)"
-                ) from exc
-            raise
+            raise ConfigError(
+                'the local ONNX embedder requires: pip install "vincio[fastembed]" '
+                "(or construct with fallback=True / inject encode_fn)"
+            ) from exc
+        except OSError as exc:
+            # Model cache missing / download blocked / filesystem error — an
+            # *environment* failure (offline CI). Degrade observably when allowed;
+            # otherwise surface it. A bad model name raises ValueError, and a real
+            # code bug raises something else — those propagate rather than silently
+            # becoming hash vectors, so a genuine defect is never masked as a
+            # quiet retrieval-quality regression.
+            if self._fallback:
+                self._degrade_to_fallback(type(exc).__name__)
+                return
+            raise ConfigError(
+                f"the local ONNX embedder could not load its model ({exc}); "
+                "install the model cache or construct with fallback=True"
+            ) from exc
+
+    def _degrade_to_fallback(self, reason: str) -> None:
+        from ..core.diagnostics import note_suppressed
+
+        note_suppressed(f"embeddings.fastembed_load_failed:{reason}")
+        self._fallback_embedder = LocalHashEmbedder(dim=self.dim)
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         self._ensure()
@@ -957,7 +970,13 @@ def build_embedder(
         # so byte-identity does not depend on the install profile.
         import importlib.util
 
-        if importlib.util.find_spec("fastembed") is not None:
+        try:
+            available = importlib.util.find_spec("fastembed") is not None
+        except (ImportError, ValueError):
+            # find_spec raises on a broken/namespace-only install; treat any such
+            # failure as "not available" rather than leaking a raw non-Vincio error.
+            available = False
+        if available:
             kwargs.setdefault("fallback", True)
             base = FastEmbedEmbedder(**kwargs)
         else:

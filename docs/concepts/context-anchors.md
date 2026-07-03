@@ -30,7 +30,7 @@ constraints a task has to respect, over narrative prose. The brief is:
   detail and the prompt prefix stays cacheable.
 
 On the reference corpus a ~4,300-token PRD/brand/architecture bundle becomes a
-~130-token frame — a **32× reduction** — with every constraint retained.
+~150-token frame — a **~28× reduction** — with every constraint retained.
 
 ## Tier 2 — on-demand detail (per query)
 

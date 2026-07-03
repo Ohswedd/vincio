@@ -33,21 +33,22 @@ from pydantic import BaseModel, Field
 
 from ..core.tokens import count_tokens
 from ..core.types import Document, EvidenceItem, TrustLevel
-from ..memory.summarizers import extractive_summary
 
 __all__ = ["AnchorBrief", "AnchorSet", "build_anchor_brief"]
 
+_FRAME_HEADER = "Project frame (task anchors — always applies):"
+
 # Lines that state a rule/constraint are the frame's load-bearing content — a
-# PRD's requirements, a brand doc's do/don't, a spec's invariants. Boosted so
-# they survive the token budget over prose.
+# PRD's requirements, a brand doc's do/don't, a spec's invariants. Preferred so
+# they survive the token budget over prose, regardless of which document they
+# live in (a tiny rules file must not be starved by a verbose README).
 _NORMATIVE_RE = re.compile(
     r"\b(must(?:\s+not)?|shall(?:\s+not)?|should(?:\s+not)?|never|always|required|"
     r"do not|don't|avoid|ensure|prefer|constraint|invariant|mandat\w+|forbidden)\b",
     re.IGNORECASE,
 )
 _SENTENCE_SPLIT = re.compile(r"(?<=[.!?;:])\s+|\n+")
-_MIN_DOC_TOKENS = 24  # every anchor doc gets at least a header + a line or two
-_HEADER_RESERVE = 6  # tokens reserved for a doc's title line
+_HEADER_RESERVE = 6  # tokens budgeted for each rendered "### title" line
 
 
 class AnchorBrief(BaseModel):
@@ -97,60 +98,45 @@ class AnchorBrief(BaseModel):
 
 #: Bumped when the brief-building algorithm changes output, so a Vincio upgrade
 #: invalidates persisted briefs rather than serving a stale one from cache.
-_BRIEF_ALGO_VERSION = "1"
+_BRIEF_ALGO_VERSION = "2"
+
+
+def _text_hash(text: str) -> str:
+    """Content address of the *rendered* frame. Hashing the output (not just the
+    inputs) means two environments whose tokenizers disagree — and so render
+    different briefs — get different ids, and ``verify()`` never false-matches a
+    brief it did not actually produce."""
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def _doc_header(document: Document) -> str:
+    return (document.title or str(document.metadata.get("source") or "")
+            or (document.source_uri or "")).strip()
 
 
 def _corpus_hash(documents: list[Document], brief_tokens: int) -> str:
+    """Cheap change-detector for the in-process AnchorSet cache. Length-framed so
+    no two distinct corpora share a preimage, and it covers every field that
+    steers rendering (title, the header fallbacks, and body text)."""
     hasher = hashlib.sha256()
-    hasher.update(_BRIEF_ALGO_VERSION.encode())
-    hasher.update(b"\x00")
-    hasher.update(str(brief_tokens).encode())
+
+    def feed(value: str) -> None:
+        raw = value.encode("utf-8")
+        hasher.update(len(raw).to_bytes(8, "big"))
+        hasher.update(raw)
+
+    feed(_BRIEF_ALGO_VERSION)
+    feed(str(brief_tokens))
+    hasher.update(len(documents).to_bytes(8, "big"))
     for document in documents:
-        hasher.update(b"\x00")
-        hasher.update((document.title or "").encode("utf-8"))
-        hasher.update(b"\x00")
-        hasher.update((document.text or "").encode("utf-8"))
+        feed(document.title or "")
+        feed(_doc_header(document))
+        feed(document.text or "")
     return hasher.hexdigest()
 
 
-def _rank_sentences(text: str, budget_tokens: int) -> str:
-    """The most frame-relevant sentences of *text* within *budget_tokens*.
-
-    Normative sentences (must / never / always / required …) are preferred over
-    prose; ties and the remainder fall back to lead-position extractive summary.
-    Deterministic and offline."""
-    sentences = [s.strip() for s in _SENTENCE_SPLIT.split(text) if s.strip()]
-    if not sentences:
-        return ""
-    normative = [s for s in sentences if _NORMATIVE_RE.search(s)]
-    picked: list[str] = []
-    used = 0
-    seen: set[str] = set()
-    # 1) as many normative (constraint) lines as fit, in document order
-    for sentence in normative:
-        key = sentence.lower()
-        if key in seen:
-            continue
-        cost = count_tokens(sentence)
-        if used + cost > budget_tokens and picked:
-            break
-        picked.append(sentence)
-        seen.add(key)
-        used += cost
-    # 2) fill any remaining budget with a lead-biased extractive summary
-    if used < budget_tokens:
-        remainder = extractive_summary(text, max_tokens=budget_tokens - used)
-        for sentence in (s.strip() for s in _SENTENCE_SPLIT.split(remainder) if s.strip()):
-            key = sentence.lower()
-            if key in seen:
-                continue
-            cost = count_tokens(sentence)
-            if used + cost > budget_tokens and picked:
-                break
-            picked.append(sentence)
-            seen.add(key)
-            used += cost
-    return " ".join(picked)
+def _sentences(text: str) -> list[str]:
+    return [s.strip() for s in _SENTENCE_SPLIT.split(text) if s.strip()]
 
 
 def build_anchor_brief(
@@ -161,10 +147,12 @@ def build_anchor_brief(
 ) -> AnchorBrief:
     """Distill *documents* into a token-bounded, deterministic task frame.
 
-    The budget is shared across documents proportionally to their size (each
-    getting at least a header and a line or two), and within a document the
-    normative/constraint lines are preferred. The result is capped at
-    ``brief_tokens`` and cached by the corpus content hash.
+    Constraint-first *globally*: every document's normative lines (must / never /
+    always / required …) are preferred over prose regardless of which document
+    they live in, so a small rules file is never starved by a verbose README.
+    Whole sentences only — nothing is ever truncated mid-word — and the assembled
+    frame is bounded by dropping whole trailing sentences, never by re-summarizing
+    the rendered blocks. The id is the content hash of the rendered text.
     """
     real = [d for d in documents if (d.text or "").strip() or (d.title or "").strip()]
     source_names = sources if sources is not None else sorted(
@@ -172,32 +160,71 @@ def build_anchor_brief(
     )
     if not real:
         return AnchorBrief(
-            budget_tokens=brief_tokens, sources=source_names,
-            content_hash=_corpus_hash([], brief_tokens),
+            budget_tokens=brief_tokens, sources=source_names, content_hash=_text_hash(""),
         )
-    body_budget = max(brief_tokens - _HEADER_RESERVE, brief_tokens // 2)
-    sizes = [max(count_tokens(d.text or ""), 1) for d in real]
-    total_size = sum(sizes) or 1
-    blocks: list[str] = []
-    for document, size in zip(real, sizes, strict=True):
-        share = int(body_budget * size / total_size)
-        per_doc = max(_MIN_DOC_TOKENS, share)
-        title = (document.title or document.metadata.get("source") or "").strip()
-        gist = _rank_sentences(document.text or "", per_doc)
-        header = f"### {title}" if title else "###"
-        blocks.append(f"{header}\n{gist}".strip() if gist else header)
-    rendered = "Project frame (task anchors — always applies):\n" + "\n".join(blocks)
-    # Hard cap: if proportional shares overshot, trim to budget deterministically.
-    if count_tokens(rendered) > brief_tokens:
-        rendered = extractive_summary(rendered, max_tokens=brief_tokens, focus=rendered[:200])
-        rendered = "Project frame (task anchors — always applies):\n" + rendered
+
+    # Budget for sentence bodies: the whole window minus the frame header and one
+    # reserved header line per document (conservative — unused reserve is fine).
+    body_budget = max(
+        brief_tokens - count_tokens(_FRAME_HEADER) - _HEADER_RESERVE * len(real),
+        brief_tokens // 2,
+    )
+    # Global priority queue: all normative sentences first (in document order),
+    # then all prose — each carrying its document index so picks regroup by doc.
+    normative: list[tuple[int, str]] = []
+    prose: list[tuple[int, str]] = []
+    for index, document in enumerate(real):
+        seen_local: set[str] = set()
+        for sentence in _sentences(document.text or ""):
+            key = sentence.lower()
+            if key in seen_local:
+                continue
+            seen_local.add(key)
+            (normative if _NORMATIVE_RE.search(sentence) else prose).append((index, sentence))
+
+    picked: dict[int, list[str]] = {index: [] for index in range(len(real))}
+    used = 0
+    seen: set[str] = set()
+    for index, sentence in [*normative, *prose]:
+        key = sentence.lower()
+        # Skip exact and prefix/superset duplicates (no garbled near-dupes).
+        if key in seen or any(key in existing or existing in key for existing in seen):
+            continue
+        cost = count_tokens(sentence)
+        if used + cost > body_budget and used > 0:
+            continue  # keep scanning: a shorter later sentence may still fit
+        picked[index].append(sentence)
+        seen.add(key)
+        used += cost
+
+    def render(chosen: dict[int, list[str]]) -> str:
+        blocks: list[str] = []
+        for index, document in enumerate(real):
+            if not chosen[index]:
+                continue
+            title = _doc_header(document)
+            header = f"### {title}" if title else "###"
+            blocks.append(f"{header}\n{' '.join(chosen[index])}")
+        return _FRAME_HEADER + "\n" + "\n".join(blocks) if blocks else _FRAME_HEADER
+
+    rendered = render(picked)
+    # Header estimates can nudge the real total over budget; trim whole trailing
+    # sentences (block-aware, never mid-word) until it fits.
+    order = [*normative, *prose]
+    while count_tokens(rendered) > brief_tokens and any(picked[i] for i in picked):
+        for index, _sentence in reversed(order):
+            if picked[index]:
+                picked[index].pop()
+                break
+        rendered = render(picked)
+
     return AnchorBrief(
         text=rendered,
         tokens=count_tokens(rendered),
         sources=source_names,
         document_count=len(real),
         budget_tokens=brief_tokens,
-        content_hash=_corpus_hash(real, brief_tokens),
+        content_hash=_text_hash(rendered),
     )
 
 
@@ -228,6 +255,18 @@ class AnchorSet:
         self._brief_tokens[source] = brief_tokens
         self._brief = None
         self._cache_key = ""
+
+    def remove(self, source: str) -> bool:
+        """Drop an anchor source and invalidate the cache. Returns True if it was
+        present. Used by ``erase_source`` so an erased source stops injecting its
+        frame — the anchor plane is part of the erasure sweep, not a leak past it."""
+        if source not in self._docs:
+            return False
+        del self._docs[source]
+        self._brief_tokens.pop(source, None)
+        self._brief = None
+        self._cache_key = ""
+        return True
 
     def _all_docs(self) -> list[Document]:
         docs: list[Document] = []

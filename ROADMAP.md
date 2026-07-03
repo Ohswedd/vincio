@@ -75,7 +75,7 @@ the when/what/how contract reaches the model through the context plane, identica
 provider. `v7.7` added **context anchors & dynamic retrieval** — mark a source `anchor=True` and a
 PRD / spec / brand corpus that binds a whole multi-call task is distilled once into a compact,
 constraint-first, content-hash-cached brief injected as **pinned** evidence into every call at a flat
-few-hundred-token cost (~32× smaller than the corpus), guaranteed into the packet at every drop point
+few-hundred-token cost (~28× smaller than the corpus), guaranteed into the packet at every drop point
 (gate, dedup, conflict, footprint, budget) via a budget reservation with a never-raising overflow
 ladder, while on-demand detail still flows through normal retrieval — beating "paste every MD file
 every call" on tokens and "pure per-query RAG" on frame retention (live: anchors match stuffing on

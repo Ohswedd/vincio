@@ -26,7 +26,7 @@ defaults are byte-identical (the new behavior is opt-in); `API_VERSION` stays
   re-request across a 50-call chain), injected as **pinned** evidence into every
   run at a flat few-hundred-token cost, and rendered first so the prompt prefix
   stays cacheable. On the reference corpus a ~4,300-token bundle becomes a
-  ~130-token frame — a **32× reduction** — with every constraint retained.
+  ~150-token frame — a **~28× reduction** — with every constraint retained.
 - **Pinned evidence** (`EvidenceItem.pinned`). The general mechanism behind the
   frame: the context compiler treats a pinned item as guaranteed at *every* drop
   point — exempt from the relevance gate and min-score flush, from dedup (on both
