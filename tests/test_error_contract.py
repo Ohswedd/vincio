@@ -211,3 +211,57 @@ def test_private_modules_are_excluded():
     # Public modules are present.
     assert "vincio.core.app" in modules
     assert "vincio.core.error_catalog" in modules
+
+
+# --- the standing-guard whitelist covers the decomposed app verb surface -----
+
+
+def test_app_mixin_modules_stay_in_scope():
+    """The private ContextApp verb mixins are whitelisted into the scan.
+
+    ``vincio/core/_app_*.py`` (the ``_*Verbs`` classes ``ContextApp`` composes)
+    would normally drop out of the public-module scan as underscore-prefixed;
+    the app.py split must not silently un-guard the ``app.*`` verb bodies.
+    """
+    modules = ec.public_modules()
+    for name in (
+        "vincio.core._app_config",
+        "vincio.core._app_knowledge",
+        "vincio.core._app_settlement",
+        "vincio.core._app_data",
+    ):
+        assert name in modules, name
+    # The whitelist is surgical: other private modules stay out of scope.
+    assert "vincio.security._ed25519" not in modules
+    assert "vincio.tasks._flow" not in modules
+
+
+def test_detector_bites_inside_a_mixin_module():
+    """An injected bare built-in raise in a ``_*Verbs`` verb is still reported."""
+    source = (
+        "class _SettlementVerbs:\n"
+        "    def settle(self):\n"
+        "        raise ValueError('boom')\n"
+        "    def _helper(self):\n"          # private methods stay encapsulated
+        "        raise KeyError('x')\n"
+    )
+    assert ec.contract_raises_in_source(source, app_mixin=True) == [
+        ("_SettlementVerbs.settle", "ValueError")
+    ]
+    # Without the whitelist flag the private class would encapsulate the raise —
+    # the flag is exactly what keeps the moved verb surface guarded.
+    assert ec.contract_raises_in_source(source) == []
+
+
+def test_app_verb_gate_flags_injected_mixin_row():
+    """The always-on verb gate treats a ``_*Verbs`` mixin verb as a ContextApp verb."""
+    rows = [
+        ("vincio.core._app_settlement", "_SettlementVerbs.settle", "ValueError"),
+        # A non-Verbs private class in a mixin module is not the verb surface.
+        ("vincio.core._app_support", "_AgentHandle.run", "ValueError"),
+        # A Verbs-shaped qualname outside the whitelisted modules is not either.
+        ("vincio.evals.judges", "_FakeVerbs.build", "ValueError"),
+    ]
+    assert ec.app_verb_violations(rows) == [
+        "vincio.core._app_settlement._SettlementVerbs.settle raises ValueError"
+    ]

@@ -5,11 +5,14 @@ access them via their modules or the factory helpers so the core package
 works without the optional dependencies installed.
 """
 
+from __future__ import annotations
+
 from .base import (
     BlobStore,
     FileBlobStore,
     InMemoryMetadataStore,
     MetadataStore,
+    build_metadata_store,
     create_metadata_store,
     parse_storage_url,
 )
@@ -30,6 +33,7 @@ __all__ = [
     "FileBlobStore",
     "InMemoryMetadataStore",
     "MetadataStore",
+    "build_metadata_store",
     "create_metadata_store",
     "parse_storage_url",
     "SQLiteMetadataStore",

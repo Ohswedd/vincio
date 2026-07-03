@@ -1163,7 +1163,7 @@
       "gte": 7
     },
     "families.professionalism.deprecated_public_apis": {
-      "eq": 0
+      "eq": 10
     },
     "families.professionalism.config_needs_migration_detected": {
       "eq": true

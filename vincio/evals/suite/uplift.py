@@ -31,7 +31,7 @@ from pydantic import BaseModel, Field
 
 from ...core.errors import EvalSuiteError, TierViolationError
 from ...providers.base import run_sync
-from ..benchmarks import BenchmarkAdapter, BenchmarkTask, make_agent_solver
+from ..benchmarks import BenchmarkAdapter, BenchmarkTask, build_agent_solver
 from .metrics import summarize_results
 from .tiers import ProvenanceTier
 from .tracks import BenchmarkTrack
@@ -304,7 +304,7 @@ class UpliftSuite:
     def _score_live(self, spec: UpliftBenchmark, target: Any, *, arm: str) -> float:
         tasks = spec._tasks(arm=arm)
         adapter = spec.build_adapter(tasks)
-        report = run_sync(adapter.run(make_agent_solver(target, mode=spec.solver_mode)))
+        report = run_sync(adapter.run(build_agent_solver(target, mode=spec.solver_mode)))
         return float(summarize_results(report.results, primary_metric=spec.primary_metric)["primary"])
 
 
@@ -312,6 +312,8 @@ def _results_digest(results: list[UpliftResult]) -> str:
     """The single canonical content hash over the per-benchmark scores, used for both
     the run id and :attr:`UpliftRun.determinism_digest` (computed one way, not two)."""
     canonical = sorted([r.benchmark_id, round(r.direct, 6), round(r.vincio, 6)] for r in results)
+    # Historical spaced-separator form — persisted run ids depend on these
+    # exact bytes; do NOT switch to core.utils.compact_hash.
     blob = json.dumps({"track": BenchmarkTrack.UPLIFT.value, "results": canonical},
                       sort_keys=True, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]

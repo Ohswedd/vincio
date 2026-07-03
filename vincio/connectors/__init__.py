@@ -27,6 +27,8 @@ round-trip offline. Third-party connectors register on install via the
 in-process connectors register with :func:`register_connector`.
 """
 
+from __future__ import annotations
+
 from .base import CONNECTORS, Connector, connect, register_connector
 
 __all__ = ["CONNECTORS", "Connector", "connect", "register_connector"]

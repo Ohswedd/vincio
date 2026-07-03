@@ -1,5 +1,7 @@
 """Vincio caching system."""
 
+from __future__ import annotations
+
 from .base import CacheBackend, InMemoryCache, SQLiteCache
 from .compilation import ChunkCache, ContextCompileCache, PromptCompileCache
 from .invalidation import InvalidationManager

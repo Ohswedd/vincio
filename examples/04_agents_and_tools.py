@@ -21,7 +21,7 @@ from vincio import (
     ActionPolicy,
     ContextApp,
     UIAction,
-    make_web_checkout,
+    build_web_checkout,
 )
 from vincio.agents import HTNDomain
 from vincio.core.types import Document
@@ -259,7 +259,7 @@ async def section_computer_use() -> None:
     vincio[computer-use]."""
     banner("7. Grounded computer-use action plane")
     app = ContextApp(name="operator", provider=example_provider()[0])
-    spec, task = make_web_checkout()
+    spec, task = build_web_checkout()
 
     address = "role=textbox[name='Address']"
     checkout = "role=button[name='Checkout']"
@@ -295,7 +295,7 @@ async def section_computer_use() -> None:
 
     # An unapproved destructive action is blocked, not merely logged.
     guard = app.computer_use(
-        screen=make_web_checkout()[0],
+        screen=build_web_checkout()[0],
         policy=ActionPolicy(allow_urls=["https://shop.test"]),
     )
     blocked = await guard.act(UIAction(kind="click", selector=delete))

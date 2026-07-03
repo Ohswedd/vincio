@@ -14,7 +14,7 @@ import pytest
 
 from vincio import CellCitation, ContextApp, DataCatalog, QueryPlan, QueryResult, query_dataset
 from vincio.core.errors import DataError, QueryError, UnsafeQueryError
-from vincio.data import Dataset, LineageCoverage, is_read_only_sql, make_query_contract
+from vincio.data import Dataset, LineageCoverage, build_query_contract, is_read_only_sql
 from vincio.data.query import HeuristicQueryPlanner, InProcessSqlEngine
 from vincio.providers.mock import MockProvider
 from vincio.verify.programs import ProgramOp
@@ -361,7 +361,7 @@ def test_injection_in_question_is_refused() -> None:
 
 
 def test_query_contract_refuses_write_and_bounds_rows() -> None:
-    contract = make_query_contract(max_rows=2)
+    contract = build_query_contract(max_rows=2)
     assert contract.check_pre({"sql": "DROP TABLE sales"})  # non-empty breach list
     assert not contract.check_pre({"sql": "SELECT * FROM sales"})
     result = query_dataset("SELECT * FROM sales", _catalog(), max_rows=100)

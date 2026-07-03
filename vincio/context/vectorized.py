@@ -24,7 +24,7 @@ from typing import Any
 try:  # optional acceleration — the pure-Python reduction stays the default
     import numpy as _np
 except ImportError:  # pragma: no cover - exercised only when numpy is absent
-    _np = None
+    _np = None  # type: ignore[assignment]
 
 __all__ = [
     "HAS_NUMPY",

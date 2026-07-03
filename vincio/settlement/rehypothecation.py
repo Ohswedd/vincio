@@ -71,7 +71,7 @@ from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from .collateral import CollateralPool
 from .custody import CustodyAttestation
-from .record import SettlementSignature
+from .record import SettlementSignature, _resolve_verifier
 from .solvency import SolvencyProof
 
 if TYPE_CHECKING:
@@ -1079,6 +1079,7 @@ def guard_collateral(
     held: float | None = None,
     custody: CustodyAttestation | None = None,
     solvency: SolvencyProof | None = None,
+    verifier: ChainSigner | None = None,
     verify_with: ChainSigner | None = None,
 ) -> CollateralLedger:
     """Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
@@ -1086,7 +1087,7 @@ def guard_collateral(
     The rehypothecation analogue of :func:`~vincio.settlement.netting.net_settlements`:
     reads a counterparty's :class:`~vincio.settlement.collateral.CollateralPool`\\ s,
     refuses any whose content hash no longer recomputes (a forged signature too, with
-    ``verify_with``), and reconciles what they collectively pledge against the capital the
+    ``verifier``), and reconciles what they collectively pledge against the capital the
     poster actually holds. A contract pledged across more than one pool is pinpointed as a
     :class:`ReuseBreach`, and each beneficiary's claim is bounded to its deterministic share
     of the held capital. Returns a sealed, unsigned :class:`CollateralLedger`.
@@ -1102,13 +1103,13 @@ def guard_collateral(
       against capital **not already owed elsewhere** — surfacing an :class:`UnderReservedBreach`
       when that unencumbered capital falls below the pledges and exposing
       :attr:`~CollateralLedger.insolvent` when the proven liabilities exceed the reserves. A
-      tampered proof, a forged signature (with ``verify_with``), or a proof for a different
+      tampered proof, a forged signature (with ``verifier``), or a proof for a different
       poster is **refused**.
     * ``custody`` — a signed :class:`~vincio.settlement.custody.CustodyAttestation`
       **proving** the reserves. The guard reads its ``reserves_usd`` as the held figure,
       marks the bound :attr:`~CollateralLedger.reserves_proven`, and surfaces an
       :class:`UnderReservedBreach` when the proven reserves fall below the pledges. A
-      tampered reserve figure, a forged custodian (with ``verify_with``), or an attestation
+      tampered reserve figure, a forged custodian (with ``verifier``), or an attestation
       for a different poster is **refused**.
     * ``held`` — an explicit, *asserted* holdings figure (the legacy input). It can
       over-commit but never under-*reserves*, because nothing proves it.
@@ -1118,8 +1119,10 @@ def guard_collateral(
 
     Raises :class:`SettlementError` when the set is empty, the posters differ and none is
     given, ``held`` is negative, or more than one of ``held`` / ``custody`` / ``solvency`` is
-    passed (the held figure has one source).
+    passed (the held figure has one source). ``verify_with`` is a deprecated alias for
+    ``verifier`` (since 7.5, removed in 8.0).
     """
+    verifier = _resolve_verifier(verifier, verify_with, "guard_collateral")
     pool_list = list(pools)
     if not pool_list:
         raise SettlementError(
@@ -1157,7 +1160,7 @@ def guard_collateral(
             details={"poster": resolved_poster, "held": held},
         )
 
-    ledger_pools = [_ledger_pool(p, verifier=verify_with) for p in pool_list]
+    ledger_pools = [_ledger_pool(p, verifier=verifier) for p in pool_list]
     # The held figure: proven by a custody attestation, asserted via held=, or defaulted to
     # the gross pledge minus the provably double-pledged capital (the same contract backed by
     # more than one pool), so duplicates surface as an over-commitment by default while
@@ -1174,7 +1177,7 @@ def guard_collateral(
     liabilities_usd = 0.0
     solvency_margin_usd = 0.0
     if solvency is not None:
-        resolved_held = _held_from_solvency(solvency, poster=resolved_poster, verifier=verify_with)
+        resolved_held = _held_from_solvency(solvency, poster=resolved_poster, verifier=verifier)
         custodian = solvency.custodian
         custody_hash = solvency.custody_hash
         reserves_usd = resolved_held
@@ -1184,7 +1187,7 @@ def guard_collateral(
         solvency_margin_usd = _r6(solvency.margin_usd)
     elif custody is not None:
         resolved_held = _reserves_from_custody(
-            custody, poster=resolved_poster, verifier=verify_with
+            custody, poster=resolved_poster, verifier=verifier
         )
         custodian = custody.custodian
         custody_hash = custody.content_hash

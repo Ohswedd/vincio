@@ -62,7 +62,7 @@ caching, failover, and cost tracking built in.
 ```bash
 pip install vincio                  # core (dependency-light: pydantic, httpx, pyyaml, typing-extensions)
 pip install "vincio[openai]"        # + a provider (also: anthropic, google, mistral)
-pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, pgvector, …)
+pip install "vincio[chroma]"        # + a vector store (also: pinecone, lancedb, postgres, …)
 pip install "vincio[server]"        # + the FastAPI server (vincio serve)
 pip install "vincio[all]"           # every optional integration
 ```
@@ -436,7 +436,7 @@ install` and no setup:
 
 ### 2 · Feature tours — one program per subsystem
 
-Seventeen complete, heavily-commented programs (`00`–`16`); each runs offline and teaches a whole theme
+Nineteen complete, heavily-commented programs (`00`–`18`); each runs offline and teaches a whole theme
 end to end — the entire data & analytics plane is one tour (`13`). Highlights (full index in
 [`examples/README.md`](examples/README.md)):
 
@@ -453,6 +453,8 @@ end to end — the entire data & analytics plane is one tour (`13`). Highlights 
 | 14 | [`model_pricing_registry`](examples/14_model_pricing_registry.py) | the data-driven `ModelRegistry` — real per-provider pricing, freshness horizons, and the coverage drift gate |
 | 15 | [`connected_docs`](examples/15_connected_docs.py) | the capability map · Related cross-links · the learning path · the docs-graph check |
 | 16 | [`open_evaluation_plane`](examples/16_open_evaluation_plane.py) | the three-track benchmark platform · public benchmarks by niche · provenance tiers (Static / Recorded / Live) · leaderboard & run store |
+| 17 | [`compile_receipt`](examples/17_compile_receipt.py) | the packet compile receipt — why a packet compiled the way it did · `receipt_hash` · offline `verify()` · `diverges_from()` between runs |
+| 18 | [`ds4_local_inference`](examples/18_ds4_local_inference.py) | a self-hosted DS4 DeepSeek V4 box as a first-class provider — thinking modes · disk-KV cache accounting · on-prem residency · honest self-hosted $0 |
 
 ### 3 · Applications — real-world backends
 

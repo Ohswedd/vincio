@@ -449,14 +449,14 @@ def test_artifact_save_writes_bytes(tmp_path):
     assert b"<h1>Save</h1>" in out.read_bytes()
 
 
-def test_artifact_sha256_is_stable_and_content_bound():
+def test_artifact_digest_is_stable_and_content_bound():
     art = render(DocumentModel(title="Hash"), "markdown")
-    digest = art.sha256()
+    digest = art.digest()
     assert len(digest) == 64
     # re-rendering identical content yields the same digest
-    assert render(DocumentModel(title="Hash"), "markdown").sha256() == digest
+    assert render(DocumentModel(title="Hash"), "markdown").digest() == digest
     # different content -> different digest
-    assert render(DocumentModel(title="Other"), "markdown").sha256() != digest
+    assert render(DocumentModel(title="Other"), "markdown").digest() != digest
 
 
 # -- render dispatch ----------------------------------------------------------

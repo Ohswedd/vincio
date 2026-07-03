@@ -290,7 +290,8 @@ class DocumentBuilder:
                 "format": artifact.format,
                 "media_type": artifact.media_type,
                 "bytes": len(artifact.content),
-                "content_sha256": artifact.sha256(),
+                # frozen audit-detail key — external consumers bind to it.
+                "content_sha256": artifact.digest(),
                 "source_evidence_ids": list(model.source_evidence_ids),
                 "blocks": len(model.blocks),
                 "words": model.word_count(),

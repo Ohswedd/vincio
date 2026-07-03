@@ -280,10 +280,10 @@ credits sum to the outcome value (efficiency).
 
 ```python
 from vincio.optimize import TrajectoryAdvantage, environment_step_value
-from vincio.evals.environment import make_retail_environment
+from vincio.evals.environment import build_retail_environment
 
 advantage = TrajectoryAdvantage(
-    environment_step_value(lambda: make_retail_environment("cancel_refund"))
+    environment_step_value(lambda: build_retail_environment("cancel_refund"))
 )
 for credit in advantage.credit(trajectory):
     print(credit.name, credit.credit)   # cancel_order +0.500, refund_order +0.167

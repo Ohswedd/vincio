@@ -16,13 +16,13 @@ python 02_retrieval_rag.py
 
 ## 1. Notebooks — start in the browser
 
-Five **Google Colab-ready** notebooks: one `pip install`, no setup, offline by default. See
-[`notebooks/`](notebooks/) for all five (quickstart, RAG, agents & tools, evaluation, data analysis),
-each with an *Open in Colab* badge.
+Six **Google Colab-ready** notebooks: one `pip install`, no setup, offline by default. See
+[`notebooks/`](notebooks/) for all six (quickstart, RAG, agents & tools, evaluation, data analysis,
+notebook-native analysis), each with an *Open in Colab* badge.
 
 ## 2. Feature tours — one program per subsystem
 
-Seventeen complete, heavily-commented programs (00–16) that exercise the whole platform. Each file is a
+Nineteen complete, heavily-commented programs (00–18) that exercise the whole platform. Each file is a
 guided tour: a module docstring states what it teaches, and numbered sections each demonstrate one
 capability and print a concrete result. Read them top to bottom.
 

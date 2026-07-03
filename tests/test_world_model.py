@@ -23,9 +23,9 @@ from vincio.agents.world_model import (
 from vincio.core.errors import AgentEngineError
 from vincio.evals.environment import (
     EnvAction,
-    make_counter_environment,
-    make_retail_environment,
-    make_vault_environment,
+    build_counter_environment,
+    build_retail_environment,
+    build_vault_environment,
 )
 
 
@@ -42,7 +42,7 @@ def retail_transitions() -> list[Transition]:
         [act("update_address", order_id="O1002", address="9 New Rd")],
         [act("get_order", order_id="O1002")],
     ]
-    return record_transitions(make_retail_environment("cancel_refund"), explore)
+    return record_transitions(build_retail_environment("cancel_refund"), explore)
 
 
 def vault_transitions() -> list[Transition]:
@@ -58,7 +58,7 @@ def vault_transitions() -> list[Transition]:
         [act("advance"), act("advance"), act("advance")],
         [act("shortcut"), act("advance")],
     ]
-    return record_transitions(make_vault_environment(), explore)
+    return record_transitions(build_vault_environment(), explore)
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +68,7 @@ def vault_transitions() -> list[Transition]:
 
 def test_record_transitions_snapshots_are_independent():
     trs = record_transitions(
-        make_retail_environment("cancel_refund"),
+        build_retail_environment("cancel_refund"),
         [[act("cancel_order", order_id="O1002")]],
     )
     assert len(trs) == 1
@@ -81,7 +81,7 @@ def test_record_transitions_snapshots_are_independent():
 
 def test_record_transitions_skips_non_tool_actions():
     trs = record_transitions(
-        make_counter_environment(),
+        build_counter_environment(),
         [[EnvAction(kind="message", text="hello"), act("increment")]],
     )
     assert len(trs) == 1
@@ -90,9 +90,9 @@ def test_record_transitions_skips_non_tool_actions():
 
 def test_record_transitions_can_drop_failures():
     explore = [[act("refund_order", order_id="O1002")]]  # refund on processing fails
-    kept = record_transitions(make_retail_environment(), explore, include_failures=False)
+    kept = record_transitions(build_retail_environment(), explore, include_failures=False)
     assert kept == []
-    with_failures = record_transitions(make_retail_environment(), explore)
+    with_failures = record_transitions(build_retail_environment(), explore)
     assert len(with_failures) == 1 and not with_failures[0].ok
 
 
@@ -103,7 +103,7 @@ def test_record_transitions_can_drop_failures():
 
 def test_unconditional_constant_effect():
     model = WorldModel(retail_transitions())
-    obs = make_retail_environment("cancel_refund").observe()
+    obs = build_retail_environment("cancel_refund").observe()
     pred = model.predict(obs, act("cancel_order", order_id="O1002"))
     assert pred.known and pred.ok and pred.confidence == 1.0
     assert pred.observation.state["orders"]["O1002"]["status"] == "cancelled"
@@ -113,7 +113,7 @@ def test_unconditional_constant_effect():
 
 def test_argument_value_effect():
     model = WorldModel(retail_transitions())
-    obs = make_retail_environment("update_shipping").observe()
+    obs = build_retail_environment("update_shipping").observe()
     pred = model.predict(obs, act("update_address", order_id="O1002", address="9 New Rd"))
     assert pred.observation.state["orders"]["O1002"]["address"] == "9 New Rd"
 
@@ -121,11 +121,11 @@ def test_argument_value_effect():
 def test_numeric_step_effect_learned():
     # increment learns new = old + 1 (an "add" template), generalizing past values.
     trs = record_transitions(
-        make_counter_environment(target=3),
+        build_counter_environment(target=3),
         [[act("increment"), act("increment"), act("increment")]],
     )
     model = WorldModel(trs)
-    obs = make_counter_environment().observe()
+    obs = build_counter_environment().observe()
     obs.state["count"] = 5
     pred = model.predict(obs, act("increment"))
     assert pred.observation.state["count"] == 6
@@ -133,7 +133,7 @@ def test_numeric_step_effect_learned():
 
 def test_precondition_is_learned():
     model = WorldModel(retail_transitions())
-    base = make_retail_environment("cancel_refund").observe()
+    base = build_retail_environment("cancel_refund").observe()
     # Refund on a processing order is predicted to fail (no state change).
     fail = model.predict(base, act("refund_order", order_id="O1002"))
     assert fail.known and not fail.ok
@@ -147,14 +147,14 @@ def test_precondition_is_learned():
 def test_argument_generalization_to_unseen_entity():
     # ``cancel`` is only ever recorded on O1002; the model generalizes it to O1001.
     model = WorldModel(retail_transitions())
-    obs = make_retail_environment("cancel_refund").observe()
+    obs = build_retail_environment("cancel_refund").observe()
     pred = model.predict(obs, act("cancel_order", order_id="O1001"))
     assert pred.observation.state["orders"]["O1001"]["status"] == "cancelled"
 
 
 def test_unseen_signature_is_identity_with_zero_confidence():
     model = WorldModel(retail_transitions())
-    obs = make_retail_environment("cancel_refund").observe()
+    obs = build_retail_environment("cancel_refund").observe()
     pred = model.predict(obs, act("teleport_order", order_id="O1002"))
     assert not pred.known and pred.confidence == 0.0
     assert pred.observation.state == obs.state  # identity prediction
@@ -162,14 +162,14 @@ def test_unseen_signature_is_identity_with_zero_confidence():
 
 def test_non_tool_action_does_not_mutate():
     model = WorldModel(retail_transitions())
-    obs = make_retail_environment("cancel_refund").observe()
+    obs = build_retail_environment("cancel_refund").observe()
     finish = model.predict(obs, EnvAction(kind="finish", text="done"))
     assert finish.done and finish.observation.state == obs.state
 
 
 def test_imagine_rolls_a_plan_forward():
     model = WorldModel(retail_transitions())
-    obs = make_retail_environment("cancel_refund").observe()
+    obs = build_retail_environment("cancel_refund").observe()
     steps = model.imagine(
         obs,
         [act("cancel_order", order_id="O1002"), act("refund_order", order_id="O1002")],
@@ -222,7 +222,7 @@ def test_mpc_plans_the_retail_task():
     model = WorldModel(retail_transitions())
     model.calibrate(retail_transitions())
     result = ModelPredictivePlanner(model, horizon=3, beam_width=16).plan(
-        make_retail_environment("cancel_refund")
+        build_retail_environment("cancel_refund")
     )
     assert isinstance(result, MPCResult)
     assert result.success and result.real_steps == 2
@@ -237,10 +237,10 @@ def test_planning_beats_reactive_at_a_fixed_budget():
     budget = 6
     reactive = ModelPredictivePlanner(
         model, horizon=1, beam_width=64, max_real_steps=budget
-    ).plan(make_vault_environment())
+    ).plan(build_vault_environment())
     planned = ModelPredictivePlanner(
         model, horizon=5, beam_width=64, max_real_steps=budget
-    ).plan(make_vault_environment())
+    ).plan(build_vault_environment())
     # The reactive (one-step) planner takes the locally-attractive shortcut and is
     # trapped; the imagined-rollout planner avoids it and opens the vault.
     assert not reactive.success
@@ -251,14 +251,14 @@ def test_planning_beats_reactive_at_a_fixed_budget():
 def test_planner_refuses_an_uncalibrated_model():
     model = WorldModel(vault_transitions())  # fit but not calibrated
     with pytest.raises(AgentEngineError, match="not calibrated"):
-        ModelPredictivePlanner(model, horizon=5).plan(make_vault_environment())
+        ModelPredictivePlanner(model, horizon=5).plan(build_vault_environment())
 
 
 def test_planner_can_opt_out_of_the_calibration_gate():
     model = WorldModel(retail_transitions())  # not calibrated
     result = ModelPredictivePlanner(
         model, horizon=3, beam_width=16, require_calibrated=False
-    ).plan(make_retail_environment("cancel_refund"))
+    ).plan(build_retail_environment("cancel_refund"))
     assert result.success and not result.calibrated
 
 
@@ -270,13 +270,13 @@ def test_planner_accepts_an_explicit_action_set():
         act("refund_order", order_id="O1002"),
     ]
     result = ModelPredictivePlanner(model, actions=actions, horizon=3, beam_width=8).plan(
-        make_retail_environment("cancel_refund")
+        build_retail_environment("cancel_refund")
     )
     assert result.success
 
 
 def test_task_goal_value_counts_satisfied_checks():
-    env = make_vault_environment()
+    env = build_vault_environment()
     value = task_goal_value(env.task.checks)
     assert value(env.observe()) == 0.0  # nothing satisfied at the start
     env.step(act("shortcut"))  # progress reaches the threshold (one of two checks)

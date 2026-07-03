@@ -40,10 +40,10 @@ from ..core.types import (
 )
 from ..core.utils import new_id, stable_hash
 from .arena import CandidateArena, PreparedCandidates
-from .budgeting import BudgetAllocator
+from .budgeting import BudgetAllocation, BudgetAllocator
 from .compression import distill_evidence_ledger, extractive_compress
 from .features import FeatureArena
-from .footprint import estimate_resident_bytes
+from .footprint import ENTRY_OVERHEAD_BYTES, estimate_resident_bytes
 from .ir import ContextIR, OutputContractRef
 from .llmlingua import salient_units
 from .packet import ContextPacket, _content_hash
@@ -626,7 +626,9 @@ class ContextCompiler:
         # Lexical mode: inverted token index so each candidate is compared only
         # against kept items that could possibly be near-duplicates (near-linear
         # for diverse pools, exact at the 0.85 threshold). Semantic mode compares
-        # all kept items (cosine catches paraphrases with no shared tokens).
+        # all kept items (cosine catches paraphrases with no shared tokens) —
+        # an O(n^2) pairwise pass; n is already capped upstream when
+        # ``max_candidates`` sets the streaming pre-filter bound.
         index: dict[str, list[int]] = defaultdict(list)
         for candidate in sorted(candidates, key=lambda c: c.scores.total, reverse=True):
             if semantic:
@@ -908,17 +910,25 @@ class ContextCompiler:
         if estimate(evidence, slim) <= ceiling:
             return slim, evidence
         slim = True  # slim first — it never drops evidence
-        if estimate(evidence, slim) <= ceiling:
+        total = estimate(evidence, slim)
+        if total <= ceiling:
             return slim, evidence
 
-        # Evict the lowest-utility evidence until the estimate fits.
+        # Evict the lowest-utility evidence until the estimate fits. The
+        # estimate is additive per item (ENTRY_OVERHEAD_BYTES plus the item's
+        # UTF-8 text bytes, counted once in a slim packet), so subtracting each
+        # victim's exact contribution from a running total equals re-estimating
+        # the survivors from scratch — identical eviction decisions without
+        # rebuilding and re-encoding the candidate list every round.
         kept = list(evidence)
+        sizes = [ENTRY_OVERHEAD_BYTES + len(c.content.encode("utf-8")) for c in kept]
         order = sorted(range(len(kept)), key=lambda i: kept[i].scores.total)  # ascending utility
         evict: set[int] = set()
         for index in order:
-            if estimate([kept[i] for i in range(len(kept)) if i not in evict], slim) <= ceiling:
+            if total <= ceiling:
                 break
             evict.add(index)
+            total -= sizes[index]
             victim = kept[index]
             excluded.append(
                 {
@@ -930,31 +940,25 @@ class ContextCompiler:
         survivors = [kept[i] for i in range(len(kept)) if i not in evict]
         return slim, survivors
 
-    # -- main entry --------------------------------------------------------------
+    # -- compile stages ------------------------------------------------------------
 
-    async def compile(
+    def _compile_cache_lookup(
         self,
         *,
         objective: Objective,
         user_input: UserInput,
-        instructions: list[Instruction] | None = None,
-        constraints: list[Constraint] | None = None,
-        examples: list[Example] | None = None,
-        evidence: list[EvidenceItem] | None = None,
-        memory: list[MemoryItem] | None = None,
-        tool_results: list[ToolResult] | None = None,
-        tool_specs: list[ToolSpec] | None = None,
-        output_contract: OutputContractRef | None = None,
-        budget: Budget | None = None,
-        policies: PolicySet | None = None,
-        trace_parent_id: str | None = None,
-    ) -> CompiledContext:
-        budget = budget or Budget()
-        policies = policies or PolicySet()
-        evidence = _coerce_evidence(evidence)
-        query = (user_input.text or "") or objective.text
-        excluded: list[dict[str, Any]] = []
-
+        instructions: list[Instruction] | None,
+        constraints: list[Constraint] | None,
+        examples: list[Example] | None,
+        evidence: list[EvidenceItem],
+        memory: list[MemoryItem] | None,
+        tool_results: list[ToolResult] | None,
+        tool_specs: list[ToolSpec] | None,
+        output_contract: OutputContractRef | None,
+        budget: Budget,
+        policies: PolicySet,
+        trace_parent_id: str | None,
+    ) -> tuple[str | None, CompiledContext | None]:
         cache_key: str | None = None
         if self.cache is not None:
             cache_key = self.cache.key(
@@ -985,8 +989,19 @@ class ContextCompiler:
                 compiled.source_evidence = list(evidence or [])
                 compiled.source_memory = list(memory or [])
                 compiled.source_tool_results = list(tool_results or [])
-                return compiled
+                return cache_key, compiled
+        return cache_key, None
 
+    def _gather_candidates(
+        self,
+        *,
+        evidence: list[EvidenceItem],
+        memory: list[MemoryItem] | None,
+        tool_results: list[ToolResult] | None,
+        policies: PolicySet,
+        user_input: UserInput,
+        excluded: list[dict[str, Any]],
+    ) -> tuple[list[ContextCandidate], dict[str, tuple[str, str]]]:
         # 1-3. collect, normalize, classify (type is assigned at collection).
         # The warm candidate arena reuses this query-independent prep when the
         # candidate set is unchanged since a recent compile.
@@ -1054,31 +1069,20 @@ class ContextCompiler:
         content_index: dict[str, tuple[str, str]] = {
             c.id: (c.type, c.content) for c in candidates
         }
+        return candidates, content_index
 
-        # 3.5. streaming candidate pre-filter: when the evidence pool exceeds
-        # ``max_candidates``, bound it by a cheap lexical relevance proxy and a
-        # fingerprint dedup *before* scoring, dedup/conflict, and embedding — so
-        # those stages and the resident vector footprint never see more than the
-        # cap. Query-dependent, so it runs per compile (never cached in the arena)
-        # and is a no-op when the cap is unset or the pool already fits.
-        if self.options.max_candidates is not None:
-            candidates = self._prefilter_candidates(candidates, query, excluded)
-
-        # 4. score (with a per-compile scorer — the feature arena and any semantic
-        # embeddings are installed on a fresh scorer so the shared instance stays
-        # state-free and concurrent compiles never race on mutable state). The
-        # arena derives each candidate's lexical features once and threads them
-        # through scoring, dedup, conflict, and selection.
-        features = FeatureArena() if self.options.single_pass_selection else None
-        scorer = await self._scorer_for(candidates, query, features)
-        scorer.score_batch(candidates, query)
-
-        # 5. dedupe
-        candidates = self._remove_duplicates(candidates, excluded, scorer)
-
-        # 6. conflicts
-        candidates, conflicts = self._resolve_conflicts(candidates, excluded, scorer)
-
+    def _allocate_budget(
+        self,
+        *,
+        objective: Objective,
+        instructions: list[Instruction] | None,
+        constraints: list[Constraint] | None,
+        examples: list[Example] | None,
+        output_contract: OutputContractRef | None,
+        tool_specs: list[ToolSpec] | None,
+        budget: Budget,
+        query: str,
+    ) -> tuple[BudgetAllocation, int, int, int, int, int]:
         # 7. budget allocation (uses fixed costs for known blocks)
         instruction_tokens = sum(count_tokens(i.text) for i in instructions or [])
         constraint_tokens = sum(count_tokens(c.text) for c in constraints or [])
@@ -1105,7 +1109,30 @@ class ContextCompiler:
             },
             reserve_tokens=reserve_tokens,
         )
+        return (
+            allocation,
+            instruction_tokens,
+            constraint_tokens,
+            example_tokens,
+            task_tokens,
+            schema_tokens,
+        )
 
+    def _select_blocks(
+        self,
+        *,
+        candidates: list[ContextCandidate],
+        allocation: BudgetAllocation,
+        query: str,
+        excluded: list[dict[str, Any]],
+        scorer: ContextScorer,
+    ) -> tuple[
+        list[ContextCandidate],
+        list[ContextCandidate],
+        list[ContextCandidate],
+        list[ContextCandidate],
+        bool,
+    ]:
         evidence_pool = [c for c in candidates if c.type == "evidence"]
         memory_pool = [c for c in candidates if c.type == "memory"]
         tool_pool = [c for c in candidates if c.type == "tool_result"]
@@ -1152,7 +1179,16 @@ class ContextCompiler:
             allocation.block("evidence").used_tokens = sum(
                 c.token_cost for c in selected_evidence
             )
+        return selected_evidence, selected_memory, selected_tools, memory_pool, effective_slim
 
+    def _rebuild_items(
+        self,
+        *,
+        selected_evidence: list[ContextCandidate],
+        selected_memory: list[ContextCandidate],
+        memory_pool: list[ContextCandidate],
+        excluded: list[dict[str, Any]],
+    ) -> tuple[list[EvidenceItem], list[MemoryItem], list[dict[str, Any]]]:
         # Rebuild typed items from selected candidates (possibly compressed).
         final_evidence: list[EvidenceItem] = []
         for candidate in selected_evidence:
@@ -1167,41 +1203,22 @@ class ContextCompiler:
                 )
             )
         final_memory: list[MemoryItem] = [c.source for c in selected_memory]
-        memory_excluded = [e for e in excluded if any(
-            e.get("id") == c.id for c in memory_pool if c not in selected_memory
-        )]
+        # Hoisted out of the per-entry scan: `excluded` grows with the whole
+        # candidate corpus, so testing each entry against the memory pool was
+        # quadratic on large compiles.
+        unselected_memory_ids = {c.id for c in memory_pool if c not in selected_memory}
+        memory_excluded = [e for e in excluded if e.get("id") in unselected_memory_ids]
+        return final_evidence, final_memory, memory_excluded
 
-        ledger: list[dict[str, Any]] = []
-        if self.options.use_evidence_ledger and final_evidence:
-            ledger = await distill_evidence_ledger(final_evidence, query)
-
-        ir = ContextIR(
-            objective=objective,
-            instructions=list(instructions or []),
-            constraints=list(constraints or []),
-            examples=list(examples or []),
-            input=user_input,
-            memory=final_memory,
-            evidence=final_evidence,
-            tool_specs=list(tool_specs or []),
-            output_contract=output_contract or OutputContractRef(),
-            budgets=budget,
-            policies=policies,
-            evidence_ledger=ledger,
-            metadata={"conflicts": conflicts} if conflicts else {},
-        )
-
-        token_count = (
-            instruction_tokens
-            + constraint_tokens
-            + example_tokens
-            + task_tokens
-            + schema_tokens
-            + allocation.block("evidence").used_tokens
-            + allocation.block("memory").used_tokens
-            + allocation.block("tool_results").used_tokens
-        )
-
+    def _enrich_receipt(
+        self,
+        *,
+        selected_evidence: list[ContextCandidate],
+        selected_memory: list[ContextCandidate],
+        selected_tools: list[ContextCandidate],
+        excluded: list[dict[str, Any]],
+        content_index: dict[str, tuple[str, str]],
+    ) -> dict[str, dict[str, float]]:
         # Compile-receipt enrichment. The per-included selection scores let the
         # receipt report *why* each kept item was chosen; the excluded records
         # gain the item's kind and a content hash so the receipt can name a
@@ -1223,7 +1240,28 @@ class ContextCompiler:
                     # that moves between kept and dropped across compiles keeps a
                     # comparable fingerprint.
                     record["source_hash"] = _content_hash(indexed[1])
+        return included_scores
 
+    def _finalize(
+        self,
+        *,
+        ir: ContextIR,
+        excluded: list[dict[str, Any]],
+        allocation: BudgetAllocation,
+        conflicts: list[dict[str, Any]],
+        memory_excluded: list[dict[str, Any]],
+        trace_parent_id: str | None,
+        token_count: int,
+        budget: Budget,
+        effective_slim: bool,
+        included_scores: dict[str, dict[str, float]],
+        selected_evidence: list[ContextCandidate],
+        selected_memory: list[ContextCandidate],
+        evidence: list[EvidenceItem],
+        memory: list[MemoryItem] | None,
+        tool_results: list[ToolResult] | None,
+        cache_key: str | None,
+    ) -> CompiledContext:
         # 10-11. render + validate packet.
         if token_count > budget.max_input_tokens:
             raise ContextCompileError(
@@ -1266,6 +1304,179 @@ class ContextCompiler:
                 source_ids=sorted({e.source_id for e in compiled.ir.evidence if e.source_id}),
             )
         return compiled
+
+    # -- main entry --------------------------------------------------------------
+
+    async def compile(
+        self,
+        *,
+        objective: Objective,
+        user_input: UserInput,
+        instructions: list[Instruction] | None = None,
+        constraints: list[Constraint] | None = None,
+        examples: list[Example] | None = None,
+        evidence: list[EvidenceItem] | None = None,
+        memory: list[MemoryItem] | None = None,
+        tool_results: list[ToolResult] | None = None,
+        tool_specs: list[ToolSpec] | None = None,
+        output_contract: OutputContractRef | None = None,
+        budget: Budget | None = None,
+        policies: PolicySet | None = None,
+        trace_parent_id: str | None = None,
+    ) -> CompiledContext:
+        budget = budget or Budget()
+        policies = policies or PolicySet()
+        evidence = _coerce_evidence(evidence)
+        query = (user_input.text or "") or objective.text
+        excluded: list[dict[str, Any]] = []
+
+        cache_key, compiled = self._compile_cache_lookup(
+            objective=objective,
+            user_input=user_input,
+            instructions=instructions,
+            constraints=constraints,
+            examples=examples,
+            evidence=evidence,
+            memory=memory,
+            tool_results=tool_results,
+            tool_specs=tool_specs,
+            output_contract=output_contract,
+            budget=budget,
+            policies=policies,
+            trace_parent_id=trace_parent_id,
+        )
+        if compiled is not None:
+            return compiled
+
+        candidates, content_index = self._gather_candidates(
+            evidence=evidence,
+            memory=memory,
+            tool_results=tool_results,
+            policies=policies,
+            user_input=user_input,
+            excluded=excluded,
+        )
+
+        # 3.5. streaming candidate pre-filter: when the evidence pool exceeds
+        # ``max_candidates``, bound it by a cheap lexical relevance proxy and a
+        # fingerprint dedup *before* scoring, dedup/conflict, and embedding — so
+        # those stages and the resident vector footprint never see more than the
+        # cap. Query-dependent, so it runs per compile (never cached in the arena)
+        # and is a no-op when the cap is unset or the pool already fits.
+        if self.options.max_candidates is not None:
+            candidates = self._prefilter_candidates(candidates, query, excluded)
+
+        # 4. score (with a per-compile scorer — the feature arena and any semantic
+        # embeddings are installed on a fresh scorer so the shared instance stays
+        # state-free and concurrent compiles never race on mutable state). The
+        # arena derives each candidate's lexical features once and threads them
+        # through scoring, dedup, conflict, and selection.
+        features = FeatureArena() if self.options.single_pass_selection else None
+        scorer = await self._scorer_for(candidates, query, features)
+        scorer.score_batch(candidates, query)
+
+        # 5. dedupe
+        candidates = self._remove_duplicates(candidates, excluded, scorer)
+
+        # 6. conflicts
+        candidates, conflicts = self._resolve_conflicts(candidates, excluded, scorer)
+
+        (
+            allocation,
+            instruction_tokens,
+            constraint_tokens,
+            example_tokens,
+            task_tokens,
+            schema_tokens,
+        ) = self._allocate_budget(
+            objective=objective,
+            instructions=instructions,
+            constraints=constraints,
+            examples=examples,
+            output_contract=output_contract,
+            tool_specs=tool_specs,
+            budget=budget,
+            query=query,
+        )
+
+        (
+            selected_evidence,
+            selected_memory,
+            selected_tools,
+            memory_pool,
+            effective_slim,
+        ) = self._select_blocks(
+            candidates=candidates,
+            allocation=allocation,
+            query=query,
+            excluded=excluded,
+            scorer=scorer,
+        )
+
+        final_evidence, final_memory, memory_excluded = self._rebuild_items(
+            selected_evidence=selected_evidence,
+            selected_memory=selected_memory,
+            memory_pool=memory_pool,
+            excluded=excluded,
+        )
+
+        ledger: list[dict[str, Any]] = []
+        if self.options.use_evidence_ledger and final_evidence:
+            ledger = await distill_evidence_ledger(final_evidence, query)
+
+        ir = ContextIR(
+            objective=objective,
+            instructions=list(instructions or []),
+            constraints=list(constraints or []),
+            examples=list(examples or []),
+            input=user_input,
+            memory=final_memory,
+            evidence=final_evidence,
+            tool_specs=list(tool_specs or []),
+            output_contract=output_contract or OutputContractRef(),
+            budgets=budget,
+            policies=policies,
+            evidence_ledger=ledger,
+            metadata={"conflicts": conflicts} if conflicts else {},
+        )
+
+        token_count = (
+            instruction_tokens
+            + constraint_tokens
+            + example_tokens
+            + task_tokens
+            + schema_tokens
+            + allocation.block("evidence").used_tokens
+            + allocation.block("memory").used_tokens
+            + allocation.block("tool_results").used_tokens
+        )
+
+        included_scores = self._enrich_receipt(
+            selected_evidence=selected_evidence,
+            selected_memory=selected_memory,
+            selected_tools=selected_tools,
+            excluded=excluded,
+            content_index=content_index,
+        )
+
+        return self._finalize(
+            ir=ir,
+            excluded=excluded,
+            allocation=allocation,
+            conflicts=conflicts,
+            memory_excluded=memory_excluded,
+            trace_parent_id=trace_parent_id,
+            token_count=token_count,
+            budget=budget,
+            effective_slim=effective_slim,
+            included_scores=included_scores,
+            selected_evidence=selected_evidence,
+            selected_memory=selected_memory,
+            evidence=evidence,
+            memory=memory,
+            tool_results=tool_results,
+            cache_key=cache_key,
+        )
 
     @staticmethod
     def _prefix_blocks(

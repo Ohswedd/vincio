@@ -23,7 +23,6 @@ bounded fan-out helper, and durable-graph-style checkpointing:
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import platform as _platform
 import sys
@@ -33,8 +32,9 @@ from typing import Any
 
 from ...core.concurrency import gather_bounded
 from ...core.errors import EvalSuiteError
+from ...core.utils import compact_hash
 from ...providers.base import run_sync
-from ..benchmarks import BenchmarkReport, BenchmarkTask, make_agent_solver
+from ..benchmarks import BenchmarkReport, BenchmarkTask, build_agent_solver
 from .datasets import BenchmarkDataset
 from .metrics import summarize_results
 from .registry import BenchmarkRegistry, BenchmarkSpec, default_benchmark_registry
@@ -219,7 +219,7 @@ class BenchmarkSuite:
         if effective is ProvenanceTier.LIVE:
             if target is None:
                 raise EvalSuiteError(f"benchmark {spec.id!r}: tier 'live' needs a target model/app")
-            solver = make_agent_solver(target, mode=solver_mode)
+            solver = build_agent_solver(target, mode=solver_mode)
             return await adapter.run(solver)
         return await adapter.replay()
 
@@ -267,8 +267,7 @@ class BenchmarkSuite:
             "benchmarks": sorted(s.id for s in specs),
             "tier": tier.value, "model": model, "sample": sample, "seed": self.seed,
         }
-        blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        return "run_" + hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+        return "run_" + compact_hash(payload)
 
     def _checkpoint_path(self, run_id: str) -> Path | None:
         if self.checkpoint_dir is None:

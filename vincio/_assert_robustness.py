@@ -16,7 +16,9 @@ This module is the *static* half: the lint behind ``tests/test_assert_robustness
 and the ``hygiene`` VincioBench family, built on exactly the scan idiom
 :mod:`vincio._observable_failure` uses for the broad-except contract and
 :mod:`vincio._error_contract` uses for the error contract. It scans every **public**
-module under ``vincio/`` for an ``assert`` statement and flags any that does **not**
+module under ``vincio/`` — plus, deliberately, the private ``vincio/core/_app_*.py``
+ContextApp verb mixins, so the decomposed ``app.*`` surface stays guarded — for an
+``assert`` statement and flags any that does **not**
 carry a justifying ``# noqa: S101`` on its line — ``S101`` being the standard
 "use of ``assert``" code, the same inline-marker convention the codebase uses with
 ``# noqa: BLE001`` for a reviewed broad ``except``. Marking an ``assert`` is the
@@ -57,6 +59,7 @@ __all__ = [
 ASSERT_NOQA_CODE = "S101"
 
 _PACKAGE_DIR = os.path.dirname(__file__)
+_PACKAGE_NAME = os.path.basename(_PACKAGE_DIR)
 
 
 def _is_private_component(name: str) -> bool:
@@ -72,6 +75,17 @@ def _module_name(rel_path: str) -> str:
     return ".".join(parts)
 
 
+def _is_app_mixin_module(module: str) -> bool:
+    """Whether ``module`` is a ContextApp verb-mixin module (``vincio.core._app_*``).
+
+    The standing-guard whitelist shared with :mod:`vincio._error_contract` and
+    :mod:`vincio._observable_failure`: the private ``vincio/core/_app_*.py`` mixin
+    modules hold the decomposed ``app.*`` verb bodies and deliberately stay in
+    scope, so the split does not silently un-guard them.
+    """
+    return module.startswith(f"{_PACKAGE_NAME}.core._app_")
+
+
 def _public_module_paths() -> list[tuple[str, str]]:
     """``(module_name, abs_path)`` for every public module under the package, sorted.
 
@@ -79,7 +93,8 @@ def _public_module_paths() -> list[tuple[str, str]]:
     and not a dunder), so private tooling like this module, :mod:`vincio._surface`,
     :mod:`vincio._observable_failure`, and ``vincio/security/_ed25519.py`` is excluded
     — matching the scope of :mod:`vincio._error_contract` and
-    :mod:`vincio._observable_failure`.
+    :mod:`vincio._observable_failure`, including their one deliberate exception: the
+    ContextApp verb mixins (:func:`_is_app_mixin_module`) stay in scope.
     """
     parent = os.path.dirname(_PACKAGE_DIR)
     out: list[tuple[str, str]] = []
@@ -93,9 +108,12 @@ def _public_module_paths() -> list[tuple[str, str]]:
                 part[: -len(".py")] if part.endswith(".py") else part
                 for part in rel.split(os.sep)
             ]
-            if any(_is_private_component(stem) for stem in stems):
+            name = _module_name(rel)
+            if any(_is_private_component(stem) for stem in stems) and not _is_app_mixin_module(
+                name
+            ):
                 continue
-            out.append((_module_name(rel), abs_path))
+            out.append((name, abs_path))
     out.sort()
     return out
 

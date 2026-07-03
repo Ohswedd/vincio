@@ -4,6 +4,8 @@ Compiles prompts, memory, retrieval, tools, schemas, and policies into
 optimized, validated, observable, provider-neutral context packets.
 """
 
+from __future__ import annotations
+
 from .agents import (
     AgentRole,
     Blackboard,
@@ -183,6 +185,7 @@ from .evals.environment import (
     Environment,
     EnvironmentSimulator,
     ToolEnvironment,
+    build_retail_environment,
     make_retail_environment,
 )
 from .evals.retrieval_eval import RetrievalEvaluator, RetrievalGoldenSet, retrieval_regression
@@ -357,6 +360,7 @@ from .providers import (
     ModelRegistry,
     OpenAIFineTuneBackend,
     ShadowProvider,
+    build_finetune_backend,
     default_model_registry,
     make_finetune_backend,
 )
@@ -522,6 +526,7 @@ from .tools import (
     ScreenState,
     UIAction,
     UIElement,
+    build_web_checkout,
     make_web_checkout,
 )
 from .verify import (
@@ -568,7 +573,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "7.4.1"
+__version__ = "7.5.0"
 
 __all__ = [
     "ContextApp",
@@ -1030,6 +1035,7 @@ __all__ = [
     "Send",
     "provider_trainer",
     "OpenAIFineTuneBackend",
+    "build_finetune_backend",
     "make_finetune_backend",
     "GGUFProvider",
     "IndexedTraceStore",
@@ -1045,6 +1051,7 @@ __all__ = [
     "Environment",
     "ToolEnvironment",
     "EnvironmentSimulator",
+    "build_retail_environment",
     "make_retail_environment",
     "BenchmarkAdapter",
     "load_benchmark",
@@ -1071,6 +1078,7 @@ __all__ = [
     "ActionPolicy",
     "MockScreen",
     "ScreenApp",
+    "build_web_checkout",
     "make_web_checkout",
     # evaluation & quality frontier
     "JudgeEnsemble",

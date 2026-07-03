@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
 
 from ..core.errors import FineTuneError
+from ..stability import deprecated_alias
 
 if TYPE_CHECKING:
     from .anthropic import AnthropicProvider
@@ -43,6 +44,7 @@ __all__ = [
     "OpenAIFineTuneBackend",
     "GoogleFineTuneBackend",
     "AnthropicFineTuneBackend",
+    "build_finetune_backend",
     "make_finetune_backend",
     "run_finetune",
 ]
@@ -301,7 +303,7 @@ class AnthropicFineTuneBackend:
         return job
 
 
-def make_finetune_backend(provider: Any) -> FineTuneBackend:
+def build_finetune_backend(provider: Any) -> FineTuneBackend:
     """Build the right fine-tune backend for a provider instance.
 
     Dispatches on the provider's ``name`` so ``app``-level distillation can pick
@@ -319,6 +321,14 @@ def make_finetune_backend(provider: Any) -> FineTuneBackend:
         "FineTuneBackend (OpenAI/Google/Anthropic) explicitly",
         provider=name or None,
     )
+
+
+make_finetune_backend = deprecated_alias(
+    build_finetune_backend,
+    old_name="make_finetune_backend",
+    since="7.5",
+    removed_in="8.0",
+)
 
 
 async def run_finetune(

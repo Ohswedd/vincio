@@ -37,11 +37,11 @@ from vincio.evals.benchmarks import (
     agentbench_tasks_from_export,
     available_benchmarks,
     bfcl_tasks_from_export,
+    build_agent_solver,
+    build_env_solver,
     gaia_tasks_from_export,
     livecodebench_tasks_from_export,
     load_benchmark,
-    make_agent_solver,
-    make_env_solver,
     mmlu_pro_tasks_from_export,
     scripted_policy,
     swebench_tasks_from_export,
@@ -519,13 +519,13 @@ def test_maybe_json_parses_and_passes_through():
 
 
 # ---------------------------------------------------------------------------
-# make_agent_solver mode + runner branches (749, 756-759, 776, 779, 782)
+# build_agent_solver mode + runner branches (749, 756-759, 776, 779, 782)
 # ---------------------------------------------------------------------------
 
 
 def test_make_agent_solver_unknown_mode_raises():
     with pytest.raises(BenchmarkError, match="unknown solver mode 'votes'"):
-        make_agent_solver(lambda p: p, mode="votes")
+        build_agent_solver(lambda p: p, mode="votes")
 
 
 @pytest.mark.asyncio
@@ -540,7 +540,7 @@ async def test_make_agent_solver_contextapp_arun_path(tmp_path):
         model="mock-1",
         config=config,
     )
-    solver = make_agent_solver(app, mode="text")
+    solver = build_agent_solver(app, mode="text")
     out = await solver(BenchmarkTask(id="t", prompt="capital of France?"))
     assert out == "Paris"
 
@@ -552,14 +552,14 @@ async def test_make_agent_solver_contextapp_rejects_calls_mode(tmp_path):
     config.observability.exporter = "memory"
     config.security.audit_dir = str(tmp_path / "audit")
     app = ContextApp(name="a", provider=MockProvider(default_text="x"), model="mock-1", config=config)
-    solver = make_agent_solver(app, mode="calls")
+    solver = build_agent_solver(app, mode="calls")
     with pytest.raises(BenchmarkError, match="mode='calls' requires an AgentExecutor"):
         await solver(BenchmarkTask(id="t", prompt="p"))
 
 
 @pytest.mark.asyncio
 async def test_make_agent_solver_callable_rejects_calls_mode():
-    solver = make_agent_solver(lambda prompt: "x", mode="calls")
+    solver = build_agent_solver(lambda prompt: "x", mode="calls")
     with pytest.raises(BenchmarkError, match="mode='calls' requires an AgentExecutor"):
         await solver(BenchmarkTask(id="t", prompt="p"))
 
@@ -569,17 +569,17 @@ async def test_make_agent_solver_callable_async_output():
     async def runner(prompt):
         return f"echo:{prompt}"
 
-    solver = make_agent_solver(runner)
+    solver = build_agent_solver(runner)
     out = await solver(BenchmarkTask(id="t", prompt="hi"))
     assert out == "echo:hi"
 
 
 @pytest.mark.asyncio
 async def test_make_agent_solver_prompt_key_reads_inputs():
-    solver = make_agent_solver(lambda prompt: prompt)
-    task = make_agent_solver  # placeholder to avoid lint unused; replaced below
+    solver = build_agent_solver(lambda prompt: prompt)
+    task = build_agent_solver  # placeholder to avoid lint unused; replaced below
     del task
-    s2 = make_agent_solver(lambda prompt: prompt, prompt_key="q")
+    s2 = build_agent_solver(lambda prompt: prompt, prompt_key="q")
     out = await s2(BenchmarkTask(id="t", prompt="fallback", inputs={"q": "from-inputs"}))
     assert out == "from-inputs"
     # falls back to task.prompt when the keyed input is empty
@@ -595,7 +595,7 @@ async def test_make_agent_solver_agentexecutor_text_mode():
     executor = AgentExecutor(
         MockProvider(default_text="Paris"), model="mock-1", planner=Planner(mode="static")
     )
-    solver = make_agent_solver(executor, mode="text")
+    solver = build_agent_solver(executor, mode="text")
     out = await solver(BenchmarkTask(id="t", prompt="capital of France?"))
     assert out == "Paris"
 
@@ -624,7 +624,7 @@ async def test_make_agent_solver_agentexecutor_calls_mode():
         tool_runtime=ToolRuntime(registry, cache_enabled=False),
         tool_specs=registry.specs(),
     )
-    solver = make_agent_solver(executor, mode="calls")
+    solver = build_agent_solver(executor, mode="calls")
     calls = await solver(BenchmarkTask(id="t", prompt="weather in SF?"))
     assert calls == [{"name": "get_weather", "arguments": {"city": "sf"}}]
 
@@ -634,19 +634,19 @@ async def test_make_agent_solver_non_runner_object_raises():
     class Bogus:
         pass
 
-    solver = make_agent_solver(Bogus())
+    solver = build_agent_solver(Bogus())
     with pytest.raises(BenchmarkError, match="must be a ContextApp, AgentExecutor, or callable"):
         await solver(BenchmarkTask(id="t", prompt="p"))
 
 
 # ---------------------------------------------------------------------------
-# make_env_solver unsupported env (802)
+# build_env_solver unsupported env (802)
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.asyncio
 async def test_make_env_solver_unsupported_env_raises():
-    solver = make_env_solver(lambda obs: None)
+    solver = build_env_solver(lambda obs: None)
     with pytest.raises(BenchmarkError, match="unsupported env 'moon'"):
         await solver(BenchmarkTask(id="t", inputs={"env": "moon"}))
 
@@ -835,7 +835,7 @@ async def test_run_path_with_explicit_tasks_subset():
 
 
 # ---------------------------------------------------------------------------
-# make_env_solver retail run extracts the action list (803-805)
+# build_env_solver retail run extracts the action list (803-805)
 # ---------------------------------------------------------------------------
 
 
@@ -850,11 +850,11 @@ async def test_make_env_solver_retail_extracts_actions_and_scores():
         )
 
     task = BenchmarkTask(id="t", inputs={"env": "retail", "env_task": "cancel_refund"})
-    actions = await make_env_solver(fresh_policy())(task)
+    actions = await build_env_solver(fresh_policy())(task)
     tool_names = [a["tool"] for a in actions]
     assert "cancel_order" in tool_names and "refund_order" in tool_names
     # The identical TauBench oracle scores the extracted actions to success.
-    report = await TauBenchAdapter([task]).run(make_env_solver(fresh_policy()))
+    report = await TauBenchAdapter([task]).run(build_env_solver(fresh_policy()))
     assert report.success_rate == 1.0
 
 

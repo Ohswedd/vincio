@@ -5,6 +5,8 @@ without FastAPI, so generative-UI events can be produced anywhere a run streams;
 only :func:`create_app` needs the ``server`` extra.
 """
 
+from __future__ import annotations
+
 from .agui import (
     AGUIEvent,
     AGUIEventType,

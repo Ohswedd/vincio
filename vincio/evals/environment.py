@@ -25,6 +25,7 @@ from typing import Any, Literal, Protocol, runtime_checkable
 from pydantic import BaseModel, Field
 
 from ..providers.base import run_sync
+from ..stability import deprecated_alias
 from .trajectory import Trajectory, TrajectoryStep
 
 __all__ = [
@@ -43,6 +44,9 @@ __all__ = [
     "AgentPolicy",
     "scripted_policy",
     "task_success",
+    "build_retail_environment",
+    "build_counter_environment",
+    "build_vault_environment",
     "make_retail_environment",
     "make_counter_environment",
     "make_vault_environment",
@@ -502,7 +506,7 @@ _RETAIL_TASKS: dict[str, EnvTask] = {
 }
 
 
-def make_retail_environment(task_id: str = "cancel_refund") -> ToolEnvironment:
+def build_retail_environment(task_id: str = "cancel_refund") -> ToolEnvironment:
     """A τ-bench-style retail world: orders mutated by tools, verified by end state.
 
     Tasks (``cancel_refund``, ``update_shipping``) require the agent to make the
@@ -519,7 +523,7 @@ def make_retail_environment(task_id: str = "cancel_refund") -> ToolEnvironment:
     )
 
 
-def make_counter_environment(target: int = 3) -> ToolEnvironment:
+def build_counter_environment(target: int = 3) -> ToolEnvironment:
     """A minimal world (a single counter) for harness determinism tests."""
 
     def increment(state: dict[str, Any], _args: dict[str, Any]) -> EnvToolResult:
@@ -542,7 +546,7 @@ def make_counter_environment(target: int = 3) -> ToolEnvironment:
     )
 
 
-def make_vault_environment(steps_to_open: int = 3) -> ToolEnvironment:
+def build_vault_environment(steps_to_open: int = 3) -> ToolEnvironment:
     """A planning-favoring world: a locally-attractive shortcut is a dead end.
 
     The goal is to open a vault, which requires advancing a progress dial to
@@ -592,3 +596,23 @@ def make_vault_environment(steps_to_open: int = 3) -> ToolEnvironment:
             max_steps=10,
         ),
     )
+
+
+make_retail_environment = deprecated_alias(
+    build_retail_environment,
+    old_name="make_retail_environment",
+    since="7.5",
+    removed_in="8.0",
+)
+make_counter_environment = deprecated_alias(
+    build_counter_environment,
+    old_name="make_counter_environment",
+    since="7.5",
+    removed_in="8.0",
+)
+make_vault_environment = deprecated_alias(
+    build_vault_environment,
+    old_name="make_vault_environment",
+    since="7.5",
+    removed_in="8.0",
+)

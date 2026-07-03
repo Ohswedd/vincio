@@ -48,7 +48,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
-from .record import SettlementRecord, SettlementSignature
+from .record import SettlementRecord, SettlementSignature, _resolve_verifier
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -515,6 +515,7 @@ def arbitrate(
     *,
     contract_id: str | None = None,
     arbiter: str = "",
+    verifier: ChainSigner | None = None,
     verify_with: ChainSigner | None = None,
 ) -> Resolution:
     """Adjudicate a disputed contract from the records its parties submit.
@@ -532,10 +533,12 @@ def arbitrate(
 
     ``contract_id`` selects the disputed contract when the pool mixes several
     (inferred when every record is for one contract); ``arbiter`` labels the
-    resolution; ``verify_with`` authenticates each submitted record's signatures.
-    Raises :class:`SettlementError` only on a category error — no records, or a pool
-    spanning several contracts with no ``contract_id`` to pick one.
+    resolution; ``verifier`` authenticates each submitted record's signatures.
+    ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5, removed in
+    8.0). Raises :class:`SettlementError` only on a category error — no records,
+    or a pool spanning several contracts with no ``contract_id`` to pick one.
     """
+    verifier = _resolve_verifier(verifier, verify_with, "arbitrate")
     pool = list(records)
     if contract_id is not None:
         pool = [r for r in pool if r.contract_id == contract_id]
@@ -560,7 +563,7 @@ def arbitrate(
     buyer = sorted({r.buyer for r in pool})[0]
     seller = sorted({r.seller for r in pool})[0]
 
-    claims = [_claim_verdict(r, verifier=verify_with) for r in pool]
+    claims = [_claim_verdict(r, verifier=verifier) for r in pool]
     claims.sort(key=lambda c: (c.reconciliation_hash, tuple(sorted(c.signed_by)), c.settlement_id))
 
     status, upheld_hash, stands = _decide(claims, buyer, seller)

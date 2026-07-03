@@ -15,6 +15,7 @@ condition their stripped ``assert`` used to cover.
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -51,6 +52,49 @@ def test_public_modules_are_discovered_and_private_excluded():
     assert "vincio._assert_robustness" not in modules
     assert "vincio._observable_failure" not in modules
     assert "vincio.security._ed25519" not in modules
+
+
+def test_app_mixin_modules_stay_in_scope():
+    """The private ContextApp verb mixins (``vincio/core/_app_*.py``) are whitelisted.
+
+    The app.py split moved the ``app.*`` verb bodies into underscore-prefixed
+    modules; the standing guard deliberately keeps scanning them, so an injected
+    unmarked ``assert`` inside a mixin verb still fails the build.
+    """
+    modules = ar.public_modules()
+    assert "vincio.core._app_knowledge" in modules
+    assert "vincio.core._app_config" in modules
+    # The whitelist is surgical: other private modules stay out of scope.
+    assert "vincio.tasks._flow" not in modules
+
+
+def test_detector_bites_inside_a_mixin_class():
+    """An injected unmarked ``assert`` in a ``_*Verbs`` verb body is flagged.
+
+    Together with :func:`test_app_mixin_modules_stay_in_scope` this proves the
+    whitelisted module's violation reaches :func:`ar.unmarked_asserts`.
+    """
+    source = (
+        "class _KnowledgeVerbs:\n"
+        "    def enable_memory_os(self, os):\n"
+        "        assert os is not None\n"
+    )
+    rows = ar.unmarked_asserts_in_source(source)
+    assert [q for q, _ln in rows] == ["_KnowledgeVerbs.enable_memory_os"]
+
+
+def test_moved_marked_invariant_stays_counted():
+    """``enable_memory_os``'s S101-marked assert moved into the knowledge mixin;
+    the whitelist keeps it in scope, so ``marked_assert_count`` still includes it
+    (the count did not drop across the split)."""
+    import vincio
+
+    path = Path(vincio.__file__).resolve().parent / "core" / "_app_knowledge.py"
+    rows = ar.asserts_in_source(path.read_text(encoding="utf-8"))
+    assert any(
+        qualname == "_KnowledgeVerbs.enable_memory_os" and marked
+        for qualname, _lineno, marked in rows
+    )
 
 
 # --- the detector bites on an unmarked assert --------------------------------

@@ -10,7 +10,7 @@ progressive disclosure — budgeted, scored, and cited like any other context.
 from __future__ import annotations
 
 from .library import SkillLibrary
-from .scripts import make_script_handler, register_skill_scripts
+from .scripts import build_script_handler, make_script_handler, register_skill_scripts
 from .skill import (
     Skill,
     SkillError,
@@ -30,6 +30,7 @@ __all__ = [
     "skill_from_markdown",
     "load_skill",
     "load_skills",
+    "build_script_handler",
     "make_script_handler",
     "register_skill_scripts",
 ]

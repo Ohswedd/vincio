@@ -199,6 +199,8 @@ class FeatureRun(BaseModel):
             for m in sorted(self.measurements, key=lambda x: x.contender)
             if m.available
         ]
+        # Historical spaced-separator form — persisted run ids depend on these
+        # exact bytes; do NOT switch to core.utils.compact_hash.
         blob = json.dumps({"contest": self.contest_id, "metric": self.primary_metric,
                            "measurements": canonical}, sort_keys=True, default=str)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
@@ -221,6 +223,8 @@ class FeatureSuiteRun(BaseModel):
         import json
 
         parts = sorted(f"{r.contest_id}:{r.determinism_digest}" for r in self.runs)
+        # Historical spaced-separator form — persisted determinism pins depend
+        # on these exact bytes; do NOT switch to core.utils.compact_hash.
         blob = json.dumps({"track": self.track.value, "runs": parts}, sort_keys=True)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 

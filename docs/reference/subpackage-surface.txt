@@ -372,6 +372,7 @@ data SUB WindowedQualityReport
 data TOP WindowedQueryResult
 data TOP analyze_dataset
 data SUB assert_read_only_sql
+data SUB build_query_contract
 data SUB encode_stream
 data SUB fit_stream
 data SUB fit_to_window
@@ -590,6 +591,11 @@ evals SUB available_suite_benchmarks
 evals SUB behavioral_shapes
 evals SUB bfcl_tasks_from_export
 evals SUB bird_tasks_from_export
+evals SUB build_agent_solver
+evals SUB build_counter_environment
+evals SUB build_env_solver
+evals TOP build_retail_environment
+evals SUB build_vault_environment
 evals SUB cohens_kappa
 evals SUB dabench_tasks_from_export
 evals SUB dataset_from_traces
@@ -606,6 +612,7 @@ evals SUB make_agent_solver
 evals SUB make_counter_environment
 evals SUB make_env_solver
 evals TOP make_retail_environment
+evals SUB make_vault_environment
 evals SUB metric_guardrail
 evals SUB mmlu_pro_tasks_from_export
 evals TOP model_swap_regression
@@ -1263,6 +1270,7 @@ providers SUB ShadowObservation
 providers TOP ShadowProvider
 providers SUB SigV4Auth
 providers SUB VertexProvider
+providers TOP build_finetune_backend
 providers SUB build_pooled_client
 providers SUB build_provider
 providers SUB cache_hit_rate
@@ -1598,6 +1606,7 @@ skills SUB Skill
 skills SUB SkillError
 skills SUB SkillLibrary
 skills SUB SkillScript
+skills SUB build_script_handler
 skills SUB load_skill
 skills SUB load_skills
 skills SUB make_script_handler
@@ -1627,6 +1636,7 @@ storage SUB RateLimiter
 storage SUB SQLiteMetadataStore
 storage SUB TenantQuotaManager
 storage SUB VECTOR_BACKENDS
+storage SUB build_metadata_store
 storage SUB build_vector_index
 storage SUB config_key
 storage SUB create_metadata_store
@@ -1689,6 +1699,7 @@ tools SUB ToolRuntime
 tools TOP UIAction
 tools TOP UIElement
 tools SUB WASMIsolation
+tools TOP build_web_checkout
 tools SUB computer_use_tools
 tools SUB get_isolation_backend
 tools TOP make_web_checkout

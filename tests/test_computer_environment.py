@@ -13,7 +13,7 @@ from vincio import (
     UIAction,
     UIElement,
     VincioConfig,
-    make_web_checkout,
+    build_web_checkout,
 )
 from vincio.core.errors import ComputerUseError
 from vincio.evals.environment import StateCheck
@@ -71,7 +71,7 @@ def _approve_place(action, decision):
 
 class TestPerception:
     async def test_mock_screen_observes_addressable_elements(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         screen = MockScreen(spec)
         state = await screen.observe()
         assert state.url == "https://shop.test/cart"
@@ -82,7 +82,7 @@ class TestPerception:
         assert state.find(role="button", name="nonexistent") is None
 
     async def test_typed_value_reflects_into_element(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         screen = MockScreen(spec)
         await screen.perform(UIAction(kind="type", selector=_ADDRESS, text="42 Oak"))
         state = await screen.observe()
@@ -100,13 +100,13 @@ class TestPerception:
         assert UIAction(kind="key", key="Enter").target == "Enter"
 
     async def test_unknown_selector_click_raises(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         screen = MockScreen(spec)
         with pytest.raises(ComputerUseError):
             await screen.perform(UIAction(kind="click", selector="role=button[name='Ghost']"))
 
     async def test_navigate_to_unknown_url_raises(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         screen = MockScreen(spec)
         with pytest.raises(ComputerUseError):
             await screen.perform(UIAction(kind="navigate", url="https://nope.test"))
@@ -168,19 +168,19 @@ class TestPreGate:
 
 class TestActLoop:
     async def test_happy_action_performs_and_verifies(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec))
         out = await env.act(UIAction(kind="type", selector=_ADDRESS, text="1 Main St"))
         assert out.ok and out.performed and out.verified and not out.diverged
 
     async def test_expect_change_satisfied(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec))
         out = await env.act(UIAction(kind="click", selector=_CHECKOUT, expect_change=True))
         assert out.ok and out.verified and out.after_digest != out.before_digest
 
     async def test_post_condition_check_passes(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec))
         out = await env.act(
             UIAction(kind="type", selector=_ADDRESS, text="x",
@@ -189,7 +189,7 @@ class TestActLoop:
         assert out.verified and all(c.passed for c in out.checks)
 
     async def test_divergence_triggers_auto_undo(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), auto_undo=True)
         before = (await env.observe()).digest
         out = await env.act(
@@ -200,7 +200,7 @@ class TestActLoop:
         assert out.after_digest == before  # state restored
 
     async def test_no_undo_leaves_effect_but_flags_divergence(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), auto_undo=False)
         out = await env.act(
             UIAction(kind="type", selector=_ADDRESS, text="x", expect_change=False)  # asserts no change, but it changes
@@ -208,7 +208,7 @@ class TestActLoop:
         assert out.diverged and not out.undone
 
     async def test_navigate_undo_via_synthesized_inverse(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         screen = MockScreen(spec)
         # move to review first so a divergent navigate can be inverted back
         await screen.perform(UIAction(kind="click", selector=_CHECKOUT))
@@ -221,38 +221,38 @@ class TestActLoop:
         assert out.diverged and out.undone and out.after_digest == before
 
     async def test_gate_blocks_unapproved_destructive(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), policy=ActionPolicy(allow_urls=["https://shop.test"]))
         out = await env.act(UIAction(kind="click", selector=_DELETE))
         assert out.gated and not out.performed and not out.ok
 
     async def test_gate_allows_approved_destructive(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec))
         out = await env.act(UIAction(kind="click", selector=_DELETE), approve=True)
         assert out.performed and out.decision.approved
 
     async def test_approval_callback_consulted(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), approve=_approve_place)
         denied = await env.act(UIAction(kind="click", selector=_DELETE))
         assert denied.gated  # callback denies 'Delete account'
 
     async def test_gate_blocks_out_of_scope_navigation(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), policy=ActionPolicy(allow_urls=["https://shop.test"]))
         out = await env.act(UIAction(kind="navigate", url="https://evil.test/x"))
         assert out.gated and not out.performed
 
     async def test_step_budget_exhausts(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), max_steps=1)
         await env.act(UIAction(kind="wait"))
         with pytest.raises(ComputerUseError):
             await env.act(UIAction(kind="wait"))
 
     async def test_driver_failure_is_nonfatal(self):
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec))
         out = await env.act(UIAction(kind="click", selector="role=button[name='Ghost']"))
         assert not out.ok and out.error and out.performed is False
@@ -265,7 +265,7 @@ class TestActLoop:
 
 class TestTaskRun:
     async def test_run_reaches_verified_goal_at_budget(self):
-        spec, task = make_web_checkout()
+        spec, task = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), approve=_approve_place)
         run = await env.arun(_fill_then_order_policy(), task)
         assert run.success and run.safe
@@ -273,7 +273,7 @@ class TestTaskRun:
         assert run.verification.passed and run.verification.score == 1.0
 
     async def test_run_projects_onto_trajectory(self):
-        spec, task = make_web_checkout()
+        spec, task = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), approve=_approve_place)
         run = await env.arun(_fill_then_order_policy(), task)
         traj = run.trajectory
@@ -282,7 +282,7 @@ class TestTaskRun:
         assert any(s.tool_name == "computer_type" for s in traj.steps)
 
     async def test_run_is_safe_when_destructive_attempted_without_approval(self):
-        spec, task = make_web_checkout()
+        spec, task = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), policy=ActionPolicy(allow_urls=["https://shop.test"]))
 
         # one-shot: attempt the destructive delete once, then finish
@@ -297,13 +297,13 @@ class TestTaskRun:
         assert any(o.gated for o in run.outcomes)
 
     def test_sync_run_wrapper(self):
-        spec, task = make_web_checkout()
+        spec, task = build_web_checkout()
         env = ComputerEnvironment(MockScreen(spec), approve=_approve_place)
         run = env.run(_fill_then_order_policy(), task)
         assert run.success
 
     def test_task_verifier_reports_failed_checks(self):
-        _, task = make_web_checkout()
+        _, task = build_web_checkout()
         v = task.verify(ScreenState(state={"fields": {}, "flags": {}}))
         assert not v.passed and "order_placed" in v.reason
 
@@ -316,7 +316,7 @@ class TestTaskRun:
 class TestAppIntegration:
     def test_computer_use_returns_environment_and_audits(self, tmp_path):
         app = _app(tmp_path)
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = app.computer_use(screen=spec)
         assert isinstance(env, ComputerEnvironment) and env.app is app
         assert app.audit.query(action="computer_use_session")
@@ -324,7 +324,7 @@ class TestAppIntegration:
 
     def test_actions_land_on_audit_chain(self, tmp_path):
         app = _app(tmp_path)
-        spec, task = make_web_checkout()
+        spec, task = build_web_checkout()
         env = app.computer_use(screen=spec, approve=_approve_place)
         env.run(_fill_then_order_policy(), task)
         actions = app.audit.query(action="computer_action")
@@ -332,7 +332,7 @@ class TestAppIntegration:
 
     def test_require_isolation_refuses_subprocess(self, tmp_path):
         app = _app(tmp_path)
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         from vincio.core.errors import SandboxError
 
         with pytest.raises(SandboxError):
@@ -340,14 +340,14 @@ class TestAppIntegration:
 
     def test_accepts_mockscreen_screenapp_and_dict(self, tmp_path):
         app = _app(tmp_path)
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         assert isinstance(app.computer_use(screen=MockScreen(spec)).backend, MockScreen)
         assert isinstance(app.computer_use(screen=spec).backend, MockScreen)
         assert isinstance(app.computer_use(screen=spec.model_dump()).backend, MockScreen)
 
     def test_policy_from_dict(self, tmp_path):
         app = _app(tmp_path)
-        spec, _ = make_web_checkout()
+        spec, _ = build_web_checkout()
         env = app.computer_use(screen=spec, policy={"allow_urls": ["https://shop.test"]})
         assert env.policy.allow_urls == ["https://shop.test"]
 

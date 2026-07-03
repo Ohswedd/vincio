@@ -26,13 +26,12 @@ third-party verification), so a resolution also verifies integrity and provenanc
 
 from __future__ import annotations
 
-import hashlib
-import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from ..core.errors import AccessDeniedError, VincioError
+from ..core.utils import compact_json, sha256_text
 from ..security.access import AccessDecision, AllowListGate, Principal
 
 __all__ = [
@@ -43,10 +42,6 @@ __all__ = [
 ]
 
 BundleKind = Literal["pack", "skill"]
-
-
-def _sha256(data: str) -> str:
-    return hashlib.sha256(data.encode("utf-8")).hexdigest()
 
 
 class BundleRecord(BaseModel):
@@ -73,11 +68,13 @@ class BundleRecord(BaseModel):
     def content(self) -> str:
         """The canonical content string the digest is computed over."""
         if self.kind == "pack":
-            return json.dumps(self.payload or {}, sort_keys=True, separators=(",", ":"), default=str)
+            return compact_json(self.payload or {})
         return self.payload_text or ""
 
     def compute_digest(self) -> str:
-        return _sha256(self.content())
+        # Not digest(): the serialized ``digest`` field owns that name (and
+        # signing_message binds it), so the accessor keeps its distinct verb.
+        return sha256_text(self.content())
 
     def signing_message(self) -> str:
         """Canonical message a signature covers: identity bound to content."""
@@ -326,7 +323,7 @@ class CommunityRegistry:
     def index_root(self) -> str:
         """A single digest over the whole index (sorted ``name:digest`` lines)."""
         lines = [f"{r.name}:{r.digest}" for r in sorted(self._records.values(), key=lambda r: r.name)]
-        return _sha256("\n".join(lines))
+        return sha256_text("\n".join(lines))
 
     def sign_index(self) -> str:
         """Sign the index root, so the catalog as a whole is tamper-evident."""

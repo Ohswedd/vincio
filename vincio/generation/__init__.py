@@ -20,6 +20,8 @@ The native renderers are dependency-free; DOCX/PDF/PPTX output and richer
 inputs install behind the ``vincio[gen-docx|gen-pdf|gen-pptx]`` extras.
 """
 
+from __future__ import annotations
+
 from .builder import DocumentBuilder, generate_redline, markdown_to_model
 from .contracts import (
     DocumentContract,

@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
+from ..stability import _resolve_renamed_kwarg
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -55,6 +56,28 @@ SettlementStatus = Literal["settled", "breached"]
 SETTLEMENT_ACTION = "settlement"
 
 _TOLERANCE = 1e-6
+
+
+def _resolve_verifier(
+    verifier: ChainSigner | None, verify_with: ChainSigner | None, owner: str
+) -> ChainSigner | None:
+    """Resolve the ``verifier=`` / deprecated ``verify_with=`` rename runway.
+
+    Shared by every settlement entry point mid-rename (since 7.5, removed in
+    8.0): the old keyword warns and forwards, passing both raises
+    :class:`~vincio.core.errors.SettlementError`.
+    """
+    return _resolve_renamed_kwarg(
+        verifier,
+        verify_with,
+        new_name="verifier",
+        old_name="verify_with",
+        owner=owner,
+        since="7.5",
+        removed_in="8.0",
+        error=SettlementError,
+        stacklevel=4,
+    )
 
 
 class SettlementLine(BaseModel):

@@ -15,6 +15,8 @@ fixture for packet/trace snapshot tests and the ``--vincio-update-snapshots``
 option for refreshing them.
 """
 
+from __future__ import annotations
+
 from .asserts import assert_eval, assert_grounded, assert_metric, assert_safe
 from .conformance import assert_backend_conformance, conformance_cases
 from .lowering import result_signature, run_signature, selection_signature

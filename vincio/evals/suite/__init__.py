@@ -4,6 +4,8 @@ way for every model and every model version, with a provenance tier on every
 number. In-process and offline-reproducible; never a hosted leaderboard.
 """
 
+from __future__ import annotations
+
 from .adapters import (
     ARCAdapter,
     CEvalAdapter,

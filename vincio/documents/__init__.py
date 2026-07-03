@@ -1,5 +1,7 @@
 """Vincio document engine: loaders, parsers, OCR, layout, multimodal, forms, audio."""
 
+from __future__ import annotations
+
 from .audio import (
     MockTranscriber,
     ProviderAudioTranscriber,

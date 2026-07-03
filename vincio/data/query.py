@@ -15,7 +15,7 @@ The pipeline is deterministic and, by default, offline:
    provably read-only: a single statement, a ``SELECT``/``WITH`` head, no write,
    DDL, or stacked statement, and no injection signal in the question. A breach
    raises :class:`~vincio.core.errors.UnsafeQueryError`. The same guarantee is
-   available as a :class:`~vincio.verify.ToolContract` (:func:`make_query_contract`)
+   available as a :class:`~vincio.verify.ToolContract` (:func:`build_query_contract`)
    so the capability refuses a write structurally when it rides the tool runtime.
 3. **Dry-run / cost-bound.** The query is compiled and its plan inspected without
    fetching; a row ceiling (``max_rows``) bounds the result.
@@ -47,6 +47,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from ..core import tabular
 from ..core.errors import QueryError, UnsafeQueryError
 from ..core.utils import stable_hash
+from ..stability import deprecated_alias
 from .core import ColumnSchema, Dataset, DataType
 from .provenance import CellCitation, LineageCoverage, RowProvenance
 
@@ -63,6 +64,7 @@ __all__ = [
     "QueryEngine",
     "InProcessSqlEngine",
     "HeuristicQueryPlanner",
+    "build_query_contract",
     "make_query_contract",
     "query_dataset",
     "is_read_only_sql",
@@ -1085,7 +1087,7 @@ def _normalize_sql(sql: str) -> str:
 # --------------------------------------------------------------------------- #
 
 
-def make_query_contract(*, max_rows: int = 10_000) -> Any:
+def build_query_contract(*, max_rows: int = 10_000) -> Any:
     """A :class:`~vincio.verify.ToolContract` that refuses a non-read-only query and
     bounds the result row count — so a ``query_data`` tool **structurally** refuses
     a write or DDL when it rides the permissioned tool runtime."""
@@ -1101,6 +1103,14 @@ def make_query_contract(*, max_rows: int = 10_000) -> Any:
         lambda args, result: _result_row_count(result) <= max_rows,
     )
     return contract
+
+
+make_query_contract = deprecated_alias(
+    build_query_contract,
+    old_name="make_query_contract",
+    since="7.5",
+    removed_in="8.0",
+)
 
 
 def _result_row_count(result: Any) -> int:

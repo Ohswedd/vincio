@@ -7,6 +7,8 @@ packs: ``support``, ``engineering``, ``finance``, ``legal``. Apply one with
 :func:`register_pack`.
 """
 
+from __future__ import annotations
+
 from .base import Pack, available_packs, load_pack, register_pack
 
 __all__ = ["Pack", "available_packs", "load_pack", "register_pack"]

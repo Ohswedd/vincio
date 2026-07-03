@@ -1,5 +1,7 @@
 """Vincio security: PII, secrets, injection defense, access, audit."""
 
+from __future__ import annotations
+
 from .access import (
     AccessController,
     AccessDecision,

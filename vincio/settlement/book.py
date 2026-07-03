@@ -36,6 +36,7 @@ from .record import (
     Reconciliation,
     SettlementLine,
     SettlementRecord,
+    _resolve_verifier,
     reconcile,
 )
 from .rehypothecation import REHYPOTHECATION_ACTION, CollateralLedger, guard_collateral
@@ -732,9 +733,10 @@ class SettlementBook:
         liabilities: LiabilityAttestation,
         claims: Any | None = None,
         *,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         as_of: Any | None = None,
         sign: bool = True,
+        verify_with: ChainSigner | None = None,
     ) -> CompletenessProof:
         """Fold creditor claims against a liability attestation into a signed completeness check.
 
@@ -746,10 +748,12 @@ class SettlementBook:
         omitted they are derived from this book's own settled records against the attestation's
         poster — what this book's owner, as a creditor, can prove it is owed. Signs the check as
         this book's owner and records it on the audit chain. A tampered attestation is refused;
-        with ``verify_with`` a forged attestor signature is too. Returns the check.
+        with ``verifier`` a forged attestor signature is too. ``verify_with`` is a deprecated
+        alias for ``verifier`` (since 7.5, removed in 8.0). Returns the check.
         """
+        verifier = _resolve_verifier(verifier, verify_with, "SettlementBook.check_completeness")
         resolved_claims = self.claims_against(liabilities.poster) if claims is None else claims
-        proof = check_completeness(liabilities, resolved_claims, verifier=verify_with, as_of=as_of)
+        proof = check_completeness(liabilities, resolved_claims, verifier=verifier, as_of=as_of)
         if sign and self.signer is not None:
             proof.sign(self.signer, party=self.owner)
         self._audit_completeness(proof)
@@ -788,8 +792,9 @@ class SettlementBook:
         poster: str | None = None,
         completeness: CompletenessProof | None = None,
         as_of: Any | None = None,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         sign: bool = True,
+        verify_with: ChainSigner | None = None,
     ) -> SolvencyProof:
         """Fold a reserve proof against a liability proof into a signed, audited proof-of-solvency.
 
@@ -802,17 +807,19 @@ class SettlementBook:
         the margin against the *completed* liability total — the attestor's figure raised by
         every obligation a creditor proved it omitted. Signs the proof as this book's owner and
         records it on the audit chain. A tampered or wrong-poster attestation (or completeness
-        check) is refused; with ``verify_with`` a forged signature is too. The proof's
+        check) is refused; with ``verifier`` a forged signature is too. The proof's
         solvency-adjusted held figure reads into :meth:`guard_collateral` (``solvency=``).
+        ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5, removed in 8.0).
         Returns the proof.
         """
+        verifier = _resolve_verifier(verifier, verify_with, "SettlementBook.prove_solvency")
         proof = prove_solvency(
             custody,
             liabilities,
             poster=poster,
             completeness=completeness,
             as_of=as_of,
-            verifier=verify_with,
+            verifier=verifier,
         )
         if sign and self.signer is not None:
             proof.sign(self.signer, party=self.owner)
@@ -834,8 +841,9 @@ class SettlementBook:
         self,
         attestations: Any,
         *,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         record_reputation: bool = True,
+        verify_with: ChainSigner | None = None,
     ) -> RootConsistencyReport:
         """Compare liability attestations across creditors for cross-org non-equivocation.
 
@@ -848,12 +856,16 @@ class SettlementBook:
         only when the omitted creditor folds its own claim; this catches the counterparty that
         equivocates across the set. ``attestations`` items may be bare attestations or
         ``(creditor, attestation)`` pairs to record which creditor saw each root. With
-        ``verify_with`` only attestor-signed roots are admitted as evidence, so a forged root
+        ``verifier`` only attestor-signed roots are admitted as evidence, so a forged root
         cannot manufacture a false accusation. Records each proven equivocation on the audit chain
         and — unless ``record_reputation`` is off — credits a failure against the equivocating
-        poster on the bound reputation ledger. Returns the report.
+        poster on the bound reputation ledger. ``verify_with`` is a deprecated alias for
+        ``verifier`` (since 7.5, removed in 8.0). Returns the report.
         """
-        report = check_root_consistency(attestations, verifier=verify_with)
+        verifier = _resolve_verifier(
+            verifier, verify_with, "SettlementBook.check_root_consistency"
+        )
+        report = check_root_consistency(attestations, verifier=verifier)
         dinged: set[str] = set()
         for proof in report.equivocations:
             self._audit_equivocation(proof)
@@ -936,8 +948,9 @@ class SettlementBook:
         attestations: Any,
         *,
         discharges: Any | None = None,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         record_reputation: bool = True,
+        verify_with: ChainSigner | None = None,
     ) -> HistoryConsistencyReport:
         """Walk a poster's liability snapshots for cross-time monotonicity, signed and audited.
 
@@ -949,14 +962,16 @@ class SettlementBook:
         pinpointed :class:`~vincio.settlement.solvency.MonotonicityBreach`. Where
         :meth:`check_root_consistency` catches a counterparty signing different roots for the *same*
         instant, this catches one dropping a past obligation in a *later* snapshot. With
-        ``verify_with`` only attestor-signed snapshots and creditor-signed discharges are admitted as
+        ``verifier`` only attestor-signed snapshots and creditor-signed discharges are admitted as
         evidence. Signs each chain's proof as this book's owner, records every inconsistent history
         on the audit chain, and — unless ``record_reputation`` is off — credits a failure against the
-        breaching poster on the bound reputation ledger. Returns the report.
+        breaching poster on the bound reputation ledger. ``verify_with`` is a deprecated alias
+        for ``verifier`` (since 7.5, removed in 8.0). Returns the report.
         """
-        report = check_history_consistency(
-            attestations, discharges=discharges, verifier=verify_with
+        verifier = _resolve_verifier(
+            verifier, verify_with, "SettlementBook.check_history_consistency"
         )
+        report = check_history_consistency(attestations, discharges=discharges, verifier=verifier)
         for proof in report.proofs:
             if self.signer is not None:
                 proof.sign(self.signer, party=self.owner)
@@ -1003,8 +1018,9 @@ class SettlementBook:
         liabilities: LiabilityAttestation | None = None,
         references: Any | None = None,
         as_of: Any | None = None,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         sign: bool = True,
+        verify_with: ChainSigner | None = None,
     ) -> SetOffStatement:
         """Collapse the mutual obligations between a poster and one creditor, signed and audited.
 
@@ -1017,8 +1033,13 @@ class SettlementBook:
         ``owed_usd`` is read from the attestation's lines for the creditor and ``owing_usd`` from
         this book's own settlement records where the poster is the seller and the creditor the
         buyer. Signs it as this book's owner (one side of the mutually-agreed close-out — the
-        counterparty co-signs its copy) and records the issuance on the audit chain. Returns it.
+        counterparty co-signs its copy) and records the issuance on the audit chain.
+        ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5, removed in 8.0).
+        Returns it.
         """
+        verifier = _resolve_verifier(
+            verifier, verify_with, "SettlementBook.build_set_off_statement"
+        )
         if liabilities is not None:
             statement = set_off_from_records(
                 poster,
@@ -1026,7 +1047,7 @@ class SettlementBook:
                 liabilities,
                 self.records,
                 as_of=as_of,
-                verifier=verify_with,
+                verifier=verifier,
             )
         else:
             statement = build_set_off_statement(
@@ -1100,9 +1121,10 @@ class SettlementBook:
         solvency: SolvencyProof | None = None,
         set_off: list[SetOffStatement] | None = None,
         as_of: Any | None = None,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         sign: bool = True,
         record_reputation: bool = True,
+        verify_with: ChainSigner | None = None,
     ) -> InsolvencyResolution:
         """Distribute a poster's proven reserves across its ranked liabilities, signed and audited.
 
@@ -1118,11 +1140,13 @@ class SettlementBook:
         **close-out net** each creditor to its net claim before the waterfall. Reuses
         :func:`~vincio.settlement.solvency.prove_solvency`, so a tampered, forged, or wrong-poster
         attestation (or a malformed/wrong-poster schedule, or a one-sided/over-stated set-off) is
-        refused; with ``verify_with`` a forged signature is too. Signs the resolution as this book's
+        refused; with ``verifier`` a forged signature is too. Signs the resolution as this book's
         owner, records it on the audit chain, and — unless ``record_reputation`` is off — credits a
         failure against the poster on the bound reputation ledger when the reserves could not make
-        every creditor whole. Returns the resolution.
+        every creditor whole. ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5,
+        removed in 8.0). Returns the resolution.
         """
+        verifier = _resolve_verifier(verifier, verify_with, "SettlementBook.resolve_insolvency")
         resolution = resolve_insolvency(
             custody,
             liabilities,
@@ -1132,7 +1156,7 @@ class SettlementBook:
             solvency=solvency,
             set_off=set_off,
             as_of=as_of,
-            verifier=verify_with,
+            verifier=verifier,
         )
         if sign and self.signer is not None:
             resolution.sign(self.signer, party=self.owner)
@@ -1179,8 +1203,9 @@ class SettlementBook:
         held: float | None = None,
         custody: CustodyAttestation | None = None,
         solvency: SolvencyProof | None = None,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         sign: bool = True,
+        verify_with: ChainSigner | None = None,
     ) -> CollateralLedger:
         """Fold a counterparty's collateral pools into a re-use guard, signed and audited.
 
@@ -1193,16 +1218,18 @@ class SettlementBook:
         bounding each beneficiary's claim to its deterministic share, and surfacing an
         under-reserved breach when the held capital falls below the pledges. Signs the ledger as
         this book's owner and records the guard on the audit chain. A tampered pool, custody
-        attestation, or solvency proof is refused; with ``verify_with`` a forged signature is
-        too. Returns the ledger.
+        attestation, or solvency proof is refused; with ``verifier`` a forged signature is
+        too. ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5, removed in
+        8.0). Returns the ledger.
         """
+        verifier = _resolve_verifier(verifier, verify_with, "SettlementBook.guard_collateral")
         ledger = guard_collateral(
             pools,
             poster=poster,
             held=held,
             custody=custody,
             solvency=solvency,
-            verify_with=verify_with,
+            verifier=verifier,
         )
         if sign and self.signer is not None:
             ledger.sign(self.signer, party=self.owner)
@@ -1341,6 +1368,7 @@ class SettlementBook:
         *counterparty_records: SettlementRecord,
         contract_id: str | None = None,
         sign: bool = True,
+        verifier: ChainSigner | None = None,
         verify_with: ChainSigner | None = None,
     ) -> Any:
         """Adjudicate a dispute between this book's record and a counterparty's claims.
@@ -1351,12 +1379,15 @@ class SettlementBook:
         :func:`~vincio.settlement.arbitration.arbitrate` — so an org settles which
         figure stands from the signed records alone. ``contract_id`` selects the
         disputed contract (inferred from the counterparty's records when omitted);
-        ``verify_with`` authenticates the submitted signatures. Signs the resulting
+        ``verifier`` authenticates the submitted signatures. Signs the resulting
         :class:`~vincio.settlement.arbitration.Resolution` as this book's owner when a
         signer is attached, so a settled dispute is offline-verifiable the way a
-        record is.
+        record is. ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5,
+        removed in 8.0).
         """
         from .arbitration import arbitrate
+
+        verifier = _resolve_verifier(verifier, verify_with, "SettlementBook.arbitrate")
 
         target = contract_id
         if target is None:
@@ -1368,9 +1399,7 @@ class SettlementBook:
             pool += [r for r in self.records if r.contract_id == target]
         else:
             pool += list(self.records)
-        resolution = arbitrate(
-            pool, contract_id=target, arbiter=self.owner, verify_with=verify_with
-        )
+        resolution = arbitrate(pool, contract_id=target, arbiter=self.owner, verifier=verifier)
         if sign and self.signer is not None:
             resolution.sign(self.signer, party=self.owner)
         return resolution
@@ -1382,9 +1411,10 @@ class SettlementBook:
         resolutions: Any = None,
         config: Any = None,
         sign: bool = True,
-        verify_with: ChainSigner | None = None,
+        verifier: ChainSigner | None = None,
         horizon_days: float | None = None,
         note: str = "",
+        verify_with: ChainSigner | None = None,
     ) -> Any:
         """Issue a portable attestation of a counterparty's earned standing.
 
@@ -1398,19 +1428,21 @@ class SettlementBook:
         ``horizon_days`` optionally declares a validity window after which an
         as-of-aware combination treats the attestation as stale. Signs the attestation
         as this book's owner (the issuer) when a signer is attached, so an attested
-        standing is offline-verifiable the way a record is. Raises
+        standing is offline-verifiable the way a record is. ``verify_with`` is a
+        deprecated alias for ``verifier`` (since 7.5, removed in 8.0). Raises
         :class:`SettlementError` when this book has no admissible history with the
         subject to attest.
         """
         from .attestation import attest_reputation
 
+        verifier = _resolve_verifier(verifier, verify_with, "SettlementBook.attest")
         attestation = attest_reputation(
             self.records,
             subject,
             issuer=self.owner,
             resolutions=resolutions,
             config=config,
-            verify_with=verify_with,
+            verifier=verifier,
             horizon_days=horizon_days,
             note=note,
         )

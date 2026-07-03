@@ -18,7 +18,6 @@ module owns the lineage data model and the erasure result it produces.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 from datetime import datetime
@@ -26,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
-from ..core.utils import utcnow
+from ..core.utils import compact_json, sha256_text, utcnow
 
 __all__ = [
     "LineageRecord",
@@ -130,24 +129,40 @@ class ErasureProof(BaseModel):
     signature: dict[str, Any] | None = None
     key_id: str | None = None
 
+    @property
+    def content_hash(self) -> str:
+        """Canonical name for :attr:`content_sha256` (the removed-id-set digest).
+
+        The stored field keeps its historical name: it is serialized in
+        :meth:`to_dict` and bound by name into :meth:`signing_payload`, both of
+        which persisted, signed proofs depend on.
+        """
+        return self.content_sha256
+
     def digest_payload(self) -> str:
         """Canonical bytes the content digest covers (the removed-id set)."""
         canonical = {store: sorted(ids) for store, ids in sorted(self.removed_ids.items())}
+        # Historical spaced-separator form — content_sha256 inside signed,
+        # persisted proofs depends on these exact bytes; do NOT switch to
+        # core.utils.compact_json.
         return json.dumps({"source": self.source, "removed_ids": canonical}, sort_keys=True)
+
+    def digest(self) -> str:
+        """SHA-256 content hash over :meth:`digest_payload` (the removed-id set)."""
+        return sha256_text(self.digest_payload())
 
     def signing_payload(self) -> str:
         """Deterministic bytes the signature covers (binds the credential)."""
-        return json.dumps(
+        return compact_json(
             {
                 "source": self.source,
                 "created_at": self.created_at.isoformat(),
                 "claim_generator": self.claim_generator,
                 "removed": dict(sorted(self.removed.items())),
+                # frozen wire key: covered by persisted signatures — never rename.
                 "content_sha256": self.content_sha256,
                 "audit_merkle_root": self.audit_merkle_root,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
+            }
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -175,7 +190,7 @@ def build_erasure_proof(
         audit_entry_id=audit_entry_id,
         audit_merkle_root=audit_merkle_root,
     )
-    proof.content_sha256 = hashlib.sha256(proof.digest_payload().encode("utf-8")).hexdigest()
+    proof.content_sha256 = proof.digest()
     if signer is not None:
         proof.signature = {
             "alg": getattr(signer, "alg", "HMAC-SHA256"),
@@ -195,8 +210,8 @@ def verify_erasure_proof(
     ``content_sha256``; if a signature is present, a ``signer`` with the matching
     key must verify it (a present-but-unverifiable signature is never reported
     valid)."""
-    expected = hashlib.sha256(proof.digest_payload().encode("utf-8")).hexdigest()
-    if proof.content_sha256 != expected:
+    expected = proof.digest()
+    if proof.content_hash != expected:
         return False
     if proof.signature is not None:
         if signer is None:

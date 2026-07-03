@@ -1,5 +1,7 @@
 """Vincio memory engine."""
 
+from __future__ import annotations
+
 from .agent_os import MemoryOS, memory_tools
 from .consolidation import ConsolidationReport, MemoryConsolidator
 from .engine import MemoryEngine, MemorySearchResult, ScopedMemory

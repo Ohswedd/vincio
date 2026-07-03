@@ -279,7 +279,7 @@ def test_forged_attestation_refused_with_verifier():
     good = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
     forged = attest_reputation(_records(settled=2), "vendor", issuer="globex").sign(GLOBEX)
     forged.signatures[0].signature = "deadbeef"
-    prior = combine_attestations([good, forged], verify_with=ACME)
+    prior = combine_attestations([good, forged], verifier=ACME)
     assert any("forged" in (v.reason or "") for v in prior.refused)
 
 
@@ -619,7 +619,7 @@ def test_forged_revocation_is_ignored_with_verifier():
     att = attest_reputation(_records(settled=2), "vendor", issuer="acme").sign(ACME)
     rev = revoke_attestation(att).sign(ACME)
     rev.signatures[0].signature = "deadbeef"  # forge
-    prior = combine_attestations([att], revocations=[rev], verify_with=ACME)
+    prior = combine_attestations([att], revocations=[rev], verifier=ACME)
     assert prior.standing("vendor") is not None  # forged revocation not honored
     assert not prior.revoked
 

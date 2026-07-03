@@ -1,5 +1,7 @@
 """Vincio optimization engine."""
 
+from __future__ import annotations
+
 from .budget_learning import BudgetLearner, LearnedAllocations
 from .cache_tuning import (
     CacheAdvice,

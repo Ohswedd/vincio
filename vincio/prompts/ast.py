@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field
 
 from ..core.types import Example
 from ..core.utils import stable_hash
+from ..stability import deprecated
 
 __all__ = [
     "NodeKind",
@@ -53,9 +54,15 @@ class PromptNode(BaseModel):
     priority: int = 100  # ordering within its section (lower first)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
-    @property
-    def content_hash(self) -> str:
+    def digest(self) -> str:
+        """Stable content hash of the node (kind + text)."""
         return stable_hash({"kind": self.kind, "text": self.text})
+
+    @property
+    @deprecated(since="7.5", removed_in="8.0", alternative="digest()")
+    def content_hash(self) -> str:
+        """Deprecated name for :meth:`digest`."""
+        return self.digest()
 
 
 class SystemRoleNode(PromptNode):
@@ -155,4 +162,4 @@ class PromptAST(BaseModel):
 
     @property
     def spec_hash(self) -> str:
-        return stable_hash([n.content_hash for n in self.ordered()])
+        return stable_hash([n.digest() for n in self.ordered()])

@@ -146,7 +146,7 @@ def test_forged_signature_is_inadmissible_with_verifier():
     good = _agreed(c, cost=0.08)
     forged = _claim(c, cost=0.08, signer=SELLER, party="vendor")
     forged.signatures[0].signature = "deadbeef"  # corrupt the signature
-    res = arbitrate([*good, forged], verify_with=SELLER)
+    res = arbitrate([*good, forged], verifier=SELLER)
     assert any("forged" in (cl.reason or "") for cl in res.inadmissible_claims)
 
 
@@ -155,7 +155,7 @@ def test_forged_signature_passes_without_verifier():
     # the hash binding still holds, so the figure can still stand.
     c = _contract()
     good = _agreed(c, cost=0.08)
-    res = arbitrate(good, verify_with=None)
+    res = arbitrate(good, verifier=None)
     assert res.status == "upheld"
 
 

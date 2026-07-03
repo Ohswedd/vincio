@@ -34,6 +34,8 @@ chain, evidence ledger, eval reports, price table), so governance is a view over
 the running system, not a parallel bookkeeping burden.
 """
 
+from __future__ import annotations
+
 from .aibom import AIBOM, AIComponent, generate_aibom, sha256_file, sha256_text
 from .cards import (
     CardFormat,

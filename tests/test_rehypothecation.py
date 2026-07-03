@@ -297,7 +297,7 @@ def test_forged_pool_signature_is_refused_with_verifier():
     forged = HMACSigner("evil-key", key_id="vendor")
     pool.signatures[0].signature = forged.sign(pool.content_hash)
     with pytest.raises(SettlementError, match="invalid signature"):
-        guard_collateral([pool], verify_with=VENDOR)
+        guard_collateral([pool], verifier=VENDOR)
 
 
 # -- signing & strict guards --------------------------------------------------
@@ -497,7 +497,7 @@ def test_forged_custodian_is_refused_with_verifier():
     proof.signatures[0].signature = HMACSigner("forger-key").sign(proof.content_hash)
     cust = HMACSigner("custodian-key", key_id="custodian")
     with pytest.raises(SettlementError, match="invalid custodian signature"):
-        guard_collateral([pool], custody=proof, verify_with=cust)
+        guard_collateral([pool], custody=proof, verifier=cust)
 
 
 def test_custody_for_a_different_poster_is_refused():

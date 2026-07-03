@@ -27,7 +27,7 @@ from vincio.providers import (
     FineTuneStatus,
     GoogleFineTuneBackend,
     OpenAIFineTuneBackend,
-    make_finetune_backend,
+    build_finetune_backend,
     run_finetune,
 )
 from vincio.providers.anthropic import AnthropicProvider
@@ -163,17 +163,17 @@ class TestGoogleFineTuneBackend:
 
 class TestBackendFactory:
     def test_dispatch_by_provider_name(self):
-        assert isinstance(make_finetune_backend(_openai(_openai_ok)), OpenAIFineTuneBackend)
+        assert isinstance(build_finetune_backend(_openai(_openai_ok)), OpenAIFineTuneBackend)
         assert isinstance(
-            make_finetune_backend(GoogleProvider(api_key="g")), GoogleFineTuneBackend
+            build_finetune_backend(GoogleProvider(api_key="g")), GoogleFineTuneBackend
         )
         assert isinstance(
-            make_finetune_backend(AnthropicProvider(api_key="a")), AnthropicFineTuneBackend
+            build_finetune_backend(AnthropicProvider(api_key="a")), AnthropicFineTuneBackend
         )
 
     def test_unsupported_provider_raises(self):
         with pytest.raises(FineTuneError):
-            make_finetune_backend(SimpleNamespace(name="mock"))
+            build_finetune_backend(SimpleNamespace(name="mock"))
 
 
 # ---------------------------------------------------------------------------

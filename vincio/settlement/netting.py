@@ -39,6 +39,7 @@ and offline.
 
 from __future__ import annotations
 
+import heapq
 from collections.abc import Iterable
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
@@ -47,7 +48,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
-from .record import SettlementRecord, SettlementSignature
+from .record import SettlementRecord, SettlementSignature, _resolve_verifier
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -591,11 +592,30 @@ def _clear(positions: list[NetPosition]) -> list[NetObligation]:
     )
     debt = {party: amount for party, amount in debtors}
     credit = {party: amount for party, amount in creditors}
+    # Each side pairs the current-amounts dict with a lazy max-heap: an entry is
+    # (-amount, party, amount), and heap order on (-amount, party) is exactly the
+    # min(...) selection key the greedy used, so the transfer sequence — and the
+    # content-bound cleared set — is byte-for-byte unchanged. A partial fill
+    # re-pushes the party at its new amount; the superseded entry stays behind
+    # and is skipped as stale on pop (its amount no longer matches the dict).
+    debt_heap = [(-amount, party, amount) for party, amount in debtors]
+    credit_heap = [(-amount, party, amount) for party, amount in creditors]
+    heapq.heapify(debt_heap)
+    heapq.heapify(credit_heap)
+
+    def _pop_live(
+        heap: list[tuple[float, str, float]], current: dict[str, float]
+    ) -> str:
+        while True:
+            _, party, amount = heapq.heappop(heap)
+            if current.get(party) == amount:
+                return party
+
     obligations: list[NetObligation] = []
     # Re-pick the extremes each round so the transfer count stays minimal.
     while debt and credit:
-        d_party = min(debt, key=lambda p: (-debt[p], p))
-        c_party = min(credit, key=lambda p: (-credit[p], p))
+        d_party = _pop_live(debt_heap, debt)
+        c_party = _pop_live(credit_heap, credit)
         transfer = _r(min(debt[d_party], credit[c_party]))
         if transfer <= _TOLERANCE:
             break
@@ -606,8 +626,12 @@ def _clear(positions: list[NetPosition]) -> list[NetObligation]:
         credit[c_party] = _r(credit[c_party] - transfer)
         if debt[d_party] <= _TOLERANCE:
             del debt[d_party]
+        else:
+            heapq.heappush(debt_heap, (-debt[d_party], d_party, debt[d_party]))
         if credit[c_party] <= _TOLERANCE:
             del credit[c_party]
+        else:
+            heapq.heappush(credit_heap, (-credit[c_party], c_party, credit[c_party]))
     obligations.sort(key=lambda o: (o.debtor, o.creditor))
     return obligations
 
@@ -617,6 +641,7 @@ def net_settlements(
     *,
     owner: str = "",
     fleet: list[str] | None = None,
+    verifier: ChainSigner | None = None,
     verify_with: ChainSigner | None = None,
 ) -> NettingSet:
     """Fold a fleet's settled contracts into a minimal cleared set of obligations.
@@ -627,14 +652,16 @@ def net_settlements(
     (excluded from the clearing), aggregates the buyer-owes-seller payables into
     directed gross obligations, computes each org's :class:`NetPosition`, and clears
     them to the minimal set of :class:`NetObligation` transfers. A tampered source
-    record is refused; with ``verify_with`` a forged signature is too. The returned
+    record is refused; with ``verifier`` a forged signature is too. The returned
     :class:`NettingSet` is sealed but unsigned — sign it with the clearer's key.
 
     ``fleet`` overrides the party set (defaults to every party seen in an included
-    obligation); ``owner`` labels the set with the clearing org.
+    obligation); ``owner`` labels the set with the clearing org. ``verify_with`` is
+    a deprecated alias for ``verifier`` (since 7.5, removed in 8.0).
     """
+    verifier = _resolve_verifier(verifier, verify_with, "net_settlements")
     record_list = list(records)
-    reps, disputes = _representatives(record_list, verifier=verify_with)
+    reps, disputes = _representatives(record_list, verifier=verifier)
     gross = _gross_obligations(reps)
     parties = (
         sorted(fleet)
@@ -665,20 +692,24 @@ def net_books(
     books: Iterable[SettlementBook],
     *,
     owner: str = "",
-    verify_with: ChainSigner | None = None,
+    verifier: ChainSigner | None = None,
     require_intact: bool = False,
+    verify_with: ChainSigner | None = None,
 ) -> NettingSet:
     """Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\\ s into one set.
 
     The convenience over :func:`net_settlements` for whole books: gathers every
     record across the fleet and clears them. With ``require_intact`` each book's
-    hash chain is verified before its records are read (``verify_with`` checks the
+    hash chain is verified before its records are read (``verifier`` checks the
     signatures too), so the clearing is built only on intact, signed ledgers.
+    ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5, removed
+    in 8.0).
     """
+    verifier = _resolve_verifier(verifier, verify_with, "net_books")
     book_list = list(books)
     records: list[SettlementRecord] = []
     for book in book_list:
         if require_intact:
-            book.require_intact(verify_with)
+            book.require_intact(verifier)
         records.extend(book.records)
-    return net_settlements(records, owner=owner, verify_with=verify_with)
+    return net_settlements(records, owner=owner, verifier=verifier)

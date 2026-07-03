@@ -32,7 +32,7 @@ vincio.evals.annotation cohens_kappa ValueError
 vincio.evals.attribution CausalAttributor.__init__ ValueError
 vincio.evals.ensemble JudgeEnsemble.__init__ ValueError
 vincio.evals.ensemble JudgeEnsemble.calibrate ValueError
-vincio.evals.environment make_retail_environment ValueError
+vincio.evals.environment build_retail_environment ValueError
 vincio.evals.guardrails metric_guardrail KeyError
 vincio.evals.judges GEvalJudge.calibrate ValueError
 vincio.evals.judges HybridJudge.__init__ ValueError

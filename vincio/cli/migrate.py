@@ -25,6 +25,7 @@ import ast
 from dataclasses import dataclass
 from pathlib import Path
 
+from ._symbol_scan import resolve_attr_module, vincio_module_aliases
 from .doctor import _iter_python_files
 
 __all__ = [
@@ -62,10 +63,76 @@ class SymbolRename:
 # end across every minor, so no public symbol ever reached its removal runway and
 # no name needed renaming across either major — a clean upgrade needs no source
 # changes. Future consolidations append to a new key — never mutate a shipped
-# table.
+# table. The ``"8.0"`` table delivers the 7.5 factory-prefix normalization: every
+# public ``make_*``/``create_*`` factory was renamed to ``build_*`` (the old
+# names are deprecated aliases until 8.0 removes them). ``create_app`` is exempt
+# (the ASGI application-factory idiom) and ``CurriculumTask.make_env`` is out of
+# scope (a method rename is not expressible as a module-level symbol rewrite).
 RENAMES: dict[str, tuple[SymbolRename, ...]] = {
     "4.0": (),
     "5.0": (),
+    "8.0": (
+        SymbolRename(
+            old="make_retail_environment",
+            new="build_retail_environment",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_counter_environment",
+            new="build_counter_environment",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_vault_environment",
+            new="build_vault_environment",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_agent_solver",
+            new="build_agent_solver",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_env_solver",
+            new="build_env_solver",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_web_checkout",
+            new="build_web_checkout",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_finetune_backend",
+            new="build_finetune_backend",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="create_metadata_store",
+            new="build_metadata_store",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_script_handler",
+            new="build_script_handler",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+        SymbolRename(
+            old="make_query_contract",
+            new="build_query_contract",
+            since="7.5",
+            note="factory-prefix normalization to build_*",
+        ),
+    ),
 }
 
 SUPPORTED_TARGETS: tuple[str, ...] = tuple(RENAMES)
@@ -129,7 +196,9 @@ def scan_source(
 
     * ``from vincio[.sub] import old`` — the imported-name token (and, when not
       aliased with ``as``, every later use of the bound name);
-    * ``vincio.old`` attribute access — the attribute token;
+    * attribute access on vincio or any vincio module, however it is reached —
+      ``vincio.old``, ``vincio.data.old``, ``import vincio.data as vd; vd.old``,
+      ``from vincio import data; data.old`` — the attribute token;
     * a bare use of a name imported unaliased from ``vincio*``.
 
     An ``import ... as alias`` rebinds the symbol locally, so only the imported
@@ -169,10 +238,11 @@ def scan_source(
                 if alias.asname is None:
                     bound[alias.name] = rename
 
+    aliases = vincio_module_aliases(tree)
     seen: set[tuple[int, int]] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if node.value.id == "vincio" and node.attr in renames:
+        if isinstance(node, ast.Attribute) and node.attr in renames:
+            if resolve_attr_module(node.value, aliases) is not None:
                 rename = renames[node.attr]
                 col = _attr_col(node)
                 if (node.lineno, col) not in seen:

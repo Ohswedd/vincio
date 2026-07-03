@@ -1,5 +1,7 @@
 """Vincio evaluation engine."""
 
+from __future__ import annotations
+
 from .adaptive import AdaptiveSampler, AdaptiveSamplingResult, CaseEstimate
 from .annotation import AnnotationItem, AnnotationQueue, cohens_kappa
 from .attribution import (
@@ -33,6 +35,8 @@ from .benchmarks import (
     available_benchmarks,
     bfcl_tasks_from_export,
     bird_tasks_from_export,
+    build_agent_solver,
+    build_env_solver,
     dabench_tasks_from_export,
     ds_1000_tasks_from_export,
     gaia_tasks_from_export,
@@ -78,8 +82,12 @@ from .environment import (
     TaskCheck,
     TaskVerification,
     ToolEnvironment,
+    build_counter_environment,
+    build_retail_environment,
+    build_vault_environment,
     make_counter_environment,
     make_retail_environment,
+    make_vault_environment,
     scripted_policy,
     task_success,
 )
@@ -242,8 +250,12 @@ __all__ = [
     "AgentPolicy",
     "scripted_policy",
     "task_success",
+    "build_retail_environment",
+    "build_counter_environment",
+    "build_vault_environment",
     "make_retail_environment",
     "make_counter_environment",
+    "make_vault_environment",
     # agentic benchmark adapters (SWE-bench/τ-bench/GAIA/WebArena/BFCL/
     # AgentBench/ToolBench/LiveCodeBench/MMLU-Pro)
     "BenchmarkAdapter",
@@ -297,6 +309,8 @@ __all__ = [
     "PromptInjectionAdapter",
     "RAGFaithfulnessAdapter",
     "RULERAdapter",
+    "build_agent_solver",
+    "build_env_solver",
     "make_agent_solver",
     "make_env_solver",
     "tasks_from_jsonl",

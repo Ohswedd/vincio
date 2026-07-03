@@ -192,7 +192,7 @@ def test_revoked_key_cannot_forge_new_history():
     assert revoked.revoked_at is not None
     # A signature the revoked key produces *after* revocation is rejected as of now.
     forged = ed.sign(b"\x06" * 32, b"after-compromise").hex()
-    check = identity.document.verify_signature("after-compromise", forged, at=utcnow())
+    check = identity.document.verify_signature("after-compromise", forged, as_of=utcnow())
     assert check.valid  # the bytes match the (now-revoked) key
     assert not check.active_at_check  # but the key was not active at signing time
 
@@ -201,7 +201,7 @@ def test_verify_signature_time_pinned():
     identity = AgentIdentity.generate("agent", seed=b"\x08" * 32)
     sig = identity.sign("doc-msg")
     kid = identity.document.active_key.kid
-    check = identity.document.verify_signature("doc-msg", sig, at=utcnow())
+    check = identity.document.verify_signature("doc-msg", sig, as_of=utcnow())
     assert check.valid and check.active_at_check and check.kid == kid
 
 

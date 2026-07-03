@@ -121,6 +121,18 @@ def test_build_parser_dispatch_table_is_wired():
     assert ns.path == "somewhere"
 
 
+def test_main_help_renders_every_subcommand(capsys):
+    # argparse %-expands each subcommand's help string when formatting the
+    # top-level help, so a stray `%` in any help= (e.g. "~50% cost") crashes
+    # `vincio --help` with a TypeError. Formatting the full help proves every
+    # registered help string survives expansion.
+    with pytest.raises(SystemExit) as excinfo:
+        main(["--help"])
+    assert excinfo.value.code == 0
+    out = capsys.readouterr().out
+    assert "batch" in out and "50% cost" in out
+
+
 def test_main_keyboard_interrupt_returns_130(monkeypatch):
     # main() catches a KeyboardInterrupt raised by the dispatched handler and
     # returns the conventional 130 exit code. We replace a real handler so the
@@ -932,7 +944,7 @@ def _sealed_recording(tmp_path):
         output_text="forty two",
         edges=[RecordedEdge.of("model_call", 0, "m", {"text": "forty two"})],
     )
-    rec.fidelity_digest = rec.compute_digest()
+    rec.fidelity_digest = rec.digest()
     path = tmp_path / "recording.json"
     rec.save(path)
     return rec, path

@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**549** public symbols.
+**552** public symbols.
 
 ## Classes
 
@@ -1848,7 +1848,7 @@ Decide a counterparty's admitted exposure from its standing.
 
 Run a bounded, multi-step analysis over a dataset and return a cited analytical narrative — the offline, deterministic core of the data-analysis agent.
 
-### `arbitrate(records, contract_id=…, arbiter=…, verify_with=…)`
+### `arbitrate(records, contract_id=…, arbiter=…, verifier=…, verify_with=…)`
 
 Adjudicate a disputed contract from the records its parties submit.
 
@@ -1864,7 +1864,7 @@ Attest a poster's proven reserves into an (unsigned) :class:`CustodyAttestation`
 
 Attest a poster's total obligations into an (unsigned) :class:`LiabilityAttestation`.
 
-### `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verify_with=…, horizon_days=…, note=…)`
+### `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verifier=…, horizon_days=…, note=…, verify_with=…)`
 
 Issue an attestation of ``subject``'s earned standing from signed records.
 
@@ -1880,6 +1880,14 @@ Attribute a metric regression to the changed ``factors`` by Shapley counterfactu
 
 Names of all packs that can be loaded (built-in + installed plugins + registered).
 
+### `build_finetune_backend(provider)`
+
+Build the right fine-tune backend for a provider instance.
+
+### `build_retail_environment(task_id=…)`
+
+A τ-bench-style retail world: orders mutated by tools, verified by end state.
+
 ### `build_seniority_schedule(poster, tranches, as_of=…)`
 
 Rank a poster's obligations into a sealed, unsigned :class:`SenioritySchedule`.
@@ -1888,9 +1896,13 @@ Rank a poster's obligations into a sealed, unsigned :class:`SenioritySchedule`.
 
 Collapse the mutual obligations between a poster and one creditor into a statement.
 
-### `build_trust_model(attestations, base=…, config=…, attestation_config=…, verify_with=…)`
+### `build_trust_model(attestations, base=…, config=…, attestation_config=…, verifier=…, verify_with=…)`
 
 Build the importer's bounded, transitive trust over a set of issuers.
+
+### `build_web_checkout()`
+
+A deterministic, in-process checkout app and its goal, the offline, WebArena / OSWorld-shaped reference scenario.
 
 ### `buyer_position(max_price_usd, ideal_price_usd=…, max_sla_seconds, ideal_sla_seconds=…, min_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)`
 
@@ -1920,7 +1932,7 @@ Compare a set of liability attestations for cross-creditor root non-equivocation
 
 Expose a local org's choreography handlers over A2A.
 
-### `combine_attestations(attestations, subject=…, config=…, verify_with=…, base=…, allow_self=…, revocations=…, as_of=…, trust=…, trust_config=…)`
+### `combine_attestations(attestations, subject=…, config=…, verifier=…, base=…, allow_self=…, revocations=…, as_of=…, trust=…, trust_config=…, verify_with=…)`
 
 Combine several issuers' attestations into one bounded, evidence-weighted prior.
 
@@ -1980,7 +1992,7 @@ Mark a function or class as experimental (no stability guarantee).
 
 Build a typed structured-extraction task from a schema in one expression.
 
-### `gather_reputation(subject, peers, directory=…, principal=…, config=…, verify_with=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, trust=…, trust_config=…, max_peers=…, audit=…, record_audit=…)`
+### `gather_reputation(subject, peers, directory=…, principal=…, config=…, verifier=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, trust=…, trust_config=…, max_peers=…, audit=…, record_audit=…, verify_with=…)`
 
 Pull signed attestations and revocations from a bounded set of peers.
 
@@ -1992,7 +2004,7 @@ Turn a cited query result into a **content-bound, data-bound** chart.
 
 Generate a tracked-change redline between two texts.
 
-### `guard_collateral(pools, poster=…, held=…, custody=…, solvency=…, verify_with=…)`
+### `guard_collateral(pools, poster=…, held=…, custody=…, solvency=…, verifier=…, verify_with=…)`
 
 Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
 
@@ -2052,11 +2064,11 @@ Swap only the model on a fixed dataset and report a statistically grounded regre
 
 Expose a local negotiating :class:`Party` over A2A.
 
-### `net_books(books, owner=…, verify_with=…, require_intact=…)`
+### `net_books(books, owner=…, verifier=…, require_intact=…, verify_with=…)`
 
 Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
 
-### `net_settlements(records, owner=…, fleet=…, verify_with=…)`
+### `net_settlements(records, owner=…, fleet=…, verifier=…, verify_with=…)`
 
 Fold a fleet's settled contracts into a minimal cleared set of obligations.
 

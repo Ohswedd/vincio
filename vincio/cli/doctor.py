@@ -22,6 +22,7 @@ from typing import Any
 
 from ..core.diagnostics import note_suppressed
 from ..stability import StabilityLevel, stability_of
+from ._symbol_scan import resolve_attr_module, vincio_module_aliases
 
 __all__ = [
     "Deprecation",
@@ -185,11 +186,15 @@ def scan_source(path: str | Path, deprecations: dict[str, Deprecation]) -> list[
         return []
 
     bound, findings = _imported_deprecated_names(tree, deprecations)
+    aliases = vincio_module_aliases(tree)
     seen: set[tuple[int, str]] = set()
     for node in ast.walk(tree):
-        # `vincio.old_symbol` attribute access.
-        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name):
-            if node.value.id == "vincio" and node.attr in deprecations:
+        # Attribute access on vincio or any vincio module, however it is
+        # reached: `vincio.old`, `vincio.data.old`, `import vincio.data as vd;
+        # vd.old`, `from vincio import data; data.old`.
+        if isinstance(node, ast.Attribute) and node.attr in deprecations:
+            module = resolve_attr_module(node.value, aliases)
+            if module is not None:
                 dep = deprecations[node.attr]
                 key = (node.lineno, node.attr)
                 if key not in seen:
@@ -199,7 +204,7 @@ def scan_source(path: str | Path, deprecations: dict[str, Deprecation]) -> list[
                             kind="deprecated_api",
                             file="",
                             line=node.lineno,
-                            message=f"uses deprecated `vincio.{node.attr}`",
+                            message=f"uses deprecated `{module}.{node.attr}`",
                             remediation=dep.remediation(),
                         )
                     )

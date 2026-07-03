@@ -344,7 +344,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (549 public symbols)
+## Public API (552 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -812,17 +812,20 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `OutputField(desc=…, **kwargs)` — Declare a signature output field.
 - `admit(subject, reputation=…, ledger=…, standing=…, config=…)` — Decide a counterparty's admitted exposure from its standing.
 - `analyze_dataset(objective, data, table=…, budget=…, engine=…, injection_detector=…, screen=…, extra_questions=…)` — Run a bounded, multi-step analysis over a dataset and return a cited analytical narrative — the offline, deterministic core of the data-analysis agent.
-- `arbitrate(records, contract_id=…, arbiter=…, verify_with=…)` — Adjudicate a disputed contract from the records its parties submit.
+- `arbitrate(records, contract_id=…, arbiter=…, verifier=…, verify_with=…)` — Adjudicate a disputed contract from the records its parties submit.
 - `assurance_regression_gate(before, after)` — Block a build when a previously-discharged claim is no longer discharged.
 - `attest_custody(poster, reserves, custodian=…, as_of=…)` — Attest a poster's proven reserves into an (unsigned) :class:`CustodyAttestation`.
 - `attest_liabilities(poster, liabilities, attestor=…, as_of=…, prior=…)` — Attest a poster's total obligations into an (unsigned) :class:`LiabilityAttestation`.
-- `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verify_with=…, horizon_days=…, note=…)` — Issue an attestation of ``subject``'s earned standing from signed records.
+- `attest_reputation(records, subject, issuer=…, resolutions=…, config=…, verifier=…, horizon_days=…, note=…, verify_with=…)` — Issue an attestation of ``subject``'s earned standing from signed records.
 - `attestation_a2a_server(book, revocations=…, attestations=…, config=…, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)` — Expose an org's settlement book as a queryable attestation peer over A2A.
 - `attribute_regression(app, dataset, factors, metric=…, aggregate=…, repeats=…)` — Attribute a metric regression to the changed ``factors`` by Shapley counterfactual replay, the convenience entry point behind a failing gate.
 - `available_packs()` — Names of all packs that can be loaded (built-in + installed plugins + registered).
+- `build_finetune_backend(provider)` — Build the right fine-tune backend for a provider instance.
+- `build_retail_environment(task_id=…)` — A τ-bench-style retail world: orders mutated by tools, verified by end state.
 - `build_seniority_schedule(poster, tranches, as_of=…)` — Rank a poster's obligations into a sealed, unsigned :class:`SenioritySchedule`.
 - `build_set_off_statement(poster, creditor, owed_usd, owing_usd, references=…, as_of=…)` — Collapse the mutual obligations between a poster and one creditor into a statement.
-- `build_trust_model(attestations, base=…, config=…, attestation_config=…, verify_with=…)` — Build the importer's bounded, transitive trust over a set of issuers.
+- `build_trust_model(attestations, base=…, config=…, attestation_config=…, verifier=…, verify_with=…)` — Build the importer's bounded, transitive trust over a set of issuers.
+- `build_web_checkout()` — A deterministic, in-process checkout app and its goal, the offline, WebArena / OSWorld-shaped reference scenario.
 - `buyer_position(max_price_usd, ideal_price_usd=…, max_sla_seconds, ideal_sla_seconds=…, min_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)` — Build a buyer position: wants low price, fast SLA, high quality.
 - `certify(case, signer=…, residual_risks=…, provenance=…, as_of=…)` — Build a :class:`CertificationReport` from a checked assurance case.
 - `chat(provider=…, model=…, name=…, tools=…, writes=…, approve=…, user_id=…, tenant_id=…, session_id=…, memory_writeback=…, on_approval=…, role=…, objective=…, rules=…, app=…, config=…)` — Open a multi-turn, session-aware chat in one expression.
@@ -830,7 +833,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `check_history_consistency(attestations, discharges=…, verifier=…)` — Walk a set of liability snapshots for cross-time monotonicity (no debt silently dropped).
 - `check_root_consistency(attestations, verifier=…)` — Compare a set of liability attestations for cross-creditor root non-equivocation.
 - `choreography_a2a_server(handlers, org_id=…, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)` — Expose a local org's choreography handlers over A2A.
-- `combine_attestations(attestations, subject=…, config=…, verify_with=…, base=…, allow_self=…, revocations=…, as_of=…, trust=…, trust_config=…)` — Combine several issuers' attestations into one bounded, evidence-weighted prior.
+- `combine_attestations(attestations, subject=…, config=…, verifier=…, base=…, allow_self=…, revocations=…, as_of=…, trust=…, trust_config=…, verify_with=…)` — Combine several issuers' attestations into one bounded, evidence-weighted prior.
 - `compose(*steps, name=…, tracer=…)` — Compose steps left to right: ``compose(a, b) == compose(a) | b``.
 - `default_model_registry()` — Process-wide registry, seeded from the built-in catalog plus the ``VINCIO_MODEL_REGISTRY`` overlay (if set). Constructed lazily and cached.
 - `default_verifiers()` — The default offline kernel set behind ``app.verify_reasoning``.
@@ -845,10 +848,10 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `evaluation(dataset=…, metrics=…, gates=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)` — Build an offline evaluation in one expression.
 - `experimental(since, note=…)` — Mark a function or class as experimental (no stability guarantee).
 - `extractor(schema, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)` — Build a typed structured-extraction task from a schema in one expression.
-- `gather_reputation(subject, peers, directory=…, principal=…, config=…, verify_with=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, trust=…, trust_config=…, max_peers=…, audit=…, record_audit=…)` — Pull signed attestations and revocations from a bounded set of peers.
+- `gather_reputation(subject, peers, directory=…, principal=…, config=…, verifier=…, base=…, allow_self=…, held_attestations=…, held_revocations=…, as_of=…, trust=…, trust_config=…, max_peers=…, audit=…, record_audit=…, verify_with=…)` — Pull signed attestations and revocations from a bounded set of peers.
 - `generate_chart(result, type=…, x=…, y=…, color=…, title=…, renderer=…, signer=…, infer_type=…)` — Turn a cited query result into a **content-bound, data-bound** chart.
 - `generate_redline(original, revised, format=…, title=…)` — Generate a tracked-change redline between two texts.
-- `guard_collateral(pools, poster=…, held=…, custody=…, solvency=…, verify_with=…)` — Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
+- `guard_collateral(pools, poster=…, held=…, custody=…, solvency=…, verifier=…, verify_with=…)` — Fold a counterparty's collateral pools into a bounded, offline-verifiable re-use guard.
 - `installed_plugins()` — All installed Vincio plugins across every group (alias for discovery).
 - `is_vincio_did(did)` — Whether ``did`` is a well-formed ``did:vincio:ed25519`` identifier.
 - `is_wasm_runtime()` — True when running on a WASM target (Emscripten/Pyodide or WASI).
@@ -863,8 +866,8 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `make_web_checkout()` — A deterministic, in-process checkout app and its goal, the offline, WebArena / OSWorld-shaped reference scenario.
 - `model_swap_regression(app, dataset, baseline_model=…, candidate_model, metrics=…, quality_metric=…, alpha=…, repeats=…, flake_quarantine=…, flake_threshold=…, slice_prefix=…)` — Swap only the model on a fixed dataset and report a statistically grounded regression analysis (the body of ``vincio eval regress``).
 - `negotiation_a2a_server(party, name=…, url=…, description=…, tracer=…, token_validator=…, audit=…)` — Expose a local negotiating :class:`Party` over A2A.
-- `net_books(books, owner=…, verify_with=…, require_intact=…)` — Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
-- `net_settlements(records, owner=…, fleet=…, verify_with=…)` — Fold a fleet's settled contracts into a minimal cleared set of obligations.
+- `net_books(books, owner=…, verifier=…, require_intact=…, verify_with=…)` — Net a fleet of :class:`~vincio.settlement.book.SettlementBook`\ s into one set.
+- `net_settlements(records, owner=…, fleet=…, verifier=…, verify_with=…)` — Fold a fleet's settled contracts into a minimal cleared set of obligations.
 - `notebook_session(app, dataset=…, question=…, analyst=…, auto_display=…, rich=…)` — Open a governed, notebook-native analysis session over *app*.
 - `post_collateral_pool(contracts, poster=…, posted=…, decisions=…, fraction=…, config=…)` — Post one stake backing many contracts into an (unsigned) :class:`CollateralPool`.
 - `post_escrow(contract, decision=…, fraction=…, amount=…, poster=…, beneficiary=…, config=…)` — Post collateral against a contract into an (unsigned) :class:`Escrow`.

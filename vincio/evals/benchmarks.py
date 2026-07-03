@@ -27,7 +27,6 @@ consume leaderboard scores like any other eval.
 
 from __future__ import annotations
 
-import hashlib
 import json
 import re
 from abc import ABC, abstractmethod
@@ -38,7 +37,9 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..core.errors import VincioError
-from .environment import EnvAction, EnvironmentSimulator, make_retail_environment, scripted_policy
+from ..core.utils import compact_hash
+from ..stability import deprecated_alias
+from .environment import EnvAction, EnvironmentSimulator, build_retail_environment, scripted_policy
 from .reports import CaseResult, EvalReport
 
 __all__ = [
@@ -66,6 +67,8 @@ __all__ = [
     "load_benchmark",
     "available_benchmarks",
     # live-run path: drive a real Vincio agent and load official task sets
+    "build_agent_solver",
+    "build_env_solver",
     "make_agent_solver",
     "make_env_solver",
     "tasks_from_jsonl",
@@ -103,8 +106,7 @@ def compute_task_set_hash(tasks: list[BenchmarkTask]) -> str:
     the hash, so a silent task-set drift is caught against a recorded value.
     """
     canonical = [{"id": t.id, "gold": t.gold} for t in sorted(tasks, key=lambda t: t.id)]
-    blob = json.dumps(canonical, sort_keys=True, default=str, separators=(",", ":"))
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+    return compact_hash(canonical)
 
 
 class BenchmarkTask(BaseModel):
@@ -340,7 +342,7 @@ class TauBenchAdapter(BenchmarkAdapter):
         env_name = task.inputs.get("env", "retail")
         if env_name != "retail":
             raise BenchmarkError(f"tau_bench: unsupported env {env_name!r}")
-        return make_retail_environment(task.inputs.get("env_task", "cancel_refund"))
+        return build_retail_environment(task.inputs.get("env_task", "cancel_refund"))
 
     async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
         actions = [EnvAction.model_validate(a) for a in (output or [])]
@@ -781,7 +783,7 @@ def _coerce_text(value: Any) -> str:
         return str(value)
 
 
-def make_agent_solver(runner: Any, *, mode: str = "text", prompt_key: str | None = None) -> Solver:
+def build_agent_solver(runner: Any, *, mode: str = "text", prompt_key: str | None = None) -> Solver:
     """Turn a Vincio agent into a benchmark :data:`Solver` (the live-run path).
 
     ``runner`` may be a :class:`~vincio.core.app.ContextApp` (driven via ``arun``),
@@ -836,7 +838,7 @@ def make_agent_solver(runner: Any, *, mode: str = "text", prompt_key: str | None
     return solve
 
 
-def make_env_solver(policy: Any) -> Solver:
+def build_env_solver(policy: Any) -> Solver:
     """Drive an agent ``policy`` through the environment a τ-bench task names and
     return the action list — the live τ-bench run path.
 
@@ -847,12 +849,12 @@ def make_env_solver(policy: Any) -> Solver:
     """
 
     async def solve(task: BenchmarkTask) -> Any:
-        from .environment import EnvironmentSimulator, make_retail_environment
+        from .environment import EnvironmentSimulator, build_retail_environment
 
         env_name = task.inputs.get("env", "retail")
         if env_name != "retail":
-            raise BenchmarkError(f"make_env_solver: unsupported env {env_name!r}")
-        env = make_retail_environment(task.inputs.get("env_task", "cancel_refund"))
+            raise BenchmarkError(f"build_env_solver: unsupported env {env_name!r}")
+        env = build_retail_environment(task.inputs.get("env_task", "cancel_refund"))
         result = await EnvironmentSimulator().arun(env, policy)
         return [
             {"tool": step.tool_name, "arguments": dict(step.tool_arguments)}
@@ -861,6 +863,20 @@ def make_env_solver(policy: Any) -> Solver:
         ]
 
     return solve
+
+
+make_agent_solver = deprecated_alias(
+    build_agent_solver,
+    old_name="make_agent_solver",
+    since="7.5",
+    removed_in="8.0",
+)
+make_env_solver = deprecated_alias(
+    build_env_solver,
+    old_name="make_env_solver",
+    since="7.5",
+    removed_in="8.0",
+)
 
 
 def _maybe_json(value: Any) -> Any:

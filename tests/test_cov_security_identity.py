@@ -90,8 +90,8 @@ def test_grant_permits_budget_over_cap_refused():
 def test_grant_permits_expiry_boundary():
     cutoff = utcnow()
     g = Grant(capabilities=["x"], not_after=cutoff)
-    assert g.permits("x", at=cutoff) is True
-    assert g.permits("x", at=cutoff + timedelta(seconds=1)) is False
+    assert g.permits("x", as_of=cutoff) is True
+    assert g.permits("x", as_of=cutoff + timedelta(seconds=1)) is False
 
 
 def test_grant_permits_audience_mismatch_refused():
@@ -413,7 +413,7 @@ def test_verify_signature_inactive_at_reports_reason():
     msg = "old-message"
     sig = ident.sign(msg)
     before_birth = ident.document.active_key.created_at - timedelta(days=1)
-    check = ident.document.verify_signature(msg, sig, at=before_birth)
+    check = ident.document.verify_signature(msg, sig, as_of=before_birth)
     assert check.valid is True  # the signature is genuine
     assert check.active_at_check is False
     assert "was not active at" in check.reason

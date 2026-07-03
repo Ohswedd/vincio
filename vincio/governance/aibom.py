@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from pydantic import BaseModel, Field
 
+from ..core.utils import sha256_text as _sha256_text
 from ..core.utils import utcnow
 from ..observability.costs import default_price_table
 
@@ -50,9 +51,9 @@ def sha256_file(path: str | Path) -> str:
     return digest.hexdigest()
 
 
-def sha256_text(text: str) -> str:
-    """SHA-256 of a string (for prompts / registry-pinned content)."""
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+# Shared implementation home; re-exported here because it has always been part
+# of this module's public surface (`sha256_text` in __all__).
+sha256_text = _sha256_text
 
 
 class AIComponent(BaseModel):

@@ -216,9 +216,9 @@ A `vincio.evals.Environment` makes that measurable, `reset` / `step` / `observe`
 the run projects onto the same `Trajectory` the metrics already score.
 
 ```python
-from vincio.evals import EnvAction, EnvironmentSimulator, make_retail_environment, scripted_policy
+from vincio.evals import EnvAction, EnvironmentSimulator, build_retail_environment, scripted_policy
 
-env = make_retail_environment("cancel_refund")     # a τ-bench-style retail world
+env = build_retail_environment("cancel_refund")     # a τ-bench-style retail world
 result = EnvironmentSimulator().run(env, scripted_policy([
     EnvAction(tool="cancel_order", arguments={"order_id": "O1002"}),
     EnvAction(tool="refund_order", arguments={"order_id": "O1002"}),
@@ -240,16 +240,16 @@ from vincio.evals import load_benchmark
 report = await load_benchmark("tau_bench", fixture_path="benchmarks/fixtures/tau_bench.json").replay()
 
 # Live: solve fresh with a real agent, the *identical* scorer grades the output.
-from vincio.evals import GAIAAdapter, gaia_tasks_from_export, make_agent_solver
+from vincio.evals import GAIAAdapter, gaia_tasks_from_export, build_agent_solver
 tasks = gaia_tasks_from_export(official_gaia_records)         # load the released format
-report = await GAIAAdapter(tasks).run(make_agent_solver(app, mode="text"))
+report = await GAIAAdapter(tasks).run(build_agent_solver(app, mode="text"))
 report.success_rate
 report.to_eval_report()       # project onto an EvalReport for gates / the optimizer
 ```
 
-`make_agent_solver(app_or_executor, mode="text"|"calls")` drives a real agent
+`build_agent_solver(app_or_executor, mode="text"|"calls")` drives a real agent
 (`"calls"` captures the agent's function calls from its event stream for BFCL);
-`make_env_solver(policy)` runs a policy through a τ-bench world.
+`build_env_solver(policy)` runs a policy through a τ-bench world.
 
 > These adapters are the low-level, single-benchmark API. The
 > [open evaluation plane](../concepts/open-evaluation-plane.md) wraps the same

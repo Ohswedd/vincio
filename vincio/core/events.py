@@ -14,7 +14,7 @@ from collections import defaultdict
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, ClassVar, cast
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from .utils import new_id, utcnow
 
@@ -170,7 +170,15 @@ class SourceErased(EventPayload):
     source: str = ""
     found: bool = False
     proven: bool = False
-    content_sha256: str | None = None
+    # Old payloads (and the dual-key deprecation emit) validate via the alias.
+    content_hash: str | None = Field(
+        default=None, validation_alias=AliasChoices("content_hash", "content_sha256")
+    )
+
+    @property
+    def content_sha256(self) -> str | None:
+        """Deprecated since 7.5 (removal in 8.0): read :attr:`content_hash`."""
+        return self.content_hash
 
 
 class PlanRepaired(EventPayload):
