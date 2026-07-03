@@ -117,7 +117,7 @@ with **no existing symbol removed or changed**; `API_VERSION` stays `5.0`.
   path is simply the default constructor. The `web_search` VincioBench family gates
   token reduction, grounded recall, code fidelity, section fidelity, IP-literal
   SSRF refusal, intent gating, availability detection, and bounded/deterministic/
-  verifiable crawling — thirteen budgets and thirteen published SLOs — plus a live
+  verifiable crawling — seventeen gated budgets and thirteen published SLOs — plus a live
   **uplift** benchmark (`web_search.freshness`) measuring the same model direct vs
   with web search on post-cutoff facts (0% → 67% on two OpenRouter models,
   2026-07-03). Demonstrated by a runnable `examples/19_web_browser_search.py`.
