@@ -40,7 +40,8 @@ _SITE_SCOPE_RE = re.compile(
     r"\bsite:([a-z0-9.-]+\.[a-z]{2,24})", re.IGNORECASE
 )
 _ON_SITE_RE = re.compile(
-    r"\b(?:on|from|at|in|via|using|check)\s+((?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)+)",
+    # the host must end in a real letter-TLD, so "in 3.14" is not read as a site
+    r"\b(?:on|from|at|in|via|using|check)\s+((?:www\.)?[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z]{2,24})",
     re.IGNORECASE,
 )
 _SEARCH_DIRECTIVE_RE = re.compile(

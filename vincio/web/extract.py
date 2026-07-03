@@ -300,9 +300,15 @@ class _PageParser(HTMLParser):
             self._flush()
 
     def handle_startendtag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
-        # A self-closing <a .../> never opens an anchor region; ignore for links.
-        if tag not in ("a",):
-            self.handle_starttag(tag, attrs)
+        # A self-closing element has no children, so it must never *open* a
+        # skip / chrome / pre region that then swallows the rest of the document
+        # (the never-ending-region failure). Open-then-close so any region it
+        # would have started is immediately balanced, and skip anchors (a
+        # self-closing <a/> has no anchor text to capture).
+        if tag == "a":
+            return
+        self.handle_starttag(tag, attrs)
+        self.handle_endtag(tag)
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "title":
@@ -356,7 +362,8 @@ class _PageParser(HTMLParser):
             if text:
                 self.title = (self.title + " " + text).strip()
             return
-        if self._link_href is not None:
+        if self._link_href is not None and not self._excluded and not self._pre_depth:
+            # anchor text only — never script/style/pre bytes inside an <a>
             self._link_anchor.append(data)
         if self._pre_depth:
             self._code_parts.append(data)
@@ -502,13 +509,16 @@ _WALL_MAX_BLOCKS = 4  # a wall is a short page; longer pages are treated as cont
 
 
 def _detect_availability(
-    html: str, title: str, blocks: list[_Block]
+    html: str, title: str, blocks: list[_Block], raw_block_count: int
 ) -> tuple[bool, str]:
     """A deterministic read of whether the fetched page is real content or a
     wall / soft-404 / JS shell the model should route around."""
-    # A 200 with substantial markup but almost no extractable content is a
-    # client-rendered shell (the content arrives via JavaScript we do not run).
-    if len(blocks) < 2 and len(html) > 20_000:
+    # A 200 with substantial markup but almost no extractable content — and no
+    # raw text blocks either — is a client-rendered shell (the content arrives
+    # via JavaScript we do not run). Requiring *raw* blocks < 2 too avoids
+    # misreading a link-dense portal (whose blocks the density filter removed)
+    # as a JS shell.
+    if len(blocks) < 2 and raw_block_count < 2 and len(html) > 20_000:
         return False, "requires_javascript"
     if len(blocks) <= _WALL_MAX_BLOCKS:
         haystack = " ".join([title, *(b.text for b in blocks[:_WALL_MAX_BLOCKS])]).lower()
@@ -594,6 +604,8 @@ def extract_page(
     page's outbound links (for crawling). Deterministic in
     (``html``, ``query``, ``budget_tokens``, ``max_excerpts``, ``mode``).
     """
+    if mode not in ("excerpt", "section", "full", "auto"):
+        mode = "auto"  # tolerate an unknown mode from the model rather than crash
     parsed = _parse_page(html)
     blocks = _content_blocks(parsed.blocks)
     page_tokens = count_tokens("\n".join(block.text for block in blocks))
@@ -626,13 +638,13 @@ def extract_page(
     else:  # excerpt
         excerpts, used = _select_excerpts(blocks, scores, budget_tokens, max_excerpts)
 
-    available, reason = _detect_availability(html, parsed.title, blocks)
+    available, reason = _detect_availability(html, parsed.title, blocks, len(parsed.blocks))
     find_matches = find_in_page(html, find) if find else []
     return PageExtract(
         url=url,
         title=parsed.title,
         query=query,
-        mode=mode,
+        mode=resolved,  # the concrete depth chosen (never "auto"), so replay is exact
         budget_tokens=budget_tokens,
         excerpts=excerpts,
         excerpt_tokens=used,

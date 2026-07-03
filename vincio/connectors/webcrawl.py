@@ -16,7 +16,6 @@ import httpx
 from ..core.types import Document
 from ..web.crawl import WebCrawler
 from ..web.policy import WebPolicy
-from ..web.search import SearchBackend
 from .base import register_connector
 
 __all__ = ["WebCrawlConnector"]
@@ -35,7 +34,6 @@ class WebCrawlConnector:
         max_pages: int | None = None,
         max_depth: int | None = None,
         policy: WebPolicy | None = None,
-        backend: SearchBackend | None = None,
         client: httpx.AsyncClient | None = None,
         mode: str = "full",
     ) -> None:
@@ -44,6 +42,8 @@ class WebCrawlConnector:
         self.query = query
         self.max_pages = max_pages
         self.max_depth = max_depth
+        # A crawl walks links from the seeds; it does not search, so there is no
+        # search backend to configure here (unlike WebSearchConnector).
         self.crawler = WebCrawler(
             policy=policy or WebPolicy.preset("scrape"),
             client=client,

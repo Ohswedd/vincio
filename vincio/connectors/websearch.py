@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import httpx
 
+from ..core.diagnostics import note_suppressed
 from ..core.errors import VincioError
 from ..core.types import Document
 from ..web.browser import WebBrowser
@@ -77,8 +78,10 @@ class WebSearchConnector:
                     )
                 except VincioError:
                     # A page the policy refuses or the fetch loses is skipped, not
-                    # fatal: the query's other hits still index. The refusal is
-                    # already on the browser's audit trail.
+                    # fatal: the query's other hits still index. (A standalone
+                    # connector has no app audit log; it raises typed errors the
+                    # caller can observe, but does not record them.)
+                    note_suppressed("connectors.websearch_page_skipped")
                     continue
                 documents.append(
                     Document(

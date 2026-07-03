@@ -13,7 +13,7 @@ import pytest
 
 from vincio.core.app import ContextApp
 from vincio.core.config import VincioConfig
-from vincio.core.errors import WebFetchError, WebPolicyError, WebSearchError
+from vincio.core.errors import VincioError, WebFetchError, WebPolicyError, WebSearchError
 from vincio.core.types import (
     Message,
     ModelCapabilities,
@@ -956,6 +956,200 @@ def test_use_web_search_does_not_auto_fetch_incidental_url(tmp_path):
     app.use_web_search(client=_hard_client(handler))
     app.run("Is http://169.254.169.254 the metadata endpoint?")
     assert app.web_browser.report().fetches_used == 0
+
+
+# -- v2: adversarial-review regression fixes -------------------------------------------------
+
+
+def test_extract_unknown_mode_is_coerced_not_crashed():
+    extract = extract_page("<html><body><h1>H</h1><p>" + "word " * 40 + "</p></body></html>", mode="detailed")
+    assert extract.mode in ("excerpt", "section", "full")  # coerced, no ValidationError
+
+
+def test_extract_records_resolved_mode_not_auto():
+    small = "<html><head><title>T</title></head><body><h1>H</h1><p>" + "word " * 30 + "</p></body></html>"
+    extract = extract_page(small, mode="auto", budget_tokens=4000)
+    assert extract.mode == "full"  # auto resolved to a concrete depth
+
+
+def test_extract_self_closing_chrome_does_not_swallow_document():
+    html = (
+        "<html><body><div class='cookie-banner'/>"
+        "<h1>Real</h1><p>The real article content survives after a self-closing "
+        "chrome div, long enough to register as a real content block.</p></body></html>"
+    )
+    extract = extract_page(html)
+    assert any("real article content" in e.text for e in extract.excerpts)
+
+
+def test_availability_does_not_misflag_link_dense_portal():
+    portal = "<html><body>" + "".join(
+        f"<p><a href='/x{i}'>Link {i} to a section of the portal</a></p>" for i in range(60)
+    ) + "</body></html>"
+    assert extract_page(portal).available  # link-dense portal is not a JS shell
+
+
+def test_search_snippet_date_rejects_impossible_day():
+    from vincio.web.search import _parse_snippet_date
+
+    assert _parse_snippet_date("Feb 30, 2024 - impossible")[0] == ""
+    assert _parse_snippet_date("Oct 7, 2024 - real")[0] == "2024-10-07"
+
+
+def test_intent_does_not_read_a_number_as_a_site():
+    from vincio.web import detect_web_intent
+
+    assert detect_web_intent("increase it by 3.14 in the config").sites == []
+    assert detect_web_intent("check docs.python.org").sites == ["docs.python.org"]
+
+
+def test_policy_canonicalize_lowercases_host_and_drops_default_port():
+    policy = WebPolicy()
+    assert policy.canonicalize("https://Example.COM:443/A?b=1") == "https://example.com/A?b=1"
+    assert policy.canonicalize("http://Host:80/p") == "http://host/p"
+
+
+def test_browser_robots_redirect_is_not_followed_to_private_host():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(302, headers={"location": "http://169.254.169.254/x"})
+        return httpx.Response(
+            200, text="<html><body><p>A readable content block long enough to keep.</p></body></html>",
+            headers={"content-type": "text/html"},
+        )
+
+    async def nosleep(_: float) -> None:
+        return None
+
+    browser = WebBrowser(
+        _static_backend(), policy=WebPolicy(max_fetches=3),
+        client=_hard_client(handler), sleeper=nosleep,
+    )
+    # robots redirect to a private host is treated as absent (allowed), never followed
+    extract = asyncio.run(browser.read("https://ok.example/page"))
+    assert extract.excerpts
+
+
+def test_browser_decodes_declared_non_utf8_charset():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(
+            200, content="café résumé".encode("latin-1"),
+            headers={"content-type": "text/html; charset=latin-1"},
+        )
+
+    browser = WebBrowser(_static_backend(), client=_hard_client(handler))
+    extract = asyncio.run(browser.read("https://ok.example/latin", query="cafe"))
+    assert "café" in browser.snapshots[extract.content_hash]
+
+
+def test_browser_failed_fetches_consume_budget():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(404)
+
+    async def nosleep(_: float) -> None:
+        return None
+
+    browser = WebBrowser(
+        _static_backend(), policy=WebPolicy(max_fetches=2),
+        client=_hard_client(handler), sleeper=nosleep,
+    )
+    for i in range(2):
+        with pytest.raises(WebFetchError):
+            asyncio.run(browser.read(f"https://ok.example/missing?i={i}"))
+    assert browser.fetches_used == 2
+    with pytest.raises(WebPolicyError):  # budget now bounds the failed egress
+        asyncio.run(browser.read("https://ok.example/missing?i=3"))
+
+
+def test_search_snippet_void_tag_does_not_break_snippet_region():
+    html = (
+        "<div class='result'><h2 class='result__title'>"
+        "<a class='result__a' href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fx.com%2Fa&rut=k'>T</a></h2>"
+        "<a class='result__snippet'>Line one<br>line two of the snippet.</a></div>"
+    )
+    rows = parse_results_html(html)
+    assert rows and "line two" in rows[0].snippet
+
+
+def test_crawl_empty_seeds_raises_typed_error():
+    from vincio.web import WebCrawler
+
+    with pytest.raises(VincioError):
+        asyncio.run(WebCrawler(policy=WebPolicy.preset("scrape")).crawl([]))
+
+
+# -- v2: adversarial-review round-2 fixes (gzip bomb, policy, crawl exposure) -----------------
+
+
+def test_decompress_bounded_defeats_gzip_bomb():
+    import gzip
+    import io
+
+    from vincio.web.browser import _decompress_bounded
+
+    buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+        gz.write(b"\x00" * (50 * 1024 * 1024))  # 50MB → tiny compressed
+    with pytest.raises(WebFetchError):
+        _decompress_bounded(buf.getvalue(), "gzip", 1_000_000)
+    # a legitimate small gzip body decodes
+    small = io.BytesIO()
+    with gzip.GzipFile(fileobj=small, mode="wb") as gz:
+        gz.write(b"<html>ok</html>")
+    assert _decompress_bounded(small.getvalue(), "gzip", 1_000_000) == b"<html>ok</html>"
+    assert _decompress_bounded(b"plain", "identity", 100) == b"plain"
+    with pytest.raises(WebFetchError):  # exotic encoding refused, not trusted
+        _decompress_bounded(b"x", "br", 100)
+
+
+def test_web_policy_forbids_unknown_fields():
+    import pydantic
+
+    with pytest.raises(pydantic.ValidationError):
+        WebPolicy(allow_domain=["x.com"])  # typo for allow_domains → loud, not silent
+
+
+def test_web_policy_preset_override_merges():
+    policy = WebPolicy.preset("scrape", max_crawl_pages=7)
+    assert policy.max_crawl_pages == 7 and policy.max_fetches == 60  # base + override
+
+
+def test_app_web_crawl_accepts_dict_policy_and_exposes_browser(tmp_path):
+    pages = _crawl_site()
+    app = ContextApp(
+        name="cd", provider=MockProvider(), model="mock-1", config=_offline_config(tmp_path)
+    )
+    collection = app.web_crawl(
+        "https://site.test/docs/", scope="subtree",
+        policy={"max_crawl_pages": 6}, client=_hard_client(_crawl_handler(pages)),
+    )
+    assert app.web_browser is not None
+    assert collection.verify(app.web_browser.snapshots)  # snapshots reachable
+
+
+def test_crawl_reports_fetch_budget_stop_reason():
+    from vincio.web import WebCrawler
+
+    async def run():
+        async def nosleep(_: float) -> None:
+            return None
+
+        pages = _crawl_site()
+        browser = WebBrowser(
+            # fetch budget smaller than the page cap ⇒ budget stops the walk
+            policy=WebPolicy.preset("scrape", max_fetches=2, max_crawl_pages=25),
+            client=_hard_client(_crawl_handler(pages)), sleeper=nosleep,
+        )
+        return await WebCrawler(browser=browser).crawl(
+            "https://site.test/docs/", scope="subtree", clock=lambda: 0.0
+        )
+
+    collection = asyncio.run(run())
+    assert collection.stopped_reason == "fetch_budget"  # honest, not "frontier_exhausted"
 
 
 def test_websearch_connector_snippets_only_mode():

@@ -20,6 +20,7 @@ same seeds and limits always visit the same pages in the same order (no
 from __future__ import annotations
 
 import re
+import time
 from collections import deque
 from collections.abc import Callable
 from urllib.parse import urljoin, urlsplit
@@ -27,7 +28,7 @@ from urllib.parse import urljoin, urlsplit
 from pydantic import BaseModel, Field
 
 from ..core.diagnostics import note_suppressed
-from ..core.errors import VincioError, WebError
+from ..core.errors import VincioError, WebError, WebPolicyError
 from ..core.types import Document, TrustLevel
 from .browser import WebBrowser, _content_digest
 from .extract import ExtractMode, PageLink
@@ -177,11 +178,14 @@ class WebCrawler:
         seconds source) enforces the wall-clock budget; injected as ``lambda: 0``
         it makes the walk deterministic offline.
         """
+        _require_seed(seeds)
         seed_list = [seeds] if isinstance(seeds, str) else list(seeds)
         pol = self.policy
         pages_cap = max_pages if max_pages is not None else pol.max_crawl_pages
         depth_cap = max_depth if max_depth is not None else pol.max_crawl_depth
-        now = clock or (lambda: 0.0)
+        # A real monotonic clock by default so the wall-clock budget actually
+        # fires in production; tests inject ``lambda: 0.0`` for determinism.
+        now = clock or time.monotonic
         start = now()
 
         # BFS with a lexicographically-ordered frontier for determinism.
@@ -218,6 +222,15 @@ class WebCrawler:
                 continue
             try:
                 extract = await self.browser.read(url, query=query, mode=self.mode)
+            except WebPolicyError as exc:
+                # A fetch-budget refusal is terminal for the whole walk (the
+                # shared browser budget is spent), not a per-page skip; report it
+                # distinctly rather than as "frontier_exhausted".
+                if (exc.details or {}).get("reason") == "budget" or "budget" in str(exc):
+                    stopped = "fetch_budget"
+                    break
+                note_suppressed("web.crawl_page_skipped")
+                continue
             except VincioError:
                 note_suppressed("web.crawl_page_skipped")
                 continue

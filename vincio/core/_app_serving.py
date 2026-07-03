@@ -310,19 +310,28 @@ class _ServingVerbs:
         trap-template defense. The result converts to retrieval documents
         (:meth:`~vincio.web.WebCollection.to_documents`) or a tabular
         :class:`~vincio.data.Dataset` (:meth:`~vincio.web.WebCollection.to_dataset`)
-        and re-derives offline via ``collection.verify(browser.snapshots)``::
+        and re-derives offline via ``collection.verify(app.web_browser.snapshots)``
+        (the crawl's browser is stashed on ``app.web_browser``)::
 
             collection = app.web_crawl("https://docs.example.com/", scope="subtree")
             app.add_source("docs", documents=collection.to_documents())
+            assert collection.verify(app.web_browser.snapshots)
         """
         from ..providers.base import run_sync
         from ..web.crawl import WebCrawler
         from ..web.policy import WebPolicy
 
-        resolved_policy = policy if isinstance(policy, WebPolicy) else WebPolicy.preset("scrape")
+        if isinstance(policy, WebPolicy):
+            resolved_policy = policy
+        elif isinstance(policy, dict):
+            resolved_policy = WebPolicy.preset("scrape", **policy)
+        else:
+            resolved_policy = WebPolicy.preset("scrape")
         crawler = WebCrawler(
             policy=resolved_policy, client=client, mode=mode  # type: ignore[arg-type]
         )
+        # expose the crawl's browser so its snapshots back collection.verify(...)
+        self.web_browser = crawler.browser
         collection = run_sync(
             crawler.crawl(
                 seeds, scope=scope, query=query,  # type: ignore[arg-type]

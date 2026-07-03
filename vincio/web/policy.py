@@ -28,7 +28,7 @@ import socket
 from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.errors import WebPolicyError
 from .search import DEFAULT_USER_AGENT
@@ -121,7 +121,13 @@ class WebPolicy(BaseModel):
     :class:`~vincio.web.WebBrowser`; the byte ceiling and the excerpt token
     budget bound what any single page may cost; the crawl limits bound a
     :class:`~vincio.web.WebCrawler` walk.
+
+    ``extra="forbid"``: an unknown field is a hard error, not silently dropped —
+    so a typo'd rail (``allow_domain=`` for ``allow_domains=``) fails loudly
+    rather than leaving the session unexpectedly unrestricted.
     """
+
+    model_config = ConfigDict(extra="forbid")
 
     allow_domains: list[str] = Field(default_factory=list)
     deny_domains: list[str] = Field(default_factory=list)
@@ -240,15 +246,17 @@ class WebPolicy(BaseModel):
         return True
 
     def canonicalize(self, url: str) -> str:
-        """A stable form of *url* for dedup: drop the fragment, sort query
-        keys, and (when ``strip_tracking_params``) remove tracking cruft, so the
-        same page reached two ways is fetched and snapshotted once."""
+        """A stable form of *url* for dedup: lower-case the host, drop a default
+        port and the fragment, sort query keys, and (when
+        ``strip_tracking_params``) remove tracking cruft — so the same page
+        reached two ways is fetched and snapshotted once."""
         parts = urlsplit(url)
         query = parse_qsl(parts.query, keep_blank_values=True)
         if self.strip_tracking_params:
             query = [(k, v) for k, v in query if not _is_tracking_param(k)]
         query.sort()
+        host = (parts.hostname or "").lower()
+        default_port = {"http": 80, "https": 443}.get(parts.scheme)
+        netloc = host if (parts.port is None or parts.port == default_port) else f"{host}:{parts.port}"
         path = parts.path or "/"
-        return urlunsplit(
-            (parts.scheme, parts.netloc, path, urlencode(query), "")
-        )
+        return urlunsplit((parts.scheme, netloc, path, urlencode(query), ""))

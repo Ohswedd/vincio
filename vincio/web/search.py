@@ -77,6 +77,8 @@ def _parse_snippet_date(snippet: str) -> tuple[str, str]:
     Returns ``(iso_date, snippet_without_the_date)``; ``("", snippet)`` when
     there is no parseable date prefix. Deterministic, offline, no timezone math.
     """
+    import datetime as _dt
+
     match = _DATE_PREFIX_RE.match(snippet)
     if not match:
         return "", snippet
@@ -86,7 +88,10 @@ def _parse_snippet_date(snippet: str) -> tuple[str, str]:
     month = _MONTHS.get(mon)
     if not month or not day or not year:
         return "", snippet
-    iso = f"{int(year):04d}-{month:02d}-{int(day):02d}"
+    try:  # reject an impossible day (e.g. "Feb 30") rather than emit a bad ISO date
+        iso = _dt.date(int(year), month, int(day)).isoformat()
+    except ValueError:
+        return "", snippet
     return iso, snippet[match.end():].strip()
 
 
@@ -172,6 +177,9 @@ class _ResultsParser(HTMLParser):
     """
 
     _SNIPPET_CLASSES = ("result__snippet", "result-snippet")
+    # Void elements emit no end tag, so they must not deepen the snippet region
+    # (a <br>/<img> inside a snippet would otherwise hold it open past its close).
+    _VOID_TAGS = frozenset({"br", "img", "hr", "wbr", "input", "source", "meta", "link"})
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
@@ -184,7 +192,8 @@ class _ResultsParser(HTMLParser):
         attr_map = {name: value or "" for name, value in attrs}
         classes = attr_map.get("class", "")
         if self._snippet_parts is not None:
-            self._snippet_depth += 1
+            if tag not in self._VOID_TAGS:
+                self._snippet_depth += 1
         elif any(marker in classes for marker in self._SNIPPET_CLASSES):
             self._snippet_parts = []
             self._snippet_depth = 1
@@ -196,7 +205,7 @@ class _ResultsParser(HTMLParser):
                 self._title_parts = []
 
     def handle_endtag(self, tag: str) -> None:
-        if self._snippet_parts is not None:
+        if self._snippet_parts is not None and tag not in self._VOID_TAGS:
             self._snippet_depth -= 1
             if self._snippet_depth <= 0:
                 if self.results:

@@ -30,6 +30,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import inspect
+import zlib
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from urllib.parse import urljoin, urlsplit
@@ -68,9 +69,12 @@ _RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
 _ROBOTS_MAX_BYTES = 512_000  # a robots.txt over this is almost certainly hostile
 # Browser-realistic headers: a bare User-Agent gets more sites' bot-walls than a
 # full Accept set. Still honest about who we are (the UA names VincioWeb).
+# `Accept-Encoding: identity` refuses compression, so a decompression bomb has no
+# amplification to exploit and the streamed byte cap is exact.
 _FETCH_HEADERS = {
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "identity",
 }
 
 
@@ -103,19 +107,73 @@ def _decode(body: bytes, content_type: str) -> str:
     return body.decode("utf-8", errors="replace")
 
 
-async def _read_capped(response: httpx.Response, cap: int) -> bytes:
-    """Read a streamed response, aborting once *decoded* bytes exceed *cap* — so
-    a compression bomb is stopped before it is fully buffered."""
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in response.aiter_bytes():
-        total += len(chunk)
-        if total > cap:
+def _decompress_bounded(raw: bytes, encoding: str, cap: int) -> bytes:
+    """Decompress *raw* under a hard output ceiling of *cap* bytes.
+
+    ``zlib.decompressobj().decompress(data, max_length)`` yields at most
+    ``max_length`` bytes and parks the rest in ``unconsumed_tail`` — so a
+    decompression bomb produces at most ``cap + 1`` bytes here and is rejected,
+    never the gigabytes it would inflate to. Handles the two encodings HTML is
+    served with (``gzip`` / ``deflate``, incl. headerless deflate); an exotic
+    encoding (``br`` / ``zstd``) is refused rather than trusted."""
+    if encoding in ("", "identity"):
+        return raw
+    if encoding == "gzip":
+        decompressor = zlib.decompressobj(zlib.MAX_WBITS | 16)
+    elif encoding == "deflate":
+        decompressor = zlib.decompressobj()
+    else:
+        raise WebFetchError(
+            f"unsupported content-encoding {encoding!r}", details={"encoding": encoding}
+        )
+    try:
+        out = decompressor.decompress(raw, cap + 1)
+    except zlib.error:
+        if encoding != "deflate":
             raise WebFetchError(
-                f"body exceeds the {cap}-byte ceiling", details={"bytes": total}
+                f"could not decode {encoding!r} body", details={"encoding": encoding}
+            ) from None
+        decompressor = zlib.decompressobj(-zlib.MAX_WBITS)  # headerless deflate
+        try:
+            out = decompressor.decompress(raw, cap + 1)
+        except zlib.error:
+            raise WebFetchError("could not decode deflate body") from None
+    if len(out) > cap or decompressor.unconsumed_tail:
+        raise WebFetchError(
+            f"decompressed body exceeds the {cap}-byte ceiling", details={"bytes": len(out)}
+        )
+    return out
+
+
+async def _read_capped(response: httpx.Response, cap: int) -> bytes:
+    """Read a streamed response with a hard bound on *both* the compressed
+    transfer and the decompressed size.
+
+    httpx decodes ``Content-Encoding`` regardless of the request's
+    ``Accept-Encoding``, and its decoder inflates a whole frame in one
+    unbounded ``zlib`` call — so reading the *decoded* stream would materialize a
+    gigabyte from a kilobyte bomb before any cap check. So on a live streamed
+    response we read the *raw* (still-compressed) bytes with a cap on the
+    compressed input and decompress under our own ceiling
+    (:func:`_decompress_bounded`), keeping peak memory at ~2×cap for any input.
+    A response whose body is already buffered (``is_stream_consumed`` — e.g. a
+    test transport) is read from ``.content`` directly and byte-capped."""
+    if response.is_stream_consumed:
+        body = response.content  # already decoded by the buffering transport
+        if len(body) > cap:
+            raise WebFetchError(
+                f"body exceeds the {cap}-byte ceiling", details={"bytes": len(body)}
             )
-        chunks.append(chunk)
-    return b"".join(chunks)
+        return body
+    raw = bytearray()
+    async for chunk in response.aiter_raw():
+        raw += chunk
+        if len(raw) > cap:
+            raise WebFetchError(
+                f"body exceeds the {cap}-byte ceiling", details={"bytes": len(raw)}
+            )
+    encoding = response.headers.get("content-encoding", "").lower().strip()
+    return _decompress_bounded(bytes(raw), encoding, cap)
 
 
 class _Outcome:
@@ -253,6 +311,8 @@ class WebBrowser:
         self._page_cache: dict[str, FetchedPage] = {}
         self._robots: dict[str, object | None] = {}
         self._host_seen: set[str] = set()
+        #: page-GET attempts this session (successes + failures), for the budget.
+        self._fetch_attempts = 0
 
     # -- session accounting ------------------------------------------------------------------
 
@@ -262,8 +322,9 @@ class WebBrowser:
 
     @property
     def fetches_used(self) -> int:
-        """Distinct pages actually fetched over the network this session."""
-        return len(self._page_cache)
+        """Page-GET attempts over the network this session — successes *and*
+        failures, so the budget bounds real egress (a cached re-read is free)."""
+        return self._fetch_attempts
 
     def report(self) -> WebSessionReport:
         """The session's auditable transcript."""
@@ -314,8 +375,11 @@ class WebBrowser:
                 details={"query": query, "max_searches": self.policy.max_searches},
             )
         kwargs: dict[str, object] = {"max_results": limit}
-        if recency is not None and "recency" in inspect.signature(self.backend.search).parameters:
-            kwargs["recency"] = recency
+        if recency is not None:
+            if "recency" in inspect.signature(self.backend.search).parameters:
+                kwargs["recency"] = recency
+            else:  # a backend that cannot narrow by recency: degrade observably
+                note_suppressed("web.search_recency_unsupported")
         results = await self.backend.search(query, **kwargs)  # type: ignore[arg-type]
         self._search_cache[key] = results
         self.searches.append(
@@ -357,14 +421,16 @@ class WebBrowser:
 
             parser: object | None = None
             try:
-                # robots.txt itself is size-bounded and its redirects followed by
-                # httpx (a robots redirect is not the SSRF vector a page is).
+                # robots.txt is fetched with redirects OFF and size-bounded: a
+                # redirect to a private host would be the same SSRF vector a page
+                # redirect is, so a non-200 (including a redirect) is treated as
+                # "no robots.txt" (everything allowed), never followed.
                 async with client.stream(
                     "GET", origin + "/robots.txt",
-                    timeout=self.policy.timeout_s, follow_redirects=True,
+                    timeout=self.policy.timeout_s, follow_redirects=False,
                     headers={"User-Agent": self.policy.user_agent, **_FETCH_HEADERS},
                 ) as response:
-                    if response.status_code < 400:
+                    if response.status_code < 400 and response.status_code not in _REDIRECT_CODES:
                         body = await _read_capped(response, _ROBOTS_MAX_BYTES)
                         fetched = RobotFileParser()
                         fetched.parse(body.decode("utf-8", errors="replace").splitlines())
@@ -412,13 +478,12 @@ class WebBrowser:
                             f"fetch returned HTTP {status}",
                             details={"url": url, "status": status},
                         )
-                    content_type = response.headers.get(
-                        "content-type", "text/html"
-                    ).split(";")[0].strip()
-                    if content_type and not content_type.startswith(_TEXTUAL_TYPES):
+                    full_content_type = response.headers.get("content-type", "text/html")
+                    media_type = full_content_type.split(";")[0].strip()
+                    if media_type and not media_type.startswith(_TEXTUAL_TYPES):
                         raise WebFetchError(
-                            f"unsupported content type {content_type!r}",
-                            details={"url": url, "content_type": content_type},
+                            f"unsupported content type {media_type!r}",
+                            details={"url": url, "content_type": media_type},
                         )
                     declared = response.headers.get("content-length")
                     if declared and declared.isdigit() and int(declared) > self.policy.max_page_bytes:
@@ -428,7 +493,8 @@ class WebBrowser:
                             details={"url": url, "bytes": int(declared)},
                         )
                     body = await _read_capped(response, self.policy.max_page_bytes)
-                    return _Outcome(body=body, text=_decode(body, content_type))
+                    # decode with the FULL content-type so a declared charset is honored
+                    return _Outcome(body=body, text=_decode(body, full_content_type))
             except httpx.HTTPError as exc:
                 if attempt >= self.policy.max_retries:
                     raise WebFetchError(f"fetch failed: {exc}", details={"url": url}) from exc
@@ -450,6 +516,7 @@ class WebBrowser:
                 details={"url": url, "max_fetches": self.policy.max_fetches},
             )
         current = url
+        issued = False
         async with _managed_client(self.client) as client:
             for _hop in range(self.policy.max_redirects + 1):
                 self.policy.check_url(current)  # every hop, redirects included
@@ -459,6 +526,13 @@ class WebBrowser:
                         "robots.txt disallows fetching this URL", details={"url": current}
                     )
                 await self._pace(current)
+                # Count the fetch the moment a page GET is issued — once per
+                # _fetch, redirect chain included — so a *failed* fetch (4xx/5xx,
+                # bomb, redirect loop) consumes the budget too and a loop of
+                # failing URLs cannot egress without bound.
+                if not issued:
+                    self._fetch_attempts += 1
+                    issued = True
                 outcome = await self._attempt(client, current)
                 if outcome.redirect is not None:
                     current = urljoin(current, outcome.redirect)
@@ -532,7 +606,7 @@ class WebBrowser:
             final_url=page.final_url,
             title=extract.title,
             query=query,
-            mode=resolved_mode,
+            mode=extract.mode,  # the resolved concrete depth, so verify replays exactly
             fetched_at=self.clock(),
             content_hash=page.content_hash,
             extractor_version=EXTRACTOR_VERSION,
@@ -545,7 +619,7 @@ class WebBrowser:
         self.reads.append(evidence)
         self._record(
             "web_read", decision="allow", url=url, final_url=page.final_url,
-            content_hash=page.content_hash, mode=resolved_mode,
+            content_hash=page.content_hash, mode=extract.mode,
             page_tokens=extract.page_tokens, excerpt_tokens=extract.excerpt_tokens,
         )
         return extract
