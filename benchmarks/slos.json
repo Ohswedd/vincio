@@ -2791,6 +2791,76 @@
       "threshold": 50.0,
       "enforced_by": "families.web_search.extract_ms",
       "rationale": "Extraction sits on the hot path of every web_read; if it were slower than the fetch itself, the efficiency win would be paid back in wall-clock and the tool budget."
+    },
+    {
+      "id": "web_search_adaptive_depth",
+      "category": "quality",
+      "statement": "web_read reads at the depth the task needs: section mode returns the whole best-matching section (its prose and its code block together) rather than a scattered set of excerpts, so a library's example arrives with its context.",
+      "metric": "families.web_search.section_fidelity",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.section_fidelity",
+      "rationale": "Excerpt-only reading fragments procedures and code; matching frontier-product reading depth means returning a coherent section when that is what the question needs."
+    },
+    {
+      "id": "web_search_code_fidelity",
+      "category": "quality",
+      "statement": "Code blocks are preserved verbatim (fenced) through extraction, so a model reading library documentation gets runnable code, not whitespace-collapsed prose.",
+      "metric": "families.web_search.code_block_preserved",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.code_block_preserved",
+      "rationale": "The dominant browsing use-case is reading docs; a reader that mangles <pre> code makes the model paraphrase broken snippets, the single most common docs-reading failure."
+    },
+    {
+      "id": "web_search_ssrf_ip_literals",
+      "category": "security",
+      "statement": "Obfuscated IPv4 literals (0x7f.0.0.1, 127.1, integer form) and wildcard-DNS IP embedders (10.0.0.1.nip.io) that getaddrinfo would resolve to a private address are refused pre-egress, closing the auto-fetch SSRF bypass, while public hosts are still admitted.",
+      "metric": "families.web_search.ssrf_ip_literal_blocked",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.ssrf_ip_literal_blocked",
+      "rationale": "Once URLs are auto-fetched from prompt text and redirects are followed, a bare canonical-IP check leaks: the obfuscated spellings resolve to loopback/link-local and reach cloud-metadata and internal services unless normalized before the private-host check."
+    },
+    {
+      "id": "web_search_availability_detection",
+      "category": "quality",
+      "statement": "A cookie wall, paywall, login gate, soft-404, or JavaScript shell is flagged unavailable with a reason, so the model routes to another source instead of citing 'We value your privacy' as content.",
+      "metric": "families.web_search.availability_detected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.availability_detected",
+      "rationale": "The biggest real-world citation-quality gap is a reader that returns wall/shell boilerplate as if it were the answer; detecting and typing these is what lets the model recover."
+    },
+    {
+      "id": "web_search_auto_fetch_gating",
+      "category": "security",
+      "statement": "Prompt-driven auto-fetch fires only on a genuine fetch directive or a URL that is essentially the whole ask — a URL merely discussed, or one inside a code fence, is never auto-fetched — so an incidental or attacker-suggested URL does not trigger egress.",
+      "metric": "families.web_search.intent_gating_correct",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.intent_gating_correct",
+      "rationale": "Auto-fetching any URL-shaped substring is an unauthenticated SSRF/prompt-injection trigger; gating on explicit intent keeps the convenience without turning every mention into a fetch."
+    },
+    {
+      "id": "web_search_crawl_bounded_deterministic",
+      "category": "reliability",
+      "statement": "A crawl is bounded on every axis (pages, depth, per-host, bytes, wall-clock) with pagination/calendar-trap defense, visits the same pages in the same order across runs, stays in scope, and every visited page re-derives offline from its snapshot.",
+      "metric": "families.web_search.crawl_deterministic",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.crawl_deterministic",
+      "rationale": "An unbounded or nondeterministic crawl OOMs on a trap site or produces an unreproducible corpus; deterministic bounded walks are what make a scrape safe to gate and safe to run."
+    },
+    {
+      "id": "web_search_collection_to_data",
+      "category": "quality",
+      "statement": "A crawled collection converts losslessly to both retrieval documents and a tabular Dataset (one row per page), so a scrape flows straight into RAG and the governed data/analysis plane.",
+      "metric": "families.web_search.dataset_roundtrip",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.dataset_roundtrip",
+      "rationale": "Scraping to build a collection is a first-class use-case; a collection that cannot become documents or a dataset is a dead end for the research and data workflows it is meant to feed."
     }
   ]
 }

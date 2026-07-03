@@ -13032,6 +13032,105 @@ async def bench_web_search() -> dict[str, Any]:
         protocol.inner.requests[0].messages[0].content
     )
 
+    # -- v2: adaptive depth, code fidelity, SSRF, availability, crawl, intent --
+    from vincio.web import WebCrawler, WebPolicy, detect_web_intent, urls_to_fetch
+    from vincio.web.extract import extract_page as _extract
+
+    # adaptive mode: 'auto' returns the whole small doc, 'excerpt' trims a big one
+    docs_page = (
+        "<html><head><title>Requests: Quickstart</title></head><body>"
+        "<nav><a href='/'>Home</a></nav>"
+        "<h1>Quickstart</h1><p>Making a request with Requests is very simple.</p>"
+        "<h2>Make a Request</h2><p>Begin by importing the Requests module:</p>"
+        "<pre><code>import requests\nr = requests.get('https://api.github.com/events')\n"
+        "print(r.status_code)</code></pre>"
+        "<h2>Passing Parameters</h2><p>You often want to send query-string data.</p>"
+        "<a href='https://requests.readthedocs.io/page2'>Next</a></body></html>"
+    )
+    section = _extract(docs_page, query="make a request example code", mode="section", budget_tokens=300)
+    code_block_preserved = any(
+        e.kind == "code" and "requests.get" in e.text for e in section.excerpts
+    )
+    section_fidelity = any("importing the Requests" in e.text for e in section.excerpts)
+
+    # SSRF: obfuscated IP literals and the wildcard-DNS embedder are all refused
+    ssrf_pol = WebPolicy()
+    ssrf_ip_literal_blocked = all(
+        not ssrf_pol.allows_url(u)
+        for u in (
+            "http://0x7f.0.0.1/", "http://127.1/", "http://2130706433/",
+            "http://127.0.0.1.nip.io/", "http://169.254.169.254/latest/meta-data/",
+        )
+    ) and ssrf_pol.allows_url("https://docs.python.org/3/")
+
+    # availability: a cookie wall and a JS shell are flagged unavailable
+    wall = _extract(
+        "<html><head><title>Privacy</title></head><body><h1>We value your privacy</h1>"
+        "<p>Accept all cookies to continue browsing this site.</p></body></html>"
+    )
+    js_shell = _extract("<html><body><div id='root'></div><!--" + "x" * 25000 + "--></body></html>")
+    availability_detected = (
+        not wall.available and wall.unavailable_reason == "cookie_wall"
+        and not js_shell.available and js_shell.unavailable_reason == "requires_javascript"
+    )
+
+    # intent gating: a directive fetches, a discussed URL and a code fence do not
+    intent_correct = (
+        urls_to_fetch("summarize https://numpy.org/doc") == ["https://numpy.org/doc"]
+        and urls_to_fetch("what does GET http://169.254.169.254 return?") == []
+        and urls_to_fetch("run `curl https://x.com`") == []
+        and detect_web_intent("look it up on docs.python.org").wants_search
+    )
+
+    # crawl: bounded, deterministic, trap-resistant, verifiable
+    def crawl_page(title: str, links: list[tuple[str, str]]) -> str:
+        anchors = "".join(f"<a href='{u}'>{t}</a>" for u, t in links)
+        return (
+            f"<html><head><title>{title}</title></head><body><h1>{title}</h1>"
+            f"<p>Readable content for {title}, long enough to be a real block here.</p>"
+            f"<nav>{anchors}</nav></body></html>"
+        )
+
+    crawl_pages = {
+        "/docs/": crawl_page("Index", [("/docs/a", "A"), ("/docs/b", "B"), ("/docs/p?page=1", "P1")]),
+        "/docs/a": crawl_page("A", [("/docs/b", "B"), ("https://other.test/x", "Ext")]),
+        "/docs/b": crawl_page("B", [("/docs/a", "A")]),
+    }
+    for i in range(1, 40):
+        crawl_pages[f"/docs/p?page={i}"] = crawl_page(f"P{i}", [(f"/docs/p?page={i + 1}", "Next")])
+
+    def crawl_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        key = request.url.path + (("?" + request.url.query.decode()) if request.url.query else "")
+        body = crawl_pages.get(key) or crawl_pages.get(request.url.path)
+        return (
+            httpx.Response(200, text=body, headers={"content-type": "text/html"})
+            if body else httpx.Response(404)
+        )
+
+    async def run_crawl() -> Any:
+        async def nosleep(_: float) -> None:
+            return None
+
+        crawler = WebCrawler(
+            browser=WebBrowser(
+                policy=WebPolicy.preset("scrape", max_crawl_pages=25),
+                client=httpx.AsyncClient(transport=httpx.MockTransport(crawl_handler)),
+                sleeper=nosleep,
+            )
+        )
+        return crawler, await crawler.crawl("https://site.test/docs/", scope="subtree", clock=lambda: 0.0)
+
+    crawler1, col1 = await run_crawl()
+    _, col2 = await run_crawl()
+    crawl_deterministic = [p.url for p in col1.pages] == [p.url for p in col2.pages]
+    crawl_bounded = col1.pages_fetched <= 25 and not any("other.test" in p.url for p in col1.pages)
+    crawl_verifies = col1.verify(crawler1.browser.snapshots)
+    dataset_roundtrip = len(col1.to_dataset().cells[0]) == col1.pages_fetched and len(
+        col1.to_documents()
+    ) == col1.pages_fetched
+
     return {
         "extract_reduction": extract_reduction,
         "relevant_recall": relevant_recall,
@@ -13040,6 +13139,15 @@ async def bench_web_search() -> dict[str, Any]:
         "policy_refuses_private_hosts": policy_refuses_private_hosts,
         "universal_tool_loop": universal_tool_loop,
         "protocol_lowered": protocol_lowered,
+        "code_block_preserved": code_block_preserved,
+        "section_fidelity": section_fidelity,
+        "ssrf_ip_literal_blocked": ssrf_ip_literal_blocked,
+        "availability_detected": availability_detected,
+        "intent_gating_correct": intent_correct,
+        "crawl_deterministic": crawl_deterministic,
+        "crawl_bounded": crawl_bounded,
+        "crawl_verifies": crawl_verifies,
+        "dataset_roundtrip": dataset_roundtrip,
         "extract_ms": extract_ms,
         "excerpt_tokens": extract.excerpt_tokens,
         "page_tokens": extract.page_tokens,

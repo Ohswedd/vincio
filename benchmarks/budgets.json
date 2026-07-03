@@ -2566,6 +2566,33 @@
     "families.web_search.protocol_lowered": {
       "eq": true
     },
+    "families.web_search.code_block_preserved": {
+      "eq": true
+    },
+    "families.web_search.section_fidelity": {
+      "eq": true
+    },
+    "families.web_search.ssrf_ip_literal_blocked": {
+      "eq": true
+    },
+    "families.web_search.availability_detected": {
+      "eq": true
+    },
+    "families.web_search.intent_gating_correct": {
+      "eq": true
+    },
+    "families.web_search.crawl_deterministic": {
+      "eq": true
+    },
+    "families.web_search.crawl_bounded": {
+      "eq": true
+    },
+    "families.web_search.crawl_verifies": {
+      "eq": true
+    },
+    "families.web_search.dataset_roundtrip": {
+      "eq": true
+    },
     "families.web_search.extract_ms": {
       "lte": 50.0
     }

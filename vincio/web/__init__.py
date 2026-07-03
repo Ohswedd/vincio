@@ -33,31 +33,46 @@ Enable it in one line — ``app.use_web_search()`` — or drive it directly::
 
 from __future__ import annotations
 
-from .browser import SearchRecord, WebBrowser, WebEvidence, WebSessionReport
-from .extract import PageExcerpt, PageExtract, extract_page
+from .browser import FetchedPage, SearchRecord, WebBrowser, WebEvidence, WebSessionReport
+from .crawl import CrawledPage, WebCollection, WebCrawler
+from .extract import ExtractMode, PageExcerpt, PageExtract, PageLink, extract_page, find_in_page
+from .intent import WebIntent, detect_web_intent, extract_urls, urls_to_fetch
 from .policy import WebPolicy
 from .search import (
     DuckDuckGoBackend,
     SearchBackend,
     SearchResult,
     StaticSearchBackend,
+    diversify_results,
     parse_results_html,
 )
 from .skill import browse_skill
 
 __all__ = [
+    "CrawledPage",
     "DuckDuckGoBackend",
+    "ExtractMode",
+    "FetchedPage",
     "PageExcerpt",
     "PageExtract",
+    "PageLink",
     "SearchBackend",
     "SearchRecord",
     "SearchResult",
     "StaticSearchBackend",
     "WebBrowser",
+    "WebCollection",
+    "WebCrawler",
     "WebEvidence",
+    "WebIntent",
     "WebPolicy",
     "WebSessionReport",
     "browse_skill",
+    "detect_web_intent",
+    "diversify_results",
     "extract_page",
+    "extract_urls",
+    "find_in_page",
     "parse_results_html",
+    "urls_to_fetch",
 ]

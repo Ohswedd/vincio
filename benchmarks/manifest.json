@@ -312,7 +312,7 @@
       "gates_ci": true,
       "custom": "register_uplift_benchmark(UpliftBenchmark(...))",
       "catalog": {
-        "total": 4,
+        "total": 5,
         "benchmarks": [
           {
             "id": "long_context.recall",
@@ -337,6 +337,12 @@
             "title": "Prompt-injection containment",
             "capability": "safety",
             "primary_metric": "contained_rate"
+          },
+          {
+            "id": "web_search.freshness",
+            "title": "Post-cutoff freshness (web search)",
+            "capability": "web_search",
+            "primary_metric": "fresh_rate"
           }
         ]
       }

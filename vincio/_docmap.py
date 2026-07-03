@@ -192,7 +192,7 @@ TOPICS: tuple[Topic, ...] = (
         concept=_c("web-browsing"),
         guides=(_g("web-search"),),
         examples=(_e("19_web_browser_search"),),
-        verbs=("use_web_search",),
+        verbs=("use_web_search", "web_crawl"),
     ),
     Topic(
         "structured-output", "runs", "Structured output",

@@ -159,6 +159,7 @@ _Execute the pipeline: configure, run, stream, orchestrate, and produce delivera
 - `app.use_reasoning_controller` — Install a reasoning controller so the runtime sets effort per run.
 - `app.use_web_search` — Give this app's model — **any** model — governed access to the open web.
 - `app.voice_agent` — Open an end-to-end :class:`~vincio.realtime.VoiceAgent`.
+- `app.web_crawl` — Crawl a site into a governed, offline-verifiable :class:`~vincio.web.WebCollection`.
 - `app.workflow` — Create a deterministic :class:`Workflow` builder bound to this app's tracer.
 
 ### Knowledge
@@ -829,7 +830,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `build_web_checkout()` — A deterministic, in-process checkout app and its goal, the offline, WebArena / OSWorld-shaped reference scenario.
 - `buyer_position(max_price_usd, ideal_price_usd=…, max_sla_seconds, ideal_sla_seconds=…, min_quality=…, ideal_quality=…, weights=…, concession=…, min_utility=…)` — Build a buyer position: wants low price, fast SLA, high quality.
 - `certify(case, signer=…, residual_risks=…, provenance=…, as_of=…)` — Build a :class:`CertificationReport` from a checked assurance case.
-- `chat(provider=…, model=…, name=…, tools=…, writes=…, approve=…, user_id=…, tenant_id=…, session_id=…, memory_writeback=…, on_approval=…, role=…, objective=…, rules=…, app=…, config=…)` — Open a multi-turn, session-aware chat in one expression.
+- `chat(provider=…, model=…, name=…, tools=…, writes=…, approve=…, web=…, user_id=…, tenant_id=…, session_id=…, memory_writeback=…, on_approval=…, role=…, objective=…, rules=…, app=…, config=…)` — Open a multi-turn, session-aware chat in one expression.
 - `check_completeness(liabilities, claims, verifier=…, as_of=…)` — Fold a set of creditor claims against a liability attestation into a completeness check.
 - `check_history_consistency(attestations, discharges=…, verifier=…)` — Walk a set of liability snapshots for cross-time monotonicity (no debt silently dropped).
 - `check_root_consistency(attestations, verifier=…)` — Compare a set of liability attestations for cross-creditor root non-equivocation.
@@ -900,7 +901,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `stream_aggregate(data, group_by, measures=…, max_groups=…)` — Group a stream by one or more columns and reduce measures over each group in a single bounded-memory pass.
 - `synthesize(spec, examples, require=…)` — Verify ``spec``'s properties on ``examples`` and emit a proof-carrying program.
 - `task_goal_value(checks)` — A goal-value function: the fraction of an environment task's checks an observation's state satisfies (the planner's default verifier).
-- `tool_agent(tools=…, writes=…, approve=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)` — Build an approval-gated tool-using agent in one expression.
+- `tool_agent(tools=…, writes=…, approve=…, web=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)` — Build an approval-gated tool-using agent in one expression.
 - `verify_containment(events)` — Check ``untrusted ⇒ no unapproved capability`` over recorded events.
 - `verify_edge_parity(request=…, profile=…)` — Prove the edge runtime is the server compiler under a profile, not a fork.
 - `verify_erasure_proof(proof, signer=…)` — Verify a proof's content binding and (if present) its signature.

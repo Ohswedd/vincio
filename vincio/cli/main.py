@@ -1117,6 +1117,69 @@ def cmd_eval_suite_list(args: argparse.Namespace) -> int:
     return 0
 
 
+def _web_browser(args: argparse.Namespace):
+    from ..web.browser import WebBrowser
+    from ..web.policy import WebPolicy
+
+    policy = WebPolicy.preset(getattr(args, "preset", None) or "default")
+    return WebBrowser(policy=policy)
+
+
+def cmd_web_search(args: argparse.Namespace) -> int:
+    """Search the open web from the terminal (DuckDuckGo, governed)."""
+    browser = _web_browser(args)
+    results = browser.search_sync(args.query, max_results=args.max_results, recency=args.recency or None)
+    if args.json:
+        print(json_dumps([r.model_dump() for r in results], indent=2))
+        return 0
+    if not results:
+        print("no results")
+        return 0
+    for r in results:
+        date = f" ({r.published})" if r.published else ""
+        print(f"{r.rank:2d}. {r.title}{date}\n    {r.url}\n    {r.snippet[:160]}")
+    return 0
+
+
+def cmd_web_read(args: argparse.Namespace) -> int:
+    """Read one web page token-efficiently at a chosen depth."""
+    browser = _web_browser(args)
+    extract = browser.read_sync(
+        args.url, query=args.query or "", mode=args.mode, find=args.find or "",
+        budget_tokens=args.budget or None,
+    )
+    if args.json:
+        print(json_dumps(extract.model_dump(), indent=2))
+        return 0
+    if not extract.available:
+        print(f"(content unavailable: {extract.unavailable_reason})")
+    print(extract.as_context())
+    print(f"\n--- {extract.page_tokens} page tokens -> {extract.excerpt_tokens} "
+          f"({extract.reduction:.0f}x), mode={extract.mode} ---")
+    return 0
+
+
+def cmd_web_crawl(args: argparse.Namespace) -> int:
+    """Crawl a site into a bounded, verifiable collection."""
+    from ..providers.base import run_sync
+    from ..web.crawl import WebCrawler
+    from ..web.policy import WebPolicy
+
+    crawler = WebCrawler(policy=WebPolicy.preset("scrape"), mode=args.mode)
+    collection = run_sync(
+        crawler.crawl(
+            args.seeds, scope=args.scope, max_pages=args.max_pages, max_depth=args.max_depth
+        )
+    )
+    if args.json:
+        print(json_dumps(collection.model_dump(), indent=2))
+        return 0
+    print(f"crawled {collection.pages_fetched} page(s), stopped: {collection.stopped_reason}\n")
+    for page in collection.pages:
+        print(f"  [{page.depth}] {page.title}  {page.url}  ({page.page_tokens} tok)")
+    return 0
+
+
 def cmd_bench_list(args: argparse.Namespace) -> int:
     """List all three benchmark tracks' catalogs — the whole system at a glance."""
     from ..evals.suite import (
@@ -2324,6 +2387,36 @@ def build_parser() -> argparse.ArgumentParser:
     p_bl = bench_sub.add_parser("list", help="list all three tracks' catalogs")
     p_bl.add_argument("--json", action="store_true", help="emit JSON")
     p_bl.set_defaults(fn=cmd_bench_list)
+
+    p_web = sub.add_parser("web", help="search, read, and crawl the open web (governed)")
+    web_sub = p_web.add_subparsers(dest="web_command", required=True)
+
+    p_ws = web_sub.add_parser("search", help="search the web (DuckDuckGo)")
+    p_ws.add_argument("query", help="search terms")
+    p_ws.add_argument("--max-results", type=int, default=5, dest="max_results")
+    p_ws.add_argument("--recency", default="", help="d / w / m / y")
+    p_ws.add_argument("--preset", default="default", choices=["default", "research", "scrape", "locked_down"])
+    p_ws.add_argument("--json", action="store_true")
+    p_ws.set_defaults(fn=cmd_web_search)
+
+    p_wr = web_sub.add_parser("read", help="read one page token-efficiently")
+    p_wr.add_argument("url", help="page URL")
+    p_wr.add_argument("--query", default="", help="what you want from the page")
+    p_wr.add_argument("--mode", default="auto", choices=["auto", "excerpt", "section", "full"])
+    p_wr.add_argument("--find", default="", help="return windows around this exact string")
+    p_wr.add_argument("--budget", type=int, default=0, help="max tokens to return")
+    p_wr.add_argument("--preset", default="default", choices=["default", "research", "scrape", "locked_down"])
+    p_wr.add_argument("--json", action="store_true")
+    p_wr.set_defaults(fn=cmd_web_read)
+
+    p_wc = web_sub.add_parser("crawl", help="crawl a site into a verifiable collection")
+    p_wc.add_argument("seeds", nargs="+", help="seed URL(s)")
+    p_wc.add_argument("--scope", default="subtree", choices=["page", "subtree", "domain"])
+    p_wc.add_argument("--max-pages", type=int, default=None, dest="max_pages")
+    p_wc.add_argument("--max-depth", type=int, default=None, dest="max_depth")
+    p_wc.add_argument("--mode", default="full", choices=["auto", "excerpt", "section", "full"])
+    p_wc.add_argument("--json", action="store_true")
+    p_wc.set_defaults(fn=cmd_web_crawl)
 
     p_prompt = sub.add_parser("prompt", help="prompt tooling")
     prompt_sub = p_prompt.add_subparsers(dest="prompt_command", required=True)

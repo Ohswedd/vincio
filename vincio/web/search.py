@@ -40,6 +40,7 @@ __all__ = [
     "SearchResult",
     "DuckDuckGoBackend",
     "StaticSearchBackend",
+    "diversify_results",
 ]
 
 #: Browser-like default agent: the public endpoints serve the plain HTML page
@@ -55,6 +56,44 @@ _BLOCKED_RE = re.compile(
 )
 
 
+_MONTHS = {
+    m: i
+    for i, m in enumerate(
+        ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"], 1
+    )
+}
+# "Oct 7, 2024 ..." or "7 Oct 2024 ..." prefix DuckDuckGo puts on dated results.
+_DATE_PREFIX_RE = re.compile(
+    r"^\s*(?:"
+    r"(?P<mon1>[A-Z][a-z]{2})\w*\.?\s+(?P<day1>\d{1,2}),?\s+(?P<year1>\d{4})"
+    r"|(?P<day2>\d{1,2})\s+(?P<mon2>[A-Z][a-z]{2})\w*\.?\s+(?P<year2>\d{4})"
+    r")\s*[·\-–—:|]*\s*",
+)
+
+
+def _parse_snippet_date(snippet: str) -> tuple[str, str]:
+    """Pull a leading ``Oct 7, 2024`` / ``7 Oct 2024`` date off a snippet.
+
+    Returns ``(iso_date, snippet_without_the_date)``; ``("", snippet)`` when
+    there is no parseable date prefix. Deterministic, offline, no timezone math.
+    """
+    match = _DATE_PREFIX_RE.match(snippet)
+    if not match:
+        return "", snippet
+    mon = (match.group("mon1") or match.group("mon2") or "").lower()
+    day = match.group("day1") or match.group("day2")
+    year = match.group("year1") or match.group("year2")
+    month = _MONTHS.get(mon)
+    if not month or not day or not year:
+        return "", snippet
+    iso = f"{int(year):04d}-{month:02d}-{int(day):02d}"
+    return iso, snippet[match.end():].strip()
+
+
+def _host_of(url: str) -> str:
+    return (urlsplit(url).hostname or "").lower().removeprefix("www.")
+
+
 class SearchResult(BaseModel):
     """One search hit: the stable row every backend returns."""
 
@@ -63,6 +102,28 @@ class SearchResult(BaseModel):
     url: str
     snippet: str = ""
     source: str = "duckduckgo"
+    site: str = ""  # the result's own host (for diversity + citation)
+    published: str = ""  # ISO date parsed from the snippet, when present
+
+
+def diversify_results(
+    results: list[SearchResult], *, max_per_site: int = 2
+) -> list[SearchResult]:
+    """Reorder so no single domain dominates the top: results over the per-site
+    cap are demoted after the diverse set, preserving relative order and
+    re-ranking. Deterministic."""
+    kept: list[SearchResult] = []
+    overflow: list[SearchResult] = []
+    seen: dict[str, int] = {}
+    for result in results:
+        site = result.site or _host_of(result.url)
+        if seen.get(site, 0) < max_per_site:
+            seen[site] = seen.get(site, 0) + 1
+            kept.append(result)
+        else:
+            overflow.append(result)
+    ordered = kept + overflow
+    return [r.model_copy(update={"rank": i + 1}) for i, r in enumerate(ordered)]
 
 
 @runtime_checkable
@@ -166,8 +227,16 @@ def parse_results_html(html: str, *, max_results: int = 8) -> list[SearchResult]
         if not title or url in seen:
             continue
         seen.add(url)
+        published, snippet = _parse_snippet_date(row["snippet"])
         results.append(
-            SearchResult(rank=len(results) + 1, title=title, url=url, snippet=row["snippet"])
+            SearchResult(
+                rank=len(results) + 1,
+                title=title,
+                url=url,
+                snippet=snippet,
+                site=_host_of(url),
+                published=published,
+            )
         )
         if len(results) >= max_results:
             break
@@ -230,9 +299,19 @@ class DuckDuckGoBackend:
         return response.text
 
     async def search(
-        self, query: str, *, max_results: int = 8, recency: str | None = None
+        self,
+        query: str,
+        *,
+        max_results: int = 8,
+        recency: str | None = None,
+        diversify: bool = True,
     ) -> list[SearchResult]:
-        """Run one query and return up to *max_results* organic hits."""
+        """Run one query and return up to *max_results* organic hits.
+
+        With ``diversify`` (default), no single domain takes more than two of
+        the top slots — a small rerank that keeps the head from being one site's
+        pages, the way a browsing product spreads its sources.
+        """
         if not query.strip():
             raise WebSearchError("empty search query")
         endpoints = [self.endpoint]
@@ -241,10 +320,13 @@ class DuckDuckGoBackend:
         blocked: list[str] = []
         async with _managed_client(self.client) as client:
             for endpoint in endpoints:
+                # over-fetch a little so diversity has material to rerank from
                 html = await self._get(client, self._url(endpoint, query, recency))
-                results = parse_results_html(html, max_results=max_results)
+                results = parse_results_html(html, max_results=max_results * 2)
                 if results:
-                    return results
+                    if diversify:
+                        results = diversify_results(results)
+                    return results[:max_results]
                 if _BLOCKED_RE.search(html):
                     blocked.append(endpoint)
                     continue

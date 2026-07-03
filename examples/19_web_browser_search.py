@@ -173,7 +173,42 @@ def main() -> None:
     print(f"   session verifies from bytes: {session.verify(app.web_browser.snapshots)}")
     print(f"   tampered snapshot detected: {not evidence.verify(PAGE + '<!-- tampered -->')}")
 
-    print("\nDone — every model browses: governed, token-efficient, and provable.")
+    # 6. Adaptive reading depth + code fidelity, driven directly.
+    browser = WebBrowser(_backend(), client=_client())
+    section = browser.read_sync(RELEASE_URL, query="release date", mode="section")
+    print("\n6. Adaptive depth")
+    print(f"   section mode returned {len(section.excerpts)} block(s) of the best section; "
+          f"code blocks preserved verbatim, fenced for the model")
+
+    # 7. Crawl a site into a verifiable collection → documents or a Dataset.
+    crawl_pages = {
+        "/docs/": "<html><head><title>Docs</title></head><body><h1>Home</h1>"
+                  "<p>The documentation index, a real readable block of content here.</p>"
+                  "<nav><a href='/docs/guide'>Guide</a></nav></body></html>",
+        "/docs/guide": "<html><head><title>Guide</title></head><body><h1>Guide</h1>"
+                       "<p>A guide page with enough readable content to be a real block.</p>"
+                       "</body></html>",
+    }
+
+    def crawl_handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        body = crawl_pages.get(request.url.path)
+        return (httpx.Response(200, text=body, headers={"content-type": "text/html"})
+                if body else httpx.Response(404))
+
+    collection = app.web_crawl(
+        "https://docs.example.com/docs/", scope="subtree",
+        policy=WebPolicy.preset("scrape", max_crawl_pages=5),
+        client=httpx.AsyncClient(transport=httpx.MockTransport(crawl_handler)),
+    )
+    print("\n7. Crawl → collection")
+    print(f"   crawled {collection.pages_fetched} page(s) (bounded, deterministic, "
+          f"stopped: {collection.stopped_reason})")
+    print(f"   → {len(collection.to_documents())} retrieval documents, "
+          f"or a {len(collection.to_dataset().columns)}-column Dataset")
+
+    print("\nDone — every model browses: governed, token-efficient, adaptive, and provable.")
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **209** public `ContextApp` methods. It is gated for coverage:
+It covers **210** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -97,6 +97,7 @@ Concept: [Universal web browsing & search](../concepts/web-browsing.md) · Guide
 | Method | What it does |
 |---|---|
 | `app.use_web_search` | Give this app's model — **any** model — governed access to the open web. |
+| `app.web_crawl` | Crawl a site into a governed, offline-verifiable :class:`~vincio.web.WebCollection`. |
 
 ### Structured output
 

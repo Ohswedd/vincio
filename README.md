@@ -207,7 +207,7 @@ high-level `ContextApp`, or reach for any engine directly.
 
 **Agents & orchestration**
 - Tools: permissioned registry (RBAC + ABAC), schema-from-typehints, a resource-limited sandbox, idempotent write guardrails with approval callbacks, and a grounded computer-use action plane.
-- Universal web browsing & search: `app.use_web_search()` gives **any** model — hosted, gateway, or a local GGUF with no function calling — the same governed `web_search` / `web_read` tools over DuckDuckGo (or any pluggable engine). Pages are read token-efficiently (only the passages relevant to the model's own query, under an exact budget), when-to-search judgement ships as a progressively-disclosed skill, private-host/denied-domain fetches are refused pre-egress, and every read is a content-hashed `WebEvidence` the session `verify()`s offline. Models without native tool calling run the identical loop through the `ToolProtocolProvider` text protocol.
+- Universal web browsing & search: `app.use_web_search()` gives **any** model — hosted, gateway, or a local GGUF with no function calling — the same governed `web_search` / `web_read` tools over DuckDuckGo (or any pluggable engine). Reading is adaptive (query excerpts / a whole section / the full article / auto), preserves code blocks, and flags cookie walls, paywalls, and JS-shells so the model routes around dead pages; a pasted link or "summarize …" is auto-fetched as untrusted, screened evidence with no tool round; and `app.web_crawl(seeds)` walks a site into a verifiable `WebCollection` that becomes retrieval documents or a `Dataset`. Fetches are SSRF-hardened (per-redirect-hop re-checks, obfuscated-IP-literal normalization, streamed gzip-bomb caps), when-to-search judgement ships as a date-stamped progressively-disclosed skill, and every read is a content-hashed `WebEvidence` the session `verify()`s offline. Models without native tool calling run the identical loop through the `ToolProtocolProvider` text protocol.
 - Agents: bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN), in-place plan repair, cost-aware action selection, and a budgeted deep-research agent — web-backed in one line via the `websearch` connector.
 - Orchestration: multi-agent crews with a shared blackboard, durable stateful graphs (checkpoint / resume / time-travel / human-in-the-loop), deterministic workflows, and a distributed durable-execution backend.
 
@@ -368,6 +368,21 @@ VINCIO_UPLIFT_MODELS=… python benchmarks/quality_uplift.py`); full per-metric 
 | Schema-valid object from realistic model outputs | 1/6 | **5/6** |
 | Prompt-injection exfiltration via a tool call | compromised | **contained** |
 | Context tokens to keep an early fact at 160 turns | 1,267 (lost) | **33 (retained)** |
+
+**Post-cutoff freshness via the web plane** (`web_search.freshness`) — asked facts that changed *after*
+the model's training cutoff (latest Python line, current & LTS Node.js majors), the bare model answers
+from stale memory; the *same* model with `app.use_web_search()` searches the open web and answers with
+the current fact. Measured live (OpenRouter, 2026-07-03, `python benchmarks/web_uplift_live.py`):
+
+| Model: direct vs. + Vincio web search | Direct fresh | **+ web search** |
+|---|--:|--:|
+| `openai/gpt-4o-mini` | 0/3 | **2/3** |
+| `meta-llama/llama-3.3-70b-instruct` | 0/3 | **2/3** |
+
+<sub>Direct answers were stale on every question (e.g. "Python 3.11", "Node 18/19"); with Vincio's web
+search the same models answered the current Python 3.14 line and Node.js 26. The one miss on both is a
+genuinely hard distinction (Active-LTS vs Current) — the benchmark is not rigged. Live Tier-L, not
+CI-gated; the static arms gate `vincio bench uplift` in CI.</sub>
 
 </details>
 

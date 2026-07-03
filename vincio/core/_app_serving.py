@@ -220,9 +220,11 @@ class _ServingVerbs:
         self: ContextApp,
         backend: Any | None = None,
         *,
+        preset: str | None = None,
         policy: Any | None = None,
         client: Any | None = None,
         skill: bool = True,
+        today: str | None = None,
         tool_protocol: bool | str = True,
         **policy_fields: Any,
     ) -> ContextApp:
@@ -231,15 +233,21 @@ class _ServingVerbs:
         Registers Vincio-executed ``web_search`` / ``web_read`` tools (DuckDuckGo
         by default; any :class:`~vincio.web.SearchBackend` via ``backend``),
         loads the built-in browsing skill (when to search, how to write queries,
-        when to stop — progressively disclosed), and wraps the provider in
+        when to stop — progressively disclosed, and stamped with ``today`` so the
+        model knows what "current" means), and wraps the provider in
         :class:`~vincio.providers.ToolProtocolProvider` so a model without
-        native function calling gets the same two tools through a text
-        protocol. Every search and fetch is policy-gated pre-egress
-        (:class:`~vincio.web.WebPolicy` fields pass through as keywords) and
-        lands on the audit chain; the session's :class:`~vincio.web.WebEvidence`
-        re-derives offline from its snapshots via ``app.web_browser.report()``::
+        native function calling gets the same two tools through a text protocol.
+        When the user's own message directs a fetch (a pasted link, "summarize
+        …"), the page is fetched and folded in as untrusted, screened, offline-
+        verifiable evidence with no tool round.
 
-            app.use_web_search(max_searches=4, deny_domains=["example-tracker.com"])
+        ``preset`` picks a starting :class:`~vincio.web.WebPolicy`
+        (``"default"`` / ``"research"`` / ``"scrape"`` / ``"locked_down"``); any
+        policy field overrides it as a keyword. Every search and fetch is
+        policy-gated pre-egress and lands on the audit chain; the session's
+        evidence re-derives offline via ``app.web_browser.report()``::
+
+            app.use_web_search(preset="research", deny_domains=["tracker.example"])
 
         ``tool_protocol=False`` leaves the provider unwrapped (native-only);
         ``"force"`` applies the text protocol even to natively capable models.
@@ -251,10 +259,12 @@ class _ServingVerbs:
 
         if isinstance(policy, WebPolicy):
             resolved_policy = policy
-        elif isinstance(policy, dict):
-            resolved_policy = WebPolicy(**{**policy, **policy_fields})
         else:
-            resolved_policy = WebPolicy(**policy_fields)
+            base = dict(policy) if isinstance(policy, dict) else {}
+            fields = {**base, **policy_fields}
+            resolved_policy = (
+                WebPolicy.preset(preset, **fields) if preset else WebPolicy(**fields)
+            )
         browser = WebBrowser(backend, policy=resolved_policy, client=client, audit=self.audit)
         self.web_browser = browser
         for spec, handler in browser.tool_handlers():
@@ -262,7 +272,7 @@ class _ServingVerbs:
             if spec.name not in self.enabled_tools:
                 self.enabled_tools.append(spec.name)
         if skill:
-            self.add_skill(browse_skill())
+            self.add_skill(browse_skill(today=today))
         if tool_protocol:
             self._provider_instance = ToolProtocolProvider(
                 self._base_provider(), force=tool_protocol == "force"
@@ -277,6 +287,59 @@ class _ServingVerbs:
             },
         )
         return self
+
+    def web_crawl(  # type: ignore[misc]
+        self: ContextApp,
+        seeds: str | list[str],
+        *,
+        scope: str = "subtree",
+        query: str = "",
+        max_pages: int | None = None,
+        max_depth: int | None = None,
+        policy: Any | None = None,
+        client: Any | None = None,
+        mode: str = "full",
+    ) -> Any:
+        """Crawl a site into a governed, offline-verifiable
+        :class:`~vincio.web.WebCollection`.
+
+        Walks outward from ``seeds`` (``scope`` = ``"page"`` / ``"subtree"`` /
+        ``"domain"``) through a :class:`~vincio.web.WebBrowser`, so every fetch
+        keeps the SSRF rails, robots, size caps, and snapshotting, and the walk
+        is bounded on every axis (pages, depth, per-host, bytes, wall-clock) with
+        trap-template defense. The result converts to retrieval documents
+        (:meth:`~vincio.web.WebCollection.to_documents`) or a tabular
+        :class:`~vincio.data.Dataset` (:meth:`~vincio.web.WebCollection.to_dataset`)
+        and re-derives offline via ``collection.verify(browser.snapshots)``::
+
+            collection = app.web_crawl("https://docs.example.com/", scope="subtree")
+            app.add_source("docs", documents=collection.to_documents())
+        """
+        from ..providers.base import run_sync
+        from ..web.crawl import WebCrawler
+        from ..web.policy import WebPolicy
+
+        resolved_policy = policy if isinstance(policy, WebPolicy) else WebPolicy.preset("scrape")
+        crawler = WebCrawler(
+            policy=resolved_policy, client=client, mode=mode  # type: ignore[arg-type]
+        )
+        collection = run_sync(
+            crawler.crawl(
+                seeds, scope=scope, query=query,  # type: ignore[arg-type]
+                max_pages=max_pages, max_depth=max_depth,
+            )
+        )
+        self.audit.record(
+            "web_crawl",
+            decision="allow",
+            details={
+                "seeds": [seeds] if isinstance(seeds, str) else list(seeds),
+                "scope": scope,
+                "pages": collection.pages_fetched,
+                "stopped": collection.stopped_reason,
+            },
+        )
+        return collection
 
     # -- tools ------------------------------------------------------------------------------------
 

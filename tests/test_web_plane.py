@@ -599,6 +599,365 @@ def test_websearch_connector_yields_cited_documents():
     assert document.metadata["content_hash"] and document.metadata["query"] == "python release"
 
 
+# -- v2: adaptive depth, code blocks, find, availability -------------------------------------
+
+DOCS_HTML = (
+    "<html><head><title>Requests: Quickstart</title></head><body>"
+    "<nav><a href='/'>Home</a><a href='/install'>Install</a></nav>"
+    "<h1>Quickstart</h1><p>Making a request with Requests is very simple.</p>"
+    "<h2>Make a Request</h2><p>Begin by importing the Requests module:</p>"
+    "<pre><code>import requests\nr = requests.get('https://api.github.com/events')\n"
+    "print(r.status_code)</code></pre>"
+    "<h2>Passing Parameters</h2><p>You often want to send query-string data in the URL.</p>"
+    "<a href='https://requests.readthedocs.io/en/latest/page2'>Next</a>"
+    "<footer><a href='/legal'>Legal</a></footer></body></html>"
+)
+
+
+def test_extract_section_mode_returns_the_matching_section_with_code():
+    extract = extract_page(
+        DOCS_HTML, query="make a request example code", mode="section", budget_tokens=300
+    )
+    assert any(e.kind == "code" and "requests.get" in e.text for e in extract.excerpts)
+    assert any("importing the Requests" in e.text for e in extract.excerpts)
+    assert "```" in extract.as_context()  # code fenced for the model
+
+
+def test_extract_full_mode_and_links():
+    extract = extract_page(DOCS_HTML, mode="full", budget_tokens=4000, collect_links=True)
+    assert extract.mode == "full"
+    assert any("page2" in link.url for link in extract.links)
+    assert all("Legal" not in e.text for e in extract.excerpts)  # footer still chrome
+
+
+def test_extract_auto_mode_small_page_is_returned_whole():
+    small = "<html><head><title>T</title></head><body><h1>H</h1><p>" + "word " * 40 + "</p></body></html>"
+    extract = extract_page(small, query="word", mode="auto", budget_tokens=4000)
+    assert extract.excerpts  # whole small page fits
+
+
+def test_extract_find_catches_short_facts():
+    page = (
+        "<html><head><title>Doc</title></head><body><h1>API</h1>"
+        "<p>The library version is documented below.</p><p>v4.2.1</p></body></html>"
+    )
+    from vincio.web import find_in_page
+
+    extract = extract_page(page, find="v4.2.1")
+    assert any("4.2.1" in m.text for m in extract.find_matches)
+    assert find_in_page(page, "v4.2.1")  # module-level helper too
+
+
+def test_extract_availability_cookie_wall_and_js_shell():
+    wall = extract_page(
+        "<html><head><title>Privacy</title></head><body><h1>We value your privacy</h1>"
+        "<p>Accept all cookies to continue browsing this site.</p></body></html>"
+    )
+    assert not wall.available and wall.unavailable_reason == "cookie_wall"
+    js = extract_page("<html><body><div id='root'></div><!--" + "x" * 25000 + "--></body></html>")
+    assert not js.available and js.unavailable_reason == "requires_javascript"
+    good = extract_page(DOCS_HTML, query="request")
+    assert good.available
+
+
+# -- v2: policy hardening --------------------------------------------------------------------
+
+
+def test_policy_blocks_obfuscated_ip_literals_and_wildcard_dns():
+    policy = WebPolicy()
+    for bad in (
+        "http://0x7f.0.0.1/", "http://127.0.0.01/", "http://127.1/",
+        "http://2130706433/", "http://127.0.0.1.nip.io/",
+        "http://169.254.169.254/latest/meta-data/",
+    ):
+        with pytest.raises(WebPolicyError):
+            policy.check_url(bad)
+    policy.check_url("https://docs.python.org/3/")
+
+
+def test_policy_canonicalize_strips_only_tracking_params():
+    policy = WebPolicy()
+    # utm_* and click ids dropped; load-bearing params (ref, id) kept and sorted
+    assert policy.canonicalize("https://x.com/a?utm_source=z&ref=abc&id=5&fbclid=q") == (
+        "https://x.com/a?id=5&ref=abc"
+    )
+
+
+def test_policy_presets_never_relax_ssrf_or_robots():
+    for name in ("default", "research", "scrape", "locked_down"):
+        policy = WebPolicy.preset(name)
+        assert policy.allow_private_hosts is False
+        assert policy.respect_robots is True
+    with pytest.raises(WebPolicyError):
+        WebPolicy.preset("nonexistent")
+
+
+# -- v2: browser hardening (redirect SSRF, gzip cap, retries, dedupe) -------------------------
+
+
+def _hard_client(handler):
+    return httpx.AsyncClient(transport=httpx.MockTransport(handler))
+
+
+def test_browser_refuses_redirect_to_private_host():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(302, headers={"location": "http://169.254.169.254/meta"})
+
+    async def nosleep(_: float) -> None:
+        return None
+
+    browser = WebBrowser(_static_backend(), client=_hard_client(handler), sleeper=nosleep)
+    with pytest.raises(WebPolicyError):
+        asyncio.run(browser.read("https://example.org/redirect"))
+
+
+def test_browser_streams_with_byte_cap_defeats_bomb():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200, content=b"x" * 5_000_000, headers={"content-type": "text/html"})
+
+    browser = WebBrowser(
+        _static_backend(), policy=WebPolicy(max_page_bytes=1_000_000), client=_hard_client(handler)
+    )
+    with pytest.raises(WebFetchError):
+        asyncio.run(browser.read("https://example.org/bomb"))
+
+
+def test_browser_retries_transient_then_succeeds():
+    state = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        state["n"] += 1
+        if state["n"] == 1:
+            return httpx.Response(503, headers={"retry-after": "1"})
+        return httpx.Response(200, text=PAGE_HTML, headers={"content-type": "text/html"})
+
+    async def nosleep(_: float) -> None:
+        return None
+
+    browser = WebBrowser(_static_backend(), client=_hard_client(handler), sleeper=nosleep)
+    extract = asyncio.run(browser.read("https://example.org/flaky", query="release"))
+    assert extract.title
+
+
+def test_browser_403_is_typed_bot_blocked():
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(403, text="blocked")
+
+    browser = WebBrowser(_static_backend(), client=_hard_client(handler))
+    with pytest.raises(WebFetchError) as excinfo:
+        asyncio.run(browser.read("https://example.org/blocked"))
+    assert excinfo.value.details.get("reason") == "bot_blocked"
+
+
+def test_browser_canonical_dedup_one_fetch_for_tracking_variants():
+    browser = WebBrowser(_static_backend(), client=_client(_page_handler))
+    asyncio.run(browser.read("https://example.org/doc?utm_source=a", query="q"))
+    asyncio.run(browser.read("https://example.org/doc?utm_source=b", query="q"))
+    assert browser.fetches_used == 1  # canonical dedup collapsed the utm variants
+
+
+def test_read_records_mode_and_verify_survives_reread_at_new_depth():
+    browser = WebBrowser(_static_backend(), client=_client(_page_handler))
+    first = asyncio.run(browser.read(RELEASE_URL, query="release date", mode="excerpt"))
+    second = asyncio.run(browser.read(RELEASE_URL, query="release date", mode="full"))
+    assert first.mode == "excerpt" and second.mode == "full"
+    assert browser.fetches_used == 1  # re-read from snapshot, no new fetch
+    assert browser.report().verify(browser.snapshots)
+
+
+# -- v2: intent ------------------------------------------------------------------------------
+
+
+def test_intent_urls_to_fetch_gating():
+    from vincio.web import detect_web_intent, urls_to_fetch
+
+    assert urls_to_fetch("summarize https://numpy.org/doc") == ["https://numpy.org/doc"]
+    assert urls_to_fetch("https://foo.com/article") == ["https://foo.com/article"]
+    assert urls_to_fetch("what does GET http://169.254.169.254 return in AWS?") == []
+    assert urls_to_fetch("run `curl https://x.com/api`") == []
+    assert detect_web_intent("look it up on docs.python.org site:pypi.org").wants_search
+    assert "pypi.org" in detect_web_intent("site:pypi.org requests").sites
+
+
+# -- v2: search dates + diversity ------------------------------------------------------------
+
+
+def test_search_parses_dates_and_site():
+    html = (
+        "<div class='result'><h2 class='result__title'>"
+        "<a class='result__a' href='//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.python.org%2Fnews&rut=x'>"
+        "Python News</a></h2>"
+        "<a class='result__snippet'>Oct 7, 2024 - Python 3.13 released today.</a></div>"
+    )
+    rows = parse_results_html(html)
+    assert rows[0].site == "python.org"
+    assert rows[0].published == "2024-10-07"
+    assert rows[0].snippet.startswith("Python 3.13")  # date stripped off the snippet
+
+
+def test_search_diversify_caps_per_domain():
+    from vincio.web import diversify_results
+
+    rows = [
+        SearchResult(rank=i, title=f"T{i}", url=f"https://a.com/{i}", snippet="", site="a.com")
+        for i in range(4)
+    ] + [SearchResult(rank=9, title="B", url="https://b.com/x", snippet="", site="b.com")]
+    out = diversify_results(rows, max_per_site=2)
+    # b.com is promoted into the top 3; a.com's overflow demoted
+    assert out[2].site == "b.com"
+
+
+# -- v2: crawler -----------------------------------------------------------------------------
+
+
+def _crawl_site() -> dict[str, str]:
+    def page(title: str, links: list[tuple[str, str]]) -> str:
+        anchors = "".join(f"<a href='{u}'>{t}</a>" for u, t in links)
+        return (
+            f"<html><head><title>{title}</title></head><body><h1>{title}</h1>"
+            f"<p>Readable content for {title}, long enough to be a real block here.</p>"
+            f"<nav>{anchors}</nav></body></html>"
+        )
+
+    pages = {
+        "/docs/": page("Index", [("/docs/a", "A"), ("/docs/b", "B"), ("/docs/p?page=1", "P1")]),
+        "/docs/a": page("A", [("/docs/b", "B"), ("https://other.test/x", "Ext")]),
+        "/docs/b": page("B", [("/docs/a", "A")]),
+    }
+    for i in range(1, 40):
+        pages[f"/docs/p?page={i}"] = page(f"P{i}", [(f"/docs/p?page={i + 1}", "Next")])
+    return pages
+
+
+def _crawl_handler(pages):
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        key = request.url.path + (("?" + request.url.query.decode()) if request.url.query else "")
+        body = pages.get(key) or pages.get(request.url.path)
+        return (
+            httpx.Response(200, text=body, headers={"content-type": "text/html"})
+            if body else httpx.Response(404)
+        )
+
+    return handler
+
+
+def test_crawler_bounded_deterministic_scoped_verifiable():
+    from vincio.web import WebCrawler
+
+    async def run():
+        async def nosleep(_: float) -> None:
+            return None
+
+        pages = _crawl_site()
+        browser = WebBrowser(
+            policy=WebPolicy.preset("scrape", max_crawl_pages=25),
+            client=_hard_client(_crawl_handler(pages)), sleeper=nosleep,
+        )
+        crawler = WebCrawler(browser=browser)
+        col = await crawler.crawl("https://site.test/docs/", scope="subtree", clock=lambda: 0.0)
+        return browser, col
+
+    browser, col = asyncio.run(run())
+    assert col.pages_fetched <= 25
+    assert not any("other.test" in p.url for p in col.pages)  # subtree scope
+    assert col.verify(browser.snapshots)
+    assert len(col.to_documents()) == col.pages_fetched
+    assert len(col.to_dataset().cells[0]) == col.pages_fetched
+    # determinism
+    browser2, col2 = asyncio.run(run())
+    assert [p.url for p in col.pages] == [p.url for p in col2.pages]
+
+
+def test_crawler_trap_and_depth_defense():
+    from vincio.web import WebCrawler
+
+    async def run():
+        async def nosleep(_: float) -> None:
+            return None
+
+        pages = _crawl_site()
+        browser = WebBrowser(
+            policy=WebPolicy.preset("scrape", max_crawl_pages=100, max_crawl_depth=2),
+            client=_hard_client(_crawl_handler(pages)), sleeper=nosleep,
+        )
+        return await WebCrawler(browser=browser).crawl(
+            "https://site.test/docs/", scope="subtree", clock=lambda: 0.0
+        )
+
+    col = asyncio.run(run())
+    # depth cap (2) bounds the linear pagination trap well under its 39 pages
+    cal = [p for p in col.pages if "page=" in p.url]
+    assert len(cal) <= 8
+
+
+# -- v2: app verbs (web_crawl, research web=, presets) ---------------------------------------
+
+
+def test_app_web_crawl_verb(tmp_path):
+    pages = _crawl_site()
+    app = ContextApp(
+        name="crawl", provider=MockProvider(), model="mock-1", config=_offline_config(tmp_path)
+    )
+    collection = app.web_crawl(
+        "https://site.test/docs/", scope="subtree",
+        policy=WebPolicy.preset("scrape", max_crawl_pages=10),
+        client=_hard_client(_crawl_handler(pages)),
+    )
+    assert collection.pages_fetched >= 2
+    assert any(e.action == "web_crawl" for e in app.audit.entries)
+
+
+def test_use_web_search_preset_and_auto_fetch_directive(tmp_path):
+    article = (
+        "<html><head><title>Notes</title></head><body><h1>Release</h1>"
+        "<p>Vincio 7.6 adds a universal web browsing plane for every model.</p></body></html>"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200, text=article, headers={"content-type": "text/html"})
+
+    seen = {}
+
+    def responder(request):
+        joined = "\n".join((m.content if isinstance(m.content, str) else "") for m in request.messages)
+        seen["web"] = "universal web browsing plane" in joined
+        return "ok"
+
+    app = ContextApp(
+        name="af", provider=MockProvider(responder=responder), model="mock-1",
+        config=_offline_config(tmp_path),
+    )
+    app.use_web_search(preset="research", client=_hard_client(handler))
+    assert app.web_browser.policy.max_searches == 16  # research preset applied
+    app.run("Summarize https://example.org/notes for me")
+    assert seen["web"] is True  # directive → auto-fetched into context
+
+
+def test_use_web_search_does_not_auto_fetch_incidental_url(tmp_path):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, text="<html><body><p>x</p></body></html>",
+                              headers={"content-type": "text/html"})
+
+    app = ContextApp(
+        name="af2", provider=MockProvider(), model="mock-1", config=_offline_config(tmp_path)
+    )
+    app.use_web_search(client=_hard_client(handler))
+    app.run("Is http://169.254.169.254 the metadata endpoint?")
+    assert app.web_browser.report().fetches_used == 0
+
+
 def test_websearch_connector_snippets_only_mode():
     connector_cls = __import__(
         "vincio.connectors.websearch", fromlist=["WebSearchConnector"]

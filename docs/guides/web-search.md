@@ -48,20 +48,61 @@ Private, loopback, and link-local hosts are refused by default (SSRF
 fail-closed), and robots.txt is respected. Every search and fetch lands on
 `app.audit`.
 
-## Drive the browser directly
+## Presets and prompt-driven fetching
 
-The tools are a thin veneer over `WebBrowser`, which you can use standalone:
+Start from a named `WebPolicy` and override any field; the SSRF/robots rails
+stay fixed across every preset:
+
+```python
+app.use_web_search(preset="research")   # generous budgets and reading depth
+app.use_web_search(preset="locked_down", allow_domains=["docs.internal"])
+```
+
+With web search enabled, a user message that *directs* a fetch is read for the
+model automatically — no tool round:
+
+```python
+app.run("Summarize https://peps.python.org/pep-0703/ for me")   # fetched + cited
+```
+
+Only genuine fetch directives (or a pasted link that is the whole ask) trigger
+this; a URL merely mentioned — `"is http://169.254.169.254 the metadata IP?"` —
+is not fetched.
+
+## Drive the browser directly, at any depth
+
+The tools are a thin veneer over `WebBrowser`, which you can use standalone.
+Pick the reading depth with `mode`, or pull a short fact with `find`:
 
 ```python
 from vincio.web import WebBrowser, WebPolicy
 
-browser = WebBrowser(policy=WebPolicy(max_searches=4))
-hits = browser.search_sync("python 3.13 release date")           # DuckDuckGo, keyless
-page = browser.read_sync(hits[0].url, query="release date", budget_tokens=300)
+browser = WebBrowser(policy=WebPolicy.preset("research"))
+hits = browser.search_sync("python 3.13 release date", recency="y")   # DuckDuckGo
+page = browser.read_sync(hits[0].url, query="release date", mode="section")
 print(page.title, f"{page.reduction:.0f}x cheaper than the page")
-for excerpt in page.excerpts:
+for excerpt in page.excerpts:                # code blocks come back fenced
     print(f"[{excerpt.section}] {excerpt.text}")
+
+if not page.available:                        # a wall / paywall / JS shell
+    print("unavailable:", page.unavailable_reason)   # → read another result
+
+hit = browser.read_sync(hits[0].url, find="3.13.0")   # windows around a short fact
+print([m.text for m in hit.find_matches])
 ```
+
+## Crawl a site into a collection or dataset
+
+```python
+collection = app.web_crawl("https://docs.example.com/", scope="subtree")
+app.add_source("docs", documents=collection.to_documents())   # → RAG
+dataset = collection.to_dataset()                             # → the data plane
+assert collection.verify(app.web_browser.snapshots)           # offline-verifiable
+```
+
+The walk is bounded on every axis (pages, depth, per-host, bytes, wall-clock),
+deterministic, and trap-resistant; the `webcrawl` connector wraps the same walk
+for `app.add_source(..., connector=connect("webcrawl", seeds=[...]))`.
 
 ## Verify a session offline
 

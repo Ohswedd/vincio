@@ -622,27 +622,59 @@ class _RunVerbs:
             feature=feature,
         )
 
-    def research(self: ContextApp, question: str, *, objective: str = "", **kwargs: Any):  # type: ignore[misc]
+    def research(  # type: ignore[misc]
+        self: ContextApp, question: str, *, objective: str = "", web: bool | dict = False, **kwargs: Any
+    ):
         """Run the deep-research loop: search → read → reflect → verify →
         synthesize, emitting a cited, budget-bounded, eval-scored report.
 
         Composes the query-understanding planners, the retrieval engine, the
         grounded-fact extractor, and the cited-report builder into one
-        :class:`~vincio.agents.research.ResearchAgent`. Requires a source
-        (``app.add_source(...)``)::
+        :class:`~vincio.agents.research.ResearchAgent`. Reads from the sources
+        you index (``app.add_source(...)``); pass ``web=True`` to make it
+        **web-backed** — the open web is searched for the question and the
+        governed browsing tools are enabled, so the report is grounded in fresh
+        pages that each re-derive offline from their snapshots::
 
-            report = app.research("What changed in the refund policy?")
+            report = app.research("What shipped in Python 3.13?", web=True)
             report.answer, report.metrics["citation_coverage"], report.sources
         """
         from ..agents.research import ResearchAgent
 
+        if web:
+            self._enable_research_web(question, web)
         return ResearchAgent(self, **kwargs).run(question, objective=objective)
 
-    async def aresearch(self: ContextApp, question: str, *, objective: str = "", **kwargs: Any):  # type: ignore[misc]
+    async def aresearch(  # type: ignore[misc]
+        self: ContextApp, question: str, *, objective: str = "", web: bool | dict = False, **kwargs: Any
+    ):
         """Async :meth:`research`."""
         from ..agents.research import ResearchAgent
 
+        if web:
+            self._enable_research_web(question, web)
         return await ResearchAgent(self, **kwargs).arun(question, objective=objective)
+
+    def _enable_research_web(self: ContextApp, question: str, web: bool | dict) -> None:  # type: ignore[misc]
+        """Seed a web-search source for *question* and enable the browsing tools,
+        so the research agent reads fresh pages and can iterate with the model."""
+        from ..connectors import connect
+
+        options = web if isinstance(web, dict) else {}
+        if getattr(self, "web_browser", None) is None:
+            self.use_web_search(
+                preset=options.get("preset", "research"),
+                backend=options.get("backend"),
+                client=options.get("client"),
+            )
+        connector = connect(
+            "websearch",
+            queries=[question, *options.get("queries", [])],
+            backend=options.get("backend"),
+            client=options.get("client"),
+            max_results=options.get("max_results", 4),
+        )
+        self.add_source("web", connector=connector, retrieval=options.get("retrieval", "hybrid"))
 
     def reasoning(self: ContextApp, policy: Any | None = None, **kwargs: Any):  # type: ignore[misc]
         """Build a :class:`~vincio.agents.reasoning.ReasoningController`.

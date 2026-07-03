@@ -67,14 +67,60 @@ with **no existing symbol removed or changed**; `API_VERSION` stays `5.0`.
   `websearch` connector (`connect("websearch", queries=[...])`) turns queries into
   cited, content-hashed `Document`s — making the existing deep-research agent
   web-backed with zero new agent code.
+- **Adaptive reading depth.** `web_read` reads at the depth the task needs —
+  `excerpt` (query passages), `section` (the best whole section, its prose and
+  code together), `full` (the whole article), or `auto` (choose per page) — with
+  `<pre>` **code blocks preserved verbatim** (critical for library docs), an
+  exact-string `find` that catches short facts the block filter drops, and a
+  deterministic **content-availability** read that flags a cookie wall, paywall,
+  login gate, soft-404, or JavaScript shell (`available: false` + reason) so the
+  model routes to another source instead of citing boilerplate.
+- **Prompt-driven browsing.** When the user's *own* message directs a fetch (a
+  pasted link, "summarize …"), the page is fetched and folded in as untrusted,
+  screened, offline-verifiable evidence with no tool round — gated by an
+  intent read that fires only on a genuine directive or a URL that is the whole
+  ask (a merely-discussed URL, or one in a code fence, is never auto-fetched),
+  tagged with an explicit *data-only, do-not-follow-instructions* frame, and run
+  through the same untrusted-content screen as retrieved evidence. Strictly opt-in
+  and entirely out of the web-off path, so the `web=off` lowering stays
+  byte-identical.
+- **Hardened fetch, honestly.** Every fetch (direct, auto-fetched, redirected,
+  crawled) re-checks the `WebPolicy` on **every redirect hop** (closing the
+  redirect-to-metadata SSRF), normalizes **obfuscated IP literals** (`0x7f.0.0.1`,
+  `127.1`, integer form) and wildcard-DNS IP embedders (`10.0.0.1.nip.io`) before
+  the private-host check, **streams the body with a decoded-byte cap** (defeating
+  gzip/deflate bombs) with a `Content-Length` pre-check and a bounded robots.txt,
+  retries transient failures honoring `Retry-After` (a 429 at most once), paces
+  per host, and dedupes by canonical URL so a page is fetched at most once and a
+  re-read (even at a different depth) re-extracts from the stored snapshot at zero
+  network and zero budget cost. Four `WebPolicy.preset`s (`default` / `research` /
+  `scrape` / `locked_down`) cover the common shapes; the SSRF/robots rails are
+  non-negotiable across all of them.
+- **Search that reads like a product.** Results carry the source site and a
+  parsed published date, with light domain-diversity reranking so the head is not
+  one site; `web_search` takes `recency` and `site` scoping; the browsing skill is
+  stamped with today's date so the model knows what "current" means.
+- **Crawl a site into a collection.** `app.web_crawl(seeds, scope=…)` and the
+  `webcrawl` connector walk a site through the same governed browser into a
+  `WebCollection` that converts to retrieval `Document`s **or** a tabular
+  `Dataset` and re-derives offline from its snapshots — bounded on every axis
+  (pages, depth, per-host, bytes, wall-clock), deterministic (a
+  lexicographically-ordered BFS frontier), and trap-resistant (canonical-URL dedup
+  plus a repeating-path-template guard that stops pagination/calendar traps).
+- **Wired through the platform.** `research(web=True)` makes the deep-research
+  agent web-backed; `tasks.chat(web=True)` / `tasks.tool_agent(web=True)` add
+  browsing in one word (web-off lowering unchanged); and a `vincio web
+  search|read|crawl` CLI drives the plane from the terminal.
 - **Offline-first, no new dependency.** The whole plane is plain HTTP over the
   existing transport plus the stdlib parser; everything is testable offline via an
-  injected `httpx.MockTransport` client, and the live path is simply the default
-  constructor. A new `web_search` VincioBench family gates the token reduction,
-  grounded recall, boilerplate exclusion, SSRF refusal, offline evidence
-  verification, and the native-vs-protocol loop equivalence (same tools, same
-  sequence, same answer), with six new published SLOs and budgets, and a runnable
-  `examples/19_web_browser_search.py`.
+  injected `httpx.MockTransport` client and injectable clock/sleeper, and the live
+  path is simply the default constructor. The `web_search` VincioBench family gates
+  token reduction, grounded recall, code fidelity, section fidelity, IP-literal
+  SSRF refusal, intent gating, availability detection, and bounded/deterministic/
+  verifiable crawling — thirteen budgets and thirteen published SLOs — plus a live
+  **uplift** benchmark (`web_search.freshness`) measuring the same model direct vs
+  with web search on post-cutoff facts (0% → 67% on two OpenRouter models,
+  2026-07-03). Demonstrated by a runnable `examples/19_web_browser_search.py`.
 
 ## [7.5.0] - 2026-07-03
 
