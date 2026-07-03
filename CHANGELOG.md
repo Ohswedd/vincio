@@ -30,14 +30,18 @@ runway**: every old name below keeps working and emits a
   - The content-hash accessor is `digest()` everywhere
     (`DocumentArtifact.sha256()`, `Recording.compute_digest()`, and the
     `PromptNode.content_hash` property are deprecated delegates); the canonical
-    content-address field read is `content_hash` (`VerificationReport` renames the
-    field with a validation alias so old payloads still load; signed artifacts —
-    `ErasureProof`, `ProvenanceManifest` — gain a read-only `content_hash`
-    property while their **wire and signing bytes stay frozen forever**).
+    content-address field read is `content_hash` (`VerificationReport` and the
+    `SourceErased` event rename the field with a validation alias, keep emitting
+    the legacy `content_sha256` wire key alongside the canonical one until `8.0`,
+    and warn on the deprecated accessor; signed artifacts — `ErasureProof`,
+    `ProvenanceManifest` — gain a read-only `content_hash` property while their
+    **wire and signing bytes stay frozen forever**).
   - The upgrade is mechanical: `vincio doctor` lists every deprecated use with its
-    replacement, and `vincio migrate 8.0` ships the rename table today, so the
-    move is one codemod away. The professionalism budget now pins the open runway
-    at **exactly ten** deprecated symbols — an unplanned eleventh fails CI.
+    replacement — including dotted-submodule and aliased-module access, the
+    statically-resolvable `verify_with=` keyword form, and multi-line attribute
+    chains — and `vincio migrate 8.0` ships the rename table today, so the move
+    is one codemod away. The professionalism budget now pins the open runway at
+    **exactly ten** deprecated symbols — an unplanned eleventh fails CI.
 - **One canonical-JSON implementation per byte recipe.** The hand-rolled compact
   `sha256(json.dumps(...))` variants across evals, the registry, charts,
   computer-use, and governance now share one home —
