@@ -40,6 +40,8 @@ from __future__ import annotations
 import ast
 import os.path
 
+from ._guard_scope import is_app_mixin_module as _is_app_mixin_module
+
 __all__ = [
     "BROAD_EXCEPTION_NAMES",
     "LOG_METHOD_NAMES",
@@ -78,17 +80,6 @@ def _module_name(rel_path: str) -> str:
     if parts[-1] == "__init__":
         parts = parts[:-1]
     return ".".join(parts)
-
-
-def _is_app_mixin_module(module: str) -> bool:
-    """Whether ``module`` is a ContextApp verb-mixin module (``vincio.core._app_*``).
-
-    The standing-guard whitelist shared with :mod:`vincio._error_contract` and
-    :mod:`vincio._assert_robustness`: the private ``vincio/core/_app_*.py`` mixin
-    modules hold the decomposed ``app.*`` verb bodies and deliberately stay in
-    scope, so the split does not silently un-guard them.
-    """
-    return module.startswith(f"{_PACKAGE_NAME}.core._app_")
 
 
 def _public_module_paths() -> list[tuple[str, str]]:

@@ -269,3 +269,42 @@ def test_migrate_8_0_covers_submodule_attribute_form_end_to_end(tmp_path):
     assert "make_" not in rewritten
     # And the doctor certifies a genuinely clean tree afterwards.
     assert doctor_scan(src, collect_deprecations()) == []
+
+
+def test_scan_source_rewrites_multiline_attribute_at_the_token_line(tmp_path):
+    # The attribute token lives on the node's END line; recording the start
+    # line either skipped the rewrite (slice-match guard) or corrupted
+    # same-column text on the wrong line.
+    src = tmp_path / "multiline.py"
+    src.write_text(
+        "import vincio\n"
+        "foo(old_name, vincio.\n"
+        "    old_name)\n",
+        encoding="utf-8",
+    )
+    rewrites = scan_source(src, _FAKE)
+    assert [r.line for r in rewrites] == [3]
+    out = apply_rewrites(src.read_text(encoding="utf-8"), rewrites)
+    lines = out.splitlines()
+    assert lines[1] == "foo(old_name, vincio."  # unrelated same-column text untouched
+    assert lines[2] == "    new_name)"
+
+
+def test_scan_source_matches_bare_vincio_without_an_import(tmp_path):
+    # A module object can arrive by re-export; the pre-7.5 matcher caught any
+    # `vincio.X` attribute access and that behavior must not regress.
+    src = tmp_path / "reexport.py"
+    src.write_text(
+        "from myproject.compat import vincio\n\nx = vincio.old_name()\n",
+        encoding="utf-8",
+    )
+    assert len(scan_source(src, _FAKE)) == 1
+
+
+def test_scan_source_ignores_relative_vincio_import(tmp_path):
+    # `from .vincio import X` names the project's own local module.
+    src = tmp_path / "vendored.py"
+    src.write_text(
+        "from .vincio import old_name\n\nold_name()\n", encoding="utf-8"
+    )
+    assert scan_source(src, _FAKE) == []

@@ -208,3 +208,64 @@ def test_scan_source_ignores_attribute_on_non_vincio_module(tmp_path):
         "import numpy.data as vd\n\nx = vd.old_helper()\n", encoding="utf-8"
     )
     assert scan_source(src, _FAKE) == []
+
+
+def test_scan_source_matches_bare_vincio_without_an_import(tmp_path):
+    src = tmp_path / "reexport.py"
+    src.write_text(
+        "from myproject.compat import vincio\n\nx = vincio.old_helper()\n",
+        encoding="utf-8",
+    )
+    findings = scan_source(src, _FAKE)
+    assert any("uses deprecated `vincio.old_helper`" in f.message for f in findings)
+
+
+def test_scan_source_ignores_relative_vincio_import(tmp_path):
+    src = tmp_path / "vendored.py"
+    src.write_text(
+        "from .vincio import old_helper\n\nold_helper()\n", encoding="utf-8"
+    )
+    assert scan_source(src, _FAKE) == []
+
+
+def test_scan_source_reports_multiline_attribute_at_the_token_line(tmp_path):
+    src = tmp_path / "multiline.py"
+    src.write_text(
+        "import vincio\n"
+        "x = (vincio.\n"
+        "    old_helper)\n",
+        encoding="utf-8",
+    )
+    findings = [f for f in scan_source(src, _FAKE) if "uses deprecated" in f.message]
+    assert [f.line for f in findings] == [3]
+
+
+def test_scan_source_flags_deprecated_keyword_on_vincio_calls(tmp_path):
+    # The kwarg runway (verify_with= -> verifier=) is statically visible when
+    # the call provably targets this library — a from-vincio name or a
+    # vincio-module attribute. Receiver-typed method calls are runtime-covered.
+    src = tmp_path / "kwargs.py"
+    src.write_text(
+        "import vincio\n"
+        "from vincio import net_settlements\n"
+        "\n"
+        "ns1 = net_settlements([], verify_with=None)\n"
+        "ns2 = vincio.net_settlements([], verify_with=None)\n"
+        "other = dict(verify_with=1)  # not a vincio call\n",
+        encoding="utf-8",
+    )
+    findings = [
+        f for f in scan_source(src, collect_deprecations())
+        if "verify_with=" in f.message
+    ]
+    assert [f.line for f in findings] == [4, 5]
+    assert all("use verifier= instead; removed in 8.0" == f.remediation for f in findings)
+
+
+def test_doctor_self_scan_stays_clean_with_kwarg_detection():
+    # The library itself never passes the deprecated keyword.
+    import vincio
+
+    pkg_root = Path(vincio.__file__).resolve().parent
+    report = run_doctor(pkg_root)
+    assert report.ok, [f.message for f in report.findings]

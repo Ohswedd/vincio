@@ -220,7 +220,9 @@ def scan_source(
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            if module != "vincio" and not module.startswith("vincio."):
+            # A relative `from .vincio import ...` names the project's own
+            # local module, never this library — leave it alone.
+            if node.level or (module != "vincio" and not module.startswith("vincio.")):
                 continue
             for alias in node.names:
                 rename = renames.get(alias.name)
@@ -245,10 +247,14 @@ def scan_source(
             if resolve_attr_module(node.value, aliases) is not None:
                 rename = renames[node.attr]
                 col = _attr_col(node)
-                if (node.lineno, col) not in seen:
-                    seen.add((node.lineno, col))
+                # The attribute token lives on the node's END line (the value
+                # and the dot may sit lines above in a parenthesized chain);
+                # recording the start line would edit the wrong text.
+                line = node.end_lineno if node.end_lineno is not None else node.lineno
+                if (line, col) not in seen:
+                    seen.add((line, col))
                     rewrites.append(
-                        Rewrite(str(file_path), node.lineno, col, rename.old, rename.new)
+                        Rewrite(str(file_path), line, col, rename.old, rename.new)
                     )
         elif isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             rename = bound.get(node.id)

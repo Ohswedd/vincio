@@ -1,7 +1,8 @@
 """Canonical ``content_hash`` read surface (7.5) for the four ``content_sha256`` fields.
 
-Two fields renamed outright with a validation alias plus a read-only
-``content_sha256`` property for the 8.0 runway (``VerificationReport``,
+Two fields renamed with a validation alias, a dual-key wire emit (the legacy
+``content_sha256`` key stays in every dump until 8.0), and a warn-and-forward
+``content_sha256`` getter/setter for the runway (``VerificationReport``,
 ``SourceErased``); two kept their stored field because persisted signatures
 cover the literal serialized key, gaining a read-only ``content_hash`` alias
 instead (``ErasureProof``, ``ProvenanceManifest``). Every byte that feeds a
@@ -32,6 +33,7 @@ from vincio.governance.verification import (
     InvariantResult,
     VerificationReport,
 )
+from vincio.stability import VincioDeprecationWarning
 
 # ---------------------------------------------------------------------------
 # VerificationReport — SAFE FULL RENAME (not signed; digest excludes the key)
@@ -62,28 +64,36 @@ class TestVerificationReportRename:
     def test_old_serialized_payload_validates_via_alias(self):
         old = VerificationReport.model_validate({"held": True, "content_sha256": "abc"})
         assert old.content_hash == "abc"
-        assert old.content_sha256 == "abc"  # deprecated read-only alias
+        with pytest.warns(VincioDeprecationWarning, match="content_hash"):
+            assert old.content_sha256 == "abc"  # deprecated alias, warns
 
     def test_old_and_new_constructor_kwargs_both_bind(self):
         assert VerificationReport(held=True, content_sha256="old").content_hash == "old"
         assert VerificationReport(held=True, content_hash="new").content_hash == "new"
 
-    def test_dump_emits_canonical_key_only(self):
-        dump = VerificationReport(held=True).model_dump()
-        assert "content_hash" in dump
-        assert "content_sha256" not in dump
+    def test_dump_dual_emits_legacy_key_until_8_0(self):
+        # The rename runway on the WIRE: a consumer keyed on a persisted
+        # report's content_sha256 keeps reading until 8.0, and the dual-key
+        # dump round-trips through the alias.
+        dump = VerificationReport(held=True, content_hash="h").model_dump()
+        assert dump["content_hash"] == "h"
+        assert dump["content_sha256"] == "h"
+        assert VerificationReport.model_validate(dump).content_hash == "h"
 
-    def test_deprecated_alias_is_read_only(self):
+    def test_deprecated_alias_getter_and_setter_warn_and_forward(self):
         report = VerificationReport(held=True, content_hash="h")
-        with pytest.raises(AttributeError):
-            report.content_sha256 = "x"  # type: ignore[misc]
-        assert report.content_hash == "h"
+        with pytest.warns(VincioDeprecationWarning, match="content_hash"):
+            assert report.content_sha256 == "h"
+        with pytest.warns(VincioDeprecationWarning, match="content_hash"):
+            report.content_sha256 = "x"
+        assert report.content_hash == "x"
 
     def test_live_verifier_digest_recomputes_post_rename(self):
         live = GovernanceVerifier().verify(record=False)
         assert live.content_hash
         assert live.verify()
-        assert live.content_sha256 == live.content_hash
+        with pytest.warns(VincioDeprecationWarning):
+            assert live.content_sha256 == live.content_hash
 
 
 # ---------------------------------------------------------------------------
@@ -155,7 +165,8 @@ class TestSourceErasedRename:
     def test_old_dict_payload_validates_via_alias(self):
         old = SourceErased.model_validate({"source": "s", "content_sha256": "h"})
         assert old.content_hash == "h"
-        assert old.content_sha256 == "h"
+        with pytest.warns(VincioDeprecationWarning, match="content_hash"):
+            assert old.content_sha256 == "h"
 
     def test_dual_key_payload_validates(self):
         # The 7.5 emit carries both keys; the alias binds content_hash and the
@@ -164,6 +175,24 @@ class TestSourceErasedRename:
             {"source": "s", "content_hash": "h", "content_sha256": "h"}
         )
         assert dual.content_hash == "h"
+
+    def test_model_round_trip_keeps_the_legacy_wire_key(self):
+        # A payload normalized through the typed model (validate -> dump) must
+        # not drop content_sha256 while the runway is open — event consumers
+        # keyed on the old name keep reading until 8.0.
+        round_tripped = SourceErased.model_validate(
+            {"source": "s", "content_sha256": "h"}
+        ).model_dump()
+        assert round_tripped["content_hash"] == "h"
+        assert round_tripped["content_sha256"] == "h"
+
+    def test_deprecated_alias_getter_and_setter_warn(self):
+        evt = SourceErased(source="s", content_hash="h")
+        with pytest.warns(VincioDeprecationWarning, match="content_hash"):
+            assert evt.content_sha256 == "h"
+        with pytest.warns(VincioDeprecationWarning, match="content_hash"):
+            evt.content_sha256 = "h2"
+        assert evt.content_hash == "h2"
 
     def test_erase_source_emits_both_keys(self, sample_docs_dir, offline_config, tmp_cwd):
         app = ContextApp(name="erase-dual", config=offline_config)

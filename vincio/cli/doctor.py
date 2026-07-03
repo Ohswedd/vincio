@@ -151,7 +151,9 @@ def _imported_deprecated_names(
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             module = node.module or ""
-            if module != "vincio" and not module.startswith("vincio."):
+            # A relative `from .vincio import ...` names the project's own
+            # local module, never this library — leave it alone.
+            if node.level or (module != "vincio" and not module.startswith("vincio.")):
                 continue
             for alias in node.names:
                 dep = deprecations.get(alias.name)
@@ -174,6 +176,31 @@ def _imported_deprecated_names(
     return bound, findings
 
 
+# Keyword-argument runways: an old keyword accepted-and-warned on the way to
+# removal. Statically flagged only on calls whose function provably resolves
+# to this library (a name imported from ``vincio*``, or an attribute of a
+# vincio module) — receiver-typed method calls (``book.attest(verify_with=)``,
+# ``credential.verify(at=)``) can't be resolved without type inference and are
+# covered by the runtime ``VincioDeprecationWarning`` instead.
+_DEPRECATED_KWARGS: dict[str, tuple[str, str, str]] = {
+    # old keyword -> (replacement, since, removed_in)
+    "verify_with": ("verifier", "7.5", "8.0"),
+}
+
+
+def _vincio_imported_names(tree: ast.AST) -> set[str]:
+    """Every local name bound by a ``from vincio[.sub] import ...`` statement."""
+    names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if node.level or (module != "vincio" and not module.startswith("vincio.")):
+                continue
+            for alias in node.names:
+                names.add(alias.asname or alias.name)
+    return names
+
+
 def scan_source(path: str | Path, deprecations: dict[str, Deprecation]) -> list[Finding]:
     """Statically scan one Python file for deprecated-API usage."""
     file_path = Path(path)
@@ -187,6 +214,7 @@ def scan_source(path: str | Path, deprecations: dict[str, Deprecation]) -> list[
 
     bound, findings = _imported_deprecated_names(tree, deprecations)
     aliases = vincio_module_aliases(tree)
+    from_vincio = _vincio_imported_names(tree)
     seen: set[tuple[int, str]] = set()
     for node in ast.walk(tree):
         # Attribute access on vincio or any vincio module, however it is
@@ -196,14 +224,17 @@ def scan_source(path: str | Path, deprecations: dict[str, Deprecation]) -> list[
             module = resolve_attr_module(node.value, aliases)
             if module is not None:
                 dep = deprecations[node.attr]
-                key = (node.lineno, node.attr)
+                # Report at the attribute token's own line (the value and the
+                # dot may sit lines above in a parenthesized chain).
+                line = node.end_lineno if node.end_lineno is not None else node.lineno
+                key = (line, node.attr)
                 if key not in seen:
                     seen.add(key)
                     findings.append(
                         Finding(
                             kind="deprecated_api",
                             file="",
-                            line=node.lineno,
+                            line=line,
                             message=f"uses deprecated `{module}.{node.attr}`",
                             remediation=dep.remediation(),
                         )
@@ -222,6 +253,34 @@ def scan_source(path: str | Path, deprecations: dict[str, Deprecation]) -> list[
                             line=node.lineno,
                             message=f"uses deprecated `{bound_dep.name}`",
                             remediation=bound_dep.remediation(),
+                        )
+                    )
+        # A deprecated keyword on a call that provably targets this library.
+        elif isinstance(node, ast.Call) and node.keywords:
+            func = node.func
+            is_vincio_call = (
+                isinstance(func, ast.Name) and func.id in from_vincio
+            ) or (
+                isinstance(func, ast.Attribute)
+                and resolve_attr_module(func.value, aliases) is not None
+            )
+            if not is_vincio_call:
+                continue
+            for kw in node.keywords:
+                spec = _DEPRECATED_KWARGS.get(kw.arg or "")
+                if spec is None:
+                    continue
+                replacement, since, removed_in = spec
+                key = (kw.value.lineno, f"{kw.arg}=")
+                if key not in seen:
+                    seen.add(key)
+                    findings.append(
+                        Finding(
+                            kind="deprecated_api",
+                            file="",
+                            line=kw.value.lineno,
+                            message=f"passes deprecated keyword `{kw.arg}=` (since {since})",
+                            remediation=f"use {replacement}= instead; removed in {removed_in}",
                         )
                     )
     return [

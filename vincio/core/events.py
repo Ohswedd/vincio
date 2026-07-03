@@ -10,12 +10,21 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+import warnings
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Coroutine
 from typing import Any, ClassVar, cast
 
-from pydantic import AliasChoices, BaseModel, ConfigDict, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    ConfigDict,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
+from ..stability import VincioDeprecationWarning
 from .utils import new_id, utcnow
 
 __all__ = [
@@ -175,10 +184,35 @@ class SourceErased(EventPayload):
         default=None, validation_alias=AliasChoices("content_hash", "content_sha256")
     )
 
+    @model_serializer(mode="wrap")
+    def _dual_emit_legacy_key(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Legacy wire key, emitted alongside the canonical one until 8.0 so an
+        # event consumer keyed on ``content_sha256`` keeps reading a payload
+        # round-tripped through this model across the rename runway.
+        data: dict[str, Any] = handler(self)
+        data["content_sha256"] = data["content_hash"]
+        return data
+
     @property
     def content_sha256(self) -> str | None:
-        """Deprecated since 7.5 (removal in 8.0): read :attr:`content_hash`."""
+        """Deprecated since 7.5 (removal in 8.0): use :attr:`content_hash`."""
+        warnings.warn(
+            "SourceErased.content_sha256 is deprecated since Vincio 7.5 and "
+            "will be removed in 8.0. Use content_hash instead.",
+            VincioDeprecationWarning,
+            stacklevel=2,
+        )
         return self.content_hash
+
+    @content_sha256.setter
+    def content_sha256(self, value: str | None) -> None:
+        warnings.warn(
+            "SourceErased.content_sha256 is deprecated since Vincio 7.5 and "
+            "will be removed in 8.0. Assign content_hash instead.",
+            VincioDeprecationWarning,
+            stacklevel=2,
+        )
+        self.content_hash = value
 
 
 class PlanRepaired(EventPayload):

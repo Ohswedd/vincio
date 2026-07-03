@@ -48,6 +48,8 @@ import ast
 import builtins
 import os.path
 
+from ._guard_scope import is_app_mixin_module as _is_app_mixin_module
+
 __all__ = [
     "BUILTIN_EXCEPTION_NAMES",
     "public_modules",
@@ -89,19 +91,6 @@ def _module_name(rel_path: str) -> str:
     if parts[-1] == "__init__":
         parts = parts[:-1]
     return ".".join(parts)
-
-
-def _is_app_mixin_module(module: str) -> bool:
-    """Whether ``module`` is a ContextApp verb-mixin module (``vincio.core._app_*``).
-
-    The standing-guard whitelist: ``ContextApp``'s verb surface is decomposed into
-    private ``vincio/core/_app_*.py`` mixin modules (the ``_*Verbs`` classes the
-    app composes). Those files would normally drop out of the public-module scan
-    as underscore-prefixed, silently un-guarding the ``app.*`` verb bodies — so
-    they are deliberately kept in scope, here and in
-    :mod:`vincio._observable_failure` / :mod:`vincio._assert_robustness`.
-    """
-    return module.startswith(f"{_PACKAGE_NAME}.core._app_")
 
 
 def _public_module_paths() -> list[tuple[str, str]]:

@@ -54,9 +54,12 @@ def vincio_module_aliases(tree: ast.AST) -> dict[str, str]:
     ``import vincio.data`` (binds the top name ``vincio``; the dotted chain is
     resolved attribute-by-attribute), ``import vincio.data as vd`` (binds
     ``vd`` to ``vincio.data``), and ``from vincio[.sub] import mod [as m]``
-    when ``mod`` is a submodule rather than a symbol.
+    when ``mod`` is a submodule rather than a symbol. The bare name ``vincio``
+    always denotes the package even with no import in the scanned file — a
+    module object can arrive by re-export (``from myproject.compat import
+    vincio``), and the pre-7.5 scanners matched ``vincio.X`` unconditionally.
     """
-    aliases: dict[str, str] = {}
+    aliases: dict[str, str] = {"vincio": "vincio"}
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             for alias in node.names:

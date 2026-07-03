@@ -16,33 +16,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from ..providers.base import run_sync
-from ..stability import _resolve_renamed_kwarg
-from .errors import (
-    SettlementError,
-)
+
+# One shared runway resolver for every settlement entry point — the free
+# functions, the book methods, and these app verbs all resolve the
+# ``verifier=`` / deprecated ``verify_with=`` rename the same way.
+from ..settlement.record import _resolve_verifier
 
 if TYPE_CHECKING:
     from .app import ContextApp
-
-
-def _resolve_verifier(verifier: Any | None, verify_with: Any | None, owner: str) -> Any | None:
-    """Resolve the ``verifier=`` / deprecated ``verify_with=`` rename runway.
-
-    Shared by the app's settlement verbs mid-rename (since 7.5, removed in 8.0):
-    the old keyword warns and forwards, passing both raises
-    :class:`~vincio.core.errors.SettlementError`.
-    """
-    return _resolve_renamed_kwarg(
-        verifier,
-        verify_with,
-        new_name="verifier",
-        old_name="verify_with",
-        owner=owner,
-        since="7.5",
-        removed_in="8.0",
-        error=SettlementError,
-        stacklevel=4,
-    )
 
 
 class _SettlementVerbs:

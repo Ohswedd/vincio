@@ -910,18 +910,20 @@ class ContextCompiler:
         if estimate(evidence, slim) <= ceiling:
             return slim, evidence
         slim = True  # slim first — it never drops evidence
-        total = estimate(evidence, slim)
-        if total <= ceiling:
-            return slim, evidence
 
         # Evict the lowest-utility evidence until the estimate fits. The
         # estimate is additive per item (ENTRY_OVERHEAD_BYTES plus the item's
         # UTF-8 text bytes, counted once in a slim packet), so subtracting each
         # victim's exact contribution from a running total equals re-estimating
         # the survivors from scratch — identical eviction decisions without
-        # rebuilding and re-encoding the candidate list every round.
+        # rebuilding and re-encoding the candidate list every round. The slim
+        # total is assembled from the per-item sizes plus the memory-only
+        # estimate so each evidence text is encoded exactly once here.
         kept = list(evidence)
         sizes = [ENTRY_OVERHEAD_BYTES + len(c.content.encode("utf-8")) for c in kept]
+        total = sum(sizes) + estimate([], slim)
+        if total <= ceiling:
+            return slim, evidence
         order = sorted(range(len(kept)), key=lambda i: kept[i].scores.total)  # ascending utility
         evict: set[int] = set()
         for index in order:

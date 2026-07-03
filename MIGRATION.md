@@ -86,7 +86,10 @@ vincio migrate 8.0 --json      # machine-readable plan
 
 Keyword renames (`verifier=`, `as_of=`) and method renames (`digest()`) are not
 symbol-table rewrites; the deprecation warnings pinpoint each call site, and both
-spellings work until `8.0`.
+spellings work until `8.0`. `vincio doctor` additionally flags `verify_with=`
+statically on any call it can resolve to the library (a `from vincio` import or a
+vincio-module attribute); receiver-typed method calls are covered by the runtime
+warning.
 
 ## Deprecations and the breaking-window contract
 

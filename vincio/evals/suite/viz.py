@@ -11,13 +11,13 @@ plumbing.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 from ...core.errors import EvalSuiteError
+from ...core.utils import compact_json
 from .registry import NICHES
 from .report import Leaderboard
 from .results import SuiteRun
@@ -50,7 +50,7 @@ class SuiteChart(BaseModel):
 
     def to_json(self) -> str:
         """Deterministic Vega-Lite JSON (sorted keys, stable separators)."""
-        return json.dumps(self.spec, sort_keys=True, separators=(",", ":"), default=str)
+        return compact_json(self.spec)
 
     def to_png(self, *, width: int = 720, height: int = 440, dpi: int = 100) -> bytes:
         """Rasterize to PNG (requires ``vincio[eval-viz]`` / matplotlib)."""

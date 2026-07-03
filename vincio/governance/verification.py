@@ -43,16 +43,24 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 from ..core.utils import utcnow
 from ..observability.finops import within_budget
 from ..security.capability import AUTHORIZED, TrustLabel, requires_authority
+from ..stability import VincioDeprecationWarning
 from .lineage import build_erasure_proof, verify_erasure_proof
 from .residency import ResidencyPolicy
 
@@ -210,14 +218,36 @@ class VerificationReport(BaseModel):
     audit_entry_id: str | None = None
     audit_merkle_root: str | None = None
 
+    @model_serializer(mode="wrap")
+    def _dual_emit_legacy_key(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Legacy wire key, emitted alongside the canonical one until 8.0 so a
+        # consumer keyed on a persisted report's ``content_sha256`` keeps
+        # reading across the rename runway. Old and new dumps both validate
+        # via the field's AliasChoices.
+        data: dict[str, Any] = handler(self)
+        data["content_sha256"] = data["content_hash"]
+        return data
+
     @property
     def content_sha256(self) -> str:
-        """Deprecated since 7.5 (removal in 8.0): read :attr:`content_hash`.
-
-        Read-only alias kept for the rename runway; assignment goes through
-        :attr:`content_hash`.
-        """
+        """Deprecated since 7.5 (removal in 8.0): use :attr:`content_hash`."""
+        warnings.warn(
+            "VerificationReport.content_sha256 is deprecated since Vincio 7.5 "
+            "and will be removed in 8.0. Use content_hash instead.",
+            VincioDeprecationWarning,
+            stacklevel=2,
+        )
         return self.content_hash
+
+    @content_sha256.setter
+    def content_sha256(self, value: str) -> None:
+        warnings.warn(
+            "VerificationReport.content_sha256 is deprecated since Vincio 7.5 "
+            "and will be removed in 8.0. Assign content_hash instead.",
+            VincioDeprecationWarning,
+            stacklevel=2,
+        )
+        self.content_hash = value
 
     @property
     def counterexamples(self) -> list[Counterexample]:

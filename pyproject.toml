@@ -197,6 +197,7 @@ module = [
   "vincio._apiref",
   "vincio._docmap",
   "vincio._surface",
+  "vincio._guard_scope",
   "vincio._error_contract",
   "vincio._observable_failure",
   "vincio._wire_or_retire",
