@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from ..core.tokens import count_tokens
 from ..core.types import Document, EvidenceItem, TrustLevel
+from .compression import _verified_truncate
 
 __all__ = ["AnchorBrief", "AnchorSet", "build_anchor_brief"]
 
@@ -98,7 +99,7 @@ class AnchorBrief(BaseModel):
 
 #: Bumped when the brief-building algorithm changes output, so a Vincio upgrade
 #: invalidates persisted briefs rather than serving a stale one from cache.
-_BRIEF_ALGO_VERSION = "2"
+_BRIEF_ALGO_VERSION = "3"
 
 
 def _text_hash(text: str) -> str:
@@ -152,7 +153,9 @@ def build_anchor_brief(
     they live in, so a small rules file is never starved by a verbose README.
     Whole sentences only — nothing is ever truncated mid-word — and the assembled
     frame is bounded by dropping whole trailing sentences, never by re-summarizing
-    the rendered blocks. The id is the content hash of the rendered text.
+    the rendered blocks. The id is the content hash of the rendered text. The
+    result never shrinks below the frame-header line, so a ``brief_tokens``
+    smaller than that (~10 tokens) yields the bare header rather than nothing.
     """
     real = [d for d in documents if (d.text or "").strip() or (d.title or "").strip()]
     source_names = sources if sources is not None else sorted(
@@ -191,11 +194,23 @@ def build_anchor_brief(
         if key in seen or any(key in existing or existing in key for existing in seen):
             continue
         cost = count_tokens(sentence)
-        if used + cost > body_budget and used > 0:
-            continue  # keep scanning: a shorter later sentence may still fit
+        if used + cost > body_budget:
+            # Keep scanning: a shorter later sentence may still fit. An oversize
+            # *first* sentence must not be admitted either — it would block every
+            # later (fitting) constraint and then be trimmed away, emptying the
+            # frame.
+            continue
         picked[index].append(sentence)
         seen.add(key)
         used += cost
+    if used == 0 and (normative or prose):
+        # Every sentence alone exceeds the budget (one giant unpunctuated line):
+        # carry a verified whole-word cut of the best sentence rather than nothing.
+        index, sentence = (normative or prose)[0]
+        cut, cut_tokens = _verified_truncate(sentence, max(body_budget, 1))
+        if cut:
+            picked[index].append(cut)
+            used = cut_tokens
 
     def render(chosen: dict[int, list[str]]) -> str:
         blocks: list[str] = []

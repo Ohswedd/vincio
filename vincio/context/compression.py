@@ -84,6 +84,35 @@ def truncate_to_tokens(text: str, max_tokens: int, *, model: str | None = None) 
     )
 
 
+def _verified_truncate(text: str, max_tokens: int) -> tuple[str, int]:
+    """Cut *text* to **at most** ``max_tokens``, re-verified against the live
+    token counter.
+
+    :func:`truncate_to_tokens`'s single-huge-sentence path estimates a
+    proportional character cut and can land *over* the target on token-dense
+    text (CJK, code, long identifiers). Callers whose budget is a hard invariant
+    — the pinned reservation — need the bound guaranteed: whole-word binary
+    search on the verified count, then character halving for a single word
+    denser than the budget. Deterministic; returns ``("", 0)`` only when not
+    even one character fits."""
+    if max_tokens <= 0:
+        return "", 0
+    words = text.split()
+    lo, hi = 0, len(words)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if count_tokens(" ".join(words[:mid])) <= max_tokens:
+            lo = mid
+        else:
+            hi = mid - 1
+    cut = " ".join(words[:lo])
+    if not cut and text.strip():  # a single word denser than the budget
+        cut = text.strip()
+    while cut and count_tokens(cut) > max_tokens:
+        cut = cut[: len(cut) // 2].rstrip()
+    return cut, count_tokens(cut) if cut else 0
+
+
 def extractive_compress(
     text: str,
     query: str,

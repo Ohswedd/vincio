@@ -41,7 +41,7 @@ from ..core.types import (
 from ..core.utils import new_id, stable_hash
 from .arena import CandidateArena, PreparedCandidates
 from .budgeting import BudgetAllocation, BudgetAllocator
-from .compression import distill_evidence_ledger, extractive_compress, truncate_to_tokens
+from .compression import _verified_truncate, distill_evidence_ledger, extractive_compress
 from .features import FeatureArena
 from .footprint import ENTRY_OVERHEAD_BYTES, estimate_resident_bytes
 from .ir import ContextIR, OutputContractRef
@@ -801,9 +801,14 @@ class ContextCompiler:
         The cap is ``pinned_budget_fraction`` of the input budget. When the pinned
         items collectively fit, they ride uncompressed; when they don't, the cap is
         split across them by a deterministic, order-independent proportional share
-        (each with a small floor) and each is fitted to its share by a
-        compress-then-truncate ladder — so **every** pinned item stays *included*
-        (the frame guarantee: never dropped) and the total never exceeds the cap.
+        (each with a small floor; the shares sum to at most the cap by
+        construction) and each is fitted to its share by a compress-then-truncate
+        ladder whose final cut is **re-verified** against the live token counter —
+        so every pinned item stays *included* (the frame guarantee: never dropped)
+        and the total provably never exceeds the cap. More pinned items than cap
+        tokens is unsatisfiable (n items cannot fit n-1 tokens without dropping
+        one) and raises :class:`ContextCompileError` — the observable failure —
+        rather than silently overflowing the window or silently dropping evidence.
 
         Fitting a pinned item is recorded on the item's own metadata
         (``pinned_fit``), never on the excluded-context report: a fitted item is on
@@ -815,11 +820,21 @@ class ContextCompiler:
         if not pinned:
             return [], 0
         cap = max(1, int(budget.max_input_tokens * self.options.pinned_budget_fraction))
+        if len(pinned) > cap:
+            raise ContextCompileError(
+                f"{len(pinned)} pinned items cannot fit the pinned reservation of "
+                f"{cap} tokens (pinned_budget_fraction="
+                f"{self.options.pinned_budget_fraction} of max_input_tokens="
+                f"{budget.max_input_tokens}); raise the budget or unpin evidence",
+                details={"pinned_items": len(pinned), "pinned_cap": cap},
+            )
         total = sum(c.token_cost for c in pinned)
         # Per-item share of the cap. Everything fits → keep as-is. Otherwise start
         # each at a small floor and hand out the rest in proportion to its original
-        # size, so no pinned item is ever squeezed to nothing (deterministic and
-        # independent of input order).
+        # size, so no pinned item is ever squeezed to nothing. floor <= cap // n
+        # keeps floor·n <= cap, and the proportional extras sum to at most the
+        # remainder — so sum(shares) <= cap holds by construction, independent of
+        # input order.
         if total <= cap:
             shares = {c.id: c.token_cost for c in pinned}
         else:
@@ -832,7 +847,7 @@ class ContextCompiler:
         fitted: list[ContextCandidate] = []
         used = 0
         for candidate in pinned:
-            share = min(shares[candidate.id], max(1, cap - used))  # never exceed the cap
+            share = shares[candidate.id]
             if candidate.token_cost > share:
                 fit_via = None
                 if (
@@ -845,10 +860,14 @@ class ContextCompiler:
                         candidate.token_cost = compressed.compressed_tokens
                         candidate.metadata["compressed"] = compressed.method
                         fit_via = "compressed"
-                if candidate.token_cost > share:  # still over: hard-truncate
-                    cut = truncate_to_tokens(candidate.content, share)
-                    candidate.content = cut.text
-                    candidate.token_cost = cut.compressed_tokens
+                if candidate.token_cost > share:
+                    # Still over: hard-cut, re-verified against the live counter.
+                    # (truncate_to_tokens estimates a proportional character cut
+                    # on a single huge sentence and can overshoot on token-dense
+                    # text — the cap is a hard invariant, so verify.)
+                    cut_text, cut_tokens = _verified_truncate(candidate.content, share)
+                    candidate.content = cut_text
+                    candidate.token_cost = cut_tokens
                     fit_via = "truncated"
                 if fit_via:
                     candidate.metadata["pinned_fit"] = fit_via  # audit, not an exclusion

@@ -359,5 +359,71 @@ def test_build_embedder_auto_never_raises_raw_error():
     build_embedder("auto")
 
 
+# -- regressions for the re-review of the fixes ----------------------------------------------
+
+
+def _pinned_candidate(cand_id: str, text: str):
+    from vincio.context.compiler import ContextCandidate
+    from vincio.core.tokens import count_tokens
+
+    return ContextCandidate(id=cand_id, type="evidence", content=text,
+                            token_cost=count_tokens(text), required=True, source_id="s")
+
+
+def test_pinned_cap_holds_on_token_dense_text_any_order():
+    # Re-review bug 1+3: truncation is re-verified, so token-dense text (CJK, code)
+    # cannot breach the cap, and the fitted contents are input-order independent.
+    from vincio.context.compiler import ContextCompiler, ContextCompilerOptions
+    from vincio.core.tokens import count_tokens
+
+    comp = ContextCompiler(ContextCompilerOptions())
+    dense = "禁止事項規約必須遵守" * 6 + " " + "aaaaaaaaaaaaaaaa " * 200  # one giant sentence
+    prose = "the quick brown fox jumps over the lazy dog " * 12
+    cap = 50  # 0.5 * 100
+    results = []
+    for order in (["A", "B"], ["B", "A"]):
+        cands = [_pinned_candidate(x, dense if x == "A" else prose) for x in order]
+        fitted, used = comp._reserve_pinned(cands, Budget(max_input_tokens=100))
+        assert used <= cap and sum(count_tokens(c.content) for c in fitted) <= cap
+        assert len(fitted) == 2  # never dropped
+        results.append({c.id: c.content for c in fitted})
+    assert results[0] == results[1]  # order-independent fitted content
+
+
+def test_more_pinned_items_than_cap_raises_observably():
+    # Re-review bug 2: n items cannot fit n-1 tokens — refuse loudly, never
+    # silently exceed the window or silently drop a pinned item.
+    from vincio.context.compiler import ContextCompileError, ContextCompiler, ContextCompilerOptions
+
+    comp = ContextCompiler(ContextCompilerOptions())
+    cands = [_pinned_candidate(f"p{i}", "word " * 30) for i in range(25)]
+    with pytest.raises(ContextCompileError):
+        comp._reserve_pinned(cands, Budget(max_input_tokens=10))
+
+
+def test_oversize_first_sentence_does_not_empty_the_brief():
+    # Re-review bug 4: a giant unpunctuated normative line must not be admitted,
+    # block every fitting rule, and then be trimmed away leaving a bare header.
+    giant = "the system must satisfy requirement " + ", requirement ".join(
+        f"R{i} with elaborate detail and criteria" for i in range(200)
+    )
+    rules = ". ".join(f"Rule {i} must always hold" for i in range(15)) + "."
+    brief = build_anchor_brief([Document(title="Spec", text=giant + "\n" + rules)],
+                               brief_tokens=400)
+    assert brief.tokens <= 400
+    assert sum(1 for i in range(15) if f"Rule {i} must always hold" in brief.text) == 15
+
+
+def test_all_oversize_corpus_yields_verified_cut_not_nothing():
+    # Fallback: when every sentence alone exceeds the budget, carry a verified
+    # whole-word cut of the best sentence rather than a bare header.
+    giant = "the system must satisfy requirement " + ", requirement ".join(
+        f"R{i} with elaborate detail" for i in range(200)
+    )
+    brief = build_anchor_brief([Document(title="Blob", text=giant)], brief_tokens=120)
+    assert brief.tokens <= 120
+    assert "must satisfy" in brief.text  # body present, within budget
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])
