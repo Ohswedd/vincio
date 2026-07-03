@@ -15,6 +15,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..core.errors import GenerationError
+from ..stability import deprecated
 from .model import DocBlock, DocumentModel
 
 __all__ = ["RenderFormat", "DocumentArtifact", "render", "MEDIA_TYPES"]
@@ -81,10 +82,16 @@ class DocumentArtifact(BaseModel):
         Path(path).write_bytes(self.content)
         return path
 
-    def sha256(self) -> str:
+    def digest(self) -> str:
+        """SHA-256 content hash of the rendered bytes."""
         from ..core.media import media_sha256
 
         return media_sha256(self.content)
+
+    @deprecated(since="7.5", removed_in="8.0", alternative="digest()")
+    def sha256(self) -> str:
+        """Deprecated name for :meth:`digest`."""
+        return self.digest()
 
 
 # -- table normalization ------------------------------------------------------

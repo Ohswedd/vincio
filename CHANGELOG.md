@@ -4,6 +4,86 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.5.0] - 2026-07-03
+
+**The consistency & structure line — one name per concept, one implementation per
+recipe, one module per responsibility.** A full-platform audit (features, docs,
+examples, tests, performance, structure) found the machines' blind spots and closed
+them. Everything is additive; **no public symbol was removed or broken**;
+`API_VERSION` stays `5.0`. This release opens Vincio's **first active deprecation
+runway**: every old name below keeps working and emits a
+`VincioDeprecationWarning` until its scheduled removal in `8.0`.
+
+- **Naming unified across the public surface, with a mechanical runway.**
+  - Factories are `build_*`: `build_retail_environment` / `build_counter_environment`
+    / `build_vault_environment` / `build_agent_solver` / `build_env_solver`
+    (evals), `build_finetune_backend` (providers), `build_query_contract` (data),
+    `build_web_checkout` (tools), `build_script_handler` (skills), and
+    `build_metadata_store` (storage). The ten former `make_*` /
+    `create_metadata_store` names remain exported as deprecated aliases
+    (`since=7.5`, `removed_in=8.0`). `vincio.server.create_app` is deliberately
+    exempt — the ASGI-factory idiom frameworks look for.
+  - The signature-verification parameter is `verifier=` everywhere (the free
+    functions' former `verify_with=` keyword is accepted-and-warned); passing both
+    raises. The same runway pattern gives `vincio.security.identity` the
+    platform-wide `as_of=` keyword in place of `at=`.
+  - The content-hash accessor is `digest()` everywhere
+    (`DocumentArtifact.sha256()`, `Recording.compute_digest()`, and the
+    `PromptNode.content_hash` property are deprecated delegates); the canonical
+    content-address field read is `content_hash` (`VerificationReport` and the
+    `SourceErased` event rename the field with a validation alias, keep emitting
+    the legacy `content_sha256` wire key alongside the canonical one until `8.0`,
+    and warn on the deprecated accessor; signed artifacts — `ErasureProof`,
+    `ProvenanceManifest` — gain a read-only `content_hash` property while their
+    **wire and signing bytes stay frozen forever**).
+  - The upgrade is mechanical: `vincio doctor` lists every deprecated use with its
+    replacement — including dotted-submodule and aliased-module access, the
+    statically-resolvable `verify_with=` keyword form, and multi-line attribute
+    chains — and `vincio migrate 8.0` ships the rename table today, so the move
+    is one codemod away. The professionalism budget now pins the open runway at
+    **exactly ten** deprecated symbols — an unplanned eleventh fails CI.
+- **One canonical-JSON implementation per byte recipe.** The hand-rolled compact
+  `sha256(json.dumps(...))` variants across evals, the registry, charts,
+  computer-use, and governance now share one home —
+  `vincio.core.utils.compact_json` / `compact_hash` / `sha256_text` — documented
+  against Convention A (`json_dumps` / `stable_hash`). **Zero bytes changed**:
+  thirteen golden pins computed before the consolidation pass unchanged after it,
+  and the sites whose historical spaced-separator bytes live inside persisted
+  artifacts are pinned in place with do-not-touch comments.
+- **Hot paths that stay flat as inputs grow.** The resident-footprint eviction
+  loop no longer re-estimates the surviving packet per eviction (the estimate is
+  additive, so a running total makes identical decisions in O(n));
+  multilateral clearing (`NettingSet`) replaces its per-round min-scans with
+  lazy-invalidation heaps — O(P log P) over O(P²) — with the selection order
+  provably unchanged. Both carry reference-oracle property tests (the old loops
+  live in the tests as oracles; hundreds of randomized trials, byte-identical),
+  and the compile-path `memory_excluded` fold dropped from quadratic to linear.
+- **Structure: one module per responsibility, no behavior change.**
+  `ContextApp`'s 8k-line module is decomposed into cohesive private verb mixins
+  (`vincio/core/_app_*.py`) composed into the same public class, its 300-line
+  `__init__` into nine ordered `_init_*` phases; `ContextCompiler.compile()` into
+  named per-stage methods; `combine_attestations` into its numbered phase
+  helpers. Pure code motion, proven by the byte-identical selection/receipt SLOs
+  and the full suite. The standing-guard lints (error contract, observable
+  failure, `-O` robustness) deliberately **extend their scan** to the new private
+  `_app_*.py` modules — including the app-verb gate — so the hardening line's
+  coverage does not shrink by a line, with tamper tests proving a violation
+  inside a mixin still bites.
+- **Fixed.** `vincio --help` crashed with a `TypeError` since the `batch`
+  subcommand landed (argparse %-expands help strings; `"~50% cost"` parses as a
+  `%c` conversion) — escaped, with a regression test that renders the full help.
+  `app.prove_solvency` declared the new `verifier=` keyword but silently ignored
+  it in favor of the legacy alias — caught by the rename sweep's tests. The
+  redis-absent storage tests and the optional-numpy type fallbacks are now
+  environment-independent (the suite passes identically with or without redis-py
+  / numpy installed). Example `18` fails softly with a start-the-server hint when
+  pointed at a live DS4 box that isn't running.
+- **Docs and examples stay true.** README/AGENTS example indexes cover `00`–`18`
+  (the compile-receipt and DS4 tours were missing), notebook counts corrected,
+  ROADMAP's "eleven niches" corrected to ten, `pgvector` → `postgres` extra,
+  `load_config` documents its discovery/precedence contract, and every guide
+  teaches the canonical `build_*` names.
+
 ## [7.4.1] - 2026-07-02
 
 **Compile-receipt trust-boundary regression fixture — the two halves of the boundary, proven

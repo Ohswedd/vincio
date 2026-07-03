@@ -1,5 +1,7 @@
 """Vincio context compiler: IR, packet, scoring, budgeting, compression."""
 
+from __future__ import annotations
+
 from .budgeting import DEFAULT_ALLOCATION, BlockBudget, BudgetAllocation, BudgetAllocator
 from .compiler import (
     CompiledContext,

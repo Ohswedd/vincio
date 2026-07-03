@@ -560,9 +560,9 @@ def cmd_batch(args: argparse.Namespace) -> int:
 
 def cmd_cost_report(args: argparse.Namespace) -> int:
     from ..observability.finops import CostLedger
-    from ..storage.base import create_metadata_store
+    from ..storage.base import build_metadata_store
 
-    store = create_metadata_store(f"sqlite:///{args.db}")
+    store = build_metadata_store(f"sqlite:///{args.db}")
     ledger = CostLedger.from_store(store)
     report = ledger.report(args.by)
     if args.json:
@@ -2174,7 +2174,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_run.add_argument("--user", default=None)
     p_run.set_defaults(fn=cmd_run)
 
-    p_batch = sub.add_parser("batch", help="run a set of inputs through a Batch API (~50% cost)")
+    p_batch = sub.add_parser("batch", help="run a set of inputs through a Batch API (~50%% cost)")
     p_batch.add_argument("app", help="python file exposing a ContextApp as `app`")
     p_batch.add_argument("--input", action="append", help="an input (repeatable)")
     p_batch.add_argument("--input-file", default=None, help="file with one input per line")

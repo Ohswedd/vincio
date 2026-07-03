@@ -15,7 +15,7 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-from ...core.utils import utcnow
+from ...core.utils import compact_hash, utcnow
 from .tiers import ProvenanceTier
 
 __all__ = ["ItemResult", "BenchmarkRun", "SuiteRun"]
@@ -66,8 +66,7 @@ class BenchmarkRun(BaseModel):
             "items": canonical,
             "governed": self.governed,
         }
-        blob = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
-        return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+        return compact_hash(payload)
 
     @property
     def failures(self) -> list[ItemResult]:
@@ -114,6 +113,8 @@ class SuiteRun(BaseModel):
     def determinism_digest(self) -> str:
         """A content hash over every benchmark's digest — the suite-level pin."""
         parts = sorted(f"{r.benchmark_id}:{r.determinism_digest}" for r in self.runs)
+        # Historical spaced-separator form — persisted determinism pins depend
+        # on these exact bytes; do NOT switch to core.utils.compact_hash.
         blob = json.dumps({"tier": self.tier.value, "runs": parts}, sort_keys=True)
         return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
 

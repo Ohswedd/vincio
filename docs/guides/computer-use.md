@@ -48,16 +48,16 @@ Every step lands on the app's hash-chained audit log.
 
 ## A first run
 
-`make_web_checkout()` is a deterministic, WebArena/OSWorld-shaped reference app: a
+`build_web_checkout()` is a deterministic, WebArena/OSWorld-shaped reference app: a
 two-screen store with a shipping-address field, a checkout button, a place-order
 button (the goal), and a destructive **Delete account** button (the trap).
 
 ```python
-from vincio import ContextApp, ActionPolicy, UIAction, make_web_checkout
+from vincio import ContextApp, ActionPolicy, UIAction, build_web_checkout
 from vincio.providers import MockProvider
 
 app = ContextApp(name="operator", provider=MockProvider())
-spec, task = make_web_checkout()
+spec, task = build_web_checkout()
 
 # Approve only the in-task destructive action (placing the order); nothing else.
 def approve(action: UIAction, decision) -> bool:

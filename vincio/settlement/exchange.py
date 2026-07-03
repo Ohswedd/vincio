@@ -52,6 +52,7 @@ from .attestation import (
     TrustConfig,
     combine_attestations,
 )
+from .record import _resolve_verifier
 
 if TYPE_CHECKING:
     from ..a2a.server import A2AServer
@@ -415,19 +416,19 @@ def _as_exchange(conn: Any, *, peer_id: str) -> AttestationExchange:
     )
 
 
-def _verifies(artifact: Any, verify_with: ChainSigner | None) -> bool:
+def _verifies(artifact: Any, verifier: ChainSigner | None) -> bool:
     """Whether a fetched artifact verifies from the bytes — the trust gate.
 
-    Its hash must recompute, and — with a ``verify_with`` and a present signature —
+    Its hash must recompute, and — with a ``verifier`` and a present signature —
     the issuer's signature must check; an artifact that fails either is refused
     rather than trusted on the peer's word. The downstream
     :func:`~vincio.settlement.attestation.combine_attestations` re-checks the same
     invariants, so this is the gather's first, not its only, line of defense.
     """
-    check = artifact.verify(verify_with, require=[])
+    check = artifact.verify(verifier, require=[])
     if not check.hash_ok:
         return False
-    if verify_with is not None and artifact.signatures and not check.signatures_ok:
+    if verifier is not None and artifact.signatures and not check.signatures_ok:
         return False
     return True
 
@@ -453,7 +454,7 @@ async def gather_reputation(
     directory: Any | None = None,
     principal: Any | None = None,
     config: AttestationConfig | None = None,
-    verify_with: ChainSigner | None = None,
+    verifier: ChainSigner | None = None,
     base: Any | None = None,
     allow_self: bool = False,
     held_attestations: list[ReputationAttestation] | None = None,
@@ -464,6 +465,7 @@ async def gather_reputation(
     max_peers: int | None = None,
     audit: Any | None = None,
     record_audit: bool = True,
+    verify_with: ChainSigner | None = None,
 ) -> GatheredReputation:
     """Pull signed attestations and revocations from a bounded set of peers.
 
@@ -473,7 +475,7 @@ async def gather_reputation(
     ``max_peers`` allowed peers. From each reachable peer it fetches a
     :class:`ReputationBundle`, **independently verifies** every artifact from the
     bytes (the hash recomputes, an attestation's reputation re-derives, and — with
-    ``verify_with`` — the issuer's signature checks), **deduplicates** by content hash
+    ``verifier`` — the issuer's signature checks), **deduplicates** by content hash
     across peers, and records the visit. The gathered artifacts (plus any
     ``held_attestations`` / ``held_revocations`` the importer already has) fold
     straight into :func:`~vincio.settlement.attestation.combine_attestations` under
@@ -491,8 +493,10 @@ async def gather_reputation(
     :class:`~vincio.a2a.A2AClient`), or is an iterable of ``(id, connection)`` pairs.
     Every peer visited and every artifact fetched lands on ``audit`` (when
     ``record_audit``). Returns a :class:`GatheredReputation` exposing
-    ``weight(member_id)`` for the negotiation path.
+    ``weight(member_id)`` for the negotiation path. ``verify_with`` is a deprecated
+    alias for ``verifier`` (since 7.5, removed in 8.0).
     """
+    verifier = _resolve_verifier(verifier, verify_with, "gather_reputation")
     cfg = (config or AttestationConfig()).validate_coherent()
     items = _peer_items(peers)
 
@@ -540,7 +544,7 @@ async def gather_reputation(
         dupes = 0
         for att in bundle.attestations:
             # Verify from the bytes before counting — never on the peer's word.
-            if not _verifies(att, verify_with):
+            if not _verifies(att, verifier):
                 continue
             key = att.content_hash
             if not key or key in seen_attestations:
@@ -550,7 +554,7 @@ async def gather_reputation(
             fresh_atts += 1
             _audit_fetch(audit, record_audit, subject, peer_id, "attestation", att)
         for rev in bundle.revocations:
-            if not _verifies(rev, verify_with):
+            if not _verifies(rev, verifier):
                 continue
             key = rev.content_hash
             if not key or key in seen_revocations:
@@ -587,7 +591,7 @@ async def gather_reputation(
         attestations,
         subject=subject,
         config=cfg,
-        verify_with=verify_with,
+        verifier=verifier,
         base=base,
         allow_self=allow_self,
         revocations=revocations,

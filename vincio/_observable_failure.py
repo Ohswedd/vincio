@@ -8,7 +8,9 @@ runtime half of this contract). This module is the *static* half: the lint behin
 on exactly the scan idiom :mod:`vincio._error_contract` and :mod:`vincio._surface`
 use for the error contract and the two-level surface.
 
-It scans every **public** module under ``vincio/`` for a *broad* exception handler
+It scans every **public** module under ``vincio/`` — plus, deliberately, the
+private ``vincio/core/_app_*.py`` ContextApp verb mixins, so the decomposed
+``app.*`` surface stays guarded — for a *broad* exception handler
 — ``except Exception`` / ``except BaseException`` / a bare ``except:`` / a tuple
 containing one — and for ``contextlib.suppress(Exception)`` (which is *always*
 silent). Such a handler is a **silent swallow** unless its body either:
@@ -38,6 +40,8 @@ from __future__ import annotations
 import ast
 import os.path
 
+from ._guard_scope import is_app_mixin_module as _is_app_mixin_module
+
 __all__ = [
     "BROAD_EXCEPTION_NAMES",
     "LOG_METHOD_NAMES",
@@ -62,6 +66,7 @@ _EMIT_METHOD_NAMES: frozenset[str] = frozenset({"emit", "emit_async", "publish",
 _NOTE_FUNCTION_NAMES: frozenset[str] = frozenset({"note_suppressed"})
 
 _PACKAGE_DIR = os.path.dirname(__file__)
+_PACKAGE_NAME = os.path.basename(_PACKAGE_DIR)
 
 
 def _is_private_component(name: str) -> bool:
@@ -83,7 +88,8 @@ def _public_module_paths() -> list[tuple[str, str]]:
     A module is *public* when no component of its path is private (underscore-prefixed
     and not a dunder), so private tooling like this module, :mod:`vincio._surface`,
     and ``vincio/security/_ed25519.py`` is excluded — matching the scope of
-    :mod:`vincio._error_contract`.
+    :mod:`vincio._error_contract`, including its one deliberate exception: the
+    ContextApp verb mixins (:func:`_is_app_mixin_module`) stay in scope.
     """
     parent = os.path.dirname(_PACKAGE_DIR)
     out: list[tuple[str, str]] = []
@@ -97,9 +103,12 @@ def _public_module_paths() -> list[tuple[str, str]]:
                 part[: -len(".py")] if part.endswith(".py") else part
                 for part in rel.split(os.sep)
             ]
-            if any(_is_private_component(stem) for stem in stems):
+            name = _module_name(rel)
+            if any(_is_private_component(stem) for stem in stems) and not _is_app_mixin_module(
+                name
+            ):
                 continue
-            out.append((_module_name(rel), abs_path))
+            out.append((name, abs_path))
     out.sort()
     return out
 

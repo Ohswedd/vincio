@@ -1,5 +1,7 @@
 """Vincio core: shared types, errors, events, config, tokens, runtime."""
 
+from __future__ import annotations
+
 from .config import VincioConfig, load_config
 from .errors import VincioError
 from .events import Event, EventBus

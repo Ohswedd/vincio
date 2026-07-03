@@ -16,6 +16,7 @@ from typing import Any, Protocol
 from urllib.parse import urlparse
 
 from ..core.errors import StorageError
+from ..stability import deprecated_alias
 
 __all__ = [
     "MetadataStore",
@@ -23,6 +24,7 @@ __all__ = [
     "InMemoryMetadataStore",
     "BlobStore",
     "FileBlobStore",
+    "build_metadata_store",
     "create_metadata_store",
     "parse_storage_url",
     "asave",
@@ -201,7 +203,14 @@ def _discovered_stores() -> dict[str, Any]:
     return _DISCOVERED_STORES
 
 
-def create_metadata_store(url: str) -> MetadataStore:
+def build_metadata_store(url: str) -> MetadataStore:
+    """Build the :class:`MetadataStore` a storage URL names.
+
+    Dispatches on the URL scheme — ``memory://``, ``sqlite:///path``,
+    ``postgres://…``, or any third-party scheme advertised under the
+    ``vincio.stores`` entry-point group. Raises :class:`StorageError` for an
+    unsupported scheme.
+    """
     scheme, location = parse_storage_url(url)
     if scheme == "memory":
         return InMemoryMetadataStore()
@@ -217,6 +226,14 @@ def create_metadata_store(url: str) -> MetadataStore:
     if scheme in discovered:
         return discovered[scheme](location)
     raise StorageError(f"unsupported metadata storage scheme: {scheme!r}")
+
+
+create_metadata_store = deprecated_alias(
+    build_metadata_store,
+    old_name="create_metadata_store",
+    since="7.5",
+    removed_in="8.0",
+)
 
 
 async def asave(store: MetadataStore, kind: str, record: dict[str, Any]) -> None:

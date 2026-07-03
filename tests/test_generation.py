@@ -63,7 +63,7 @@ class TestDocumentBuilder:
         assert art.format == "markdown" and art.media_type == "text/markdown"
         assert "Quarterly Memo" in art.text
         assert "| Metric |" in art.text
-        assert art.sha256()
+        assert art.digest()
 
     def test_html_render_has_table_and_headings(self):
         art = DocumentBuilder().build(SAMPLE_MD, format="html")

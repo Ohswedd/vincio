@@ -72,7 +72,7 @@ from pydantic import BaseModel, Field
 from ..core.diagnostics import note_suppressed
 from ..core.errors import SettlementError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
-from .record import SettlementRecord, SettlementSignature
+from .record import SettlementRecord, SettlementSignature, _resolve_verifier
 
 if TYPE_CHECKING:
     from ..security.audit import ChainSigner
@@ -1157,9 +1157,10 @@ def attest_reputation(
     issuer: str = "",
     resolutions: Iterable[Resolution] | None = None,
     config: AttestationConfig | None = None,
-    verify_with: ChainSigner | None = None,
+    verifier: ChainSigner | None = None,
     horizon_days: float | None = None,
     note: str = "",
+    verify_with: ChainSigner | None = None,
 ) -> ReputationAttestation:
     """Issue an attestation of ``subject``'s earned standing from signed records.
 
@@ -1170,9 +1171,10 @@ def attest_reputation(
     arbitration :class:`~vincio.settlement.arbitration.Resolution`\\ s — counting a
     dissent against ``subject`` (a claim that did not stand) as a failure. It reads
     only what it can recompute: a record whose reconciliation hash no longer
-    recomputes (or, with ``verify_with``, whose signature is forged) is skipped, so a
+    recomputes (or, with ``verifier``, whose signature is forged) is skipped, so a
     tampered own record cannot inflate the standing, and the exact source hashes the
-    evidence came from are bound into the attestation.
+    evidence came from are bound into the attestation. ``verify_with`` is a
+    deprecated alias for ``verifier`` (since 7.5, removed in 8.0).
 
     ``horizon_days`` optionally declares a **validity window**: the issuer asserts the
     standing holds for that many days after issuance, after which an as-of-aware
@@ -1184,6 +1186,7 @@ def attest_reputation(
     :class:`SettlementError` when there is no admissible history for the subject to
     attest — an attestation asserts evidence, never a bare prior.
     """
+    verifier = _resolve_verifier(verifier, verify_with, "attest_reputation")
     cfg = (config or AttestationConfig()).validate_coherent()
     if horizon_days is not None and horizon_days <= 0.0:
         raise SettlementError(
@@ -1197,8 +1200,8 @@ def attest_reputation(
             continue
         if record.content_hash and record.content_hash != record.compute_hash():
             continue  # tampered: its reconciliation hash no longer recomputes
-        if verify_with is not None and record.signatures:
-            if not record.verify(verify_with, require=[]).signatures_ok:
+        if verifier is not None and record.signatures:
+            if not record.verify(verifier, require=[]).signatures_ok:
                 continue  # forged: a signature does not check
         counted.append(record)
 
@@ -1212,7 +1215,7 @@ def attest_reputation(
             continue
         if subject not in getattr(resolution, "dissenters", []):
             continue
-        if not resolution.verify(verify_with).decision_sound:
+        if not resolution.verify(verifier).decision_sound:
             continue  # a tampered resolution cannot inflate dissents
         dissents += 1
         if resolution.content_hash:
@@ -1322,17 +1325,17 @@ def revoke_attestation(
 # -- trust --------------------------------------------------------------------
 
 
-def _admissible(att: ReputationAttestation, verify_with: ChainSigner | None) -> bool:
+def _admissible(att: ReputationAttestation, verifier: ChainSigner | None) -> bool:
     """Whether an attestation verifies as an artifact (hash, evidence, signature).
 
     The same admissibility :func:`combine_attestations` applies, minus the policy
     exclusions (self-attestation, revoked, stale) — a tampered or forged attestation
     must not lend trust any more than it pools evidence.
     """
-    check = att.verify(verify_with, require=[])
+    check = att.verify(verifier, require=[])
     if not check.hash_ok or not check.evidence_sound:
         return False
-    if verify_with is not None and att.signatures and not check.signatures_ok:
+    if verifier is not None and att.signatures and not check.signatures_ok:
         return False
     return True
 
@@ -1366,6 +1369,7 @@ def build_trust_model(
     base: Any | None = None,
     config: TrustConfig | None = None,
     attestation_config: AttestationConfig | None = None,
+    verifier: ChainSigner | None = None,
     verify_with: ChainSigner | None = None,
 ) -> TrustModel:
     """Build the importer's bounded, transitive trust over a set of issuers.
@@ -1377,7 +1381,7 @@ def build_trust_model(
     already-trusted issuer that attests another issuer (vouches for it *as a
     counterparty*) lends it trust derived from that pooled standing, attenuated by
     ``config.hop_decay`` per hop. Only admissible attestations (hash recomputes,
-    reputation re-derives, and — with ``verify_with`` — the issuer signature checks)
+    reputation re-derives, and — with ``verifier`` — the issuer signature checks)
     count toward vouching, and an issuer vouching for itself never bootstraps its own
     trust. Every multiplier is bounded into the ``[trust_floor, 1]`` band; an issuer
     neither known nor reached falls back to the floor.
@@ -1386,11 +1390,13 @@ def build_trust_model(
     mutually-vouching unknown issuers is never reached and every member stays at the
     floor — the Sybil-resistance property. Pass the resulting :class:`TrustModel` as
     the ``trust`` argument to :func:`combine_attestations`, or let it build one for you
-    by passing a ``trust_config``.
+    by passing a ``trust_config``. ``verify_with`` is a deprecated alias for
+    ``verifier`` (since 7.5, removed in 8.0).
     """
+    verifier = _resolve_verifier(verifier, verify_with, "build_trust_model")
     cfg = (config or TrustConfig()).validate_coherent()
     acfg = (attestation_config or AttestationConfig()).validate_coherent()
-    admissible = [a for a in attestations if _admissible(a, verify_with)]
+    admissible = [a for a in attestations if _admissible(a, verifier)]
     issuers = sorted({a.issuer for a in admissible})
 
     assessments: dict[str, IssuerTrust] = {}
@@ -1467,18 +1473,19 @@ def combine_attestations(
     *,
     subject: str | None = None,
     config: AttestationConfig | None = None,
-    verify_with: ChainSigner | None = None,
+    verifier: ChainSigner | None = None,
     base: Any | None = None,
     allow_self: bool = False,
     revocations: Iterable[AttestationRevocation] | None = None,
     as_of: datetime | None = None,
     trust: Any | None = None,
     trust_config: TrustConfig | None = None,
+    verify_with: ChainSigner | None = None,
 ) -> PortableReputation:
     """Combine several issuers' attestations into one bounded, evidence-weighted prior.
 
     Verifies each attestation offline (hash recomputes, attested reputation
-    re-derives from its evidence, and — with ``verify_with`` — the issuer's signature
+    re-derives from its evidence, and — with ``verifier`` — the issuer's signature
     checks), refusing and **pinpointing** a tampered or forged one rather than
     silently dropping it. Among the admissible attestations it pools the evidence per
     subject into one Beta-Bernoulli posterior under the importer's ``config`` prior —
@@ -1492,7 +1499,7 @@ def combine_attestations(
     **Revocation.** ``revocations`` are signed :class:`AttestationRevocation`\\ s; an
     attestation an *admissible, issuer-matched* revocation withdraws is excluded from
     the combination and pinpointed (``revoked``), never silently honored — a forged
-    revocation (one whose signature does not check under ``verify_with``, or that
+    revocation (one whose signature does not check under ``verifier``, or that
     names another org's attestation) is itself ignored, so no org can cancel another's
     claim.
 
@@ -1520,13 +1527,53 @@ def combine_attestations(
     an optional local :class:`~vincio.optimize.reputation.ReputationLedger` whose
     earned standing wins for a counterparty the importer already knows. Returns a
     :class:`PortableReputation` exposing ``weight(member_id)`` for the negotiation
-    path.
+    path. ``verify_with`` is a deprecated alias for ``verifier`` (since 7.5,
+    removed in 8.0).
     """
+    verifier = _resolve_verifier(verifier, verify_with, "combine_attestations")
     cfg = (config or AttestationConfig()).validate_coherent()
     all_atts = list(attestations)
     items = [a for a in all_atts if subject is None or a.subject == subject]
     clock = _as_utc(as_of) if as_of is not None else None
 
+    trust_model = _resolve_trust_model(trust, trust_config, all_atts, base, cfg, verifier)
+    revoked_keys = _honored_revocations(revocations, subject, verifier)
+    verdicts, admissible = _admissibility_verdicts(
+        items, revoked_keys, clock, allow_self, verifier
+    )
+    best = _dedup_best(admissible)
+    counted_ids = {att.id for att in best.values()}
+    _mark_counted(verdicts, counted_ids, trust_model)
+    pooled = _pool_evidence(best, cfg, clock, trust_model)
+    standings = _build_standings(pooled, cfg)
+
+    return PortableReputation(
+        standings, verdicts, cfg, base=base, as_of=as_of, trust=trust_model
+    )
+
+
+def _supersedes(candidate: ReputationAttestation, current: ReputationAttestation) -> bool:
+    """Whether ``candidate`` should replace ``current`` for one (subject, issuer).
+
+    Prefers the attestation that read more evidence (it covers more history); ties
+    break to the later issue time, then deterministically by id, so the dedup is
+    stable regardless of submission order.
+    """
+    if candidate.evidence != current.evidence:
+        return candidate.evidence > current.evidence
+    if candidate.issued_at != current.issued_at:
+        return candidate.issued_at > current.issued_at
+    return candidate.id > current.id
+
+
+def _resolve_trust_model(
+    trust: Any | None,
+    trust_config: TrustConfig | None,
+    all_atts: list[ReputationAttestation],
+    base: Any | None,
+    cfg: AttestationConfig,
+    verifier: ChainSigner | None,
+) -> Any | None:
     # Issuer-trust weighting (opt-in). An explicit ``trust`` source wins; otherwise a
     # ``trust_config`` builds the bounded transitive model from the *full* attestation
     # set (so a trusted issuer can vouch for another even when ``subject`` is set), the
@@ -1539,9 +1586,16 @@ def combine_attestations(
             base=base,
             config=trust_config,
             attestation_config=cfg,
-            verify_with=verify_with,
+            verifier=verifier,
         )
+    return trust_model
 
+
+def _honored_revocations(
+    revocations: Iterable[AttestationRevocation] | None,
+    subject: str | None,
+    verifier: ChainSigner | None,
+) -> dict[tuple[str, str], AttestationRevocation]:
     # 0. The set of attestation hashes withdrawn by an admissible, issuer-matched
     #    revocation. A revocation is honored only when it verifies as an artifact (and,
     #    with a verifier, the issuer signature checks) — a forged or unsigned-when-
@@ -1550,20 +1604,29 @@ def combine_attestations(
     for rev in revocations or []:
         if subject is not None and rev.subject != subject:
             continue
-        if not rev.verify(verify_with, require=[]).hash_ok:
+        if not rev.verify(verifier, require=[]).hash_ok:
             continue  # tampered revocation — its hash does not recompute
-        if verify_with is not None and rev.signatures:
-            if not rev.verify(verify_with, require=[]).signatures_ok:
+        if verifier is not None and rev.signatures:
+            if not rev.verify(verifier, require=[]).signatures_ok:
                 continue  # forged revocation signature
         revoked_keys[(rev.issuer, rev.attestation_hash)] = rev
+    return revoked_keys
 
+
+def _admissibility_verdicts(
+    items: list[ReputationAttestation],
+    revoked_keys: dict[tuple[str, str], AttestationRevocation],
+    clock: datetime | None,
+    allow_self: bool,
+    verifier: ChainSigner | None,
+) -> tuple[list[AttestationVerdict], list[ReputationAttestation]]:
     # 1. Admissibility per attestation, pinpointed not raised. A tampered or forged
     #    attestation is inadmissible; a self-attestation, a revoked one, or a stale one
     #    is a valid artifact that is excluded (not counted) with a pinpointed reason.
     verdicts: list[AttestationVerdict] = []
     admissible: list[ReputationAttestation] = []
     for att in items:
-        check = att.verify(verify_with, require=[])
+        check = att.verify(verifier, require=[])
         admissible_flag = True
         revoked = stale = False
         reason: str | None = None
@@ -1572,7 +1635,7 @@ def combine_attestations(
         elif not check.evidence_sound:
             admissible_flag = False
             reason = "tampered: attested reputation does not re-derive from the evidence"
-        elif verify_with is not None and att.signatures and not check.signatures_ok:
+        elif verifier is not None and att.signatures and not check.signatures_ok:
             admissible_flag, reason = False, "forged: the issuer signature does not verify"
         elif (match := revoked_keys.get((att.issuer, att.content_hash))) is not None:
             revoked = True
@@ -1603,7 +1666,12 @@ def combine_attestations(
         )
         if admissible_flag and reason is None:
             admissible.append(att)
+    return verdicts, admissible
 
+
+def _dedup_best(
+    admissible: list[ReputationAttestation],
+) -> dict[tuple[str, str], ReputationAttestation]:
     # 2. Per (subject, issuer) dedup: keep each issuer's largest attestation, so an
     #    issuer cannot inflate a subject by stacking several attestations.
     best: dict[tuple[str, str], ReputationAttestation] = {}
@@ -1612,8 +1680,14 @@ def combine_attestations(
         current = best.get(key)
         if current is None or _supersedes(att, current):
             best[key] = att
-    counted_ids = {att.id for att in best.values()}
+    return best
 
+
+def _mark_counted(
+    verdicts: list[AttestationVerdict],
+    counted_ids: set[str],
+    trust_model: Any | None,
+) -> None:
     # 3. Mark the counted verdicts and pinpoint the superseded ones.
     for verdict in verdicts:
         if not verdict.admissible or verdict.reason is not None:
@@ -1624,6 +1698,13 @@ def combine_attestations(
         else:
             verdict.reason = "superseded: a larger attestation from this issuer was counted"
 
+
+def _pool_evidence(
+    best: dict[tuple[str, str], ReputationAttestation],
+    cfg: AttestationConfig,
+    clock: datetime | None,
+    trust_model: Any | None,
+) -> dict[str, dict[str, Any]]:
     # 4. Pool the evidence per subject under the prior: decay by age (when an as-of
     #    clock is set), scale by the importer's trust in the issuer, then cap any one
     #    issuer's mass — each step scales successes and failures together, so it changes
@@ -1645,7 +1726,13 @@ def combine_attestations(
         bucket["issuers"].append(issuer)
         if trust_model is not None:
             bucket["trust"][issuer] = round(tmul, 9)
+    return pooled
 
+
+def _build_standings(
+    pooled: dict[str, dict[str, Any]],
+    cfg: AttestationConfig,
+) -> dict[str, SubjectStanding]:
     standings: dict[str, SubjectStanding] = {}
     for subj, bucket in pooled.items():
         successes = round(float(bucket["successes"]), 9)
@@ -1661,21 +1748,4 @@ def combine_attestations(
             attestations=len(bucket["issuers"]),
             issuer_trust=dict(bucket["trust"]),
         )
-
-    return PortableReputation(
-        standings, verdicts, cfg, base=base, as_of=as_of, trust=trust_model
-    )
-
-
-def _supersedes(candidate: ReputationAttestation, current: ReputationAttestation) -> bool:
-    """Whether ``candidate`` should replace ``current`` for one (subject, issuer).
-
-    Prefers the attestation that read more evidence (it covers more history); ties
-    break to the later issue time, then deterministically by id, so the dedup is
-    stable regardless of submission order.
-    """
-    if candidate.evidence != current.evidence:
-        return candidate.evidence > current.evidence
-    if candidate.issued_at != current.issued_at:
-        return candidate.issued_at > current.issued_at
-    return candidate.id > current.id
+    return standings

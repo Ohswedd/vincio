@@ -1,8 +1,10 @@
 """Real-behavior coverage for vincio.storage.redis.
 
-The ``redis`` package is NOT installed in this environment, so the live-Redis
-paths (``RedisCache.__init__``, ``_redis_client`` without an injected client)
-raise ``StorageError`` — we assert that exact contract. Everything else is
+The redis-absent contract (``RedisCache.__init__``, ``_redis_client`` without
+an injected client raise ``StorageError``) is exercised deterministically by
+poisoning ``sys.modules["redis"]`` with ``monkeypatch`` — the lazy ``import
+redis`` then raises ``ImportError`` whether or not redis-py is installed on
+the host, so the suite passes identically everywhere. Everything else is
 exercised against a small deterministic in-memory fake that honours the real
 redis-py call surface (``get``/``set``/``sadd``/``expire``/``smembers``/
 ``scan_iter``/``delete``/``incrby``/``ttl``). ``RedisCache`` has no client
@@ -16,6 +18,7 @@ from __future__ import annotations
 
 import fnmatch
 import json
+import sys
 
 import pytest
 
@@ -112,9 +115,18 @@ def make_cache(**kwargs) -> RedisCache:
 # Not-installed branches (lines 24-28, 39-47)
 # ---------------------------------------------------------------------------
 class TestRedisNotInstalled:
-    def test_redis_client_helper_raises_without_client(self):
+    """The redis-absent contract, forced deterministically on any host.
+
+    ``sys.modules["redis"] = None`` makes the lazy ``import redis`` raise
+    ``ImportError`` even when redis-py is installed locally, so these tests
+    assert the same contract in every environment instead of depending on
+    what happens to be installed.
+    """
+
+    def test_redis_client_helper_raises_without_client(self, monkeypatch):
         from vincio.storage.redis import _redis_client
 
+        monkeypatch.setitem(sys.modules, "redis", None)
         with pytest.raises(StorageError, match=r'pip install "vincio\[redis\]"'):
             _redis_client("redis://localhost:6379/0", None)
 
@@ -124,13 +136,15 @@ class TestRedisNotInstalled:
         fake = FakeRedis()
         assert _redis_client("redis://ignored", fake) is fake
 
-    def test_rediscache_init_raises_without_redis_package(self):
+    def test_rediscache_init_raises_without_redis_package(self, monkeypatch):
+        monkeypatch.setitem(sys.modules, "redis", None)
         with pytest.raises(StorageError, match=r'pip install "vincio\[redis\]"'):
             RedisCache()
 
-    def test_storage_error_chains_importerror_cause(self):
+    def test_storage_error_chains_importerror_cause(self, monkeypatch):
         from vincio.storage.redis import _redis_client
 
+        monkeypatch.setitem(sys.modules, "redis", None)
         with pytest.raises(StorageError) as exc:
             _redis_client("redis://x", None)
         assert isinstance(exc.value.__cause__, ImportError)

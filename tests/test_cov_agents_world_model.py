@@ -29,9 +29,9 @@ from vincio.evals.environment import (
     EnvToolResult,
     StateCheck,
     ToolEnvironment,
-    make_counter_environment,
-    make_retail_environment,
-    make_vault_environment,
+    build_counter_environment,
+    build_retail_environment,
+    build_vault_environment,
 )
 
 
@@ -103,7 +103,7 @@ def test_world_model_unfit_predicts_identity_and_is_untrusted():
     model = WorldModel()  # the transitions-is-None branch: no fitting performed
     assert model.vocabulary() == []
     assert model.trusted is False
-    obs = make_counter_environment().observe()
+    obs = build_counter_environment().observe()
     pred = model.predict(obs, act("increment"))
     # No effect learned → unseen signature → identity prediction, zero confidence.
     assert pred.known is False and pred.confidence == 0.0
@@ -256,11 +256,11 @@ def test_numeric_add_template_applies_old_plus_step():
     # An increment learns ("add", 1); predicting reads the live value and adds the
     # learned step (the _apply_value "add" branch), generalizing past unseen counts.
     trs = record_transitions(
-        make_counter_environment(target=3),
+        build_counter_environment(target=3),
         [[act("increment"), act("increment")]],
     )
     model = WorldModel(trs)
-    obs = make_counter_environment().observe()
+    obs = build_counter_environment().observe()
     obs.state["count"] = 41
     pred = model.predict(obs, act("increment"))
     assert pred.observation.state["count"] == 42
@@ -300,8 +300,8 @@ def test_value_template_falls_back_to_last_constant_when_unexplained():
 
 
 def test_imagine_stops_at_a_predicted_finish_action():
-    model = WorldModel(record_transitions(make_counter_environment(), [[act("increment")]]))
-    obs = make_counter_environment().observe()
+    model = WorldModel(record_transitions(build_counter_environment(), [[act("increment")]]))
+    obs = build_counter_environment().observe()
     steps = model.imagine(
         obs,
         [EnvAction(kind="finish", text="stop"), act("increment")],
@@ -320,11 +320,11 @@ def test_imagine_runs_a_full_plan_to_completion_without_a_done_step():
     # normally (no early break), one PredictedStep per action.
     # Consecutive increments teach the "add" template so predictions generalize.
     trs = record_transitions(
-        make_counter_environment(target=4),
+        build_counter_environment(target=4),
         [[act("increment"), act("increment"), act("increment")]],
     )
     model = WorldModel(trs)
-    obs = make_counter_environment().observe()
+    obs = build_counter_environment().observe()
     steps = model.imagine(obs, [act("increment"), act("increment"), act("increment")])
     assert len(steps) == 3
     assert [s.observation.state["count"] for s in steps] == [1, 2, 3]
@@ -336,10 +336,10 @@ def test_record_transitions_skips_message_actions_and_can_drop_failures():
     # step include_failures=False drops the transition entirely.
     explore = [[EnvAction(kind="message", text="hi"), act("refund_order", order_id="O1002")]]
     dropped = record_transitions(
-        make_retail_environment("cancel_refund"), explore, include_failures=False
+        build_retail_environment("cancel_refund"), explore, include_failures=False
     )
     assert dropped == []  # the refund on a processing order failed and was dropped
-    kept = record_transitions(make_retail_environment("cancel_refund"), explore)
+    kept = record_transitions(build_retail_environment("cancel_refund"), explore)
     assert len(kept) == 1 and kept[0].ok is False and kept[0].action.tool == "refund_order"
 
 
@@ -376,7 +376,7 @@ def test_planner_exhausts_its_step_budget_without_reaching_the_goal():
     # (count=1), the goal is still unmet, and the real-step loop runs to exhaustion
     # (no break) before verifying — an unsuccessful, budget-bounded result.
     trs = record_transitions(
-        make_counter_environment(target=3),
+        build_counter_environment(target=3),
         [[act("increment"), act("increment"), act("increment")]],
     )
     model = WorldModel(trs)
@@ -384,7 +384,7 @@ def test_planner_exhausts_its_step_budget_without_reaching_the_goal():
     planner = ModelPredictivePlanner(
         model, horizon=2, beam_width=4, max_real_steps=1
     )
-    result = planner.plan(make_counter_environment(target=3))
+    result = planner.plan(build_counter_environment(target=3))
     assert result.real_steps == 1
     assert result.success is False
     assert result.final_value < 1.0
@@ -401,7 +401,7 @@ def test_planner_breaks_immediately_when_goal_already_met():
         horizon=3,
         beam_width=4,
     )
-    result = planner.plan(make_retail_environment("cancel_refund"))
+    result = planner.plan(build_retail_environment("cancel_refund"))
     assert result.real_steps == 0 and result.steps == []
 
 
@@ -422,7 +422,7 @@ def _retail_model() -> WorldModel:
         [act("cancel_order", order_id="O1002")],
         [act("update_address", order_id="O1002", address="9 New Rd")],
     ]
-    trs = record_transitions(make_retail_environment("cancel_refund"), explore)
+    trs = record_transitions(build_retail_environment("cancel_refund"), explore)
     model = WorldModel(trs)
     model.calibrate(trs)
     return model
@@ -441,7 +441,7 @@ def test_planner_uses_a_callable_proposer():
 
     result = ModelPredictivePlanner(
         model, actions=proposer, horizon=3, beam_width=8
-    ).plan(make_retail_environment("cancel_refund"))
+    ).plan(build_retail_environment("cancel_refund"))
     assert result.success
     assert calls  # the callable repertoire was actually invoked during search
     assert [a.tool for a in result.committed] == ["cancel_order", "refund_order"]
@@ -451,7 +451,7 @@ def test_planner_falls_back_to_learned_vocabulary():
     # actions=None → the planner proposes from the model's learned vocabulary.
     model = _retail_model()
     planner = ModelPredictivePlanner(model, actions=None, horizon=3, beam_width=16)
-    result = planner.plan(make_retail_environment("cancel_refund"))
+    result = planner.plan(build_retail_environment("cancel_refund"))
     assert result.success
     assert {a.tool for a in result.committed} <= {
         "cancel_order",
@@ -472,7 +472,7 @@ def test_planner_uses_explicit_goal_value_over_task_checks():
 
     result = ModelPredictivePlanner(
         model, goal_value=goal, horizon=3, beam_width=16
-    ).plan(make_retail_environment("cancel_refund"))
+    ).plan(build_retail_environment("cancel_refund"))
     assert seen  # the custom value function was consulted
     # Reaching the custom goal commits the cancel→refund pair.
     assert "refund_order" in {a.tool for a in result.committed}
@@ -489,7 +489,7 @@ def test_planner_breaks_when_no_action_is_proposed():
     model = _retail_model()
     result = ModelPredictivePlanner(
         model, actions=[], horizon=3, beam_width=8
-    ).plan(make_retail_environment("cancel_refund"))
+    ).plan(build_retail_environment("cancel_refund"))
     assert result.real_steps == 0 and result.committed == []
     assert result.success is False
 
@@ -552,7 +552,7 @@ def test_search_returns_empty_when_already_at_goal_at_root():
         horizon=3,
         beam_width=4,
     )
-    result = planner.plan(make_retail_environment("cancel_refund"))
+    result = planner.plan(build_retail_environment("cancel_refund"))
     # Goal already met → no real steps committed.
     assert result.real_steps == 0 and result.committed == []
 
@@ -569,7 +569,7 @@ def test_search_empty_plan_via_zero_horizon_expansion():
         beam_width=1,
         require_calibrated=False,
     )
-    res = planner.plan(make_retail_environment("cancel_refund"))
+    res = planner.plan(build_retail_environment("cancel_refund"))
     assert res.committed == []
 
 
@@ -581,7 +581,7 @@ def test_search_empty_plan_via_zero_horizon_expansion():
 def test_calibrate_records_partial_accuracy_and_zero_weight_when_untrusted():
     model = _retail_model()
     # Held-out transitions from an unrelated world: the model mostly mispredicts.
-    held = record_transitions(make_vault_environment(), [[act("advance")]])
+    held = record_transitions(build_vault_environment(), [[act("advance")]])
     report = model.calibrate(held)
     assert report.trusted is False
     assert report.weight == 0.0
@@ -600,16 +600,16 @@ def test_calibrate_on_empty_transitions_is_untrusted_with_reason():
 def test_planner_refuses_an_uncalibrated_model_with_message():
     from vincio.core.errors import AgentEngineError
 
-    model = WorldModel(record_transitions(make_vault_environment(), [[act("advance")]]))
+    model = WorldModel(record_transitions(build_vault_environment(), [[act("advance")]]))
     assert model.trusted is False
     with pytest.raises(AgentEngineError, match="not calibrated for planning"):
-        ModelPredictivePlanner(model, horizon=2).plan(make_vault_environment())
+        ModelPredictivePlanner(model, horizon=2).plan(build_vault_environment())
 
 
 def test_planning_weight_reflects_calibration_weight():
     model = _retail_model()
     result = ModelPredictivePlanner(model, horizon=3, beam_width=16).plan(
-        make_retail_environment("cancel_refund")
+        build_retail_environment("cancel_refund")
     )
     assert result.calibrated is True
     assert result.planning_weight == model.calibration.weight > 0.0

@@ -252,6 +252,45 @@ def deprecated_alias(
     return wrapper
 
 
+_KwT = TypeVar("_KwT")
+
+
+def _resolve_renamed_kwarg(
+    new: _KwT | None,
+    old: _KwT | None,
+    *,
+    new_name: str,
+    old_name: str,
+    owner: str,
+    since: str,
+    removed_in: str,
+    error: type[Exception],
+    stacklevel: int = 3,
+) -> _KwT | None:
+    """Resolve a keyword parameter mid-rename during its deprecation runway.
+
+    ``new`` is the canonical keyword's value, ``old`` the deprecated alias's.
+    Passing both raises ``error`` (the owning module's VincioError subclass);
+    passing only the old name emits a :class:`VincioDeprecationWarning` naming
+    ``since``/``removed_in`` and forwards the value. ``stacklevel=3`` points the
+    warning at the caller of the public function that invoked this helper.
+    """
+    if old is None:
+        return new
+    if new is not None:
+        raise error(
+            f"{owner}() got both {new_name}= and its deprecated alias "
+            f"{old_name}=; pass only {new_name}="
+        )
+    warnings.warn(
+        f"{owner}(... {old_name}=) is deprecated since Vincio {since} and will be "
+        f"removed in {removed_in}; pass {new_name}= instead.",
+        VincioDeprecationWarning,
+        stacklevel=stacklevel,
+    )
+    return old
+
+
 def stability_of(obj: Any) -> dict[str, Any]:
     """Return the stability record for ``obj``.
 

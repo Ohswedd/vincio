@@ -14,6 +14,7 @@ from vincio.stability import (
     StabilityLevel,
     VincioDeprecationWarning,
     VincioExperimentalWarning,
+    _resolve_renamed_kwarg,
     deprecated,
     deprecated_alias,
     experimental,
@@ -23,7 +24,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.4.1"
+    assert vincio.__version__ == "7.5.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -74,8 +75,16 @@ def test_version_and_api_contract():
     # regression fixture (issue #140) proving `to_export()` never carries raw
     # prompt/evidence text while a changed render identity (`rendered_packet_hash`)
     # still surfaces as an explicit divergence — no public symbol added or changed.
+    # 7.5 is the consistency & structure line: canonical names (`build_*` factories,
+    # `verifier=`, `as_of=`, `digest()`, `content_hash`) added additively with the
+    # old spellings kept as the first *active* deprecation runway (warn since 7.5,
+    # removed no earlier than 8.0, `vincio migrate 8.0` shipping the codemod), one
+    # shared canonical-JSON implementation with zero byte changes, quadratic hot
+    # paths made linear byte-identically, and the ContextApp/compile()/
+    # combine_attestations decomposition as pure code motion — no existing symbol
+    # removed, nothing broken.
     # The surface grows by re-freezing it, never by breaking it, so the API contract
-    # generation stays "5.0" while the package advances to 7.4.1.
+    # generation stays "5.0" while the package advances to 7.5.0.
     assert API_VERSION == "5.0"
 
 
@@ -194,3 +203,71 @@ def test_deprecation_warning_can_be_escalated_to_error():
         warnings.simplefilter("error", VincioDeprecationWarning)
         with pytest.raises(VincioDeprecationWarning):
             doomed()
+
+
+# ---------------------------------------------------------------------------
+# _resolve_renamed_kwarg — the keyword-rename runway helper (7.5)
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_renamed_kwarg_new_only_is_silent():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", VincioDeprecationWarning)
+        resolved = _resolve_renamed_kwarg(
+            "value",
+            None,
+            new_name="verifier",
+            old_name="verify_with",
+            owner="fn",
+            since="7.5",
+            removed_in="8.0",
+            error=ValueError,
+        )
+    assert resolved == "value"
+
+
+def test_resolve_renamed_kwarg_old_only_warns_and_forwards():
+    with pytest.warns(VincioDeprecationWarning, match="since Vincio 7.5.*removed in 8.0"):
+        resolved = _resolve_renamed_kwarg(
+            None,
+            "legacy",
+            new_name="verifier",
+            old_name="verify_with",
+            owner="fn",
+            since="7.5",
+            removed_in="8.0",
+            error=ValueError,
+        )
+    assert resolved == "legacy"
+
+
+def test_resolve_renamed_kwarg_both_raises_the_given_error():
+    with pytest.raises(ValueError, match="both verifier= and its deprecated alias"):
+        _resolve_renamed_kwarg(
+            "new",
+            "old",
+            new_name="verifier",
+            old_name="verify_with",
+            owner="fn",
+            since="7.5",
+            removed_in="8.0",
+            error=ValueError,
+        )
+
+
+def test_resolve_renamed_kwarg_neither_returns_none():
+    with warnings.catch_warnings():
+        warnings.simplefilter("error", VincioDeprecationWarning)
+        assert (
+            _resolve_renamed_kwarg(
+                None,
+                None,
+                new_name="as_of",
+                old_name="at",
+                owner="fn",
+                since="7.5",
+                removed_in="8.0",
+                error=ValueError,
+            )
+            is None
+        )

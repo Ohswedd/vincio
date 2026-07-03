@@ -212,7 +212,7 @@ def test_forged_signature_is_refused_with_verifier():
     rec = _settled("acme", "vendor", 0.10).sign(HMACSigner("real", key_id="acme"), party="acme")
     # A different key cannot verify the signature → refuse to net.
     with pytest.raises(SettlementError):
-        net_settlements([rec], verify_with=HMACSigner("other", key_id="acme"))
+        net_settlements([rec], verifier=HMACSigner("other", key_id="acme"))
 
 
 # -- the netting set: content-bound & offline-verifiable ----------------------
@@ -379,3 +379,47 @@ def test_app_clear_empty_when_no_settlements():
     assert netting.settlements == 0
     assert netting.obligations == []
     assert netting.verify().valid  # vacuously conserved
+
+
+def test_clear_matches_min_scan_oracle_on_random_positions():
+    # The heap-with-lazy-invalidation clearing must reproduce the two-min-scan
+    # greedy byte-for-byte (the obligation sequence is content-bound).
+    import random
+
+    from vincio.settlement.netting import _TOLERANCE, _clear, _r
+
+    def oracle(positions):
+        debt = {p.party: -p.net_usd for p in positions if p.net_usd < -_TOLERANCE}
+        credit = {p.party: p.net_usd for p in positions if p.net_usd > _TOLERANCE}
+        obligations = []
+        while debt and credit:
+            d_party = min(debt, key=lambda p: (-debt[p], p))
+            c_party = min(credit, key=lambda p: (-credit[p], p))
+            transfer = _r(min(debt[d_party], credit[c_party]))
+            if transfer <= _TOLERANCE:
+                break
+            obligations.append((d_party, c_party, transfer))
+            debt[d_party] = _r(debt[d_party] - transfer)
+            credit[c_party] = _r(credit[c_party] - transfer)
+            if debt[d_party] <= _TOLERANCE:
+                del debt[d_party]
+            if credit[c_party] <= _TOLERANCE:
+                del credit[c_party]
+        return sorted(obligations)
+
+    rng = random.Random(20260703)
+    for _trial in range(300):
+        n = rng.randint(0, 14)
+        positions = []
+        for i in range(n):
+            a = _r(
+                rng.choice([-1, 1])
+                * rng.choice([0.0, 0.01, 0.05, 0.05, round(rng.uniform(0, 2), 2),
+                              rng.uniform(0, 2)])
+            )
+            positions.append(
+                NetPosition(party=f"org{i}", owed_usd=max(0.0, -a),
+                            due_usd=max(0.0, a), net_usd=a)
+            )
+        got = [(o.debtor, o.creditor, o.amount_usd) for o in _clear(positions)]
+        assert got == oracle(positions)

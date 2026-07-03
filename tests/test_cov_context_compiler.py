@@ -762,6 +762,76 @@ class TestFootprint:
         )
         assert any(e.id == "e0" for e in compiled.ir.evidence)
 
+    def test_eviction_matches_full_reestimate_oracle(self):
+        # The incremental eviction must make the SAME decisions as the
+        # pre-optimization loop that re-estimated the survivor list from
+        # scratch every round (kept here as the reference oracle).
+        import random
+
+        from vincio.context.footprint import estimate_resident_bytes
+        from vincio.context.scoring import ContextCandidate, ContextScores
+
+        def oracle(evidence, memory_texts, slim, ceiling):
+            excluded = []
+
+            def estimate(items, slim_flag):
+                return estimate_resident_bytes(
+                    [c.content for c in items], memory_texts, slim=slim_flag
+                )
+
+            if estimate(evidence, slim) <= ceiling:
+                return slim, [c.id for c in evidence], excluded
+            slim = True
+            if estimate(evidence, slim) <= ceiling:
+                return slim, [c.id for c in evidence], excluded
+            kept = list(evidence)
+            order = sorted(range(len(kept)), key=lambda i: kept[i].scores.total)
+            evict = set()
+            for index in order:
+                if estimate(
+                    [kept[i] for i in range(len(kept)) if i not in evict], slim
+                ) <= ceiling:
+                    break
+                evict.add(index)
+                victim = kept[index]
+                excluded.append(
+                    {"id": victim.id, "reason": "memory_budget_exceeded",
+                     "token_cost": victim.token_cost}
+                )
+            survivors = [kept[i].id for i in range(len(kept)) if i not in evict]
+            return slim, survivors, excluded
+
+        rng = random.Random(20260703)
+        for trial in range(200):
+            n = rng.randint(0, 12)
+            evidence = [
+                ContextCandidate(
+                    id=f"c{trial}-{i}", type="evidence",
+                    content="é" * rng.randint(0, 200) + "x" * rng.randint(0, 200),
+                    token_cost=rng.randint(0, 50),
+                    scores=ContextScores(total=rng.choice([0.0, 0.25, 0.5, rng.random()])),
+                )
+                for i in range(n)
+            ]
+            memory = [
+                ContextCandidate(id=f"m{trial}-{i}", type="memory",
+                                 content="y" * rng.randint(0, 100))
+                for i in range(rng.randint(0, 3))
+            ]
+            ceiling = rng.randint(1, 8000)
+            slim0 = rng.choice([True, False])
+            compiler = ContextCompiler(ContextCompilerOptions(max_resident_bytes=ceiling))
+            excluded_new: list = []
+            slim_new, survivors = compiler._enforce_footprint(
+                list(evidence), memory, slim0, excluded_new
+            )
+            slim_ref, survivor_ids, excluded_ref = oracle(
+                evidence, [c.content for c in memory], slim0, ceiling
+            )
+            assert slim_new == slim_ref
+            assert [c.id for c in survivors] == survivor_ids
+            assert excluded_new == excluded_ref
+
 
 # ---------------------------------------------------------------------------
 # Output contract / schema tokens + examples

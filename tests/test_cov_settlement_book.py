@@ -735,7 +735,7 @@ def test_check_root_consistency_surfaces_equivocation_and_dings():
     b = book.attest_liabilities("vendor", {"globex": 40.0}, attestor="attestor", as_of=as_of, sign=False)
     b.sign(attestor, party="attestor")
     before = rep_app.reputation_ledger.reputation("vendor")
-    report = book.check_root_consistency([("acme", a), ("globex", b)], verify_with=attestor)
+    report = book.check_root_consistency([("acme", a), ("globex", b)], verifier=attestor)
     assert not report.consistent
     assert report.equivocating_posters == ["vendor"]
     assert rep_app.reputation_ledger.reputation("vendor") < before  # poster dinged once
@@ -871,7 +871,7 @@ def test_check_root_consistency_without_audit_or_reputation():
         "vendor", {"globex": 40.0}, attestor="attestor", as_of=as_of, sign=False
     )
     b.sign(attestor, party="attestor")
-    report = book.check_root_consistency([("acme", a), ("globex", b)], verify_with=attestor)
+    report = book.check_root_consistency([("acme", a), ("globex", b)], verifier=attestor)
     assert report.equivocating_posters == ["vendor"]
 
 

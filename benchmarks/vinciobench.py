@@ -268,10 +268,10 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
         EnvironmentSimulator,
         GAIAAdapter,
         TauBenchAdapter,
+        build_agent_solver,
+        build_env_solver,
+        build_retail_environment,
         load_benchmark,
-        make_agent_solver,
-        make_env_solver,
-        make_retail_environment,
         scripted_policy,
     )
 
@@ -279,18 +279,18 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
         return scripted_policy([EnvAction(tool=t, arguments={"order_id": o}) for t, o in actions])
 
     correct = EnvironmentSimulator().run(
-        make_retail_environment("cancel_refund"),
+        build_retail_environment("cancel_refund"),
         _refund_policy(("cancel_order", "O1002"), ("refund_order", "O1002")),
     )
     violation = EnvironmentSimulator().run(
-        make_retail_environment("cancel_refund"), _refund_policy(("refund_order", "O1002"))
+        build_retail_environment("cancel_refund"), _refund_policy(("refund_order", "O1002"))
     )
     det_a = EnvironmentSimulator().run(
-        make_retail_environment("cancel_refund"),
+        build_retail_environment("cancel_refund"),
         _refund_policy(("cancel_order", "O1002"), ("refund_order", "O1002")),
     )
     det_b = EnvironmentSimulator().run(
-        make_retail_environment("cancel_refund"),
+        build_retail_environment("cancel_refund"),
         _refund_policy(("cancel_order", "O1002"), ("refund_order", "O1002")),
     )
 
@@ -319,7 +319,7 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
     # Live-run path: the identical scorer grades FRESH output, not a recording.
     gaia_live = await GAIAAdapter(
         [{"id": "g", "prompt": "capital of France", "gold": "Paris"}]
-    ).run(make_agent_solver(lambda _prompt: "Paris"))
+    ).run(build_agent_solver(lambda _prompt: "Paris"))
     tau_live = await TauBenchAdapter(
         [
             {
@@ -329,7 +329,7 @@ async def _agentic_evals_environment_2_2() -> dict[str, Any]:
             }
         ]
     ).run(
-        make_env_solver(
+        build_env_solver(
             scripted_policy(
                 [
                     EnvAction(tool="cancel_order", arguments={"order_id": "O1002"}),
@@ -6043,7 +6043,7 @@ async def bench_learning() -> dict[str, Any]:
     from vincio.evals.environment import (
         EnvAction,
         EnvironmentSimulator,
-        make_retail_environment,
+        build_retail_environment,
         scripted_policy,
     )
     from vincio.evals.judges import Judge
@@ -6064,7 +6064,7 @@ async def bench_learning() -> dict[str, Any]:
     from vincio.optimize.distill import BootstrapFinetune
 
     def run(actions: list[dict]) -> Any:
-        env = make_retail_environment("cancel_refund")
+        env = build_retail_environment("cancel_refund")
         policy = scripted_policy([EnvAction(**a) for a in actions])
         return EnvironmentSimulator().run(env, policy)
 
@@ -6123,7 +6123,7 @@ async def bench_learning() -> dict[str, Any]:
     # 4. Shapley step-level credit: the enabling step earns the larger share and
     #    the credits reconstruct the attributable value (efficiency).
     advantage = TrajectoryAdvantage(
-        environment_step_value(lambda: make_retail_environment("cancel_refund"))
+        environment_step_value(lambda: build_retail_environment("cancel_refund"))
     )
     credits = advantage.credit(correct.trajectory)
     by_name = {c.name: c.credit for c in credits}
@@ -6394,8 +6394,8 @@ async def bench_world_model() -> dict[str, Any]:
     from vincio.core.errors import AgentEngineError
     from vincio.evals.environment import (
         EnvAction,
-        make_retail_environment,
-        make_vault_environment,
+        build_retail_environment,
+        build_vault_environment,
     )
 
     def act(tool: str, **kwargs: Any) -> EnvAction:
@@ -6410,11 +6410,11 @@ async def bench_world_model() -> dict[str, Any]:
         [act("update_address", order_id="O1002", address="9 New Rd")],
         [act("get_order", order_id="O1002")],
     ]
-    rtrans = record_transitions(make_retail_environment("cancel_refund"), retail_explore)
+    rtrans = record_transitions(build_retail_environment("cancel_refund"), retail_explore)
     rmodel = WorldModel(rtrans)
     rcal = rmodel.calibrate(rtrans)
 
-    base = make_retail_environment("cancel_refund").observe()
+    base = build_retail_environment("cancel_refund").observe()
     fail = rmodel.predict(base, act("refund_order", order_id="O1002"))
     after_cancel = rmodel.predict(base, act("cancel_order", order_id="O1002")).observation
     succeed = rmodel.predict(after_cancel, act("refund_order", order_id="O1002"))
@@ -6436,23 +6436,23 @@ async def bench_world_model() -> dict[str, Any]:
         [act("advance"), act("advance"), act("advance")],
         [act("shortcut"), act("advance")],
     ]
-    vtrans = record_transitions(make_vault_environment(), vault_explore)
+    vtrans = record_transitions(build_vault_environment(), vault_explore)
     vmodel = WorldModel(vtrans)
     vmodel.calibrate(vtrans)
 
     budget = 6
     reactive = await ModelPredictivePlanner(
         vmodel, horizon=1, beam_width=64, max_real_steps=budget
-    ).aplan(make_vault_environment())
+    ).aplan(build_vault_environment())
     planned = await ModelPredictivePlanner(
         vmodel, horizon=5, beam_width=64, max_real_steps=budget
-    ).aplan(make_vault_environment())
+    ).aplan(build_vault_environment())
     planning_success = 1.0 if planned.success else 0.0
     reactive_success = 1.0 if reactive.success else 0.0
 
     # 3. Calibration gate: an uncalibrated model is refused for planning.
     try:
-        await ModelPredictivePlanner(WorldModel(vtrans), horizon=5).aplan(make_vault_environment())
+        await ModelPredictivePlanner(WorldModel(vtrans), horizon=5).aplan(build_vault_environment())
         gate_enforced = False
     except AgentEngineError:
         gate_enforced = True
@@ -6460,7 +6460,7 @@ async def bench_world_model() -> dict[str, Any]:
     # 4. End-to-end correctness: plan the retail cancel→refund task.
     retail_plan = await ModelPredictivePlanner(
         rmodel, horizon=3, beam_width=16, max_real_steps=6
-    ).aplan(make_retail_environment("cancel_refund"))
+    ).aplan(build_retail_environment("cancel_refund"))
 
     return {
         "model_state_accuracy": rcal.state_accuracy,
@@ -7650,7 +7650,7 @@ async def bench_verification() -> dict[str, Any]:
 
     # 4. Deterministic & reproducible: two passes agree, and the digest re-derives.
     again = app.verify_governance(record=False)
-    deterministic = bool(again.content_sha256 == report.content_sha256 and report.verify())
+    deterministic = bool(again.content_hash == report.content_hash and report.verify())
 
     # 5. Auditable & offline: the verdict is on the verifiable chain; a non-holding
     #    pass (a fail-open residency app) is recorded as a deny and flagged.
@@ -7659,7 +7659,7 @@ async def bench_verification() -> dict[str, Any]:
     estimate_on_chain = bool(
         "governance_verification" in audit_actions
         and entry.decision == "allow"
-        and entry.details.get("content_sha256") == report.content_sha256
+        and entry.details.get("content_sha256") == report.content_hash
     )
     chain_verifies = bool(app.audit.verify_chain())
 
@@ -9081,7 +9081,7 @@ async def bench_arbitration() -> dict[str, Any]:
     c6 = contract()
     forged = claim(c6, cost=0.08, signer=seller, party="vendor")
     forged.signatures[0].signature = "deadbeef"
-    forged_res = arbitrate([*agreed(c6, cost=0.08), forged], verify_with=seller)
+    forged_res = arbitrate([*agreed(c6, cost=0.08), forged], verifier=seller)
     arbitration_forged_refused = bool(
         any("forged" in (cl.reason or "") for cl in forged_res.inadmissible_claims)
     )
@@ -9325,7 +9325,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     good_att = attest_reputation(records("vendor", settled=2), "vendor", issuer="acme").sign(acme)
     forged = attest_reputation(records("vendor", settled=2), "vendor", issuer="globex").sign(globex)
     forged.signatures[0].signature = "deadbeef"
-    forged_prior = combine_attestations([good_att, forged], verify_with=acme)
+    forged_prior = combine_attestations([good_att, forged], verifier=acme)
     portability_forged_refused = bool(
         any("forged" in (v.reason or "") for v in forged_prior.refused)
         and forged_prior.standing("vendor").attestations == 1
@@ -9396,7 +9396,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     forged_rev = revoke_attestation(revoked_att).sign(acme)
     forged_rev.signatures[0].signature = "deadbeef"
     forged_rev_prior = combine_attestations(
-        [revoked_att], revocations=[forged_rev], verify_with=acme
+        [revoked_att], revocations=[forged_rev], verifier=acme
     )
     portability_forged_revocation_ignored = bool(
         revocation.verify(acme).valid
@@ -9462,7 +9462,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     forged_gather = await importer.agather_reputation(
         "vendor",
         peers={"acme-peer": forged_peer},
-        verify_with=peer_acme.contract_signer,
+        verifier=peer_acme.contract_signer,
         weight=False,
     )
     exchange_verifies_fetched = bool(forged_gather.attestations_gathered == 0)
@@ -10182,7 +10182,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     eq_a = eq_app.attest_liabilities("vendor", {"acme": 60.0}, as_of=eq_t)
     eq_b = eq_app.attest_liabilities("vendor", {"globex": 40.0}, as_of=eq_t)
     eq_report = eq_app.check_root_consistency(
-        [("acme", eq_a), ("globex", eq_b)], verify_with=eq_app.contract_signer
+        [("acme", eq_a), ("globex", eq_b)], verifier=eq_app.contract_signer
     )
     eq_forged = attest_liabilities("vendor", {"zeta": 5.0}, attestor="auditor", as_of=eq_t)
     eq_forged.sign(HMACSigner("forger-key", key_id="auditor"), party="auditor")
@@ -10260,7 +10260,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     h_app.use_reputation_ledger()
     h_a1 = h_app.attest_liabilities("vendor", {"acme": 100.0}, as_of=h_t1)
     h_a2 = h_app.attest_liabilities("vendor", {"acme": 30.0}, as_of=h_t2, prior=h_a1)
-    h_app_report = h_app.check_history_consistency([h_a1, h_a2], verify_with=h_app.contract_signer)
+    h_app_report = h_app.check_history_consistency([h_a1, h_a2], verifier=h_app.contract_signer)
     # The creditor signs its discharge with the shared fabric secret (party = its identity), so the
     # one verifier checks the attestor's and the creditor's signatures alike; a forged release is
     # signed with the wrong key.
@@ -10341,7 +10341,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     w_app_owed = w_app.attest_liabilities("vendor", {"bank": 50.0, "acme": 50.0})
     w_app_sched = w_app.build_seniority_schedule("vendor", [["bank"], ["acme"]])
     w_app_res = w_app.resolve_insolvency(
-        w_app_reserves, w_app_owed, w_app_sched, verify_with=w_app.contract_signer
+        w_app_reserves, w_app_owed, w_app_sched, verifier=w_app.contract_signer
     )
     w_inflated = resolve_insolvency(w_reserves, w_owed, w_schedule)
     w_inflated.recoveries[0].recovery_usd += 100.0  # over-state a recovery
@@ -10857,7 +10857,7 @@ async def bench_computer_use() -> dict[str, Any]:
     budget) and **safety** (no destructive action ever executes without approval —
     the gate makes it structurally impossible, not merely discouraged). Deterministic
     and offline."""
-    from vincio import ActionPolicy, ContextApp, UIAction, VincioConfig, make_web_checkout
+    from vincio import ActionPolicy, ContextApp, UIAction, VincioConfig, build_web_checkout
     from vincio.evals.environment import StateCheck
     from vincio.providers import MockProvider
     from vincio.providers.base import run_sync
@@ -10866,7 +10866,7 @@ async def bench_computer_use() -> dict[str, Any]:
     cfg.observability.exporter = "memory"
     app = ContextApp(name="operator", provider=MockProvider(default_text="ok"), config=cfg)
 
-    spec, task = make_web_checkout()
+    spec, task = build_web_checkout()
     address = "role=textbox[name='Address']"
 
     # Success at budget: drive the app to the verified goal, approving only the
@@ -10907,7 +10907,7 @@ async def bench_computer_use() -> dict[str, Any]:
     # Safety: a reckless policy that attempts the destructive 'Delete account' without
     # approval is gated — never performed — so the run is provably safe.
     reckless_app = ContextApp(name="operator", provider=MockProvider(default_text="ok"), config=cfg)
-    rspec, rtask = make_web_checkout()
+    rspec, rtask = build_web_checkout()
     renv = reckless_app.computer_use(
         screen=rspec, policy=ActionPolicy(allow_urls=["https://shop.test"])
     )
@@ -10928,7 +10928,7 @@ async def bench_computer_use() -> dict[str, Any]:
     # Post-verify + auto-undo: a divergent action's effect is rolled back to the prior
     # state, the computer-use analogue of saga compensation.
     undo_app = ContextApp(name="operator", provider=MockProvider(default_text="ok"), config=cfg)
-    uenv = undo_app.computer_use(screen=make_web_checkout()[0])
+    uenv = undo_app.computer_use(screen=build_web_checkout()[0])
 
     async def _diverge_and_undo() -> tuple[bool, bool]:
         before = (await uenv.observe()).digest
@@ -10948,7 +10948,7 @@ async def bench_computer_use() -> dict[str, Any]:
     # Out-of-scope navigation gated (run directly, no dead branches).
     async def _offscope() -> bool:
         senv = app.computer_use(
-            screen=make_web_checkout()[0], policy=ActionPolicy(allow_urls=["https://shop.test"])
+            screen=build_web_checkout()[0], policy=ActionPolicy(allow_urls=["https://shop.test"])
         )
         o = await senv.act(UIAction(kind="navigate", url="https://evil.test/x"))
         return bool(o.gated and not o.performed)
@@ -11379,7 +11379,11 @@ async def bench_skill_acquisition() -> dict[str, Any]:
         SkillStep,
         VincioConfig,
     )
-    from vincio.evals.environment import EnvAction, make_counter_environment, make_vault_environment
+    from vincio.evals.environment import (
+        EnvAction,
+        build_counter_environment,
+        build_vault_environment,
+    )
     from vincio.providers import MockProvider
 
     def counter(
@@ -11388,14 +11392,14 @@ async def bench_skill_acquisition() -> dict[str, Any]:
         return CurriculumTask(
             id=id or f"counter-{target}",
             objective=objective or f"increment counter to {target}",
-            environment=lambda: make_counter_environment(target=target),
+            environment=lambda: build_counter_environment(target=target),
         )
 
     def vault() -> CurriculumTask:
         return CurriculumTask(
             id="vault",
             objective="open the vault by advancing",
-            environment=lambda: make_vault_environment(steps_to_open=3),
+            environment=lambda: build_vault_environment(steps_to_open=3),
         )
 
     cfg = VincioConfig()
@@ -11419,7 +11423,7 @@ async def bench_skill_acquisition() -> dict[str, Any]:
     unsafe = CurriculumTask(
         id="unsafe",
         objective="exfiltrate the key sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-        environment=lambda: make_counter_environment(target=2),
+        environment=lambda: build_counter_environment(target=2),
     )
     res2 = app.cultivate(AutoCurriculum([counter(2, id="ok"), unsafe]), cycles=1)
     rails_refused = [
@@ -12672,7 +12676,7 @@ async def bench_ds4_provider() -> dict[str, Any]:
             self._lines = lines
             self.status_code = 200
 
-        async def __aenter__(self) -> "_StreamCtx":
+        async def __aenter__(self) -> _StreamCtx:
             return self
 
         async def __aexit__(self, *exc: object) -> bool:
@@ -12842,7 +12846,7 @@ async def bench_ds4_provider() -> dict[str, Any]:
     render_a = _json.dumps(chat_provider._render_messages([*shared, Message(role="user", content="Where is Bordeaux?")]))
     render_b = _json.dumps(chat_provider._render_messages([*shared, Message(role="user", content="Where is Lyon?")]))
     common = 0
-    for ca, cb in zip(render_a, render_b):
+    for ca, cb in zip(render_a, render_b, strict=False):
         if ca != cb:
             break
         common += 1

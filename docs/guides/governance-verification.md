@@ -53,7 +53,7 @@ app = ContextApp(name="app", provider=MockProvider())
 
 report = app.verify_governance()
 assert report.held                       # all four invariants proven
-print(report.content_sha256)             # reproducible, content-hashed verdict
+print(report.content_hash)               # reproducible, content-hashed verdict
 
 for result in report.results:
     print(result.category, result.held, result.states_checked, "/", result.domain_size)
@@ -70,7 +70,7 @@ The verdict lands on the audit chain as a `governance_verification` decision
 ```python
 entry = next(e for e in app.audit.entries if e.action == "governance_verification")
 assert entry.decision == "allow"
-assert entry.details["content_sha256"] == report.content_sha256
+assert entry.details["content_sha256"] == report.content_hash
 assert app.audit.verify_chain()
 ```
 
@@ -124,7 +124,7 @@ except GovernanceVerificationError as exc:
 
 ## Reproducible and tamper-evident
 
-`VerificationReport.content_sha256` binds the verdict to the per-invariant results
+`VerificationReport.content_hash` binds the verdict to the per-invariant results
 (and any counterexamples) and excludes the timestamp, so two passes over the same
 invariants produce the same digest. `report.verify()` recomputes it; editing a
 recorded verdict breaks the binding:

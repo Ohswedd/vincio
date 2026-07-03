@@ -66,7 +66,7 @@ for attempt in ["DROP TABLE sales", "UPDATE sales SET revenue = 0",
         ...  # refused structurally, before execution
 ```
 
-The same guarantee is available as a `ToolContract`: `make_query_contract()`
+The same guarantee is available as a `ToolContract`: `build_query_contract()`
 refuses a non-read-only query as a pre-condition and bounds the row count as a
 post-condition, so a `query_data` tool **structurally** refuses a write when it
 rides the permissioned, approval-gated, audited tool runtime.

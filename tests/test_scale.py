@@ -915,10 +915,10 @@ class TestShardedIndex:
 class TestCLI:
     def test_cost_report_command(self, tmp_path, capsys):
         from vincio.cli.main import main
-        from vincio.storage.base import create_metadata_store
+        from vincio.storage.base import build_metadata_store
 
         db = tmp_path / "vincio.db"
-        store = create_metadata_store(f"sqlite:///{db}")
+        store = build_metadata_store(f"sqlite:///{db}")
         ledger = CostLedger(store=store)
         ledger.record_model_call(
             model="m", usage=TokenUsage(input_tokens=10), cost_usd=1.5, tenant_id="acme"

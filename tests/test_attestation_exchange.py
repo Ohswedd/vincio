@@ -231,7 +231,7 @@ async def test_a_forged_artifact_from_a_peer_is_refused() -> None:
     server = acme.serve_attestations(attestations=[forged])
     buyer = _buyer()
     result = await buyer.agather_reputation(
-        "vendor", peers={"acme": server}, verify_with=acme.contract_signer, weight=False
+        "vendor", peers={"acme": server}, verifier=acme.contract_signer, weight=False
     )
     assert result.attestations_gathered == 0
     assert result.standing("vendor") is None

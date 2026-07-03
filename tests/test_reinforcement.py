@@ -19,7 +19,7 @@ from vincio.evals.ensemble import JudgeEnsemble
 from vincio.evals.environment import (
     EnvAction,
     EnvironmentSimulator,
-    make_retail_environment,
+    build_retail_environment,
     scripted_policy,
 )
 from vincio.evals.judges import Judge
@@ -49,7 +49,7 @@ from vincio.optimize.distill import BootstrapFinetune, DistillationResult
 
 
 def _run(actions: list[dict]):
-    env = make_retail_environment("cancel_refund")
+    env = build_retail_environment("cancel_refund")
     policy = scripted_policy([EnvAction(**a) for a in actions])
     return EnvironmentSimulator().run(env, policy)
 
@@ -209,7 +209,7 @@ def test_softmax_policy_copy_is_independent():
 def test_trajectory_advantage_credits_the_enabling_step():
     good = _run(CORRECT)
     advantage = TrajectoryAdvantage(
-        environment_step_value(lambda: make_retail_environment("cancel_refund"))
+        environment_step_value(lambda: build_retail_environment("cancel_refund"))
     )
     credits = advantage.credit(good.trajectory)
     by_name = {c.name: c.credit for c in credits}
@@ -221,7 +221,7 @@ def test_trajectory_advantage_credits_the_enabling_step():
 def test_trajectory_advantage_guards_against_too_many_players():
     good = _run(CORRECT)
     advantage = TrajectoryAdvantage(
-        environment_step_value(lambda: make_retail_environment("cancel_refund")),
+        environment_step_value(lambda: build_retail_environment("cancel_refund")),
         max_players=1,
     )
     with pytest.raises(ValueError, match="exceeds max_players"):

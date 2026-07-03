@@ -326,7 +326,7 @@ rollouts before acting so a wrong move costs a simulated step, not a live one.
   beam, commits the best first action to the real environment, observes, and
   re-plans, returning an `MPCResult`. By default it refuses an uncalibrated model.
   At a fixed action budget it matches or beats reactive (one-step) planning: on the
-  `make_vault_environment` trap world it opens the vault a reactive planner is
+  `build_vault_environment` trap world it opens the vault a reactive planner is
   trapped short of. See
   [`examples/11_advanced_context.py`](../../examples/11_advanced_context.py).
 

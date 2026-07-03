@@ -353,7 +353,16 @@ def _apply_env_overrides(data: dict[str, Any]) -> dict[str, Any]:
 def load_config(
     path: str | Path | None = None, *, overrides: dict[str, Any] | None = None
 ) -> VincioConfig:
-    """Load configuration from a file (or discover it), env vars, and overrides."""
+    """Load configuration from a file (or discover it), env vars, and overrides.
+
+    An explicit ``path`` must exist (:class:`ConfigError` otherwise); with no
+    ``path``, the config file is discovered via :func:`find_config_file` and a
+    missing file is fine — loading proceeds from an empty mapping. The on-disk
+    shape is auto-migrated to the current schema in memory (persist with
+    ``vincio config migrate``). Precedence, lowest to highest: file values,
+    then ``VINCIO_*`` environment variables, then ``overrides`` (deep-merged,
+    so a nested dict override replaces only the keys it names).
+    """
     data: dict[str, Any] = {}
     config_path = Path(path) if path else find_config_file()
     if path and not Path(path).is_file():

@@ -1,5 +1,7 @@
 """Vincio input engine: normalization, classification, routing."""
 
+from __future__ import annotations
+
 from .classifiers import (
     AmbiguityReport,
     TaskClassification,

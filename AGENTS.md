@@ -102,8 +102,8 @@ vincio/_docmap.py     the connected-docs doc graph: binds every public app.* ver
 The examples are a three-tier on-ramp, all runnable fully offline on the mock:
 
 ```
-examples/00–15            complete, heavily-commented feature tours, one per subsystem
-                          (00 one-liners, 01 quickstart, … 15 connected docs); run under
+examples/00–18            complete, heavily-commented feature tours, one per subsystem
+                          (00 one-liners, 01 quickstart, … 18 ds4_local_inference); run under
                           tests/test_examples.py, which globs examples/[0-9]*.py.
 examples/_shared.py       example_provider() (mock offline / real via VINCIO_PROVIDER), responders, sample docs.
 examples/notebooks/*.ipynb  Google Colab-ready notebooks (pip install + offline run); code cells are

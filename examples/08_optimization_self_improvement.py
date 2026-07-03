@@ -40,9 +40,9 @@ from vincio.evals.datasets import Dataset, EvalCase
 from vincio.evals.environment import (
     EnvAction,
     EnvironmentSimulator,
-    make_counter_environment,
-    make_retail_environment,
-    make_vault_environment,
+    build_counter_environment,
+    build_retail_environment,
+    build_vault_environment,
     scripted_policy,
 )
 from vincio.observability.sessions import record_feedback
@@ -249,7 +249,7 @@ async def section_distillation() -> None:
 # ---------------------------------------------------------------------------
 def _run_env(actions: list[dict]):
     """Drive the deterministic retail environment through a fixed action list."""
-    env = make_retail_environment("cancel_refund")
+    env = build_retail_environment("cancel_refund")
     policy = scripted_policy([EnvAction(**a) for a in actions])
     return EnvironmentSimulator().run(env, policy)
 
@@ -546,11 +546,11 @@ def section_skill_acquisition() -> None:
     # rails + the governance verifier BEFORE it is attempted, never blindly run.
     tasks = [
         CurriculumTask(id="c2", objective="increment counter to two",
-                       environment=lambda: make_counter_environment(target=2)),
+                       environment=lambda: build_counter_environment(target=2)),
         CurriculumTask(id="c4", objective="increment counter to four",
-                       environment=lambda: make_counter_environment(target=4)),
+                       environment=lambda: build_counter_environment(target=4)),
         CurriculumTask(id="vault", objective="open the vault by advancing",
-                       environment=lambda: make_vault_environment(steps_to_open=3)),
+                       environment=lambda: build_vault_environment(steps_to_open=3)),
     ]
 
     # cultivate = propose -> attempt (library-composing search) -> verify (oracle) ->

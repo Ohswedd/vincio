@@ -92,7 +92,7 @@ def test_default_invariants_are_the_four():
 def test_report_digest_is_deterministic():
     a = GovernanceVerifier().verify(record=False)
     b = GovernanceVerifier().verify(record=False)
-    assert a.content_sha256 == b.content_sha256
+    assert a.content_hash == b.content_hash
     assert a.verify() and b.verify()
 
 
@@ -243,7 +243,7 @@ def test_app_verify_governance_holds_and_audits(config):
     entry = next(e for e in app.audit.entries if e.action == "governance_verification")
     assert entry.decision == "allow"
     assert entry.details["held"] is True
-    assert entry.details["content_sha256"] == report.content_sha256
+    assert entry.details["content_sha256"] == report.content_hash
     assert app.audit.verify_chain()
 
 
@@ -251,7 +251,7 @@ def test_app_verify_governance_is_deterministic(config):
     app = make_app(config)
     a = app.verify_governance(record=False)
     b = app.verify_governance(record=False)
-    assert a.content_sha256 == b.content_sha256
+    assert a.content_hash == b.content_hash
 
 
 def test_app_verify_governance_reflects_fail_open_posture(config):

@@ -19,9 +19,9 @@ from vincio.evals import (
     GAIAAdapter,
     TauBenchAdapter,
     bfcl_tasks_from_export,
+    build_agent_solver,
+    build_env_solver,
     gaia_tasks_from_export,
-    make_agent_solver,
-    make_env_solver,
     scripted_policy,
     swebench_tasks_from_export,
     tasks_from_jsonl,
@@ -42,7 +42,7 @@ async def test_gaia_live_run_with_a_real_agent():
     assert tasks[0].gold == "Paris" and tasks[0].recorded is None  # no recorded output → live only
 
     executor = AgentExecutor(MockProvider(default_text="Paris"), model="mock-1", planner=Planner(mode="static"))
-    report = await GAIAAdapter(tasks).run(make_agent_solver(executor, mode="text"))
+    report = await GAIAAdapter(tasks).run(build_agent_solver(executor, mode="text"))
     assert report.replayed is False                 # fresh solve, not replay
     assert report.success_rate == 1.0               # scored by the identical GAIA scorer
 
@@ -114,7 +114,7 @@ async def test_bfcl_live_run_extracts_agent_tool_calls():
         provider, model="mock-1", planner=Planner(mode="react"),
         tool_runtime=ToolRuntime(registry, cache_enabled=False), tool_specs=registry.specs(),
     )
-    report = await BFCLAdapter(tasks).run(make_agent_solver(executor, mode="calls"))
+    report = await BFCLAdapter(tasks).run(build_agent_solver(executor, mode="calls"))
     assert report.replayed is False
     assert report.success_rate == 1.0
 
@@ -130,7 +130,7 @@ async def test_tau_bench_live_run_via_env_policy():
         EnvAction(tool="cancel_order", arguments={"order_id": "O1002"}),
         EnvAction(tool="refund_order", arguments={"order_id": "O1002"}),
     ])
-    report = await TauBenchAdapter(tasks).run(make_env_solver(policy))
+    report = await TauBenchAdapter(tasks).run(build_env_solver(policy))
     assert report.replayed is False
     assert report.success_rate == 1.0
 
@@ -139,7 +139,7 @@ async def test_tau_bench_live_run_via_env_policy():
 async def test_callable_solver_path():
     # A plain callable solver is the simplest live path.
     tasks = gaia_tasks_from_export([{"task_id": "g", "Question": "2+2?", "Final answer": "4"}])
-    report = await GAIAAdapter(tasks).run(make_agent_solver(lambda prompt: "4"))
+    report = await GAIAAdapter(tasks).run(build_agent_solver(lambda prompt: "4"))
     assert report.success_rate == 1.0
 
 

@@ -53,6 +53,7 @@ from .finetune import (
     FineTuneStatus,
     GoogleFineTuneBackend,
     OpenAIFineTuneBackend,
+    build_finetune_backend,
     make_finetune_backend,
     run_finetune,
 )
@@ -110,6 +111,7 @@ __all__ = [
     "OpenAIFineTuneBackend",
     "GoogleFineTuneBackend",
     "AnthropicFineTuneBackend",
+    "build_finetune_backend",
     "make_finetune_backend",
     "run_finetune",
     "CoalescingProvider",

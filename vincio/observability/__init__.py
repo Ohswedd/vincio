@@ -1,5 +1,7 @@
 """Vincio observability: traces, spans, sessions, exporters, costs, viewer."""
 
+from __future__ import annotations
+
 from .costs import CostTracker, ModelPrice, PriceTable, default_price_table
 from .energy import (
     DEFAULT_CARBON_INTENSITY,

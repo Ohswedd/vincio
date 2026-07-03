@@ -22,6 +22,8 @@ Three planes of deterministic, offline verification:
 Optional SMT / CAS backends sit behind ``vincio[verify]`` (:mod:`vincio.verify.smt`).
 """
 
+from __future__ import annotations
+
 from .certificates import (
     Certificate,
     CertificateStatus,

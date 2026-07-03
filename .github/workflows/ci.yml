@@ -52,6 +52,7 @@ jobs:
           vincio/core/diagnostics.py
           vincio/_apiref.py
           vincio/_surface.py
+          vincio/_guard_scope.py
           vincio/_error_contract.py
           vincio/_observable_failure.py
           vincio/_wire_or_retire.py

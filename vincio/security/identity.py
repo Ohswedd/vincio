@@ -54,6 +54,7 @@ from pydantic import BaseModel, Field
 
 from ..core.errors import IdentityError
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
+from ..stability import _resolve_renamed_kwarg
 from . import _ed25519 as ed
 
 __all__ = [
@@ -90,6 +91,21 @@ _TOLERANCE = 1e-9
 
 def _r6(value: float) -> float:
     return round(float(value), 6)
+
+
+def _resolve_as_of(as_of: datetime | None, at: datetime | None, owner: str) -> datetime | None:
+    """Resolve the ``as_of=`` / deprecated ``at=`` rename runway (since 7.5, removed 8.0)."""
+    return _resolve_renamed_kwarg(
+        as_of,
+        at,
+        new_name="as_of",
+        old_name="at",
+        owner=owner,
+        since="7.5",
+        removed_in="8.0",
+        error=IdentityError,
+        stacklevel=4,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -224,15 +240,18 @@ class Grant(BaseModel):
         capability: str | None = None,
         *,
         budget_usd: float | None = None,
-        at: datetime | None = None,
+        as_of: datetime | None = None,
         audience: str | None = None,
+        at: datetime | None = None,
     ) -> bool:
         """Whether this grant authorizes a concrete request.
 
         ``capability`` must be within the grant, a requested ``budget_usd`` must fit
-        under the cap, ``at`` must be before the expiry, and ``audience`` must match a
-        fixed audience. ``None`` arguments are not checked.
+        under the cap, ``as_of`` must be before the expiry, and ``audience`` must match
+        a fixed audience. ``None`` arguments are not checked. ``at`` is a deprecated
+        alias for ``as_of`` (since 7.5, removed in 8.0).
         """
+        as_of = _resolve_as_of(as_of, at, "Grant.permits")
         if capability is not None and not self.permits_capability(capability):
             return False
         if (
@@ -241,7 +260,7 @@ class Grant(BaseModel):
             and budget_usd > self.budget_usd + _TOLERANCE
         ):
             return False
-        if at is not None and self.not_after is not None and at > self.not_after:
+        if as_of is not None and self.not_after is not None and as_of > self.not_after:
             return False
         if audience and self.audience and audience != self.audience:
             return False
@@ -327,15 +346,26 @@ class KeyRecord(BaseModel):
             length=32,
         )
 
-    def active_at(self, at: datetime) -> bool:
-        """Whether this key was usable at ``at`` (created, not expired, not revoked)."""
-        if at < self.created_at:
+    def active_at(self, as_of: datetime | None = None, *, at: datetime | None = None) -> bool:
+        """Whether this key was usable at ``as_of`` (created, not expired, not revoked).
+
+        ``at`` is a deprecated keyword alias for ``as_of`` (since 7.5, removed in
+        8.0); the instant itself is required either way.
+        """
+        resolved = _resolve_as_of(as_of, at, "KeyRecord.active_at")
+        if resolved is None:
+            raise IdentityError(
+                "KeyRecord.active_at() requires an as_of= instant", details={"kid": self.kid}
+            )
+        if resolved < self.created_at:
             return False
-        if self.not_after is not None and at > self.not_after:
+        if self.not_after is not None and resolved > self.not_after:
             return False
-        if self.revoked_at is not None and at >= self.revoked_at:
+        if self.revoked_at is not None and resolved >= self.revoked_at:
             return False
-        return self.status != "revoked" or (self.revoked_at is not None and at < self.revoked_at)
+        return self.status != "revoked" or (
+            self.revoked_at is not None and resolved < self.revoked_at
+        )
 
     def facts(self) -> dict[str, Any]:
         return {
@@ -511,24 +541,32 @@ class IdentityDocument(BaseModel):
         )
 
     def verify_signature(
-        self, message: str, signature: str, *, kid: str | None = None, at: datetime | None = None
+        self,
+        message: str,
+        signature: str,
+        *,
+        kid: str | None = None,
+        as_of: datetime | None = None,
+        at: datetime | None = None,
     ) -> SignatureCheck:
         """Verify a signature against this identity's keys (rotation-aware).
 
         Finds the key that produced ``signature`` over ``message`` (or the named
-        ``kid``) and reports it. With ``at`` set, also reports whether that key was
+        ``kid``) and reports it. With ``as_of`` set, also reports whether that key was
         active at that instant — the check that makes a rotated-away or revoked key
-        unable to forge *new* history while its past signatures stay valid.
+        unable to forge *new* history while its past signatures stay valid. ``at`` is
+        a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
         """
+        as_of = _resolve_as_of(as_of, at, "IdentityDocument.verify_signature")
         candidates = [self.resolve(kid)] if kid else list(self.keys)
         for record in candidates:
             if record is None:
                 continue
             if ed.verify(record.public_bytes(), message.encode("utf-8"), _hexbytes(signature)):
-                active = record.active_at(at) if at is not None else True
+                active = record.active_at(as_of) if as_of is not None else True
                 reason = None
-                if not active and at is not None:
-                    reason = f"key {record.kid} was not active at {at.isoformat()}"
+                if not active and as_of is not None:
+                    reason = f"key {record.kid} was not active at {as_of.isoformat()}"
                 return SignatureCheck(
                     valid=True,
                     kid=record.kid,
@@ -1070,7 +1108,7 @@ class Delegation(BaseModel):
 
     # -- verification -------------------------------------------------------
 
-    def _verify_signature_binding(self, at: datetime | None) -> bool:
+    def _verify_signature_binding(self, as_of: datetime | None) -> bool:
         """The signature checks against a key provably bound to the issuer DID."""
         if not self.signature or not self.signer_key:
             return False
@@ -1083,15 +1121,23 @@ class Delegation(BaseModel):
         if signer_bytes == genesis:
             return True  # signed with the identity's genesis key — bound by the DID itself
         # Signed with a rotated key: the embedded authority must chain genesis → signer.
-        return _verify_authority(self.authority, self.issuer, signer_bytes, at or self.issued_at)
+        return _verify_authority(
+            self.authority, self.issuer, signer_bytes, as_of or self.issued_at
+        )
 
-    def verify(self, *, at: datetime | None = None) -> DelegationVerification:
-        """Verify this delegation offline: hash, signature binding, and expiry."""
+    def verify(
+        self, *, as_of: datetime | None = None, at: datetime | None = None
+    ) -> DelegationVerification:
+        """Verify this delegation offline: hash, signature binding, and expiry.
+
+        ``at`` is a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
+        """
+        as_of = _resolve_as_of(as_of, at, "Delegation.verify")
         hash_ok = bool(self.content_hash) and self.content_hash == self.compute_hash()
-        sig_ok = hash_ok and self._verify_signature_binding(at)
+        sig_ok = hash_ok and self._verify_signature_binding(as_of)
         # Distinguish a pure-signature failure from an authority-binding failure.
         authority_ok = sig_ok or not bool(self.signature)
-        when = at or utcnow()
+        when = as_of or utcnow()
         not_expired = self.grant.not_after is None or when <= self.grant.not_after
         valid = hash_ok and sig_ok and not_expired
         reason: str | None = None
@@ -1170,7 +1216,7 @@ def _attenuated_grant(
 
 
 def _verify_authority(
-    authority: KeyAuthorization | None, issuer_did: str, signer_key: bytes, at: datetime
+    authority: KeyAuthorization | None, issuer_did: str, signer_key: bytes, as_of: datetime
 ) -> bool:
     """Verify a rotation path proves ``signer_key`` descends from the issuer genesis."""
     if authority is None or not authority.path:
@@ -1194,7 +1240,7 @@ def _verify_authority(
     last = path[-1]
     if last.public_bytes() != signer_key:
         return False
-    return last.active_at(at)
+    return last.active_at(as_of)
 
 
 class DelegationChainVerification(BaseModel):
@@ -1244,10 +1290,18 @@ class DelegationChain(BaseModel):
         return DelegationChain(links=[*self.links, delegation])
 
     def verify(
-        self, *, at: datetime | None = None, root_issuer: str | None = None
+        self,
+        *,
+        as_of: datetime | None = None,
+        root_issuer: str | None = None,
+        at: datetime | None = None,
     ) -> DelegationChainVerification:
-        """Verify the chain offline end-to-end (signatures, linkage, attenuation, expiry)."""
-        when = at or utcnow()
+        """Verify the chain offline end-to-end (signatures, linkage, attenuation, expiry).
+
+        ``at`` is a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
+        """
+        as_of = _resolve_as_of(as_of, at, "DelegationChain.verify")
+        when = as_of or utcnow()
         if not self.links:
             return DelegationChainVerification(
                 valid=False,
@@ -1262,7 +1316,7 @@ class DelegationChain(BaseModel):
         attenuation_ok = True
         not_expired = True
         for index, link in enumerate(self.links):
-            result = link.verify(at=when)
+            result = link.verify(as_of=when)
             if not result.hash_ok or not result.signature_ok:
                 links_valid = False
             if not result.not_expired:
@@ -1307,33 +1361,47 @@ class DelegationChain(BaseModel):
         capability: str | None = None,
         *,
         budget_usd: float | None = None,
-        at: datetime | None = None,
+        as_of: datetime | None = None,
         audience: str | None = None,
         root_issuer: str | None = None,
+        at: datetime | None = None,
     ) -> bool:
-        """Whether a *valid* chain authorizes a concrete action at the leaf grant."""
-        when = at or utcnow()
-        if not self.verify(at=when, root_issuer=root_issuer).valid:
+        """Whether a *valid* chain authorizes a concrete action at the leaf grant.
+
+        ``at`` is a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
+        """
+        as_of = _resolve_as_of(as_of, at, "DelegationChain.permits")
+        when = as_of or utcnow()
+        if not self.verify(as_of=when, root_issuer=root_issuer).valid:
             return False
         grant = self.effective_grant
         if grant is None:
             return False
-        return grant.permits(capability, budget_usd=budget_usd, at=when, audience=audience)
+        return grant.permits(capability, budget_usd=budget_usd, as_of=when, audience=audience)
 
     def require_permits(
         self,
         capability: str | None = None,
         *,
         budget_usd: float | None = None,
-        at: datetime | None = None,
+        as_of: datetime | None = None,
         audience: str | None = None,
         root_issuer: str | None = None,
+        at: datetime | None = None,
     ) -> DelegationChain:
-        """Raise :class:`~vincio.core.errors.IdentityError` unless the chain permits the action."""
+        """Raise :class:`~vincio.core.errors.IdentityError` unless the chain permits the action.
+
+        ``at`` is a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
+        """
+        as_of = _resolve_as_of(as_of, at, "DelegationChain.require_permits")
         if not self.permits(
-            capability, budget_usd=budget_usd, at=at, audience=audience, root_issuer=root_issuer
+            capability,
+            budget_usd=budget_usd,
+            as_of=as_of,
+            audience=audience,
+            root_issuer=root_issuer,
         ):
-            verification = self.verify(at=at, root_issuer=root_issuer)
+            verification = self.verify(as_of=as_of, root_issuer=root_issuer)
             raise IdentityError(
                 "delegation chain does not authorize the action: "
                 + (verification.reason or f"grant does not permit {capability!r}"),
@@ -1441,7 +1509,7 @@ class AgentCredential(BaseModel):
 
     # -- verification -------------------------------------------------------
 
-    def _verify_signature_binding(self, at: datetime | None) -> bool:
+    def _verify_signature_binding(self, as_of: datetime | None) -> bool:
         if not self.signature or not self.signer_key:
             return False
         signer_bytes = _hexbytes(self.signer_key)
@@ -1451,13 +1519,21 @@ class AgentCredential(BaseModel):
             return False
         if signer_bytes == public_key_from_did(self.issuer):
             return True
-        return _verify_authority(self.authority, self.issuer, signer_bytes, at or self.issued_at)
+        return _verify_authority(
+            self.authority, self.issuer, signer_bytes, as_of or self.issued_at
+        )
 
-    def verify(self, *, at: datetime | None = None) -> CredentialVerification:
-        """Verify the credential offline: hash, signature binding, and expiry."""
+    def verify(
+        self, *, as_of: datetime | None = None, at: datetime | None = None
+    ) -> CredentialVerification:
+        """Verify the credential offline: hash, signature binding, and expiry.
+
+        ``at`` is a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
+        """
+        as_of = _resolve_as_of(as_of, at, "AgentCredential.verify")
         hash_ok = bool(self.content_hash) and self.content_hash == self.compute_hash()
-        sig_ok = hash_ok and self._verify_signature_binding(at)
-        when = at or utcnow()
+        sig_ok = hash_ok and self._verify_signature_binding(as_of)
+        when = as_of or utcnow()
         not_expired = self.not_after is None or when <= self.not_after
         valid = hash_ok and sig_ok and not_expired
         reason: str | None = None
@@ -1476,9 +1552,15 @@ class AgentCredential(BaseModel):
             reason=reason,
         )
 
-    def require_valid(self, *, at: datetime | None = None) -> AgentCredential:
-        """Verify and raise :class:`~vincio.core.errors.IdentityError` if invalid."""
-        result = self.verify(at=at)
+    def require_valid(
+        self, *, as_of: datetime | None = None, at: datetime | None = None
+    ) -> AgentCredential:
+        """Verify and raise :class:`~vincio.core.errors.IdentityError` if invalid.
+
+        ``at`` is a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
+        """
+        as_of = _resolve_as_of(as_of, at, "AgentCredential.require_valid")
+        result = self.verify(as_of=as_of)
         if not result.valid:
             raise IdentityError(
                 f"credential {self.id} failed verification: {result.reason}",
@@ -1505,9 +1587,15 @@ class AgentCredential(BaseModel):
             caps.extend(part.strip() for part in many.split(",") if part.strip())
         return caps
 
-    def admits(self, capability: str, *, at: datetime | None = None) -> bool:
-        """Whether this credential is valid and admits ``subject`` to ``capability``."""
-        if not self.verify(at=at).valid:
+    def admits(
+        self, capability: str, *, as_of: datetime | None = None, at: datetime | None = None
+    ) -> bool:
+        """Whether this credential is valid and admits ``subject`` to ``capability``.
+
+        ``at`` is a deprecated alias for ``as_of`` (since 7.5, removed in 8.0).
+        """
+        as_of = _resolve_as_of(as_of, at, "AgentCredential.admits")
+        if not self.verify(as_of=as_of).valid:
             return False
         return capability in self.admitted_capabilities
 

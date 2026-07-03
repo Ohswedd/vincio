@@ -12,10 +12,11 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ..stability import deprecated_alias
 from ..tools.sandbox import run_subprocess_sandboxed
 from .skill import Skill, SkillScript
 
-__all__ = ["make_script_handler", "register_skill_scripts"]
+__all__ = ["build_script_handler", "make_script_handler", "register_skill_scripts"]
 
 _SCRIPT_SCHEMA = {
     "type": "object",
@@ -26,7 +27,7 @@ _SCRIPT_SCHEMA = {
 }
 
 
-def make_script_handler(skill: Skill, script: SkillScript):
+def build_script_handler(skill: Skill, script: SkillScript):
     """Build an async handler that runs *script* in the subprocess sandbox."""
     script_path = str((Path(skill.path or ".") / script.path).resolve())
 
@@ -48,6 +49,14 @@ def make_script_handler(skill: Skill, script: SkillScript):
     return handler
 
 
+make_script_handler = deprecated_alias(
+    build_script_handler,
+    old_name="make_script_handler",
+    since="7.5",
+    removed_in="8.0",
+)
+
+
 def register_skill_scripts(
     registry: Any, skill: Skill, *, prefix: bool = True, permissions: list[str] | None = None
 ) -> list[str]:
@@ -61,7 +70,7 @@ def register_skill_scripts(
     for script in skill.scripts:
         tool_name = f"{skill.name}.{script.name}" if prefix else script.name
         registry.register(
-            make_script_handler(skill, script),
+            build_script_handler(skill, script),
             name=tool_name,
             description=script.description
             or f"Bundled script {script.name!r} for skill {skill.name!r} (sandboxed).",

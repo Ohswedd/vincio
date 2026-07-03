@@ -170,7 +170,7 @@ def test_revocation_require_valid_returns_self_on_success():
 def test_counted_and_admitted_properties():
     counted_att = _att("acme", "vendor").sign(ACME)
     self_att = _att("dup", "dup").sign(HMACSigner("dup-key", key_id="dup"))
-    pr = combine_attestations([counted_att, self_att], verify_with=None)
+    pr = combine_attestations([counted_att, self_att], verifier=None)
     assert [v.issuer for v in pr.counted] == ["acme"]
     # both verified as artifacts (admissible) even though the self-attestation
     # is excluded from the pool.
@@ -284,7 +284,7 @@ def test_revokes_false_for_different_issuer():
     assert rev.revokes(att) is False  # issuer mismatch — cannot cancel another's claim
 
 
-# -- attest_reputation: verify_with skips forged record, dissent hashes -------
+# -- attest_reputation: verifier skips forged record, dissent hashes ----------
 
 
 def test_attest_skips_forged_signed_record():
@@ -293,7 +293,7 @@ def test_attest_skips_forged_signed_record():
     # Sign forged, then mutate the signature bytes so it no longer verifies.
     forged.sign(GLOBEX, party="vendor")
     forged.signatures[0].signature = "tampered-sig"
-    att = attest_reputation([good, forged], "vendor", issuer="acme", verify_with=GLOBEX)
+    att = attest_reputation([good, forged], "vendor", issuer="acme", verifier=GLOBEX)
     assert att.settled == 1  # only the genuinely-signed record counted
 
 
@@ -410,13 +410,13 @@ def test_has_local_evidence_snapshot_raises_falls_through_to_members():
 
 
 def test_issuers_for_unknown_subject_is_empty():
-    pr = combine_attestations([_att("acme", "vendor").sign(ACME)], verify_with=ACME)
+    pr = combine_attestations([_att("acme", "vendor").sign(ACME)], verifier=ACME)
     assert pr.issuers_for("nobody") == []
     assert pr.issuers_for("vendor") == ["acme"]
 
 
 def test_reputation_for_unknown_returns_prior_mean():
-    pr = combine_attestations([_att("acme", "vendor").sign(ACME)], verify_with=ACME)
+    pr = combine_attestations([_att("acme", "vendor").sign(ACME)], verifier=ACME)
     cfg = AttestationConfig()
     assert pr.reputation("stranger") == round(cfg.reputation_of(0.0, 0.0), 9)
 
@@ -434,7 +434,7 @@ def test_weight_falls_back_when_base_weight_raises():
             raise RuntimeError("nope")
 
     pr = combine_attestations(
-        [_att("acme", "vendor").sign(ACME)], verify_with=ACME, base=_BrokenBase()
+        [_att("acme", "vendor").sign(ACME)], verifier=ACME, base=_BrokenBase()
     )
     assert pr.weight("vendor") == pr.config.weight_of(pr.reputation("vendor"))
 
@@ -442,7 +442,7 @@ def test_weight_falls_back_when_base_weight_raises():
 def test_verdict_for_and_standings_listing():
     pr = combine_attestations(
         [_att("acme", "vendor").sign(ACME), _att("globex", "supplier").sign(GLOBEX)],
-        verify_with=None,
+        verifier=None,
     )
     v = pr.verdict_for("acme", "vendor")
     assert v is not None and v.counted
@@ -551,7 +551,7 @@ def test_build_trust_model_transitive_one_hop():
         [acme_att, acme_vouches_globex, globex_att],
         base=base,
         config=TrustConfig(max_depth=1, hop_decay=0.5),
-        verify_with=signer,
+        verifier=signer,
     )
     g = model.assessment("globex")
     assert g is not None
@@ -569,7 +569,7 @@ def test_build_trust_model_unknown_issuer_falls_to_floor():
     signer = _shared_signer()
     # globex is attested by nobody trusted -> never reached -> floor.
     atts = [_att("acme", "vendor", signer=signer), _att("globex", "x", signer=signer)]
-    model = build_trust_model(atts, base=base, config=TrustConfig(max_depth=1), verify_with=signer)
+    model = build_trust_model(atts, base=base, config=TrustConfig(max_depth=1), verifier=signer)
     assert model.trust_in("globex") == TrustConfig().trust_floor
 
 
@@ -581,7 +581,7 @@ def test_build_trust_model_sybil_cluster_stays_at_floor():
         _att("sybilA", "sybilB", signer=signer),
         _att("sybilB", "sybilA", signer=signer),
     ]
-    model = build_trust_model(atts, base=base, config=TrustConfig(max_depth=3), verify_with=signer)
+    model = build_trust_model(atts, base=base, config=TrustConfig(max_depth=3), verifier=signer)
     assert model.trust_in("sybilA") == TrustConfig().trust_floor
     assert model.trust_in("sybilB") == TrustConfig().trust_floor
     assert model.direct_issuers() == []
@@ -591,7 +591,7 @@ def test_build_trust_model_no_base_reaches_nobody():
     # with no base ledger there is no hop-0 root, so every issuer stays at the floor.
     signer = _shared_signer()
     atts = [_att("acme", "vendor", signer=signer), _att("globex", "x", signer=signer)]
-    model = build_trust_model(atts, base=None, config=TrustConfig(max_depth=2), verify_with=signer)
+    model = build_trust_model(atts, base=None, config=TrustConfig(max_depth=2), verifier=signer)
     assert model.issuers() == []
     assert model.trust_in("acme") == TrustConfig().trust_floor
 
@@ -611,7 +611,7 @@ def test_build_trust_model_self_voucher_does_not_bootstrap():
         [acme_self, acme_vouches_globex, globex_att],
         base=base,
         config=TrustConfig(max_depth=1),
-        verify_with=signer,
+        verifier=signer,
     )
     acme = model.assessment("acme")
     assert acme is not None and acme.depth == 0  # stays the direct first-hand trust
@@ -628,7 +628,7 @@ def test_build_trust_model_base_weight_raises_leaves_unreached():
             raise RuntimeError("kaboom")
 
     atts = [_att("acme", "vendor", signer=ACME)]
-    model = build_trust_model(atts, base=_BadWeight(), config=TrustConfig(), verify_with=ACME)
+    model = build_trust_model(atts, base=_BadWeight(), config=TrustConfig(), verifier=ACME)
     assert model.assessment("acme") is None  # weight blew up -> not trusted directly
 
 
@@ -644,7 +644,7 @@ def test_combine_with_trust_config_builds_model_and_pinpoints():
     globex_att = _att("globex", "vendor", settled=4, signer=signer)
     pr = combine_attestations(
         [acme_att, globex_att],
-        verify_with=signer,
+        verifier=signer,
         base=base,
         trust_config=TrustConfig(max_depth=0),
     )
@@ -659,7 +659,7 @@ def test_combine_with_trust_config_builds_model_and_pinpoints():
 def test_combine_excludes_revoked_attestation_pinpointed():
     att = _att("acme", "vendor", settled=3).sign(ACME)
     rev = revoke_attestation(att, reason="regressed").sign(ACME)
-    pr = combine_attestations([att], verify_with=ACME, revocations=[rev])
+    pr = combine_attestations([att], verifier=ACME, revocations=[rev])
     assert pr.standing("vendor") is None  # nothing counted
     [revoked] = pr.revoked
     assert revoked.revoked is True
@@ -674,7 +674,7 @@ def test_combine_ignores_cross_issuer_revocation():
         issuer="globex", subject="vendor", attestation_hash=att.content_hash
     ).seal()
     forged_rev.sign(GLOBEX)
-    pr = combine_attestations([att], verify_with=None, revocations=[forged_rev])
+    pr = combine_attestations([att], verifier=None, revocations=[forged_rev])
     assert pr.standing("vendor") is not None  # acme's attestation still counts
     assert pr.revoked == []
 
@@ -686,7 +686,7 @@ def test_combine_revocation_subject_filter_skips_other_subjects():
     other_rev.seal()
     other_rev.sign(ACME)
     pr = combine_attestations(
-        [att], subject="vendor", verify_with=ACME, revocations=[other_rev]
+        [att], subject="vendor", verifier=ACME, revocations=[other_rev]
     )
     assert pr.standing("vendor") is not None  # revocation for other subject ignored
 
@@ -695,7 +695,7 @@ def test_combine_supersession_revocation_reason():
     old = _att("acme", "vendor", settled=2).sign(ACME)
     new = _att("acme", "other", settled=5).sign(ACME)
     rev = revoke_attestation(old, replacement=new).sign(ACME)
-    pr = combine_attestations([old], verify_with=ACME, revocations=[rev])
+    pr = combine_attestations([old], verifier=ACME, revocations=[rev])
     [revoked] = pr.revoked
     assert "superseded by its issuer" in revoked.reason
 
@@ -707,7 +707,7 @@ def test_combine_excludes_stale_attestation_pinpointed():
     )
     att.issued_at = now - timedelta(days=40)
     att.seal().sign(ACME)
-    pr = combine_attestations([att], verify_with=ACME, as_of=now)
+    pr = combine_attestations([att], verifier=ACME, as_of=now)
     assert pr.standing("vendor") is None
     [stale] = pr.stale
     assert stale.stale is True
@@ -721,8 +721,8 @@ def test_combine_half_life_decays_evidence_under_clock():
     aged.issued_at = now - timedelta(days=30)
     aged.seal().sign(ACME)
     cfg = AttestationConfig(half_life_days=10.0)
-    pr_fresh = combine_attestations([fresh], config=cfg, verify_with=ACME, as_of=now)
-    pr_aged = combine_attestations([aged], config=cfg, verify_with=ACME, as_of=now)
+    pr_fresh = combine_attestations([fresh], config=cfg, verifier=ACME, as_of=now)
+    pr_aged = combine_attestations([aged], config=cfg, verifier=ACME, as_of=now)
     # the aged attestation contributes less pooled evidence than the fresh one.
     assert pr_aged.standing("vendor").successes < pr_fresh.standing("vendor").successes
 
@@ -731,7 +731,7 @@ def test_combine_refuses_evidence_unsound_attestation():
     att = _att("acme", "vendor", settled=4).sign(ACME)
     att.reputation = 0.999  # inflate the score, then re-seal so the hash recomputes
     att.seal()
-    pr = combine_attestations([att], verify_with=None)
+    pr = combine_attestations([att], verifier=None)
     [refused] = pr.refused
     assert refused.admissible is False
     assert "does not re-derive from the evidence" in refused.reason
@@ -744,7 +744,7 @@ def test_combine_trust_via_callable_scales_mass():
     globex_att = _att("globex", "vendor", settled=4).sign(GLOBEX)
     trust = {"acme": 1.0, "globex": 0.2}
     pr = combine_attestations(
-        [acme_att, globex_att], verify_with=None, trust=lambda i: trust[i]
+        [acme_att, globex_att], verifier=None, trust=lambda i: trust[i]
     )
     standing = pr.standing("vendor")
     assert standing.issuer_trust["acme"] == 1.0
@@ -756,7 +756,7 @@ def test_combine_trust_via_callable_scales_mass():
 def test_combine_pinpoints_superseded_attestation():
     small = _att("acme", "vendor", settled=1).sign(ACME)
     big = _att("acme", "vendor", settled=5).sign(ACME)
-    pr = combine_attestations([small, big], verify_with=ACME)
+    pr = combine_attestations([small, big], verifier=ACME)
     # only the larger counts; the smaller is excluded with a superseded reason.
     counted = [v for v in pr.verdicts if v.counted]
     assert len(counted) == 1

@@ -1,5 +1,7 @@
 """Vincio tool engine."""
 
+from __future__ import annotations
+
 from .computer_environment import (
     AccessibilityScreen,
     ActionDecision,
@@ -17,6 +19,7 @@ from .computer_environment import (
     ScreenState,
     UIAction,
     UIElement,
+    build_web_checkout,
     make_web_checkout,
 )
 from .computer_use import (
@@ -90,5 +93,6 @@ __all__ = [
     "ComputerTask",
     "ComputerRun",
     "ComputerEnvironment",
+    "build_web_checkout",
     "make_web_checkout",
 ]

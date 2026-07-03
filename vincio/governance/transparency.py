@@ -96,6 +96,16 @@ class ProvenanceManifest(BaseModel):
     signature: dict[str, Any] | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
+    @property
+    def content_hash(self) -> str | None:
+        """Canonical name for :attr:`content_sha256` (SHA-256 binding to the asset bytes).
+
+        The stored field keeps its historical name: it is bound by name into
+        :meth:`signing_payload`, which persisted signatures (sidecar files,
+        embedded PNG credentials) depend on.
+        """
+        return self.content_sha256
+
     def signing_payload(self) -> str:
         """Deterministic bytes the signature covers (binds the credential)."""
         return json.dumps(
@@ -107,6 +117,7 @@ class ProvenanceManifest(BaseModel):
                 "provider": self.provider,
                 "media_type": self.media_type,
                 "created_at": self.created_at.isoformat(),
+                # frozen wire key: covered by persisted signatures — never rename.
                 "content_sha256": self.content_sha256,
             },
             sort_keys=True,
@@ -283,7 +294,7 @@ def verify_manifest(
     (returns ``False`` when a signature is present but no verifier is given, so
     an unverifiable credential is never reported as valid).
     """
-    if manifest.content_sha256 != media_sha256(content):
+    if manifest.content_hash != media_sha256(content):
         return False
     if manifest.signature is not None:
         if signer is None:
@@ -411,10 +422,10 @@ def verify_embedded_manifest(data: bytes) -> bool:
     if found is None:
         return False
     manifest = extract_embedded_manifest(data)
-    if manifest is None or manifest.content_sha256 is None:
+    if manifest is None or manifest.content_hash is None:
         return False
     reconstructed = data[: found[0]] + data[found[1] :]
-    return manifest.content_sha256 == media_sha256(reconstructed)
+    return manifest.content_hash == media_sha256(reconstructed)
 
 
 def embed_provenance(

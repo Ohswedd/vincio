@@ -63,6 +63,7 @@ from ..core.types import (
 )
 from ..core.utils import new_id, stable_hash, to_jsonable, utcnow
 from ..providers.base import ModelProvider
+from ..stability import deprecated
 from .spans import Trace
 from .traces import trace_diff
 
@@ -93,11 +94,6 @@ _REPLAY_EDGES: tuple[EdgeKind, ...] = ("model_call", "tool_call", "retrieval")
 def content_hash(content: str) -> str:
     """Stable 16-hex content address (matches the evidence store's addressing)."""
     return hashlib.sha256(content.encode("utf-8")).hexdigest()[:16]
-
-
-def _canonical(value: Any) -> str:
-    """Canonical JSON for content addressing (sorted keys, jsonable)."""
-    return json.dumps(to_jsonable(value), sort_keys=True, ensure_ascii=False)
 
 
 def _tool_key(tool_name: str, arguments: dict[str, Any]) -> str:
@@ -142,13 +138,13 @@ class RecordedEdge(BaseModel):
             seq=seq,
             key=key,
             value=jsonable,
-            value_hash=content_hash(_canonical(jsonable)),
+            value_hash=stable_hash(jsonable),
             span_id=span_id,
         )
 
     def hash_matches(self) -> bool:
         """Whether ``value_hash`` is the content address of ``value`` (integrity)."""
-        return self.value_hash == content_hash(_canonical(self.value))
+        return self.value_hash == stable_hash(self.value)
 
 
 class Recording(BaseModel):
@@ -176,7 +172,7 @@ class Recording(BaseModel):
 
     # -- digest / verification -------------------------------------------------
 
-    def compute_digest(self) -> str:
+    def digest(self) -> str:
         """The replay-fidelity anchor: a hash over the ordered edge identities,
         their content addresses, and the recorded output."""
         return stable_hash(
@@ -187,6 +183,11 @@ class Recording(BaseModel):
             }
         )
 
+    @deprecated(since="7.5", removed_in="8.0", alternative="digest()")
+    def compute_digest(self) -> str:
+        """Deprecated name for :meth:`digest`."""
+        return self.digest()
+
     def verify(self) -> bool:
         """True when every edge's payload matches its content address and the
         recording's ``fidelity_digest`` matches the recomputed digest."""
@@ -195,7 +196,7 @@ class Recording(BaseModel):
     def fidelity_report(self) -> dict[str, Any]:
         """A structured integrity check: the recomputed digest, whether it
         matches, and any edges whose payload no longer matches its hash."""
-        recomputed = self.compute_digest()
+        recomputed = self.digest()
         corrupt = [
             {"seq": e.seq, "kind": e.kind, "key": e.key}
             for e in self.edges
@@ -561,7 +562,7 @@ class Recorder:
             edges=sink.edges,
             trace=trace,
         )
-        recording.fidelity_digest = recording.compute_digest()
+        recording.fidelity_digest = recording.digest()
         if store is not None:
             recording.put(store)
         return result, recording
@@ -876,7 +877,7 @@ class Replayer:
             for edge in branched.edges:
                 if edge.kind == edit.kind and edge.key == edit.key:
                     edge.value = to_jsonable(edit.value)
-                    edge.value_hash = content_hash(_canonical(edge.value))
+                    edge.value_hash = stable_hash(edge.value)
                     applied += 1
         book = _ReplayBook(branched)
         divergences: list[Divergence] = []

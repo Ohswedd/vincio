@@ -471,9 +471,12 @@ attest_reputation
 attestation_a2a_server
 attribute_regression
 available_packs
+build_finetune_backend
+build_retail_environment
 build_seniority_schedule
 build_set_off_statement
 build_trust_model
+build_web_checkout
 buyer_position
 certify
 chat

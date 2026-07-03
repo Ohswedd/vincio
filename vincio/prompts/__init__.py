@@ -1,5 +1,7 @@
 """Vincio prompt engine: typed prompts, AST, compiler, lint."""
 
+from __future__ import annotations
+
 from .ast import (
     DefinitionNode,
     EvidenceBlockNode,

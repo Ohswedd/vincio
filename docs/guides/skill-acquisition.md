@@ -26,18 +26,18 @@ across cycles, so capability compounds across runs:
 
 ```python
 from vincio import AutoCurriculum, ContextApp, CurriculumTask, LearnedSkillLibrary
-from vincio.evals.environment import make_counter_environment, make_vault_environment
+from vincio.evals.environment import build_counter_environment, build_vault_environment
 from vincio.providers import MockProvider
 
 app = ContextApp(name="learner", provider=MockProvider(default_text="ok"))
 
 tasks = [
     CurriculumTask(id="c2", objective="increment counter to two",
-                   environment=lambda: make_counter_environment(target=2)),
+                   environment=lambda: build_counter_environment(target=2)),
     CurriculumTask(id="c4", objective="increment counter to four",
-                   environment=lambda: make_counter_environment(target=4)),
+                   environment=lambda: build_counter_environment(target=4)),
     CurriculumTask(id="vault", objective="open the vault by advancing",
-                   environment=lambda: make_vault_environment(steps_to_open=3)),
+                   environment=lambda: build_vault_environment(steps_to_open=3)),
 ]
 
 library = LearnedSkillLibrary()

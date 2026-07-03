@@ -49,8 +49,8 @@ from vincio.evals.datasets import EvalCase
 from vincio.evals.ensemble import JudgeEnsemble
 from vincio.evals.environment import (
     EnvAction,
-    make_retail_environment,
-    make_vault_environment,
+    build_retail_environment,
+    build_vault_environment,
 )
 from vincio.evals.judges import DeterministicJudge
 from vincio.evals.metrics import MetricResult, RunOutput
@@ -247,9 +247,9 @@ def section_world_model() -> None:
         [_act("refund_order", order_id="O1001")],
         [_act("update_address", order_id="O1002", address="9 New Rd")],
     ]
-    transitions = record_transitions(make_retail_environment("cancel_refund"), explore)
+    transitions = record_transitions(build_retail_environment("cancel_refund"), explore)
     model = WorldModel(transitions)
-    base = make_retail_environment("cancel_refund").observe()
+    base = build_retail_environment("cancel_refund").observe()
     fail = model.predict(base, _act("refund_order", order_id="O1002"))
     after = model.predict(base, _act("cancel_order", order_id="O1002")).observation
     ok = model.predict(after, _act("refund_order", order_id="O1002"))
@@ -263,7 +263,7 @@ def section_world_model() -> None:
 
     # Receding-horizon planner: search imagined rollouts, commit the best first move.
     planner = ModelPredictivePlanner(model, horizon=3, beam_width=16)
-    result = planner.plan(make_retail_environment("cancel_refund"))
+    result = planner.plan(build_retail_environment("cancel_refund"))
     print(f"   planned (real steps={result.real_steps}): "
           f"{' → '.join(a.tool for a in result.committed)}  success={result.success}")
 
@@ -281,13 +281,13 @@ def section_world_model() -> None:
         [_act("advance"), _act("advance"), _act("advance")],
         [_act("shortcut"), _act("advance")],
     ]
-    vt = record_transitions(make_vault_environment(), vault_explore)
+    vt = record_transitions(build_vault_environment(), vault_explore)
     vmodel = WorldModel(vt).fit(vt)
     vmodel.calibrate(vt)
     reactive = ModelPredictivePlanner(vmodel, horizon=1, beam_width=64, max_real_steps=6).plan(
-        make_vault_environment())
+        build_vault_environment())
     planned = ModelPredictivePlanner(vmodel, horizon=5, beam_width=64, max_real_steps=6).plan(
-        make_vault_environment())
+        build_vault_environment())
     print(f"   reactive (1-step): success={reactive.success} (took the shortcut, trapped)")
     print(f"   imagined-rollout : success={planned.success} "
           f"({' → '.join(a.tool for a in planned.committed)})")

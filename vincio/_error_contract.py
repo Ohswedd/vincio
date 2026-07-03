@@ -16,10 +16,13 @@ This module is the *mechanical* half of that contract — the lint behind
 ``tests/test_error_contract.py`` and the ``hygiene`` VincioBench family, built on
 exactly the freeze-and-gate idiom :mod:`vincio._surface` uses for the two-level
 public surface. It statically scans every **public** module under ``vincio/``
-(no underscore-prefixed, non-dunder path component) for a ``raise`` of a bare
-built-in exception that sits on a **public entry point** (every enclosing
-function and class is public — non-underscore, dunders like ``__init__`` count),
-and enforces two invariants:
+(no underscore-prefixed, non-dunder path component) — plus, deliberately, the
+private ``vincio/core/_app_*.py`` modules holding the ``_*Verbs`` mixins that
+``ContextApp`` composes, so the decomposed ``app.*`` verb surface stays guarded —
+for a ``raise`` of a bare built-in exception that sits on a **public entry
+point** (every enclosing function and class is public — non-underscore, dunders
+like ``__init__`` count; a ``_*Verbs`` mixin class counts as public inside those
+whitelisted modules), and enforces two invariants:
 
 * **app-verb purity (always-on, no manifest)** — no public method of the
   user-facing :class:`~vincio.core.app.ContextApp` facade (the ``app.*`` verb
@@ -44,6 +47,8 @@ from __future__ import annotations
 import ast
 import builtins
 import os.path
+
+from ._guard_scope import is_app_mixin_module as _is_app_mixin_module
 
 __all__ = [
     "BUILTIN_EXCEPTION_NAMES",
@@ -94,7 +99,9 @@ def _public_module_paths() -> list[tuple[str, str]]:
     A module is *public* when no component of its path — package dirs and the file
     stem — is private (underscore-prefixed and not a dunder). Private tooling like
     :mod:`vincio._surface`, this module, and ``vincio/security/_ed25519.py`` is
-    excluded: the contract covers the public surface only.
+    excluded: the contract covers the public surface only. One deliberate
+    exception: the ContextApp verb mixins (:func:`_is_app_mixin_module`) stay in
+    scope so the decomposed ``app.*`` surface remains guarded.
     """
     parent = os.path.dirname(_PACKAGE_DIR)
     out: list[tuple[str, str]] = []
@@ -108,9 +115,12 @@ def _public_module_paths() -> list[tuple[str, str]]:
                 part[: -len(".py")] if part.endswith(".py") else part
                 for part in rel.split(os.sep)
             ]
-            if any(_is_private_component(stem) for stem in stems):
+            name = _module_name(rel)
+            if any(_is_private_component(stem) for stem in stems) and not _is_app_mixin_module(
+                name
+            ):
                 continue
-            out.append((_module_name(rel), abs_path))
+            out.append((name, abs_path))
     out.sort()
     return out
 
@@ -136,7 +146,7 @@ def _raised_builtin(node: ast.Raise) -> str | None:
     return None
 
 
-def contract_raises_in_source(source: str) -> list[tuple[str, str]]:
+def contract_raises_in_source(source: str, *, app_mixin: bool = False) -> list[tuple[str, str]]:
     """Bare-built-in raises on a *public entry point* in one module's source.
 
     Pure and injectable (mirrors :func:`vincio._surface._module_problems`): parses
@@ -148,6 +158,11 @@ def contract_raises_in_source(source: str) -> list[tuple[str, str]]:
     not reported. Duplicate ``(qualname, exception)`` pairs (the same function
     raising the same built-in twice) collapse to one row, so the baseline tracks
     *where* a built-in can leak, stably across refactors that move lines.
+
+    ``app_mixin=True`` (set for the whitelisted ``vincio/core/_app_*.py`` modules,
+    :func:`_is_app_mixin_module`) makes a private ``_*Verbs`` mixin class count as
+    public: its methods are ``ContextApp`` verbs, so a raise inside one is surface,
+    not encapsulated.
     """
     tree = ast.parse(source)
     parents: dict[ast.AST, ast.AST] = {}
@@ -174,7 +189,9 @@ def contract_raises_in_source(source: str) -> list[tuple[str, str]]:
                     private = True
             elif isinstance(cursor, ast.ClassDef):
                 chain.append(cursor.name)
-                if _is_private_component(cursor.name):
+                if _is_private_component(cursor.name) and not (
+                    app_mixin and cursor.name.endswith("Verbs")
+                ):
                     private = True
             cursor = parents.get(cursor)
         if not has_function or private:
@@ -195,7 +212,9 @@ def contract_rows() -> list[tuple[str, str, str]]:
     for module, path in _public_module_paths():
         with open(path, encoding="utf-8") as handle:
             source = handle.read()
-        for qualname, exception in contract_raises_in_source(source):
+        for qualname, exception in contract_raises_in_source(
+            source, app_mixin=_is_app_mixin_module(module)
+        ):
             rows.append((module, qualname, exception))
     rows.sort()
     return rows
@@ -205,8 +224,10 @@ def app_verb_violations(rows: list[tuple[str, str, str]] | None = None) -> list[
     """Off-contract raises on the :class:`~vincio.core.app.ContextApp` verb surface.
 
     The always-on integrity half of the gate, independent of the frozen baseline:
-    every public method of ``ContextApp`` — the user-facing ``app.*`` entry points
-    — must raise only ``VincioError`` subclasses. Returns one
+    every public method of ``ContextApp`` — the user-facing ``app.*`` entry points,
+    whether defined on ``ContextApp`` itself or on one of the ``_*Verbs`` mixin
+    classes it composes from the whitelisted ``vincio/core/_app_*.py`` modules —
+    must raise only ``VincioError`` subclasses. Returns one
     ``"<module>.<qualname> raises <Exception>"`` message per violation; an empty
     list means the verb surface is clean. It needs no allowlist, so it bites on a
     *new* leak the moment it lands.
@@ -221,6 +242,7 @@ def app_verb_violations(rows: list[tuple[str, str, str]] | None = None) -> list[
         f"{module}.{qualname} raises {exception}"
         for module, qualname, exception in rows
         if qualname.split(".", 1)[0] == "ContextApp"
+        or (_is_app_mixin_module(module) and qualname.split(".", 1)[0].endswith("Verbs"))
     ]
     return sorted(problems)
 

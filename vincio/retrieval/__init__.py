@@ -1,5 +1,7 @@
 """Vincio retrieval engine."""
 
+from __future__ import annotations
+
 from .chunking import CHUNKERS, chunk_document
 from .embeddings import (
     BatchingEmbedder,

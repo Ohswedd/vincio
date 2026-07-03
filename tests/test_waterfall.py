@@ -505,7 +505,7 @@ def test_app_resolve_insolvency_signs_audits_and_dings_reputation():
     reserves = app.attest_custody("vendor", {"omnibus": 60.0})
     owed = app.attest_liabilities("vendor", {"bank": 50.0, "acme": 50.0})
     schedule = app.build_seniority_schedule("vendor", [["bank"], ["acme"]])
-    res = app.resolve_insolvency(reserves, owed, schedule, verify_with=app.contract_signer)
+    res = app.resolve_insolvency(reserves, owed, schedule, verifier=app.contract_signer)
     assert res.verify(app.contract_signer).valid
     assert res.insolvent
     assert len(app.audit.query(action=INSOLVENCY_ACTION)) == 1

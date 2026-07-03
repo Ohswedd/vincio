@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ..core.errors import ChartError
 from ..core.media import media_sha256
-from ..core.utils import stable_hash
+from ..core.utils import compact_json, stable_hash
 from ..governance.transparency import (
     ContentSigner,
     ProvenanceManifest,
@@ -175,10 +175,12 @@ class ChartSpec(BaseModel):
         return spec
 
     def to_json(self) -> str:
-        """The Vega-Lite spec as deterministic, sorted-key JSON."""
-        import json
+        """The Vega-Lite spec as deterministic, sorted-key JSON.
 
-        return json.dumps(self.to_vega_lite(), sort_keys=True, separators=(",", ":"), default=str)
+        The compact byte form is load-bearing — these are the rendered bytes
+        the C2PA credential (``content_sha256``) and ``chart_hash`` bind.
+        """
+        return compact_json(self.to_vega_lite())
 
 
 # --------------------------------------------------------------------------- #
@@ -456,7 +458,8 @@ class Chart(BaseModel):
             "lineage_coverage": str(self.coverage),
             "cite_refs": self.cite_refs(),
             "source_tables": sorted(self.source_hashes),
-            "content_sha256": self.manifest.content_sha256 if self.manifest else None,
+            # frozen evidence-metadata key — external consumers bind to it.
+            "content_sha256": self.manifest.content_hash if self.manifest else None,
         }
         return ev
 

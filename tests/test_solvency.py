@@ -606,7 +606,7 @@ def test_forged_solvency_signature_is_refused_with_verifier():
     proof.sign(CUSTODIAN, party="custodian")
     proof.signatures[0].signature = FORGER.sign(proof.content_hash)
     with pytest.raises(SettlementError, match="invalid signature"):
-        guard_collateral([pool], solvency=proof, verify_with=CUSTODIAN)
+        guard_collateral([pool], solvency=proof, verifier=CUSTODIAN)
 
 
 def test_ledger_hash_binds_the_solvency_proof():
@@ -1407,7 +1407,7 @@ def test_app_check_root_consistency_audits_and_dings_reputation():
     a = app.attest_liabilities("vendor", {"acme": 60.0}, as_of=_AS_OF)
     b = app.attest_liabilities("vendor", {"globex": 40.0}, as_of=_AS_OF)
     report = app.check_root_consistency(
-        [("acme", a), ("globex", b)], verify_with=app.contract_signer
+        [("acme", a), ("globex", b)], verifier=app.contract_signer
     )
     assert not report.consistent
     assert len(app.audit.query(action=EQUIVOCATION_ACTION)) == 1
@@ -1425,7 +1425,7 @@ def test_book_check_root_consistency_audits_and_dings_reputation():
     book = SettlementBook(owner="auditor", signer=ATTESTOR, audit=AuditLog(), reputation=ledger)
     a = book.attest_liabilities("vendor", {"acme": 60.0}, attestor="auditor", as_of=_AS_OF)
     b = book.attest_liabilities("vendor", {"globex": 40.0}, attestor="auditor", as_of=_AS_OF)
-    report = book.check_root_consistency([("acme", a), ("globex", b)], verify_with=ATTESTOR)
+    report = book.check_root_consistency([("acme", a), ("globex", b)], verifier=ATTESTOR)
     assert not report.consistent
     assert len(book.audit.query(action=EQUIVOCATION_ACTION)) == 1
     assert ledger.weight("vendor") < 1.0
@@ -1441,7 +1441,7 @@ def test_app_check_root_consistency_dings_each_poster_once():
         ("globex", app.attest_liabilities("vendor", {"globex": 40.0}, as_of=_AS_OF)),
         ("initech", app.attest_liabilities("vendor", {"initech": 25.0}, as_of=_AS_OF)),
     ]
-    report = app.check_root_consistency(atts, verify_with=app.contract_signer)
+    report = app.check_root_consistency(atts, verifier=app.contract_signer)
     assert len(report.equivocations) == 2  # k − 1 pairwise proofs
     assert len(app.audit.query(action=EQUIVOCATION_ACTION)) == 2  # every conflict audited
     # A single failure recorded for the poster, not one per pairwise proof.
@@ -1456,7 +1456,7 @@ def test_app_check_root_consistency_can_skip_side_effects():
     a = app.attest_liabilities("vendor", {"acme": 60.0}, as_of=_AS_OF)
     b = app.attest_liabilities("vendor", {"globex": 40.0}, as_of=_AS_OF)
     report = app.check_root_consistency(
-        [a, b], verify_with=app.contract_signer, record_reputation=False, record_audit=False
+        [a, b], verifier=app.contract_signer, record_reputation=False, record_audit=False
     )
     assert not report.consistent
     assert len(app.audit.query(action=EQUIVOCATION_ACTION)) == 0
@@ -1840,7 +1840,7 @@ def test_app_check_history_consistency_audits_and_dings_reputation():
     app.use_reputation_ledger()
     s1 = app.attest_liabilities("vendor", {"acme": 100.0}, as_of=_AS_OF)
     s2 = app.attest_liabilities("vendor", {"acme": 30.0}, as_of=_AS_OF2, prior=s1)
-    report = app.check_history_consistency([s1, s2], verify_with=app.contract_signer)
+    report = app.check_history_consistency([s1, s2], verifier=app.contract_signer)
     assert not report.consistent
     assert report.breaching_posters == ["vendor"]
     assert app.reputation_ledger.weight("vendor") < 1.0
@@ -1855,7 +1855,7 @@ def test_app_check_history_consistency_can_skip_side_effects():
     s1 = app.attest_liabilities("vendor", {"acme": 100.0}, as_of=_AS_OF)
     s2 = app.attest_liabilities("vendor", {"acme": 30.0}, as_of=_AS_OF2, prior=s1)
     report = app.check_history_consistency(
-        [s1, s2], verify_with=app.contract_signer, record_reputation=False, record_audit=False
+        [s1, s2], verifier=app.contract_signer, record_reputation=False, record_audit=False
     )
     assert not report.consistent
     assert len(app.audit.query(action=HISTORY_ACTION)) == 0
@@ -1884,7 +1884,7 @@ def test_book_check_history_consistency_records_inconsistent():
     s2 = book.attest_liabilities(
         "vendor", {"acme": 30.0}, attestor="auditor", as_of=_AS_OF2, prior=s1
     )
-    report = book.check_history_consistency([s1, s2], verify_with=ATTESTOR)
+    report = book.check_history_consistency([s1, s2], verifier=ATTESTOR)
     assert not report.consistent
     assert len(book.audit.query(action=HISTORY_ACTION)) == 1
     assert ledger.weight("vendor") < 1.0

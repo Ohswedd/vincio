@@ -27,6 +27,55 @@ def test_four_zero_table_is_empty_clean_upgrade():
     assert RENAMES["4.0"] == ()
 
 
+# The 7.5 factory-prefix normalization, delivered mechanically at 8.0.
+_EIGHT_ZERO_RENAMES = {
+    "make_retail_environment": "build_retail_environment",
+    "make_counter_environment": "build_counter_environment",
+    "make_vault_environment": "build_vault_environment",
+    "make_agent_solver": "build_agent_solver",
+    "make_env_solver": "build_env_solver",
+    "make_web_checkout": "build_web_checkout",
+    "make_finetune_backend": "build_finetune_backend",
+    "create_metadata_store": "build_metadata_store",
+    "make_script_handler": "build_script_handler",
+    "make_query_contract": "build_query_contract",
+}
+
+
+def test_eight_zero_table_ships_the_factory_renames():
+    assert "8.0" in SUPPORTED_TARGETS
+    table = renames_for("8.0")
+    assert {r.old: r.new for r in table} == _EIGHT_ZERO_RENAMES
+    for rename in table:
+        assert rename.since == "7.5"
+        assert rename.note == "factory-prefix normalization to build_*"
+    # create_app (ASGI factory idiom) is deliberately exempt.
+    assert "create_app" not in {r.old for r in table}
+
+
+def test_eight_zero_round_trip_rewrites_import_and_use(tmp_path):
+    src = tmp_path / "app.py"
+    src.write_text(
+        "from vincio.evals import make_agent_solver\n"
+        "from vincio.evals.environment import make_vault_environment\n"
+        "\n"
+        "solver = make_agent_solver(lambda p: p)\n"
+        "env = make_vault_environment()\n",
+        encoding="utf-8",
+    )
+    report = run_migrate(tmp_path, target="8.0", write=True)
+    assert not report.ok
+    assert report.files_written == 1
+    text = src.read_text(encoding="utf-8")
+    assert "make_agent_solver" not in text
+    assert "make_vault_environment" not in text
+    assert "from vincio.evals import build_agent_solver" in text
+    assert "solver = build_agent_solver(lambda p: p)" in text
+    assert "env = build_vault_environment()" in text
+    # a second pass finds nothing left to rewrite
+    assert run_migrate(tmp_path, target="8.0").ok
+
+
 def test_run_migrate_on_clean_table_reports_ok(tmp_path):
     (tmp_path / "app.py").write_text(
         "from vincio import ContextApp\napp = ContextApp()\n", encoding="utf-8"
@@ -164,3 +213,98 @@ def test_cli_migrate_json_output(tmp_path, capsys):
     assert payload["ok"] is True
     assert payload["rewrites"] == []
     assert code == 0
+
+
+def test_scan_source_rewrites_submodule_and_aliased_module_access(tmp_path):
+    # The forms the first 7.5 verification pass proved invisible to the
+    # codemod: attribute access through a dotted submodule, an aliased module
+    # import, and a module bound by `from vincio import <submodule>`.
+    src = tmp_path / "pipeline.py"
+    src.write_text(
+        "import vincio.data\n"
+        "import vincio.data as vd\n"
+        "from vincio import data\n"
+        "\n"
+        "def go():\n"
+        "    a = vincio.data.old_name()\n"
+        "    b = vd.old_name()\n"
+        "    c = data.old_name()\n"
+        "    return a, b, c\n",
+        encoding="utf-8",
+    )
+    rewrites = scan_source(src, _FAKE)
+    assert len(rewrites) == 3
+    rewritten = apply_rewrites(src.read_text(encoding="utf-8"), rewrites)
+    assert "vincio.data.new_name()" in rewritten
+    assert "vd.new_name()" in rewritten
+    assert "data.new_name()" in rewritten
+    assert "old_name" not in rewritten
+    # Idempotent: a second scan of the rewritten source finds nothing.
+    src.write_text(rewritten, encoding="utf-8")
+    assert scan_source(src, _FAKE) == []
+
+
+def test_migrate_8_0_covers_submodule_attribute_form_end_to_end(tmp_path):
+    # The exact false-clean scenario from the adversarial verification pass:
+    # after `vincio migrate 8.0 --write`, no deprecated call may remain and
+    # the doctor must agree.
+    from vincio.cli.doctor import collect_deprecations
+    from vincio.cli.doctor import scan_source as doctor_scan
+
+    src = tmp_path / "pipeline.py"
+    src.write_text(
+        "from vincio.evals import make_retail_environment\n"
+        "import vincio.data\n"
+        "\n"
+        "def main():\n"
+        "    return (make_retail_environment('cancel_refund'),\n"
+        "            vincio.data.make_query_contract(max_rows=100))\n",
+        encoding="utf-8",
+    )
+    report = run_migrate(tmp_path, target="8.0", write=True)
+    assert report.rewrites, "the 8.0 table must rewrite this file"
+    rewritten = src.read_text(encoding="utf-8")
+    assert "build_retail_environment" in rewritten
+    assert "vincio.data.build_query_contract" in rewritten
+    assert "make_" not in rewritten
+    # And the doctor certifies a genuinely clean tree afterwards.
+    assert doctor_scan(src, collect_deprecations()) == []
+
+
+def test_scan_source_rewrites_multiline_attribute_at_the_token_line(tmp_path):
+    # The attribute token lives on the node's END line; recording the start
+    # line either skipped the rewrite (slice-match guard) or corrupted
+    # same-column text on the wrong line.
+    src = tmp_path / "multiline.py"
+    src.write_text(
+        "import vincio\n"
+        "foo(old_name, vincio.\n"
+        "    old_name)\n",
+        encoding="utf-8",
+    )
+    rewrites = scan_source(src, _FAKE)
+    assert [r.line for r in rewrites] == [3]
+    out = apply_rewrites(src.read_text(encoding="utf-8"), rewrites)
+    lines = out.splitlines()
+    assert lines[1] == "foo(old_name, vincio."  # unrelated same-column text untouched
+    assert lines[2] == "    new_name)"
+
+
+def test_scan_source_matches_bare_vincio_without_an_import(tmp_path):
+    # A module object can arrive by re-export; the pre-7.5 matcher caught any
+    # `vincio.X` attribute access and that behavior must not regress.
+    src = tmp_path / "reexport.py"
+    src.write_text(
+        "from myproject.compat import vincio\n\nx = vincio.old_name()\n",
+        encoding="utf-8",
+    )
+    assert len(scan_source(src, _FAKE)) == 1
+
+
+def test_scan_source_ignores_relative_vincio_import(tmp_path):
+    # `from .vincio import X` names the project's own local module.
+    src = tmp_path / "vendored.py"
+    src.write_text(
+        "from .vincio import old_name\n\nold_name()\n", encoding="utf-8"
+    )
+    assert scan_source(src, _FAKE) == []

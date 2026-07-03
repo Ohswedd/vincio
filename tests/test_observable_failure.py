@@ -14,6 +14,7 @@ the detector bites, and proves the runtime helper logs-and-counts.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 
 import pytest
 
@@ -47,6 +48,49 @@ def test_public_modules_are_discovered_and_private_excluded():
     assert "vincio._observable_failure" not in modules
     assert "vincio._surface" not in modules
     assert "vincio.security._ed25519" not in modules
+
+
+def test_app_mixin_modules_stay_in_scope():
+    """The private ContextApp verb mixins (``vincio/core/_app_*.py``) are whitelisted.
+
+    The app.py split moved the ``app.*`` verb bodies into underscore-prefixed
+    modules; the standing guard deliberately keeps scanning them, so an injected
+    silent swallow inside a mixin verb still fails the build.
+    """
+    modules = of.public_modules()
+    assert "vincio.core._app_optimize" in modules
+    assert "vincio.core._app_serving" in modules
+    # The whitelist is surgical: other private modules stay out of scope.
+    assert "vincio.tasks._flow" not in modules
+
+
+def test_detector_bites_inside_a_mixin_class():
+    """An injected silent swallow in a ``_*Verbs`` verb body is flagged.
+
+    Together with :func:`test_app_mixin_modules_stay_in_scope` this proves the
+    whitelisted module's violation reaches :func:`of.silent_swallows`.
+    """
+    source = (
+        "class _ServingVerbs:\n"
+        "    def add_tool(self):\n"
+        "        try:\n"
+        "            g()\n"
+        "        except Exception:\n"
+        "            pass\n"
+    )
+    rows = of.silent_swallows_in_source(source)
+    assert [q for q, _ln, _d in rows] == ["_ServingVerbs.add_tool"]
+
+
+def test_moved_marked_swallow_stays_scanned():
+    """The one reviewed swallow (``_score_online``) moved into the optimize mixin;
+    the whitelist keeps its module scanned and its ``# noqa: BLE001`` still holds."""
+    import vincio
+
+    path = Path(vincio.__file__).resolve().parent / "core" / "_app_optimize.py"
+    source = path.read_text(encoding="utf-8")
+    assert "# noqa: BLE001" in source
+    assert of.silent_swallows_in_source(source) == []
 
 
 # --- the detector bites on a silent swallow ----------------------------------

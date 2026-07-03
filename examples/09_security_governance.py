@@ -296,7 +296,7 @@ def section_invariant_verification() -> None:
     # A holding invariant was checked at EVERY point of its domain (a proof, not
     # a sample): states_checked == domain_size.
     report = app.verify_governance()
-    print(f"  held = {report.held}  digest = {report.content_sha256[:16]}…")
+    print(f"  held = {report.held}  digest = {report.content_hash[:16]}…")
     for r in report.results:
         print(f"    {r.category:12} held={r.held} "
               f"checked {r.states_checked}/{r.domain_size} states")

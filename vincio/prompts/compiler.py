@@ -187,7 +187,7 @@ class PromptCompiler:
         seen: set[str] = set()
         kept: list[PromptNode] = []
         for node in ast.nodes:
-            key = f"{node.kind}:{' '.join(node.text.lower().split())}" if node.text else node.content_hash
+            key = f"{node.kind}:{' '.join(node.text.lower().split())}" if node.text else node.digest()
             if key in seen and node.kind in ("rule", "definition", "safety_policy"):
                 continue
             seen.add(key)

@@ -43,16 +43,24 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from pydantic import BaseModel, Field
+from pydantic import (
+    AliasChoices,
+    BaseModel,
+    Field,
+    SerializerFunctionWrapHandler,
+    model_serializer,
+)
 
 from ..core.utils import utcnow
 from ..observability.finops import within_budget
 from ..security.capability import AUTHORIZED, TrustLabel, requires_authority
+from ..stability import VincioDeprecationWarning
 from .lineage import build_erasure_proof, verify_erasure_proof
 from .residency import ResidencyPolicy
 
@@ -191,7 +199,7 @@ class VerificationReport(BaseModel):
     """The verdict of a governance-verification pass over all invariants.
 
     :attr:`held` is true exactly when every invariant proved across its whole
-    state space. :attr:`content_sha256` binds the report to the per-invariant
+    state space. :attr:`content_hash` binds the report to the per-invariant
     verdicts (and any counterexamples) and is reproducible — two passes over the
     same invariants produce the same digest — so a governance regression is a
     diff in a mechanical artifact, not a re-run of a flaky check. The timestamp
@@ -203,9 +211,43 @@ class VerificationReport(BaseModel):
     states_checked: int = 0
     created_at: datetime = Field(default_factory=utcnow)
     claim_generator: str = "vincio"
-    content_sha256: str = ""
+    # Serialized under its field name; old dumps validate via the alias.
+    content_hash: str = Field(
+        default="", validation_alias=AliasChoices("content_hash", "content_sha256")
+    )
     audit_entry_id: str | None = None
     audit_merkle_root: str | None = None
+
+    @model_serializer(mode="wrap")
+    def _dual_emit_legacy_key(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        # Legacy wire key, emitted alongside the canonical one until 8.0 so a
+        # consumer keyed on a persisted report's ``content_sha256`` keeps
+        # reading across the rename runway. Old and new dumps both validate
+        # via the field's AliasChoices.
+        data: dict[str, Any] = handler(self)
+        data["content_sha256"] = data["content_hash"]
+        return data
+
+    @property
+    def content_sha256(self) -> str:
+        """Deprecated since 7.5 (removal in 8.0): use :attr:`content_hash`."""
+        warnings.warn(
+            "VerificationReport.content_sha256 is deprecated since Vincio 7.5 "
+            "and will be removed in 8.0. Use content_hash instead.",
+            VincioDeprecationWarning,
+            stacklevel=2,
+        )
+        return self.content_hash
+
+    @content_sha256.setter
+    def content_sha256(self, value: str) -> None:
+        warnings.warn(
+            "VerificationReport.content_sha256 is deprecated since Vincio 7.5 "
+            "and will be removed in 8.0. Assign content_hash instead.",
+            VincioDeprecationWarning,
+            stacklevel=2,
+        )
+        self.content_hash = value
 
     @property
     def counterexamples(self) -> list[Counterexample]:
@@ -234,10 +276,13 @@ class VerificationReport(BaseModel):
             separators=(",", ":"),
         )
 
+    def digest(self) -> str:
+        """SHA-256 content hash over :meth:`digest_payload` (the recorded binding)."""
+        return hashlib.sha256(self.digest_payload().encode("utf-8")).hexdigest()
+
     def verify(self) -> bool:
         """Recompute the content digest and check it matches what was recorded."""
-        expected = hashlib.sha256(self.digest_payload().encode("utf-8")).hexdigest()
-        return bool(self.content_sha256) and self.content_sha256 == expected
+        return bool(self.content_hash) and self.content_hash == self.digest()
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-ready dump of the report (for serialization / audit detail)."""
@@ -357,9 +402,7 @@ class GovernanceVerifier:
             states_checked=sum(r.states_checked for r in results),
             claim_generator=self._claim_generator or f"vincio/{vincio.__version__}",
         )
-        report.content_sha256 = hashlib.sha256(
-            report.digest_payload().encode("utf-8")
-        ).hexdigest()
+        report.content_hash = report.digest()
         if record and self.audit is not None:
             entry = self.audit.record(
                 "governance_verification",
@@ -368,7 +411,8 @@ class GovernanceVerifier:
                     "held": held,
                     "invariants": len(results),
                     "states_checked": report.states_checked,
-                    "content_sha256": report.content_sha256,
+                    # frozen audit-detail key — external consumers bind to it.
+                    "content_sha256": report.content_hash,
                     "verdicts": {r.category: r.held for r in results},
                     "counterexamples": [c.render() for c in report.counterexamples],
                 },

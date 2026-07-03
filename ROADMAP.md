@@ -53,7 +53,15 @@ existing symbol changed. `v7.4` added the **DS4 local-inference provider** — a
 (antirez's self-contained engine for DeepSeek V4) as a first-class Vincio provider, flowing through the
 same registry, capability guards, cost table, reasoning controller (thinking modes), residency
 (fail-closed on-prem), and audit chain as every other provider, with the DS4 models priced at an honest
-self-hosted `$0` — additive, no new hard dependency, no existing symbol changed. There is currently
+self-hosted `$0` — additive, no new hard dependency, no existing symbol changed. `v7.5` was the
+**consistency & structure line**: one name per concept across the public surface (`build_*`
+factories, `verifier=`, `as_of=`, `digest()`, `content_hash`) behind Vincio's first **active
+deprecation runway** (old names warn until their scheduled removal in `8.0`, `vincio migrate 8.0`
+ships the codemod today), one implementation per canonical-JSON recipe (zero bytes changed, golden-
+pinned), flat hot paths (footprint eviction and multilateral clearing shed their quadratic folds,
+proven byte-identical by reference oracles), and one module per responsibility (`ContextApp` verb
+mixins, staged `compile()`, phased `combine_attestations` — pure code motion under the byte-identical
+SLOs, with the standing-guard lints extended so their coverage did not shrink). There is currently
 **no proposed capability** on the roadmap; the platform is feature-complete, and new capability is
 proposed from scratch when it meets a real need (see [Forward work](#forward-work)).
 
@@ -95,7 +103,7 @@ offline.
 |---|---|
 | **Structured output** | Pydantic contracts, provider-native constrained decoding, streaming validation with early abort, typed signatures, multi-schema routing, and bounded self-correction that repairs structure only — never facts. |
 | **Evaluation** | Golden datasets, 30+ metrics, calibrated judges and disagreement-aware judge ensembles, synthetic data, red-teaming, experiments with significance, regression gates that attribute a failure to its cause, adaptive sampling, a pytest plugin, a stateful-environment harness with a task-success oracle, and adapters for nine agentic benchmarks (SWE-bench, τ-bench, GAIA, WebArena, BFCL, AgentBench, ToolBench, LiveCodeBench, MMLU-Pro). |
-| **Open evaluation plane** | One pluggable harness for the standard public model benchmarks (MMLU, GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by eleven niches behind one `BenchmarkAdapter` contract, scored by reused metrics, and reported the same way for every model and version. Every number carries an enforced **provenance tier** (Static / Recorded / Live) the engine refuses to let a lower tier inflate; long-context benchmarks run twice (with and without the `ContextGovernor`) so the uplift is measured, and prompt injection reports *contained vs compromised*. Deterministic, concurrent, resumable runs over a model or app; Markdown / HTML / JSON / CSV / PDF reports and a ranked leaderboard; charts; a SQLite (or Postgres) run store with model-version diffs; and a `vincio.benchmarks` plugin API. In-process and offline-reproducible; never a hosted leaderboard. |
+| **Open evaluation plane** | One pluggable harness for the standard public model benchmarks (MMLU, GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, …) grouped by ten niches behind one `BenchmarkAdapter` contract, scored by reused metrics, and reported the same way for every model and version. Every number carries an enforced **provenance tier** (Static / Recorded / Live) the engine refuses to let a lower tier inflate; long-context benchmarks run twice (with and without the `ContextGovernor`) so the uplift is measured, and prompt injection reports *contained vs compromised*. Deterministic, concurrent, resumable runs over a model or app; Markdown / HTML / JSON / CSV / PDF reports and a ranked leaderboard; charts; a SQLite (or Postgres) run store with model-version diffs; and a `vincio.benchmarks` plugin API. In-process and offline-reproducible; never a hosted leaderboard. |
 | **Observability** | Full trace span trees, sessions, feedback, eval scores on spans, JSONL and OpenTelemetry export, a local viewer, a self-hosted observability and alerting plane, a versioned prompt registry, and per-run cost tracking — no account or hosted backend required. |
 
 ### The closed loop

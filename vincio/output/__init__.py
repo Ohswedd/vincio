@@ -1,5 +1,7 @@
 """Vincio output engine."""
 
+from __future__ import annotations
+
 from .constrained import (
     DecodingMode,
     choice_schema,

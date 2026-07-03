@@ -1,6 +1,8 @@
 """Vincio agent engine: bounded executors, planners, handoffs, crews,
 durable stateful graphs, declarative composition, and runtime backends."""
 
+from __future__ import annotations
+
 from .backends import (
     LangGraphBackend,
     OpenAIAgentsBackend,

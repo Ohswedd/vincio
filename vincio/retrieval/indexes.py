@@ -21,7 +21,7 @@ from .filters import FilterSpec, as_predicate
 try:  # optional acceleration — pure-Python cosine stays the zero-dependency default
     import numpy as _np
 except ImportError:  # pragma: no cover - exercised only when numpy is absent
-    _np = None
+    _np = None  # type: ignore[assignment]
 
 __all__ = ["SearchHit", "SearchFilter", "Where", "Index", "BM25Index", "VectorIndex"]
 

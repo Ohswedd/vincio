@@ -352,7 +352,7 @@ def section_waterfall() -> None:
     app = make_app("auditor")
     app.use_settlement_book(owner="auditor")
     app.use_reputation_ledger()
-    resolution = app.resolve_insolvency(reserves, owed, schedule, verify_with=auditor_signer)
+    resolution = app.resolve_insolvency(reserves, owed, schedule, verifier=auditor_signer)
     print(f"waterfall ({resolution.status}): distributed ${resolution.distributed_usd:,.0f} of ${resolution.liabilities_usd:,.0f}; {resolution.shortfall_bearers} bear ${resolution.shortfall_usd:,.0f}")
     for r in sorted(resolution.recoveries, key=lambda r: (r.rank, r.creditor)):
         mark = "made whole" if r.made_whole else f"short ${r.shortfall_usd:,.0f}"

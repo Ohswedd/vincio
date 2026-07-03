@@ -27,7 +27,7 @@ The pieces:
 * A :class:`ComputerTask` carries a goal and a declarative verifier, so a run
   projects onto the same :class:`~vincio.evals.trajectory.Trajectory` the existing
   trajectory metrics, test-time search, and world-model planner already score — no
-  new search machinery. :func:`make_web_checkout` is a deterministic, WebArena /
+  new search machinery. :func:`build_web_checkout` is a deterministic, WebArena /
   OSWorld-shaped reference app to gate success-at-budget and safety offline.
 
 These workloads should run behind a real
@@ -38,16 +38,16 @@ These workloads should run behind a real
 
 from __future__ import annotations
 
-import hashlib
-import json
 from collections.abc import Awaitable, Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 from ..core.errors import ComputerUseError
+from ..core.utils import compact_hash
 from ..evals.environment import StateCheck, TaskCheck, TaskVerification
 from ..evals.trajectory import Trajectory, TrajectoryStep
+from ..stability import deprecated_alias
 
 __all__ = [
     "UIElement",
@@ -66,6 +66,7 @@ __all__ = [
     "ComputerTask",
     "ComputerRun",
     "ComputerEnvironment",
+    "build_web_checkout",
     "make_web_checkout",
 ]
 
@@ -94,12 +95,6 @@ _DESTRUCTIVE_WORDS = (
     "deactivate",
     "uninstall",
 )
-
-
-def _digest(payload: Any) -> str:
-    """A stable, content-addressed digest of a JSON-able payload."""
-    raw = json.dumps(payload, sort_keys=True, default=str, separators=(",", ":"))
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
 
 
 # --------------------------------------------------------------------------- #
@@ -155,7 +150,7 @@ class ScreenState(BaseModel):
     @property
     def digest(self) -> str:
         """A stable digest of the salient state (screen + values + flags)."""
-        return _digest(self.state or {"url": self.url, "title": self.title, "text": self.text})
+        return compact_hash(self.state or {"url": self.url, "title": self.title, "text": self.text})
 
     def element(self, selector: str) -> UIElement | None:
         """The element with this exact stable selector, if present."""
@@ -878,7 +873,7 @@ class ComputerEnvironment:
 # --------------------------------------------------------------------------- #
 
 
-def make_web_checkout() -> tuple[ScreenApp, ComputerTask]:
+def build_web_checkout() -> tuple[ScreenApp, ComputerTask]:
     """A deterministic, in-process checkout app and its goal, the offline,
     WebArena / OSWorld-shaped reference scenario.
 
@@ -925,3 +920,11 @@ def make_web_checkout() -> tuple[ScreenApp, ComputerTask]:
         max_steps=8,
     )
     return app, task
+
+
+make_web_checkout = deprecated_alias(
+    build_web_checkout,
+    old_name="make_web_checkout",
+    since="7.5",
+    removed_in="8.0",
+)

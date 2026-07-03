@@ -285,7 +285,7 @@ async def test_a_forged_revocation_from_a_peer_is_refused() -> None:
     server = acme.serve_attestations(revocations=[rev])
     buyer = _buyer()
     result = await buyer.agather_reputation(
-        "vendor", peers={"acme": server}, verify_with=acme.contract_signer, weight=False
+        "vendor", peers={"acme": server}, verifier=acme.contract_signer, weight=False
     )
     assert result.revocations_gathered == 0  # the forged revocation is dropped
 
@@ -473,7 +473,7 @@ async def test_bounded_fan_out_records_the_skip_reason() -> None:
     assert globex_visit.reason == "fan-out bound reached"
 
 
-# -- _verifies hash-fail returns False (no verify_with) -----------------------
+# -- _verifies hash-fail returns False (no verifier) --------------------------
 
 
 async def test_a_tampered_attestation_is_refused_without_a_verifier() -> None:
@@ -482,7 +482,7 @@ async def test_a_tampered_attestation_is_refused_without_a_verifier() -> None:
     tampered.settled = 99  # the stored hash no longer recomputes
     server = acme.serve_attestations(attestations=[tampered])
     buyer = _buyer()
-    # No verify_with, so the hash-recompute branch alone must refuse it.
+    # No verifier, so the hash-recompute branch alone must refuse it.
     result = await buyer.agather_reputation("vendor", peers={"acme": server}, weight=False)
     assert result.attestations_gathered == 0
     assert result.visit_for("acme").attestations == 0

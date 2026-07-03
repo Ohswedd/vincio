@@ -14,6 +14,8 @@ objects and need the matching extra (``vincio[langchain]`` / ``vincio[llamaindex
     add_dspy_module(app, my_compiled_dspy_program)   # an optimized DSPy program as a tool
 """
 
+from __future__ import annotations
+
 from .dspy import (
     DSPyRetriever,
     add_dspy_module,

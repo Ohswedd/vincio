@@ -194,5 +194,18 @@ async def main() -> None:
 
 if __name__ == "__main__":
     import asyncio
+    import sys
 
-    asyncio.run(main())
+    from vincio.core.errors import ProviderUnavailableError
+
+    try:
+        asyncio.run(main())
+    except ProviderUnavailableError as exc:
+        # Only reachable in live mode (VINCIO_PROVIDER=ds4): no box answered.
+        print(f"\nNo DS4 server reachable: {exc}", file=sys.stderr)
+        print(
+            "Start one with `ds4-server` (serves 127.0.0.1:8000), or unset "
+            "VINCIO_PROVIDER to run this example offline against the recorded transport.",
+            file=sys.stderr,
+        )
+        sys.exit(1)

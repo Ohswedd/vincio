@@ -21,6 +21,8 @@ the default and offline-test path.
             ...
 """
 
+from __future__ import annotations
+
 from .backends import (
     GeminiLiveBackend,
     InProcessRealtimeBackend,
