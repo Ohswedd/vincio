@@ -194,7 +194,10 @@ class BudgetAllocator:
         flexible = {k: v for k, v in fractions.items() if k not in fixed_costs}
         flexible_total = sum(flexible.values()) or 1.0
 
-        for name in fractions:
+        # Every fraction block, plus any fixed-cost block not in the fraction
+        # table (e.g. the pinned "anchor" reservation), gets a truthful line.
+        names = list(fractions) + [k for k in fixed_costs if k not in fractions]
+        for name in names:
             if name in fixed_costs:
                 allocation.blocks[name] = BlockBudget(
                     block=name,

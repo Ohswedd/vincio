@@ -72,9 +72,18 @@ the `ToolProtocolProvider` that grants native-grade tool use to models without f
 the `websearch` connector that makes the deep-research agent web-backed — additive, no new hard
 dependency, no existing symbol changed. It is the first phase of **native skill integration**:
 the when/what/how contract reaches the model through the context plane, identically for every
-provider. There is currently **no proposed capability** on the roadmap; the platform is
-feature-complete, and new capability is proposed from scratch when it meets a real need (see
-[Forward work](#forward-work)).
+provider. `v7.7` added **context anchors & dynamic retrieval** — mark a source `anchor=True` and a
+PRD / spec / brand corpus that binds a whole multi-call task is distilled once into a compact,
+constraint-first, content-hash-cached brief injected as **pinned** evidence into every call at a flat
+few-hundred-token cost (~32× smaller than the corpus), guaranteed into the packet at every drop point
+(gate, dedup, conflict, footprint, budget) via a budget reservation with a never-raising overflow
+ladder, while on-demand detail still flows through normal retrieval — beating "paste every MD file
+every call" on tokens and "pure per-query RAG" on frame retention (live: anchors match stuffing on
+adherence at ~3× fewer tokens/call while pure RAG drops the rule to 50%); plus opt-in, byte-identical-
+default dynamic-retrieval knobs (`embedder="auto"`, grow-only adaptive `top_k`) — additive, no new hard
+dependency, no existing symbol changed. There is currently **no proposed capability** on the roadmap;
+the platform is feature-complete, and new capability is proposed from scratch when it meets a real need
+(see [Forward work](#forward-work)).
 
 ---
 

@@ -22,6 +22,7 @@ from ..caching.base import InMemoryCache
 from ..caching.compilation import ChunkCache, ContextCompileCache, PromptCompileCache
 from ..caching.invalidation import InvalidationManager
 from ..caching.layers import ResponseCache
+from ..context.anchors import AnchorSet
 from ..context.compiler import ContextCompiler, ContextCompilerOptions
 from ..evals.online import OnlineEvaluator
 from ..governance.fertility import FertilityTracker
@@ -436,6 +437,9 @@ class ContextApp(
         if self.config.cache.kv_prefix_reuse:
             self.use_kv_prefix_reuse()
         self.sources: dict[str, _SourceConfig] = {}
+        # Task-frame anchors: an always-on compact brief of PRD/spec/brand docs
+        # injected as pinned evidence every run (populated by add_source(anchor=True)).
+        self.anchors: AnchorSet = AnchorSet()
         self.retrieval: RetrievalEngine | None = None
         self._bm25: BM25Index | None = None
         self._vector: VectorIndex | None = None

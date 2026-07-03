@@ -134,7 +134,16 @@ class RetrievalConfig(BaseModel):
     chunk_overlap_tokens: int = 50
     chunking: str = "recursive"
     reranker: str | None = "heuristic"
-    embedder: str = "local"  # local | jina | voyage | cohere | voyage-context | <provider>
+    # local | auto | fastembed | jina | voyage | cohere | voyage-context | <provider>.
+    # "auto" is semantic (local ONNX) when installed, deterministic hash otherwise;
+    # the default stays "local" so retrieval output never depends on the install
+    # profile (byte-identity). Set "auto" (or "fastembed") for real semantic recall.
+    embedder: str = "local"
+    # Grow top_k for broad / multi-part queries (never shrink below it), capped at
+    # ``adaptive_top_k_ceiling``. Off by default: a constant k keeps evidence
+    # counts — and golden packets — stable. A recall knob, not a precision one.
+    adaptive_top_k: bool = False
+    adaptive_top_k_ceiling: int = 20
     # Matryoshka (MRL) output-dimension truncation; None keeps the model's
     # native dimension. Hosted embedders that support it truncate server-side.
     embedding_dimensions: int | None = None

@@ -81,13 +81,35 @@ and cross-tenant access raises `TenantIsolationError`.
 4. The output validator rejects citations that don't match real evidence ids.
 5. The `groundedness` evaluator measures supported-claim ratio per run.
 
+## Keep a task frame across many calls (context anchors)
+
+Some documents are not "look it up when asked" evidence — they are the *frame*
+of the whole task (a PRD, coding standards, a brand guide). Mark them
+`anchor=True` and Vincio keeps that frame present on **every** call at a flat,
+tiny cost, instead of re-pasting the corpus or losing it to a lexical miss:
+
+```python
+app.add_source("spec", documents=[prd, brand, standards], anchor=True, brief_tokens=300)
+print(app.task_brief())            # the compact, constraint-first frame
+
+# The frame is present here even though the query never mentions the brand rule:
+report = app.run("add a settings panel")
+```
+
+The anchor docs are still chunked and indexed, so a call that needs a specific
+section retrieves it normally — the frame just guarantees the global context is
+always there. See [context anchors](../concepts/context-anchors.md) for how it
+is distilled, budget-reserved, and guaranteed.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related
 
 - [Concept: Retrieval (RAG)](../concepts/retrieval.md)
+- [Concept: Context anchors (task frame)](../concepts/context-anchors.md)
 - [Guide: Connect external data sources](connectors.md)
 - [Example: 02_retrieval_rag.py](../../examples/02_retrieval_rag.py)
+- [Example: 20_context_anchors.py](../../examples/20_context_anchors.py)
 - [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

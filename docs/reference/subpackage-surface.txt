@@ -188,6 +188,8 @@ connectors SUB CONNECTORS
 connectors SUB Connector
 connectors SUB connect
 connectors SUB register_connector
+context SUB AnchorBrief
+context SUB AnchorSet
 context SUB BlockBudget
 context SUB BudgetAllocation
 context SUB BudgetAllocator
@@ -219,6 +221,7 @@ context SUB RenderInfo
 context SUB RunSpan
 context SUB ScoringWeights
 context SUB TokenImportanceScorer
+context SUB build_anchor_brief
 context SUB compression_faithfulness
 context SUB distill_evidence_ledger
 context SUB extractive_compress

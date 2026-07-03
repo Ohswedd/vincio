@@ -852,14 +852,22 @@ class FastEmbedEmbedder:
             from fastembed import TextEmbedding
 
             self._model = TextEmbedding(model_name=self.model_name)
-        except ImportError as exc:
+        except Exception as exc:  # noqa: BLE001 - any load failure degrades observably
+            # Not just ImportError: an offline box with no model cache raises a
+            # download error here. With fallback on, degrade to the deterministic
+            # hash embedder observably rather than crashing the run.
             if self._fallback:
+                from ..core.diagnostics import note_suppressed
+
+                note_suppressed("embeddings.fastembed_load_failed")
                 self._fallback_embedder = LocalHashEmbedder(dim=self.dim)
                 return
-            raise ConfigError(
-                'the local ONNX embedder requires: pip install "vincio[fastembed]" '
-                "(or construct with fallback=True / inject encode_fn)"
-            ) from exc
+            if isinstance(exc, ImportError):
+                raise ConfigError(
+                    'the local ONNX embedder requires: pip install "vincio[fastembed]" '
+                    "(or construct with fallback=True / inject encode_fn)"
+                ) from exc
+            raise
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         self._ensure()
@@ -942,6 +950,18 @@ def build_embedder(
     """
     if kind == "local":
         base: Embedder = LocalHashEmbedder(**kwargs)
+    elif kind == "auto":
+        # Semantic when a real local embedder is present, deterministic hash
+        # otherwise — resolved once, always with fallback so it can never crash
+        # a run (offline box, no model cache). Opt-in (the default stays "local")
+        # so byte-identity does not depend on the install profile.
+        import importlib.util
+
+        if importlib.util.find_spec("fastembed") is not None:
+            kwargs.setdefault("fallback", True)
+            base = FastEmbedEmbedder(**kwargs)
+        else:
+            base = LocalHashEmbedder(**{k: v for k, v in kwargs.items() if k != "fallback"})
     elif kind in ("fastembed", "onnx"):
         base = FastEmbedEmbedder(**kwargs)
     elif kind == "colbert":

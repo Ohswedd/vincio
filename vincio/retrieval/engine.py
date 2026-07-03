@@ -94,6 +94,8 @@ class RetrievalEngine:
         duplicate_threshold: float = 0.9,
         max_concurrency: int = 8,
         query_strategies: list[str] | None = None,
+        adaptive_top_k: bool = False,
+        adaptive_top_k_ceiling: int = 20,
     ) -> None:
         if not indexes:
             raise ValueError("RetrievalEngine requires at least one index")
@@ -106,7 +108,20 @@ class RetrievalEngine:
         self.duplicate_threshold = duplicate_threshold
         self.max_concurrency = max_concurrency
         self.query_strategies = list(query_strategies or [])
+        self.adaptive_top_k = adaptive_top_k
+        self.adaptive_top_k_ceiling = adaptive_top_k_ceiling
         self.query_understanding = QueryUnderstanding(planner_provider, planner_model)
+
+    def _effective_top_k(self, top_k: int, plan: QueryPlan) -> int:
+        """Grow-only adaptive k: a broad / multi-part query (more subqueries)
+        pulls more candidates, capped at ``adaptive_top_k_ceiling`` and never
+        below the configured ``top_k``. k is the recall knob — precision is
+        governed downstream (relevance gate, min_score, dedup, budget). Integer
+        and deterministic under the heuristic planner."""
+        if not self.adaptive_top_k:
+            return top_k
+        parts = 1 + len(plan.subqueries) + sum(len(e.queries) for e in plan.expansions)
+        return max(top_k, min(self.adaptive_top_k_ceiling, top_k * min(parts, 4)))
 
     # -- query planning ------------------------------------------------------------
 
@@ -204,6 +219,9 @@ class RetrievalEngine:
             plan.expansions = await self.query_understanding.expand(
                 query, strategies, objective=objective
             )
+        # Grow-only adaptive k (off by default): a broad query pulls more, never
+        # fewer, than the configured floor. All downstream cuts use this k.
+        top_k = self._effective_top_k(top_k, plan)
         candidate_k = max(top_k * self.candidate_multiplier, top_k)
 
         # The main query counts more than subqueries and strategy expansions.
@@ -279,6 +297,7 @@ class RetrievalEngine:
                 "candidates": len(merged),
                 "queries": len(queries),
                 "strategies": list(strategies or []),
+                "chosen_k": top_k,
             },
         )
 

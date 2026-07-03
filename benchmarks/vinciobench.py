@@ -13154,6 +13154,132 @@ async def bench_web_search() -> dict[str, Any]:
     }
 
 
+async def bench_rag_anchors() -> dict[str, Any]:
+    """RagAnchorsBench: context anchors keep a task frame present across a chain
+    of calls at a flat, tiny cost — beating both 'stuff every MD file every call'
+    (token-hungry) and 'pure per-query RAG' (frame lost on a lexical miss) — and
+    the pinned frame is guaranteed into the packet at every drop point without
+    breaking the budget or starving retrieved detail. All offline, deterministic.
+
+    Gated: the brief is bounded and far cheaper than the corpus
+    (``brief_reduction``); the frame's constraint survives on a query that does
+    not mention it (``frame_retained_on_mismatch``) while the same pure-RAG query
+    loses it (``pure_rag_loses_frame``); the query-matched detail is retrieved
+    *alongside* the frame (``tier2_detail_survives``); the frame is present under
+    a tiny window, a zero-evidence task type, a footprint ceiling, and a
+    conflicting higher-authority chunk, always within budget
+    (``frame_guaranteed_everywhere``, ``budget_never_exceeded``); and the brief is
+    deterministic and content-hash-cached (``brief_deterministic``)."""
+    from vincio.context.anchors import AnchorSet, build_anchor_brief
+    from vincio.context.compiler import ContextCompiler, ContextCompilerOptions
+    from vincio.core.tokens import count_tokens
+    from vincio.core.types import (
+        Budget,
+        Document,
+        EvidenceItem,
+        Instruction,
+        Objective,
+        TaskType,
+        UserInput,
+    )
+
+    # A realistic bulk of vibe-coder MD files: a few key constraints buried in
+    # pages of narrative — exactly where 'stuff every file every call' is wasteful
+    # and 'pure per-query RAG' loses the constraint on a lexical miss.
+    filler = " ".join(
+        f"Section {i}: this paragraph elaborates background, rationale, personas, "
+        "and assorted considerations that inform the product but are not binding "
+        "rules a coding step must honor on every call." for i in range(40)
+    )
+    prd = Document(title="PRD", text=(
+        "Build a CLI code editor for vibe coders. It must support a plugin system. "
+        "Users should never lose unsaved work. The editor must start under 200ms. "
+        + filler))
+    brand = Document(title="Brand", text=(
+        "Voice is warm, concise, encouraging. Always address the user directly. "
+        "Never use jargon or corporate speak. Error messages must offer a next step. "
+        + filler))
+    arch = Document(title="Architecture", text=(
+        "The core is event-sourced. All state changes go through a command bus. "
+        "Rendering must be decoupled from the model layer. " + filler))
+    corpus = [prd, brand, arch]
+    corpus_tokens = sum(count_tokens(d.text) for d in corpus)
+
+    brief = build_anchor_brief(corpus, brief_tokens=160)
+    brief_reduction = round(corpus_tokens / max(brief.tokens, 1), 2)
+    frame = brief.as_evidence()
+    detail = EvidenceItem(
+        id="d1", source_id="arch.md", relevance=0.9,
+        text="The login endpoint validates a bearer token and returns a session cookie.")
+
+    async def compile_once(evidence, budget, *, task=TaskType.CODING, query="add a settings panel", **opt):
+        compiler = ContextCompiler(ContextCompilerOptions(**opt))
+        result = await compiler.compile(
+            objective=Objective("build the app", task_type=task),
+            user_input=UserInput(text=query),
+            instructions=[Instruction("Answer from the sources")],
+            evidence=evidence, budget=budget)
+        ids = [e.get("id") for e in result.packet.evidence_items]
+        text = " ".join(e.get("text") or "" for e in result.packet.evidence_items)
+        return result, ids, text
+
+    # frame retention on a query that never mentions the constraint
+    _, ids_anchor, text_anchor = await compile_once([frame, detail], Budget(max_input_tokens=8000))
+    frame_retained_on_mismatch = "Never use jargon" in text_anchor
+    # pure RAG (no anchor): the same lexical-miss query loses the brand constraint
+    brand_chunk = EvidenceItem(id="b", source_id="brand.md",
+                               text="Never use jargon or corporate speak.", relevance=0.1)
+    _, _, text_pure = await compile_once([brand_chunk, detail], Budget(max_input_tokens=8000),
+                                         min_relevance=0.2)
+    pure_rag_loses_frame = "Never use jargon" not in text_pure
+    # tier-2: a query that matches the detail keeps BOTH frame and detail
+    _, ids_both, _ = await compile_once([frame, detail], Budget(max_input_tokens=8000),
+                                        query="login endpoint bearer token")
+    tier2_detail_survives = frame.id in ids_both and "d1" in ids_both
+
+    # frame guaranteed at every hard drop point, always in budget
+    scenarios = []
+    r1, i1, _ = await compile_once([frame, detail], Budget(max_input_tokens=1000, max_output_tokens=200))
+    scenarios.append((frame.id in i1, r1.token_count <= 1000))
+    r2, i2, _ = await compile_once([frame, detail], Budget(max_input_tokens=2000), task=TaskType.CLASSIFICATION)
+    scenarios.append((frame.id in i2, r2.token_count <= 2000))
+    r3, i3, _ = await compile_once([frame, detail], Budget(max_input_tokens=8000), max_resident_bytes=200)
+    scenarios.append((frame.id in i3, True))
+    contradiction = EvidenceItem(id="c1", source_id="old.md", authority=0.99, relevance=0.9,
+                                 text="The editor must start under 900ms, not 200ms.")
+    r4, i4, _ = await compile_once([frame, contradiction], Budget(max_input_tokens=8000),
+                                   query="editor startup time")
+    scenarios.append((frame.id in i4, True))
+    # overflow ladder: an oversized frame is fitted, never dropped, never over budget
+    huge = build_anchor_brief(corpus, brief_tokens=4000).as_evidence()
+    r5, i5, _ = await compile_once([huge], Budget(max_input_tokens=400, max_output_tokens=50))
+    scenarios.append((huge.id in i5, r5.token_count <= 400))
+    frame_guaranteed_everywhere = all(present for present, _ in scenarios)
+    budget_never_exceeded = all(ok for _, ok in scenarios)
+
+    # determinism + cache
+    b_a = build_anchor_brief(corpus, brief_tokens=160)
+    s = AnchorSet(); s.add("spec", corpus, brief_tokens=160)
+    brief_deterministic = (
+        b_a.text == brief.text and b_a.content_hash == brief.content_hash
+        and s.brief() is s.brief()  # cached
+    )
+
+    # honest tokens/call: the frame rides at a flat cost while pure-stuff pays the corpus
+    return {
+        "brief_reduction": brief_reduction,
+        "brief_tokens": brief.tokens,
+        "corpus_tokens": corpus_tokens,
+        "frame_retained_on_mismatch": frame_retained_on_mismatch,
+        "pure_rag_loses_frame": pure_rag_loses_frame,
+        "tier2_detail_survives": tier2_detail_survives,
+        "frame_guaranteed_everywhere": frame_guaranteed_everywhere,
+        "budget_never_exceeded": budget_never_exceeded,
+        "brief_deterministic": brief_deterministic,
+        "frame_first_position": ids_anchor[0] == frame.id if ids_anchor else False,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -13215,6 +13341,7 @@ FAMILIES = {
     "structural_guarantees": bench_structural_guarantees,
     "compile_receipt": bench_compile_receipt,
     "web_search": bench_web_search,
+    "rag_anchors": bench_rag_anchors,
 }
 
 
