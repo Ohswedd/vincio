@@ -155,6 +155,22 @@ without an entry here.
 
 **Memory conflict.** A new memory contradicts an existing one. Use `MemoryEngine.correct()` to supersede it history-preservingly instead of overwriting.
 
+### WEB_ERROR
+
+**Web operation error.** A web browsing/search operation failed. Inspect `.details` for the URL or query; check connectivity and the backend's status.
+
+### WEB_SEARCH_ERROR
+
+**Web search failed.** The search backend returned no usable results page (network error, rate-limit/anomaly challenge, or unparseable markup). Retry later, slow the query rate, or inject a different `SearchBackend`.
+
+### WEB_FETCH_ERROR
+
+**Web page fetch failed.** The page could not be fetched or read (network error, non-success status, unsupported content type, or body over the byte ceiling). Check the URL, or raise `WebPolicy.max_page_bytes` deliberately.
+
+### WEB_POLICY_DENIED
+
+**Web policy refused the operation.** The `WebPolicy` blocked the search/fetch before any request left the process (domain, scheme, private host, robots.txt, or an exhausted budget). Relax the specific policy field deliberately, or raise the session budget.
+
 ### TOOL_ERROR
 
 **Tool execution error.** A tool raised. Inspect `.tool` and the tool's own exception; make the tool defensive or wrap the call site.

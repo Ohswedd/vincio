@@ -654,6 +654,29 @@ class VincioRuntime:
                 app.skill_library.evidence_for(f"{routed.objective.text} {routed.input.text or ''}")
             )
 
+        # Prompt-driven web browsing: when web search is enabled and the user's
+        # *own* message directs a fetch (a pasted link, "summarize …"), fetch
+        # those pages and fold them in as untrusted, snapshotted, screened
+        # evidence — no tool round needed. Gated strictly on web being enabled,
+        # so the web=off path is byte-identical. Only the current user input is
+        # scanned (never history/tool output), so fetched content cannot plant a
+        # URL that auto-fetches next turn.
+        browser = getattr(app, "web_browser", None)
+        if browser is not None and getattr(browser.policy, "auto_fetch", False):
+            with app.tracer.span("web_auto_fetch", type="custom") as span:
+                fetched = await browser.evidence_for(routed.input.text or "")
+                screened_web: list[EvidenceItem] = []
+                for item in fetched:
+                    verdict = app.policy_engine.check_untrusted_content(
+                        item.text or "", source=item.source_id
+                    )
+                    if verdict.allowed:
+                        screened_web.append(item)
+                    else:
+                        span.add_event("evidence_blocked", id=item.id)
+                span.set(fetched=len(fetched), admitted=len(screened_web))
+                evidence.extend(screened_web)
+
         # 9/12a. tool loop happens with the model below; collect tool specs.
         tool_specs = app.tool_registry.specs(app.enabled_tools) if app.enabled_tools else []
 

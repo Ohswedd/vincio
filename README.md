@@ -207,7 +207,8 @@ high-level `ContextApp`, or reach for any engine directly.
 
 **Agents & orchestration**
 - Tools: permissioned registry (RBAC + ABAC), schema-from-typehints, a resource-limited sandbox, idempotent write guardrails with approval callbacks, and a grounded computer-use action plane.
-- Agents: bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN), in-place plan repair, cost-aware action selection, and a budgeted deep-research agent.
+- Universal web browsing & search: `app.use_web_search()` gives **any** model — hosted, gateway, or a local GGUF with no function calling — the same governed `web_search` / `web_read` tools over DuckDuckGo (or any pluggable engine). Reading is adaptive (query excerpts / a whole section / the full article / auto), preserves code blocks, and flags cookie walls, paywalls, and JS-shells so the model routes around dead pages; a pasted link or "summarize …" is auto-fetched as untrusted, screened evidence with no tool round; and `app.web_crawl(seeds)` walks a site into a verifiable `WebCollection` that becomes retrieval documents or a `Dataset`. Fetches are SSRF-hardened (per-redirect-hop re-checks, obfuscated-IP-literal normalization, streamed gzip-bomb caps), when-to-search judgement ships as a date-stamped progressively-disclosed skill, and every read is a content-hashed `WebEvidence` the session `verify()`s offline. Models without native tool calling run the identical loop through the `ToolProtocolProvider` text protocol.
+- Agents: bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN), in-place plan repair, cost-aware action selection, and a budgeted deep-research agent — web-backed in one line via the `websearch` connector.
 - Orchestration: multi-agent crews with a shared blackboard, durable stateful graphs (checkpoint / resume / time-travel / human-in-the-loop), deterministic workflows, and a distributed durable-execution backend.
 
 **Output, evaluation & observability**
@@ -368,6 +369,21 @@ VINCIO_UPLIFT_MODELS=… python benchmarks/quality_uplift.py`); full per-metric 
 | Prompt-injection exfiltration via a tool call | compromised | **contained** |
 | Context tokens to keep an early fact at 160 turns | 1,267 (lost) | **33 (retained)** |
 
+**Post-cutoff freshness via the web plane** (`web_search.freshness`) — asked facts that changed *after*
+the model's training cutoff (latest Python line, current & LTS Node.js majors), the bare model answers
+from stale memory; the *same* model with `app.use_web_search()` searches the open web and answers with
+the current fact. Measured live (OpenRouter, 2026-07-03, `python benchmarks/web_uplift_live.py`):
+
+| Model: direct vs. + Vincio web search | Direct fresh | **+ web search** |
+|---|--:|--:|
+| `openai/gpt-4o-mini` | 0/3 | **2/3** |
+| `meta-llama/llama-3.3-70b-instruct` | 0/3 | **2/3** |
+
+<sub>Direct answers were stale on every question (e.g. "Python 3.11", "Node 18/19"); with Vincio's web
+search the same models answered the current Python 3.14 line and Node.js 26. The one miss on both is a
+genuinely hard distinction (Active-LTS vs Current) — the benchmark is not rigged. Live Tier-L, not
+CI-gated; the static arms gate `vincio bench uplift` in CI.</sub>
+
 </details>
 
 ### VincioBench: the internal gate <sub>· not one of the three tracks</sub>
@@ -455,6 +471,7 @@ end to end — the entire data & analytics plane is one tour (`13`). Highlights 
 | 16 | [`open_evaluation_plane`](examples/16_open_evaluation_plane.py) | the three-track benchmark platform · public benchmarks by niche · provenance tiers (Static / Recorded / Live) · leaderboard & run store |
 | 17 | [`compile_receipt`](examples/17_compile_receipt.py) | the packet compile receipt — why a packet compiled the way it did · `receipt_hash` · offline `verify()` · `diverges_from()` between runs |
 | 18 | [`ds4_local_inference`](examples/18_ds4_local_inference.py) | a self-hosted DS4 DeepSeek V4 box as a first-class provider — thinking modes · disk-KV cache accounting · on-prem residency · honest self-hosted $0 |
+| 19 | [`web_browser_search`](examples/19_web_browser_search.py) | universal web browsing & search — governed `web_search` / `web_read` for every model · token-budgeted page reading · the text protocol for models without tool calling · pre-egress policy · offline-verifiable evidence |
 
 ### 3 · Applications — real-world backends
 

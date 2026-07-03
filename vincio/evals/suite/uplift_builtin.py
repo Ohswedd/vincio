@@ -48,6 +48,65 @@ class SchemaValidAdapter(BenchmarkAdapter):
         return BenchmarkResult(task_id=task.id, success=ok, score=1.0 if ok else 0.0, output=output)
 
 
+class WebFreshnessAdapter(BenchmarkAdapter):
+    """Score whether an answer contains the current fact. A model answering from
+    training alone gives a stale value for anything that changed after its
+    cutoff; routed through Vincio's web plane it searches and answers with the
+    fresh fact. ``gold`` is the token(s) that must appear (case-insensitive)."""
+
+    name = "web_freshness"
+
+    @staticmethod
+    def _contains(text: str, gold: str) -> bool:
+        # Word-boundary a bare number so "26" does not match the year "2026";
+        # substring for versions like "3.14".
+        import re
+
+        low, g = text.lower(), str(gold).lower()
+        if g.isalnum():
+            return re.search(rf"(?<!\d){re.escape(g)}(?!\d)", low) is not None
+        return g in low
+
+    async def score(self, task: BenchmarkTask, output: Any) -> BenchmarkResult:
+        text = output if isinstance(output, str) else str(output)
+        gold = task.gold if isinstance(task.gold, list) else [task.gold]
+        hit = all(self._contains(text, g) for g in gold if g)
+        return BenchmarkResult(
+            task_id=task.id, success=hit, score=1.0 if hit else 0.0, output=output
+        )
+
+
+def _web_freshness() -> UpliftBenchmark:
+    return UpliftBenchmark(
+        id="web_search.freshness",
+        title="Post-cutoff freshness (web search)",
+        capability="web_search",
+        adapter=WebFreshnessAdapter,
+        primary_metric="fresh_rate",
+        summary=(
+            "Asked about facts that changed after the training cutoff, the model "
+            "answers from stale memory when called directly; routed through Vincio's "
+            "governed web plane it searches the open web and answers with the current "
+            "fact. The recorded arms below fix the Static tier; the live arms are "
+            "measured by benchmarks/web_uplift_live.py against a real model."
+        ),
+        tasks=[
+            {"id": "wf1",
+             "prompt": "What is the latest stable minor version of Python? "
+                       "Answer with just major.minor.",
+             "gold": "3.14",
+             "recorded": "The latest stable version of Python is 3.13.",
+             "recorded_vincio": "The latest stable version of Python is 3.14."},
+            {"id": "wf2",
+             "prompt": "What is the current (non-LTS) major version line of Node.js "
+                       "as of 2026? Answer with the major version number.",
+             "gold": "26",
+             "recorded": "The current major version of Node.js is 22.",
+             "recorded_vincio": "The current major version line of Node.js is 26."},
+        ],
+    )
+
+
 def _grounded_qa() -> UpliftBenchmark:
     return UpliftBenchmark(
         id="rag.grounded", title="Grounded answering (RAG faithfulness)", capability="rag",
@@ -127,7 +186,7 @@ _ = agentic
 
 
 def builtin_uplift_benchmarks() -> list[UpliftBenchmark]:
-    return [_grounded_qa(), _injection(), _long_context(), _schema_valid()]
+    return [_grounded_qa(), _injection(), _long_context(), _schema_valid(), _web_freshness()]
 
 
 def register_builtins(registry: UpliftRegistry) -> None:

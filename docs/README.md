@@ -107,6 +107,10 @@ between your input and the model's validated output.
 - **[Agents and workflows](concepts/agents.md)**: bounded DAG agents, crews,
   durable state graphs, planners, in-place plan repair, and deterministic
   workflows.
+- **[Universal web browsing & search](concepts/web-browsing.md)**: governed
+  `web_search` / `web_read` tools every model can call — token-budgeted page
+  reading, a built-in when-to-search skill, the text protocol for models
+  without native tool calling, and offline-verifiable evidence.
 - **[Evaluation](concepts/evals.md)**: datasets, metrics, judges, the runner and
   gates, online and drift evaluation, and the rule that every metric is also a
   guardrail and an optimizer term.
@@ -126,6 +130,9 @@ building.
   under 30 lines.
 - **[Add tools](guides/add-tools.md)**: register functions as permissioned,
   idempotent tools with approval gates.
+- **[Give any model the open web](guides/web-search.md)**: enable governed web
+  search and token-efficient page reading for every model, native tool calling
+  or not, with pre-egress policy and offline-verifiable citations.
 - **[Structured output](guides/structured-output.md)**: define a Pydantic
   contract, validate, repair structure (never facts), and route multiple
   schemas per run.

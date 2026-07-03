@@ -2731,6 +2731,136 @@
       "threshold": true,
       "enforced_by": "families.hygiene.reachability_gate_detects_tamper",
       "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the reference scan flags a dead symbol and a stale baseline entry while crediting a real load (including an aliased import, the case that once made a used symbol look dead), so the no-dead-surface guarantee is backed by a check that demonstrably catches the failure it claims to prevent without over-reporting."
+    },
+    {
+      "id": "web_search_token_efficiency",
+      "category": "cost",
+      "statement": "Reading a web page through web_read costs at least 10x fewer tokens than forwarding the boilerplate-stripped page: extraction reduces the reference page to only the passages relevant to the model's own query, under an exact token budget.",
+      "metric": "families.web_search.extract_reduction",
+      "direction": "gte",
+      "threshold": 10.0,
+      "enforced_by": "families.web_search.extract_reduction",
+      "rationale": "The plane's premise is that browsing must not blow the context budget; if a page read approaches full-page token cost, the feature silently becomes an expensive paste and every downstream budget erodes."
+    },
+    {
+      "id": "web_search_grounded_recall",
+      "category": "quality",
+      "statement": "The token-budgeted extraction keeps the passage that answers the query (the known fact on the reference page survives a 100x reduction) while navigation, footer, and other chrome are excluded.",
+      "metric": "families.web_search.relevant_recall",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.relevant_recall",
+      "rationale": "Aggressive reduction is only safe if the needle survives it; a reducer that saves tokens by dropping the answer would make the model confidently wrong instead of cheaper."
+    },
+    {
+      "id": "web_search_ssrf_refused",
+      "category": "security",
+      "statement": "A model-directed fetch of a private, loopback, or link-local host is refused by WebPolicy before any request leaves the process, as a typed WebPolicyError.",
+      "metric": "families.web_search.policy_refuses_private_hosts",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.policy_refuses_private_hosts",
+      "rationale": "A browsing tool that models steer is a server-side request forgery vector by construction; refusing private address classes pre-egress keeps a prompt-injected 'fetch http://169.254.169.254/' from ever reaching the network stack."
+    },
+    {
+      "id": "web_search_evidence_verifies",
+      "category": "reliability",
+      "statement": "Every page read re-derives offline from its content-hashed snapshot — the excerpts are a pure function of (snapshot, query, budget) — and a tampered snapshot is detected, so a browsing session's citations are checkable from bytes.",
+      "metric": "families.web_search.evidence_verifies",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.evidence_verifies",
+      "rationale": "Web content is the least trustworthy evidence the platform handles; binding excerpts to snapshot hashes is what turns 'the model says the page said' into a verifiable record."
+    },
+    {
+      "id": "web_search_universal",
+      "category": "quality",
+      "statement": "A model without native function calling completes the identical search-read-answer tool loop through the text protocol (ToolProtocolProvider) that a native-tool-calling model completes through vendor tool calls — same tools, same sequence, same answer.",
+      "metric": "families.web_search.universal_tool_loop",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.universal_tool_loop",
+      "rationale": "The feature's promise is 'every model, any provider or local'; gating the protocol path against the native path proves web access does not silently degrade to a capability only frontier models have."
+    },
+    {
+      "id": "web_search_extract_latency",
+      "category": "performance",
+      "statement": "Reducing the reference page (hundreds of content blocks) to its query-relevant excerpts completes in at most 50 ms, so token-efficient reading adds negligible latency to a tool round.",
+      "metric": "families.web_search.extract_ms",
+      "direction": "lte",
+      "threshold": 50.0,
+      "enforced_by": "families.web_search.extract_ms",
+      "rationale": "Extraction sits on the hot path of every web_read; if it were slower than the fetch itself, the efficiency win would be paid back in wall-clock and the tool budget."
+    },
+    {
+      "id": "web_search_adaptive_depth",
+      "category": "quality",
+      "statement": "web_read reads at the depth the task needs: section mode returns the whole best-matching section (its prose and its code block together) rather than a scattered set of excerpts, so a library's example arrives with its context.",
+      "metric": "families.web_search.section_fidelity",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.section_fidelity",
+      "rationale": "Excerpt-only reading fragments procedures and code; matching frontier-product reading depth means returning a coherent section when that is what the question needs."
+    },
+    {
+      "id": "web_search_code_fidelity",
+      "category": "quality",
+      "statement": "Code blocks are preserved verbatim (fenced) through extraction, so a model reading library documentation gets runnable code, not whitespace-collapsed prose.",
+      "metric": "families.web_search.code_block_preserved",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.code_block_preserved",
+      "rationale": "The dominant browsing use-case is reading docs; a reader that mangles <pre> code makes the model paraphrase broken snippets, the single most common docs-reading failure."
+    },
+    {
+      "id": "web_search_ssrf_ip_literals",
+      "category": "security",
+      "statement": "Obfuscated IPv4 literals (0x7f.0.0.1, 127.1, integer form) and wildcard-DNS IP embedders (10.0.0.1.nip.io) that getaddrinfo would resolve to a private address are refused pre-egress, closing the auto-fetch SSRF bypass, while public hosts are still admitted.",
+      "metric": "families.web_search.ssrf_ip_literal_blocked",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.ssrf_ip_literal_blocked",
+      "rationale": "Once URLs are auto-fetched from prompt text and redirects are followed, a bare canonical-IP check leaks: the obfuscated spellings resolve to loopback/link-local and reach cloud-metadata and internal services unless normalized before the private-host check."
+    },
+    {
+      "id": "web_search_availability_detection",
+      "category": "quality",
+      "statement": "A cookie wall, paywall, login gate, soft-404, or JavaScript shell is flagged unavailable with a reason, so the model routes to another source instead of citing 'We value your privacy' as content.",
+      "metric": "families.web_search.availability_detected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.availability_detected",
+      "rationale": "The biggest real-world citation-quality gap is a reader that returns wall/shell boilerplate as if it were the answer; detecting and typing these is what lets the model recover."
+    },
+    {
+      "id": "web_search_auto_fetch_gating",
+      "category": "security",
+      "statement": "Prompt-driven auto-fetch fires only on a genuine fetch directive or a URL that is essentially the whole ask — a URL merely discussed, or one inside a code fence, is never auto-fetched — so an incidental or attacker-suggested URL does not trigger egress.",
+      "metric": "families.web_search.intent_gating_correct",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.intent_gating_correct",
+      "rationale": "Auto-fetching any URL-shaped substring is an unauthenticated SSRF/prompt-injection trigger; gating on explicit intent keeps the convenience without turning every mention into a fetch."
+    },
+    {
+      "id": "web_search_crawl_bounded_deterministic",
+      "category": "reliability",
+      "statement": "A crawl is bounded on every axis (pages, depth, per-host, bytes, wall-clock) with pagination/calendar-trap defense, visits the same pages in the same order across runs, stays in scope, and every visited page re-derives offline from its snapshot.",
+      "metric": "families.web_search.crawl_deterministic",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.crawl_deterministic",
+      "rationale": "An unbounded or nondeterministic crawl OOMs on a trap site or produces an unreproducible corpus; deterministic bounded walks are what make a scrape safe to gate and safe to run."
+    },
+    {
+      "id": "web_search_collection_to_data",
+      "category": "quality",
+      "statement": "A crawled collection converts losslessly to both retrieval documents and a tabular Dataset (one row per page), so a scrape flows straight into RAG and the governed data/analysis plane.",
+      "metric": "families.web_search.dataset_roundtrip",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.dataset_roundtrip",
+      "rationale": "Scraping to build a collection is a first-class use-case; a collection that cannot become documents or a dataset is a dead end for the research and data workflows it is meant to feed."
     }
   ]
 }

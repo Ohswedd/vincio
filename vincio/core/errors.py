@@ -44,6 +44,10 @@ __all__ = [
     "SemanticLayerError",
     "RetrievalError",
     "IndexError_",
+    "WebError",
+    "WebSearchError",
+    "WebFetchError",
+    "WebPolicyError",
     "MemoryEngineError",
     "MemoryPolicyError",
     "MemoryConflictError",
@@ -438,6 +442,46 @@ class IndexError_(RetrievalError):
     """Index failure (named with a trailing underscore to avoid shadowing builtins)."""
 
     code = "INDEX_ERROR"
+
+
+# --- web browsing & search ---------------------------------------------------
+
+
+class WebError(VincioError):
+    """A web browsing or search operation could not proceed.
+
+    Raised by the :mod:`vincio.web` plane when the open web cannot be reached
+    or read — a search backend that returns an unusable page, a fetch that
+    exceeds its size or time envelope, or a URL the :class:`~vincio.web.WebPolicy`
+    refuses. A page that simply contains nothing relevant does **not** raise:
+    an empty result list or an empty excerpt set is a valid, auditable answer.
+    """
+
+    code = "WEB_ERROR"
+
+
+class WebSearchError(WebError):
+    """The search backend failed: unreachable endpoint, an anomaly/challenge
+    page instead of results, or markup the parser cannot read."""
+
+    code = "WEB_SEARCH_ERROR"
+
+
+class WebFetchError(WebError):
+    """A page fetch failed: network error, non-success status, an unsupported
+    content type, or a body over the policy's byte ceiling."""
+
+    code = "WEB_FETCH_ERROR"
+
+
+class WebPolicyError(WebError):
+    """The :class:`~vincio.web.WebPolicy` refused the operation before any
+    request left the process — a denied or non-allowlisted domain, a private or
+    loopback host, a disallowed scheme, robots.txt disallow, or an exhausted
+    search/fetch budget. Refusal is the safe outcome the policy is designed to
+    produce; catch it to relax the policy deliberately, never implicitly."""
+
+    code = "WEB_POLICY_DENIED"
 
 
 # --- memory -----------------------------------------------------------------

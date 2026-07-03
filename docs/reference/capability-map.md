@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **208** public `ContextApp` methods. It is gated for coverage:
+It covers **210** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -87,6 +87,17 @@ Guides: [add tools](../guides/add-tools.md), [Agent Skills](../guides/agent-skil
 | `app.add_skill` | Load an Agent Skill (``SKILL.md`` path or a :class:`Skill`) and inject it through the compiler with progressive disclosure: a one-line summary is always available; the full body is included only when a run's task is relevant. Set ``register_scripts=True`` to expose bundled scripts as sandboxed, permissioned tools. |
 | `app.add_tool` | Enable a tool: a callable (registered now) or the name of a tool already registered on app.tool_registry. |
 | `app.use_hosted_tools` | Surface provider-native hosted tools (``web_search`` / ``file_search`` / ``code_interpreter`` / ``computer_use``) as namespaced Vincio tools. |
+
+### Universal web browsing & search
+
+Governed web_search / web_read tools every model can call — DuckDuckGo or any pluggable engine, token-budgeted page reading, a built-in when-to-search skill, the text protocol for models without native tool calling, pre-egress policy, and offline-verifiable evidence.
+
+Concept: [Universal web browsing & search](../concepts/web-browsing.md) · Guides: [Give any model the open web](../guides/web-search.md) · Examples: [19_web_browser_search.py](../../examples/19_web_browser_search.py) · Reference: [Runs](api.md#runs)
+
+| Method | What it does |
+|---|---|
+| `app.use_web_search` | Give this app's model — **any** model — governed access to the open web. |
+| `app.web_crawl` | Crawl a site into a governed, offline-verifiable :class:`~vincio.web.WebCollection`. |
 
 ### Structured output
 

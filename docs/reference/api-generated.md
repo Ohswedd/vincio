@@ -1912,7 +1912,7 @@ Build a buyer position: wants low price, fast SLA, high quality.
 
 Build a :class:`CertificationReport` from a checked assurance case.
 
-### `chat(provider=…, model=…, name=…, tools=…, writes=…, approve=…, user_id=…, tenant_id=…, session_id=…, memory_writeback=…, on_approval=…, role=…, objective=…, rules=…, app=…, config=…)`
+### `chat(provider=…, model=…, name=…, tools=…, writes=…, approve=…, web=…, user_id=…, tenant_id=…, session_id=…, memory_writeback=…, on_approval=…, role=…, objective=…, rules=…, app=…, config=…)`
 
 Open a multi-turn, session-aware chat in one expression.
 
@@ -2196,7 +2196,7 @@ Verify ``spec``'s properties on ``examples`` and emit a proof-carrying program.
 
 A goal-value function: the fraction of an environment task's checks an observation's state satisfies (the planner's default verifier).
 
-### `tool_agent(tools=…, writes=…, approve=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)`
+### `tool_agent(tools=…, writes=…, approve=…, web=…, provider=…, model=…, name=…, role=…, objective=…, rules=…, app=…, config=…)`
 
 Build an approval-gated tool-using agent in one expression.
 

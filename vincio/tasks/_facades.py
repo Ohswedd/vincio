@@ -365,6 +365,7 @@ def tool_agent(
     *,
     writes: Sequence[str | Callable[..., Any]] = (),
     approve: Sequence[str] = (),
+    web: bool = False,
     provider: ModelProvider | str | None = None,
     model: str | None = None,
     name: str = "agent",
@@ -378,7 +379,9 @@ def tool_agent(
 
     ``tools`` are read-only tools enabled freely; ``writes`` are write tools
     registered as approval-required, denied by default and surfaced as pending
-    approvals (``approve=[...]`` pre-allows trusted ones)::
+    approvals (``approve=[...]`` pre-allows trusted ones). Pass ``web=True`` to
+    add governed web search and reading (:meth:`~vincio.core.app.ContextApp.use_web_search`)
+    so the agent can look things up on the open web::
 
         agent = tool_agent(tools=[search_docs], writes=[create_ticket], provider=p, model=m)
         result = agent.run("Open a ticket for the duplicate charge")
@@ -391,6 +394,8 @@ def tool_agent(
     application = resolve_app(app, name=name, provider=provider, model=model, config=config)
     register_tools(application, tools, writes)
     apply_persona(application, role=role, objective=objective, rules=rules)
+    if web:
+        application.use_web_search()
     return ToolAgent(application, auto_approve=approve)
 
 
@@ -436,6 +441,7 @@ def chat(
     tools: Sequence[str | Callable[..., Any]] = (),
     writes: Sequence[str | Callable[..., Any]] = (),
     approve: Sequence[str] = (),
+    web: bool = False,
     user_id: str | None = None,
     tenant_id: str | None = None,
     session_id: str | None = None,
@@ -458,11 +464,14 @@ def chat(
         print(bot.send("Thanks!").text)   # remembers the thread
 
     ``tools`` / ``writes`` enable tools (writes approval-gated, ``approve=[...]``
-    pre-allows); ``.app`` is the escape hatch.
+    pre-allows); ``web=True`` adds governed web search and reading so the chat
+    can browse; ``.app`` is the escape hatch.
     """
     application = resolve_app(app, name=name, provider=provider, model=model, config=config)
     register_tools(application, tools, writes)
     apply_persona(application, role=role, objective=objective, rules=rules)
+    if web:
+        application.use_web_search()
     return application.assistant(
         user_id=user_id,
         tenant_id=tenant_id,

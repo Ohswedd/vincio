@@ -26,8 +26,9 @@ def test_examples_present():
     # Guards against an example being dropped without notice. The suite covers
     # the whole platform end-to-end, one solid example per macro-feature (see
     # examples/README.md) — the data & analytics plane is one tour (13), the
-    # open evaluation plane is one tour (16), and DS4 local inference is one (18).
-    assert len(EXAMPLE_FILES) == 19
+    # open evaluation plane is one tour (16), DS4 local inference is one (18),
+    # and universal web browsing & search is one (19).
+    assert len(EXAMPLE_FILES) == 20
 
 
 @pytest.mark.parametrize("path", EXAMPLE_FILES, ids=lambda p: p.stem)

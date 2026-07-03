@@ -61,9 +61,20 @@ ships the codemod today), one implementation per canonical-JSON recipe (zero byt
 pinned), flat hot paths (footprint eviction and multilateral clearing shed their quadratic folds,
 proven byte-identical by reference oracles), and one module per responsibility (`ContextApp` verb
 mixins, staged `compile()`, phased `combine_attestations` — pure code motion under the byte-identical
-SLOs, with the standing-guard lints extended so their coverage did not shrink). There is currently
-**no proposed capability** on the roadmap; the platform is feature-complete, and new capability is
-proposed from scratch when it meets a real need (see [Forward work](#forward-work)).
+SLOs, with the standing-guard lints extended so their coverage did not shrink). `v7.6` added
+**universal web browsing & search** — the `vincio.web` plane gives **every** model Vincio serves
+(hosted, gateway, or a local model with no function calling at all) the same two Vincio-executed,
+governed tools, `web_search` and `web_read`, over DuckDuckGo's keyless endpoints or any pluggable
+engine: token-budgeted page reading (only the passages relevant to the model's own query), the
+when-to-search judgement shipped as a progressively-disclosed built-in skill, pre-egress `WebPolicy`
+rails (SSRF fail-closed, robots, domains, budgets), offline-verifiable content-hashed `WebEvidence`,
+the `ToolProtocolProvider` that grants native-grade tool use to models without function calling, and
+the `websearch` connector that makes the deep-research agent web-backed — additive, no new hard
+dependency, no existing symbol changed. It is the first phase of **native skill integration**:
+the when/what/how contract reaches the model through the context plane, identically for every
+provider. There is currently **no proposed capability** on the roadmap; the platform is
+feature-complete, and new capability is proposed from scratch when it meets a real need (see
+[Forward work](#forward-work)).
 
 ---
 
@@ -93,6 +104,7 @@ offline.
 | Subsystem | Capability |
 |---|---|
 | **Tools** | A permissioned registry (RBAC and ABAC), schema derivation from type hints, a resource-limited sandbox, reliability scoring, and idempotent approval-gated writes. |
+| **Web browsing & search** | Governed `web_search` / `web_read` tools every model can call — DuckDuckGo or any pluggable engine, token-budgeted page reading (only the passages relevant to the model's own query), a built-in progressively-disclosed when-to-search skill, pre-egress policy (SSRF fail-closed, robots, domains, budgets), offline-verifiable content-hashed evidence, and a text protocol that grants native-grade tool use to models without function calling. |
 | **Computer-use action plane** | A grounded perceive, gate, act, verify, and undo loop over a pluggable screen backend (a deterministic mock offline; Playwright/CDP, an OS accessibility tree, or remote desktop behind an extra). Actions bind to stable role-and-name selectors, are pre-gated like a write tool, post-verified against an expected end state, and undone on divergence. |
 | **Agents** | Bounded DAG execution with planners (ReAct, plan-and-execute, hierarchical HTN), in-place plan repair, cost-aware action selection over live pricing and budget, a deep-research agent, and a self-editing memory OS. |
 | **Orchestration** | Multi-agent crews with a shared blackboard; durable graphs with checkpoint, resume, time-travel, and durable timers; deterministic workflows with retries, compensation, and resumable approval gates; and a distributed durable-execution backend over a worker pool. |
