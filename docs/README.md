@@ -102,6 +102,10 @@ between your input and the model's validated output.
 - **[Retrieval](concepts/retrieval.md)**: BM25, dense, sparse, late-interaction,
   and graph indexes behind one interface, hybrid fusion, query understanding,
   reranking, and GraphRAG.
+- **[Context anchors](concepts/context-anchors.md)**: keep a PRD / spec / brand
+  frame present across a whole multi-call task via a compact, constraint-first,
+  cached brief pinned into every call — cheaper than stuffing, more reliable than
+  pure per-query RAG.
 - **[Memory](concepts/memory.md)**: the layered, scoped, scored, decaying memory
   engine, with provenance, consent, and history-preserving correction.
 - **[Agents and workflows](concepts/agents.md)**: bounded DAG agents, crews,

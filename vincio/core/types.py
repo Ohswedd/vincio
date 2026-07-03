@@ -347,6 +347,11 @@ class EvidenceItem(BaseModel):
     freshness: float = 0.5
     provenance: float = 0.5
     token_cost: int = 0
+    # Pinned evidence is guaranteed into the packet: the context compiler charges
+    # it first, skips the relevance/score gates, and never drops it for budget
+    # (bounded by a pinned cap, compressed to fit if needed). The mechanism
+    # behind context anchors — the always-on task frame (PRD / brand / spec).
+    pinned: bool = False
 
     @property
     def citation_ref(self) -> str:

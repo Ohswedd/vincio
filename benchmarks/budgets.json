@@ -2595,6 +2595,30 @@
     },
     "families.web_search.extract_ms": {
       "lte": 50.0
+    },
+    "families.rag_anchors.brief_reduction": {
+      "gte": 10.0
+    },
+    "families.rag_anchors.frame_retained_on_mismatch": {
+      "eq": true
+    },
+    "families.rag_anchors.pure_rag_loses_frame": {
+      "eq": true
+    },
+    "families.rag_anchors.tier2_detail_survives": {
+      "eq": true
+    },
+    "families.rag_anchors.frame_guaranteed_everywhere": {
+      "eq": true
+    },
+    "families.rag_anchors.budget_never_exceeded": {
+      "eq": true
+    },
+    "families.rag_anchors.brief_deterministic": {
+      "eq": true
+    },
+    "families.rag_anchors.frame_first_position": {
+      "eq": true
     }
   }
 }

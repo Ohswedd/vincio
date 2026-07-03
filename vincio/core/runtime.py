@@ -654,6 +654,14 @@ class VincioRuntime:
                 app.skill_library.evidence_for(f"{routed.objective.text} {routed.input.text or ''}")
             )
 
+        # Context anchors: inject the always-on task frame (PRD / spec / brand
+        # digest) as pinned evidence, so a multi-call task keeps its global frame
+        # at a flat few-hundred-token cost while on-demand detail flows through
+        # retrieval. The brief is content-hash-cached; empty when no anchors.
+        anchors = getattr(app, "anchors", None)
+        if anchors:
+            evidence.extend(anchors.brief_evidence())
+
         # Prompt-driven web browsing: when web search is enabled and the user's
         # *own* message directs a fetch (a pasted link, "summarize …"), fetch
         # those pages and fold them in as untrusted, snapshotted, screened

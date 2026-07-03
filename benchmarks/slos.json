@@ -2861,6 +2861,66 @@
       "threshold": true,
       "enforced_by": "families.web_search.dataset_roundtrip",
       "rationale": "Scraping to build a collection is a first-class use-case; a collection that cannot become documents or a dataset is a dead end for the research and data workflows it is meant to feed."
+    },
+    {
+      "id": "rag_anchors_token_efficiency",
+      "category": "cost",
+      "statement": "A context anchor's always-on task frame costs at least 10x fewer tokens than its source corpus: a bulk of PRD/spec/brand MD files is distilled once into a compact, constraint-first brief that rides every call at a flat few-hundred-token cost instead of re-pasting the corpus.",
+      "metric": "families.rag_anchors.brief_reduction",
+      "direction": "gte",
+      "threshold": 10.0,
+      "enforced_by": "families.rag_anchors.brief_reduction",
+      "rationale": "The whole point of anchors is beating 'stuff every MD file every call' on tokens across a long chain; if the frame approached corpus cost, a 50-call agent run would blow the window exactly as the naive approach does."
+    },
+    {
+      "id": "rag_anchors_frame_retained",
+      "category": "quality",
+      "statement": "A task-frame constraint (e.g. a brand rule) survives into the packet on a call whose query does not lexically mention it, whereas the same query under pure per-query RAG loses that constraint — so a coding step that never says 'brand voice' still honors it.",
+      "metric": "families.rag_anchors.frame_retained_on_mismatch",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.rag_anchors.frame_retained_on_mismatch",
+      "rationale": "The failure the primitive exists to fix is a globally-binding constraint silently dropping when a specific call does not match it lexically; retention on a mismatched query is the property that must hold."
+    },
+    {
+      "id": "rag_anchors_pure_rag_baseline",
+      "category": "quality",
+      "statement": "The comparison is honest: the identical lexical-miss query under pure per-query RAG (no anchor) demonstrably loses the constraint, so the frame-retention win is measured against a real baseline, not a strawman.",
+      "metric": "families.rag_anchors.pure_rag_loses_frame",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.rag_anchors.pure_rag_loses_frame",
+      "rationale": "A retention claim is only meaningful if the alternative actually fails; gating that pure RAG loses the frame on the same query keeps the benchmark falsifiable."
+    },
+    {
+      "id": "rag_anchors_tier2_survives",
+      "category": "quality",
+      "statement": "When a query finally matches an anchor's detail, the retrieved detail chunk is included alongside the frame — the always-on brief never suppresses its own on-demand detail via dedup, conflict, or diversity.",
+      "metric": "families.rag_anchors.tier2_detail_survives",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.rag_anchors.tier2_detail_survives",
+      "rationale": "Because the brief is extracted from the same docs, a naive pipeline would drop the detail as a duplicate/conflict of its own digest; gating tier-2 survival prevents the feature from silently regressing detail retrieval."
+    },
+    {
+      "id": "rag_anchors_frame_guaranteed",
+      "category": "reliability",
+      "statement": "The pinned frame is present in the packet under a tiny window, a zero-evidence task type, a footprint ceiling, and a conflicting higher-authority chunk — guaranteed at every drop point (gate, dedup, conflict, min-score flush, budget, footprint eviction, overflow ladder).",
+      "metric": "families.rag_anchors.frame_guaranteed_everywhere",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.rag_anchors.frame_guaranteed_everywhere",
+      "rationale": "A 'guaranteed frame' that a production budget or a footprint ceiling silently drops is worse than none — the agent believes the constraint applies when it is gone; gating every drop path is what makes the guarantee real."
+    },
+    {
+      "id": "rag_anchors_budget_invariant",
+      "category": "reliability",
+      "statement": "Injecting the pinned frame never pushes the packet over max_input_tokens: it is reserved off the total budget with a compress-then-truncate ladder, so a config that compiled before never crashes once a source is marked an anchor.",
+      "metric": "families.rag_anchors.budget_never_exceeded",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.rag_anchors.budget_never_exceeded",
+      "rationale": "Charging a guaranteed item against a per-block budget can exceed the window and hard-error on every run; reserving it off the top with a never-raising ladder is the only budget-safe way to guarantee inclusion."
     }
   ]
 }

@@ -96,6 +96,8 @@ class _KnowledgeVerbs:
             reranker=reranker,
             candidate_multiplier=self.config.retrieval.candidate_multiplier,
             query_strategies=self.config.retrieval.query_strategies,
+            adaptive_top_k=self.config.retrieval.adaptive_top_k,
+            adaptive_top_k_ceiling=self.config.retrieval.adaptive_top_k_ceiling,
         )
         if retrieval in ("graph", "hybrid_graph") and self.entity_graph is None:
             self.entity_graph = EntityGraph()
@@ -110,16 +112,28 @@ class _KnowledgeVerbs:
         loader: str | None = None,
         chunking: str | None = None,
         retrieval: str = "hybrid",
+        anchor: bool = False,
+        brief_tokens: int = 400,
     ) -> ContextApp:
         """Register a knowledge source: load, chunk, and index documents.
 
         Sources can come from a local ``path``, in-memory ``documents``, or
         any :class:`~vincio.connectors.Connector` (web, GitHub, SQL, S3,
         GCS, Notion, Confluence, Slack, or custom) via ``connector=``.
+
+        Set ``anchor=True`` to make this a **task frame**: a PRD, spec, brand
+        identity, or coding-standards corpus that is 100% needed for the global
+        context of a multi-call task but not in full on every call. The docs are
+        indexed for on-demand detail *and* distilled once into a compact,
+        content-hash-cached brief (bounded by ``brief_tokens``, constraint-first)
+        injected as **pinned** evidence into every run — so the frame is always
+        present at a flat ~few-hundred-token cost instead of re-pasting the whole
+        corpus. Inspect it with :meth:`task_brief`.
         """
         chunking = chunking or self.config.retrieval.chunking
         source = _SourceConfig(
-            name=name, path=path, loader=loader, chunking=chunking, retrieval=retrieval
+            name=name, path=path, loader=loader, chunking=chunking, retrieval=retrieval,
+            anchor=anchor, brief_tokens=brief_tokens,
         )
         self._ensure_retrieval(retrieval)
         docs = list(documents or [])
@@ -163,7 +177,26 @@ class _KnowledgeVerbs:
         source.document_count = len(docs)
         source.chunk_count = len(all_chunks)
         self.sources[name] = source
+        # Task frame: register the anchor's documents so its always-on brief is
+        # (re)built and cached; the same docs also stay indexed for on-demand detail.
+        if anchor:
+            if docs:
+                self.anchors.add(name, docs, brief_tokens=brief_tokens)
+            else:
+                # anchor=True but the load produced nothing (empty dir, every file
+                # failed its loader, connector returned []): surface it rather than
+                # leave the user believing the frame is pinned while runs go frameless.
+                from ..core.diagnostics import note_suppressed
+
+                note_suppressed("anchors.empty_source")
         return self
+
+    def task_brief(self: ContextApp) -> str | None:  # type: ignore[misc]
+        """The current task-frame brief — the compact, constraint-first digest of
+        every ``anchor=True`` source, injected as pinned evidence on every run —
+        or ``None`` when no anchors are registered."""
+        brief = self.anchors.brief()
+        return brief.text if brief is not None else None
 
     async def _index_chunks(self: ContextApp, chunks: list[Any]) -> None:  # type: ignore[misc]
         if self._bm25 is not None:

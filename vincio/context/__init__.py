@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .anchors import AnchorBrief, AnchorSet, build_anchor_brief
 from .budgeting import DEFAULT_ALLOCATION, BlockBudget, BudgetAllocation, BudgetAllocator
 from .compiler import (
     CompiledContext,
@@ -52,6 +53,9 @@ from .scoring import (
 )
 
 __all__ = [
+    "AnchorBrief",
+    "AnchorSet",
+    "build_anchor_brief",
     "BudgetAllocator",
     "BudgetAllocation",
     "BlockBudget",

@@ -41,7 +41,7 @@ from ..core.types import (
 from ..core.utils import new_id, stable_hash
 from .arena import CandidateArena, PreparedCandidates
 from .budgeting import BudgetAllocation, BudgetAllocator
-from .compression import distill_evidence_ledger, extractive_compress
+from .compression import _verified_truncate, distill_evidence_ledger, extractive_compress
 from .features import FeatureArena
 from .footprint import ENTRY_OVERHEAD_BYTES, estimate_resident_bytes
 from .ir import ContextIR, OutputContractRef
@@ -73,6 +73,14 @@ class ContextCompilerOptions(BaseModel):
     compress_evidence: bool = True
     max_evidence_items: int = 24
     max_memory_items: int = 8
+    # Ceiling on the share of the input window that pinned (required) candidates
+    # — context anchors' task frame — may consume, reserved off the top so the
+    # frame is guaranteed in and never over budget. It is a *ceiling*, not a
+    # target: a normal ~few-hundred-token frame leaves most of it unused for
+    # retrieval, but a frame deliberately sized near the ceiling does take
+    # priority over retrieved detail (that is the point of pinning it) — lower
+    # this, or lower ``brief_tokens``, to hand more of the window back to MMR.
+    pinned_budget_fraction: float = 0.5
     ordering: Literal["relevance", "authority", "recency", "boundary_sandwich"] = "relevance"
     weights: ScoringWeights = Field(default_factory=ScoringWeights)
     slim_packets: bool = False  # packets reference evidence text by hash
@@ -178,6 +186,10 @@ _STRUCTURAL_REF_RE = re.compile(
     r"paragraph|para|page|line|note|figure|fig|table|step|item|version|v|no)\.?\s*#?\s*"
     r"(\d+(?:\.\d+)*)"
 )
+
+#: Per-item token floor when several pinned items must share the pinned cap, so no
+#: single pinned item is ever squeezed out of the packet (the frame guarantee).
+_PINNED_MIN_TOKENS = 16
 
 
 def _media_identity(e: EvidenceItem) -> str | None:
@@ -350,7 +362,7 @@ class ContextCompiler:
             "constraints": [c.text for c in constraints],
             "examples": [(e.input, e.output) for e in examples],
             "evidence": [
-                (e.id, e.text, e.authority, e.provenance, e.relevance, e.token_cost, e.source_id)
+                (e.id, e.text, e.authority, e.provenance, e.relevance, e.token_cost, e.source_id, e.pinned)
                 for e in evidence
             ],
             "memory": [
@@ -404,6 +416,7 @@ class ContextCompiler:
                     e.relevance,
                     e.token_cost,
                     e.source_id,
+                    e.pinned,  # maps to candidate.required in _collect — must key the arena
                     e.page,  # affects citation_ref, which _collect caches in metadata
                     e.time_range,  # temporal locator → citation_ref for clip evidence
                     _media_identity(e),
@@ -468,6 +481,10 @@ class ContextCompiler:
                     authority=item.authority,
                     provenance=item.provenance,
                     created_at=None,
+                    # Pinned evidence (a context anchor's task frame) is a
+                    # ``required`` candidate: charged first, gate-exempt, never
+                    # dropped for budget.
+                    required=item.pinned,
                     metadata={
                         "citation_ref": item.citation_ref,
                         "source_id": item.source_id,
@@ -623,6 +640,12 @@ class ContextCompiler:
         kept: list[ContextCandidate] = []
         semantic = scorer.semantic
         arena = scorer._features
+        # Pinned (required) anchors are exempt from dedup on both sides: they are
+        # never a dedup victim (the frame is guaranteed), and they are not a
+        # dedup *target* either — an anchor's own detail chunk necessarily
+        # overlaps its digest, and must not be dropped as a duplicate of it.
+        required_items = [c for c in candidates if c.required]
+        deduped = [c for c in candidates if not c.required]
         # Lexical mode: inverted token index so each candidate is compared only
         # against kept items that could possibly be near-duplicates (near-linear
         # for diverse pools, exact at the 0.85 threshold). Semantic mode compares
@@ -630,7 +653,7 @@ class ContextCompiler:
         # an O(n^2) pairwise pass; n is already capped upstream when
         # ``max_candidates`` sets the streaming pre-filter bound.
         index: dict[str, list[int]] = defaultdict(list)
-        for candidate in sorted(candidates, key=lambda c: c.scores.total, reverse=True):
+        for candidate in sorted(deduped, key=lambda c: c.scores.total, reverse=True):
             if semantic:
                 neighbors: list[ContextCandidate] = kept
                 tokens: frozenset[str] = frozenset()
@@ -655,7 +678,7 @@ class ContextCompiler:
                     for token in tokens:
                         index[token].append(pos)
                 kept.append(candidate)
-        return kept
+        return kept + required_items
 
     def _conflict_pairs(
         self, candidates: list[ContextCandidate], scorer: ContextScorer
@@ -711,6 +734,15 @@ class ContextCompiler:
             delta = _value_disagreement(a.content, b.content)
             if delta is None:
                 continue
+            # A pinned anchor (the task frame) is authoritative by construction and
+            # must never be dropped by a conflicting retrieved chunk: keep both and
+            # surface the discrepancy for the model to reconcile.
+            if a.required or b.required:
+                conflicts.append(
+                    {"a": a.id, "b": b.id,
+                     "note": "unresolved conflict with a pinned anchor; both included", **delta}
+                )
+                continue
             authority_gap = a.authority - b.authority
             if abs(authority_gap) > self.options.conflict_authority_gap:
                 loser = b if authority_gap > 0 else a
@@ -756,6 +788,97 @@ class ContextCompiler:
             if sim > max_sim[candidate.id]:
                 max_sim[candidate.id] = sim
 
+    def _reserve_pinned(
+        self,
+        candidates: list[ContextCandidate],
+        budget: Budget,
+    ) -> tuple[list[ContextCandidate], int]:
+        """Fit the pinned (``required``) evidence — a context anchor's task frame —
+        inside a hard cap taken off the *total* input budget, so it never competes
+        with the flexible evidence block and never pushes the packet over
+        ``max_input_tokens``.
+
+        The cap is ``pinned_budget_fraction`` of the input budget. When the pinned
+        items collectively fit, they ride uncompressed; when they don't, the cap is
+        split across them by a deterministic, order-independent proportional share
+        (each with a small floor; the shares sum to at most the cap by
+        construction) and each is fitted to its share by a compress-then-truncate
+        ladder whose final cut is **re-verified** against the live token counter —
+        so every pinned item stays *included* (the frame guarantee: never dropped)
+        and the total provably never exceeds the cap. More pinned items than cap
+        tokens is unsatisfiable (n items cannot fit n-1 tokens without dropping
+        one) and raises :class:`ContextCompileError` — the observable failure —
+        rather than silently overflowing the window or silently dropping evidence.
+
+        Fitting a pinned item is recorded on the item's own metadata
+        (``pinned_fit``), never on the excluded-context report: a fitted item is on
+        the packet, so it must not appear in the excluded set (the compile receipt
+        requires included and excluded ids to be disjoint). Returns the fitted
+        pinned items and their exact token total.
+        """
+        pinned = [c for c in candidates if c.required]
+        if not pinned:
+            return [], 0
+        cap = max(1, int(budget.max_input_tokens * self.options.pinned_budget_fraction))
+        if len(pinned) > cap:
+            raise ContextCompileError(
+                f"{len(pinned)} pinned items cannot fit the pinned reservation of "
+                f"{cap} tokens (pinned_budget_fraction="
+                f"{self.options.pinned_budget_fraction} of max_input_tokens="
+                f"{budget.max_input_tokens}); raise the budget or unpin evidence",
+                details={"pinned_items": len(pinned), "pinned_cap": cap},
+            )
+        total = sum(c.token_cost for c in pinned)
+        # Per-item share of the cap. Everything fits → keep as-is. Otherwise start
+        # each at a small floor and hand out the rest in proportion to its original
+        # size, so no pinned item is ever squeezed to nothing. floor <= cap // n
+        # keeps floor·n <= cap, and the proportional extras sum to at most the
+        # remainder — so sum(shares) <= cap holds by construction, independent of
+        # input order.
+        if total <= cap:
+            shares = {c.id: c.token_cost for c in pinned}
+        else:
+            floor = max(1, min(_PINNED_MIN_TOKENS, cap // len(pinned)))
+            remainder = cap - floor * len(pinned)
+            shares = {}
+            for c in pinned:
+                extra = int(remainder * (c.token_cost / total)) if remainder > 0 and total else 0
+                shares[c.id] = floor + extra
+        fitted: list[ContextCandidate] = []
+        used = 0
+        for candidate in pinned:
+            share = shares[candidate.id]
+            if candidate.token_cost > share:
+                fit_via = None
+                if (
+                    candidate.type == "evidence" and candidate.modality == "text"
+                    and self.options.compress_evidence and share >= 24
+                ):
+                    compressed = self.compressor(candidate.content, "", share)
+                    if compressed.compressed_tokens <= share and compressed.text:
+                        candidate.content = compressed.text
+                        candidate.token_cost = compressed.compressed_tokens
+                        candidate.metadata["compressed"] = compressed.method
+                        fit_via = "compressed"
+                if candidate.token_cost > share:
+                    # Still over: hard-cut, re-verified against the live counter.
+                    # (truncate_to_tokens estimates a proportional character cut
+                    # on a single huge sentence and can overshoot on token-dense
+                    # text — the cap is a hard invariant, so verify.)
+                    cut_text, cut_tokens = _verified_truncate(candidate.content, share)
+                    candidate.content = cut_text
+                    candidate.token_cost = cut_tokens
+                    fit_via = "truncated"
+                if fit_via:
+                    candidate.metadata["pinned_fit"] = fit_via  # audit, not an exclusion
+            candidate.scores.total = 1.0
+            candidate.scores.novelty = 1.0
+            candidate.scores.relevance = 1.0
+            candidate.metadata["pinned"] = True
+            fitted.append(candidate)
+            used += candidate.token_cost
+        return fitted, used
+
     def _select(
         self,
         candidates: list[ContextCandidate],
@@ -774,9 +897,17 @@ class ContextCompiler:
         instead of re-scoring the whole pool every pick (O(n²)). In semantic mode
         relevance and diversity are embedding cosine with an ``mmr_lambda``
         trade-off; otherwise the lexical weighted utility (identical to before).
+
+        Pinned (``required``) candidates — a context anchor's task frame — are
+        handled outside this method: budget-reserved off the top and prepended to
+        the result by :meth:`_select_blocks`, so they never enter this
+        competitive pool and cannot be dropped by the gate, the min-score flush,
+        or the budget.
         """
         pool: list[ContextCandidate] = []
         for candidate in candidates:
+            if candidate.required:
+                continue  # pinned: reserved and prepended by _select_blocks
             # Relevance gate: evidence that shares nothing with the task is
             # context pollution regardless of authority/novelty baselines.
             if candidate.type == "evidence":
@@ -798,6 +929,11 @@ class ContextCompiler:
         diversity_weight = w.novelty + w.duplication
         base = {c.id: c.scores.total for c in pool}
         static = {c.id: base[c.id] - w.novelty for c in pool}  # utility minus diversity terms
+        # Do NOT seed max-similarity from the pinned frame: an anchor's detail
+        # chunk necessarily overlaps its own digest, and diversity-penalizing it
+        # against the brief is exactly how Tier-1 would suppress the Tier-2 detail
+        # the query finally matched. The frame is a compact digest; paying once
+        # more for the specific section is the correct trade.
         max_sim = {c.id: 0.0 for c in pool}
 
         def effective(candidate: ContextCandidate) -> float:
@@ -924,7 +1060,12 @@ class ContextCompiler:
         total = sum(sizes) + estimate([], slim)
         if total <= ceiling:
             return slim, evidence
-        order = sorted(range(len(kept)), key=lambda i: kept[i].scores.total)  # ascending utility
+        # Ascending utility; pinned (required) items — the task frame — are never
+        # eviction candidates, so the frame survives the footprint ceiling.
+        order = [
+            i for i in sorted(range(len(kept)), key=lambda i: kept[i].scores.total)
+            if not kept[i].required
+        ]
         evict: set[int] = set()
         for index in order:
             if total <= ceiling:
@@ -1084,6 +1225,7 @@ class ContextCompiler:
         tool_specs: list[ToolSpec] | None,
         budget: Budget,
         query: str,
+        pinned_tokens: int = 0,
     ) -> tuple[BudgetAllocation, int, int, int, int, int]:
         # 7. budget allocation (uses fixed costs for known blocks)
         instruction_tokens = sum(count_tokens(i.text) for i in instructions or [])
@@ -1108,6 +1250,12 @@ class ContextCompiler:
                 "examples": example_tokens,
                 "user_task": task_tokens,
                 "schema": schema_tokens,
+                # Pinned anchor frame is a fixed reservation off the top (already
+                # fitted to its cap), so the flexible evidence block never fights
+                # it and the packet total cannot exceed the window. Only emitted
+                # when a frame is actually present, so a compile with no pinned
+                # evidence yields a byte-identical budget report (no "anchor" key).
+                **({"anchor": pinned_tokens} if pinned_tokens else {}),
             },
             reserve_tokens=reserve_tokens,
         )
@@ -1128,6 +1276,7 @@ class ContextCompiler:
         query: str,
         excluded: list[dict[str, Any]],
         scorer: ContextScorer,
+        pinned_evidence: list[ContextCandidate] | None = None,
     ) -> tuple[
         list[ContextCandidate],
         list[ContextCandidate],
@@ -1135,7 +1284,10 @@ class ContextCompiler:
         list[ContextCandidate],
         bool,
     ]:
-        evidence_pool = [c for c in candidates if c.type == "evidence"]
+        pinned_evidence = pinned_evidence or []
+        # Pinned evidence is reserved and excluded from the competitive pool; it
+        # is prepended below at a stable position (frame before detail).
+        evidence_pool = [c for c in candidates if c.type == "evidence" and not c.required]
         memory_pool = [c for c in candidates if c.type == "memory"]
         tool_pool = [c for c in candidates if c.type == "tool_result"]
 
@@ -1164,12 +1316,17 @@ class ContextCompiler:
             excluded=excluded,
             scorer=scorer,
         )
-        allocation.block("evidence").used_tokens = sum(c.token_cost for c in selected_evidence)
+        # 9. order the retrieved detail, then prepend the pinned frame at a
+        # stable position — the model reads the frame before the detail, and the
+        # brief's fixed offset keeps the prompt prefix cacheable across calls.
+        selected_evidence = self._order(selected_evidence, query)
+        selected_evidence = list(pinned_evidence) + selected_evidence
+
+        allocation.block("evidence").used_tokens = sum(
+            c.token_cost for c in selected_evidence if not c.required
+        )
         allocation.block("memory").used_tokens = sum(c.token_cost for c in selected_memory)
         allocation.block("tool_results").used_tokens = sum(c.token_cost for c in selected_tools)
-
-        # 9. order
-        selected_evidence = self._order(selected_evidence, query)
 
         # Per-app resident-memory ceiling: slim the packet and evict the
         # lowest-utility evidence until the estimated footprint fits.
@@ -1179,7 +1336,7 @@ class ContextCompiler:
                 selected_evidence, selected_memory, effective_slim, excluded
             )
             allocation.block("evidence").used_tokens = sum(
-                c.token_cost for c in selected_evidence
+                c.token_cost for c in selected_evidence if not c.required
             )
         return selected_evidence, selected_memory, selected_tools, memory_pool, effective_slim
 
@@ -1383,6 +1540,11 @@ class ContextCompiler:
         # 6. conflicts
         candidates, conflicts = self._resolve_conflicts(candidates, excluded, scorer)
 
+        # 6.5. pinned frame (context anchors): fit the always-on task frame into a
+        # cap taken off the *total* budget so it is guaranteed in, never competes
+        # with retrieved detail, and cannot push the packet over the window.
+        pinned_evidence, pinned_tokens = self._reserve_pinned(candidates, budget)
+
         (
             allocation,
             instruction_tokens,
@@ -1399,6 +1561,7 @@ class ContextCompiler:
             tool_specs=tool_specs,
             budget=budget,
             query=query,
+            pinned_tokens=pinned_tokens,
         )
 
         (
@@ -1413,6 +1576,7 @@ class ContextCompiler:
             query=query,
             excluded=excluded,
             scorer=scorer,
+            pinned_evidence=pinned_evidence,
         )
 
         final_evidence, final_memory, memory_excluded = self._rebuild_items(
@@ -1448,7 +1612,8 @@ class ContextCompiler:
             + example_tokens
             + task_tokens
             + schema_tokens
-            + allocation.block("evidence").used_tokens
+            + pinned_tokens  # the pinned frame is on the packet; count it (excluded
+            + allocation.block("evidence").used_tokens  # from evidence used_tokens)
             + allocation.block("memory").used_tokens
             + allocation.block("tool_results").used_tokens
         )

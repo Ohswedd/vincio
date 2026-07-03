@@ -258,6 +258,18 @@ TOPICS: tuple[Topic, ...] = (
         verbs=("add_source", "ingest_files", "retrieve_facts"),
     ),
     Topic(
+        "context_anchors", "knowledge", "Context anchors (task frame)",
+        "Mark a source ``anchor=True`` to keep a PRD / spec / brand frame always-"
+        "present across a multi-call task: it is distilled once into a compact, "
+        "constraint-first, cached brief injected as pinned evidence into every call "
+        "at a flat few-hundred-token cost, while on-demand detail still retrieves. "
+        "Inspect it with ``task_brief``.",
+        concept=_c("context-anchors"),
+        guides=(_g("build-rag-app"),),
+        examples=(_e("20_context_anchors"),),
+        verbs=("task_brief",),
+    ),
+    Topic(
         "memory", "knowledge", "Memory",
         "Layered, guarded, decaying, conflict-resolving, privacy-scoped memory with "
         "hybrid vector+graph recall and as-of correction.",

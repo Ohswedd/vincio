@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **210** public `ContextApp` methods. It is gated for coverage:
+It covers **211** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -185,6 +185,16 @@ Concept: [Retrieval (RAG)](../concepts/retrieval.md) · Guides: [build a RAG app
 | `app.add_source` | Register a knowledge source: load, chunk, and index documents. |
 | `app.ingest_files` | Ad-hoc file ingestion for run(files=[...]): load, chunk, index. |
 | `app.retrieve_facts` | Retrieve by the facts a task *needs*, reporting per-fact coverage and gaps. |
+
+### Context anchors (task frame)
+
+Mark a source ``anchor=True`` to keep a PRD / spec / brand frame always-present across a multi-call task: it is distilled once into a compact, constraint-first, cached brief injected as pinned evidence into every call at a flat few-hundred-token cost, while on-demand detail still retrieves. Inspect it with ``task_brief``.
+
+Concept: [Context anchors (task frame)](../concepts/context-anchors.md) · Guides: [build a RAG app](../guides/build-rag-app.md) · Examples: [20_context_anchors.py](../../examples/20_context_anchors.py) · Reference: [Knowledge](api.md#knowledge)
+
+| Method | What it does |
+|---|---|
+| `app.task_brief` | The current task-frame brief — the compact, constraint-first digest of every ``anchor=True`` source, injected as pinned evidence on every run — or ``None`` when no anchors are registered. |
 
 ### Memory
 

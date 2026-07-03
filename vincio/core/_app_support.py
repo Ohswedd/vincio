@@ -61,6 +61,8 @@ class _SourceConfig(BaseModel):
     retrieval: str = "hybrid"
     document_count: int = 0
     chunk_count: int = 0
+    anchor: bool = False  # a task-frame source (always-on compact brief + on-demand detail)
+    brief_tokens: int = 400
 
 
 class _AgentHandle:

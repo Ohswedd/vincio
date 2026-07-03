@@ -853,13 +853,34 @@ class FastEmbedEmbedder:
 
             self._model = TextEmbedding(model_name=self.model_name)
         except ImportError as exc:
+            # fastembed not installed.
             if self._fallback:
-                self._fallback_embedder = LocalHashEmbedder(dim=self.dim)
+                self._degrade_to_fallback("not_installed")
                 return
             raise ConfigError(
                 'the local ONNX embedder requires: pip install "vincio[fastembed]" '
                 "(or construct with fallback=True / inject encode_fn)"
             ) from exc
+        except OSError as exc:
+            # Model cache missing / download blocked / filesystem error — an
+            # *environment* failure (offline CI). Degrade observably when allowed;
+            # otherwise surface it. A bad model name raises ValueError, and a real
+            # code bug raises something else — those propagate rather than silently
+            # becoming hash vectors, so a genuine defect is never masked as a
+            # quiet retrieval-quality regression.
+            if self._fallback:
+                self._degrade_to_fallback(type(exc).__name__)
+                return
+            raise ConfigError(
+                f"the local ONNX embedder could not load its model ({exc}); "
+                "install the model cache or construct with fallback=True"
+            ) from exc
+
+    def _degrade_to_fallback(self, reason: str) -> None:
+        from ..core.diagnostics import note_suppressed
+
+        note_suppressed(f"embeddings.fastembed_load_failed:{reason}")
+        self._fallback_embedder = LocalHashEmbedder(dim=self.dim)
 
     async def embed(self, texts: list[str]) -> list[list[float]]:
         self._ensure()
@@ -942,6 +963,24 @@ def build_embedder(
     """
     if kind == "local":
         base: Embedder = LocalHashEmbedder(**kwargs)
+    elif kind == "auto":
+        # Semantic when a real local embedder is present, deterministic hash
+        # otherwise — resolved once, always with fallback so it can never crash
+        # a run (offline box, no model cache). Opt-in (the default stays "local")
+        # so byte-identity does not depend on the install profile.
+        import importlib.util
+
+        try:
+            available = importlib.util.find_spec("fastembed") is not None
+        except (ImportError, ValueError):
+            # find_spec raises on a broken/namespace-only install; treat any such
+            # failure as "not available" rather than leaking a raw non-Vincio error.
+            available = False
+        if available:
+            kwargs.setdefault("fallback", True)
+            base = FastEmbedEmbedder(**kwargs)
+        else:
+            base = LocalHashEmbedder(**{k: v for k, v in kwargs.items() if k != "fallback"})
     elif kind in ("fastembed", "onnx"):
         base = FastEmbedEmbedder(**kwargs)
     elif kind == "colbert":

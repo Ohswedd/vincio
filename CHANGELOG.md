@@ -4,6 +4,66 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.7.0] - 2026-07-03
+
+**Context anchors — keep a PRD / spec / brand frame present across a whole
+multi-call task, without paying for it on every call.** When Vincio drives a
+long chain of calls (a coding agent, a research loop), the task starts from a
+bulk of MD files — a PRD, coding standards, a brand guide — that bind *every*
+step but are needed *in full* on none. Stuffing them into every call is token-
+hungry and re-paid per step; pure per-query RAG silently drops a globally-binding
+constraint the moment a step ("add a settings panel") doesn't lexically match it
+("brand voice: warm and concise"). Anchors close that gap. All additive; the
+defaults are byte-identical (the new behavior is opt-in); `API_VERSION` stays
+`5.0`.
+
+- **Context anchors** (new `vincio.context.anchors`: `AnchorBrief`, `AnchorSet`,
+  `build_anchor_brief`). Mark a source `anchor=True` and Vincio distills its
+  documents **once** into a compact, **constraint-first** brief — a token-bounded
+  digest (default 400) that prefers the normative lines (*must / never / always /
+  required*) over narrative, because those are the rules a task must respect. The
+  brief is **deterministic** and **content-hash-cached** (built once, free to
+  re-request across a 50-call chain), injected as **pinned** evidence into every
+  run at a flat few-hundred-token cost, and rendered first so the prompt prefix
+  stays cacheable. On the reference corpus a ~4,300-token bundle becomes a
+  ~150-token frame — a **~28× reduction** — with every constraint retained.
+- **Pinned evidence** (`EvidenceItem.pinned`). The general mechanism behind the
+  frame: the context compiler treats a pinned item as guaranteed at *every* drop
+  point — exempt from the relevance gate and min-score flush, from dedup (on both
+  sides, so an anchor's own detail is never dropped as a duplicate of its digest)
+  and from conflict resolution, eviction-exempt under the footprint ceiling, and
+  **budget-reserved off the total window** with a deterministic *compress →
+  truncate* ladder that never raises and never exceeds the window. A config that
+  compiled before v7.7 cannot start crashing because a source became an anchor,
+  and the frame can never starve the retrieved detail (capped at
+  `pinned_budget_fraction`, default half). Every ladder step and the reserved
+  cost land on the excluded-context report and the compile receipt.
+- **On-demand detail (Tier 2).** Anchor documents stay fully chunked and indexed,
+  so a call that needs a specific section retrieves it normally — *alongside* the
+  frame, never suppressed by it.
+- **`app.add_source(..., anchor=True, brief_tokens=…)`** and **`app.task_brief()`**
+  (inspect the frame); `app.anchors` is the `AnchorSet`.
+- **Dynamic retrieval knobs (opt-in, byte-identical defaults).** `embedder="auto"`
+  is semantic (local ONNX / FastEmbed) when installed and the deterministic hash
+  embedder otherwise — resolved once, always with a fallback so it can never crash
+  a run (offline box, no model cache); the default stays `"local"` so retrieval
+  output never depends on the install profile. `adaptive_top_k` grows `top_k` for
+  broad / multi-part queries (never shrinks below the floor, capped at a ceiling,
+  `chosen_k` recorded) — a recall knob, off by default so evidence counts stay
+  stable.
+- **Gated and demonstrated.** A new `rag_anchors` VincioBench family gates the
+  token reduction (≥10×), frame retention on a lexically-mismatched query (while
+  the identical query under pure RAG loses it), Tier-2 detail survival, the
+  frame-guaranteed-everywhere property across a tiny window / a zero-evidence task
+  type / a footprint ceiling / a conflicting chunk, the never-exceed-budget
+  invariant, determinism, and stable-first rendering — eight budgets and six
+  published SLOs. A live **uplift** (`benchmarks/rag_anchor_uplift_live.py`)
+  measures the same model across three arms (stuff-all-files / pure-RAG / anchors)
+  on a rule the coding tasks never mention: **anchors match stuffing on adherence
+  (100%) at ~3× fewer input tokens/call, while pure RAG drops the rule to 50%** —
+  consistent on `openai/gpt-4o-mini` and `meta-llama/llama-3.3-70b-instruct`
+  (OpenRouter, 2026-07-03). Runnable `examples/20_context_anchors.py`.
+
 ## [7.6.0] - 2026-07-03
 
 **Universal web browsing & search — every model gets the open web, governed.**
