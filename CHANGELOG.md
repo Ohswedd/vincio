@@ -4,6 +4,78 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.6.0] - 2026-07-03
+
+**Universal web browsing & search — every model gets the open web, governed.**
+Some providers ship a hosted web-search tool, some ship a poor one, and local models
+ship none. `7.6` levels that: **any** model Vincio serves — hosted frontier,
+OpenAI-compatible gateway, or an in-process GGUF with no function calling at all —
+gets the same two Vincio-executed tools, `web_search` and `web_read`, against
+DuckDuckGo's keyless endpoints (or any pluggable engine), with the judgement of
+*when* to search shipped as a first-class skill and every page read provable
+offline from bytes. This is the first phase of native skill integration: the
+when/what/how contract reaches the model through the context plane, identically
+for every provider. All additive: one new subpackage (`vincio.web`), three new
+`vincio.providers` symbols, one connector, one app verb, and a numbered example,
+with **no existing symbol removed or changed**; `API_VERSION` stays `5.0`.
+
+- **`vincio.web` — the browsing plane** (new subpackage). `DuckDuckGoBackend`
+  queries the keyless `html.duckduckgo.com` endpoint (falling back to `lite`),
+  decodes the `uddg=` redirect wrappers, drops ads, and surfaces the rate-limit
+  challenge page as a typed `WebSearchError` instead of silently returning
+  nothing; `StaticSearchBackend` is the deterministic offline engine; any
+  third-party engine (SearXNG, Brave, an intranet index) plugs in via the
+  `SearchBackend` protocol. Typed `SearchResult` rows are the only thing that
+  leaves the layer — never raw HTML.
+- **Token-efficient reading.** `web_read` never forwards a page: `extract_page`
+  reduces it to the passages relevant to the model's *own query* under an exact
+  token budget — a tolerant stdlib-parser structural pass, boilerplate/link-density
+  stripping, self-contained BM25 with a light stemmer, and a lead-position prior so
+  a missed query degrades to the article lead. On the reference page the excerpts
+  are **~100x cheaper** than the stripped page (`families.web_search.extract_reduction ≥ 10`
+  gated), with the known fact surviving and chrome excluded.
+- **Judgement as a skill, natively.** The built-in `browse_skill()` (Agent Skills
+  shape) teaches when to search (volatile/recent/niche facts, exact citations),
+  when *not* to (stable knowledge, anything already in context), how to write
+  2–5-keyword queries, and when to stop — its summary line always disclosed, its
+  full body surfacing through the skill library's progressive disclosure only when
+  the task looks web-relevant, scored and budgeted by the context compiler like any
+  other evidence. The same contract reaches every provider.
+- **`ToolProtocolProvider` — native-grade tool use for models without function
+  calling** (new, in `vincio.providers`). A composition wrapper in the
+  `RetryingProvider` tradition: when a request carries tools and the wrapped model
+  does not claim `tool_calling`, it lowers the tool schemas into a compact text
+  protocol in the system message, folds prior tool turns alternation-safely, and
+  lifts fenced `tool_call` JSON back into ordinary `ToolCallRequest`s — the
+  runtime, registry, permissions, budgets, and audit chain see exactly what a
+  native provider would have produced. Malformed blocks stay visible in the text
+  rather than vanishing. `force=True` overrides a gateway that advertises tool
+  calling it does not honor.
+- **Governed, pre-egress, and provable.** `WebPolicy` refuses before any request
+  leaves the process — schemes, allow/deny domain lists, **private/loopback/
+  link-local hosts fail closed** (a model-directed fetcher must not become an SSRF
+  vector), robots.txt respected by default, per-session search/fetch budgets, and
+  byte/token ceilings — all as typed `WebPolicyError`s a model can read and adapt
+  to. Every read lands as a `WebEvidence` content-bound to its SHA-256 snapshot;
+  excerpts are a pure function of (snapshot, query, budget), so the whole
+  `WebSessionReport` re-derives offline and a tampered snapshot is caught. Every
+  search and fetch records on the app's hash-chained audit log.
+- **One-line enablement, and a web-backed corpus.** `app.use_web_search()`
+  registers the tools, loads the skill, applies the policy (fields pass through as
+  keywords), and wraps the provider so non-native models just work;
+  `app.web_browser.report()` is the session's verifiable transcript. The new
+  `websearch` connector (`connect("websearch", queries=[...])`) turns queries into
+  cited, content-hashed `Document`s — making the existing deep-research agent
+  web-backed with zero new agent code.
+- **Offline-first, no new dependency.** The whole plane is plain HTTP over the
+  existing transport plus the stdlib parser; everything is testable offline via an
+  injected `httpx.MockTransport` client, and the live path is simply the default
+  constructor. A new `web_search` VincioBench family gates the token reduction,
+  grounded recall, boilerplate exclusion, SSRF refusal, offline evidence
+  verification, and the native-vs-protocol loop equivalence (same tools, same
+  sequence, same answer), with six new published SLOs and budgets, and a runnable
+  `examples/19_web_browser_search.py`.
+
 ## [7.5.0] - 2026-07-03
 
 **The consistency & structure line — one name per concept, one implementation per

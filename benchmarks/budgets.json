@@ -2544,6 +2544,30 @@
     },
     "families.bench_tracks.feature_contest_count": {
       "gte": 8
+    },
+    "families.web_search.extract_reduction": {
+      "gte": 10.0
+    },
+    "families.web_search.relevant_recall": {
+      "eq": true
+    },
+    "families.web_search.boilerplate_excluded": {
+      "eq": true
+    },
+    "families.web_search.evidence_verifies": {
+      "eq": true
+    },
+    "families.web_search.policy_refuses_private_hosts": {
+      "eq": true
+    },
+    "families.web_search.universal_tool_loop": {
+      "eq": true
+    },
+    "families.web_search.protocol_lowered": {
+      "eq": true
+    },
+    "families.web_search.extract_ms": {
+      "lte": 50.0
     }
   }
 }

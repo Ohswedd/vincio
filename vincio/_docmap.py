@@ -184,6 +184,17 @@ TOPICS: tuple[Topic, ...] = (
         verbs=("add_tool", "add_skill", "use_hosted_tools"),
     ),
     Topic(
+        "web_browsing", "runs", "Universal web browsing & search",
+        "Governed web_search / web_read tools every model can call — DuckDuckGo or any "
+        "pluggable engine, token-budgeted page reading, a built-in when-to-search skill, "
+        "the text protocol for models without native tool calling, pre-egress policy, "
+        "and offline-verifiable evidence.",
+        concept=_c("web-browsing"),
+        guides=(_g("web-search"),),
+        examples=(_e("19_web_browser_search"),),
+        verbs=("use_web_search",),
+    ),
+    Topic(
         "structured-output", "runs", "Structured output",
         "Typed Pydantic contracts, constrained decoding, multi-schema routing, and "
         "bounded structure-only self-correction.",

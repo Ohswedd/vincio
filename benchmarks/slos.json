@@ -2731,6 +2731,66 @@
       "threshold": true,
       "enforced_by": "families.hygiene.reachability_gate_detects_tamper",
       "rationale": "A gate that never fires is indistinguishable from no gate. The budget gates that the reference scan flags a dead symbol and a stale baseline entry while crediting a real load (including an aliased import, the case that once made a used symbol look dead), so the no-dead-surface guarantee is backed by a check that demonstrably catches the failure it claims to prevent without over-reporting."
+    },
+    {
+      "id": "web_search_token_efficiency",
+      "category": "cost",
+      "statement": "Reading a web page through web_read costs at least 10x fewer tokens than forwarding the boilerplate-stripped page: extraction reduces the reference page to only the passages relevant to the model's own query, under an exact token budget.",
+      "metric": "families.web_search.extract_reduction",
+      "direction": "gte",
+      "threshold": 10.0,
+      "enforced_by": "families.web_search.extract_reduction",
+      "rationale": "The plane's premise is that browsing must not blow the context budget; if a page read approaches full-page token cost, the feature silently becomes an expensive paste and every downstream budget erodes."
+    },
+    {
+      "id": "web_search_grounded_recall",
+      "category": "quality",
+      "statement": "The token-budgeted extraction keeps the passage that answers the query (the known fact on the reference page survives a 100x reduction) while navigation, footer, and other chrome are excluded.",
+      "metric": "families.web_search.relevant_recall",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.relevant_recall",
+      "rationale": "Aggressive reduction is only safe if the needle survives it; a reducer that saves tokens by dropping the answer would make the model confidently wrong instead of cheaper."
+    },
+    {
+      "id": "web_search_ssrf_refused",
+      "category": "security",
+      "statement": "A model-directed fetch of a private, loopback, or link-local host is refused by WebPolicy before any request leaves the process, as a typed WebPolicyError.",
+      "metric": "families.web_search.policy_refuses_private_hosts",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.policy_refuses_private_hosts",
+      "rationale": "A browsing tool that models steer is a server-side request forgery vector by construction; refusing private address classes pre-egress keeps a prompt-injected 'fetch http://169.254.169.254/' from ever reaching the network stack."
+    },
+    {
+      "id": "web_search_evidence_verifies",
+      "category": "reliability",
+      "statement": "Every page read re-derives offline from its content-hashed snapshot — the excerpts are a pure function of (snapshot, query, budget) — and a tampered snapshot is detected, so a browsing session's citations are checkable from bytes.",
+      "metric": "families.web_search.evidence_verifies",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.evidence_verifies",
+      "rationale": "Web content is the least trustworthy evidence the platform handles; binding excerpts to snapshot hashes is what turns 'the model says the page said' into a verifiable record."
+    },
+    {
+      "id": "web_search_universal",
+      "category": "quality",
+      "statement": "A model without native function calling completes the identical search-read-answer tool loop through the text protocol (ToolProtocolProvider) that a native-tool-calling model completes through vendor tool calls — same tools, same sequence, same answer.",
+      "metric": "families.web_search.universal_tool_loop",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.web_search.universal_tool_loop",
+      "rationale": "The feature's promise is 'every model, any provider or local'; gating the protocol path against the native path proves web access does not silently degrade to a capability only frontier models have."
+    },
+    {
+      "id": "web_search_extract_latency",
+      "category": "performance",
+      "statement": "Reducing the reference page (hundreds of content blocks) to its query-relevant excerpts completes in at most 50 ms, so token-efficient reading adds negligible latency to a tool round.",
+      "metric": "families.web_search.extract_ms",
+      "direction": "lte",
+      "threshold": 50.0,
+      "enforced_by": "families.web_search.extract_ms",
+      "rationale": "Extraction sits on the hot path of every web_read; if it were slower than the fetch itself, the efficiency win would be paid back in wall-clock and the tool budget."
     }
   ]
 }

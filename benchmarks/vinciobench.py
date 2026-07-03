@@ -12869,6 +12869,183 @@ async def bench_ds4_provider() -> dict[str, Any]:
     }
 
 
+async def bench_web_search() -> dict[str, Any]:
+    """WebSearchBench: the universal browsing plane — token-efficient reading,
+    grounded recall, pre-egress refusal, offline-verifiable evidence, and the
+    same tool loop for a native-tool-calling model and a text-protocol one.
+    All offline: the network is an httpx.MockTransport, the engine is the
+    deterministic StaticSearchBackend.
+
+    What is gated here is the plane's whole promise: a page is reduced to the
+    passages relevant to the model's own query at a fraction of the full-page
+    token cost (``extract_reduction``); the known fact survives the reduction
+    (``relevant_recall``) while chrome does not (``boilerplate_excluded``);
+    a private-host fetch is refused before any request would leave the process
+    (``policy_refuses_private_hosts``); every read re-derives from its snapshot
+    bytes (``evidence_verifies``); and a model *without* native function
+    calling completes the identical search→read→answer loop through the text
+    protocol (``universal_tool_loop``)."""
+    import time
+
+    import httpx
+
+    from vincio.core.errors import WebPolicyError
+    from vincio.core.types import Message, ModelCapabilities, ModelRequest
+    from vincio.providers import MockProvider, ToolProtocolProvider
+    from vincio.web import (
+        SearchResult,
+        StaticSearchBackend,
+        WebBrowser,
+        extract_page,
+    )
+
+    release_url = "https://www.python.org/downloads/release/python-3130/"
+    page_html = (
+        "<html><head><title>Python 3.13 Release</title></head><body>"
+        "<nav><a href='/'>Home</a><a href='/dl'>Downloads</a><a href='/doc'>Docs</a></nav>"
+        "<h1>Python 3.13.0</h1>"
+        "<p>Python 3.13.0 is the newest major release of the Python programming language.</p>"
+        "<h2>Release date</h2>"
+        "<p>Python 3.13.0 was released on October 7, 2024, and ships a new interactive "
+        "interpreter plus experimental free-threading support.</p>"
+        + "".join(
+            f"<p>Filler paragraph {i} about gardening and cooking recipes, long enough "
+            "to register as a real content block and inflate the page.</p>"
+            for i in range(200)
+        )
+        + "<footer><a href='/legal'>Legal</a></footer></body></html>"
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(200, text=page_html, headers={"content-type": "text/html"})
+
+    def make_browser() -> WebBrowser:
+        return WebBrowser(
+            StaticSearchBackend(
+                {
+                    "latest python release": [
+                        SearchResult(
+                            rank=1,
+                            title="Python Release Python 3.13.0",
+                            url=release_url,
+                            snippet="newest major release",
+                        )
+                    ]
+                }
+            ),
+            client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+        )
+
+    # token efficiency + grounding, measured on the raw extractor
+    rounds = 50
+    start = time.perf_counter()
+    for _ in range(rounds):
+        extract = extract_page(
+            page_html, url=release_url, query="release date october", budget_tokens=200
+        )
+    extract_ms = round((time.perf_counter() - start) / rounds * 1000, 4)
+    extract_reduction = round(extract.reduction, 2)
+    relevant_recall = any("October 7, 2024" in e.text for e in extract.excerpts)
+    boilerplate_excluded = all(
+        "Home" not in e.text and "Legal" not in e.text for e in extract.excerpts
+    )
+
+    # evidence honesty: re-derives from bytes, tamper detected
+    browser = make_browser()
+    await browser.read(release_url, query="release date october")
+    report = browser.report()
+    evidence = report.reads[0]
+    evidence_verifies = report.verify(browser.snapshots) and not evidence.verify(
+        page_html + "<!-- tampered -->"
+    )
+
+    # pre-egress refusal: a private host never reaches the transport
+    try:
+        await browser.read("http://127.0.0.1/metadata")
+        policy_refuses_private_hosts = False
+    except WebPolicyError:
+        policy_refuses_private_hosts = True
+
+    # the same loop, native tool calls vs the text protocol
+    script_answer = "Python 3.13.0, released October 7, 2024. Source: " + release_url
+
+    async def run_loop(provider, model: str) -> tuple[list[str], str]:
+        browser = make_browser()
+        handlers = {spec.name: fn for spec, fn in browser.tool_handlers()}
+        specs = [spec for spec, _ in browser.tool_handlers()]
+        messages = [Message(role="user", content="Latest python version and release date?")]
+        called: list[str] = []
+        for _ in range(4):
+            response = await provider.generate(
+                ModelRequest(model=model, messages=messages, tools=specs)
+            )
+            if not response.tool_calls:
+                return called, response.text
+            messages.append(
+                Message(role="assistant", content=response.text, tool_calls=response.tool_calls)
+            )
+            for call in response.tool_calls:
+                called.append(call.name)
+                output = await handlers[call.name](**call.arguments)
+                messages.append(
+                    Message(
+                        role="tool",
+                        content=json.dumps(output),
+                        tool_call_id=call.id,
+                        name=call.name,
+                    )
+                )
+        return called, ""
+
+    native = MockProvider(
+        script=[
+            {"tool_call": {"name": "web_search", "arguments": {"query": "latest python release"}}},
+            {"tool_call": {"name": "web_read", "arguments": {"url": release_url, "query": "release date"}}},
+            script_answer,
+        ]
+    )
+
+    class _NonNative(MockProvider):
+        def capabilities(self, model: str) -> ModelCapabilities:
+            return ModelCapabilities(tool_calling=False)
+
+    protocol = ToolProtocolProvider(
+        _NonNative(
+            script=[
+                '```tool_call\n{"name": "web_search", "arguments": {"query": "latest python release"}}\n```',
+                '```tool_call\n{"name": "web_read", "arguments": {"url": "'
+                + release_url
+                + '", "query": "release date"}}\n```',
+                script_answer,
+            ]
+        )
+    )
+    native_calls, native_answer = await run_loop(native, "mock-native")
+    protocol_calls, protocol_answer = await run_loop(protocol, "mock-local-gguf")
+    universal_tool_loop = (
+        native_calls == protocol_calls == ["web_search", "web_read"]
+        and native_answer == protocol_answer == script_answer
+    )
+    protocol_lowered = protocol.inner.requests[0].tools == [] and "Tool protocol" in str(
+        protocol.inner.requests[0].messages[0].content
+    )
+
+    return {
+        "extract_reduction": extract_reduction,
+        "relevant_recall": relevant_recall,
+        "boilerplate_excluded": boilerplate_excluded,
+        "evidence_verifies": evidence_verifies,
+        "policy_refuses_private_hosts": policy_refuses_private_hosts,
+        "universal_tool_loop": universal_tool_loop,
+        "protocol_lowered": protocol_lowered,
+        "extract_ms": extract_ms,
+        "excerpt_tokens": extract.excerpt_tokens,
+        "page_tokens": extract.page_tokens,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -12929,6 +13106,7 @@ FAMILIES = {
     "hygiene": bench_hygiene,
     "structural_guarantees": bench_structural_guarantees,
     "compile_receipt": bench_compile_receipt,
+    "web_search": bench_web_search,
 }
 
 

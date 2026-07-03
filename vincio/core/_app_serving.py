@@ -24,6 +24,7 @@ from .errors import (
 )
 
 if TYPE_CHECKING:
+    from ..providers.base import ModelProvider
     from .app import ContextApp
 
 
@@ -37,6 +38,8 @@ class _ServingVerbs:
         # only, no runtime effect) keep the split typing identical to the
         # monolith's.
         skill_library: SkillLibrary | None
+        web_browser: Any
+        _provider_instance: ModelProvider | None
 
 
     def enable_computer_use(  # type: ignore[misc]
@@ -209,6 +212,68 @@ class _ServingVerbs:
             details={
                 "namespace": namespace,
                 "tools": [s.name for s in hosted_tool_specs(names, namespace=namespace)],
+            },
+        )
+        return self
+
+    def use_web_search(  # type: ignore[misc]
+        self: ContextApp,
+        backend: Any | None = None,
+        *,
+        policy: Any | None = None,
+        client: Any | None = None,
+        skill: bool = True,
+        tool_protocol: bool | str = True,
+        **policy_fields: Any,
+    ) -> ContextApp:
+        """Give this app's model — **any** model — governed access to the open web.
+
+        Registers Vincio-executed ``web_search`` / ``web_read`` tools (DuckDuckGo
+        by default; any :class:`~vincio.web.SearchBackend` via ``backend``),
+        loads the built-in browsing skill (when to search, how to write queries,
+        when to stop — progressively disclosed), and wraps the provider in
+        :class:`~vincio.providers.ToolProtocolProvider` so a model without
+        native function calling gets the same two tools through a text
+        protocol. Every search and fetch is policy-gated pre-egress
+        (:class:`~vincio.web.WebPolicy` fields pass through as keywords) and
+        lands on the audit chain; the session's :class:`~vincio.web.WebEvidence`
+        re-derives offline from its snapshots via ``app.web_browser.report()``::
+
+            app.use_web_search(max_searches=4, deny_domains=["example-tracker.com"])
+
+        ``tool_protocol=False`` leaves the provider unwrapped (native-only);
+        ``"force"`` applies the text protocol even to natively capable models.
+        """
+        from ..providers.tool_protocol import ToolProtocolProvider
+        from ..web.browser import WebBrowser
+        from ..web.policy import WebPolicy
+        from ..web.skill import browse_skill
+
+        if isinstance(policy, WebPolicy):
+            resolved_policy = policy
+        elif isinstance(policy, dict):
+            resolved_policy = WebPolicy(**{**policy, **policy_fields})
+        else:
+            resolved_policy = WebPolicy(**policy_fields)
+        browser = WebBrowser(backend, policy=resolved_policy, client=client, audit=self.audit)
+        self.web_browser = browser
+        for spec, handler in browser.tool_handlers():
+            self.tool_registry.register_spec(spec, handler=handler)
+            if spec.name not in self.enabled_tools:
+                self.enabled_tools.append(spec.name)
+        if skill:
+            self.add_skill(browse_skill())
+        if tool_protocol:
+            self._provider_instance = ToolProtocolProvider(
+                self._base_provider(), force=tool_protocol == "force"
+            )
+        self.audit.record(
+            "web_search_enabled",
+            decision="allow",
+            details={
+                "backend": getattr(browser.backend, "name", type(browser.backend).__name__),
+                "policy": resolved_policy.model_dump(),
+                "tool_protocol": str(tool_protocol),
             },
         )
         return self

@@ -79,6 +79,7 @@ from .registry import (
     discover_entry_points,
 )
 from .shadow import CanaryRouter, CanaryState, ShadowObservation, ShadowProvider
+from .tool_protocol import ToolProtocolProvider, lift_tool_calls, lower_tool_protocol
 from .transport import CoalescingProvider, build_pooled_client
 
 __all__ = [
@@ -148,6 +149,9 @@ __all__ = [
     "GGUFProvider",
     "Ds4Provider",
     "MockProvider",
+    "ToolProtocolProvider",
+    "lift_tool_calls",
+    "lower_tool_protocol",
     "instance_from_schema",
     "default_registry",
     "build_provider",

@@ -157,6 +157,7 @@ _Execute the pipeline: configure, run, stream, orchestrate, and produce delivera
 - `app.use_hosted_tools` — Surface provider-native hosted tools (``web_search`` / ``file_search`` / ``code_interpreter`` / ``computer_use``) as namespaced Vincio tools.
 - `app.use_pack` — Apply a domain pack: prompt config + schema + policies + evaluators + rails.
 - `app.use_reasoning_controller` — Install a reasoning controller so the runtime sets effort per run.
+- `app.use_web_search` — Give this app's model — **any** model — governed access to the open web.
 - `app.voice_agent` — Open an end-to-end :class:`~vincio.realtime.VoiceAgent`.
 - `app.workflow` — Create a deterministic :class:`Workflow` builder bound to this app's tracer.
 
@@ -909,7 +910,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 
 - `API_VERSION` — str(object='') -> str str(bytes_or_buffer[, encoding[, errors]]) -> str
 
-## Error catalog (98 codes)
+## Error catalog (102 codes)
 
 Every error derives from `VincioError` with a stable `.code`, a `.remediation`, and a `.docs_url`. Branch on `.code`.
 
@@ -946,6 +947,10 @@ Every error derives from `VincioError` with a stable `.code`, a `.remediation`, 
 - `MEMORY_ERROR` — Memory engine error. A memory operation failed. Check the memory store URL and that the owner/scope arguments are supplied.
 - `MEMORY_POLICY` — Memory policy violation. The write policy rejected this memory (`memory.write_policy`). Loosen the policy to `open`, or supply the required owner/consent metadata.
 - `MEMORY_CONFLICT` — Memory conflict. A new memory contradicts an existing one. Use `MemoryEngine.correct()` to supersede it history-preservingly instead of overwriting.
+- `WEB_ERROR` — Web operation error. A web browsing/search operation failed. Inspect `.details` for the URL or query; check connectivity and the backend's status.
+- `WEB_SEARCH_ERROR` — Web search failed. The search backend returned no usable results page (network error, rate-limit/anomaly challenge, or unparseable markup). Retry later, slow the query rate, or inject a different `SearchBackend`.
+- `WEB_FETCH_ERROR` — Web page fetch failed. The page could not be fetched or read (network error, non-success status, unsupported content type, or body over the byte ceiling). Check the URL, or raise `WebPolicy.max_page_bytes` deliberately.
+- `WEB_POLICY_DENIED` — Web policy refused the operation. The `WebPolicy` blocked the search/fetch before any request left the process (domain, scheme, private host, robots.txt, or an exhausted budget). Relax the specific policy field deliberately, or raise the session budget.
 - `TOOL_ERROR` — Tool execution error. A tool raised. Inspect `.tool` and the tool's own exception; make the tool defensive or wrap the call site.
 - `TOOL_NOT_FOUND` — Tool not found. No tool with that name is registered. Register it with `app.add_tool`, and check for a typo against `app.enabled_tools`.
 - `TOOL_PERMISSION` — Tool permission denied. The caller's role lacks permission for this tool. Grant the permission in the registry, or call with an authorized principal.

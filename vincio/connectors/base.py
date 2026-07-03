@@ -36,6 +36,7 @@ CONNECTORS: dict[str, Callable[..., Any]] = {}
 # Built-in connectors import lazily so optional dependencies stay optional.
 _BUILTIN_MODULES = {
     "web": "vincio.connectors.web",
+    "websearch": "vincio.connectors.websearch",
     "github": "vincio.connectors.github",
     "sql": "vincio.connectors.sql",
     "s3": "vincio.connectors.s3",

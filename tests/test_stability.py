@@ -24,7 +24,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.5.0"
+    assert vincio.__version__ == "7.6.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -83,8 +83,15 @@ def test_version_and_api_contract():
     # paths made linear byte-identically, and the ContextApp/compile()/
     # combine_attestations decomposition as pure code motion — no existing symbol
     # removed, nothing broken.
+    # 7.6 is the universal web browsing & search plane: the new `vincio.web`
+    # subpackage (DuckDuckGo/pluggable search, token-budgeted extraction,
+    # pre-egress WebPolicy, offline-verifiable WebEvidence), the built-in
+    # progressive-disclosure browsing skill, the `ToolProtocolProvider` that
+    # grants native-grade tool use to models without function calling, the
+    # `websearch` connector, and the `app.use_web_search()` verb — all additive,
+    # subpackage-level symbols only, no existing symbol removed or changed.
     # The surface grows by re-freezing it, never by breaking it, so the API contract
-    # generation stays "5.0" while the package advances to 7.5.0.
+    # generation stays "5.0" while the package advances to 7.6.0.
     assert API_VERSION == "5.0"
 
 

@@ -207,7 +207,8 @@ high-level `ContextApp`, or reach for any engine directly.
 
 **Agents & orchestration**
 - Tools: permissioned registry (RBAC + ABAC), schema-from-typehints, a resource-limited sandbox, idempotent write guardrails with approval callbacks, and a grounded computer-use action plane.
-- Agents: bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN), in-place plan repair, cost-aware action selection, and a budgeted deep-research agent.
+- Universal web browsing & search: `app.use_web_search()` gives **any** model — hosted, gateway, or a local GGUF with no function calling — the same governed `web_search` / `web_read` tools over DuckDuckGo (or any pluggable engine). Pages are read token-efficiently (only the passages relevant to the model's own query, under an exact budget), when-to-search judgement ships as a progressively-disclosed skill, private-host/denied-domain fetches are refused pre-egress, and every read is a content-hashed `WebEvidence` the session `verify()`s offline. Models without native tool calling run the identical loop through the `ToolProtocolProvider` text protocol.
+- Agents: bounded DAG execution with planners (ReAct / plan-and-execute / hierarchical HTN), in-place plan repair, cost-aware action selection, and a budgeted deep-research agent — web-backed in one line via the `websearch` connector.
 - Orchestration: multi-agent crews with a shared blackboard, durable stateful graphs (checkpoint / resume / time-travel / human-in-the-loop), deterministic workflows, and a distributed durable-execution backend.
 
 **Output, evaluation & observability**
@@ -455,6 +456,7 @@ end to end — the entire data & analytics plane is one tour (`13`). Highlights 
 | 16 | [`open_evaluation_plane`](examples/16_open_evaluation_plane.py) | the three-track benchmark platform · public benchmarks by niche · provenance tiers (Static / Recorded / Live) · leaderboard & run store |
 | 17 | [`compile_receipt`](examples/17_compile_receipt.py) | the packet compile receipt — why a packet compiled the way it did · `receipt_hash` · offline `verify()` · `diverges_from()` between runs |
 | 18 | [`ds4_local_inference`](examples/18_ds4_local_inference.py) | a self-hosted DS4 DeepSeek V4 box as a first-class provider — thinking modes · disk-KV cache accounting · on-prem residency · honest self-hosted $0 |
+| 19 | [`web_browser_search`](examples/19_web_browser_search.py) | universal web browsing & search — governed `web_search` / `web_read` for every model · token-budgeted page reading · the text protocol for models without tool calling · pre-egress policy · offline-verifiable evidence |
 
 ### 3 · Applications — real-world backends
 

@@ -468,6 +468,8 @@ class ContextApp(
         # protocols & interoperability: MCP servers, Agent Skills.
         self.skill_library: SkillLibrary | None = None
         self.mcp_clients: dict[str, Any] = {}
+        # the governed browsing session, when app.use_web_search() enables it.
+        self.web_browser: Any = None
 
     def _init_validation(
         self,

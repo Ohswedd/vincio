@@ -28,6 +28,7 @@ KNOWN_COLLISIONS = {
     ("data", "Dataset"),  # tabular data.core vs evals.datasets
     ("retrieval", "QueryPlan"),  # retrieval.engine vs data.query
     ("verify", "Constraint"),  # verify.kernels vs core.types
+    ("web", "SearchResult"),  # a web-search hit vs optimize.test_time's search outcome
 }
 
 
