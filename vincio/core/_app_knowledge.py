@@ -45,6 +45,7 @@ from .types import (
 if TYPE_CHECKING:
     from ..lager import LagerEngine
     from .app import ContextApp
+    from .types import Document
 
 
 class _KnowledgeVerbs:
@@ -62,6 +63,7 @@ class _KnowledgeVerbs:
         _vector: VectorIndex | None
         entity_graph: EntityGraph | None
         lager_engine: LagerEngine | None
+        _lager_seed_documents: list[Document] | None
         memory: MemoryEngine | None
         memory_enabled: bool
         retrieval: RetrievalEngine | None
