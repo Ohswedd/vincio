@@ -90,21 +90,45 @@ class LazyRetriever:
         obj_terms = set(obj.terms) | {t for t in need.terms if t in obj.claim.lower()}
         return len([t for t in need.terms if t in obj.claim.lower()]) >= 2 or len(obj_terms) >= 2
 
+    def _term_anchored(self, need: InformationNeed, obj: EvidenceObject) -> bool:
+        """The strict, non-vacuous core of :meth:`_anchored`: a shared entity or
+        at least two genuinely shared content terms — never the entity-less
+        fallback that admits any object. Used to gate document-coherence coverage
+        so 'in the same document as *something* that matches the query' means a
+        real match, not a reachable neighbour."""
+        if need.entities:
+            keys = set(obj.entities) | set(obj.terms)
+            return any(entity in keys for entity in need.entities)
+        return len([t for t in need.terms if t in obj.claim.lower()]) >= 2
+
     def _linked_to_anchored(
-        self, obj: EvidenceObject, anchored_ids: set[str], acquired: list[EvidenceObject]
+        self,
+        obj: EvidenceObject,
+        need: InformationNeed,
+        anchored_ids: set[str],
+        acquired: list[EvidenceObject],
     ) -> bool:
-        """The claim connects (edge or shared bucket) to an acquired claim that
-        IS anchored to the need — the structural bridge across a lexical gap:
-        'the root cause was the gateway' shares no word with 'why did the
-        outage happen', but it is graph-linked to the outage claim that does."""
+        """The claim connects (typed edge or shared content) to a DIFFERENT
+        acquired claim that IS anchored to the need — the structural bridge
+        across a lexical gap: 'the root cause was the gateway' shares no word
+        with 'why did the outage happen', but it is graph-linked to the outage
+        claim that does, and its own subject ('gateway') is elaborated elsewhere
+        in the acquired evidence. The need's own anchor entities are subtracted
+        from the shared-content test, so merely re-sharing the query entity is
+        not a bridge (that is topical overlap, not a connection)."""
         if not anchored_ids:
             return False
         for relation in obj.relations:
-            if relation.target in anchored_ids:
+            if relation.target in anchored_ids and relation.target != obj.id:
                 return True
-        keys = set(obj.entities) | set(obj.terms)
+        need_entities = set(need.entities)
+        keys = (set(obj.entities) | set(obj.terms)) - need_entities
+        if not keys:
+            return False
         for held in acquired:
-            if held.id in anchored_ids and keys & (set(held.entities) | set(held.terms)):
+            if held.id == obj.id or held.id not in anchored_ids:
+                continue
+            if keys & ((set(held.entities) | set(held.terms)) - need_entities):
                 return True
         return False
 
@@ -120,11 +144,32 @@ class LazyRetriever:
         if need.kind == "causal":
             # A why-question is answered only by a claim carrying a causal
             # marker; a decoy that merely mentions the topic never covers it.
-            # The causal claim itself may share no words with the query (the
-            # bridge case) — the graph link to an anchored claim carries it.
             if not _CAUSAL_MARKER_RE.search(obj.claim):
                 return False
-            return anchored or self._linked_to_anchored(obj, anchored_ids, acquired)
+            # The causal claim may share no words with the query (the bridge
+            # case) — a graph link to a DIFFERENT anchored claim carries it.
+            if self._linked_to_anchored(obj, need, anchored_ids, acquired):
+                return True
+            if need.entities:
+                # An entity-anchored causal claim must clear the similarity
+                # floor: sharing the query entity is topical overlap, not
+                # answeredness ('revenue fell because of tariffs' shares the
+                # entity with a why-outage need but never answers it).
+                return anchored and (
+                    lexical_similarity(need.text, obj.claim) >= self.options.similarity_floor
+                )
+            # An entity-less why-need has no entity anchor, so coverage rides on
+            # document coherence: the causal claim must share its source document
+            # with a claim that GENUINELY matches the query (real term overlap),
+            # never merely sit in some graph-reachable document. This preserves
+            # the same-document multi-hop bridge while refusing a bare causal
+            # sentence adrift in an unrelated document.
+            return any(
+                held.id != obj.id
+                and held.doc_key == obj.doc_key
+                and self._term_anchored(need, held)
+                for held in acquired
+            )
         if not anchored:
             return False
         if need.kind == "temporal" and obj.observed_at is None:
@@ -177,7 +222,10 @@ class LazyRetriever:
                 if round_number == 0 else options.batch_size
             )
             batch = self._pick(frontier, needs, coverage, acquired, batch_cap)
+            round_start = len(acquired)
             for obj in batch:
+                if obj.id in acquired_ids:
+                    continue  # already force-added as an antecedent this round
                 cost = count_tokens(obj.claim)
                 if tokens + cost > options.max_evidence_tokens and acquired:
                     exit_reason = "E3:token_budget"
@@ -185,12 +233,19 @@ class LazyRetriever:
                 acquired.append(obj)
                 acquired_ids.add(obj.id)
                 tokens += cost
-                tokens += self._force_antecedent(obj, acquired, acquired_ids)
+                tokens += self._force_antecedent(
+                    obj, acquired, acquired_ids,
+                    tokens=tokens, budget=options.max_evidence_tokens,
+                )
             score = self._score(needs, entity_targets, acquired)
             gain = score - previous_score
             previous_score = score
-            self._trace(trace, round_number, [o.id for o in batch], gain, needs, acquired,
-                        len(frontier))
+            # Trace only what was ACTUALLY acquired this round (batch objects and
+            # any forced antecedents), so an E3 break mid-batch never records an
+            # id the pack does not contain — the explainability contract holds
+            # exactly on the budget-pressure runs.
+            self._trace(trace, round_number, [o.id for o in acquired[round_start:]], gain,
+                        needs, acquired, len(frontier))
             if exit_reason == "E3:token_budget":
                 break
             coverage = self._coverage(needs, acquired)
@@ -303,18 +358,28 @@ class LazyRetriever:
         obj: EvidenceObject,
         acquired: list[EvidenceObject],
         acquired_ids: set[str],
+        *,
+        tokens: int,
+        budget: int,
     ) -> int:
         """A referring claim ("It reports to…") gets its antecedent packed with
-        it — self-containment is a pack-level guarantee, not a hope."""
+        it — self-containment is a pack-level guarantee, not a hope. The
+        antecedent is charged against the SAME hard token budget as any acquired
+        object: an antecedent that will not fit is skipped rather than appended,
+        so an arbitrarily large antecedent (a whole code block or table) can
+        never push ``token_cost`` unboundedly past ``max_evidence_tokens``."""
         if obj.kind != "claim" or not is_referring(obj.claim):
             return 0
         for relation in obj.relations:
             if relation.kind == "depends_on" and relation.target not in acquired_ids:
                 antecedent = self.graph.objects.get(relation.target)
                 if antecedent is not None:
+                    cost = count_tokens(antecedent.claim)
+                    if tokens + cost > budget:
+                        return 0  # will not fit the hard budget; do not overshoot
                     acquired.append(antecedent)
                     acquired_ids.add(antecedent.id)
-                    return count_tokens(antecedent.claim)
+                    return cost
         return 0
 
     def _score(

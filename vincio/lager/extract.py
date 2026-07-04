@@ -366,7 +366,18 @@ class DeterministicClaimExtractor:
             authority=_AUTHORITY_BY_TRUST.get(document.trust_level, 0.5),
             trust_level=document.trust_level,
             observed_at=parse_observed_at(claim),
-            metadata={"extractor": f"deterministic/{EXTRACTOR_VERSION}"},
+            metadata={
+                "extractor": f"deterministic/{EXTRACTOR_VERSION}",
+                # Carry the source document's tenant so the runtime can scope a
+                # tenant-isolated run — LAGER aggregates every source's docs into
+                # one engine, so the object is the only place scope can live. A
+                # LIST: content-derived identity collapses byte-identical docs to
+                # one object, so a doc ingested under several tenants accumulates
+                # every owner here (see LagerEngine.ingest) — a tenant-scoped run
+                # then never drops evidence a caller legitimately owns.
+                **({"tenant_ids": [document.tenant_id]}
+                   if getattr(document, "tenant_id", None) else {}),
+            },
         )
 
 

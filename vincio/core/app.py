@@ -456,6 +456,11 @@ class ContextApp(
         # registered corpus (purged by erase_source alongside everything else).
         self.lager_engine: LagerEngine | None = None
         self._source_documents: dict[str, list[Document]] = {}
+        # The exact documents the attached engine was seeded from — recorded so
+        # erase_source rebuilds by subtracting only the erased source's docs,
+        # never blindly from _source_documents (which an explicit
+        # use_lager(documents=...) seed was never part of). None until attached.
+        self._lager_seed_documents: list[Document] | None = None
         self.pending_evidence: list[EvidenceItem] = []
         self._ingested_files: dict[str, list[EvidenceItem]] = {}
 

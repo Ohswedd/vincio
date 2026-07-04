@@ -65,8 +65,8 @@ generation abstains instead of guessing.
 ## Measured, not asserted
 
 The offline `lager` bench family gates every claim against the real in-repo
-baseline (never a strawman): the bridge found where same-budget hybrid top-k
-honestly misses it, ≥3× fewer evidence tokens at equal correctness (~23× on the
+baseline (never a strawman): the bridge found where a same-budget BM25 top-k
+pipeline honestly misses it, ≥3× fewer evidence tokens at equal correctness (~23× on the
 fixture at the default 400-token-chunk configuration), one-round easy queries,
 no fixed k, cross-process byte-identical determinism, contradiction precision ≥
 0.8 on hard negatives, tamper-failing verification, and a full per-round gain

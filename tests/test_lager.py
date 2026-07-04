@@ -386,5 +386,154 @@ def test_untrusted_authority_is_inherited():
     assert all(o.authority > 0.5 for o in engine.objects)
 
 
+# -- adversarial-review regressions (v7.8 hardening) --------------------------------------
+# Each guards a confirmed finding from the v7.8 LAGER review; the id in the name
+# is the finding id.
+
+
+def test_f1_oversized_antecedent_never_blows_the_token_budget():
+    # A referring claim whose depends_on antecedent is a huge code/table object
+    # must not push token_cost unboundedly past max_evidence_tokens: the
+    # antecedent is charged against the same hard budget and skipped if it will
+    # not fit, so the pack stays bounded near the budget.
+    code = "```\n" + ("x = compute(alpha, beta, gamma, delta, epsilon)\n" * 400) + "```"
+    doc = Document(title="c", text=(
+        code + "\nIt failed because the gateway configuration was corrupted during rollout."))
+    pack = _engine([doc]).retrieve("Why did the gateway rollout fail?")
+    assert pack.token_cost <= LazyOptions().max_evidence_tokens + 60  # bounded near budget
+
+
+def test_f2_entity_anchored_causal_decoy_does_not_confidently_stop():
+    # A causal-marker claim that merely shares the query ENTITY (not the topic)
+    # must clear the similarity floor, never falsely cover a why-need.
+    docs = [Document(title="a", text="The ACME outage halted the retail fleet."),
+            Document(title="b", text="ACME quarterly revenue fell because of import tariffs.")]
+    pack = _engine(docs).retrieve("Why did the ACME outage happen?")
+    assert not pack.sufficient
+    assert pack.uncovered_needs  # abstains and names the need, never spins a wrong cause
+
+
+def test_f3_cross_document_causal_decoy_abstains():
+    # An entity-less why-need covers only through document coherence: a bare
+    # causal sentence adrift in an UNRELATED document never answers it.
+    docs = [Document(title="x", text="The rollout failed during the night shift."),
+            Document(title="y", text="The cafeteria menu changed because the chef retired.")]
+    pack = _engine(docs).retrieve("why did the rollout fail")
+    assert not pack.sufficient
+
+
+def test_f4_no_object_is_acquired_or_corroborated_twice():
+    # A forced antecedent that also appears later in the same batch must not be
+    # acquired twice (double token charge) nor collapse into corroborating itself.
+    doc = Document(title="m", text=(
+        "The gateway crashed twice during the ACME migration.\n"
+        "It failed during the ACME migration because operators skipped the gateway checklist."))
+    pack = _engine([doc]).retrieve("Why did the gateway fail during the ACME migration?")
+    ids = [o.id for o in pack.objects]
+    assert len(ids) == len(set(ids))  # no duplicate object in the pack
+    for obj in pack.objects:
+        assert obj.id not in (obj.metadata or {}).get("corroborated_by", [])  # never self-corroborated
+
+
+def test_f6_token_pressure_trace_lists_only_acquired_ids():
+    # On an E3 budget break mid-batch, the round's trace must not name an id the
+    # pack does not actually contain — explainability holds under budget pressure.
+    engine = _engine(max_evidence_tokens=25, batch_size=4)
+    pack = engine.retrieve(
+        "why did the checkout outage happen and why did the payments gateway fail"
+    )
+    pack_ids = {o.id for o in pack.objects}
+    for entry in pack.gain_trace:
+        for added in entry["added"]:
+            assert added in pack_ids
+
+
+def test_f12_document_key_raises_lager_error_on_unpaired_surrogate():
+    # A lone surrogate (from a lossless surrogateescape roundtrip) must fail with
+    # a VincioError, never a bare UnicodeEncodeError — the 6.1 error contract.
+    surrogate = "The gateway failed today. Legacy tag \udce9 stayed."
+    with pytest.raises(LagerError):
+        document_key(surrogate)
+    with pytest.raises(LagerError):
+        _engine([Document(text=surrogate)])  # ingest surfaces it as LagerError too
+
+
+def test_f13_verify_returns_false_on_surrogate_candidate_without_raising():
+    from vincio.lager.objects import EvidenceObject
+
+    clean = "The gateway failed today."
+    obj = EvidenceObject.create(claim=clean, doc_key=document_key(clean),
+                                span=(0, len(clean)), document_id="d")
+    assert obj.verify(clean) is True
+    assert obj.verify("tampered \udce9 source") is False  # returns False, never raises
+
+
+def test_f7_lager_run_scopes_evidence_by_tenant():
+    from vincio.core.types import Document as Doc
+
+    app = _app()
+    app.add_source("kb", documents=[
+        Doc(title="s", text="Tenant-A secret: the master token is ROTATED-9931.",
+            tenant_id="tenant-a")])
+    app.use_lager()
+    other = app.run("what is the master token", tenant_id="tenant-b")
+    assert not any("ROTATED-9931" in (e.text or "") for e in other.evidence)  # no cross-tenant leak
+    owner = app.run("what is the master token", tenant_id="tenant-a")
+    assert any("ROTATED-9931" in (e.text or "") for e in owner.evidence)  # owner still sees it
+
+
+def test_f8_erase_unrelated_source_keeps_the_explicit_lager_seed():
+    app = _app()
+    app.add_source("kb", documents=[Document(title="b",
+                   text="The billing service emits invoices nightly at midnight.")])
+    doc_a = Document(title="a",
+                     text="The gateway outage was caused by an expired TLS certificate on node 7.")
+    app.use_lager(documents=[doc_a])
+    assert len(app.lager_engine) == 1
+    app.erase_source("kb", prove=False)  # erasing an unrelated source
+    assert len(app.lager_engine) == 1  # must not wipe the explicitly-seeded corpus
+
+
+def test_f9_empty_lager_engine_abstains_instead_of_failing_every_run():
+    from vincio.core.types import RunStatus
+
+    app = _app()
+    app.use_lager()  # no sources → a 0-object engine
+    result = app.run("anything at all")
+    assert result.status != RunStatus.FAILED  # degrades to zero evidence, never a hard failure
+
+
+def test_f8b_erasing_one_source_keeps_a_document_a_surviving_source_still_holds():
+    # A Document instance shared by two sources must survive erasure of one of
+    # them — the surviving source still legitimately holds it (over-deletion
+    # regression from id()-subtraction).
+    app = _app()
+    doc = Document(title="shared",
+                   text="The gateway outage was caused by an expired TLS certificate on node 7.")
+    app.add_source("kb1", documents=[doc])
+    app.add_source("kb2", documents=[doc])  # same Document instance
+    app.use_lager()
+    assert len(app.lager_engine) == 1
+    app.erase_source("kb1", prove=False)
+    assert len(app.lager_engine) == 1  # kb2 still holds it → keep
+
+
+def test_f7b_identical_text_across_tenants_is_visible_to_every_owner():
+    # Content-derived identity collapses byte-identical docs to one object; both
+    # tenants that ingested it must still see it under their own scope (the
+    # losing-tenant wrong-drop regression).
+    from vincio.core.types import Document as Doc
+
+    app = _app()
+    text = "The master token for the deployment is ROTATED-9931 as of today."
+    app.add_source("kb-a", documents=[Doc(title="a", text=text, tenant_id="tenant-a")])
+    app.add_source("kb-b", documents=[Doc(title="b", text=text, tenant_id="tenant-b")])
+    app.use_lager()
+    a = app.run("what is the master token", tenant_id="tenant-a")
+    b = app.run("what is the master token", tenant_id="tenant-b")
+    assert any("ROTATED-9931" in (e.text or "") for e in a.evidence)  # owner a sees it
+    assert any("ROTATED-9931" in (e.text or "") for e in b.evidence)  # owner b sees it too
+
+
 if __name__ == "__main__":  # pragma: no cover
     pytest.main([__file__, "-v"])

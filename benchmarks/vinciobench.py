@@ -13349,8 +13349,8 @@ def _lager_corpus():
 
 
 async def _lager_baseline_evidence(docs, query: str, token_budget: int) -> str:
-    """What the real in-repo hybrid top-k pipeline would hand the model for
-    *query*, capped at the same evidence-token budget LAGER gets."""
+    """What the real in-repo BM25 (sparse/lexical) top-k pipeline would hand the
+    model for *query*, capped at the same evidence-token budget LAGER gets."""
     from vincio.core.tokens import count_tokens
     from vincio.retrieval.chunking import chunk_document
     from vincio.retrieval.engine import RetrievalEngine
@@ -13358,8 +13358,9 @@ async def _lager_baseline_evidence(docs, query: str, token_budget: int) -> str:
 
     index = BM25Index()
     for document in docs:
-        # the pipeline's out-of-the-box configuration: recursive chunking at the
-        # config defaults (chunk_size_tokens=400 / overlap 50), hybrid top_k=8
+        # recursive chunking at the config defaults (chunk_size_tokens=400 /
+        # overlap 50), then a sparse BM25 top_k=8 select (no vector index or
+        # reranker — a deliberately simple, deterministic same-budget baseline)
         await index.add(chunk_document(document, strategy="recursive", size=400, overlap=50))
     engine = RetrievalEngine([index])
     result = await engine.retrieve(query, top_k=8)
@@ -13382,7 +13383,7 @@ async def bench_lager() -> dict[str, Any]:
 
     Gated: every extracted object re-derives byte-for-byte from its source on a
     messy fixture (``extraction_faithful``); LAGER finds the multi-hop bridge
-    that shares zero content words with the query while the same-budget hybrid
+    that shares zero content words with the query while the same-budget BM25
     top-k pipeline honestly misses it (``multi_hop_lager``,
     ``beats_topk_on_multihop``); the pack answers the easy query with at least
     2x fewer evidence tokens than the top-k context (``token_efficiency``);
@@ -13430,7 +13431,7 @@ async def bench_lager() -> dict[str, Any]:
         o.verify(messy.text) for o in messy_objects
     )
 
-    # multi-hop: LAGER vs the same-budget hybrid top-k baseline
+    # multi-hop: LAGER vs the same-budget BM25 top-k baseline
     hard_pack = engine.retrieve(hard_query)
     lager_text = " ".join(o.claim for o in hard_pack.objects)
     multi_hop_lager = bridge_marker in lager_text
@@ -13441,8 +13442,8 @@ async def bench_lager() -> dict[str, Any]:
     beats_topk_on_multihop = multi_hop_lager and not multi_hop_topk
 
     # token efficiency on the easy (answerable-by-both) query: what the classic
-    # default pipeline (hybrid top-k=8 chunks, uncapped) sends the model vs the
-    # LAGER pack — the ratio only counts when BOTH contexts contain the answer.
+    # BM25 top-k=8-chunk baseline (uncapped) sends the model vs the LAGER pack —
+    # the ratio only counts when BOTH contexts contain the answer.
     easy_pack = engine.retrieve(easy_query)
     easy_answer = "owned by the platform team"
     easy_topk_context = await _lager_baseline_evidence(docs, easy_query, 100_000)

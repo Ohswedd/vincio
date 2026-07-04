@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..core.errors import LagerError
 from ..core.types import EvidenceItem, TrustLevel
 
 __all__ = [
@@ -44,8 +45,23 @@ def canonical_text(text: str) -> str:
 
 def document_key(text: str) -> str:
     """Stable, content-derived document identity (``Document.id`` is random per
-    load, so it can never participate in evidence identity)."""
-    return hashlib.sha256(canonical_text(text).encode("utf-8")).hexdigest()
+    load, so it can never participate in evidence identity).
+
+    Raises :class:`~vincio.core.errors.LagerError` (never a bare
+    ``UnicodeEncodeError``) when *text* carries an unpaired surrogate and cannot
+    be canonicalized — a lone surrogate reaches here from a lossless
+    ``bytes.decode(errors="surrogateescape")`` roundtrip, and the error contract
+    requires every public raise to be a ``VincioError``."""
+    try:
+        encoded = canonical_text(text).encode("utf-8")
+    except UnicodeEncodeError as exc:
+        raise LagerError(
+            "document text contains an unpaired surrogate and cannot be "
+            "canonicalized; re-decode the source with a UTF-8-clean codec "
+            "(e.g. errors='replace') before ingest",
+            details={"position": exc.start},
+        ) from exc
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _evidence_hash(doc_key: str, span: tuple[int, int], claim: str) -> str:
@@ -122,8 +138,11 @@ class EvidenceObject(BaseModel):
         span is in bounds; the slice equals the claim exactly; and the content
         hash re-derives. All offline, no tokenizer involved."""
         canon = canonical_text(document_text)
-        if document_key(document_text) != self.doc_key:
-            return False
+        try:
+            if document_key(document_text) != self.doc_key:
+                return False
+        except LagerError:
+            return False  # an unencodable candidate can never be this object's source
         start, end = self.span
         if not (0 <= start <= end <= len(canon)):
             return False
@@ -154,6 +173,10 @@ class EvidenceObject(BaseModel):
                 "eo_kind": self.kind,
                 **({"corroborated_by": self.metadata["corroborated_by"]}
                    if "corroborated_by" in self.metadata else {}),
+                # Tenant scope rides through to the runtime's isolation screen —
+                # a list of every tenant that owns this (byte-identical) object.
+                **({"tenant_ids": self.metadata["tenant_ids"]}
+                   if "tenant_ids" in self.metadata else {}),
             },
         )
 

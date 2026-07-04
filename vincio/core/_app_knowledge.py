@@ -247,6 +247,10 @@ class _KnowledgeVerbs:
                 docs.extend(self._source_documents[source_name])
         engine.ingest(docs)
         self.lager_engine = engine
+        # Remember the exact seed so erase_source can subtract only an erased
+        # source's own documents instead of rebuilding blindly from the source
+        # registry (which never held an explicit documents= seed).
+        self._lager_seed_documents = docs
         self.audit.record(
             "use_lager", decision="allow", resource="lager",
             details={"objects": len(engine), "documents": len(docs)},

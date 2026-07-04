@@ -56,7 +56,7 @@ stays `5.0`.
   the engine so erased text stops flowing (right-to-erasure preserved).
 - **Measured, not asserted.** A new `lager` VincioBench family (12 budgets, 8
   SLOs) gates every claim against the **real in-repo baseline**: the multi-hop
-  bridge found where the same-budget hybrid top-k pipeline honestly misses it,
+  bridge found where the same-budget BM25 top-k pipeline honestly misses it,
   ≥3× fewer evidence tokens at equal correctness (**~23×** on the fixture at
   the default 400-token-chunk configuration), one-round easy queries, no fixed
   k, cross-process determinism, contradiction precision, tamper-failing
@@ -66,6 +66,24 @@ stays `5.0`.
   retrieval: 25%) — consistent on `openai/gpt-4o-mini` and
   `meta-llama/llama-3.3-70b-instruct`. Runnable
   `examples/21_lager_reasoning_retrieval.py`.
+- **Adversarially hardened before merge.** A three-lens review of the diff
+  surfaced 13 findings; the 10 confirmed by an independent verify pass are fixed
+  here, each with a regression test: the antecedent is now charged against the
+  hard token budget so a large one cannot overshoot; an entity-anchored causal
+  claim must clear the similarity floor and an entity-less one must bridge or
+  share its document with a genuine query match, so an entity-/topic-sharing
+  decoy no longer confidently stops the loop; no object is acquired or
+  corroborated twice; the round trace lists only acquired ids; the LAGER
+  retrieval branch applies tenant scope exactly as the classic path does
+  (closing a cross-tenant evidence leak) and byte-identical documents owned by
+  several tenants stay visible to every owner; `erase_source` subtracts only the
+  erased source's own documents; `document_key` raises `LagerError` (never a
+  bare `UnicodeEncodeError`) and `verify()` returns `False` on a surrogate
+  candidate; an empty engine abstains rather than failing every run. Two honest
+  residuals of the embedder-off lexical path remain by design (documented, and
+  they only ever cause honest abstention, never a wrong answer): a causal
+  decoy sharing a document with a genuine query match, and a lone
+  entity-anchored cause that paraphrases the query's topic with no bridge term.
 
 ## [7.7.0] - 2026-07-03
 

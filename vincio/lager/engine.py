@@ -60,7 +60,20 @@ class LagerEngine:
         for document in documents:
             key = document_key(document.text or "")
             if key in self._documents_text:
-                continue  # same bytes already ingested
+                # Same bytes already ingested. Content-derived identity means one
+                # Evidence Object stands for byte-identical documents, so a
+                # DIFFERENT tenant that also owns this document is recorded as a
+                # co-owner — otherwise a later tenant-scoped run would drop
+                # evidence that tenant legitimately holds.
+                tenant = getattr(document, "tenant_id", None)
+                if tenant:
+                    for obj in (*self.objects, *added):
+                        if obj.doc_key == key:
+                            owners = obj.metadata.setdefault("tenant_ids", [])
+                            if tenant not in owners:
+                                owners.append(tenant)
+                                owners.sort()
+                continue
             self._documents_text[key] = document.text or ""
             added.extend(self.extractor.extract(document))
         if not added:
