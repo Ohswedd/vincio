@@ -13281,6 +13281,267 @@ async def bench_rag_anchors() -> dict[str, Any]:
     }
 
 
+def _lager_corpus():
+    """The honest multi-hop fixture. The bridge claim ("…assigned the root
+    cause to the payments gateway") shares ZERO content words with the query
+    ("why did the checkout outage happen") and sits in a paragraph of the
+    incident report that a query-similarity ranker has no reason to pull, while
+    fifteen distractor documents are saturated with the query's own words
+    (checkout, outage) — so a same-budget top-k pipeline honestly fills its
+    window with lexical matches and misses the bridge, and LAGER honestly has
+    to reach it by graph traversal, not luck."""
+    from vincio.core.types import Document
+
+    impact_filler = " ".join(
+        f"Impact note {i}: the checkout outage disrupted order flow and the "
+        f"checkout team logged followup {i} about outage communications."
+        for i in range(12)
+    )
+    analysis_filler = " ".join(
+        f"Analysis step {i}: the review committee examined logs, compared "
+        f"timelines, and interviewed the on-call engineers for shift {i}."
+        for i in range(12)
+    )
+    docs = [
+        Document(title="incident", text=(
+            "The checkout service suffered a full outage on 2025-11-03. "
+            "Customers could not complete purchases for three hours during the "
+            "checkout outage window.\n\n"
+            f"{impact_filler}\n\n"
+            f"{analysis_filler}\n\n"
+            "The incident review assigned the root cause to the payments gateway. "
+            "A permanent fix was scheduled for the following sprint."
+        )),
+        Document(title="gateway", text=(
+            "The payments gateway rejected all connections because its TLS "
+            "certificate had expired. Certificate management is owned by the "
+            "platform team.\n\n" + " ".join(
+                f"Gateway runbook item {i}: the connection pool is provisioned per "
+                f"region, health probes fire every interval {i}, and failover "
+                f"drains sessions to the standby cluster in tier {i}."
+                for i in range(12)
+            )
+        )),
+        Document(title="platform", text=(
+            "The platform team automates certificate management with a rotation "
+            "script. The rotation script had been disabled during the datacenter "
+            "migration because the migration froze all scheduled jobs.\n\n" + " ".join(
+                f"Platform procedure {i}: infrastructure changes require a change "
+                f"ticket, a rollback plan, and sign-off from the duty manager for "
+                f"window {i}."
+                for i in range(12)
+            )
+        )),
+    ]
+    for index in range(40):
+        docs.append(Document(title=f"distractor-{index}", text=(
+            f"Checkout report {index}: the checkout funnel was redesigned and "
+            f"checkout conversion improved by {index + 1} percent this quarter. "
+            f"The outage dashboard for checkout shows availability trends, and "
+            f"the checkout outage playbook was revised in review cycle {index}. "
+            f"Checkout latency stayed flat while the outage retro board tracked "
+            f"action items for the checkout team in sprint {index}."
+        )))
+    bridge_marker = "root cause to the payments gateway"
+    hard_query = "why did the checkout outage happen"
+    easy_query = "who owns certificate management"
+    return docs, hard_query, easy_query, bridge_marker
+
+
+async def _lager_baseline_evidence(docs, query: str, token_budget: int) -> str:
+    """What the real in-repo BM25 (sparse/lexical) top-k pipeline would hand the
+    model for *query*, capped at the same evidence-token budget LAGER gets."""
+    from vincio.core.tokens import count_tokens
+    from vincio.retrieval.chunking import chunk_document
+    from vincio.retrieval.engine import RetrievalEngine
+    from vincio.retrieval.indexes import BM25Index
+
+    index = BM25Index()
+    for document in docs:
+        # recursive chunking at the config defaults (chunk_size_tokens=400 /
+        # overlap 50), then a sparse BM25 top_k=8 select (no vector index or
+        # reranker — a deliberately simple, deterministic same-budget baseline)
+        await index.add(chunk_document(document, strategy="recursive", size=400, overlap=50))
+    engine = RetrievalEngine([index])
+    result = await engine.retrieve(query, top_k=8)
+    context: list[str] = []
+    used = 0
+    for item in result.evidence:
+        cost = count_tokens(item.text or "")
+        if used + cost > token_budget and context:
+            break
+        context.append(item.text or "")
+        used += cost
+    return " ".join(context)
+
+
+async def bench_lager() -> dict[str, Any]:
+    """LagerBench: reasoning-driven retrieval (LAGER) — Evidence Objects, the
+    typed knowledge graph, and the lazy loop — measured against the real
+    in-repo top-k baseline on an honest bridge corpus, all offline and
+    deterministic.
+
+    Gated: every extracted object re-derives byte-for-byte from its source on a
+    messy fixture (``extraction_faithful``); LAGER finds the multi-hop bridge
+    that shares zero content words with the query while the same-budget BM25
+    top-k pipeline honestly misses it (``multi_hop_lager``,
+    ``beats_topk_on_multihop``); the pack answers the easy query with at least
+    2x fewer evidence tokens than the top-k context (``token_efficiency``);
+    laziness is real — one round on an easy query, more (but bounded) on a
+    multi-hop one, and the evidence count varies with query complexity
+    (``lazy_rounds_easy``, ``no_fixed_k``); an unanswerable query abstains with
+    its uncovered needs named instead of burning rounds
+    (``impossible_abstains``); retrieval is byte-identical across two separate
+    OS processes ingesting from bytes (``deterministic_across_processes``); the
+    gated contradiction detector holds precision on labeled hard negatives
+    while still catching a true negation pair (``contradiction_precision``,
+    ``contradiction_recall``); tampered sources fail verification
+    (``verification_catches_tamper``); and every retrieval decision is
+    explainable — spans, sources, and a per-round gain trace (``explainable``)."""
+    import subprocess
+    import sys as _sys
+
+    from vincio.core.tokens import count_tokens
+    from vincio.core.types import Document
+    from vincio.lager import (
+        DeterministicClaimExtractor,
+        LagerEngine,
+        LazyOptions,
+        claims_contradict,
+        document_key,
+        normalize_entities,
+    )
+    from vincio.lager.extract import parse_observed_at
+    from vincio.lager.objects import EvidenceObject
+
+    docs, hard_query, easy_query, bridge_marker = _lager_corpus()
+    engine = LagerEngine()
+    engine.ingest(docs)
+
+    # extraction fidelity on a messy fixture
+    messy = Document(title="messy", text=(
+        "Dr. Smith joined Acme Corp. in 2019. She now leads the platform team.\n"
+        "Steps:\n- Install the CLI\n- Run vincio init\n"
+        "| plan | price |\n| pro | $20 |\n"
+        "```\nprint('hello')\n```\n"
+        "The API returns JSON by default, but the legacy endpoint still returns XML."
+    ))
+    messy_objects = DeterministicClaimExtractor().extract(messy)
+    extraction_faithful = bool(messy_objects) and all(
+        o.verify(messy.text) for o in messy_objects
+    )
+
+    # multi-hop: LAGER vs the same-budget BM25 top-k baseline
+    hard_pack = engine.retrieve(hard_query)
+    lager_text = " ".join(o.claim for o in hard_pack.objects)
+    multi_hop_lager = bridge_marker in lager_text
+    baseline_context = await _lager_baseline_evidence(
+        docs, hard_query, LazyOptions().max_evidence_tokens
+    )
+    multi_hop_topk = bridge_marker in baseline_context
+    beats_topk_on_multihop = multi_hop_lager and not multi_hop_topk
+
+    # token efficiency on the easy (answerable-by-both) query: what the classic
+    # BM25 top-k=8-chunk baseline (uncapped) sends the model vs the LAGER pack —
+    # the ratio only counts when BOTH contexts contain the answer.
+    easy_pack = engine.retrieve(easy_query)
+    easy_answer = "owned by the platform team"
+    easy_topk_context = await _lager_baseline_evidence(docs, easy_query, 100_000)
+    both_answer = (easy_answer in " ".join(o.claim for o in easy_pack.objects)
+                   and easy_answer in easy_topk_context)
+    token_efficiency = round(
+        count_tokens(easy_topk_context) / max(easy_pack.token_cost, 1), 2
+    ) if both_answer else 0.0
+
+    # laziness
+    lazy_rounds_easy = easy_pack.rounds
+    lazy_rounds_hard = hard_pack.rounds
+    no_fixed_k = len(easy_pack.objects) < len(hard_pack.objects) or (
+        len(easy_pack.objects) != len(hard_pack.objects)
+    )
+
+    # honest insufficiency
+    impossible = engine.retrieve("what is the chief executive compensation package")
+    impossible_abstains = (
+        not impossible.sufficient
+        and bool(impossible.uncovered_needs)
+        and impossible.rounds <= LazyOptions().max_rounds
+    )
+
+    # cross-process determinism: re-ingest from bytes in two fresh interpreters
+    probe = (
+        "import json,sys\n"
+        "from vincio.core.types import Document\n"
+        "from vincio.lager import LagerEngine\n"
+        "payload=json.loads(sys.stdin.read())\n"
+        "engine=LagerEngine(); engine.ingest([Document(title=d['t'],text=d['x']) for d in payload['docs']])\n"
+        "pack=engine.retrieve(payload['q'])\n"
+        "print(json.dumps({'ids':[o.id for o in pack.objects],'trace':pack.gain_trace,'exit':pack.exit_reason}))\n"
+    )
+    payload = json.dumps({"docs": [{"t": d.title, "x": d.text} for d in docs], "q": hard_query})
+    runs = [
+        subprocess.run([_sys.executable, "-c", probe], input=payload, text=True,
+                       capture_output=True, check=True).stdout.strip()
+        for _ in range(2)
+    ]
+    deterministic_across_processes = runs[0] == runs[1] and bool(runs[0])
+
+    # contradiction precision on hard negatives + recall on a true pair
+    def _eo(text):
+        return EvidenceObject.create(
+            claim=text, doc_key=document_key(text), span=(0, len(text)),
+            document_id="d", entities=normalize_entities(text),
+            observed_at=parse_observed_at(text),
+        )
+
+    hard_negatives = [
+        ("Acme raised prices for the Pro plan in March this year",
+         "Acme raised prices for the Team plan in June this year"),
+        ("Chen approved the operating budget for the first quarter",
+         "Chen did not approve the operating budget for the second quarter"),
+        ("The API returns JSON responses by default to clients",
+         "The API does not return XML responses to legacy clients"),
+        ("The premium tier includes advanced telemetry for enterprise accounts",
+         "The premium tier includes basic telemetry for individual accounts"),
+    ]
+    suppressed = sum(
+        1 for a, b in hard_negatives if claims_contradict(_eo(a), _eo(b)) is None
+    )
+    contradiction_precision = round(suppressed / len(hard_negatives), 2)
+    true_pair = claims_contradict(
+        _eo("The rotation script was enabled during the datacenter migration window"),
+        _eo("The rotation script was not enabled during the datacenter migration window"),
+    )
+    contradiction_recall = true_pair == "negation"
+
+    # verification + explainability
+    verification_catches_tamper = engine.verify(hard_pack) and not hard_pack.verify(
+        {k: v.replace("root cause", "best guess") for k, v in engine.documents_text.items()}
+    )
+    explainable = (
+        len(hard_pack.gain_trace) == hard_pack.rounds
+        and all(o.span is not None and o.doc_key for o in hard_pack.objects)
+        and bool(hard_pack.exit_reason)
+    )
+
+    return {
+        "extraction_faithful": extraction_faithful,
+        "multi_hop_lager": multi_hop_lager,
+        "multi_hop_topk_baseline": multi_hop_topk,  # reported, not gated
+        "beats_topk_on_multihop": beats_topk_on_multihop,
+        "token_efficiency": token_efficiency,
+        "lazy_rounds_easy": lazy_rounds_easy,
+        "lazy_rounds_hard": lazy_rounds_hard,
+        "no_fixed_k": no_fixed_k,
+        "impossible_abstains": impossible_abstains,
+        "deterministic_across_processes": deterministic_across_processes,
+        "contradiction_precision": contradiction_precision,
+        "contradiction_recall": contradiction_recall,
+        "verification_catches_tamper": verification_catches_tamper,
+        "explainable": explainable,
+    }
+
+
 FAMILIES = {
     "prompt": bench_prompt,
     "rag": bench_rag,
@@ -13343,6 +13604,7 @@ FAMILIES = {
     "compile_receipt": bench_compile_receipt,
     "web_search": bench_web_search,
     "rag_anchors": bench_rag_anchors,
+    "lager": bench_lager,
 }
 
 

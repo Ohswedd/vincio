@@ -2921,6 +2921,86 @@
       "threshold": true,
       "enforced_by": "families.rag_anchors.budget_never_exceeded",
       "rationale": "Charging a guaranteed item against a per-block budget can exceed the window and hard-error on every run; reserving it off the top with a never-raising ladder is the only budget-safe way to guarantee inclusion."
+    },
+    {
+      "id": "lager_extraction_faithful",
+      "category": "reliability",
+      "statement": "Every Evidence Object re-derives byte-for-byte from its source span on a messy fixture (dialogue, abbreviations, lists, a table, code) — the provenance contract behind offline verification.",
+      "metric": "families.lager.extraction_faithful",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.lager.extraction_faithful",
+      "rationale": "The whole LAGER trust chain (content-derived ids, tamper detection, answer traceability) rests on claims being exact slices of the canonical source; one drifting span silently breaks all of it."
+    },
+    {
+      "id": "lager_multi_hop_beats_topk",
+      "category": "quality",
+      "statement": "On an honest bridge corpus — the bridge claim shares zero content words with the query while forty distractor documents are saturated with the query's own words — LAGER reaches the bridge by graph traversal while the real in-repo hybrid top-k pipeline at the same evidence budget honestly misses it.",
+      "metric": "families.lager.beats_topk_on_multihop",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.lager.beats_topk_on_multihop",
+      "rationale": "Reasoning-driven retrieval only earns its complexity if it retrieves what query-similarity ranking structurally cannot; the bench pins that exact separation, measured against the actual in-repo baseline, not a strawman."
+    },
+    {
+      "id": "lager_token_efficiency",
+      "category": "cost",
+      "statement": "For a query both pipelines answer correctly, the LAGER evidence pack is at least 3x smaller than the context the classic pipeline sends at its out-of-the-box configuration (recursive 400-token chunks, hybrid top-k) — ~23x on the fixture.",
+      "metric": "families.lager.token_efficiency",
+      "direction": "gte",
+      "threshold": 3.0,
+      "enforced_by": "families.lager.token_efficiency",
+      "rationale": "The model should receive the minimum verified evidence, not chunk padding; the ratio only counts when BOTH contexts contain the correct answer, so the saving is never bought with wrongness."
+    },
+    {
+      "id": "lager_lazy_termination",
+      "category": "performance",
+      "statement": "Laziness is real: a single-fact query terminates in exactly one round, evidence volume varies with query complexity (no fixed top-k), and an unanswerable query exits within the round bound with its uncovered needs named instead of burning the budget.",
+      "metric": "families.lager.lazy_rounds_easy",
+      "direction": "eq",
+      "threshold": 1,
+      "enforced_by": "families.lager.lazy_rounds_easy",
+      "rationale": "The lazy loop's value is acquiring only what reasoning needs; if an easy query pays multi-round cost, or an impossible one spins, the adaptive policy is worse than the fixed top-k it replaces."
+    },
+    {
+      "id": "lager_honest_abstention",
+      "category": "quality",
+      "statement": "When the corpus cannot answer, the pack reports sufficient=False with the uncovered required needs named, so downstream generation abstains instead of guessing.",
+      "metric": "families.lager.impossible_abstains",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.lager.impossible_abstains",
+      "rationale": "A retrieval layer that cannot say 'not answerable from these sources' turns every corpus gap into a hallucination opportunity; named gaps are what make abstention actionable."
+    },
+    {
+      "id": "lager_determinism",
+      "category": "reliability",
+      "statement": "Two separate OS processes ingesting the same bytes produce byte-identical Evidence Object ids, gain traces, and exit reasons — identity is content-derived, never process-local.",
+      "metric": "families.lager.deterministic_across_processes",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.lager.deterministic_across_processes",
+      "rationale": "Document ids are random per load; if identity leaked process state, caching, receipts, and every reproducibility claim would silently break — the bench pins determinism where it actually failed once."
+    },
+    {
+      "id": "lager_contradiction_precision",
+      "category": "quality",
+      "statement": "The gated contradiction detector suppresses the labeled hard negatives (temporal scope, slot changes, refinements) at precision >= 0.8 while still catching a true negation pair — contradiction links inform the model without poisoning ordinary corpora.",
+      "metric": "families.lager.contradiction_precision",
+      "direction": "gte",
+      "threshold": 0.8,
+      "enforced_by": "families.lager.contradiction_precision",
+      "rationale": "The raw memory heuristic fires on ordinary temporal/scope variation; unguarded, every false edge worsens answers and drains confidence — precision on hard negatives is the property that keeps the graph honest."
+    },
+    {
+      "id": "lager_explainable_and_verifiable",
+      "category": "reliability",
+      "statement": "Every retrieval decision is explainable after the fact — spans, sources, a per-round gain trace, and a named exit reason — and a tampered source fails offline verification.",
+      "metric": "families.lager.verification_catches_tamper",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.lager.verification_catches_tamper",
+      "rationale": "Reasoning-driven retrieval is auditable or it is a black box; the gain trace plus byte-exact re-derivation is what lets a reviewer reconstruct why each object was acquired and prove none was fabricated."
     }
   ]
 }

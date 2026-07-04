@@ -14,7 +14,10 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from ..lager import LagerEngine
 
 from pydantic import BaseModel
 
@@ -97,6 +100,7 @@ from .runtime import VincioRuntime
 from .types import (
     Budget,
     Constraint,
+    Document,
     EvidenceItem,
     Instruction,
     Objective,
@@ -446,6 +450,17 @@ class ContextApp(
         self._sparse: SparseIndex | None = None
         self._late_interaction: LateInteractionIndex | None = None
         self.entity_graph: EntityGraph | None = None
+        # LAGER: when attached (use_lager), the lazy reasoning-driven evidence
+        # loop replaces top-k retrieval for this app's runs. _source_documents
+        # keeps each source's loaded documents so use_lager() can ingest the
+        # registered corpus (purged by erase_source alongside everything else).
+        self.lager_engine: LagerEngine | None = None
+        self._source_documents: dict[str, list[Document]] = {}
+        # The exact documents the attached engine was seeded from — recorded so
+        # erase_source rebuilds by subtracting only the erased source's docs,
+        # never blindly from _source_documents (which an explicit
+        # use_lager(documents=...) seed was never part of). None until attached.
+        self._lager_seed_documents: list[Document] | None = None
         self.pending_evidence: list[EvidenceItem] = []
         self._ingested_files: dict[str, list[EvidenceItem]] = {}
 

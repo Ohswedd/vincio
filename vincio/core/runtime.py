@@ -593,6 +593,52 @@ class VincioRuntime:
             return await app.ingest_files([f.path for f in user_input.files])
 
         async def retrieved_evidence() -> list[EvidenceItem]:
+            # LAGER: when an evidence engine is attached (app.use_lager), the
+            # lazy reasoning-driven loop replaces top-k retrieval — computed per
+            # run (nothing leaks across runs) and screened by the same
+            # untrusted-content policy as any retrieved evidence.
+            lager = getattr(app, "lager_engine", None)
+            if lager is not None:
+                # An empty engine (use_lager() with no corpus, or erase_source of
+                # the last remaining source) carries no evidence — degrade to zero
+                # evidence (the run abstains) instead of raising per call.
+                if len(lager) == 0:
+                    return []
+                with app.tracer.span("retrieval", type="retrieval") as span:
+                    pack = lager.retrieve(routed.input.text or routed.objective.text)
+                    # Tenant isolation: LAGER aggregates every source's docs into
+                    # one engine, so — exactly as the classic path applies
+                    # app.tenant_filter — a tenant-scoped run drops every object
+                    # not tagged with the caller's tenant before it can reach the
+                    # prompt. Scope is None (no filter) when isolation is off or
+                    # the caller is untenanted, keeping untenanted runs unchanged.
+                    scope = (
+                        routed.input.tenant_id
+                        if (app.config.security.tenant_isolation
+                            and routed.input.tenant_id is not None)
+                        else None
+                    )
+                    screened_pack: list[EvidenceItem] = []
+                    for item in pack.as_evidence_items():
+                        if scope is not None and scope not in (item.metadata or {}).get(
+                            "tenant_ids", ()
+                        ):
+                            span.add_event("evidence_blocked", id=item.id)
+                            continue
+                        verdict = app.policy_engine.check_untrusted_content(
+                            item.text or "", source=item.source_id
+                        )
+                        if verdict.allowed:
+                            screened_pack.append(item)
+                        else:
+                            span.add_event("evidence_blocked", id=item.id)
+                    span.set(
+                        evidence=len(screened_pack),
+                        lager_rounds=pack.rounds,
+                        lager_exit=pack.exit_reason,
+                        lager_sufficient=pack.sufficient,
+                    )
+                    return screened_pack
             if app.retrieval is None:
                 return []
             with app.tracer.span("retrieval", type="retrieval") as span:

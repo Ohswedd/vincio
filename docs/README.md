@@ -106,6 +106,10 @@ between your input and the model's validated output.
   frame present across a whole multi-call task via a compact, constraint-first,
   cached brief pinned into every call — cheaper than stuffing, more reliable than
   pure per-query RAG.
+- **[LAGER (reasoning-driven retrieval)](concepts/lager.md)**: the corpus becomes
+  byte-exact, offline-verifiable Evidence Objects in a typed knowledge graph, and
+  retrieval runs as a lazy, needs-driven loop — multi-hop bridges without lexical
+  overlap, ~23× fewer evidence tokens, honest abstention.
 - **[Memory](concepts/memory.md)**: the layered, scoped, scored, decaying memory
   engine, with provenance, consent, and history-preserving correction.
 - **[Agents and workflows](concepts/agents.md)**: bounded DAG agents, crews,

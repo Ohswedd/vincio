@@ -24,7 +24,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.7.0"
+    assert vincio.__version__ == "7.8.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -96,8 +96,14 @@ def test_version_and_api_contract():
     # `add_source(anchor=True)`, `task_brief()`), plus dynamic retrieval knobs
     # (grow-only adaptive top_k, `embedder="auto"`) — all additive and opt-in,
     # the defaults byte-identical, no existing symbol removed or changed.
+    # 7.8 is LAGER, reasoning-driven retrieval: the new `vincio.lager` subpackage
+    # (byte-exact Evidence Objects, a typed knowledge graph, the lazy
+    # needs-driven retrieval loop with honest abstention), the `use_lager()` /
+    # `retrieve_evidence()` verbs, and the runtime hook that swaps top-k for the
+    # lazy loop only when an engine is attached — all additive and opt-in,
+    # nothing existing removed or changed.
     # The surface grows by re-freezing it, never by breaking it, so the API contract
-    # generation stays "5.0" while the package advances to 7.7.0.
+    # generation stays "5.0" while the package advances to 7.8.0.
     assert API_VERSION == "5.0"
 
 

@@ -28,7 +28,7 @@ def test_examples_present():
     # examples/README.md) — the data & analytics plane is one tour (13), the
     # open evaluation plane is one tour (16), DS4 local inference is one (18),
     # and universal web browsing & search is one (19).
-    assert len(EXAMPLE_FILES) == 21
+    assert len(EXAMPLE_FILES) == 22
 
 
 @pytest.mark.parametrize("path", EXAMPLE_FILES, ids=lambda p: p.stem)

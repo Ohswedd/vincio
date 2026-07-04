@@ -676,6 +676,39 @@ class _GovernanceVerbs:
             removed_ids["anchors"] = [source]
             result.found = True
 
+        # LAGER: the erased source's documents leave the registry, and any
+        # attached evidence engine is rebuilt from the surviving corpus so its
+        # Evidence Objects, graph, and indexes stop carrying the erased text.
+        if source in self._source_documents:
+            erased_docs = self._source_documents[source]
+            del self._source_documents[source]
+            result.found = True
+            if self.lager_engine is not None:
+                engine_class = type(self.lager_engine)
+                rebuilt = engine_class(embedder=self.lager_engine.index.embedder,
+                                       options=self.lager_engine.options)
+                seed = self._lager_seed_documents
+                if seed is None:
+                    # Legacy/default path: engine seeded from the registry.
+                    surviving = [d for name in sorted(self._source_documents)
+                                 for d in self._source_documents[name]]
+                else:
+                    # Subtract ONLY the erased source's own documents, so an
+                    # engine seeded via use_lager(documents=...) keeps its
+                    # explicit corpus when an unrelated source is erased. A
+                    # Document instance shared with a STILL-registered source is
+                    # kept — erasure removes a doc only when no surviving source
+                    # legitimately holds it.
+                    erased_ids = {id(d) for d in erased_docs}
+                    still_held = {id(d) for name in self._source_documents
+                                  for d in self._source_documents[name]}
+                    surviving = [d for d in seed
+                                 if id(d) not in erased_ids or id(d) in still_held]
+                    self._lager_seed_documents = surviving
+                rebuilt.ingest(surviving)
+                self.lager_engine = rebuilt
+            removed_ids.setdefault("lager", []).append(source)
+
         # Caches: erasure correctness outweighs cache retention.
         for cache in (self.response_cache, self.context_compile_cache):
             backend = getattr(cache, "backend", None) or getattr(cache, "cache", None)

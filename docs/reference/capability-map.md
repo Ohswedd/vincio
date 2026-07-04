@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **211** public `ContextApp` methods. It is gated for coverage:
+It covers **213** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -195,6 +195,17 @@ Concept: [Context anchors (task frame)](../concepts/context-anchors.md) · Guide
 | Method | What it does |
 |---|---|
 | `app.task_brief` | The current task-frame brief — the compact, constraint-first digest of every ``anchor=True`` source, injected as pinned evidence on every run — or ``None`` when no anchors are registered. |
+
+### LAGER (reasoning-driven retrieval)
+
+Lazy Graph Evidence Retrieval: the corpus becomes byte-exact, offline-verifiable Evidence Objects in a typed knowledge graph, and retrieval runs as a lazy, needs-driven loop that stops when marginal information gain is insignificant — no fixed top-k, no chunk stuffing, and honest abstention with the uncovered needs named. Attach with ``use_lager``; inspect a pack with ``retrieve_evidence``.
+
+Concept: [LAGER (reasoning-driven retrieval)](../concepts/lager.md) · Guides: [build a RAG app](../guides/build-rag-app.md) · Examples: [21_lager_reasoning_retrieval.py](../../examples/21_lager_reasoning_retrieval.py) · Reference: [Knowledge](api.md#knowledge)
+
+| Method | What it does |
+|---|---|
+| `app.retrieve_evidence` | Run the LAGER lazy loop directly → an :class:`~vincio.lager.EvidencePack`. |
+| `app.use_lager` | Attach a LAGER engine: reasoning-driven retrieval replaces top-k. |
 
 ### Memory
 

@@ -4,6 +4,87 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.8.0] - 2026-07-04
+
+**LAGER — Lazy Graph Evidence Retrieval: a reasoning-driven retrieval (RDR)
+plane beyond chunk-centric RAG.** Classic "retrieve top-k chunks then generate"
+fails structurally on multi-hop questions (the bridge fact shares no words with
+the query, so similarity ranking cannot surface it), wastes tokens (a 400-token
+chunk carries one useful sentence), and has no honest "this corpus cannot
+answer". LAGER inverts the paradigm: retrieval becomes an iterative consequence
+of reasoning. All additive and opt-in; nothing existing changes; `API_VERSION`
+stays `5.0`.
+
+- **Evidence Objects** (new `vincio.lager`): the corpus is transformed into
+  atomic claims lifted **byte-exactly** from the canonical source
+  (`claim == canon(text)[span]`), each with provenance, normalized entities,
+  typed relations, deterministic confidence, temporal validity, and a
+  **content-derived id** — re-ingesting the same bytes in another OS process
+  yields identical ids, edges, and traces (CI-gated in two subprocesses), and
+  `verify()` re-derives every object from its source offline. Lists, tables,
+  and code blocks become single typed objects, never sentence-shredded; the
+  `ClaimExtractor` protocol makes extraction replaceable.
+- **A typed knowledge graph**: `follows` / `depends_on` (pronoun-opening claims
+  keep their antecedent, so packs stay self-contained) / `supports` /
+  `contradicts` — the contradiction detector is **gated** (temporal-scope,
+  qualifier, and single-slot guards over the raw heuristic) with a precision ≥
+  0.8 CI budget on labeled hard negatives; every edge records its basis.
+  Pairwise work is bounded (document-frequency cut + hard bucket caps, both
+  observable via `note_suppressed`).
+- **The lazy retrieval loop**: the planner freezes explicit information needs
+  (lookup / relation / temporal / aggregate / causal) up front; round 0 is one
+  hybrid seed (lexical + entity + optional dense, RRF-fused) so an easy query
+  costs exactly one round; later rounds expand the graph outward, and the
+  picker prefers candidates carrying the *kind* of evidence an uncovered need
+  requires — a causal marker for a why-need beats a lexical echo. Coverage is
+  **structural, not lexical** (a relation need requires an entity path; a
+  causal need a marker claim graph-linked to the topic). Five enumerated exits
+  (`E0` empty frontier · `E1` sufficient · `E2` diminishing gain · `E3` token
+  budget · `E4` max rounds), each on the per-round **gain trace** — every
+  retrieval decision explainable after the fact. Unanswerable queries return
+  `sufficient=False` with the uncovered needs **named**, so generation abstains
+  instead of guessing.
+- **Grounded answering**: `build_context` renders the verified minimum (one
+  tagged line per object, contradictions flagged inline for explicit
+  reconciliation), `verify_answer` re-derives every citation from source bytes
+  offline, and confidence is a deterministic function of coverage, evidence
+  confidence, and contradiction pressure — never a model self-report.
+- **App wiring**: `app.use_lager()` attaches the engine (registered sources or
+  explicit documents) and the runtime swaps the lazy loop in for top-k on every
+  run — same untrusted-content screen, compile, citation, and receipt pipeline;
+  `app.retrieve_evidence(query)` returns the raw pack; `erase_source` rebuilds
+  the engine so erased text stops flowing (right-to-erasure preserved).
+- **Measured, not asserted.** A new `lager` VincioBench family (12 budgets, 8
+  SLOs) gates every claim against the **real in-repo baseline**: the multi-hop
+  bridge found where the same-budget BM25 top-k pipeline honestly misses it,
+  ≥3× fewer evidence tokens at equal correctness (**~23×** on the fixture at
+  the default 400-token-chunk configuration), one-round easy queries, no fixed
+  k, cross-process determinism, contradiction precision, tamper-failing
+  verification. Live (`benchmarks/lager_uplift_live.py`, OpenRouter,
+  2026-07-04, four multi-hop questions, three arms): **LAGER 100% accuracy at
+  ~8× fewer input tokens/call vs the classic pipeline's 75%** (floor without
+  retrieval: 25%) — consistent on `openai/gpt-4o-mini` and
+  `meta-llama/llama-3.3-70b-instruct`. Runnable
+  `examples/21_lager_reasoning_retrieval.py`.
+- **Adversarially hardened before merge.** A three-lens review of the diff
+  surfaced 13 findings; the 10 confirmed by an independent verify pass are fixed
+  here, each with a regression test: the antecedent is now charged against the
+  hard token budget so a large one cannot overshoot; an entity-anchored causal
+  claim must clear the similarity floor and an entity-less one must bridge or
+  share its document with a genuine query match, so an entity-/topic-sharing
+  decoy no longer confidently stops the loop; no object is acquired or
+  corroborated twice; the round trace lists only acquired ids; the LAGER
+  retrieval branch applies tenant scope exactly as the classic path does
+  (closing a cross-tenant evidence leak) and byte-identical documents owned by
+  several tenants stay visible to every owner; `erase_source` subtracts only the
+  erased source's own documents; `document_key` raises `LagerError` (never a
+  bare `UnicodeEncodeError`) and `verify()` returns `False` on a surrogate
+  candidate; an empty engine abstains rather than failing every run. Two honest
+  residuals of the embedder-off lexical path remain by design (documented, and
+  they only ever cause honest abstention, never a wrong answer): a causal
+  decoy sharing a document with a genuine query match, and a lone
+  entity-anchored cause that paraphrases the query's topic with no bridge term.
+
 ## [7.7.0] - 2026-07-03
 
 **Context anchors — keep a PRD / spec / brand frame present across a whole
