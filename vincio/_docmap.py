@@ -270,6 +270,19 @@ TOPICS: tuple[Topic, ...] = (
         verbs=("task_brief",),
     ),
     Topic(
+        "lager", "knowledge", "LAGER (reasoning-driven retrieval)",
+        "Lazy Graph Evidence Retrieval: the corpus becomes byte-exact, "
+        "offline-verifiable Evidence Objects in a typed knowledge graph, and "
+        "retrieval runs as a lazy, needs-driven loop that stops when marginal "
+        "information gain is insignificant — no fixed top-k, no chunk stuffing, "
+        "and honest abstention with the uncovered needs named. Attach with "
+        "``use_lager``; inspect a pack with ``retrieve_evidence``.",
+        concept=_c("lager"),
+        guides=(_g("build-rag-app"),),
+        examples=(_e("21_lager_reasoning_retrieval"),),
+        verbs=("use_lager", "retrieve_evidence"),
+    ),
+    Topic(
         "memory", "knowledge", "Memory",
         "Layered, guarded, decaying, conflict-resolving, privacy-scoped memory with "
         "hybrid vector+graph recall and as-of correction.",

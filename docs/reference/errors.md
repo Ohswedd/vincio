@@ -143,6 +143,10 @@ without an entry here.
 
 **Index failure.** Building or querying an index failed. Rebuild with `vincio index build`, and confirm the embedder dimension matches the stored vectors.
 
+### LAGER_ERROR
+
+**LAGER retrieval error.** A lazy-graph-evidence operation could not proceed: retrieve() before ingest(), or an extracted object failing byte-exact re-derivation. Ingest documents first (`engine.ingest(docs)` / `app.use_lager()`); a re-derivation failure indicates the source text changed after ingest.
+
 ### MEMORY_ERROR
 
 **Memory engine error.** A memory operation failed. Check the memory store URL and that the owner/scope arguments are supplied.

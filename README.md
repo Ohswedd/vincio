@@ -204,6 +204,7 @@ high-level `ContextApp`, or reach for any engine directly.
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates. `embedder="auto"` (semantic when a local ONNX model is installed, deterministic hash otherwise) and grow-only adaptive `top_k` are opt-in, byte-identical defaults.
 - Context anchors: mark a source `anchor=True` to keep a PRD / spec / brand frame **always-present across a whole multi-call task** — it's distilled once into a compact, constraint-first, content-hash-cached brief injected as **pinned** evidence into every call at a flat few-hundred-token cost (~28× smaller than the corpus), guaranteed into the packet at every drop point without ever exceeding the budget, while on-demand detail still flows through normal retrieval. Beats "paste every MD file every call" (token-hungry) and "pure per-query RAG" (drops the constraint on a lexical miss). Inspect it with `app.task_brief()`.
+- LAGER (reasoning-driven retrieval): `app.use_lager()` replaces "retrieve top-k chunks then generate" with a **lazy evidence loop** — the corpus becomes atomic, byte-exact, offline-verifiable **Evidence Objects** in a typed knowledge graph (supports / contradicts / depends-on / follows, with a precision-gated contradiction detector), and retrieval acquires only what the query's information needs require, expanding the graph until marginal gain is insignificant. Finds multi-hop bridges that share zero words with the query where same-budget top-k structurally cannot (offline-gated vs the real in-repo baseline); sends the model ~23× fewer evidence tokens at the classic default configuration; abstains honestly with uncovered needs named; every retrieval decision explainable via the per-round gain trace. Live: **100% vs classic RAG's 75% at ~8× fewer input tokens/call**.
 - Layered memory: session → episodic → semantic → tenant → graph, with a guarded write pipeline, confidence decay, contradiction resolution, bi-temporal recall, per-memory ACLs, and audited GDPR-style edit/forget/export.
 
 **Agents & orchestration**
@@ -400,6 +401,23 @@ per-query RAG drops the globally-binding rule to 50% on the tasks that don't lex
 larger corpus the token gap widens; the offline `rag_anchors` family gates the mechanism (~28× brief
 reduction, frame guaranteed at every drop point, never over budget).</sub>
 
+**Multi-hop retrieval via LAGER (reasoning-driven retrieval)** — four questions over an incident
+corpus whose causal bridge shares zero words with the questions, forty distractors saturated with
+them. Three arms, the same model: no retrieval / the classic default pipeline (400-token chunks,
+hybrid top-k) / `app.use_lager()`. Measured live (OpenRouter, 2026-07-04,
+`python benchmarks/lager_uplift_live.py`):
+
+| Model · arm | Accuracy | Input tokens/call |
+|---|--:|--:|
+| `gpt-4o-mini` — floor / classic / **LAGER** | 25% / 75% / **100%** | 30 / 1,078 / **123** |
+| `llama-3.3-70b` — floor / classic / **LAGER** | 25% / 75% / **100%** | 41 / 1,080 / **138** |
+
+<sub>LAGER answers every multi-hop question at **~8× fewer input tokens per call** than the classic
+pipeline, which misses the zero-overlap bridge. The offline `lager` family gates the mechanism
+against the real in-repo baseline (bridge found where same-budget top-k misses it, ~23× evidence-token
+reduction at equal correctness, one-round easy queries, cross-process determinism, honest
+abstention).</sub>
+
 </details>
 
 ### VincioBench: the internal gate <sub>· not one of the three tracks</sub>
@@ -468,7 +486,7 @@ install` and no setup:
 
 ### 2 · Feature tours — one program per subsystem
 
-Twenty complete, heavily-commented programs (`00`–`20`); each runs offline and teaches a whole theme
+Twenty-one complete, heavily-commented programs (`00`–`21`); each runs offline and teaches a whole theme
 end to end — the entire data & analytics plane is one tour (`13`). Highlights (full index in
 [`examples/README.md`](examples/README.md)):
 
@@ -489,6 +507,7 @@ end to end — the entire data & analytics plane is one tour (`13`). Highlights 
 | 18 | [`ds4_local_inference`](examples/18_ds4_local_inference.py) | a self-hosted DS4 DeepSeek V4 box as a first-class provider — thinking modes · disk-KV cache accounting · on-prem residency · honest self-hosted $0 |
 | 19 | [`web_browser_search`](examples/19_web_browser_search.py) | universal web browsing & search — governed `web_search` / `web_read` for every model · token-budgeted page reading · the text protocol for models without tool calling · pre-egress policy · offline-verifiable evidence |
 | 20 | [`context_anchors`](examples/20_context_anchors.py) | context anchors — keep a PRD / spec / brand frame across a whole coding task · `anchor=True` distills it once into a compact cached brief · pinned into every call at a flat cost (~26× smaller) · present even on a query that never mentions it and under a tiny window · on-demand detail still retrieves |
+| 21 | [`lager_reasoning_retrieval`](examples/21_lager_reasoning_retrieval.py) | LAGER, reasoning-driven retrieval — byte-exact Evidence Objects in a typed knowledge graph · a lazy needs-driven loop instead of fixed top-k · multi-hop bridges found across zero lexical overlap · honest abstention · `app.use_lager()` |
 
 ### 3 · Applications — real-world backends
 

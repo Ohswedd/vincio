@@ -676,6 +676,22 @@ class _GovernanceVerbs:
             removed_ids["anchors"] = [source]
             result.found = True
 
+        # LAGER: the erased source's documents leave the registry, and any
+        # attached evidence engine is rebuilt from the surviving corpus so its
+        # Evidence Objects, graph, and indexes stop carrying the erased text.
+        if source in self._source_documents:
+            del self._source_documents[source]
+            result.found = True
+            if self.lager_engine is not None:
+                engine_class = type(self.lager_engine)
+                rebuilt = engine_class(embedder=self.lager_engine.index.embedder,
+                                       options=self.lager_engine.options)
+                surviving = [d for name in sorted(self._source_documents)
+                             for d in self._source_documents[name]]
+                rebuilt.ingest(surviving)
+                self.lager_engine = rebuilt
+            removed_ids.setdefault("lager", []).append(source)
+
         # Caches: erasure correctness outweighs cache retention.
         for cache in (self.response_cache, self.context_compile_cache):
             backend = getattr(cache, "backend", None) or getattr(cache, "cache", None)

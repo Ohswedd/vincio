@@ -593,6 +593,30 @@ class VincioRuntime:
             return await app.ingest_files([f.path for f in user_input.files])
 
         async def retrieved_evidence() -> list[EvidenceItem]:
+            # LAGER: when an evidence engine is attached (app.use_lager), the
+            # lazy reasoning-driven loop replaces top-k retrieval — computed per
+            # run (nothing leaks across runs) and screened by the same
+            # untrusted-content policy as any retrieved evidence.
+            lager = getattr(app, "lager_engine", None)
+            if lager is not None:
+                with app.tracer.span("retrieval", type="retrieval") as span:
+                    pack = lager.retrieve(routed.input.text or routed.objective.text)
+                    screened_pack: list[EvidenceItem] = []
+                    for item in pack.as_evidence_items():
+                        verdict = app.policy_engine.check_untrusted_content(
+                            item.text or "", source=item.source_id
+                        )
+                        if verdict.allowed:
+                            screened_pack.append(item)
+                        else:
+                            span.add_event("evidence_blocked", id=item.id)
+                    span.set(
+                        evidence=len(screened_pack),
+                        lager_rounds=pack.rounds,
+                        lager_exit=pack.exit_reason,
+                        lager_sufficient=pack.sufficient,
+                    )
+                    return screened_pack
             if app.retrieval is None:
                 return []
             with app.tracer.span("retrieval", type="retrieval") as span:

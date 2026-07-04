@@ -101,15 +101,37 @@ section retrieves it normally — the frame just guarantees the global context i
 always there. See [context anchors](../concepts/context-anchors.md) for how it
 is distilled, budget-reserved, and guaranteed.
 
+## Beyond top-k: reasoning-driven retrieval (LAGER)
+
+When queries are multi-hop ("why did X happen?" where the cause lives in a
+document that shares no words with the question) or token budgets are tight,
+swap fixed top-k for the lazy evidence loop:
+
+```python
+app.add_source("kb", documents=docs)
+app.use_lager()                                   # attach the evidence engine
+report = app.run("why did the checkout outage happen?")   # lazy pack, not top-k
+pack = app.retrieve_evidence("who owns certificate management?")
+print(pack.exit_reason, pack.gain_trace)          # every decision, explainable
+```
+
+The corpus becomes byte-exact, offline-verifiable Evidence Objects in a typed
+knowledge graph; retrieval acquires the minimum evidence the query's
+information needs require and stops when marginal gain is insignificant — and
+an unanswerable query abstains with its uncovered needs named. See
+[LAGER](../concepts/lager.md).
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related
 
 - [Concept: Retrieval (RAG)](../concepts/retrieval.md)
 - [Concept: Context anchors (task frame)](../concepts/context-anchors.md)
+- [Concept: LAGER (reasoning-driven retrieval)](../concepts/lager.md)
 - [Guide: Connect external data sources](connectors.md)
 - [Example: 02_retrieval_rag.py](../../examples/02_retrieval_rag.py)
 - [Example: 20_context_anchors.py](../../examples/20_context_anchors.py)
+- [Example: 21_lager_reasoning_retrieval.py](../../examples/21_lager_reasoning_retrieval.py)
 - [Concept: Context packets & long-horizon governance](../concepts/context-packets.md)
 - [Reference: capability map](../reference/capability-map.md)
 - [Reference: API](../reference/api.md#knowledge)

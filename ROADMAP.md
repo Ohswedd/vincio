@@ -81,7 +81,16 @@ ladder, while on-demand detail still flows through normal retrieval — beating 
 every call" on tokens and "pure per-query RAG" on frame retention (live: anchors match stuffing on
 adherence at ~3× fewer tokens/call while pure RAG drops the rule to 50%); plus opt-in, byte-identical-
 default dynamic-retrieval knobs (`embedder="auto"`, grow-only adaptive `top_k`) — additive, no new hard
-dependency, no existing symbol changed. There is currently **no proposed capability** on the roadmap;
+dependency, no existing symbol changed. `v7.8` added **LAGER — reasoning-driven
+retrieval**: the `vincio.lager` plane transforms a corpus into byte-exact, offline-verifiable Evidence
+Objects connected in a typed knowledge graph (with a precision-gated contradiction detector), and
+replaces fixed top-k retrieval with a lazy, needs-driven loop that expands the graph only while
+marginal information gain justifies it — finding multi-hop bridges that share zero words with the
+query where same-budget top-k structurally cannot, at ~23× fewer evidence tokens on the gated fixture
+(live: 100% vs classic RAG's 75% at ~8× fewer input tokens/call), with honest abstention naming the
+uncovered needs, cross-process determinism, and a per-round gain trace making every retrieval decision
+explainable — additive, opt-in via `app.use_lager()`, no new hard dependency, no existing symbol
+changed. There is currently **no proposed capability** on the roadmap;
 the platform is feature-complete, and new capability is proposed from scratch when it meets a real need
 (see [Forward work](#forward-work)).
 

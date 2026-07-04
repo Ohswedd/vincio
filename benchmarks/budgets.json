@@ -2619,6 +2619,42 @@
     },
     "families.rag_anchors.frame_first_position": {
       "eq": true
+    },
+    "families.lager.extraction_faithful": {
+      "eq": true
+    },
+    "families.lager.multi_hop_lager": {
+      "eq": true
+    },
+    "families.lager.beats_topk_on_multihop": {
+      "eq": true
+    },
+    "families.lager.token_efficiency": {
+      "gte": 3.0
+    },
+    "families.lager.lazy_rounds_easy": {
+      "eq": 1
+    },
+    "families.lager.no_fixed_k": {
+      "eq": true
+    },
+    "families.lager.impossible_abstains": {
+      "eq": true
+    },
+    "families.lager.deterministic_across_processes": {
+      "eq": true
+    },
+    "families.lager.contradiction_precision": {
+      "gte": 0.8
+    },
+    "families.lager.contradiction_recall": {
+      "eq": true
+    },
+    "families.lager.verification_catches_tamper": {
+      "eq": true
+    },
+    "families.lager.explainable": {
+      "eq": true
     }
   }
 }

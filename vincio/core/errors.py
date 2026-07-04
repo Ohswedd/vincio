@@ -44,6 +44,7 @@ __all__ = [
     "SemanticLayerError",
     "RetrievalError",
     "IndexError_",
+    "LagerError",
     "WebError",
     "WebSearchError",
     "WebFetchError",
@@ -442,6 +443,17 @@ class IndexError_(RetrievalError):
     """Index failure (named with a trailing underscore to avoid shadowing builtins)."""
 
     code = "INDEX_ERROR"
+
+
+class LagerError(RetrievalError):
+    """A LAGER (lazy graph evidence retrieval) operation could not proceed.
+
+    Raised by the :mod:`vincio.lager` plane when evidence extraction or the
+    lazy retrieval loop hits an unsatisfiable state — an extracted object that
+    does not re-derive from its source span (a byte-exactness violation), or a
+    query posed against an engine with nothing ingested."""
+
+    code = "LAGER_ERROR"
 
 
 # --- web browsing & search ---------------------------------------------------

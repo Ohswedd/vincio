@@ -189,6 +189,7 @@ _Feed the compiler: sources, retrieval, memory, structured data, and the analyti
 - `app.recall` — Ergonomic memory recall over user/agent/session scopes.
 - `app.register_dataset` — Register a dataset in the app's data catalog so :meth:`query_data` can ground and execute a query against it by name.
 - `app.remember` — Ergonomic memory write; creates the memory engine on first use.
+- `app.retrieve_evidence` — Run the LAGER lazy loop directly → an :class:`~vincio.lager.EvidencePack`.
 - `app.retrieve_facts` — Retrieve by the facts a task *needs*, reporting per-fact coverage and gaps.
 - `app.sample_dataset` — Draw a representative sample of up to ``n`` rows that stands in for the whole dataset, replacing a biased first-N cutoff.
 - `app.screen_data` — Screen a tabular input for schema violations, constraint breaks, and anomalies on the same deterministic rail path PII and injection detection ride. The decision lands on the shared audit chain (``data_quality``).
@@ -198,6 +199,7 @@ _Feed the compiler: sources, retrieval, memory, structured data, and the analyti
 - `app.table_evidence` — Build first-class tabular evidence — a typed, columnar dataset rendered header-once — from rows, records, a :class:`~vincio.data.Dataset`, or a legacy ``TableData``.
 - `app.task_brief` — The current task-frame brief — the compact, constraint-first digest of every ``anchor=True`` source, injected as pinned evidence on every run — or ``None`` when no anchors are registered.
 - `app.use_context_governor` — Install a long-horizon :class:`~vincio.context.ContextGovernor`.
+- `app.use_lager` — Attach a LAGER engine: reasoning-driven retrieval replaces top-k.
 
 ### Governance
 _Prove it is safe: compliance, security, privacy, identity, verification, assurance, and the cross-org trust fabric._
@@ -912,7 +914,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 
 - `API_VERSION` — str(object='') -> str str(bytes_or_buffer[, encoding[, errors]]) -> str
 
-## Error catalog (102 codes)
+## Error catalog (103 codes)
 
 Every error derives from `VincioError` with a stable `.code`, a `.remediation`, and a `.docs_url`. Branch on `.code`.
 
@@ -946,6 +948,7 @@ Every error derives from `VincioError` with a stable `.code`, a `.remediation`, 
 - `SEMANTIC_LAYER_ERROR` — Semantic-layer definition or metric error. A semantic-layer definition or governed-metric request was invalid. Confirm names are unique, simple identifiers; that derived columns and ratio measures have no cycles; that each measure declares an aggregation or a numerator/denominator ratio; that referenced metrics and dimensions are defined and ground to the table's columns; and that a natural-language question names a defined metric.
 - `RETRIEVAL_ERROR` — Retrieval failure. A retrieval backend errored. Verify the index exists and the vector store URL in `storage.vector` is reachable.
 - `INDEX_ERROR` — Index failure. Building or querying an index failed. Rebuild with `vincio index build`, and confirm the embedder dimension matches the stored vectors.
+- `LAGER_ERROR` — LAGER retrieval error. A lazy-graph-evidence operation could not proceed: retrieve() before ingest(), or an extracted object failing byte-exact re-derivation. Ingest documents first (`engine.ingest(docs)` / `app.use_lager()`); a re-derivation failure indicates the source text changed after ingest.
 - `MEMORY_ERROR` — Memory engine error. A memory operation failed. Check the memory store URL and that the owner/scope arguments are supplied.
 - `MEMORY_POLICY` — Memory policy violation. The write policy rejected this memory (`memory.write_policy`). Loosen the policy to `open`, or supply the required owner/consent metadata.
 - `MEMORY_CONFLICT` — Memory conflict. A new memory contradicts an existing one. Use `MemoryEngine.correct()` to supersede it history-preservingly instead of overwriting.

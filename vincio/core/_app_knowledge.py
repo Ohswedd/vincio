@@ -43,6 +43,7 @@ from .types import (
 )
 
 if TYPE_CHECKING:
+    from ..lager import LagerEngine
     from .app import ContextApp
 
 
@@ -60,6 +61,7 @@ class _KnowledgeVerbs:
         _sparse: SparseIndex | None
         _vector: VectorIndex | None
         entity_graph: EntityGraph | None
+        lager_engine: LagerEngine | None
         memory: MemoryEngine | None
         memory_enabled: bool
         retrieval: RetrievalEngine | None
@@ -177,6 +179,7 @@ class _KnowledgeVerbs:
         source.document_count = len(docs)
         source.chunk_count = len(all_chunks)
         self.sources[name] = source
+        self._source_documents[name] = docs  # LAGER ingests the registered corpus
         # Task frame: register the anchor's documents so its always-on brief is
         # (re)built and cached; the same docs also stay indexed for on-demand detail.
         if anchor:
@@ -197,6 +200,71 @@ class _KnowledgeVerbs:
         or ``None`` when no anchors are registered."""
         brief = self.anchors.brief()
         return brief.text if brief is not None else None
+
+    def use_lager(  # type: ignore[misc]
+        self: ContextApp,
+        *,
+        documents: list[Any] | None = None,
+        embedder: str | Any | None = None,
+        options: Any | None = None,
+    ) -> Any:
+        """Attach a LAGER engine: reasoning-driven retrieval replaces top-k.
+
+        The corpus becomes atomic, source-span-exact Evidence Objects connected
+        in a typed knowledge graph, and every subsequent :meth:`run` retrieves
+        **lazily** — an explicit information-need plan, incremental graph-guided
+        acquisition, and termination as soon as the marginal information gain is
+        insignificant — instead of a fixed top-k. The packed evidence rides the
+        same untrusted-content screen, compile, and citation pipeline as any
+        retrieved evidence; an unanswerable query reports its uncovered needs so
+        the run abstains instead of guessing.
+
+        *documents* seeds the engine directly; when omitted, every document
+        already registered through :meth:`add_source` is ingested. *embedder*
+        optionally adds a dense signal (``"auto"`` / ``"local"`` or an embedder
+        instance); the default is the pure-stdlib deterministic path. Returns
+        the attached :class:`~vincio.lager.LagerEngine`::
+
+            app.add_source("kb", documents=docs)
+            app.use_lager()
+            report = app.run("why did the checkout outage happen?")
+        """
+        from ..lager import LagerEngine
+        from ..lager.controller import LazyOptions
+
+        resolved_embedder = embedder
+        if isinstance(embedder, str):
+            from ..retrieval.embeddings import build_embedder
+
+            resolved_embedder = build_embedder(embedder)
+        engine = LagerEngine(
+            embedder=resolved_embedder,
+            options=options if isinstance(options, LazyOptions) else None,
+        )
+        docs = list(documents or [])
+        if not docs:
+            for source_name in sorted(self._source_documents):
+                docs.extend(self._source_documents[source_name])
+        engine.ingest(docs)
+        self.lager_engine = engine
+        self.audit.record(
+            "use_lager", decision="allow", resource="lager",
+            details={"objects": len(engine), "documents": len(docs)},
+        )
+        return engine
+
+    def retrieve_evidence(self: ContextApp, query: str) -> Any:  # type: ignore[misc]
+        """Run the LAGER lazy loop directly → an :class:`~vincio.lager.EvidencePack`.
+
+        The pack carries the acquired Evidence Objects, per-need coverage, the
+        round-by-round gain trace (every retrieval decision, explainable), the
+        exit reason, and — when the corpus cannot answer — the uncovered needs.
+        Requires :meth:`use_lager` first."""
+        if self.lager_engine is None:
+            from ..core.errors import LagerError
+
+            raise LagerError("no LAGER engine attached: call app.use_lager() first")
+        return self.lager_engine.retrieve(query)
 
     async def _index_chunks(self: ContextApp, chunks: list[Any]) -> None:  # type: ignore[misc]
         if self._bm25 is not None:
