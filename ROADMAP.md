@@ -90,7 +90,13 @@ query where same-budget top-k structurally cannot, at ~23× fewer evidence token
 (live: 100% vs classic RAG's 75% at ~8× fewer input tokens/call), with honest abstention naming the
 uncovered needs, cross-process determinism, and a per-round gain trace making every retrieval decision
 explainable — additive, opt-in via `app.use_lager()`, no new hard dependency, no existing symbol
-changed. There is currently **no proposed capability** on the roadmap;
+changed. `v7.9` **wired the optional `embedder=` dense signal into LAGER's coverage decision**, tightening
+the two deliberate residuals of the embedder-off lexical path that `v7.8` documented — a dense rescue
+recalls a topic paraphrase of the cause (via an entity-neutralized topic probe that keeps an
+entity-sharing decoy rejected), and an opt-in bridge floor rejects an off-topic same-document decoy —
+with the pure-stdlib default left byte-identical (differentially verified) and new optional
+`LazyOptions` fields plus an `EvidenceIndex.semantic_similarity` method the only additions. There is
+currently **no proposed capability** on the roadmap;
 the platform is feature-complete, and new capability is proposed from scratch when it meets a real need
 (see [Forward work](#forward-work)).
 

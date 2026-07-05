@@ -8,6 +8,7 @@ termination, and the app wiring (attach → run → erase rebuild)."""
 
 from __future__ import annotations
 
+import re
 import tempfile
 
 import pytest
@@ -533,6 +534,210 @@ def test_f7b_identical_text_across_tenants_is_visible_to_every_owner():
     b = app.run("what is the master token", tenant_id="tenant-b")
     assert any("ROTATED-9931" in (e.text or "") for e in a.evidence)  # owner a sees it
     assert any("ROTATED-9931" in (e.text or "") for e in b.evidence)  # owner b sees it too
+
+
+# -- the dense signal tightens the two deliberate embedder-off residuals ------------------
+#
+# Both residuals are lexically inseparable from a legitimate case, so the pure-
+# stdlib path abstains by design. A GENUINE semantic embedder separates them.
+# `_ConceptEmbedder` is a deterministic, offline model of exactly that: it places
+# a claim on a small set of concept axes (a synonym like "downtime" lands on the
+# same OUTAGE axis as "outage"; an unrelated topic like "revenue/tariffs" lands
+# elsewhere; incident-domain words share a weak coherence axis). It is NOT a
+# lexical/morphological hash — it is the smallest faithful stand-in for the dense
+# world knowledge a real model brings, so these tests can be CI-gated. The real
+# proof on a real model is `benchmarks/lager_uplift_live.py --embedder auto`.
+
+_CONCEPT_AXES = {
+    "outage": ["OUTAGE", "INCIDENT"], "downtime": ["OUTAGE", "INCIDENT"],
+    "disruption": ["OUTAGE", "INCIDENT"], "outages": ["OUTAGE", "INCIDENT"],
+    "gateway": ["GATEWAY", "INCIDENT"], "gateways": ["GATEWAY", "INCIDENT"],
+    "certificate": ["CERT", "INCIDENT"], "cert": ["CERT", "INCIDENT"],
+    "tls": ["CERT", "INCIDENT"], "credential": ["CERT", "INCIDENT"],
+    "rollout": ["ROLLOUT", "INCIDENT"], "deploy": ["ROLLOUT", "INCIDENT"],
+    "deployment": ["ROLLOUT", "INCIDENT"],
+    "checkout": ["CHECKOUT", "INCIDENT"], "purchases": ["CHECKOUT", "INCIDENT"],
+    "incident": ["INCIDENT"], "failed": ["INCIDENT"], "fail": ["INCIDENT"],
+    "rejected": ["INCIDENT"], "crash": ["INCIDENT"],
+    "revenue": ["REVENUE"], "quarterly": ["REVENUE"], "tariffs": ["REVENUE"],
+    "import": ["REVENUE"], "earnings": ["REVENUE"], "sales": ["REVENUE"],
+    "cafeteria": ["FOOD"], "menu": ["FOOD"], "chef": ["FOOD"], "retired": ["FOOD"],
+    "acme": ["ENTITY"], "platform": ["ENTITY"],
+}
+# Weak axes contribute less, so sharing only an entity is not a semantic match.
+_AXIS_WEIGHT = {"INCIDENT": 0.5, "ENTITY": 0.3}
+_AXIS_INDEX = {axis: i for i, axis in enumerate(sorted(
+    {a for axes in _CONCEPT_AXES.values() for a in axes}))}
+
+
+class _ConceptEmbedder:
+    """A deterministic, offline stand-in for a genuinely semantic embedder."""
+
+    dim = len(_AXIS_INDEX)
+
+    def embed_one(self, text: str) -> list[float]:
+        vector = [0.0] * self.dim
+        for token in re.findall(r"[a-z]+", text.lower()):
+            for axis in _CONCEPT_AXES.get(token, ()):
+                vector[_AXIS_INDEX[axis]] += _AXIS_WEIGHT.get(axis, 1.0)
+        norm = sum(v * v for v in vector) ** 0.5 or 1.0
+        return [v / norm for v in vector]
+
+    async def embed(self, texts):
+        return [self.embed_one(t) for t in texts]
+
+
+def _lager(docs, *, embedder=None, **options):
+    """Build + ingest a LAGER engine — the dense-path analogue of `_engine`,
+    accepting an embedder and controller options."""
+    engine = LagerEngine(embedder=embedder,
+                         options=LazyOptions(**options) if options else None)
+    engine.ingest(docs)
+    return engine
+
+
+def test_semantic_similarity_is_none_without_an_embedder_and_a_cosine_with_one():
+    # The coverage-gate dense signal: None on the pure-stdlib path (so coverage
+    # stays byte-identical to the lexical decision), a real cosine when on.
+    doc = [Document(title="d", text="The ACME outage halted the fleet.")]
+    lexical = _lager(doc)
+    assert lexical.index.semantic_similarity(
+        "why did the ACME outage happen", lexical.objects[0]) is None
+    dense = _lager(doc, embedder=_ConceptEmbedder())
+    sim = dense.index.semantic_similarity("why did the ACME outage happen", dense.objects[0])
+    assert sim is not None and sim > 0.5  # on-topic claim scores high
+
+
+# -- residual 2: a lone entity-anchored cause that PARAPHRASES the topic noun --------------
+
+_PARAPHRASE_DOCS = [
+    Document(title="a", text="The ACME outage halted the retail fleet."),
+    Document(title="b", text="The ACME downtime was caused by a corrupted memory module."),
+]
+
+
+def test_residual2_embedder_off_abstains_on_the_paraphrased_cause():
+    # "downtime" paraphrases the query's "outage" with no surviving bridge term —
+    # the lexical path cannot recall it and abstains honestly (the residual).
+    pack = _lager(_PARAPHRASE_DOCS).retrieve("Why did the ACME outage happen?")
+    assert not pack.sufficient
+    assert pack.uncovered_needs
+
+
+def test_residual2_dense_signal_recalls_the_paraphrased_cause():
+    # The same corpus with a semantic embedder: the dense rescue floor lifts the
+    # paraphrase over the lexical gap and the loop terminates sufficient.
+    pack = _lager(_PARAPHRASE_DOCS, embedder=_ConceptEmbedder()).retrieve(
+        "Why did the ACME outage happen?")
+    assert pack.sufficient
+    assert any("downtime" in o.claim for ids in pack.coverage.values()
+               for o in pack.objects if o.id in ids)
+
+
+class _EntityHeavyEmbedder:
+    """A stub where the shared ENTITY dominates the sentence vector — the
+    anisotropy real sentence embedders exhibit (F-A). Whole-sentence cosine to an
+    entity-sharing decoy runs high; only the entity-neutralized topic probe still
+    rejects it."""
+
+    _AX = {"acme": ("ENTITY", 3.0), "outage": ("OUTAGE", 1.0), "downtime": ("OUTAGE", 1.0),
+           "revenue": ("REVENUE", 1.0), "tariffs": ("REVENUE", 1.0)}
+    _IDX = {"ENTITY": 0, "OUTAGE": 1, "REVENUE": 2}
+    dim = 3
+
+    def embed_one(self, text):
+        vector = [0.0] * self.dim
+        for token in re.findall(r"[a-z]+", text.lower()):
+            if token in self._AX:
+                axis, weight = self._AX[token]
+                vector[self._IDX[axis]] += weight
+        norm = sum(v * v for v in vector) ** 0.5 or 1.0
+        return [v / norm for v in vector]
+
+    async def embed(self, texts):
+        return [self.embed_one(t) for t in texts]
+
+
+def test_dense_rescue_neutralizes_the_shared_entity_against_an_anisotropic_embedder():
+    # F-A hardening: when the shared entity dominates the embedding (as real
+    # models do), whole-sentence cosine to an entity-sharing decoy clears the
+    # rescue floor — but the rescue compares the ENTITY-NEUTRALIZED topic, which
+    # rejects it. Proven at the signal level and end to end.
+    from vincio.lager.controller import LazyRetriever
+
+    docs = [Document(title="a", text="The ACME outage halted the retail fleet."),
+            Document(title="b", text="ACME quarterly revenue fell because of import tariffs.")]
+    engine = _lager(docs, embedder=_EntityHeavyEmbedder())
+    decoy = next(o for o in engine.objects if "revenue" in o.claim)
+    need = QueryPlanner().plan("Why did the ACME outage happen?")[0]
+    retriever = LazyRetriever(engine.index, engine.graph)
+    whole = engine.index.semantic_similarity(need.text, decoy)
+    topic = engine.index.semantic_similarity(retriever._topic_text(need), decoy)
+    floor = LazyOptions().dense_rescue_floor
+    assert whole is not None and whole >= floor  # raw need would FALSELY rescue the decoy
+    assert topic is not None and topic < floor   # entity-neutralized topic rejects it
+    assert not engine.retrieve("Why did the ACME outage happen?").sufficient  # abstains end to end
+
+
+def test_residual2_dense_rescue_does_not_readmit_the_entity_sharing_decoy():
+    # The F2 decoy ("revenue fell because of tariffs") shares the entity but is a
+    # different topic — its dense cosine to the outage need stays below the rescue
+    # floor, so recalling the paraphrase never re-admits the decoy (the exact
+    # trade the lexical floor could not make).
+    docs = [Document(title="a", text="The ACME outage halted the retail fleet."),
+            Document(title="b", text="ACME quarterly revenue fell because of import tariffs.")]
+    pack = _lager(docs, embedder=_ConceptEmbedder()).retrieve(
+        "Why did the ACME outage happen?")
+    assert not pack.sufficient  # still abstains, dense signal on
+    assert pack.uncovered_needs
+
+
+# -- residual 1: a causal decoy sharing a DOCUMENT with a genuine query match --------------
+
+_SAME_DOC_DECOY = [Document(title="d", text=(
+    "The gateway rollout failed on 2025-11-03.\n"
+    "The cafeteria menu changed because the chef retired."))]
+
+
+def test_residual1_same_document_decoy_covers_on_the_default_lexical_path():
+    # Same document as the F3 cross-document case, but the decoy cause now shares
+    # the document with the query match: document coherence cannot tell it from a
+    # real same-document bridge, so it covers (the residual).
+    pack = _lager(_SAME_DOC_DECOY).retrieve("why did the gateway rollout fail")
+    assert pack.sufficient  # deliberately — indistinguishable from the flagship bridge
+
+
+def test_residual1_opt_in_dense_bridge_floor_rejects_the_same_document_decoy():
+    # With a semantic embedder AND the opt-in tightening, the off-topic causal
+    # sentence no longer clears the bridge floor and the loop abstains.
+    pack = _lager(_SAME_DOC_DECOY, embedder=_ConceptEmbedder(),
+                  reject_same_doc_causal_decoys=True).retrieve(
+        "why did the gateway rollout fail")
+    assert not pack.sufficient
+    assert pack.uncovered_needs
+
+
+def test_residual1_tightening_preserves_the_flagship_same_document_bridge():
+    # The tightening must not sacrifice the real same-document bridge the flagship
+    # relies on: a genuinely on-topic root-cause claim still clears the floor.
+    flagship = [Document(title="f", text=(
+        "The checkout service suffered a full outage on 2025-11-03.\n"
+        "The incident review assigned the root cause to the payments gateway."))]
+    pack = _lager(flagship, embedder=_ConceptEmbedder(),
+                  reject_same_doc_causal_decoys=True).retrieve(
+        "why did the checkout outage happen")
+    assert pack.sufficient
+    assert any("root cause" in o.claim for o in pack.objects)
+
+
+def test_residual1_opt_in_is_a_no_op_without_an_embedder():
+    # Enabling the tightening without a dense signal must not reject the flagship
+    # bridge (which shares no words with the need): the opt-in is gated on the
+    # signal being present, so the embedder-off path stays byte-identical.
+    pack = _lager(_SAME_DOC_DECOY,
+                  reject_same_doc_causal_decoys=True).retrieve(
+        "why did the gateway rollout fail")
+    assert pack.sufficient  # unchanged from the default lexical path
 
 
 if __name__ == "__main__":  # pragma: no cover

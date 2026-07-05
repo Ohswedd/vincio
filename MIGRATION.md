@@ -14,10 +14,12 @@ vincio doctor                       # list any deprecated API your project still
 vincio migrate 8.0                  # dry-run the one-shot rename codemod (--write applies)
 ```
 
-Upgrading to `7.8` still requires **zero source changes** — every old name keeps
+Upgrading to `7.9` still requires **zero source changes** — every old name keeps
 working: `7.6` (universal web browsing & search), `7.7` (context anchors &
-dynamic retrieval), and `7.8` (LAGER, reasoning-driven retrieval) are all
-purely additive.
+dynamic retrieval), `7.8` (LAGER, reasoning-driven retrieval), and `7.9` (the
+LAGER dense-signal coverage tightening — new optional `LazyOptions` fields and an
+`EvidenceIndex.semantic_similarity` method, all defaulting to the byte-identical
+pure-stdlib path) are all purely additive.
 `7.5` did open the first **scheduled** breaking window: ten factory symbols
 were renamed to `build_*` and the old names deprecated, for removal in `8.0`.
 `vincio doctor` tells you whether your project uses any of them, and

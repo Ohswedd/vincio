@@ -4,6 +4,71 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.9.0] - 2026-07-05
+
+**The LAGER dense signal reaches the coverage gate — the two honest residuals of
+the embedder-off lexical path are now tightened, not just documented.** `v7.8`
+noted two deliberate residuals of LAGER's pure-lexical coverage decision (a
+causal decoy sharing a document with a genuine query match, and a lone
+entity-anchored cause that paraphrases the query's topic noun with no surviving
+bridge term) and promised the optional `embedder=` dense signal would tighten
+them. It didn't — structurally: the dense signal reached only seeding and the
+round-0 frontier via RRF, never the sufficiency-vs-abstain decision where the
+residuals live, so `similarity_floor`'s "dense floor when embedder on" was
+aspirational. This release wires the dense signal into the coverage gate. All
+additive and gated behind a configured embedder; the pure-stdlib default is
+**byte-identical** (differentially verified over 14 corpora), so every prior
+`lager` test and VincioBench budget is unchanged. `API_VERSION` stays `5.0`.
+
+- **Dense coverage rescue** (residual 2, the paraphrased cause): a claim that
+  misses the lexical `similarity_floor` still covers when its dense cosine to
+  the need's **entity-neutralized topic** clears the higher `dense_rescue_floor`
+  (new `LazyOptions` field, default `0.55`). The floor sits deliberately above
+  the lexical one so a lexical/hash embedder cannot reach it — only a genuinely
+  semantic embedder lifts a topic paraphrase over the gap, and the
+  entity-neutralized probe (`LazyRetriever._topic_text` strips the query entity)
+  keeps an entity-sharing decoy below it even on an anisotropic real model where
+  whole-sentence cosine to a wrong-but-entity-sharing cause runs high.
+- **Opt-in same-document decoy rejection** (residual 1): with
+  `LazyOptions.reject_same_doc_causal_decoys=True` **and** a dense signal
+  present, an entity-less causal claim sharing a document with a query match
+  must also clear `bridge_similarity_floor` (default `0.25`) against the need,
+  so a semantically off-topic cause adrift in a query-matching document no
+  longer covers — while the flagship same-document bridge survives. Default
+  `False` and a strict no-op without an embedder (it REQUIRES a genuinely
+  semantic embedder; a hash embedder scores the wordless bridge near the noise
+  floor). A bridge-floor rejection is recorded via `note_suppressed` so a
+  mis-calibrated run's over-abstentions are observable, never silent.
+- **New surface**: `EvidenceIndex.semantic_similarity(text, obj)` (dense cosine,
+  `None` when no embedder — the lexical fallback that keeps the default path
+  byte-identical), three `LazyOptions` fields above, and a `--embedder` arm on
+  `benchmarks/lager_uplift_live.py`. `benchmarks/lager_residuals.py` is a
+  self-contained before/after experiment (deterministic concept-space stub or a
+  real `--embedder auto`) with decoy and flagship **safety-control rows** so the
+  floors can be calibrated per embedder — they are a tightening, not a proven
+  guarantee across every model.
+- **Adversarially hardened before merge.** An independent review confirmed
+  byte-identity off (differential `model_dump` over 14 corpora — only the random
+  per-load `document_id` differs) and found no new wrong-answer path; three
+  findings were fixed: the rescue now compares the entity-neutralized topic (a
+  load-bearing test proves whole-need cosine 0.79 would falsely rescue where the
+  topic cosine 0.0 rejects), the opt-in's hash-embedder footgun is documented
+  and its rejection made observable, and an empirically-wrong docstring claim was
+  corrected. 9 new `lager` tests; full suite green.
+
+### Documentation
+
+- **The README is reorganized around features, benchmarked head to head.** A new
+  **Features, head to head** section shows every headline capability through
+  three lenses on the same job — the **raw model**, the **competitor** library,
+  and **Vincio** — as one scorecard, each with the *mechanism* that produces the
+  difference and a provenance tier (`L` live / `S` static-deterministic). Honest
+  losses are in the table (`tiktoken` is exact where Vincio's heuristic is
+  faster-but-approximate; `json_repair` recovers more by guessing, unsafe for
+  typed extraction), and unmeasured axes are blank, never invented. Numbers are
+  regenerated against this release; the data-driven `benchmark-platform.svg` is
+  refreshed (Track 2 now shows 5 uplift benchmarks after `web_search.freshness`).
+
 ## [7.8.0] - 2026-07-04
 
 **LAGER — Lazy Graph Evidence Retrieval: a reasoning-driven retrieval (RDR)

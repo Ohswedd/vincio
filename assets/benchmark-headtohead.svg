@@ -1,6 +1,6 @@
 <svg width="860" height="300" viewBox="0 0 860 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="h2h_t h2h_d">
   <title id="h2h_t">Track 3: a Vincio feature vs. the library you would reach for</title>
-  <desc id="h2h_d">Four head-to-head stat plates measured live against the real competitor library: ~12x faster BM25 retrieval vs rank_bm25, same recall@1; 1.0 / 0.5 memory precision current fact vs a naive keyword store; ~70% fewer tokens, same table compact encoder vs json.dumps; ~2x faster token counting vs tiktoken (which stays exact).</desc>
+  <desc id="h2h_d">Four head-to-head stat plates measured live against the real competitor library: ~10x faster BM25 retrieval vs rank_bm25, same recall@1; 1.0 / 0.5 memory precision current fact vs a naive keyword store; ~70% fewer tokens, same table compact encoder vs json.dumps; ~2x faster token counting vs tiktoken (which stays exact).</desc>
   <defs>
     <radialGradient id="h2h_parch" cx="40%" cy="26%" r="88%">
       <stop offset="0%" stop-color="#FBF4E2"/>
@@ -24,7 +24,7 @@
     <text x="40" y="78" font-size="26" font-weight="700" fill="url(#h2h_goldtext)">A Vincio feature vs. the library you would reach for</text>
     <text x="40" y="102" font-size="13" fill="#6B5836">Each number measured live from both sides; a missing competitor is skipped, never faked; latency is machine-relative.</text>
     <rect x="40" y="132" width="180" height="128" rx="10" fill="#FCF6E8" stroke="url(#h2h_gold)" stroke-width="1"/>
-    <text x="130" y="186" font-size="30" font-weight="700" fill="url(#h2h_goldtext)" text-anchor="middle">~12x</text>
+    <text x="130" y="186" font-size="30" font-weight="700" fill="url(#h2h_goldtext)" text-anchor="middle">~10x</text>
     <text x="130" y="212" font-size="12.5" fill="#3A2E1C" text-anchor="middle">faster BM25 retrieval</text>
     <text x="130" y="234" font-size="10.5" fill="#8A7551" text-anchor="middle">vs rank_bm25, same recall@1</text>
     <rect x="240" y="132" width="180" height="128" rx="10" fill="#FCF6E8" stroke="url(#h2h_gold)" stroke-width="1"/>

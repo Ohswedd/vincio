@@ -46,6 +46,7 @@ class EvidenceIndex:
         self._lengths: dict[str, int] = {}
         self._entity_postings: dict[str, list[str]] = defaultdict(list)
         self._vectors: dict[str, list[float]] = {}
+        self._query_vectors: dict[str, list[float]] = {}  # need/query text → cached vector
         self._average_length = 0.0
 
     def __len__(self) -> int:
@@ -116,6 +117,45 @@ class EvidenceIndex:
             scored.append((cosine, eo_id))
         scored.sort(key=lambda pair: (-pair[0], pair[1]))
         return [eo_id for _, eo_id in scored[:limit]]
+
+    def _query_vector(self, text: str) -> list[float] | None:
+        """Embed and memoize a need/query *text* — a whole retrieval's coverage
+        checks compare many objects against a handful of distinct need texts, so
+        each need is embedded at most once. ``None`` when no embedder is set."""
+        if self.embedder is None:
+            return None
+        cached = self._query_vectors.get(text)
+        if cached is not None:
+            return cached
+        vector = run_sync(self.embedder.embed([text]))[0]
+        self._query_vectors[text] = vector
+        return vector
+
+    def semantic_similarity(self, text: str, obj: EvidenceObject) -> float | None:
+        """Dense cosine in ``[0, 1]`` between *text* and *obj*'s claim embedding,
+        or ``None`` when no embedder is configured or *obj* was never vectorized.
+
+        This is the dense signal the **coverage gate** consults (the seeding
+        path already fuses ``dense`` via RRF). The object vector is the one
+        cached at :meth:`add` time and the need text is embedded once via
+        :meth:`_query_vector`, so consulting it during coverage costs at most one
+        embed per distinct need text. Returning ``None`` — the pure-stdlib
+        default and the only value on the embedder-off path — leaves every caller
+        on its lexical fallback, so the default coverage decision is unchanged."""
+        if self.embedder is None:
+            return None
+        vector = self._vectors.get(obj.id)
+        if vector is None:
+            return None
+        query_vector = self._query_vector(text)
+        if query_vector is None or len(query_vector) != len(vector):
+            return None
+        norm_q = math.sqrt(sum(v * v for v in query_vector))
+        norm_v = math.sqrt(sum(v * v for v in vector))
+        if norm_q == 0.0 or norm_v == 0.0:
+            return None
+        cosine = sum(a * b for a, b in zip(query_vector, vector, strict=True)) / (norm_q * norm_v)
+        return max(0.0, min(1.0, cosine))
 
     # -- fused seed ------------------------------------------------------------------
 

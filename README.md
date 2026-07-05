@@ -54,7 +54,8 @@ caching, failover, and cost tracking built in.
 
 [Install](#install) · [Quickstart](#quickstart) · [The one-line front door](#the-one-line-front-door) ·
 [What you can build](#what-you-can-build) · [Providers](#providers--models) · [Features](#features) ·
-[Benchmarks](#benchmarks) · [How Vincio compares](#how-vincio-compares) · [Examples](#examples) ·
+[Features, head to head](#features-head-to-head) · [How the numbers stay honest](#how-the-numbers-stay-honest) ·
+[How Vincio compares](#how-vincio-compares) · [Examples](#examples) ·
 [CLI](#command-line) · [Architecture](#architecture) · [Docs](#documentation)
 
 ## Install
@@ -186,7 +187,9 @@ app = ContextApp(name="docs_qa", provider="openai", model="gpt-4o-mini")
 ## Features
 
 Everything below is implemented, tested offline, and demonstrated by a runnable example. Use the
-high-level `ContextApp`, or reach for any engine directly.
+high-level `ContextApp`, or reach for any engine directly. The section that follows —
+**[Features, head to head](#features-head-to-head)** — then benchmarks each headline capability against
+the raw model *and* the competitor library, with the mechanism that produces the difference.
 
 <p align="center">
   <img src="assets/features.svg" alt="One platform, every layer: context and prompts; retrieval and memory; agents and orchestration; output and evaluation; data and analytics; the closed loop; security and governance; protocols and interop; cross-org economy, edge and federated reach" width="840">
@@ -204,7 +207,7 @@ high-level `ContextApp`, or reach for any engine directly.
 **Retrieval & memory**
 - Hybrid RAG: BM25 + dense + learned-sparse + late-interaction fused in one weighted RRF; query understanding (HyDE, multi-query, decomposition); sentence-window / auto-merging chunking; GraphRAG; structured metadata filters with tenant scope; text + image + table + video evidence as first-class scored candidates. `embedder="auto"` (semantic when a local ONNX model is installed, deterministic hash otherwise) and grow-only adaptive `top_k` are opt-in, byte-identical defaults.
 - Context anchors: mark a source `anchor=True` to keep a PRD / spec / brand frame **always-present across a whole multi-call task** — it's distilled once into a compact, constraint-first, content-hash-cached brief injected as **pinned** evidence into every call at a flat few-hundred-token cost (~28× smaller than the corpus), guaranteed into the packet at every drop point without ever exceeding the budget, while on-demand detail still flows through normal retrieval. Beats "paste every MD file every call" (token-hungry) and "pure per-query RAG" (drops the constraint on a lexical miss). Inspect it with `app.task_brief()`.
-- LAGER (reasoning-driven retrieval): `app.use_lager()` replaces "retrieve top-k chunks then generate" with a **lazy evidence loop** — the corpus becomes atomic, byte-exact, offline-verifiable **Evidence Objects** in a typed knowledge graph (supports / contradicts / depends-on / follows, with a precision-gated contradiction detector), and retrieval acquires only what the query's information needs require, expanding the graph until marginal gain is insignificant. Finds multi-hop bridges that share zero words with the query where same-budget top-k structurally cannot (offline-gated vs the real in-repo baseline); sends the model ~23× fewer evidence tokens at the classic default configuration; abstains honestly with uncovered needs named; every retrieval decision explainable via the per-round gain trace. Live: **100% vs classic RAG's 75% at ~8× fewer input tokens/call**.
+- LAGER (reasoning-driven retrieval): `app.use_lager()` replaces "retrieve top-k chunks then generate" with a **lazy evidence loop** — the corpus becomes atomic, byte-exact, offline-verifiable **Evidence Objects** in a typed knowledge graph (supports / contradicts / depends-on / follows, with a precision-gated contradiction detector), and retrieval acquires only what the query's information needs require, expanding the graph until marginal gain is insignificant. Finds multi-hop bridges that share zero words with the query where same-budget top-k structurally cannot (offline-gated vs the real in-repo baseline); sends the model ~23× fewer evidence tokens at the classic default configuration; abstains honestly with uncovered needs named; every retrieval decision explainable via the per-round gain trace. When an embedder is configured, a dense signal further tightens coverage — recalling a topic paraphrase of the cause and, opt-in, rejecting an off-topic same-document decoy — while the pure-stdlib default stays byte-identical. Live: **100% vs classic RAG's 75% at ~8× fewer input tokens/call**.
 - Layered memory: session → episodic → semantic → tenant → graph, with a guarded write pipeline, confidence decay, contradiction resolution, bi-temporal recall, per-memory ACLs, and audited GDPR-style edit/forget/export.
 
 **Agents & orchestration**
@@ -234,116 +237,57 @@ high-level `ContextApp`, or reach for any engine directly.
 
 </details>
 
-## Benchmarks
+## Features, head to head
 
-Vincio's benchmark platform has **three tracks** under **one honesty contract**: every number carries a
-**provenance tier** that says, structurally, how real it is — so you never have to guess whether a
-figure is `LIVE`, `STATIC/FABRICATED`, or a self-measurement. One command drives all three:
-`vincio bench model | uplift | feature`. The map is
-[`benchmarks/PROVENANCE.md`](benchmarks/PROVENANCE.md); the machine-readable source of truth is
-[`benchmarks/manifest.json`](benchmarks/manifest.json).
+Vincio's claims are **measured, not asserted**. For every headline capability below we show the same
+job through **three lenses** — the **raw model** alone, the **competitor** a team would otherwise
+reach for, and **Vincio** — and then the *mechanism* that produces the difference. Every cell carries
+a **provenance tier**: <kbd>L</kbd> live (a real model or the real competitor library ran end to end,
+dated, reported) or <kbd>S</kbd> static-deterministic (offline, reproducible, **gates CI**). Honest
+losses are in the table too — where a specialist wins, we say so.
 
-<p align="center">
-  <img src="assets/benchmark-platform.svg" alt="The Vincio benchmark platform: three tracks under one provenance-tier honesty contract. Track 1 Model — 29 public benchmarks; Track 2 Uplift — 4 uplift benchmarks (the same model routed through Vincio vs direct); Track 3 Feature — 8 feature contests (a Vincio feature vs a competitor library). Each supports a Live run and an offline mockup. Tiers: L Live (the real thing ran end to end), R Recorded (a hash-pinned replay), S Static/Mockup (offline, reproducible, gates CI)." width="840">
-</p>
+> Not every feature has all three lenses: a pure-efficiency primitive (tabular encoding, chunking) has
+> no "raw model" axis, and a governance guarantee (injection containment) has no competitor that offers
+> the same *provable* property. A blank cell (—) means "not applicable / not measured," never a hidden
+> number. The three columns come from three separate harnesses (`vincio bench uplift` for raw→Vincio,
+> `vincio bench feature` for competitor→Vincio) — labeled, never one fabricated run.
 
-| Track | Question | Compares | Command |
-|---|---|---|---|
-| **1 · Model** | how good is a *model* on the public benchmarks? | a model vs the benchmark's verifiable gold | `vincio bench model` |
-| **2 · Uplift** | how much does routing a model *through Vincio* change it? | the same model, Vincio-routed vs direct | `vincio bench uplift` |
-| **3 · Feature** | how good is a Vincio *feature* (memory, RAG, …) vs the same feature elsewhere? | a Vincio feature vs a real competitor library | `vincio bench feature` |
+### The scorecard
 
-Every track supports **LIVE** (the real thing runs end to end) and an offline **MOCKUP**. Tiers: **L**
-Live (a live model, or the real competitor library on this machine — reported, never gated), **R**
-Recorded (a hash-pinned replay, gates CI), **S** Static/Mockup (offline, reproducible, gates CI —
-model scores *saturate by design*). A lower tier can never print a higher tier's label. A separate
-internal **VincioBench** gate keeps the library's own mechanisms honest and CI-gates the deterministic
-core of all three tracks.
+| Capability | Raw model | Competitor library | **Vincio** | Why Vincio wins (the mechanism) | Tier |
+|---|---|---|---|---|:--:|
+| **Grounded RAG** — private-knowledge Q&A | **13%** correct (hallucinates or abstains) | paste-everything (`stuff`): answers, **~1,253 tok**, uncited | **95% correct · every answer cited · 137 tok** | context compiler scores + budgets the evidence; *answer-only-from-sources* + citation extraction turn a guesser into a grounded, cited answerer | L·S |
+| **Reasoning retrieval** — multi-hop, zero lexical overlap | **25%** (no retrieval) | classic top-k RAG **75% @ ~1,078 tok** (misses the bridge) | **100% @ ~123 tok** (~8× fewer) | Evidence Objects in a typed graph + a lazy needs-driven loop reach a bridge sharing **zero words** with the query that top-k structurally can't | L·S |
+| **Task-frame retention** — a rule that binds every step | — | pure per-query RAG **50% @ ~3.2k tok** (drops the rule) | **100% @ ~3.4k tok** (matches "paste everything" at ~3× fewer tok) | the frame is distilled **once** into a cached constraint-first brief, **pinned** into every call — never dropped on a lexical miss, never re-paid per call | L |
+| **Layered memory** — the *current* fact after an update | raw buffer **loses the fact** (1,267 tok @160 turns) | naive keyword store **precision 0.50** (returns the stale fact too) | **precision 1.00 · 33 tok** | guarded writes + confidence decay + contradiction resolution + bi-temporal recall return only the current fact, at a flat cost | S |
+| **Structured output** — schema-valid rate | **1/6** valid | `json_repair`: recovers more — *by guessing field values* (head-to-head below) | **5/6** valid — **structure-only** (never invents a value) | constrained decoding + streaming validation + bounded structure-only repair: safe for typed extraction, where guessing is not | S |
+| **Prompt-injection containment** | **compromised** (exfil call runs) | detection-based: **would miss** this injection | **contained** (tainted call denied, authorized call ok) | deterministic taint tracking + capability tokens — a *provable* property, not a classifier that can be fooled | S |
+| **Long-context recall** — a needle at depth | **0.0** (lost) | — | **1.0** | the long-context governor keeps the needle in budget instead of trusting attention over a full window | S |
+| **Web freshness** — facts after the training cutoff | **0/3** fresh | — | **2/3** fresh (current Python 3.14, Node 26) | governed `web_search` / `web_read` for **any** model (even one with no tool calling) returns content-hashed, verifiable evidence | L |
+| **Context assembly** — tokens for the same evidence | — | `stuff` everything: **1,253 tok** | **137 tok** (~89% fewer) | score → dedup → resolve conflicts → compress → budget, with an excluded-context report | S |
+| **Tabular evidence** — tokens for a 50×5 table | — | `json.dumps`: **1,901 tok** | **574 tok** (~70% fewer), lossless + typed | a header-once columnar `DataEncoder`, costed on the tokens the model actually receives | S |
+| **BM25 retrieval** — recall & speed | — | `rank_bm25`: recall 1.0 @ **2.0 ms** | recall **1.0 @ 0.19 ms** (~10×; ~30–40× @ 20k docs) | an inverted index scans only documents containing a query term, so the lead **grows with corpus size** | S·L |
+| **Chunking** — traceable chunks | — | naive char-split: **0** provenance | **1.0** provenance (every chunk citable) | chunks carry their source id and respect structure, so a retrieved chunk is traceable | S |
+| **Tokenization** *(honest loss)* | — | `tiktoken`: **exact** @ 1.6 ms | **0.73** accuracy @ **0.85 ms** (~1.9× faster) | a conservative zero-dependency heuristic — faster and dependency-free, but `tiktoken` is exact; use it when you need the exact count | S·L |
 
-### Track 1 — Model: public benchmarks, tier-honest
-
-`vincio bench model` scores a model (or a model *version*) on the standard public benchmarks — one
-pluggable contract, **29 benchmarks across 10 niches**, an enforced provenance tier on every number.
-In-process, offline-first, **never a hosted leaderboard**.
-
-<p align="center">
-  <img src="assets/benchmark-plane.svg" alt="Track 1, the model track: 29 standard public benchmarks across 10 niches (Knowledge 5, Reasoning 3, Math 1, Coding 7, Instruction 1, Truthfulness 1, Safety 1, RAG 1, Agent 8, Long Context 1), each number carrying an enforced provenance tier — Static (fabricated fixture, gates CI), Recorded (hash-pinned real slice, gates CI), Live (a live state-of-the-art model, reported and never gated)." width="840">
-</p>
-
-```bash
-vincio bench list                                   # the whole platform at a glance
-vincio bench model all --tier static                # every benchmark, offline (Tier-S), gates CI
-python benchmarks/eval_live.py --provider anthropic --model claude-opus-4-8 \
-    --benchmarks knowledge.mmlu reasoning.gsm8k --tier live --dataset-dir ./datasets
-```
-
-Run live over real official dataset slices (OpenRouter, 2026-07-01, small `n` — a capability demo,
-reported not gated): `gpt-5.4-mini` scored **0.90** on a 20-item GSM8K slice and **0.60** on a 15-item
-MMLU slice; `gemini-3.5-flash` **0.70 / 0.93**. The engine **refuses** to let a fabricated fixture print
-a Recorded or Live label — a Tier-S mechanism check can never masquerade as a Tier-L score. Concept:
-[docs/concepts/open-evaluation-plane.md](docs/concepts/open-evaluation-plane.md); guide:
-[docs/guides/run-benchmark-suite.md](docs/guides/run-benchmark-suite.md).
-
-### Track 3 — Feature: a Vincio feature vs a competitor library <sub>· run `vincio bench feature`</sub>
-
-`vincio bench feature` runs a Vincio feature head-to-head against the *actual* competitor library a
-team would otherwise use — **measured live on this machine** across retrieval, tokenization, output
-repair, prompt safety, tabular encoding, context assembly, layered memory, and chunking. A missing
-competitor is reported *skipped*, never fabricated; the deterministic quality metric (not wall-clock)
-gates CI. Representative real results (Apple Silicon, Python 3.13; ratios are the portable signal):
-Vincio BM25 retrieval matches `rank_bm25`'s recall at **~12× the speed**; layered memory returns the
-*current* fact after a contradicting update at **precision 1.0 vs 0.5** for a naive keyword store;
-tabular encoding uses **~70% fewer tokens** than `json.dumps`. The richer offline driver with a few
-extra micro-benchmarks is [`competitive.py`](benchmarks/competitive.py).
-
-<p align="center">
-  <img src="assets/benchmark-headtohead.svg" alt="Feature track head-to-head vs. real libraries: BM25 retrieval matching rank_bm25 recall at roughly 12 times the speed; layered memory precision 1.0 vs 0.5 for a naive store; tabular encoding roughly 70 percent fewer tokens than json.dumps; token counting roughly 2 times faster than tiktoken (which is exact)." width="840">
-</p>
+<sub><kbd>L</kbd> numbers are dated live runs (OpenRouter, July 2026) reported below; <kbd>S</kbd>
+numbers are deterministic and gate CI; <kbd>S·L</kbd> pairs a deterministic metric (recall/accuracy,
+CI-gated) with a wall-clock speed ratio (machine-specific, reported — ratios are the portable signal).
+The "raw model" figures for Grounded RAG (13%) and Web freshness are live-model means; the deterministic
+mockup (`rag.grounded` 0.5→1.0) gates the same mechanism in CI.</sub>
 
 <details>
-<summary><b>Show the full table</b></summary>
-
-| Operation | Vincio | Competitor | Result |
-|---|---|---|---|
-| BM25 query @ **20k docs** | `BM25Index` | `rank_bm25` | **~30–40× faster**: identical top-1 ranking |
-| **Context assembly**: tokens sent for the same retrieved set | context compiler | LangChain `stuff` / LlamaIndex `compact` | **~60% fewer tokens**: answer retained |
-| **Tabular encoding**: tokens for a 50×5 table | `DataEncoder` | `json.dumps` / `pandas.to_markdown` / TOON | **~66% fewer tokens** than `json.dumps`, lossless, typed schema |
-| **Fit a 5k-row table into the window** | `fit_to_window` | `json.dumps` all rows / `pandas.describe` | **~99% fewer tokens**: profile + representative sample, size invariant to row count |
-| **Aggregate a 500k-row source** | `stream_aggregate` | materialize-then-aggregate / `pandas.groupby` | **~99% less peak memory**: one accumulator per group, footprint invariant to row count |
-| **Window an unbounded event stream** | `StreamWindow` | hosted stream processor (Flink / Spark) | **in-process, no cluster**: cited, offline-verifiable per-window answers, footprint invariant to event volume |
-| Text chunking a 24k-word doc | `chunk_document` | LangChain / LlamaIndex splitters | **fastest**, chunks carry provenance |
-| Token counting (~60k words) | `HeuristicTokenCounter` | `tiktoken` | **~1.4–1.8× faster**, zero-dependency, conservative |
-| Malformed-JSON recovery | lenient parser | stdlib `json.loads` | **4/8 vs 1/8** recovered |
-| Render with a missing variable | `PromptSpec.substitute` | `jinja2` | typed error vs. silently-empty render |
-
-`rank_bm25` rescans every document per query; Vincio's inverted index only scans documents
-containing a query term, so its lead grows with corpus size. The point isn't that every component
-beats every specialist: a dedicated JSON-repair library recovers more than Vincio (by guessing,
-which is unsafe for typed extraction). Vincio's edge is an **integrated, correct, governed**
-pipeline, not a pile of single-purpose libraries.
-
-</details>
-
-### Track 2 — Uplift: the same model, through Vincio vs direct <sub>· run `vincio bench uplift`</sub>
-
-`vincio bench uplift` runs each benchmark **twice by the identical scorer** — the model's direct answer
-vs its Vincio-routed answer — and reports the per-benchmark delta (grounding, injection containment,
-long-context needle recall, output validity); the mockup deltas gate CI. The *extended live-model
-driver* [`quality_uplift.py`](benchmarks/quality_uplift.py) measures the same on real models across 15
-company-specific policy questions a model cannot know from pretraining. Measured live against **current
-state-of-the-art models** (**4 models × 2 runs = 240 live calls**, OpenRouter, July 2026):
+<summary><b>The live evidence, in full — the four <kbd>L</kbd>-tier runs behind the scorecard</b></summary>
 
 <p align="center">
-  <img src="assets/benchmark-uplift.svg" alt="Grounded-answer accuracy, the same model direct vs. through Vincio, on 15 company-specific questions: claude-opus-4.8 13 to 97 percent; gpt-5.4-mini 10 to 93 percent; gemini-3.5-flash 27 to 97 percent; llama-3.1-8b 3 to 93 percent; aggregate 13 to 95 percent. Every routed answer is cited." width="840">
+  <img src="assets/benchmark-uplift.svg" alt="Grounded-answer accuracy, the same model direct vs. through Vincio, on 15 company-specific questions: claude-opus-4.8 13 to 97 percent; gpt-5.4-mini 10 to 93 percent; gemini-3.5-flash 27 to 97 percent; llama-3.1-8b 3 to 93 percent; aggregate 13 to 95 percent. Every routed answer is cited." width="820">
 </p>
 
-<details>
-<summary><b>Show the numbers and the honest read</b></summary>
+**1 · Grounded RAG on current SOTA models** — 15 company-specific questions a model cannot know from
+pretraining; the same model direct vs. through Vincio (mean over 2 runs, every routed answer cited;
+`benchmarks/quality_uplift.py`, OpenRouter, July 2026):
 
-**Grounded-answer quality on current SOTA models** (mean over 2 runs; 15 questions each, every routed
-answer cited):
-
-| Model: direct vs. through Vincio | Direct correct | **Via Vincio correct** | Direct failure mode | Cost per *correct* answer |
+| Model: direct vs. through Vincio | Direct correct | **Via Vincio** | Direct failure mode | Cost per *correct* answer |
 |---|--:|--:|:--|:--|
 | `anthropic/claude-opus-4.8` | 13% | **97%** | abstains 100%¹ (never hallucinates) | **~30× cheaper** via Vincio |
 | `openai/gpt-5.4-mini` | 10% | **93%** | hallucinates 83% | **~16× cheaper** via Vincio |
@@ -351,84 +295,159 @@ answer cited):
 | `meta-llama/llama-3.1-8b-instruct` | 3% | **93%** | hallucinates 50% | **~28× cheaper** via Vincio |
 | **Aggregate** | **13%** | **95%** | — | n/a |
 
-<sub>¹ Even the strongest current model, claude-opus-4.8, answers only ~13% of company-specific questions
-directly — but it correctly *abstains* the rest of the time rather than guessing (0% hallucination); the
-weaker models confidently fabricate instead. Either way the model *alone* is near-useless on private
-knowledge; the same model through Vincio's retrieval + grounding answers 93–97%, every answer cited.</sub>
+<sub>¹ Even the strongest current model answers only ~13% of company-specific questions directly — the
+best ones *abstain* the rest of the time (0% hallucination), the weaker ones fabricate. Either way the
+model alone is near-useless on private knowledge; the same model through Vincio's retrieval + grounding
+answers 93–97%, cited. A direct call is cheaper *per call* but answers almost nothing, so its cost **per
+correct answer** is 14–30× higher. Small sample (n=15); rerun with `VINCIO_PROVIDER=openrouter
+VINCIO_UPLIFT_MODELS=… python benchmarks/quality_uplift.py`.</sub>
 
-The cost line is the honest punchline: a direct call is cheaper *per call*, but it answers almost
-nothing correctly, so its cost **per correct answer** is 14–30× higher through Vincio's grounding across
-every model tested. These are live numbers (n=15, small sample — rerun with `VINCIO_PROVIDER=openrouter
-VINCIO_UPLIFT_MODELS=… python benchmarks/quality_uplift.py`); full per-metric breakdown in
-[`benchmarks/README.md`](benchmarks/README.md).
-
-**Deterministic mechanism metrics** (mechanical, so they hold for *any* model and run offline — the
-`vincio bench uplift` mockup gates these in CI):
-
-| Same model: direct vs. via Vincio | Direct | Via Vincio |
-|---|--:|--:|
-| Schema-valid object from realistic model outputs | 1/6 | **5/6** |
-| Prompt-injection exfiltration via a tool call | compromised | **contained** |
-| Context tokens to keep an early fact at 160 turns | 1,267 (lost) | **33 (retained)** |
-
-**Post-cutoff freshness via the web plane** (`web_search.freshness`) — asked facts that changed *after*
-the model's training cutoff (latest Python line, current & LTS Node.js majors), the bare model answers
-from stale memory; the *same* model with `app.use_web_search()` searches the open web and answers with
-the current fact. Measured live (OpenRouter, 2026-07-03, `python benchmarks/web_uplift_live.py`):
-
-| Model: direct vs. + Vincio web search | Direct fresh | **+ web search** |
-|---|--:|--:|
-| `openai/gpt-4o-mini` | 0/3 | **2/3** |
-| `meta-llama/llama-3.3-70b-instruct` | 0/3 | **2/3** |
-
-<sub>Direct answers were stale on every question (e.g. "Python 3.11", "Node 18/19"); with Vincio's web
-search the same models answered the current Python 3.14 line and Node.js 26. The one miss on both is a
-genuinely hard distinction (Active-LTS vs Current) — the benchmark is not rigged. Live Tier-L, not
-CI-gated; the static arms gate `vincio bench uplift` in CI.</sub>
-
-**Task-frame retention via context anchors** — a coding agent is given a bulk of standards that bind
-every step, then asked tasks that never restate the rule. Three arms, the same model:
-`stuff` (paste every MD file), `pure_rag` (retrieve per query), `anchors` (the pinned frame). Measured
-live (OpenRouter, 2026-07-03, `python benchmarks/rag_anchor_uplift_live.py`):
-
-| Model · arm | Rule respected | Input tokens/call |
-|---|--:|--:|
-| `gpt-4o-mini` — stuff / pure-RAG / **anchors** | 100% / 50% / **100%** | 10,166 / 3,202 / **3,372** |
-| `llama-3.3-70b` — stuff / pure-RAG / **anchors** | 100% / 50% / **100%** | 10,175 / 3,212 / **3,381** |
-
-<sub>Anchors match stuffing on adherence (100%) at **~3× fewer input tokens per call**, while pure
-per-query RAG drops the globally-binding rule to 50% on the tasks that don't lexically match it. On a
-larger corpus the token gap widens; the offline `rag_anchors` family gates the mechanism (~28× brief
-reduction, frame guaranteed at every drop point, never over budget).</sub>
-
-**Multi-hop retrieval via LAGER (reasoning-driven retrieval)** — four questions over an incident
-corpus whose causal bridge shares zero words with the questions, forty distractors saturated with
-them. Three arms, the same model: no retrieval / the classic default pipeline (400-token chunks,
-hybrid top-k) / `app.use_lager()`. Measured live (OpenRouter, 2026-07-04,
-`python benchmarks/lager_uplift_live.py`):
+**2 · Multi-hop retrieval via LAGER** — four questions over an incident corpus whose causal bridge
+shares **zero words** with the questions, plus 40 distractors saturated with them. Three arms, the same
+model (`benchmarks/lager_uplift_live.py`, OpenRouter, 2026-07-04):
 
 | Model · arm | Accuracy | Input tokens/call |
 |---|--:|--:|
 | `gpt-4o-mini` — floor / classic / **LAGER** | 25% / 75% / **100%** | 30 / 1,078 / **123** |
 | `llama-3.3-70b` — floor / classic / **LAGER** | 25% / 75% / **100%** | 41 / 1,080 / **138** |
 
-<sub>LAGER answers every multi-hop question at **~8× fewer input tokens per call** than the classic
-pipeline, which misses the zero-overlap bridge. The offline `lager` family gates the mechanism
-against the real in-repo baseline (bridge found where same-budget top-k misses it, ~23× evidence-token
-reduction at equal correctness, one-round easy queries, cross-process determinism, honest
-abstention).</sub>
+<sub>LAGER answers every multi-hop question at **~8× fewer input tokens/call** than the classic pipeline,
+which misses the zero-overlap bridge. The offline `lager` family gates the mechanism against the real
+in-repo baseline (bridge found where top-k misses it, ~23× evidence-token reduction at equal
+correctness, one-round easy queries, cross-process determinism, honest abstention).</sub>
+
+**3 · Task-frame retention via context anchors** — a coding agent is bound by a bulk of standards, then
+asked tasks that never restate the rule. `stuff` (paste every file) / `pure_rag` (retrieve per query) /
+`anchors` (`benchmarks/rag_anchor_uplift_live.py`, OpenRouter, 2026-07-03):
+
+| Model · arm | Rule respected | Input tokens/call |
+|---|--:|--:|
+| `gpt-4o-mini` — stuff / pure-RAG / **anchors** | 100% / 50% / **100%** | 10,166 / 3,202 / **3,372** |
+| `llama-3.3-70b` — stuff / pure-RAG / **anchors** | 100% / 50% / **100%** | 10,175 / 3,212 / **3,381** |
+
+<sub>Anchors match stuffing on adherence at **~3× fewer input tokens/call**, while pure per-query RAG
+drops the globally-binding rule to 50% on tasks that don't lexically match it. On a larger corpus the
+gap widens; the offline `rag_anchors` family gates the mechanism (~28× brief reduction, frame guaranteed
+at every drop point, never over budget).</sub>
+
+**4 · Post-cutoff freshness via the web plane** — facts that changed *after* the model's training cutoff
+(latest Python line, current & LTS Node.js majors); the same model with `app.use_web_search()`
+(`benchmarks/web_uplift_live.py`, OpenRouter, 2026-07-03):
+
+| Model: direct vs. + Vincio web search | Direct fresh | **+ web search** |
+|---|--:|--:|
+| `openai/gpt-4o-mini` | 0/3 | **2/3** |
+| `meta-llama/llama-3.3-70b-instruct` | 0/3 | **2/3** |
+
+<sub>Direct answers were stale on every question (e.g. "Python 3.11", "Node 18/19"); with web search the
+same models answered the current Python 3.14 line and Node.js 26. The one miss on both is a genuinely
+hard distinction (Active-LTS vs Current) — the benchmark is not rigged.</sub>
 
 </details>
 
-### VincioBench: the internal gate <sub>· not one of the three tracks</sub>
+<details>
+<summary><b>The deterministic mechanism metrics — <kbd>S</kbd> tier, hold for <i>any</i> model, gate CI</b></summary>
 
-[`vinciobench.py`](benchmarks/vinciobench.py) is **not a competitive claim** and not one of the three
-tracks: it is the deterministic mechanism / regression gate that gates CI, and it also gates the
-**deterministic core of all three tracks** (`families.bench_tracks.*`). Its families assert that each
-engine still *works* on a bundled synthetic corpus, so a regression fails the build. The scores
-saturate by design (a small corpus built to exercise each mechanism), which proves *the mechanism is
-intact*, not real-world performance. The credible performance evidence is the three tracks above at
-their Live tier (Track 1/2 with a model key, Track 3 with a real competitor installed).
+These are mechanical (no model judgement), so they run offline and hold for every model. The `vincio
+bench uplift` and `vincio bench feature` mockups gate them in CI.
+
+<p align="center">
+  <img src="assets/benchmark-headtohead.svg" alt="Feature track head-to-head vs. real libraries: BM25 retrieval matching rank_bm25 recall at roughly 10 times the speed; layered memory precision 1.0 vs 0.5 for a naive store; tabular encoding roughly 70 percent fewer tokens than json.dumps; token counting roughly 2 times faster than tiktoken (which is exact)." width="820">
+</p>
+
+**Same model, direct vs. via Vincio** (`vincio bench uplift`):
+
+| Benchmark | Direct | Via Vincio |
+|---|--:|--:|
+| Grounded answering (RAG faithfulness) | 0.5 | **1.0** |
+| Structured-output validity | 1/6 | **5/6** |
+| Long-context needle recall | 0.0 | **1.0** |
+| Prompt-injection containment | compromised | **contained** |
+| Web-search freshness | 0.0 | **1.0** |
+| Context tokens to keep an early fact @160 turns | 1,267 (lost) | **33 (retained)** |
+
+**Vincio vs. the competitor library** (`vincio bench feature`, competitor installed; Apple Silicon,
+Python 3.13 — ratios are the portable signal):
+
+| Contest | Vincio | Competitor | Result |
+|---|---|---|---|
+| BM25 recall@1 & latency | recall 1.0 @ 0.19 ms | `rank_bm25` recall 1.0 @ 2.0 ms | **~10× faster, identical recall** (grows with corpus) |
+| Context assembly (tokens) | 137 | `stuff` 1,253 | **~89% fewer**, answer retained |
+| Tabular encoding (tokens, 50×5) | 574 | `json.dumps` 1,901 | **~70% fewer**, lossless typed |
+| Current-fact precision after an update | 1.0 | naive keyword store 0.5 | **exact recall of the current fact** |
+| Malformed-JSON recovery | 0.50 | `stdlib json` 0.125 · `json_repair` **1.0** | Vincio beats stdlib; `json_repair` recovers more — *by guessing*, unsafe for typed extraction |
+| Missing-variable render | caught (typed error) | `jinja2` silently empty | **fails loud**, never a silent blank |
+| Token counting | 0.73 acc @ 0.85 ms | `tiktoken` **1.0** @ 1.6 ms | **~1.9× faster, zero-dep** — `tiktoken` is exact |
+| Chunk provenance | 1.0 | naive char-split 0.0 | every chunk **traceable & citable** |
+
+The point isn't that every component beats every specialist — a dedicated JSON-repair library recovers
+more than Vincio (by guessing, which is unsafe for typed extraction), and `tiktoken` is exact. Vincio's
+edge is an **integrated, correct, governed** pipeline, not a pile of single-purpose libraries.
+
+</details>
+
+## How the numbers stay honest
+
+The three columns above come from Vincio's own **benchmark platform**: three tracks under one honesty
+contract, where every number carries a **provenance tier** that says, structurally, how real it is — so
+you never have to guess whether a figure is `LIVE`, `STATIC/FABRICATED`, or a self-measurement. One
+command drives all three: `vincio bench model | uplift | feature`. The map is
+[`benchmarks/PROVENANCE.md`](benchmarks/PROVENANCE.md); the machine-readable source of truth is
+[`benchmarks/manifest.json`](benchmarks/manifest.json).
+
+<p align="center">
+  <img src="assets/benchmark-platform.svg" alt="The Vincio benchmark platform: three tracks under one provenance-tier honesty contract. Track 1 Model — 29 public benchmarks; Track 2 Uplift — 5 uplift benchmarks (the same model routed through Vincio vs direct); Track 3 Feature — 8 feature contests (a Vincio feature vs a competitor library). Each supports a Live run and an offline mockup. Tiers: L Live (the real thing ran end to end), R Recorded (a hash-pinned replay), S Static/Mockup (offline, reproducible, gates CI)." width="840">
+</p>
+
+| Track | Question it answers | Compares | Column above | Command |
+|---|---|---|---|---|
+| **1 · Model** | how good is a *model* on the public benchmarks? | a model vs the benchmark's verifiable gold | (context) | `vincio bench model` |
+| **2 · Uplift** | how much does routing a model *through Vincio* change it? | the same model, Vincio-routed vs direct | **Raw model → Vincio** | `vincio bench uplift` |
+| **3 · Feature** | how good is a Vincio *feature* vs the same feature elsewhere? | a Vincio feature vs a real competitor library | **Competitor → Vincio** | `vincio bench feature` |
+
+**Provenance tiers.** <kbd>L</kbd> Live — a live model, or the real competitor library on this machine
+(reported, never gated). <kbd>R</kbd> Recorded — a hash-pinned replay (gates CI). <kbd>S</kbd>
+Static/Mockup — offline, reproducible, gates CI (model scores *saturate by design*). **A lower tier can
+never print a higher tier's label** — a Tier-S mechanism check can never masquerade as a Tier-L score.
+
+**Track 1 — Model** scores a model (or a model *version*) on the standard public benchmarks: one
+pluggable contract, **29 benchmarks across 10 niches**, an enforced tier on every number, in-process and
+**never a hosted leaderboard**. Live over official dataset slices (OpenRouter, small `n` — a reported
+capability demo): `gpt-5.4-mini` scored **0.90** on a 20-item GSM8K slice; `gemini-3.5-flash`
+**0.70 / 0.93** (MMLU / GSM8K).
+
+<details>
+<summary><b>The 29 public benchmarks, by niche</b></summary>
+
+<p align="center">
+  <img src="assets/benchmark-plane.svg" alt="Track 1, the model track: 29 standard public benchmarks across 10 niches (Knowledge 5, Reasoning 3, Math 1, Coding 7, Instruction 1, Truthfulness 1, Safety 1, RAG 1, Agent 8, Long Context 1), each number carrying an enforced provenance tier — Static (fabricated fixture, gates CI), Recorded (hash-pinned real slice, gates CI), Live (a live state-of-the-art model, reported and never gated)." width="820">
+</p>
+
+Run live over real official dataset slices:
+
+```bash
+python benchmarks/eval_live.py --provider anthropic --model claude-opus-4-8 \
+    --benchmarks knowledge.mmlu reasoning.gsm8k --tier live --dataset-dir ./datasets
+```
+
+The engine **refuses** to let a fabricated fixture print a Recorded or Live label — a Tier-S mechanism
+check can never masquerade as a Tier-L score.
+
+</details>
+
+```bash
+vincio bench list                                   # the whole platform at a glance
+vincio bench model all --tier static                # every benchmark, offline (Tier-S), gates CI
+vincio bench uplift                                 # raw model → Vincio, per benchmark
+vincio bench feature                                # a Vincio feature vs a competitor library (LIVE)
+```
+
+**VincioBench, the internal gate** ([`vinciobench.py`](benchmarks/vinciobench.py)) is *not* a
+competitive claim: it is the deterministic mechanism/regression gate (**62 families**) that asserts each
+engine still works on a bundled synthetic corpus, so a regression fails the build. Its scores saturate
+by design; the credible performance evidence is the three tracks above at their Live tier. Concept:
+[open-evaluation-plane](docs/concepts/open-evaluation-plane.md); guide:
+[run-benchmark-suite](docs/guides/run-benchmark-suite.md).
 
 ## How Vincio compares
 
