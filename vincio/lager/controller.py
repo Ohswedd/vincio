@@ -31,6 +31,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from ..context.scoring import lexical_similarity, near_duplicate_score
+from ..core.diagnostics import note_suppressed
 from ..core.tokens import count_tokens
 from .extract import is_referring
 from .graph import EvidenceGraph
@@ -57,7 +58,37 @@ class LazyOptions(BaseModel):
     max_evidence_tokens: int = 1200
     gain_epsilon: float = 0.01
     patience: int = 2
-    similarity_floor: float = 0.4  # lexical tau (dense floor when embedder on)
+    similarity_floor: float = 0.4  # coverage tau on lexical overlap (always applied)
+    #: When an embedder is configured, a claim that misses the lexical
+    #: ``similarity_floor`` still covers if its dense cosine to the need's
+    #: ENTITY-NEUTRALIZED topic clears this (higher) floor — the paraphrase-recall
+    #: residual. Set above ``similarity_floor`` on purpose: a lexical/hash
+    #: embedder rarely reaches it, so only a genuinely semantic embedder lifts a
+    #: topic paraphrase over it. This is a TIGHTENING, not a proven guarantee —
+    #: on a real (anisotropic) embedder an entity-sharing but topically-wrong
+    #: cause can score high, so the exact safe margin is embedder-specific and
+    #: must be validated per model (``benchmarks/lager_residuals.py --embedder
+    #: <name>``, whose decoy row is the control). The entity-neutralized topic
+    #: probe (:meth:`LazyRetriever._topic_text`) widens that margin by denying the
+    #: decoy the shared entity. No embedder → never consulted → the coverage
+    #: decision is byte-identical to the lexical path.
+    dense_rescue_floor: float = 0.55
+    #: Opt-in residual-1 tightening: when True *and* a dense signal is present,
+    #: an entity-less causal claim that shares a document with a query match must
+    #: also clear ``bridge_similarity_floor`` against the need, so a semantically
+    #: off-topic causal sentence adrift in a query-matching document no longer
+    #: covers. Default False and a strict no-op without an embedder. REQUIRES a
+    #: genuinely semantic embedder (``embedder="auto"`` with fastembed present,
+    #: NOT the lexical ``"local"`` hash): the flagship same-document bridge shares
+    #: no surface words with the need, so its dense cosine is a thin, model-noisy
+    #: signal (a hash embedder scores it barely above the floor — near enough to
+    #: the ``bridge_similarity_floor`` noise floor that a legitimate bridge can be
+    #: wrongly rejected). A bridge-floor rejection is recorded via
+    #: ``note_suppressed`` so a mis-calibrated run's over-abstentions are
+    #: observable rather than silent. Calibrate the floor against the flagship
+    #: control row of ``lager_residuals.py`` for the target embedder before use.
+    reject_same_doc_causal_decoys: bool = False
+    bridge_similarity_floor: float = 0.25
     duplicate_threshold: float = 0.95
 
 
@@ -132,6 +163,51 @@ class LazyRetriever:
                 return True
         return False
 
+    def _topic_text(self, need: InformationNeed) -> str:
+        """The need text with its query entities removed — what the answer must
+        be ABOUT, stripped of the entity a decoy could merely share. The dense
+        rescue compares the claim to THIS, not the raw need: a decoy that shares
+        only the query entity ('ACME revenue fell because of tariffs' for a
+        why-ACME-outage need) then cannot ride the shared entity over the rescue
+        floor on a real, anisotropic embedder — its remaining content (revenue,
+        tariffs) is genuinely far from the topic (outage), while a true paraphrase
+        ('the ACME downtime was caused by …') stays close because it renames the
+        topic noun, not the entity. Falls back to the full text when stripping
+        would leave nothing to embed."""
+        if not need.entities:
+            return need.text
+        topic = need.text
+        for entity in need.entities:
+            topic = re.sub(re.escape(entity), " ", topic, flags=re.IGNORECASE)
+        topic = " ".join(topic.split())
+        return topic if len(topic) >= 3 else need.text
+
+    def _dense_rescue(self, need: InformationNeed, obj: EvidenceObject) -> bool:
+        """The dense coverage rescue: the claim clears ``dense_rescue_floor``
+        against the need's entity-neutralized topic. False (no rescue) whenever
+        no embedder is configured (``semantic_similarity`` is then ``None``), so
+        the embedder-off coverage decision is byte-identical to the lexical path.
+
+        The floor is a deliberate TIGHTENING, not a proven guarantee: it is set
+        above ``similarity_floor`` so a lexical/hash embedder cannot reach it, and
+        the entity-neutralized topic probe is what keeps the entity-sharing decoy
+        below it — but the exact margin between a genuine paraphrase and an
+        adjacent wrong cause is embedder-specific. Validate/tune it for a given
+        embedder with ``benchmarks/lager_residuals.py --embedder <name>``, whose
+        decoy row is the safety control."""
+        sim = self.index.semantic_similarity(self._topic_text(need), obj)
+        return sim is not None and sim >= self.options.dense_rescue_floor
+
+    def _similarity_ok(self, need: InformationNeed, obj: EvidenceObject) -> bool:
+        """The coverage similarity gate: the lexical floor, OR — when an embedder
+        is configured — a genuine dense topic match above the higher
+        ``dense_rescue_floor``. Byte-identical to the pure-lexical test when no
+        embedder is present (``_dense_rescue`` is then always False), so the
+        embedder-off path abstains on a paraphrase exactly as before."""
+        if lexical_similarity(need.text, obj.claim) >= self.options.similarity_floor:
+            return True
+        return self._dense_rescue(need, obj)
+
     def _covers(
         self,
         need: InformationNeed,
@@ -151,25 +227,46 @@ class LazyRetriever:
             if self._linked_to_anchored(obj, need, anchored_ids, acquired):
                 return True
             if need.entities:
-                # An entity-anchored causal claim must clear the similarity
-                # floor: sharing the query entity is topical overlap, not
-                # answeredness ('revenue fell because of tariffs' shares the
-                # entity with a why-outage need but never answers it).
-                return anchored and (
-                    lexical_similarity(need.text, obj.claim) >= self.options.similarity_floor
-                )
+                # An entity-anchored causal claim must clear the coverage
+                # similarity gate: sharing the query entity is topical overlap,
+                # not answeredness ('revenue fell because of tariffs' shares the
+                # entity with a why-outage need but never answers it). The gate
+                # is lexical by default; a dense embedder additionally recalls a
+                # topic paraphrase ('the ACME downtime was caused by …' for a
+                # why-ACME-outage need) that the lexical floor alone would miss —
+                # WITHOUT re-admitting the entity-sharing decoy, whose dense
+                # cosine to the need stays below the rescue floor.
+                return anchored and self._similarity_ok(need, obj)
             # An entity-less why-need has no entity anchor, so coverage rides on
             # document coherence: the causal claim must share its source document
             # with a claim that GENUINELY matches the query (real term overlap),
             # never merely sit in some graph-reachable document. This preserves
             # the same-document multi-hop bridge while refusing a bare causal
             # sentence adrift in an unrelated document.
-            return any(
+            same_document = any(
                 held.id != obj.id
                 and held.doc_key == obj.doc_key
                 and self._term_anchored(need, held)
                 for held in acquired
             )
+            if not same_document:
+                return False
+            if self.options.reject_same_doc_causal_decoys:
+                # Opt-in residual-1 tightening: with a genuine dense signal, a
+                # same-document causal claim that is semantically off-topic for
+                # the need no longer covers — closing the case where a decoy
+                # cause merely co-habits a query-matching document. Gated on the
+                # signal being PRESENT (sim is not None): with no embedder the
+                # flagship same-document bridge, which shares no words with the
+                # need, must still cover, so the tightening is a strict no-op off
+                # the dense path. The rejection is observable — a mis-calibrated
+                # floor (e.g. a hash embedder, see the option caveat) over-abstains
+                # rather than dropping the bridge silently.
+                sim = self.index.semantic_similarity(need.text, obj)
+                if sim is not None and sim < self.options.bridge_similarity_floor:
+                    note_suppressed("lager.bridge_floor_rejected")
+                    return False
+            return True
         if not anchored:
             return False
         if need.kind == "temporal" and obj.observed_at is None:
@@ -182,7 +279,7 @@ class LazyRetriever:
                 endpoints[0], endpoints[1]
             ):
                 return False  # never a confident stop on a relation with no path
-        return lexical_similarity(need.text, obj.claim) >= self.options.similarity_floor
+        return self._similarity_ok(need, obj)
 
     def _coverage(
         self, needs: list[InformationNeed], acquired: list[EvidenceObject]

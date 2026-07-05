@@ -59,7 +59,7 @@ def _config():
     return config
 
 
-def _make_app(model: str, arm: str, docs):
+def _make_app(model: str, arm: str, docs, *, embedder: str | None = None):
     from vincio.core.app import ContextApp
 
     app = ContextApp(name=f"lager-{arm}", provider="openrouter", model=model,
@@ -67,7 +67,12 @@ def _make_app(model: str, arm: str, docs):
     if arm in ("classic", "lager"):
         app.add_source("corpus", documents=docs)
     if arm == "lager":
-        app.use_lager()
+        # *embedder* (e.g. "auto") wires the dense signal into the lazy loop —
+        # it tightens the two deliberate lexical residuals (recalls a topic
+        # paraphrase of the cause, rejects an off-topic same-document decoy)
+        # while the pure-stdlib default stays byte-identical. "auto" needs a
+        # genuinely semantic local model (fastembed); "local" is the hash path.
+        app.use_lager(embedder=embedder)
     return app
 
 
@@ -76,13 +81,13 @@ def _correct(answer: str, gold: list[str]) -> bool:
     return any(g.lower() in lowered for g in gold)
 
 
-def run(model: str) -> dict:
+def run(model: str, *, embedder: str | None = None) -> dict:
     docs, _hard, _easy, _bridge = _lager_corpus()
     arms: dict[str, dict] = {}
     for arm in ("floor", "classic", "lager"):
         rows = []
         for question, gold in QUESTIONS:
-            app = _make_app(model, arm, docs)  # fresh app per question
+            app = _make_app(model, arm, docs, embedder=embedder)  # fresh app per question
             try:
                 result = app.run(
                     question if arm != "floor"
@@ -100,24 +105,30 @@ def run(model: str) -> dict:
             "avg_input_tokens": round(sum(r["input_tokens"] for r in rows) / count, 1),
             "rows": rows,
         }
-    return {"model": model, "n": len(QUESTIONS), "arms": arms}
+    return {"model": model, "embedder": embedder or "off (lexical)",
+            "n": len(QUESTIONS), "arms": arms}
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Live LAGER uplift (OpenRouter).")
     parser.add_argument("--model", default="openai/gpt-4o-mini")
+    parser.add_argument("--embedder", default=None,
+                        help="wire a dense signal into the lager arm's lazy loop "
+                             "(e.g. 'auto' for a semantic local model); the "
+                             "default is the pure-stdlib lexical path")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
     if not os.environ.get("OPENROUTER_API_KEY"):
         print("OPENROUTER_API_KEY is not set; this is a live benchmark.", file=sys.stderr)
         return 2
-    report = run(args.model)
+    report = run(args.model, embedder=args.embedder)
     if args.json:
         import json
 
         print(json.dumps(report, indent=2))
         return 0
-    print(f"Live LAGER uplift — {report['model']} (n={report['n']} multi-hop questions)\n")
+    print(f"Live LAGER uplift — {report['model']} · dense signal: {report['embedder']} "
+          f"(n={report['n']} multi-hop questions)\n")
     print(f"{'arm':<10} {'accuracy':>10} {'avg input tokens/call':>24}")
     for arm, data in report["arms"].items():
         print(f"{arm:<10} {data['accuracy']:>9.0%} {data['avg_input_tokens']:>24.0f}")

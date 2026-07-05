@@ -25,7 +25,7 @@
     "reproduce": "vincio bench feature",
     "setup": "Vincio features vs the real competitor library, measured live on this machine (deterministic quality metric; latency is machine-relative and rounded)",
     "plates": [
-      { "big": "~12x", "line": "faster BM25 retrieval", "sub": "vs rank_bm25, same recall@1" },
+      { "big": "~10x", "line": "faster BM25 retrieval", "sub": "vs rank_bm25, same recall@1" },
       { "big": "1.0 / 0.5", "line": "memory precision", "sub": "current fact vs a naive keyword store" },
       { "big": "~70%", "line": "fewer tokens, same table", "sub": "compact encoder vs json.dumps" },
       { "big": "~2x", "line": "faster token counting", "sub": "vs tiktoken (which stays exact)" }

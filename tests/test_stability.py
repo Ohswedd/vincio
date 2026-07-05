@@ -24,7 +24,7 @@ from vincio.stability import (
 
 
 def test_version_and_api_contract():
-    assert vincio.__version__ == "7.8.0"
+    assert vincio.__version__ == "7.9.0"
     # API_VERSION is the frozen public-API contract; it bumps only on a MAJOR
     # release, independent of the package minor/patch level. 5.0 is the second
     # long-term-support major: it re-freezes the surface expanded additively across
@@ -102,8 +102,13 @@ def test_version_and_api_contract():
     # `retrieve_evidence()` verbs, and the runtime hook that swaps top-k for the
     # lazy loop only when an engine is attached — all additive and opt-in,
     # nothing existing removed or changed.
+    # 7.9 wires the LAGER dense signal into the coverage gate: the new
+    # `EvidenceIndex.semantic_similarity` method and three `LazyOptions` fields
+    # (`dense_rescue_floor`, `reject_same_doc_causal_decoys`,
+    # `bridge_similarity_floor`) tighten the two embedder-off residuals — all
+    # additive and opt-in, the pure-stdlib default byte-identical.
     # The surface grows by re-freezing it, never by breaking it, so the API contract
-    # generation stays "5.0" while the package advances to 7.8.0.
+    # generation stays "5.0" while the package advances to 7.9.0.
     assert API_VERSION == "5.0"
 
 
