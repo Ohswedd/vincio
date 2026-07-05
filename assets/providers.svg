@@ -71,6 +71,6 @@
 
     <!-- mock strip -->
     <rect x="34" y="214" width="792" height="26" rx="9" fill="#EEF1FB" stroke="#4C6EF5" stroke-width="0.9" opacity="0.9"/>
-    <text x="48" y="231" font-size="10"><tspan letter-spacing="1.6" fill="#3B57C4" font-weight="700">THE MOCK</tspan><tspan fill="#41506B">&#160;&#160;MockProvider is deterministic and emits schema-valid output — the whole pipeline runs offline, no key, no cost. Pass it for dev &amp; CI; use a real provider in production.</tspan></text>
+    <text x="48" y="231" font-size="9.5"><tspan letter-spacing="1.4" fill="#3B57C4" font-weight="700">THE MOCK</tspan><tspan fill="#41506B">&#160;&#160;Deterministic &amp; schema-valid output — the whole pipeline runs offline in dev &amp; CI, no key, no cost. Use a real provider in production.</tspan></text>
   </g>
 </svg>

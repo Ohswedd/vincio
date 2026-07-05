@@ -96,8 +96,8 @@
       <line x1="754" y1="358" x2="754" y2="370"/>
     </g>
     <!-- write-back to memory (dashed feedback) -->
-    <path d="M34 392 C14 392 14 144 32 144" stroke="#4C6EF5" stroke-width="1.4" fill="none" stroke-dasharray="4 3" marker-end="url(#arch_arrow)" opacity="0.75"/>
-    <text x="22" y="270" font-size="9" fill="#3B57C4" transform="rotate(-90 22 270)" text-anchor="middle">write back to memory</text>
+    <path d="M34 392 C11 392 11 144 32 144" stroke="#4C6EF5" stroke-width="1.4" fill="none" stroke-dasharray="4 3" marker-end="url(#arch_arrow)" opacity="0.7"/>
+    <text x="27" y="270" font-size="9" fill="#3B57C4" transform="rotate(-90 27 270)" text-anchor="middle" paint-order="stroke" stroke="#F5EAD0" stroke-width="3" stroke-linejoin="round">write back to memory</text>
 
     <!-- governance frame label -->
     <rect x="34" y="430" width="792" height="26" rx="9" fill="#F3E8CC" stroke="#C49A3A" stroke-width="0.9"/>
