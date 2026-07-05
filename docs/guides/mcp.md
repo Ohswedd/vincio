@@ -50,6 +50,25 @@ for tool in await client.list_tools():
     print(tool.name, tool.input_schema)
 ```
 
+### How it works: one runtime, one trust boundary
+
+`add_mcp_server` does the whole handshake once — connect, `initialize`, negotiate
+capabilities — then *lowers* the server's surface into machinery the app already
+owns, never a parallel one:
+
+```
+MCP server ──initialize──▶ capabilities
+  tools       ─▶ ToolRegistry "<name>.<tool>"  ─▶ RBAC/ABAC · sandbox · idempotency · audit
+  resources   ─▶ EvidenceItem origin="mcp:<name>" ─▶ compiler: chunk · score · budget · cite
+  sampling    ─▶ the app's model provider
+  elicitation ─▶ ElicitationGate: approve · collect · rail-screen · taint
+```
+
+Because tools land as ordinary registry entries and resources as ordinary
+evidence, an external server inherits the *exact* permission, budget, and
+provenance path a native tool or a local document does. The MCP boundary is a
+lowering, not a bypass.
+
 ### Discover from a registry (marketplace bridge)
 
 `add_mcp_from_registry` composes discovery, governance, and connection in one
@@ -212,6 +231,26 @@ Vincio tracks the spec's revisions while staying interoperable:
 - **Stateless-core transport.** `StreamableHTTPTransport(url, stateless=True)`
   never tracks or sends an `Mcp-Session-Id`, so each request is self-contained and
   can be served by any stateless worker behind a load balancer.
+
+## Best practice & gotchas
+
+- **Keep server names stable.** Tools register as `"<name>.<tool>"`, so a rename
+  re-namespaces every tool and its RBAC scopes; two servers *can* share a tool
+  name because the namespace disambiguates them.
+- **Resources cost budget.** Every MCP resource becomes scored evidence and
+  competes for the packet — pass `resources=False` when you only want a server's
+  tools, so a chatty server's documents don't crowd out your own.
+- **Refused UI is dropped, not truncated.** An MCP-Apps render over
+  `max_render_tokens` (default 4096) emits *no event at all*; if a server's UI
+  never appears, it was refused for budget — the refusal is an `mcp_ui_render`
+  audit entry, not a silent failure.
+- **Elicited values stay tainted.** An accepted `elicitation/create` value is
+  wrapped `TaintedValue.untrusted(...)`; don't strip the taint to "make it work"
+  — feed it to a tool that expects untrusted input, so it can never silently
+  authorize a side effect.
+- **Stateless transport behind a load balancer.**
+  `StreamableHTTPTransport(url, stateless=True)` sends no `Mcp-Session-Id`, so any
+  worker can serve any request; the stateful default pins a session to one worker.
 
 ## CLI
 

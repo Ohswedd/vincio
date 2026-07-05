@@ -40,6 +40,65 @@ App modes: `bm25`, `dense`, `sparse`, `late_interaction`, `hybrid`
 (BM25+dense), `hybrid_full` (BM25+dense+sparse+late-interaction), `graph`,
 `hybrid_graph`, e.g. `app.add_source(..., retrieval="hybrid_full")`.
 
+## How hybrid fusion works
+
+No single signal decides the ranking. `RetrievalEngine.retrieve` fans out
+every `(query, index)` pair concurrently under one concurrency bound, then
+folds the ranked lists into one order with **weighted reciprocal-rank fusion**
+(`reciprocal_rank_fusion`), so a chunk that ranks well in *several* signals
+beats one that spikes in a single index:
+
+```text
+score(chunk) = Σ_lists  weight_list / (k + rank_in_list + 1)      # k = 60
+```
+
+Rank position, not raw index score, is what fuses — that is what lets a
+BM25 hit and a cosine hit combine without ever comparing incompatible score
+scales. The weights are the query plan made concrete: the rewritten main query
+carries weight `1.0`, each decomposed subquery `0.6`, and each
+query-understanding expansion its strategy weight (`decompose` 0.6,
+`multi_query`/`hyde` 0.5, `step_back` 0.3), each multiplied by the per-index
+`index_weights`.
+
+Precision comes *after* recall, in a fixed order:
+
+```text
+plan → over-fetch (candidate_multiplier × top_k per search)
+     → weighted RRF merge → [multi-hop re-fuse] → [rerank top_k×2]
+     → dedup (near_duplicate_score ≥ duplicate_threshold, default 0.9)
+     → top_k evidence
+```
+
+- **Over-fetch**: each index search pulls `candidate_multiplier` (default 4) ×
+  `top_k` candidates, so the merge has depth to work with before the cut.
+- **Multi-hop** (`multi_hop=True`): entities from the current top hits seed
+  follow-up queries, re-fused into the running order (held evidence weighted
+  `2.0`, each hop list `0.4`), bounded by `max_hops`.
+- **Rerank** (optional): a `Reranker` re-scores the merged top `top_k × 2`.
+- **Deduplicate**: near-identical chunks (word-shingle Jaccard or containment ≥
+  `duplicate_threshold`) collapse, and selection stops at `top_k`.
+- **Grow-only adaptive k** (`retrieval.adaptive_top_k`, off by default): a
+  broad or multi-part query raises `top_k` up to `adaptive_top_k_ceiling`
+  (default 20), never below the configured floor — k is the *recall* knob;
+  precision stays governed downstream by the relevance gate, min-score flush,
+  dedup, and the context budget.
+
+Every merge, rewrite, and chosen-k is recorded on the plan and in traces, so
+the fused order is reconstructable, not a black box.
+
+## When to use which mode
+
+- **`bm25`** — exact terms, code identifiers, IDs, short corpora where an
+  embedder buys nothing; zero model calls, fully offline.
+- **`dense`** — paraphrase-heavy questions where the answer shares meaning but
+  not words with the query.
+- **`hybrid`** (the default) — the safe general choice: lexical anchors the
+  precise terms, dense recovers the paraphrases.
+- **`hybrid_full`** — highest recall (adds learned-sparse + late-interaction),
+  at more index cost; reach for it on hard multi-aspect corpora.
+- **`graph` / `hybrid_graph`** — entity-centric questions that walk
+  relationships (Customer → Plan → RefundPolicy) rather than match text.
+
 ## Query understanding
 
 Planner strategies expand the query before fusion; each expansion is
@@ -126,6 +185,22 @@ custom cross-encoder via `CrossEncoderReranker(score_fn)`.
 The connector hub feeds the document engine from external systems: web,
 GitHub, SQL, S3, GCS, Notion, Confluence, Slack, or anything custom via
 `register_connector`. See the [connectors guide](../guides/connectors.md).
+
+## Gotchas
+
+- **Fusion is rank-based, not score-based.** Raising one index's raw scores
+  does nothing; change its `index_weights` (or the per-query weights) to shift
+  its influence on the merged order.
+- **`candidate_multiplier` is the recall ceiling.** If the right chunk never
+  enters the top `candidate_multiplier × top_k` of *any* index, no reranker can
+  recover it — widen the multiplier or add a signal, don't just rerank harder.
+- **`adaptive_top_k` only grows.** It never trims a query below the configured
+  `top_k`; it is a recall lever, and precision is still the downstream gate's job.
+- **Dedup is lexical.** Two chunks that say the same thing in different words
+  both survive `near_duplicate_score`; semantic near-dupes are pruned later, in
+  the context compiler, not here.
+- **Freshness needs a `LiveIndex`.** `indexed_at` / `age_days` only reach
+  evidence metadata when content was stamped on ingest; a plain index has no age.
 
 ## Evaluation
 

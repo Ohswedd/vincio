@@ -114,6 +114,29 @@ and checks that **no refused objective was slipped into the proposed set**, so t
 stay-in-policy property is reconstructable from the bytes, the autonomous-growth
 analogue of the shield's prevention-by-construction.
 
+## Best practice & gotchas
+
+- **Frontier tasks or nothing grows.** `AutoCurriculum` only proposes tasks
+  *solvable by a bounded search but not yet by an existing skill*; a task already
+  mastered, or one beyond the search bound, falls out. If a cycle distills
+  nothing, your tasks sit on the wrong side of the frontier.
+- **Promotion is gated, demotion is automatic.** A skill is added only if it
+  clears the `no_regression_gate` on a held-out frontier set, and `_prune` demotes
+  any active skill whose removal doesn't lower capability — dead weight is dropped,
+  and a skill another skill depends on is load-bearing and kept.
+- **Rails gate the *objective*, before any attempt.** A blocked instruction is
+  pinpointed in `cycle.proposal.refused` and never reaches the attempt step; if
+  the `GovernanceVerifier` can't prove the round's controls, the whole round fails
+  closed. Wire your app's rails (on by default) and the stay-in-policy property is
+  reconstructable from `proposal.verify()`.
+- **Composition refuses cycles.** A `SkillStep` may invoke another skill, expanded
+  recursively by `compose()`; a cycle or a missing sub-skill is refused, never
+  executed, so a corrupt library fails loudly rather than looping.
+- **Two libraries, one word.** `LearnedSkillLibrary` (this guide) holds skills the
+  agent distilled itself, content-addressed; `vincio.skills.SkillLibrary` holds
+  human-authored `SKILL.md`. A learned skill projects to a `Skill` via
+  `to_skill()`, so both retrieve through the same progressive-disclosure path.
+
 ## What it is held to
 
 A `skill_acquisition` VincioBench family gates two SLOs, offline against the

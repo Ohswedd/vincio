@@ -58,6 +58,36 @@ Register custom metrics with `@register_metric("name")`. All metrics are
 deterministic and offline; the same objects run as eval metrics, runtime
 evaluators (`app.add_evaluator`), and test assertions (`vincio.testing`).
 
+### How the grounding metrics work
+
+The grounding family is not a model-judge proxy — it is a deterministic claim
+check, so it gives the same verdict every run and needs no key. `groundedness`
+splits the answer into *verifiable* claims (sentences that assert a checkable
+fact), and scores `supported_claims / total_verifiable_claims` against the
+run's evidence; `unsupported_claim_rate` and `hallucination` are the inverse
+views. A claim counts as supported only when some evidence item clears a
+lexical-similarity threshold **and** contains every number the claim asserts —
+numbers compared as whole tokens, so `"90 days"` is *not* supported by evidence
+that says `"30 days"`, and `"30"` never matches `"130"`. Citation markers like
+`[D1:C2]` are stripped before the number check so their ids don't masquerade as
+numeric claims. A claim-free answer (a greeting, a refusal) skips rather than
+scoring 0, so these metrics never punish output that makes no factual assertion.
+
+**Best practice / gotchas**
+
+- An LLM judge should gate CI only after it has *demonstrably* agreed with
+  people: collect labels through `AnnotationQueue`, and gate on
+  `judge.gating_weight(threshold=…)`, which is `1.0` only once the calibrated
+  Cohen's κ clears the bar. A judge that has never been calibrated has weight
+  `0.0` — it can score, but it cannot gate.
+- Grounding is *lexical*: a correct claim paraphrased with no shared numbers or
+  keywords can read as unsupported. Pair it with a calibrated `ModelJudge` /
+  `GEvalJudge` for semantically-worded answers, or tighten the rubric.
+- Trajectory metrics return a neutral `1.0` when a `RunOutput` has no
+  trajectory, so output-only cases aren't penalized — but that also means a
+  green trajectory score on an output-only case is *vacuous*, not evidence the
+  path was good.
+
 ## Trajectory & tool-use metrics
 
 A run can answer right while taking the wrong path; output-only eval can't see

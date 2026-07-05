@@ -55,6 +55,35 @@ These recipes compose the same primitives the rest of the docs cover in depth:
 [reliability & guardrails](reliability-guardrails.md), and
 [generate documents & media](generate-documents.md).
 
+## Running a recipe
+
+Each recipe is a numbered file under `examples/`. Run it as-is and it uses the
+deterministic mock — no key, no network:
+
+```bash
+python examples/09_security_governance.py          # contract redlining, offline
+
+VINCIO_PROVIDER=openai VINCIO_MODEL=gpt-5.2 \
+  python examples/09_security_governance.py         # same code, a real model
+```
+
+The example file is the source of truth — the prose above summarizes what it
+does, but the code is what the [example gate](test-llm-apps.md) proves runs.
+Read the file to copy the exact wiring.
+
+## Gotchas
+
+- **The mock proves the pipeline, not the answer.** Recipes run offline because
+  the mock emits schema-valid output — that guarantees the plumbing (retrieval,
+  validation, rails, rendering) works, but it is not a quality signal. Point at a
+  real model before judging output.
+- **Some recipes want an extra.** The redline recipe renders Markdown with no
+  dependency but needs `pip install "vincio[gen-docx]"` for DOCX; a recipe that
+  loads PDFs needs `vincio[pdf]`.
+- **A real provider changes cost and latency.** `VINCIO_PROVIDER` / `VINCIO_MODEL`
+  swap the model without touching the recipe, but now every run bills and blocks
+  on the network — keep the mock for iteration.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

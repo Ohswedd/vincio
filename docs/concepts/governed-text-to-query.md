@@ -113,6 +113,29 @@ result.verify(catalog)                   # True
 result.verify(tampered_catalog)          # False — a changed source cell is caught
 ```
 
+## How cell-exact lineage is derived
+
+The engine does not guess which rows an answer came from — it makes SQLite tell
+it, by threading the table's implicit `rowid` (its 1-based insertion order):
+
+- **Projection / filter.** The query is transparently rebuilt with the source
+  rowid as a leading column (`SELECT sales.rowid AS __vrow__, …`), so every result
+  row carries the exact source row it came from. Each output column then cites the
+  source columns its expression references — a bare projection cites one cell, a
+  derived blend (`revenue + tax`) cites both operands, a constant cites none.
+- **Group-by aggregation.** A separate **witness query**
+  (`SELECT <keys>, group_concat(rowid) … GROUP BY <keys>`) maps each group key to
+  the source rowids that fell into it, and each result row is attributed to the
+  rows of its group. The witness deliberately omits `HAVING` / `ORDER BY` /
+  `LIMIT`: attribution is looked up by the group keys that actually appear in the
+  result, so a filtered-out group is simply never asked about.
+
+When the shape falls outside that grammar — a join, a subquery, a CTE, more than
+one table, or a user column that shadows `rowid` / `oid` / `_rowid_` — the engine
+degrades to `LineageCoverage.RESULT` rather than cite the wrong rows. The result
+still re-derives from the content-hashed source on `verify()`; only the per-cell
+attribution is withheld, and the coverage says so.
+
 ## The dataframe-op dialect
 
 The same pipeline runs over a whitelisted, `eval`-free dataframe-op pipeline
@@ -145,6 +168,24 @@ result.verify(app.data_catalog())
 Every query lands on the shared, hash-chained audit log: `data_register` for a
 registration, `data_query` (with the lineage coverage and result hash) for a query,
 and a `deny` entry pinpointing a refused unsafe query.
+
+## Gotchas
+
+- The offline `HeuristicQueryPlanner` grounds only the canonical shapes — counts,
+  single-column aggregates, and single group-by aggregates. A question it cannot
+  ground confidently returns `None` (raising `QueryError`) rather than guess: pass
+  explicit SQL, or route through `app.query_data` where a model planner can propose
+  SQL that is still verified read-only before it runs.
+- The read-only guard is a **structural** check, not a parser: it strips comments,
+  string literals, and quoted identifiers before scanning, so a write keyword
+  inside a quoted value or a column named `"update"` is not misread — but it also
+  refuses anything that is not a single `SELECT` / `WITH` statement, including a
+  stacked `SELECT 1; DROP …`.
+- `verify()` returns `False` on *any* divergence — a tampered result, a tampered
+  source cell, or a source-hash mismatch — so treat it as a boolean gate, not a
+  diff; use `cite_refs` / `citations` to see which cells an answer rests on.
+- A result over `max_rows` raises rather than truncating silently, so a cited
+  answer is never a partial one; tighten the query or raise the ceiling.
 
 ## What it is not
 

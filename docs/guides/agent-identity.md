@@ -127,6 +127,34 @@ cryptographic fact, not a logged string. (The app adopts the identity as the
 audit-chain signer only when the log is still empty, so the chain stays verifiable
 under one key; bind the identity at startup.)
 
+## Best practice & gotchas
+
+- **Bind the identity at startup, before the log has entries.**
+  `app.use_identity(agent)` adopts the identity as the audit-chain signer *only
+  while the chain is still empty*, so it stays verifiable under one key. Do it
+  first thing; you cannot swap the chain signer mid-run without breaking
+  single-key verification.
+- **Signatures are time-indexed, not latest-key-wins.** After `rotate()`, old
+  signatures stay valid because the rotation chain proves the new key descends
+  from the one that signed them; `IdentityDocument.verify_signature(msg, sig,
+  at=...)` reports which key produced a signature *and* whether that key was
+  active at a given instant.
+- **Revoking the active key rotates first.** Revocation mints a fresh key (so a
+  signer always remains), then marks the old key revoked from that moment —
+  history it legitimately signed before stays verifiable; new forgeries with the
+  compromised key do not.
+- **Attenuation only ever narrows.** A sub-delegation that *adds* a capability,
+  *raises* the budget cap, or *extends* the expiry is refused from the bytes
+  (`attenuation_ok == False`). Put `chain.require_permits(...)` in front of the
+  privileged call so an over-reach fails closed with an `IdentityError` rather
+  than proceeding unauthorized.
+- **No registry to keep in sync.** A verifier resolves the key with
+  `public_key_from_did`, and a link signed with a *rotated* key carries a compact
+  `KeyAuthorization`, so the whole chain verifies offline with no network call.
+- **Install the native backend for production.** The bundled pure-Python Ed25519
+  is byte-for-byte identical, but install `pip install "vincio[crypto]"` for the
+  constant-time `cryptography` implementation under load.
+
 ## See also
 
 - The runnable example: [`examples/09_security_governance.py`](../../examples/09_security_governance.py)

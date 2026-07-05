@@ -113,6 +113,15 @@ All caches invalidate through the existing tag-based invalidation manager
 (document updated → chunk/retrieval/context entries; prompt changed →
 prompt-compile entries; and so on).
 
+**One invariant across every compile accelerator below.** The render program, the
+warm candidate arena, the single-pass feature arena, and vectorized scoring are
+all **selection-preserving**: the compiled context is byte-identical with the flag
+on or off, so they change *speed*, never *behaviour* — a PerfBench
+`selection_byte_identical` gate holds it, and a `compile_speedup` ratio floor
+holds the win. Each keeps its memoized state in a **fresh per-compile object**, so
+the shared compiler stays safe under concurrent runs. The sections below name each
+one's specific mechanism; this is the guarantee they share.
+
 ### Partial recompile on packet edits
 
 Edit a compiled packet without paying for a full recompile, selection,
@@ -141,12 +150,10 @@ only the volatile suffix:
 # (CompilerOptions.use_render_program)
 ```
 
-The output is byte-identical to compiling from scratch; the program is a
-hot-path accelerator, not a behaviour change. On a representative spec the warm
-prefix reuse is several times faster than re-rendering it every call;
-`compiler.program_hits` counts the reuses. This is distinct from the
-`PromptCompileCache`, which only hits when *every* input (task and context
-blocks included) is unchanged.
+On a representative spec the warm prefix reuse is several times faster than
+re-rendering it every call; `compiler.program_hits` counts the reuses. This is
+distinct from the `PromptCompileCache`, which only hits when *every* input (task
+and context blocks included) is unchanged.
 
 ### Warm candidate arena
 
@@ -162,9 +169,9 @@ performance:
   reuse_candidate_set: true   # default
 ```
 
-The reuse is correctness-preserving: the cached state is query-independent, and
-each compile works from a fresh copy, so the shared compiler stays safe under
-concurrent runs. `compiler.arena_hits` counts the reuses.
+The cached candidate set is query-independent, so the reuse is
+correctness-preserving (per the invariant above). `compiler.arena_hits` counts
+the reuses.
 
 ### Single-pass feature arena
 
@@ -185,10 +192,8 @@ overruns the global cache pays each derivation once. The semantic path caches
 each embedding's norm once and reuses it across every pairwise cosine, the
 normalization pass counts tokens in one batch, and BM25 bounds its top-k with a
 partial selection instead of a full sort. Every one of these is
-**selection-preserving**: the features are byte-identical to the per-pass
-derivation, so the same context is selected with the flag on or off — held by a
-PerfBench `selection_byte_identical` gate. The arena is a fresh per-compile
-object, so the shared compiler stays safe under concurrent runs.
+**selection-preserving**: the derived features are byte-identical to the per-pass
+derivation (the invariant above), so the same context is selected either way.
 
 The win is held honest: rather than a loose latency ceiling, a PerfBench
 `compile_speedup` **ratio floor** gates that the single-pass path stays
@@ -205,15 +210,15 @@ Candidate scoring runs in a single pass. The per-component scores for the whole
 candidate set are reduced against the weight vector together, and, when NumPy
 is installed, semantic relevance and the weighted reduction each collapse to a
 single matrix product over the candidate set the feature arena prepared. The
-pure-Python fallback is the zero-dependency default and produces bit-for-bit the
-same selection, so NumPy is an optional accelerator and never a requirement:
+pure-Python fallback is the zero-dependency default, so NumPy is an optional
+accelerator, never a requirement:
 
 ```bash
 pip install numpy   # optional: accelerates large semantic candidate sets
 ```
 
-Nothing to configure, the batched scorer is always on, and a build without
-NumPy compiles identical context to one with it.
+Nothing to configure — the batched scorer is always on, and it is one of the
+selection-preserving accelerators above (NumPy and pure-Python select identically).
 
 ## Streaming-first compilation
 
@@ -362,6 +367,23 @@ from vincio.retrieval.embeddings import BatchingEmbedder
 
 embedder = BatchingEmbedder(inner_embedder, max_batch=64, window_ms=5)
 ```
+
+## Gotchas
+
+- **Caches are keyed on every input that affects the output**, so a stale hit is
+  impossible by construction — you never invalidate by hand; an input change
+  re-keys. The three compile caches are on by default.
+- **Opt-in accelerators are byte-identical when off.** `speculative_prefetch` and
+  `slim_packets` default off and change nothing when disabled — turn them on for
+  the workload that benefits (a warm session, a large packet), not blindly.
+- **NumPy is an accelerator, never a requirement.** The pure-Python scorer is the
+  zero-dependency default and selects bit-for-bit the same context, so a build
+  without NumPy compiles identically to one with it.
+- **`compile_streaming` / `recompile` are deep `ContextCompiler` APIs, not
+  `app.*` verbs.** A normal run already streams end to end through `app.stream`;
+  reach for these only when driving the compiler directly.
+- **`Budget.max_latency_ms` is a hard deadline** — a run that overruns fails with
+  a budget error rather than hanging, and cancels every in-flight subtask.
 
 ## Measuring: benchmark gates & profiling
 

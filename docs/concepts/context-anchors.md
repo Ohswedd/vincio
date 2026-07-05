@@ -54,9 +54,90 @@ context compiler treats pinned evidence as guaranteed at **every** drop point:
   source becomes an anchor) and never starves the retrieved detail. The frame
   takes at most `pinned_budget_fraction` (default half) of the window.
 
-Every ladder step and the reserved cost are recorded on the excluded-context
-report and the [compile receipt](compile-receipt.md), so the frame's presence
-and cost are auditable.
+Each fit step is recorded on the item's own metadata (`pinned_fit`), and the
+reserved cost surfaces as a dedicated `anchor` line in the
+[compile receipt](compile-receipt.md)'s budget summary — a fitted frame is *on*
+the packet, so it is never in the excluded set — so the frame's presence and
+cost stay auditable.
+
+## How it works
+
+**Building the brief** (`build_anchor_brief`) is a deterministic, constraint-first
+distillation, not a summarizer:
+
+```text
+split every anchor doc into whole sentences
+  → classify: normative (must/never/always/required/should/avoid/…) vs prose
+  → global priority queue: ALL normative first (doc order), then ALL prose
+  → greedy fill under body_budget, skipping exact + prefix/superset dupes
+  → regroup picks by document → render "### <title>" blocks under the frame header
+  → trim whole trailing sentences until it fits brief_tokens
+  → id = sha256(rendered text)
+```
+
+The priority queue is **global across documents**, so a tiny rules file's
+constraints outrank a verbose README's prose — a small normative doc is never
+starved by a large narrative one. `body_budget` reserves the frame header and
+~6 tokens per document up front; an oversize sentence is *skipped* rather than
+admitted (so it can't block every later constraint and then be trimmed away),
+and if every sentence alone exceeds the budget the best one is carried as a
+`_verified_truncate` whole-word cut — never nothing, never mid-word. The id
+hashes the **rendered output**, so two environments whose tokenizers disagree
+get different ids and `verify()` never false-matches a brief it did not produce;
+`_BRIEF_ALGO_VERSION` bumps invalidate stale cached briefs on upgrade.
+
+**Caching** lives in `AnchorSet`: the brief rebuilds only when the corpus hash
+(`_corpus_hash` over algorithm version + `brief_tokens` + each document's
+title/header/text, length-framed) changes, so re-adding identical documents is
+free. `erase_source` calls `AnchorSet.remove`, so an erased anchor stops
+injecting its frame — the anchor plane is inside the erasure sweep, not a leak
+past it.
+
+**Reserving the window** (`ContextCompiler._reserve_pinned`) fits the frame
+into `cap = int(max_input_tokens × pinned_budget_fraction)` (default half),
+taken off the *top* before the flexible evidence block is scored:
+
+```text
+total pinned ≤ cap        → ride uncompressed
+total pinned > cap        → per-item share = floor + proportional extra
+                            (Σ shares ≤ cap by construction, order-independent)
+item over its share       → compress (if ≥24 tok) → hard-cut, re-verified
+                            against the live token counter  (pinned_fit)
+more pinned items than cap → ContextCompileError (observable, never silent)
+```
+
+The fitted frame is then **prepended before the retrieved detail** and kept out
+of the competitive MMR pool entirely, which is *why* the relevance gate, the
+min-score flush, dedup, conflict resolution, and eviction can never touch it.
+
+## Best practice
+
+- Anchor the documents that must hold *for the whole task* — a PRD, a spec, a
+  brand/voice guide, coding standards — not per-question reference material.
+- Size `brief_tokens` to the *normative* content, not the corpus: the frame is
+  constraints, and detail is still retrievable on demand (Tier 2). A few hundred
+  tokens is usually right; the default is 400.
+- Write the source with real normative verbs (**must / never / always /
+  required**). Those lines are what the brief prefers to keep — a rule buried in
+  narrative prose may be trimmed before a crisp `MUST` elsewhere.
+- Inspect what actually shipped with `app.task_brief()` before a long run.
+
+## Gotchas
+
+- **`pinned_budget_fraction` is a ceiling, not a target.** More pinned items
+  than the cap in tokens is unsatisfiable and raises `ContextCompileError` —
+  raise the budget or unpin, rather than expecting a silent drop.
+- **The frame is distilled, not verbatim.** A constraint that never uses a
+  normative verb can lose to one that does under a tight `brief_tokens`; widen
+  the budget or reword the source.
+- **Detail is not suppressed by the frame.** An anchor's own chunks are exempt
+  from being deduplicated against its digest, so a retrieved section arrives
+  *alongside* the frame — but it still competes for the flexible budget like any
+  evidence.
+- **Changing the corpus changes the id.** The `anchor:<hash>` id (and therefore
+  the compile cache and receipt hash) is stable across a call chain and moves
+  only when the anchor documents change — which is the signal that surfaces a
+  frame update in a diff.
 
 ## Why this beats the competitors' shape
 

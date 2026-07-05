@@ -96,6 +96,40 @@ app.add_source("support", connector=connect("tickets", queue="billing"))
 Pair connectors with a `LiveIndex` (upserts + TTL) to refresh changing
 corpora without rebuilds, see [retrieval concepts](../concepts/retrieval.md#live-indexes).
 
+## How it works
+
+A connector's only job is to return `Document` objects with provenance
+(`source_uri`, connector metadata, timestamps). From there the content is
+identical to a local file: `add_source(connector=...)` runs the same
+load → chunk → index path, and every chunk keeps its `source_uri`, so an answer
+drawn from Notion or Snowflake cites back to the exact page or row. There is no
+separate "external content" code path — provenance in, citations out.
+
+## Best practice
+
+- **Inject the client for tests.** Every REST connector accepts `client=` (an
+  `httpx.AsyncClient`); wrap an `httpx.MockTransport` and the whole load → chunk →
+  index loop runs offline and deterministically, exactly as the suite does.
+- **Reach for `add_source(connector=...)` when you want a corpus indexed**, and
+  the standalone `docs = await connector.load()` when you only want the
+  `Document`s (to inspect, filter, or route elsewhere) — `load()` does not index.
+- **Sample large tables instead of truncating.** The SQL-family connectors take
+  an opt-in reservoir `sample=` that stands a representative sample in for a
+  first-N cutoff.
+
+## Gotchas
+
+- **Warehouse extras are lazy but required.** `s3` / `gcs` / `bigquery` /
+  `snowflake` import their heavy SDK only on use — so they round-trip offline
+  with an injected client — but a *live* run raises a helpful
+  `pip install "vincio[...]"` until the extra is installed.
+- **Inject a sqlite connection with `check_same_thread=False`.** `add_source`
+  may touch it off the calling thread; the default sqlite3 connection will raise.
+- **Auth is per-connector, not global.** Jira/Zendesk take email + API token or a
+  bearer; Linear an API key; Google Drive / SharePoint a bearer access token;
+  Salesforce an instance URL + bearer — there is no single credential that
+  unlocks all of them.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

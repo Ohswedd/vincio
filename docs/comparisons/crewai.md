@@ -1,7 +1,8 @@
 # Vincio vs CrewAI
 
 CrewAI popularized role-based multi-agent teams: agents with roles, goals,
-and backstories collaborate on tasks sequentially or under a manager.
+and backstories collaborate on tasks sequentially or under a manager, with
+Flows for more deterministic, event-driven orchestration.
 
 **Where Vincio differs**
 

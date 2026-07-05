@@ -159,6 +159,35 @@ token-budgeted reading, or offline-verifiable citations; prefer the hosted
 tool when you specifically want the provider's own crawl and are on the one
 provider that ships it.
 
+## How it works
+
+`use_web_search()` registers two ordinary tools — `web_search` and `web_read` —
+on the standard permissioned registry, so they inherit RBAC, the per-session
+budget, the cache, and the audit chain like any other tool. `web_read` does not
+return the page; it returns **token-budgeted excerpts** that are a pure function
+of `(snapshot, query, budget)`. Because each read is content-hashed and the
+excerpts re-derive deterministically, a whole session verifies offline from the
+stored bytes — the citations are reproducible, not "trust me". Wrapping the
+provider in `ToolProtocolProvider` means a model with no native function calling
+drives the identical loop through a text protocol.
+
+## Gotchas
+
+- **SSRF is fail-closed and non-negotiable.** Private, loopback, and link-local
+  hosts are refused before any request leaves the process, and robots.txt is
+  respected — these rails hold across *every* preset. A URL merely *mentioned* in
+  a message (`"is 169.254.169.254 the metadata IP?"`) is never fetched.
+- **`allow_domains=[]` means all domains.** The allowlist is strict only once
+  non-empty; leaving it empty is not a lockdown.
+- **Policy refusals come back to the *model*, not to you.** A budget or domain
+  violation is a typed `WebPolicyError` the model reads and adapts to, not an
+  exception raised into your call — watch `app.audit` to see what was refused.
+- **Budgets are per-session.** `max_searches` / `max_fetches` bound one session;
+  a long agent loop can exhaust them, after which further calls are refused.
+- **Check `page.available`.** A wall, paywall, or JS-only shell returns
+  `available=False` with an `unavailable_reason`; the right move is to read
+  another result, not to treat the empty page as the answer.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

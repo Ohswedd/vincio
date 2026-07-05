@@ -120,6 +120,26 @@ contextual (`voyage-context`), and multimodal (`voyage-multimodal` /
 `cohere-multimodal`) embedders, all behind the same `Embedder` interface and
 feeding the same scored retrieval.
 
+## Migration strategy & gotchas
+
+- **Drop the index/query-engine ceremony.**
+  `VectorStoreIndex.from_documents(...).as_query_engine().query(q)` collapses to
+  `app.add_source(..., retrieval="hybrid")` + `app.run(q)`; retrieval, reranking,
+  budgeting, and citation are the compiler's job, not yours.
+- **`from_*` is import-free; `to_*` needs the extra.** Wrapping readers /
+  retrievers / embeddings *into* Vincio is duck-typed; handing components back
+  (`to_llamaindex_*`) needs `pip install "vincio[llamaindex]"`.
+- **A wrapped retriever is read-only.** `from_llamaindex_retriever` exposes an
+  async `.search()` Vincio scores; it doesn't re-embed. Let Vincio index via
+  `add_source` (or point `build_vector_index(...)` at a production store) when you
+  want it to own retrieval.
+- **You don't have to re-run a reader.** `from_llamaindex_documents` /
+  `from_llamaindex_document` convert nodes or documents you already hold straight
+  to Vincio `Document`s.
+- **Swap the store without touching the query side.** `build_vector_index("qdrant"
+  | …)` + `build_embedder(...)` feed the same scored retrieval, so moving from
+  in-memory to Qdrant / pgvector / Weaviate is a wiring change, not a query rewrite.
+
 ## What Vincio adds
 
 - **A context compiler, not just a query engine**: retrieved chunks compete

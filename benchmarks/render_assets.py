@@ -1,16 +1,16 @@
-"""Render the benchmark README assets from data — a single source of truth.
+"""Render benchmark preview SVGs from data — a drift check, not the published art.
 
-Emits three parchment/ink SVGs, none hand-transcribed:
+The published benchmark assets in ``assets/`` were redesigned by hand (the
+parchment/Vitruvian system) and are the source of truth for the README. This tool
+still renders the same *numbers* — from ``benchmarks/manifest.json`` (track catalog)
+and the dated ``benchmarks/reference/live_snapshot.json`` (Live figures) — into a set
+of **preview** SVGs under ``benchmarks/results/`` so you can diff the data against the
+published art and catch a stale number without overwriting the redesigned files.
 
-* ``assets/benchmark-platform.svg`` — the three-track overview, from
-  ``benchmarks/manifest.json`` (itself generated from the live registries), so the
-  picture can never drift from the catalog.
-* ``assets/benchmark-uplift.svg`` — the Track-2 live grounded-answer uplift, from
-  the dated ``benchmarks/reference/live_snapshot.json``.
-* ``assets/benchmark-headtohead.svg`` — the Track-3 feature head-to-head headline,
-  from the same snapshot.
+    python benchmarks/render_assets.py            # writes preview SVGs to benchmarks/results/
 
-    python benchmarks/render_assets.py            # writes all three assets
+To refresh the published art, update the hand-authored SVGs in ``assets/`` (and the
+snapshot they cite); this tool is the data-side check on those numbers.
 """
 
 from __future__ import annotations
@@ -22,10 +22,11 @@ from xml.sax.saxutils import escape
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "benchmarks" / "manifest.json"
 SNAPSHOT = ROOT / "benchmarks" / "reference" / "live_snapshot.json"
-OUT = ROOT / "assets" / "benchmark-platform.svg"
-OUT_PLANE = ROOT / "assets" / "benchmark-plane.svg"
-OUT_UPLIFT = ROOT / "assets" / "benchmark-uplift.svg"
-OUT_H2H = ROOT / "assets" / "benchmark-headtohead.svg"
+_PREVIEW = ROOT / "benchmarks" / "results"
+OUT = _PREVIEW / "preview-benchmark-platform.svg"
+OUT_PLANE = _PREVIEW / "preview-benchmark-plane.svg"
+OUT_UPLIFT = _PREVIEW / "preview-benchmark-uplift.svg"
+OUT_H2H = _PREVIEW / "preview-benchmark-headtohead.svg"
 
 # Shared parchment/ink palette (id prefix per-asset to avoid gradient id clashes).
 def _palette(pfx: str) -> str:

@@ -1,9 +1,9 @@
-<svg width="860" height="430" viewBox="0 0 860 430" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pf_t pf_d">
-  <title id="pf_t">The Vincio benchmark platform</title>
-  <desc id="pf_d">Three benchmark tracks under one provenance-tier honesty contract: Model (a model on the public benchmarks), Uplift (the same model routed through Vincio vs direct), and Feature (a Vincio feature vs a competitor library). Each supports a Live run and an offline mockup; a lower tier can never print a higher tier label.</desc>
+<svg width="860" height="404" viewBox="0 0 860 404" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pf_t pf_d">
+  <title id="pf_t">The Vincio benchmark platform — three tracks, one honesty contract</title>
+  <desc id="pf_d">Three benchmark tracks under one provenance-tier honesty contract. Track 1 Model scores a model on 29 public benchmarks across 10 niches. Track 2 Uplift measures the same model routed through Vincio versus called directly, 5 benchmarks. Track 3 Feature pits a Vincio feature against a real competitor library, 8 contests. Every number carries an enforced provenance tier: L Live — the real thing ran end to end, reported never gated; R Recorded — a hash-pinned replay, gates CI; S Static or Mockup — offline and reproducible, gates CI. A lower tier can never print a higher tier's label.</desc>
   <defs>
-    <radialGradient id="pf_parch" cx="40%" cy="26%" r="88%">
-      <stop offset="0%" stop-color="#FBF4E2"/>
+    <radialGradient id="pf_parch" cx="40%" cy="8%" r="94%">
+      <stop offset="0%" stop-color="#FCF6E6"/>
       <stop offset="62%" stop-color="#F3E8CC"/>
       <stop offset="100%" stop-color="#E7D6AE"/>
     </radialGradient>
@@ -13,55 +13,79 @@
       <stop offset="100%" stop-color="#9A721C"/>
     </linearGradient>
     <linearGradient id="pf_goldtext" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#D9B354"/>
-      <stop offset="100%" stop-color="#9A721C"/>
+      <stop offset="0%" stop-color="#C79A3A"/>
+      <stop offset="100%" stop-color="#8C6516"/>
     </linearGradient>
   </defs>
-  <rect x="1.5" y="1.5" width="857" height="427" rx="16" fill="url(#pf_parch)" stroke="#C49A3A" stroke-width="1.5"/>
-  <rect x="6.5" y="6.5" width="847" height="417" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
+  <rect x="1.5" y="1.5" width="857" height="401" rx="16" fill="url(#pf_parch)" stroke="url(#pf_gold)" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="391" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.38"/>
+
   <g font-family="Georgia, 'Times New Roman', serif">
-    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">THE VINCIO BENCHMARK PLATFORM &#183; TIER-HONEST</text>
-    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#pf_goldtext)">Three tracks, one honesty contract</text>
-    <text x="40" y="102" font-size="13" fill="#6B5836">Every number carries a provenance tier &#183; each track runs live or as an offline mockup &#183; nothing fabricated.</text>
-    <rect x="40" y="122" width="251" height="176" rx="10" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
-    <text x="58" y="152" font-size="13" font-weight="700" letter-spacing="1" fill="#B98B2E">1 · MODEL</text>
-    <text x="58" y="200" font-size="44" font-weight="700" fill="url(#pf_goldtext)">29</text>
-    <text x="58" y="220" font-size="12" fill="#8A7551">benchmarks</text>
-    <text x="58" y="244" font-size="11.5" fill="#3A2E1C">a model on the public</text>
-    <text x="58" y="259" font-size="11.5" fill="#3A2E1C">benchmarks</text>
-    <text x="58" y="268" font-size="11" font-weight="700" fill="#9A721C">tiers S·R·L</text>
-    <text x="58" y="286" font-size="11" font-family="ui-monospace, monospace" fill="#6B5836">vincio bench model</text>
-    <rect x="304" y="122" width="251" height="176" rx="10" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
-    <text x="322" y="152" font-size="13" font-weight="700" letter-spacing="1" fill="#B98B2E">2 · UPLIFT</text>
-    <text x="322" y="200" font-size="44" font-weight="700" fill="url(#pf_goldtext)">5</text>
-    <text x="322" y="220" font-size="12" fill="#8A7551">uplift benchmarks</text>
-    <text x="322" y="244" font-size="11.5" fill="#3A2E1C">the same model, Vincio-routed</text>
-    <text x="322" y="259" font-size="11.5" fill="#3A2E1C">vs direct</text>
-    <text x="322" y="268" font-size="11" font-weight="700" fill="#9A721C">tiers S·L</text>
-    <text x="322" y="286" font-size="11" font-family="ui-monospace, monospace" fill="#6B5836">vincio bench uplift</text>
-    <rect x="568" y="122" width="251" height="176" rx="10" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
-    <text x="586" y="152" font-size="13" font-weight="700" letter-spacing="1" fill="#B98B2E">3 · FEATURE</text>
-    <text x="586" y="200" font-size="44" font-weight="700" fill="url(#pf_goldtext)">8</text>
-    <text x="586" y="220" font-size="12" fill="#8A7551">feature contests</text>
-    <text x="586" y="244" font-size="11.5" fill="#3A2E1C">a Vincio feature vs a</text>
-    <text x="586" y="259" font-size="11.5" fill="#3A2E1C">competitor library</text>
-    <text x="586" y="268" font-size="11" font-weight="700" fill="#9A721C">tiers S·L</text>
-    <text x="586" y="286" font-size="11" font-family="ui-monospace, monospace" fill="#6B5836">vincio bench feature</text>
-    <rect x="40" y="322" width="253" height="44" rx="9" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
-    <circle cx="64" cy="344" r="13" fill="url(#pf_gold)"/>
-    <text x="64" y="349" font-size="15" font-weight="700" fill="#FBF4E2" text-anchor="middle">L</text>
-    <text x="86" y="341" font-size="13" font-weight="700" fill="#3A2E1C">Live</text>
-    <text x="86" y="357" font-size="10" fill="#8A7551">the real thing ran end to end</text>
-    <rect x="306" y="322" width="253" height="44" rx="9" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
-    <circle cx="330" cy="344" r="13" fill="url(#pf_gold)"/>
-    <text x="330" y="349" font-size="15" font-weight="700" fill="#FBF4E2" text-anchor="middle">R</text>
-    <text x="352" y="341" font-size="13" font-weight="700" fill="#3A2E1C">Recorded</text>
-    <text x="352" y="357" font-size="10" fill="#8A7551">a hash-pinned replay</text>
-    <rect x="572" y="322" width="253" height="44" rx="9" fill="#FCF6E8" stroke="url(#pf_gold)" stroke-width="1"/>
-    <circle cx="596" cy="344" r="13" fill="url(#pf_gold)"/>
-    <text x="596" y="349" font-size="15" font-weight="700" fill="#FBF4E2" text-anchor="middle">S</text>
-    <text x="618" y="341" font-size="13" font-weight="700" fill="#3A2E1C">Static / Mockup</text>
-    <text x="618" y="357" font-size="10" fill="#8A7551">offline, reproducible, gates CI</text>
-    <text x="430" y="410" font-size="11.5" fill="#6B5836" text-anchor="middle">One command &#183; <tspan font-family="ui-monospace, monospace">vincio bench model | uplift | feature</tspan> &#183; the engine refuses to print a higher tier than the inputs support.</text>
+    <text x="34" y="36" font-size="11.5" letter-spacing="3" fill="#B98B2E">HOW THE NUMBERS STAY HONEST</text>
+    <text x="34" y="62" font-size="19" font-weight="700" fill="url(#pf_goldtext)">Three tracks, one provenance contract</text>
+    <text x="34" y="82" font-size="11.5" fill="#6B5836">Every figure carries a tier that says, structurally, how real it is — one command drives all three: <tspan font-family="'SFMono-Regular',Consolas,monospace" fill="#8C6516">vincio bench</tspan>.</text>
+
+    <!-- three track cards -->
+    <!-- Track 1 -->
+    <g>
+      <rect x="34" y="100" width="256" height="150" rx="11" fill="#FCF6E8" stroke="#D8C79A" stroke-width="1"/>
+      <text x="52" y="128" font-size="11" fill="#8C6516" letter-spacing="1">TRACK 1</text>
+      <text x="52" y="150" font-size="16" font-weight="700" fill="#3A2E1C">Model</text>
+      <text x="52" y="172" font-size="10.5" fill="#6B5836">How good is a <tspan font-style="italic">model</tspan> on the</text>
+      <text x="52" y="186" font-size="10.5" fill="#6B5836">standard public benchmarks?</text>
+      <text x="52" y="216" font-size="26" font-weight="700" fill="url(#pf_goldtext)">29</text>
+      <text x="92" y="216" font-size="10.5" fill="#6B5836">benchmarks across</text>
+      <text x="92" y="230" font-size="10.5" fill="#6B5836">10 niches</text>
+      <text x="52" y="244" font-family="'SFMono-Regular',Consolas,monospace" font-size="9.5" fill="#8C6516">vincio bench model</text>
+    </g>
+    <!-- Track 2 -->
+    <g>
+      <rect x="302" y="100" width="256" height="150" rx="11" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+      <text x="320" y="128" font-size="11" fill="#8C6516" letter-spacing="1">TRACK 2</text>
+      <text x="320" y="150" font-size="16" font-weight="700" fill="#3A2E1C">Uplift</text>
+      <text x="320" y="172" font-size="10.5" fill="#6B5836">How much does routing a model</text>
+      <text x="320" y="186" font-size="10.5" fill="#6B5836"><tspan font-style="italic">through Vincio</tspan> change it?</text>
+      <text x="320" y="216" font-size="26" font-weight="700" fill="url(#pf_goldtext)">5</text>
+      <text x="352" y="216" font-size="10.5" fill="#6B5836">same model, Vincio-</text>
+      <text x="352" y="230" font-size="10.5" fill="#6B5836">routed vs direct</text>
+      <text x="320" y="244" font-family="'SFMono-Regular',Consolas,monospace" font-size="9.5" fill="#8C6516">vincio bench uplift</text>
+    </g>
+    <!-- Track 3 -->
+    <g>
+      <rect x="570" y="100" width="256" height="150" rx="11" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+      <text x="588" y="128" font-size="11" fill="#8C6516" letter-spacing="1">TRACK 3</text>
+      <text x="588" y="150" font-size="16" font-weight="700" fill="#3A2E1C">Feature</text>
+      <text x="588" y="172" font-size="10.5" fill="#6B5836">How good is a Vincio <tspan font-style="italic">feature</tspan></text>
+      <text x="588" y="186" font-size="10.5" fill="#6B5836">vs the same feature elsewhere?</text>
+      <text x="588" y="216" font-size="26" font-weight="700" fill="url(#pf_goldtext)">8</text>
+      <text x="620" y="216" font-size="10.5" fill="#6B5836">vs a real competitor</text>
+      <text x="620" y="230" font-size="10.5" fill="#6B5836">library, live</text>
+      <text x="588" y="244" font-family="'SFMono-Regular',Consolas,monospace" font-size="9.5" fill="#8C6516">vincio bench feature</text>
+    </g>
+
+    <!-- provenance tiers -->
+    <text x="34" y="288" font-size="11" letter-spacing="1.5" fill="#B98B2E">THE ONE CONTRACT — PROVENANCE TIERS</text>
+    <g>
+      <!-- L -->
+      <rect x="34" y="300" width="256" height="76" rx="10" fill="#EEF1FB" stroke="#4C6EF5" stroke-width="1"/>
+      <circle cx="60" cy="326" r="13" fill="#4C6EF5"/><text x="60" y="331" font-size="14" font-weight="700" fill="#FFF" text-anchor="middle">L</text>
+      <text x="82" y="322" font-size="13" font-weight="700" fill="#3B57C4">Live</text>
+      <text x="52" y="348" font-size="9.5" fill="#41506B">a live model or the real competitor</text>
+      <text x="52" y="362" font-size="9.5" fill="#41506B">library. Reported, never gated.</text>
+      <!-- R -->
+      <rect x="302" y="300" width="256" height="76" rx="10" fill="#FCF6E8" stroke="#C49A3A" stroke-width="1"/>
+      <circle cx="328" cy="326" r="13" fill="url(#pf_gold)"/><text x="328" y="331" font-size="14" font-weight="700" fill="#3A2E1C" text-anchor="middle">R</text>
+      <text x="350" y="322" font-size="13" font-weight="700" fill="#8C6516">Recorded</text>
+      <text x="320" y="348" font-size="9.5" fill="#6B5836">a hash-pinned slice of the real</text>
+      <text x="320" y="362" font-size="9.5" fill="#6B5836">thing, replayed. Gates CI.</text>
+      <!-- S -->
+      <rect x="570" y="300" width="256" height="76" rx="10" fill="#F3E8CC" stroke="#B79A6A" stroke-width="1"/>
+      <circle cx="596" cy="326" r="13" fill="none" stroke="#9A721C" stroke-width="1.6"/><text x="596" y="331" font-size="14" font-weight="700" fill="#8C6516" text-anchor="middle">S</text>
+      <text x="618" y="322" font-size="13" font-weight="700" fill="#8C6516">Static / Mockup</text>
+      <text x="588" y="348" font-size="9.5" fill="#6B5836">offline &amp; reproducible; model scores</text>
+      <text x="588" y="362" font-size="9.5" fill="#6B5836">saturate by design. Gates CI, not a claim.</text>
+    </g>
+
+    <text x="430" y="394" font-size="9.5" fill="#8C7448" font-style="italic" text-anchor="middle">A lower tier can never print a higher tier's label — a Tier-S mechanism check can never masquerade as a Tier-L score.</text>
   </g>
 </svg>

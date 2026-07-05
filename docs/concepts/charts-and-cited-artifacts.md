@@ -65,6 +65,47 @@ A chart built from a bare `Dataset` (rather than a cited `QueryResult`) is
 content-bound but states `RESULT` coverage — there is no query to re-execute, and
 the coverage is always stated, never silently downgraded.
 
+## How it works: from a result to credentialed bytes
+
+`generate_chart` is a short deterministic pipeline, and every stage feeds the hash
+the credential binds:
+
+```
+QueryResult (cited)  ──resolve──▶  dataset + provenance + result_hash
+    │  infer encoding: measure → y, dimension → x, 2nd dimension → color
+    │  default mark: temporal x ⇒ line, else bar
+    ▼
+ChartSpec(mark, encoding, values = project(dataset, encoding))
+    │  renderer.render(spec) → bytes  (Vega-Lite JSON, or a PNG)
+    ▼
+mark_data_driven_content(bytes) → ProvenanceManifest  (C2PA, dataDrivenMedia)
+    │  embed_provenance: a PNG carries the credential inline (re-bound to the
+    │  changed bytes); a JSON spec keeps it as a sidecar
+    ▼
+chart_hash = stable_hash(spec, media_sha256(bytes), source_hashes, result_hash)
+```
+
+`values` is a straight projection of the source result onto the encoded columns —
+the exact records the figure depicts — and it is what `verify` recomputes and
+compares, so a figure can never plot numbers its source result does not contain.
+The `is_synthetic=False` credential is the honest half: a chart is a faithful
+rendering of real values, not model-synthesized media, so the manifest declares
+the `dataDrivenMedia` source type rather than claiming the figure was invented.
+
+## Gotchas
+
+- A chart from a bare `Dataset` is content-bound but only `RESULT` coverage —
+  there is no query to re-execute — so build charts from a cited `QueryResult` (or
+  an `AnalysisResult`) when you want the figure to re-derive cell-by-cell.
+- An empty result raises `ChartError` rather than rendering a blank figure, and a
+  pinned channel (`x=` / `y=` / `color=`) that names a column the result does not
+  carry raises rather than silently dropping it.
+- The default mark is a bar; a temporal x axis upgrades it to a line only while
+  `infer_type` is left on. An explicit `type=` is always honored.
+- A **signed** credential is not reported valid without its matching `signer`:
+  pass `signer=` to `generate_chart` and to `verify` / `content_bound`, or an
+  unverifiable signature is never silently accepted.
+
 ## Cited reports extend to figures
 
 The [cited-report builder](../../vincio/generation/report.py) already makes a report

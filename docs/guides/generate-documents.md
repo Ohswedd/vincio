@@ -159,6 +159,37 @@ The classification is **advisory**, the operator makes the final call. ISO/IEC
 
 See `examples/09_security_governance.py` for an end-to-end, offline run.
 
+## Which builder for which job
+
+- **`build_document(...)`** renders a *validated result* into an artifact — use
+  it when the shape is already governed and you want DOCX/PDF/PPTX/HTML/Markdown
+  out, with a `DocumentContract` asserting the sections/tables/citations the
+  layout must carry.
+- **`cited_report(...)`** when the deliverable's value is its *citations*:
+  it resolves `[E1]` markers to numbered footnotes, computes sentence-level
+  coverage, and (optionally) checks per-claim entailment — "every claim cited
+  *and* supported", not "one valid citation somewhere".
+- **`generate_redline(...)`** for a review deliverable, where the change set must
+  be an auditable diff of original vs. revised, not a re-write.
+
+## Gotchas
+
+- **Repair is formatting-only.** Heading levels, a missing title, and whitespace
+  are normalized; a missing required section or an uncited one is a
+  `DocumentContractError`, never silently padded. The document mirrors the
+  JSON-repair contract: structure is fixed, content is never invented.
+- **The default entailment backend is strict lexical+numeric.** It is exact and
+  free but literal — for paraphrase-heavy claims pass your own
+  `entailment=callable` (an NLI model or judge) rather than loosening
+  `min_coverage`.
+- **Textual vs. binary formats read differently.** `artifact.text` holds
+  Markdown/HTML; DOCX/PDF/PPTX come back on `artifact.content` (bytes). `save()`
+  handles both, but don't reach for `.text` on a binary format.
+- **Renderers need their extra.** Markdown and HTML are dependency-free; DOCX,
+  PDF, and PPTX raise a helpful `pip install "vincio[gen-*]"` until installed.
+  The `Mock*` image/speech providers emit real PNG/WAV bytes, so the C2PA and
+  contract paths test fully offline.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

@@ -3,6 +3,26 @@
 Vincio ships a pytest plugin (auto-registered on install) and an assertion
 API so LLM behavior is tested like code: deterministic, offline, CI-gated.
 
+**How it works.** The plugin registers fixtures (`vincio_snapshot`, …) and the
+`--vincio-update-snapshots` flag; the assertions run the same metric objects the
+eval runner and runtime rails use, against a `RunResult` / `RunOutput` / string.
+Determinism comes from the provider: a `MockProvider` emits schema-valid
+structured output with no network, so the pipeline — policy, retrieval, compile,
+validation — runs identically on every machine. Point your app fixtures at it
+and only reach a real model behind an env flag.
+
+```python
+import pytest
+from vincio import ContextApp
+from vincio.providers import MockProvider
+
+@pytest.fixture
+def rag_app():
+    app = ContextApp(name="test", provider=MockProvider(default_text="Refunds within 30 days."))
+    app.add_source("kb", documents=["Refunds are available within 30 days."])
+    return app
+```
+
 ## Assertions
 
 ```python
@@ -153,6 +173,23 @@ session's traces into the same multi-turn golden shape.
   thresholds over exact-output comparisons; use snapshots for structure.
 - **One bar per metric**: thresholds are explicit at the call site, so a
   failing test names the exact contract that broke.
+
+## Gotchas
+
+- **Groundedness on the mock is vacuous.** `MockProvider` returns whatever you
+  seed, not an answer derived from evidence; `assert_grounded` against real
+  retrieval only means something behind a real provider. Keep structure
+  (snapshots, schema, trajectory, red-team canaries) in offline CI and gate
+  quality on the real model behind a flag.
+- **Snapshots normalize volatile fields** (ids, timestamps, durations, hashes)
+  — so they fail on a *behavior* change, not a clock tick. If a snapshot churns
+  every run, something non-deterministic (an unpinned provider, wall-clock in
+  the output) leaked into the captured structure.
+- **`Simulator` is only deterministic with a `seed` and no provider.** Give it
+  `provider`+`model` and the conversation is as reproducible as the model —
+  leave them off for a CI golden.
+- **The red-team suite is deterministic** (canary judging + security detectors),
+  so `attack_success_rate == 0.0` is a normal gate, not a flaky model-judged one.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

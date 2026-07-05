@@ -121,6 +121,32 @@ information needs require and stops when marginal gain is insignificant — and
 an unanswerable query abstains with its uncovered needs named. See
 [LAGER](../concepts/lager.md).
 
+## Which retrieval path to reach for
+
+- **`retrieval="hybrid"`** (BM25 + dense, RRF-merged) is the default and the
+  right first move — lexical recall for exact terms, dense recall for paraphrase.
+- **`retrieval="hybrid_full"`** adds learned-sparse and late-interaction to the
+  fuse; reach for it when recall is the bottleneck and you can afford the extra
+  indexes, not before.
+- **`anchor=True`** for documents that *frame* the whole task (a spec, a style
+  guide) rather than answer a lookup — a flat, tiny cost on every call.
+- **`use_lager()`** for multi-hop questions whose answer shares no words with the
+  query, or when the token budget is too tight for a fixed top-k.
+
+## Gotchas
+
+- **Evaluators score, they don't block.** `groundedness` and `citation_accuracy`
+  land on `result.eval_scores` every run but do not fail it. Enforce quality with
+  a `safety`/`format` rail or a gate in the [close-the-loop](close-the-loop.md)
+  pipeline, not the evaluator alone.
+- **Grounding is a policy, not a default.** Without
+  `set_policy("answer_only_from_sources", True)` the model may answer from its
+  own weights; the citation validator only checks the citations that *are* there.
+- **Tenant isolation needs `tenant_id` on every run.** Omit it and retrieval has
+  no tenant to filter by — pass it (and keep `security.tenant_isolation: true`).
+- **PDFs need the extra.** File loading raises a helpful install error until you
+  `pip install "vincio[pdf]"`; Markdown/HTML/CSV load with no extra.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

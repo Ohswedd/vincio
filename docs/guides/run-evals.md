@@ -1,5 +1,18 @@
 # Guide: run evals
 
+An eval run is deterministic and offline by default: a golden dataset in, the
+same `(EvalCase, RunOutput) -> MetricResult` metric objects that guard runtime
+and steer the optimizer out, aggregated into a scored `EvalReport` and a
+pass/fail gate that exits non-zero in CI. Nothing leaves your process.
+
+**How a run is scored.** `EvalRunner` loads the dataset, runs every case through
+the app concurrently (bounded fan-out), applies each metric to the
+`(case, RunOutput)` pair, aggregates per-metric means (and `p95`/`min`/`max`
+aggregates), then evaluates the gates. Metrics split into two families —
+quality metrics assert `>= threshold`, rate/cost metrics (`hallucination`,
+`latency`, …) assert `<= threshold` — so a failing gate names the exact contract
+that broke.
+
 ## 1. Build a golden dataset
 
 ```jsonl
@@ -161,6 +174,24 @@ q.judge_trusted(threshold=0.6)
 - **Red-team the app**: `RedTeamSuite().run(app)`; gate `attack_success_rate` at 0.0.
 - **Assert in pytest**: `assert_grounded(result)`, `assert_eval(result, metrics={...})`;
   see the [testing guide](test-llm-apps.md).
+
+## Gotchas
+
+- **`MockProvider` output is schema-valid, not correct.** It exercises the whole
+  pipeline offline but does not answer questions, so `groundedness` /
+  `answer_relevance` against real evidence are only meaningful behind a real
+  provider. Gate structural metrics (`schema_validity`, `citation_accuracy`,
+  trajectory metrics) offline; run quality gates on the real model behind an env
+  flag.
+- **Trajectory metrics score a neutral `1.0` on a run with no trajectory**, so
+  they never penalize output-only cases — but a non-agentic golden set will show
+  a perfect `tool_call_accuracy` that means nothing. Split with
+  `report.metric_families()` to read the two views apart.
+- **A model judge only earns a veto once κ clears the bar.** Until you calibrate
+  it against human labels (section 8), an LLM judge is a point estimate; gate CI
+  on deterministic metrics and let the judge advise.
+- **Gate on `p95_latency`, not the mean** — a mean hides the tail that actually
+  breaks an SLO.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

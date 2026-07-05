@@ -106,6 +106,43 @@ See [`examples/10_interop_and_protocols.py`](../../examples/10_interop_and_proto
 runnable tour, and the [cookbook](cookbook.md) for task-shaped recipes built on
 these packs.
 
+## Domain pack or vertical pack?
+
+- **Domain pack** (`support`, `engineering`, `finance`, `legal`) is a *light
+  starting point*: a prompt, a schema, and a policy for a domain. Reach for it
+  when you want a sensible default you will heavily customize.
+- **Vertical pack** (`healthcare`, `ediscovery`, `kyc`, `customer_support`,
+  `code_review`) is a *full-stack* configuration for a regulated or high-stakes
+  case: on top of the prompt/schema/policy it preconfigures retrieval, scoped
+  memory, deterministic rails, domain metrics, a residency posture, and a golden
+  eval set. Reach for it when the compliance posture is part of the requirement.
+
+## Best practice
+
+- **A pack is just data applied through the public API** (`configure`,
+  `set_policy`, `add_evaluator`, `add_rail`, `add_memory`, `set_residency`), so
+  it never reaches past the contract it documents. Apply it first, then layer
+  your own settings — they compose, and yours win.
+- **Gate on the golden set from day one.** `load_pack(...).dataset()` ships a
+  scorable eval set; run it in CI so a prompt or retrieval change that regresses
+  the domain is caught before it ships.
+
+## Gotchas
+
+- **Residency-pinned packs are fail-closed.** `healthcare`, `ediscovery`, and
+  `kyc` set `deny_on_unknown=True`: a provider whose region cannot be resolved is
+  *refused* egress. The mock and local providers resolve to `on_prem` (always in
+  jurisdiction), so offline runs pass — but a **live** deployment must declare
+  its region (a region-bearing Azure/Bedrock/Vertex endpoint, or
+  `set_residency([...], provider_regions={"openai": "us"})`). Pointing a pinned
+  pack at an undeclared global provider is refused by design, not a bug.
+- **`redact` masks the string fields of *structured* output too**, not just free
+  text — a `kyc_assessment` won't ship an SSN the rail caught, and the schema and
+  field types are preserved.
+- **`purpose` is advisory metadata.** It does not enforce a lawful basis on its
+  own; pair it with a [`ConsentLedger`](governance.md) to make GDPR purpose
+  binding.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

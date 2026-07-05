@@ -49,6 +49,46 @@ boilerplate-stripped page, and the pipeline is **pure**: the same bytes, query,
 budget, and mode always produce the same `PageExtract` — which is what makes
 the evidence verifiable (below).
 
+### Inside the reduction: BM25, then packed in document order
+
+`extract_page` is a small, self-contained pipeline — no embeddings, no network,
+stdlib only — so it is deterministic and offline-testable:
+
+```
+html ──► tolerant HTMLParser ──► text blocks (+ nearest heading, code fenced)
+              │  drops nav / header / footer / aside / form and mostly-link chrome
+              ▼
+        BM25 score each block against the model's own query
+              │  k1 = 1.5, b = 0.75, idf = log(1 + (N − df + 0.5)/(df + 0.5))
+              ▼
+        rank by score (+ a small lead-block bonus), pack under budget_tokens,
+        then re-emit the kept blocks in *document order*  ──►  PageExtract
+```
+
+The ranking is throwaway — it only decides *which* blocks survive the token
+budget; the survivors are returned in their original reading order, so a
+definition still precedes the example that depends on it. `section` mode scores
+whole heading-delimited sections (a section's score is the sum of its blocks'
+BM25 plus a heading-match bonus, which is why a matching `## heading` beats a
+lead paragraph that merely repeats the words); `full` skips ranking and just
+budget-caps the stripped article; `auto` picks per page. Because scoring is a
+pure function of `(html, query, budget_tokens, max_excerpts, mode)`, the same
+inputs re-derive the identical excerpts from the snapshot — the property the
+`WebEvidence` verification (below) leans on.
+
+**Gotchas**
+
+- A block larger than the whole budget is skipped, not truncated mid-sentence —
+  so a single giant `<pre>` can be dropped from `excerpt` mode; reach for
+  `mode="section"` or `mode="full"` (or a bigger `budget_tokens`) when the fact
+  lives in one large block.
+- `excerpt` ranks against **the model's query**, not the page — a vague query
+  returns vague excerpts. The tool description tells the model to write 2–5
+  keyword queries for exactly this reason.
+- A short fact the block filter would drop (a version string, a date) is
+  recovered with `find="exact string"`, which returns windows around the literal
+  match instead of BM25-ranked blocks.
+
 ## Judgement: when to search ships as a skill
 
 Giving a model a search tool is the easy half; the hard half is knowing when

@@ -272,6 +272,33 @@ erasure-proof verification, tamper detection, and consent enforcement; the
 `memory` family gates as-of recall and per-memory ACLs. See
 [`08_optimization_self_improvement.py`](../../examples/08_optimization_self_improvement.py).
 
+## Gotchas & best practice
+
+- **Residency is client-side egress refusal, not a placement guarantee.** Vincio
+  can refuse to *send* a request to a disallowed region; it cannot guarantee where
+  a global provider runs it. The real in-jurisdiction posture is residency refusal
+  **paired with a region-pinned endpoint** (Azure/Bedrock/Vertex regional host, or
+  a sovereign gateway) whose region Vincio infers from `provider.base_urls`.
+- **A card states config unless you attach eval evidence.** `app.model_card()` /
+  `system_card()` can't drift because they read the live config — but they report
+  *measured* quality only when you pass `eval_report=`. A card without it is honest
+  about configuration, silent about performance.
+- **`erase_source` is idempotent; the proof is signed only with a `content_signer`.**
+  A second call finds nothing left and the removal is provable, but
+  `verify_erasure_proof` needs the same signer that sealed it — set
+  `app.content_signer` *before* the sweep, and note `verify_manifest` /
+  `verify_erasure_proof` **fail closed** when a signature is present but no
+  verifier is supplied.
+- **The PII detector is English/US-centric by default.** Non-English national-ID
+  and phone formats need `PIIDetector(locales=[...])` (or `governance.locales`);
+  the English path is unchanged, so a French NRIC slips through until you add the
+  `fr` pack.
+- **Consent revocation is retroactive to recall, not to history.** After
+  `ledger.revoke(...)` a purpose-bound memory no longer *surfaces*, but the
+  bi-temporal record is preserved — an `as_of` recall still returns what was
+  believed true then. Use `MemoryEngine.correct()` to supersede a fact without
+  losing its history.
+
 ## How it interconnects
 
 Every artifact reads from data Vincio already holds, the audit chain, the

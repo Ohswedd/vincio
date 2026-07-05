@@ -45,6 +45,33 @@ analysis.verify(catalog)         # True — re-derives the whole analysis from t
 - **synthesize.** The findings become a cited analytical narrative that re-derives
   from the bytes.
 
+## How the plan is built
+
+The plan is generated deterministically from the table's schema, not by a model —
+every query is a template filled from the columns:
+
+- **Measures and dimensions are read off the schema.** A measure is a numeric
+  column; a dimension is a low-cardinality non-measure column, ordered
+  most-discriminating-first (fewest distinct groups). The objective itself is
+  grounded by the same `HeuristicQueryPlanner` text-to-query uses, and marked the
+  `primary` step.
+- **Each measure gets an extreme and a total.** The extreme is a cell-cited
+  `ORDER BY measure DESC LIMIT 1` projection (so the finding can name *where* the
+  peak sits); the total is a `SUM` — honestly a result-level aggregate.
+- **Each dimension gets a breakdown.** `SUM(measure) GROUP BY dimension ORDER BY …
+  DESC`, cell-cited to the rows of each group, capped at `max_breakdowns`.
+- **The dominant group is drilled.** While refinement budget remains, the top
+  group of a breakdown is re-queried against a *second* dimension
+  (`WHERE dimension = <dominant> GROUP BY <secondary>`) — the one narrowing move an
+  analyst makes by hand.
+
+Every generated query flows through `QueryPlan.for_sql` — grounded, read-only
+verified, dry-run compiled — exactly as a hand-written one does, and a step that
+cannot ground or execute is dropped (its query returns `None`) rather than sinking
+the run. The narrative is then assembled by concatenating the executed steps'
+cited findings in order, so a claim is in the narrative *only if* its query ran
+and verified.
+
 ## Bounded by construction
 
 The exploration is bounded by an explicit `AnalysisBudget` — there is no
@@ -142,6 +169,22 @@ follow-up questions — each still grounded and verified by the query plane, so 
 model never produces a query that bypasses the screen; offline, or whenever the
 model returns nothing groundable, the agent is byte-for-byte the deterministic
 core.
+
+## Gotchas
+
+- The analysis's coverage is the **weakest across its steps**: one result-level
+  step (a `SUM` total, a `COUNT(*)`) makes the whole narrative's coverage
+  `RESULT`, even though the extreme and breakdown steps are cell-exact. Read each
+  `step.coverage` for the per-finding truth.
+- `max_steps` truncates the *plan* (the overview and the objective come first), so
+  a tight budget keeps the sizing-up and the direct answer and drops the deeper
+  breakdowns — it never runs an unbounded search.
+- `propose_followups` lets a configured model suggest extra questions, but each is
+  still grounded by the offline planner and verified by the query plane; a junk or
+  empty model response degrades to no extra steps, and any provider failure is
+  swallowed to `[]`.
+- `DuckDbQueryEngine` accelerates execution but reports `RESULT`-level lineage;
+  the offline `sqlite3` engine is the path that derives per-cell citations.
 
 ## What it is not
 

@@ -98,6 +98,51 @@ whole engagement. The verifier is the query plane's offline re-execution, not a
 model: a finding is carried only when its query, analysis, chart, or metric
 re-derives.
 
+## How a stage seals into the chain
+
+Every lifecycle verb runs the same three steps: call the underlying `app.*`
+primitive, stash the artifact on a named attribute (`eng.result`, `eng.chart_`,
+`eng.metric`, …), and append a `DataStage` capturing four things — the verb, the
+artifact's `kind` / `artifact_id`, the **published commitment** it already exposes
+(a `result_hash`, `chart_hash`, or `layer_hash`, read off the artifact), and a
+deterministic `digest` of the artifact's own `to_wire` / `model_dump` bytes. A
+query / analysis / chart / metric stage additionally records a **binder** — a
+`catalog -> bool` closure that re-runs the artifact's own `verify` against a live
+catalog.
+
+`seal()` walks the stages in order and stamps the hash chain: each stage's
+`prev_hash` is the prior stage's `entry_hash`; its `entry_hash` hashes the link
+facts (index, verb, kind, ids, digest, summary, prev — deliberately *not* the
+timestamp); the narrative's `head_hash` is the last link; and `content_hash` binds
+the analyst, dataset, question, and the ordered entry hashes. That single content
+hash is what the analyst signs and what `verify` recomputes from the bytes alone.
+
+The chain then yields two **independent** guarantees, surfaced as two flags on
+`DataEngagementVerification`:
+
+- **`digests_ok`** — re-digesting each captured artifact's bytes still matches the
+  stage's bound `digest`. This catches an edit to a *captured result* (a number
+  changed after the fact) with no catalog needed.
+- **`data_bound`** — every stage's binder re-executed its query / analysis / chart
+  / metric against the live, content-hashed source and re-derived. This catches a
+  tamper to the *source itself*, even when the chain and every digest are intact.
+
+`eng.cite(...)`'s own headline guarantee is **per-figure** data binding: it embeds
+each chart/table as a `Figure` verified to re-derive from the source under a
+default `CitationContract` that requires figure binding but not per-claim
+`[E]`-marker coverage over the prose narrative (whose grounding is the cell refs
+the figures carry). Pass a stricter contract when you also want per-claim
+entailment.
+
+**Gotchas.** Run the verbs in analysis order — each defaults its dataset/table to
+the one `register(...)` opened, so register first. A one-shot `dataset=` on
+`query` / `analyze` / `query_metric` (an unregistered table) records **no**
+data-binder: that stage is digest-bound but not source-re-executed, because there
+is nothing registered to re-run against. `verify(catalog=...)` defaults to
+`app.data_catalog()`; when nothing is registered, `data_bound` stays `None`
+(unchecked), not `False`. And re-sealing after more stages run mints a *fresh*
+narrative — hold the object `seal()` returns rather than re-reading a stale one.
+
 ## Held by the conformance family
 
 The [`data_analysis_conformance`](../../benchmarks/vinciobench.py) VincioBench family

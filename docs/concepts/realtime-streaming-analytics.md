@@ -52,6 +52,33 @@ A window closes on a **watermark** (the latest event time seen) past its end plu
 an allowed `lateness`; a late event for an already-closed window is **dropped and
 counted**, never silently folded into a stale window.
 
+### How a window opens, closes, and stays bounded
+
+Under the operators sits a single-pass assigner. Each event is handed a monotonic
+**offset** (its 0-based position — its stable identity), a **time** (the
+`time_column` value, or the offset itself under processing time), and a **key**
+(`key_by`, or the empty key), and a running **watermark** tracks the largest event
+time seen so far:
+
+- **Tumbling / sliding** windows are aligned to a fixed grid anchored at `origin`
+  and stepped by `slide`; an event is added to every window whose
+  `[start, start + size)` still covers its time — one for a tumbling window,
+  `ceil(size / slide)` for a sliding one. A window is emitted the moment the
+  watermark reaches `end + lateness`.
+- **Session** windows grow per key while events keep arriving within `gap`, and
+  close once the watermark moves past the last event plus the gap.
+- An event that arrives for a window already past its close horizon is **dropped
+  and counted** (`late_events`), never folded into a stale window; an event before
+  `origin` is likewise counted late.
+- At end of stream every still-open window is drained in deterministic order; the
+  `closed_by` field records how each closed (`watermark` / `gap` / `drain`).
+
+The resident set is exactly the *open* windows — one per key for a tumbling
+window, roughly `size / slide` per key for a sliding one — so the footprint tracks
+concurrency, not stream length. A stream so out of order (or with such unbounded
+key cardinality) that more than `max_open_windows` (default 4,096) would be open
+at once is **refused** with a `StreamError` rather than growing without bound.
+
 ## Event-level provenance
 
 Each closed window is captured into a bounded
@@ -63,9 +90,17 @@ cites the exact source **events** it rests on through an
 the streaming analogue of a [cell citation](governed-text-to-query.md)'s
 `table#r<row>!<column>`.
 
+The re-keying is mechanical: a windowed query runs the ordinary governed query
+plane over the captured window as a single-table catalog, so it comes back with
+window-local **cell** citations (`orders#r0!amount`); the window's `offsets` list
+maps each captured row to its global stream position, and each cell is re-keyed to
+an **event** citation (`orders@<offset>!amount`), de-duplicated in order.
+
 `verify()` re-executes the operation against the captured window and confirms the
 answer — and every cited event — re-derives from the bytes, fully offline, against
-that bounded snapshot. A tampered captured event is caught.
+that bounded snapshot; it *also* confirms every cited offset actually belongs to
+the window, so a citation pointing outside the snapshot fails. A tampered captured
+event (its `content_hash` no longer recomputes) is caught.
 
 ```python
 wq.window.event_count        # the bounded number of events the window held
@@ -112,6 +147,22 @@ await analytics.drive(live_source, schema, apply="query", request=QUERY,
 
 So a live dashboard tile or an alerting rule is just a governed, cited,
 budget-bounded query over a window — never a hosted stream processor.
+
+## Gotchas
+
+- An event-time column must be a **number** (epoch seconds or a logical counter);
+  a non-numeric `time_column` value raises `StreamError`. With no `time_column`
+  the arrival offset is the clock.
+- A **sliding** window makes an event belong to several windows at once —
+  per-window totals overlap and must not be summed across windows as if disjoint.
+- `lateness` trades latency for completeness: a larger allowance holds windows
+  open longer but folds in more out-of-order events before closing.
+- `WindowedAggregation` lineage is **window-level** (each group row rests on the
+  whole window's events); for cell-level event citations use `StreamWindow.query`,
+  which carries the governed query plane's per-cell provenance.
+- The live `drive(...)` path needs `apply=` plus that operator's inputs
+  (`request=` for `query` / `metric`, `layer=` for `metric`, `rails=` for
+  `screen`, `group_by=` for `aggregate`) — a missing input raises `StreamError`.
 
 ## Guarantees
 

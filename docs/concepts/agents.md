@@ -28,6 +28,54 @@ state.metrics()            # success, steps, tool calls/errors, cost, repairs, t
 - **Handoffs**: `HandoffRouter` routes objectives between named agents with
   bounded depth and merged provenance.
 
+### How the bounded loop runs
+
+`agent.run(objective, budget=Budget())` never spins an open-ended think/act
+loop. It plans once, then drains a DAG level by level under a budget it checks
+*before* every level:
+
+```
+run(objective, budget)
+  │  plan once ─────────► StepDAG      (planner.plan; a ReAct agent takes its own loop)
+  ▼  per topological level, until the DAG is complete or the run terminates:
+  ┌──────────────────────────────────────────────────────────────┐
+  │ check termination  usage.exceeds(budget) → "budget_exhausted"  │
+  │                    usage.steps ≥ max_steps → "max_steps"       │
+  │ repair on budget shock — prune the optional tail toward finish │
+  │ run this level's independent steps concurrently (≤ max_parallel_steps),  │
+  │   retry a failed recoverable retrieve/think step once,         │
+  │   re-bind / substitute / reorder a failed tool step in place   │
+  └──────────────────────────────────────────────────────────────┘
+  ▼  finalize: draft → critic vs objective + evidence (≤ max_validation_rounds=2)
+              → "validation_passed" | "objective_complete"
+```
+
+The budget is the single source of the run's hard edges: `Budget` carries
+`max_steps` (default 16), `max_tool_calls` (32), `max_cost_usd` (1.0),
+`max_retries` (2), and the token/latency ceilings, and `usage.exceeds(budget)`
+returns the *named* breached dimensions (`cost_usd`, `latency_ms`, …) that
+become the termination reason. A `plan_and_execute` agent adds a real
+`_replan_loop` after the first drain, bounded by `max_replans` (2) *and* the
+same budget, so replanning can never outrun the ceiling. `state.metrics()`
+projects the whole run — `success`, `steps_done`/`steps_failed`, `tool_calls`,
+`tool_errors`, `repairs`, `cost_usd`, tokens, `termination_reason` — for eval
+gates.
+
+**Gotchas**
+
+- `max_output_tokens` is checked *scaled by step count* (`max_output_tokens *
+  steps`), not per call, so a multi-step run isn't tripped by its cumulative
+  output; the flat per-call ceiling is `max_output_tokens` on a single
+  finalize.
+- Only recoverable `retrieve` / `think` steps auto-retry, and only **once**
+  (guarded by `max_retries`); a failed `tool` step is *repaired* (re-bound to a
+  fallback, substituted, reordered) rather than blindly retried.
+- Repair is on by default and every edit is audited (`AgentState.repairs`, a
+  `plan.repaired` event, a `plan_repair` trajectory step); it is never a silent
+  retry, and it is bounded by `PlanRepairer(max_repairs=3)`.
+- A run with errors but no `final_answer` terminates `unrecoverable_error`, not
+  `objective_complete` — check `termination_reason`, not just non-emptiness.
+
 ## Multi-agent crews
 
 A crew binds named roles to bounded executors and runs them as a team over a
@@ -227,8 +275,33 @@ Vincio orchestrates without lock-in: adapters export the same definitions to
 external runtimes. `LangGraphBackend` translates a `StateGraph` (nodes
 transfer as-is; edges, conditional edges, entry, and `END` are mapped) and
 `OpenAIAgentsBackend` exports agents and crews (a crew becomes a manager
-agent with handoffs to every member). Both import their runtime lazily;
-nothing in core Vincio depends on either package.
+agent with handoffs to every member); `RayBackend` and `TemporalBackend` are
+the distributed / durable-workflow adapters. All import their runtime lazily;
+nothing in core Vincio depends on any of them.
+
+### Distributed super-steps stay exactly-once
+
+A `StateGraph` already checkpoints every super-step, so running one across
+workers is a coordination problem, not a rewrite. A `GraphCoordinator` guards
+each graph thread with two mechanisms at once, so no step is ever applied
+twice:
+
+- a **TTL "running" lease** per thread — a healthy worker holds the thread
+  exclusively; a crashed worker's lease *expires* and is reclaimed, so a stuck
+  run is never permanently stranded; and
+- **optimistic-concurrency (CAS)** on the checkpoint *version* — even in the
+  window where a lease was reclaimed mid-step, a stale worker's commit is at a
+  version that no longer exists, so it is rejected.
+
+`commit(thread_id, owner, expected_version=…)` couples the lease-ownership
+check *and* the version CAS into **one atomic operation** (a single Lua script
+in `RedisGraphCoordinator`, so the check and the mutation cannot interleave) —
+that atomicity is exactly what makes double-apply impossible. `Send` fans a
+node out map-reduce style across the pool; `InMemoryGraphCoordinator` runs the
+same protocol in-process for tests, `RedisGraphCoordinator` makes the
+lease + version durable across machines. The graph keeps its evidence ledger
+and trace throughout, because the coordinator wraps the existing checkpoint —
+it does not fork it.
 
 ## Workflow engine
 

@@ -41,6 +41,30 @@ it as a compact stats table the context compiler scores, budgets, orders, and
 cites. `profile_stream(rows, schema)` profiles a row iterator without
 materializing it — the path for a source larger than memory.
 
+### How it works: one bounded pass
+
+Each column gets a single accumulator that never grows with the row count:
+
+- **Exact, O(1) state.** `count`, `null_count`, `min`, `max`, and a running `Σx`
+  / `Σx²` update per value; the mean is `Σx / n` and the standard deviation
+  `√(Σx²/n − mean²)`, so extrema, mean, and stddev are exact over every row in
+  constant space.
+- **A fixed reservoir for shape.** Percentiles and the histogram are read off a
+  seeded reservoir (Algorithm R, `reservoir_size=2048` by default). Percentiles
+  are linear-interpolated over the sorted reservoir; the histogram is equi-width
+  over `[min, max]` with each bin **scaled up to the full population**
+  (`count × total / reservoir`), so the shape reflects the whole column, not just
+  the sample. A column larger than its reservoir sets `estimated=True`.
+- **Bounded cardinality.** `distinct` is exact up to `distinct_cap=10000`; past
+  it the accumulator stops growing the set and reports a lower bound
+  (`distinct_is_lower_bound=True`). `top_values` rides a value→count counter
+  capped at `top_k × 8`.
+
+`profile_stream(rows, schema)` runs the identical accumulators over a row
+iterator, so a source larger than memory profiles in the same footprint an
+in-memory `Dataset` does — the profile of ten million rows is byte-for-byte the
+size of a profile of ten.
+
 ## Representative sampling
 
 A first-N cutoff is not a sample — it is the rows the source happened to return
@@ -91,6 +115,16 @@ within the budget whether the table has ten thousand rows or ten million — and
 `app.fit_dataset` does the same from the app surface, yielding cited table
 evidence ready for `app.pending_evidence`.
 
+The fit is exact, not heuristic: the profile is costed first, then the sample is
+trimmed to the **largest representative prefix** whose encoding fits the tokens
+the profile leaves — a binary search over a representative row ordering (a seeded
+shuffle for a uniform draw, a round-robin interleave across strata for a
+stratified one, so *any* prefix keeps the key's proportions). Token cost is
+monotonic in the prefix length, so the search lands on the tightest fit under
+`max_tokens`. `fit_stream` folds the profiling accumulators and a reservoir into
+a single pass, so a source far larger than memory fits in one read (uniform draw
+only — a stratified fit needs the whole dataset to size its strata).
+
 ## Data-quality rails
 
 `DataQualityRails` screen a tabular input deterministically — no model judgment,
@@ -127,6 +161,25 @@ dataset's own declared schema with zero configuration. `app.screen_data` runs th
 rails and lands the decision on the shared, hash-chained audit log
 (`data_quality`) like any other rail decision, optionally raising on a blocking
 finding.
+
+## Best practice and gotchas
+
+- Profiling and sampling are **deterministic for a fixed `seed`** — the same
+  input and seed yield the same reservoir, the same percentiles, and the same
+  sampled rows. Pin the seed when a profile or sample must reproduce.
+- `stratified` requires `by=`; `fit_stream` cannot stratify (a proportional draw
+  needs the whole dataset to size the strata) and falls back to uniform reservoir
+  sampling — use `fit_to_window` when you need a stratified fit.
+- `estimated=True` (on a column or the whole profile) means a percentile or
+  histogram was read off the reservoir rather than every value; the exact figures
+  — count, null rate, min, max, mean, stddev — are never estimated.
+- Anomaly detection uses a **robust** median/MAD z-score (Iglewicz–Hoaglin), so a
+  handful of extreme values cannot mask one another — but it needs at least four
+  numeric values in a column to fire, and defaults to `warn` (non-blocking)
+  unless you set `anomaly_action="block"`.
+- A quality finding is either `block` or `warn`: only a `block` fails the screen
+  (`report.allowed`), and `raise_for_status()` raises `DataQualityError` on a
+  blocked screen while a warn-only screen passes with `report.warnings` populated.
 
 ## What it is not
 

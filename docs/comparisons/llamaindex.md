@@ -25,8 +25,11 @@ document workflows.
 - **Grounding is enforced end-to-end**: citation policies are compiled into
   prompts, citations are validated against real evidence ids, and
   groundedness is measured per run.
-- **Reasoning retrieval** retrieves by required fact types and reports
-  missing facts, feeding insufficient-evidence behavior.
+- **Reasoning-driven retrieval (LAGER).** `app.use_lager()` swaps fixed
+  top-k for a lazy loop over a typed evidence graph: it plans the fact types
+  an answer needs, acquires source-span-exact evidence incrementally while the
+  marginal information gain justifies it, and reports uncovered needs so an
+  unanswerable query abstains instead of guessing.
 
 **Where LlamaIndex is a fit:** very broad loader/index integrations for
 exotic data sources. Vincio's connector hub covers the common ones (web,

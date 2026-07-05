@@ -330,6 +330,27 @@ result.samples_used   # fewer than the full budget
 result.allocations    # where the budget actually went
 ```
 
+## Gotchas
+
+- **A trajectory metric on a run with no `Trajectory` returns a neutral `1.0`.**
+  That is what lets output-only and trajectory metrics share one report — but it
+  also means a golden set that never exercises tools reports a perfect
+  `tool_call_accuracy` that carries no signal. Read the two apart with
+  `report.metric_families()`.
+- **Rail direction is inferred, not declared.** `add_metric_rail` reads
+  `LOWER_IS_BETTER`: a lower-is-better metric (`toxicity`) fires *above* the
+  threshold, a higher-is-better one (`answer_relevance`) fires *below* it. Set
+  the threshold accordingly, and pass `evidence`/`expected`/`input` through the
+  rail `params` for metrics that need them.
+- **A benchmark adapter refuses to print a tier its inputs cannot support.** A
+  fabricated fixture ceilings at Tier-S; asking for `tier="live"` over it raises
+  (`TierViolationError`) rather than fakes a number — the benchmark platform's
+  provenance-tier discipline.
+- **A judge earns its veto only after it agrees with people.** `gating_weight`
+  is `0.0` until calibrated κ clears the bar — an uncalibrated `JudgeEnsemble`
+  advises but must not gate CI. Prefer the panel's `verdict.uncertain` signal to
+  route split cases to a human instead of acting on a coin-flip.
+
 ## Why in-process
 
 LangSmith, Ragas, and DeepEval send your traces *out* to a platform to be scored.

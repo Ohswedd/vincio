@@ -96,6 +96,37 @@ values per column once as a leading `# ...` description line (`Dataset.exemplars
 returns them directly). The description line is decode-safe — it never affects
 the round-trip.
 
+## How it works: rows in, a scored evidence item out
+
+Under the surface the projection is a short, deterministic pipeline over the
+`vincio.core.tabular` kernel:
+
+```
+records / rows / TableData
+    │  union of keys (first-seen order); values read column-major
+    ▼
+Dataset(columns=[ColumnSchema…], cells=[[col0…], [col1…]])
+    │  tabular.infer_dtype(cells[j]) types each column; nullable = any None
+    ▼
+DataEncoder.encode(dataset) → "name{#N,col:type unit?}\ncell,cell\n…"  (header once)
+    │  count_tokens(encoding) → columnar-accurate token_cost
+    ▼
+EvidenceItem(modality="table", source_type="database", text=encoding,
+             table={columns, rows, encoding, schema}, token_cost=…)
+```
+
+The cells are stored **column-major** (`cells[j]` is column *j*), which is what
+lets the schema be declared once and a single type be inferred per column. That
+inference is conservative and reversible: a string cell is promoted to a typed
+value **only when the coercion round-trips the exact characters** —
+`str(int(v)) == v` for an integer, `repr(float(v)) == v` for a float — so a
+leading-zero id (`"01234"`), a thousands-separated number, or a trailing-zero
+decimal (`"980.00"`) stays a string and survives byte-for-byte. An empty field
+decodes back to `None`; a quoted `""` decodes back to the empty string. This is
+why `decode` needs nothing but the bytes to reconstruct the typed dataset — the
+schema, the null/empty distinction, and every string cell are all recoverable
+from the encoding alone.
+
 ## Datasets as context evidence
 
 `TableEvidence` projects a dataset into the evidence the context compiler scores,
@@ -127,6 +158,27 @@ encodes nested JSON-like values compactly instead of `json.dumps(indent=2)`. A
 table extracted from a CSV, an HTML page, or a spreadsheet therefore reaches the
 model token-cheap and with its column types declared, while its string cells are
 preserved exactly.
+
+## Best practice and gotchas
+
+**Use it when** structured data is part of the evidence a call reasons over — a
+query result, a CSV, an extracted spreadsheet — and you want the model to see
+declared column types at a fraction of the `json.dumps` token cost. Reach past it
+to [profiling and fit-in-window](dataset-profiling.md) the moment the rows
+themselves are too many to send.
+
+- Table evidence defaults to `TrustLevel.UNTRUSTED_DOCUMENT`: a table lifted from
+  an untrusted source is scored and cited as untrusted, not laundered into
+  authority. Set `trust_level=` / `authority=` deliberately when the source earns
+  it.
+- `vincio.data.Dataset` (this typed, tabular class) is **not** the top-level
+  `vincio.Dataset` (the evals class). Import the tabular one from `vincio.data`.
+- `token_cost()` is the exact count of the encoded bytes, not a per-cell estimate
+  — it is the number the compiler budgets against, so it is safe to size a table
+  against a window with it.
+- Building `from_rows` needs `columns=` or `schema=` to name the columns;
+  `from_records` reads the column set as the union of keys in first-seen order,
+  and a record missing a key contributes a `None` (a null cell) for it.
 
 ## What it is not
 

@@ -134,6 +134,36 @@ validators, and the loop stops at the first valid output, `max_cycles`, or
 the cost ceiling. Cycles, cost, and outcome land on the trace and in the
 audit log.
 
+## When to reach for each mechanism
+
+- **Native constrained decoding** (`decoding=native`) is free correctness — the
+  provider's decoder cannot emit an invalid shape. It engages automatically when
+  the model supports it; you do nothing.
+- **Semantic validators** for rules the *shape* can't express (a total that must
+  equal its line items, a status that must be one of a live set). A schema proves
+  well-formedness; a validator proves the business rule.
+- **Self-correction** only when a real model sometimes emits invalid structure —
+  it costs extra calls. On native decoding it rarely earns its keep.
+- **Multi-schema routing** when one app answers structurally different tasks;
+  don't force a union schema the model has to guess its way through.
+
+## Gotchas
+
+- **Repair fixes structure, never facts.** Malformed JSON, a missing optional
+  field, `"0.9" → 0.9` are repaired; a wrong number, a missing required
+  citation, or a failed business rule fail *loudly*. Repair can't launder a bad
+  answer into a valid one.
+- **Optional fields must be nullable under native decoding.** Strict
+  sanitization makes every property required and optional fields nullable, so
+  the decoder can enforce the object closed — model your "optional" as
+  `field: X | None = None`, not an absent key.
+- **Streaming `valid_prefix is False` is terminal, `None`/missing-field is not.**
+  Break only on a definite mismatch; a not-yet-arrived required field is
+  tolerated on purpose.
+- **The validator always runs against the *original* schema.** The
+  strict-sanitized schema is only what the provider decodes against; your
+  nullability and semantic rules are checked against the model you defined.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

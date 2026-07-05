@@ -102,9 +102,11 @@ failover = HealthAwareFailover([
 response = await failover.generate(request)
 ```
 
-`CircuitBreaker` is itself a `ModelProvider`, so it drops in anywhere. Inspect
-it with `.state` (`CLOSED`/`OPEN`/`HALF_OPEN`), `.healthy`, `.failure_rate()`,
-and `.snapshot()`. State transitions emit `circuit.opened` / `circuit.closed` /
+Every wrapper in this guide — `RetryingProvider`, `CircuitBreaker`,
+`HealthAwareFailover`, `KeyPool`, and the shadow/canary providers below — is
+itself a `ModelProvider`, so they nest in any order. Inspect a breaker with
+`.state` (`CLOSED`/`OPEN`/`HALF_OPEN`), `.healthy`, `.failure_rate()`, and
+`.snapshot()`. State transitions emit `circuit.opened` / `circuit.closed` /
 `circuit.half_open` on the event bus.
 
 ## Key pooling across keys & regions
@@ -128,9 +130,8 @@ pool = KeyPool(
 response = await pool.generate(request)   # picks a healthy key, rate-limits, backs off
 ```
 
-It's a `ModelProvider` too, so wrap it or feed it to `HealthAwareFailover` like
-any other. For standalone limiting, `RateLimiter(rpm=..., tpm=...)` exposes
-`.acquire(tokens=0)`, `.available(tokens)`, and `.wait_time(tokens)`.
+For standalone limiting (no provider wrapping), `RateLimiter(rpm=..., tpm=...)`
+exposes `.acquire(tokens=0)`, `.available(tokens)`, and `.wait_time(tokens)`.
 
 ## Runtime model cascades
 
@@ -408,8 +409,6 @@ shadow = app.shadow("gpt-5.2-mini")          # users still get the primary
 canary = app.canary("gpt-5.2-mini", percent=5.0, regression_threshold=0.05)
 ```
 
-Both implement `ModelProvider`, so they nest inside `CircuitBreaker` / `KeyPool`.
-
 ### Lifecycle watcher
 
 `app.watch_lifecycle()` reads the registry's deprecation/retirement dates and
@@ -458,6 +457,24 @@ helper that diffs a provider's live `list_models()` into a candidate overlay for
 you to price and merge — it never mutates the shipped catalog. An arbitrary model
 id the catalog does not cover still warns once via `ModelUnknownWarning` rather
 than billing $0.
+
+## Gotchas & best practice
+
+- **Order the resilience stack retry-inside, breaker-outside.** A breaker *inside*
+  retries sees each retry as a fresh call and never trips on sustained failure;
+  wrapped outside, it sees the post-retry outcome and skips a sick provider in
+  microseconds (an open breaker raises non-retryable `CircuitOpenError`).
+- **Batch trades latency for the discount.** `app.batch` is for asynchronous bulk
+  work (eval suites, corpus extraction, synthetic data) — never an interactive
+  request path. Partial failures don't abort the job; reconcile by `custom_id`.
+- **The default cascade confidence is coarse.** `response_confidence` is `1.0` on a
+  clean stop, `0.0` on an error/length/filter stop, `0.2` on an unparsed schema —
+  good enough to escalate on obvious trouble, but supply your own `confidence=`
+  callable for real routing, and cap `max_escalations`.
+- **Energy/carbon is a mechanical estimate, not a meter.** It is opt-in and
+  `0.0` until `use_energy_accounting(...)`, derived from token accounting against
+  per-model intensities — override the intensity/grid/PUE for a measured
+  deployment, and don't present the default figure as measured.
 
 ## Edge over gateways
 

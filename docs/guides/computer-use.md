@@ -197,6 +197,34 @@ env = app.computer_use(backend="playwright", require_isolation=True, isolation="
 way `MockScreen` grounds its app, so your policy code is identical regardless of where
 the screen lives.
 
+## Best practice & gotchas
+
+- **Ground by selector, never by coordinate.** A `UIAction` targets a
+  `role=…[name='…']` selector, so it replays against a page whose layout shifted —
+  only a brittle pixel would break. Look targets up with
+  `state.find(role=..., name=...)`.
+- **The destructive gate is structural, not advisory.** An action counts as
+  destructive if it flags `destructive=True`, targets a destructive element, or
+  its name matches the keyword set (delete, remove, purchase, pay, place order,
+  transfer, …); any of those is refused unless approved, and `out.performed` stays
+  `False`. Keep the `approve` callback narrow — approve one named action, not a
+  blanket `True`.
+- **`auto_undo=True` is the default, but it needs an expectation.** Divergence is
+  only detected against a declared `expect` / `expect_change`; without one, a
+  drifting action looks fine and nothing rolls back. When it does diverge, the
+  effect is undone and `after_digest` is restored to `before_digest`.
+- **Assert both `success` and `safe`.** `run.success` is the end-state oracle
+  (the `ComputerTask`'s `StateCheck`s over the final screen); `run.safe` is the
+  separate guarantee that no unapproved destructive action ever executed.
+- **Real backends need isolation.** Run `PlaywrightScreen`,
+  `backend="accessibility"`, or `backend="remote_desktop"` under
+  `require_isolation=True`; the deterministic `MockScreen` is the offline default
+  and needs none.
+- **The trajectory is free to score.** `run.trajectory` is a
+  `vincio.evals.trajectory.Trajectory`, so the existing trajectory metrics,
+  test-time search, and world-model planner grade a computer-use run with no new
+  machinery.
+
 ## What it gates
 
 Two VincioBench SLOs hold the action plane (see the [SLO reference](../reference/slo.md)):

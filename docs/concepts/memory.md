@@ -62,6 +62,54 @@ MemoryValue = relevance · recency · confidence · scope_match · stability · 
               token_cost + privacy_risk + staleness_penalty
 ```
 
+## How recall works — filter, then score
+
+`asearch` (behind `search` / `recall`) is two passes over the store, never a
+raw vector top-k:
+
+1. **Filter pass** removes anything ineligible *before* scoring: wrong scope
+   (`_scope_match`), privacy above the caller's `max_privacy`, TTL-expired, a
+   bi-temporal interval that does not contain the recall moment
+   (`valid_at`), a per-memory ACL the `reader` is not on (`readable_by`), a
+   `purpose` whose consent was withdrawn (a configured `consent_ledger`), and
+   decayed confidence below `min_confidence`.
+2. **Score pass** ranks the survivors. Lexical and vector relevance are fused in
+   one batched embed call (`(1−vector_weight)·lexical + vector_weight·cosine`),
+   lifted `+0.25` per task-entity mention and `+0.2` when the graph links the
+   memory to a task entity, then divided through the `MemoryValue` ratio above.
+   Every term is returned on `MemorySearchResult.components` for audit, and the
+   selected `top_k` increment `usage_count` — which feeds the `usage_boost` in
+   the next decay pass, so *use* is what keeps a memory alive.
+
+## Bi-temporal validity, ACLs & consent
+
+A memory carries two independent clocks: *transaction time*
+(`created_at` / `updated_at` — when the system learned the fact) and *valid
+time* (`valid_from` / `valid_to` — when the fact is true in the world). Keeping
+them apart makes recall answerable **as of** a past moment without rewriting
+history: a correction closes the old item's `valid_to` and opens a new one, and
+`recall(..., as_of=T)` returns what was believed valid at `T`, superseded items
+included.
+
+```python
+memory = app.memory
+memory.write_fact("Plan tier: Pro", scope="user", owner_id="u1",
+                  valid_from=jan, valid_to=jun)     # true Jan–Jun
+memory.write_fact("Plan tier: Enterprise", scope="user", owner_id="u1",
+                  valid_from=jun)                   # true from Jun
+memory.recall("plan tier", user_id="u1", as_of=march)   # → Pro, not Enterprise
+```
+
+Two more per-memory governance rails ride the same recall:
+
+- **Reader ACLs** — an `acl=[...]` on the write plus `reader=` on recall gate
+  team-shared memory to permitted members (`readable_by`); an empty ACL stays
+  scope-governed, so existing memories are unaffected.
+- **Consent / purpose** — each memory records the `purpose` it was collected for
+  and its `consent_id`; a `MemoryEngine` configured with a `consent_ledger`
+  drops any item whose purpose has lost consent, so a withdrawal is enforced at
+  read time, not only at erasure.
+
 ## Consolidation tiers
 
 Episodic session memories summarize into a few durable semantic memories,
@@ -104,6 +152,25 @@ Step 16 of the runtime writes back what the run learned, governed by
 `memory.write_back`: durable statements from the `input` (default), cited
 `evidence`, and successful `tools` results, the latter two as *candidate*
 memories with provenance that must earn their way into future packets.
+
+## Gotchas
+
+- **Volatile statements are refused at write.** The stability check keeps
+  memory to durable facts, preferences, goals, and decisions — a passing remark
+  never earns a slot, and credentials (always) and sensitive PII (by default)
+  are blocked outright.
+- **Write-backs start penalized.** Memories written back from evidence or tool
+  results are *candidates* carrying a status penalty until `confirm`ed, so they
+  cannot outrank curated facts on their first appearance.
+- **`as_of` widens the status filter.** Current recall sees only the live set;
+  an as-of query deliberately includes superseded and archived items that were
+  valid then, so counts differ from a plain recall.
+- **Decay is lazy.** Expired items never surface, but the
+  `candidate → … → deleted` transitions only run on `decay_pass` (schedule it,
+  or `vincio memory decay`) — nothing garbage-collects on its own.
+- **A populated ACL flips the default.** With `acl` set, a `reader=None` recall
+  is refused; only listed reader ids get the item. Leave the ACL empty to keep
+  the scope's ownership rule.
 
 ## Eval harness
 

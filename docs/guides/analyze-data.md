@@ -11,6 +11,20 @@ provider and the standard-library SQL engine — no warehouse, no network.
 This guide is the task-oriented tour of the data & analytics plane. For the
 model behind each step, follow the linked concept page.
 
+## How a data answer stays honest
+
+One discipline runs through every step below, so read it once here rather than at
+each call. Every artifact — a `QueryResult`, an `AnalysisResult`, a `Chart`, a
+`MetricResult`, a sealed `DataNarrative` — carries **cell-level provenance**
+(`cite_refs` / `citations` naming the exact source cells like `sales#r0!qty`) and
+a `verify(catalog)` that **re-executes the computation offline** against the
+content-hashed source. A number that was tampered with, a chart re-pointed at
+different cells, or a finding that no longer re-derives is caught from the bytes —
+not trusted because a model asserted it. Generation is grounded (queries are
+structurally verified read-only before they run), bounded (cost caps), and
+governed (residency, consent, and the DP budget apply at the boundary), and the
+whole tour runs on the deterministic mock and the stdlib SQL engine.
+
 ## Register a dataset
 
 ```python
@@ -180,6 +194,26 @@ one signed `FederatedNarrative` whose every finding re-derives from each org's
 content-hashed source. Residency egress refusal, the consent ledger, and the
 differential-privacy budget apply at the boundary exactly as for a local query.
 See [Cross-org / federated analytics](../concepts/federated-data-engagement.md).
+
+## Gotchas
+
+- **Two `Dataset` classes, don't conflate them.** The tabular one this plane uses
+  is `from vincio.data import Dataset`; `vincio.Dataset` at the top level is the
+  **eval** dataset. `app.register_dataset(rows, ...)` builds the tabular one.
+- **`verify()` needs the catalog it was cited against.** Pass
+  `app.data_catalog()` (or the `contract_signer` for a sealed narrative); verify
+  re-executes against the content-hashed source, so a swapped catalog fails
+  exactly as tampering does.
+- **Text-to-query is read-only by construction.** A generated write, DDL, stacked
+  statement, or injection is refused *before* it runs — so `query_data` can never
+  mutate the source, and an ungroundable question returns nothing rather than a
+  guessed SQL.
+- **Streaming footprint tracks groups, not rows.** `aggregate_stream`'s working
+  set is bounded by the number of distinct groups; a `group_by` over a
+  high-cardinality column is the one way to blow the memory bound.
+- **Charts need an extra for a raster.** `chart.spec` (Vega-Lite) is always
+  available offline; a matplotlib PNG needs `vincio[charts]`, and a PDF report
+  needs `vincio[eval-pdf]`.
 
 ## Run it
 

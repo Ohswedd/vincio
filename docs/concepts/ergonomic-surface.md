@@ -124,6 +124,31 @@ task.app.add_memory()
 answer = task.ask("What is the refund window?")   # all of the above now apply
 ```
 
+## When to use / when not
+
+- **Use a one-liner** when the task is one of the five shapes and you want the
+  governed defaults now: a demo, a first cut, a notebook cell, the top of a
+  script you'll grow into `.app` later.
+- **Reach for `Flow`** when you want the pipeline as a threaded value — composing,
+  branching, or passing stages around — without giving up byte-identical lowering.
+- **Drop to the verbose `ContextApp`** (or start from `.app`) once you're wiring
+  several deep methods together — custom rails, memory scopes, multi-schema
+  routing — where the constructor's keyword surface stops being the shortest path.
+  Nothing is lost by switching: the one-liner already *was* that `ContextApp`.
+
+## Gotchas
+
+- **The one-liner is not a lighter engine.** `rag(...)` builds a fully governed
+  `ContextApp` — retrieval, grounding, validation, rails, budgets, tracing, and
+  the audit chain all run. It is fewer keystrokes, not fewer guarantees or less
+  cost.
+- **Mutate through `.app` *before* you invoke.** `task.app.add_rail(...)` applies
+  to the next `task.ask(...)`; changes made after a call don't retroactively
+  affect a result already produced.
+- **`@experimental` means the shape can still move.** These constructors lower to
+  stable `ContextApp.run`, but their own signatures may change before they
+  graduate — pin the version if you depend on the exact keyword surface.
+
 ## See also
 
 - [`examples/00_one_liners.py`](../../examples/00_one_liners.py) — every one-liner, runnable and offline, before the quickstart.

@@ -93,6 +93,41 @@ receipt is the natural thing to attach to a PR that changes retrieval, scoring, 
 budgeting — the reviewer sees exactly what moved into and out of the context, and
 why, without ever seeing the underlying documents.
 
+## How it works
+
+A receipt is a pure projection, not a second run. `CompileReceipt.from_packet`
+walks an already-compiled `ContextPacket` (plus the render context) and copies out
+the *decisions*: the kept items with their scoring signals, the dropped items with
+their exclusion reasons, the resolved and unresolved conflicts, the budget lines,
+and the privacy posture. Nothing is recomputed and no model is called — so a
+receipt cannot diverge from the packet it describes. `receipt_hash` then hashes
+that decision (deliberately excluding the per-run `run_id` / `trace_id`), which is
+what makes two runs of the same inputs compare equal while a changed source
+compares different. `diverges_from(baseline)` returns `None` when the decisions
+match and a structured delta otherwise.
+
+## Best practice
+
+- **Baseline in the PR, diff in the incident.** Store a known-good receipt as the
+  reviewed baseline; when a production run surprises you, run `diverges_from`
+  against it to get the item- and score-level delta instead of eyeballing traces.
+- **Ship the receipt, not the packet.** The receipt is safe to paste into a
+  ticket or attach to a review precisely because `omitted_raw_text` is a
+  structural guarantee — reach for the full packet only when you have the
+  authority to see the underlying documents.
+
+## Gotchas
+
+- **`receipt_hash` intentionally ignores the run ids.** Two identical-input runs
+  share a `receipt_hash` even though their `run_id` / `trace_id` differ — that's
+  the determinism property, not a collision. Compare `input_fingerprint` /
+  `rendered_packet_hash` when you need per-run identity.
+- **A stable `receipt_hash` proves the *decision* is unchanged, not that the
+  bytes are.** A render-only change (provider swap, format) can move
+  `rendered_packet_hash` while the compile decision — and therefore the receipt
+  hash — holds; the delta from `diverges_from` flags the render-identity change
+  explicitly.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

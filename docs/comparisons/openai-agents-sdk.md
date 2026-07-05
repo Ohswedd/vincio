@@ -1,15 +1,17 @@
 # Vincio vs OpenAI Agents SDK
 
-The OpenAI Agents SDK provides agents with instructions, function tools,
-handoffs, and guardrails, executed by a hosted-model-centric runner.
+The OpenAI Agents SDK is a lightweight, well-designed runner for agents with
+instructions, function tools, handoffs, sessions, and guardrails — reachable
+against non-OpenAI models through LiteLLM, but built around the OpenAI platform
+for its hosted tools and tracing UI.
 
 **Where Vincio differs**
 
-- **Provider-neutral.** Vincio agents, crews, and graphs run against any
-  provider (OpenAI, Anthropic, Google, Mistral, local, mock, a self-hosted DS4
-  DeepSeek V4 box, and any OpenAI-compatible gateway, groq, together, fireworks,
-  openrouter, deepseek, …) behind one interface, and offline in CI with
-  deterministic mocks.
+- **Provider-neutral by construction.** Vincio agents, crews, and graphs run
+  against any provider (OpenAI, Anthropic, Google, Mistral, local, mock, a
+  self-hosted DS4 DeepSeek V4 box, and any OpenAI-compatible gateway — Groq,
+  Together, Fireworks, OpenRouter, DeepSeek, …) behind one interface, and
+  offline in CI with deterministic mocks — no adapter shim.
 - **Durable state is first-class.** Stateful graphs checkpoint every step on
   your own storage (memory/SQLite/Postgres), with resume, edit-and-resume,
   and time-travel forks, no session service required.
