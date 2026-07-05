@@ -84,8 +84,10 @@
     <g>
       <rect x="305" y="256" width="250" height="120" rx="10" fill="#FCF6E8" stroke="#D8C79A" stroke-width="1"/>
       <text x="321" y="286" font-size="17" font-weight="700" fill="url(#feat_goldtext)">5</text>
-      <g stroke="url(#feat_gold)" stroke-width="1.8" fill="none" stroke-linecap="round">
-        <line x1="516" y1="290" x2="516" y2="272"/><line x1="524" y1="290" x2="524" y2="280"/><line x1="532" y1="290" x2="532" y2="266"/>
+      <g fill="url(#feat_gold)">
+        <rect x="514" y="278" width="6" height="12" rx="1"/>
+        <rect x="523" y="272" width="6" height="18" rx="1"/>
+        <rect x="532" y="266" width="6" height="24" rx="1"/>
       </g>
       <text x="321" y="316" font-size="13.5" font-weight="700" fill="#3A2E1C">Data &amp; analytics</text>
       <text x="321" y="338" font-size="10.5" fill="#6B5836">Tabular evidence, text-to-query,</text>
