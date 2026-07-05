@@ -14,6 +14,14 @@ flows: input rails, output rails, dialog rails, and retrieval rails.
   PII detector, secret scanner, and injection detector that already screen
   inputs, retrieved evidence, and tool output, one set of detectors,
   hardened by the red-team suite, covering every path.
+- **Containment holds when a rail misses.** A jailbreak/injection rail — like
+  any detector — is best-effort, so Vincio also separates the control plane
+  from the data plane: untrusted provenance becomes a typed taint label that
+  propagates through every derivation, and a side-effecting tool call is gated
+  on an unforgeable capability token minted from the user's own request. That
+  lets `verify_containment(run)` *prove* an untrusted-tainted value never
+  reached a write tool without approval — a guarantee scripted dialog rails
+  don't provide.
 - **Every rail decision is evidence.** Violations are `PolicyViolation`
   records named `rail:<name>` on the trace and in the hash-chained audit
   log: "why was this blocked?" is always answerable, offline.

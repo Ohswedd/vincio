@@ -78,6 +78,48 @@ for advice in report.advice:
     print(advice.code, advice.message)   # CACHE001 timestamp in prefix, ...
 ```
 
+## How gated promotion works
+
+Every optimizer here shares one shape: **propose → screen → gate → promote**.
+Candidates are first scored on a cheap screening subset; only the top N advance
+to the full dataset, so you don't pay to evaluate every dud at full cost. Then
+the split between the objective and the constraints does the real work:
+
+- **Fitness is the objective** — the weighted score the search *maximizes*.
+- **Gates are hard constraints** — a variant that wins fitness but regresses
+  safety or schema validity, exceeds the cost budget, fails a gate expression, or
+  was measured on too small a dataset is **refused promotion**, never shipped.
+
+That is why optimization "always through gates, never silently": the winner has
+to beat the baseline on fitness *and* clear every constraint, or the incumbent
+stays.
+
+## Best practice
+
+- **Optimize a signature's `PromptSpec`.** A typed [signature](structured-output.md)
+  compiles to a `PromptSpec` that is a first-class search target — formats,
+  examples, reasoning modes, rewrites — so you get optimization for free on
+  anything you expressed as a signature.
+- **Keep a held-out golden set** and let the gates reference it; a promotion
+  judged on the same data it was tuned on is the classic way to ship a
+  regression that "passed".
+- **Prefer `hill_climb` / `anneal` for context search.** They condition
+  proposals on subset scores already observed instead of sampling blindly, so a
+  fixed budget goes further — and stay deterministic under a seed.
+
+## Gotchas
+
+- **Fitness weights are a tradeoff, not free wins.** Cranking `groundedness` can
+  cost accuracy or latency; when one score isn't the whole story, run `pareto_loop`
+  and keep the cost/quality frontier instead of collapsing to a single number.
+- **Live bandits are gated too.** `EpsilonGreedyBandit` / `UCB1Bandit` support
+  online routing, but only behind offline gates — you never ship an unbounded
+  explorer that can drift into a bad arm in production.
+- **`estimate_difficulty` is deterministic** (the same estimator the
+  [reasoning controller](reasoning.md) uses), so routing decisions reproduce
+  under a seed — good for tests, and a reminder that it is a heuristic, not a
+  model call.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

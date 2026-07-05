@@ -262,6 +262,32 @@ and connection in one call: an `MCPRegistryClient` finds the server, a governed
 chain), and the server's tools land in the permissioned, sandboxed runtime,
 see the [MCP guide](mcp.md).
 
+## Gotchas & best practice
+
+- **The core stays `httpx`-only.** OpenAI-compatible gateways, hosted embedders,
+  hosted rerankers, and the `memory` vector store need no extra — they ride the
+  core dependency. Everything else imports its client **lazily** and raises a
+  clear `pip install "vincio[extra]"` error only when you actually build it, so a
+  `.[dev]`-only CI never trips over a store it doesn't use.
+- **Presets resolve `<NAME>_API_KEY` from the env** (`GROQ_API_KEY`,
+  `TOGETHER_API_KEY`, …). `build_provider("groq")` / `openai_compatible("groq")`
+  pick it up automatically; pass `api_key=` only for an unnamed custom `base_url`.
+- **`from_*` is cheap, `to_*` is not.** The interop *inbound* direction is
+  duck-typed and imports nothing heavy; the *outbound* direction builds real
+  framework objects and needs the matching extra
+  (`vincio[langchain]` / `vincio[llamaindex]` / `vincio[haystack]` / `vincio[dspy]`).
+- **`dimensions=N` truncates then re-normalizes** (Matryoshka): the leading dims
+  carry the most signal, so a shorter vector trades a little recall for a smaller
+  index. Hosted embedders request the short vector natively; others wrap in
+  `MatryoshkaEmbedder` after the fact.
+- **`pgvector` needs a `dsn=`, not a `url=`**, and the residency of a
+  self-hosted/OpenAI-compatible box is inferred from its endpoint — a localhost
+  gateway is on-prem by construction, so a residency policy admits or refuses it
+  fail-closed.
+- **A registry-name miss falls through to installed plugins.** A third-party
+  provider/store/embedder registered via entry points resolves automatically, so
+  a typo'd name and a missing plugin look the same — check `vincio plugins list`.
+
 ## Next steps
 
 - [connect external data sources](connectors.md)

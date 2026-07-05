@@ -155,6 +155,36 @@ sandboxed, and audited like everything else. See the
 [security threat model](../security/threat-model.md) for how tool calls
 (including realtime ones) are governed.
 
+## RealtimeSession or VoiceAgent?
+
+- **`RealtimeSession`** is the raw wire: turns, VAD, barge-in, and in-session
+  tools over a pluggable backend. Reach for it when you own the surrounding
+  logic and just need a normalized event stream.
+- **`app.voice_agent()`** is the assembled stack — deep research (grounded,
+  cited, bounded), a memory OS, and the app's input/output rails wired over the
+  session. Reach for it when a spoken assistant should *look things up*,
+  *remember*, and be *guarded* on both boundaries, exactly like the text path.
+  Opt any piece out with `research=False` / `memory_os=False` / `rails=False`.
+
+## Gotchas
+
+- **Develop and test on `"inprocess"`.** The in-process backend needs no extra
+  and is deterministic — `connect_realtime("inprocess", script=...)` drives the
+  model's response from a pure function, so turns, VAD, interruption, and tool
+  round-trips reproduce offline. The hosted backends (`"openai"` / `"gemini"`)
+  speak WebSocket and require `pip install "vincio[realtime]"`.
+- **The base session is *not* wired into the context compiler, evals, or the
+  closed loop** — a realtime audio session is a different shape of computation. If
+  you need grounding, memory, or rails, use the `VoiceAgent`, not the bare
+  session.
+- **Voice gets no privileged side channel.** In-session tool calls (including the
+  `VoiceAgent`'s `research` and memory ops) route through the same permissioned,
+  sandboxed, budgeted, audited runtime as a text tool call — a voice turn cannot
+  do anything a text turn could not.
+- **`interrupt()` is how you stop paying** for a response nobody is listening to;
+  wire it to your barge-in signal rather than letting a cancelled turn run to
+  completion.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

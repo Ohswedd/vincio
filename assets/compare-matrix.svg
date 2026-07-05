@@ -1,9 +1,9 @@
-<svg width="860" height="532" viewBox="0 0 860 532" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mtx_t mtx_d">
-  <title id="mtx_t">Built-in, in-library capability</title>
-  <desc id="mtx_d">Capability comparison matrix of twelve rows across Vincio, LangChain, LlamaIndex, DSPy, and Ragas, showing which capabilities are first-class in-library, partial, or not a focus.</desc>
+<svg width="860" height="512" viewBox="0 0 860 512" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="mtx_t mtx_d">
+  <title id="mtx_t">Built-in, in-library capability — Vincio vs the ecosystems</title>
+  <desc id="mtx_d">A capability matrix comparing Vincio, LangChain, LlamaIndex, DSPy and Ragas across twelve capabilities: scored budgeted context compiler; sparse plus late-interaction plus GraphRAG in one fusion; layered memory with decay and conflicts; permissioned RBAC/ABAC tool registry; durable graphs plus bounded crews; structured output with structure-only repair; built-in evals plus CI gates; eval-driven optimization with gated promotion; native tracing plus cost with no account; deterministic security for PII, injection and audit; MCP client and server plus A2A plus Skills; governance evidence for cards, AI-BOM, erasure and residency. A filled disc means first-class in-library; a half disc means partial or via an add-on or SaaS; an empty ring means not a focus. Vincio is first-class across all twelve.</desc>
   <defs>
-    <radialGradient id="mtx_parch" cx="40%" cy="26%" r="86%">
-      <stop offset="0%" stop-color="#FBF4E2"/>
+    <radialGradient id="mtx_parch" cx="40%" cy="10%" r="94%">
+      <stop offset="0%" stop-color="#FCF6E6"/>
       <stop offset="62%" stop-color="#F3E8CC"/>
       <stop offset="100%" stop-color="#E7D6AE"/>
     </radialGradient>
@@ -13,226 +13,133 @@
       <stop offset="100%" stop-color="#9A721C"/>
     </linearGradient>
     <linearGradient id="mtx_goldtext" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#D9B354"/>
-      <stop offset="100%" stop-color="#9A721C"/>
+      <stop offset="0%" stop-color="#C79A3A"/>
+      <stop offset="100%" stop-color="#8C6516"/>
     </linearGradient>
+    <clipPath id="mtx_half"><rect x="-8" y="-8" width="8" height="16"/></clipPath>
   </defs>
-  <rect x="1.5" y="1.5" width="857" height="529" rx="16" fill="url(#mtx_parch)" stroke="#C49A3A" stroke-width="1.5"/>
-  <rect x="6.5" y="6.5" width="847" height="519" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>
-  <rect x="408" y="160" width="66" height="338" rx="6" fill="url(#mtx_gold)" opacity="0.10"/>
+  <rect x="1.5" y="1.5" width="857" height="509" rx="16" fill="url(#mtx_parch)" stroke="url(#mtx_gold)" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="499" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.38"/>
+
   <g font-family="Georgia, 'Times New Roman', serif">
-    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">HOW VINCIO COMPARES</text>
-    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#mtx_goldtext)">Built-in, in-library capability</text>
-    <text x="40" y="102" font-size="13" fill="#6B5836">Not what is reachable by bolting on a separate product or SaaS.</text>
+    <text x="34" y="36" font-size="11.5" letter-spacing="3" fill="#B98B2E">BUILT-IN, IN-LIBRARY CAPABILITY</text>
+    <text x="34" y="56" font-size="10.5" fill="#6B5836">Reflects what ships in the library — not what's reachable by bolting on a separate product or SaaS.</text>
 
-    <text x="441" y="176" font-size="11.5" font-weight="700" fill="#9A721C" text-anchor="middle">VINCIO</text>
-    <text x="530" y="176" font-size="11.5" fill="#5B4A2E" text-anchor="middle">LangChain</text>
-    <text x="620" y="176" font-size="11.5" fill="#5B4A2E" text-anchor="middle">LlamaIndex</text>
-    <text x="710" y="176" font-size="11.5" fill="#5B4A2E" text-anchor="middle">DSPy</text>
-    <text x="800" y="176" font-size="11.5" fill="#5B4A2E" text-anchor="middle">Ragas</text>
-    <line x1="40" y1="188" x2="818" y2="188" stroke="#C49A3A" stroke-width="0.8" opacity="0.4"/>
+    <!-- Vincio column highlight -->
+    <rect x="474" y="68" width="66" height="424" rx="8" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.1"/>
 
-    <rect x="34" y="218.5" width="790" height="25" fill="#5B4A2E" opacity="0.05"/>
-    <rect x="34" y="268.5" width="790" height="25" fill="#5B4A2E" opacity="0.05"/>
-    <rect x="34" y="318.5" width="790" height="25" fill="#5B4A2E" opacity="0.05"/>
-    <rect x="34" y="368.5" width="790" height="25" fill="#5B4A2E" opacity="0.05"/>
-    <rect x="34" y="418.5" width="790" height="25" fill="#5B4A2E" opacity="0.05"/>
-    <rect x="34" y="468.5" width="790" height="25" fill="#5B4A2E" opacity="0.05"/>
+    <!-- column headers -->
+    <g text-anchor="middle" font-size="11.5">
+      <text x="507" y="86" font-weight="700" fill="#8C6516">Vincio</text>
+      <text x="576" y="86" fill="#6B5836">LangChain</text>
+      <text x="650" y="86" fill="#6B5836">LlamaIndex</text>
+      <text x="722" y="86" fill="#6B5836">DSPy</text>
+      <text x="792" y="86" fill="#6B5836">Ragas</text>
+    </g>
+    <line x1="34" y1="94" x2="826" y2="94" stroke="#D8C79A" stroke-width="1"/>
 
-    <text x="40" y="210" font-size="12" fill="#3A2E1C">Scored, budgeted context compiler</text>
-    <text x="40" y="235" font-size="12" fill="#3A2E1C">Sparse + late-interaction + GraphRAG fusion</text>
-    <text x="40" y="260" font-size="12" fill="#3A2E1C">Layered memory (decay, conflicts, bi-temporal)</text>
-    <text x="40" y="285" font-size="12" fill="#3A2E1C">Permissioned tool registry (RBAC / ABAC)</text>
-    <text x="40" y="310" font-size="12" fill="#3A2E1C">Durable graphs + bounded crews</text>
-    <text x="40" y="335" font-size="12" fill="#3A2E1C">Structured output + structure-only repair</text>
-    <text x="40" y="360" font-size="12" fill="#3A2E1C">Built-in evals + CI gates</text>
-    <text x="40" y="385" font-size="12" fill="#3A2E1C">Eval-driven optimization (gated promotion)</text>
-    <text x="40" y="410" font-size="12" fill="#3A2E1C">Native tracing + cost, no account</text>
-    <text x="40" y="435" font-size="12" fill="#3A2E1C">Deterministic security (PII / injection / audit)</text>
-    <text x="40" y="460" font-size="12" fill="#3A2E1C">MCP client + server, A2A, Skills</text>
-    <text x="40" y="485" font-size="12" fill="#3A2E1C">Governance evidence (cards, AI-BOM, erasure)</text>
-
-    <g>
-      <circle cx="441" cy="206" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 206 L440 208.5 L444.5 203.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="530" cy="206" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="206" x2="533.5" y2="206" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="620" cy="206" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="616.5" y1="206" x2="623.5" y2="206" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <circle cx="710" cy="206" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="206" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="231" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 231 L440 233.5 L444.5 228.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="530" cy="231" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="231" x2="533.5" y2="231" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="620" cy="231" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="616.5" y1="231" x2="623.5" y2="231" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <circle cx="710" cy="231" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="231" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="256" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 256 L440 258.5 L444.5 253.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="530" cy="256" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="256" x2="533.5" y2="256" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="620" cy="256" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="616.5" y1="256" x2="623.5" y2="256" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <circle cx="710" cy="256" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="256" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="281" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 281 L440 283.5 L444.5 278.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <circle cx="530" cy="281" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="620" cy="281" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="710" cy="281" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="281" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="306" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 306 L440 308.5 L444.5 303.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="530" cy="306" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="306" x2="533.5" y2="306" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <circle cx="620" cy="306" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="710" cy="306" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="306" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="331" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 331 L440 333.5 L444.5 328.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="530" cy="331" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="331" x2="533.5" y2="331" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="620" cy="331" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="616.5" y1="331" x2="623.5" y2="331" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="710" cy="331" r="7" fill="url(#mtx_gold)"/>
-      <path d="M706.5 331 L709 333.5 L713.5 328.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <circle cx="800" cy="331" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="356" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 356 L440 358.5 L444.5 353.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="530" cy="356" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="356" x2="533.5" y2="356" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="620" cy="356" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="616.5" y1="356" x2="623.5" y2="356" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="710" cy="356" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="706.5" y1="356" x2="713.5" y2="356" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="800" cy="356" r="7" fill="url(#mtx_gold)"/>
-      <path d="M796.5 356 L799 358.5 L803.5 353.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <!-- rows: y baseline for text; disc cy = y-4 -->
+    <!-- helper: cx columns 507,576,650,722,792 -->
+    <g font-size="11" fill="#3A2E1C">
+      <text x="42" y="120">Scored, budgeted context compiler</text>
+      <text x="42" y="152">Sparse + late-interaction + GraphRAG fusion</text>
+      <text x="42" y="184">Layered memory (decay, conflicts, bi-temporal)</text>
+      <text x="42" y="216">Permissioned tool registry (RBAC / ABAC)</text>
+      <text x="42" y="248">Durable graphs + bounded crews</text>
+      <text x="42" y="280">Structured output + structure-only repair</text>
+      <text x="42" y="312">Built-in evals + CI gates</text>
+      <text x="42" y="344">Eval-driven optimization (gated promotion)</text>
+      <text x="42" y="376">Native tracing + cost, no account</text>
+      <text x="42" y="408">Deterministic security (PII / injection / audit)</text>
+      <text x="42" y="440">MCP client + server, A2A, Skills</text>
+      <text x="42" y="472">Governance evidence (cards · AI-BOM · residency)</text>
     </g>
 
+    <!-- discs: full = filled gold; half = half gold half ring; empty = ring only -->
+    <!-- Vincio column: all full -->
     <g>
-      <circle cx="441" cy="381" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 381 L440 383.5 L444.5 378.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+      <!-- FULL disc marker group per (cx,cy) -->
+      <!-- row1 y116 -->
+      <circle cx="507" cy="116" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="116" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 109 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="116" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M650 109 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="722" cy="116" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="116" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row2 y148 -->
+      <circle cx="507" cy="148" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="148" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 141 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="148" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M650 141 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="722" cy="148" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="148" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row3 y180 -->
+      <circle cx="507" cy="180" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="180" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 173 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="180" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M650 173 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="722" cy="180" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="180" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row4 y212 -->
+      <circle cx="507" cy="212" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="212" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="650" cy="212" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="722" cy="212" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="212" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row5 y244 -->
+      <circle cx="507" cy="244" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="244" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 237 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="244" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="722" cy="244" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="244" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row6 y276 -->
+      <circle cx="507" cy="276" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="276" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 269 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="276" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M650 269 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="722" cy="276" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="792" cy="276" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row7 y308 -->
+      <circle cx="507" cy="308" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="308" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 301 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="308" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M650 301 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="722" cy="308" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M722 301 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="792" cy="308" r="7" fill="url(#mtx_gold)"/>
+      <!-- row8 y340 -->
+      <circle cx="507" cy="340" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="340" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="650" cy="340" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="722" cy="340" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="792" cy="340" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row9 y372 -->
+      <circle cx="507" cy="372" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="372" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 365 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="372" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M650 365 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="722" cy="372" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="372" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row10 y404 -->
+      <circle cx="507" cy="404" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="404" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="650" cy="404" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="722" cy="404" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="404" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row11 y436 -->
+      <circle cx="507" cy="436" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="436" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M576 429 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="650" cy="436" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M650 429 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="722" cy="436" r="7" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M722 429 a7 7 0 0 0 0 14 z" fill="#C49A3A" opacity="0.55"/>
+      <circle cx="792" cy="436" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <!-- row12 y468 -->
+      <circle cx="507" cy="468" r="7" fill="url(#mtx_gold)"/>
+      <circle cx="576" cy="468" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="650" cy="468" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="722" cy="468" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
+      <circle cx="792" cy="468" r="7" fill="none" stroke="#B79A6A" stroke-width="1.3"/>
     </g>
-    <circle cx="530" cy="381" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="620" cy="381" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <g>
-      <circle cx="710" cy="381" r="7" fill="url(#mtx_gold)"/>
-      <path d="M706.5 381 L709 383.5 L713.5 378.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <circle cx="800" cy="381" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
 
-    <g>
-      <circle cx="441" cy="406" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 406 L440 408.5 L444.5 403.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
+    <!-- legend -->
+    <line x1="34" y1="486" x2="826" y2="486" stroke="#D8C79A" stroke-width="1"/>
+    <g font-size="10" fill="#6B5836">
+      <circle cx="42" cy="500" r="6" fill="url(#mtx_gold)"/><text x="54" y="503">first-class in-library</text>
+      <circle cx="220" cy="500" r="6" fill="none" stroke="#C49A3A" stroke-width="1.3"/><path d="M220 494 a6 6 0 0 0 0 12 z" fill="#C49A3A" opacity="0.55"/><text x="232" y="503">partial or via an add-on / SaaS</text>
+      <circle cx="470" cy="500" r="6" fill="none" stroke="#B79A6A" stroke-width="1.3"/><text x="482" y="503">not a focus</text>
+      <text x="600" y="503" font-style="italic" fill="#8C7448">Ecosystems evolve — and vincio.interop bridges them in.</text>
     </g>
-    <g>
-      <circle cx="530" cy="406" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="406" x2="533.5" y2="406" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="620" cy="406" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="616.5" y1="406" x2="623.5" y2="406" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <circle cx="710" cy="406" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="406" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="431" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 431 L440 433.5 L444.5 428.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <circle cx="530" cy="431" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="620" cy="431" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="710" cy="431" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="431" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="456" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 456 L440 458.5 L444.5 453.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="530" cy="456" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="526.5" y1="456" x2="533.5" y2="456" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="620" cy="456" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="616.5" y1="456" x2="623.5" y2="456" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <g>
-      <circle cx="710" cy="456" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="706.5" y1="456" x2="713.5" y2="456" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <circle cx="800" cy="456" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="441" cy="481" r="7" fill="url(#mtx_gold)"/>
-      <path d="M437.5 481 L440 483.5 L444.5 478.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <circle cx="530" cy="481" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="620" cy="481" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="710" cy="481" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <circle cx="800" cy="481" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-
-    <g>
-      <circle cx="46" cy="510" r="7" fill="url(#mtx_gold)"/>
-      <path d="M42.5 510 L45 512.5 L49.5 507.5" fill="none" stroke="#FFFFFF" stroke-width="2"/>
-    </g>
-    <text x="58" y="514" font-size="10.5" fill="#8A7551">first-class in-library</text>
-
-    <g>
-      <circle cx="262" cy="510" r="7" fill="none" stroke="#B3A079" stroke-width="2"/>
-      <line x1="258.5" y1="510" x2="265.5" y2="510" stroke="#B3A079" stroke-width="2"/>
-    </g>
-    <text x="274" y="514" font-size="10.5" fill="#8A7551">partial / via add-on or SaaS</text>
-
-    <circle cx="540" cy="510" r="6.5" fill="none" stroke="#CFC2A2" stroke-width="1.4" opacity="0.7"/>
-    <text x="552" y="514" font-size="10.5" fill="#8A7551">not a focus</text>
   </g>
 </svg>

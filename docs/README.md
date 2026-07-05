@@ -1,17 +1,22 @@
 # Vincio documentation
 
-Vincio is a Python platform for context-engineered AI applications. It compiles
-prompts, memory, retrieval, tools, schemas, and policies into optimized,
-validated, observable **context packets**, then validates and evaluates every
-output. The single entry point is `from vincio import ContextApp`.
+Vincio governs the **boundary between your application and the model** — what evidence is selected, how
+it is scored and budgeted, how the output is validated, and what it cost. It compiles prompts, memory,
+retrieval, tools, schemas, and policies into optimized, validated, observable **context packets**, then
+checks, measures, and traces every output. The single entry point is `from vincio import ContextApp`.
 
-This page is the map. It lists every guide, concept, and reference page in a
-reading order, from your first app through the full platform. New to Vincio?
-Read [Getting started](getting-started.md), then the [core concepts](#core-concepts)
-in order. Building something specific? Jump straight to the matching
-[task guide](#build-an-application). For the product pitch and benchmarks, see
-the [root README](../README.md); for the source-tree map, see
-[`AGENTS.md`](../AGENTS.md).
+**This page is the map.** It lists every guide, concept, and reference page in a reading order, from your
+first app through the full platform:
+
+- **New to Vincio?** Read [Getting started](getting-started.md), then the
+  [core concepts](#core-concepts) in order — they build the mental model.
+- **Building something specific?** Jump to the matching [task guide](#build-an-application).
+- **Prefer a staged route?** Follow the [learning path](learning-path.md).
+- **Looking up an API?** The [capability map](reference/capability-map.md) binds every `app.*` verb to
+  the page that documents it.
+
+For the product overview and live benchmarks, see the [root README](../README.md); for the source-tree
+map and contributor conventions, [`AGENTS.md`](../AGENTS.md).
 
 ## Contents
 

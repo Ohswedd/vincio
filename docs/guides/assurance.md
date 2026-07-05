@@ -157,6 +157,30 @@ case and assurance report, and re-runs the evidence check, so a report claiming
 `certified` over a case that does not hold is caught offline, and so is a tamper to
 any underlying piece of evidence.
 
+## Gotchas & best practice
+
+- **Evidence binders bind a verdict, they never re-run the check.**
+  `Evidence.from_gate`, `from_governance`, `from_certificate`, … wrap a verdict
+  the platform already produced — so an `Evidence.asserted(...)` or a hand-passed
+  bool is only as trustworthy as its source. Prefer a real platform verdict over
+  an asserted one wherever the check exists.
+- **A stale proof invalidates a claim even when it is intact and supportive.**
+  Freshness is a first-class failure mode: a piece past its `horizon_days` shows
+  up in `report.stale` and fails its claim. Set realistic horizons and re-gather
+  evidence on each check, don't set a horizon so long it can never expire.
+- **Missing ≠ passed.** A leaf that declares a required evidence *kind* it does
+  not have is *undischarged* and reported in `report.missing`; the case does not
+  silently skip it. Read `report.failing_claims` to see the exact failing path.
+- **Re-check on every change.** `assurance_regression_gate(before, after)` is the
+  CI invariant — run it on a model swap, a prompt edit, a dependency bump, or a
+  new deployment so a claim that *held* can never silently stop holding.
+- **`learn_from(incident)` deliberately breaks the case** until remediation ships:
+  the added sub-claim *demands fresh evidence*, so `case.check().holds` stays
+  `False` until you `discharge` the remediation with a post-fix verdict.
+- **`CertificationReport.verify()` re-runs the case check.** A report claiming
+  `certified` over a case that no longer holds is caught offline from the bytes —
+  so a certificate is only as current as its last honest re-check.
+
 ## What it is not
 
 The assurance case is a **library capability inside your process**. It never becomes a

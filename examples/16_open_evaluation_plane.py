@@ -1,37 +1,18 @@
 """The open evaluation plane — the standard public benchmarks, one harness.
 
-Vincio already ships an evaluation subsystem (golden datasets, 30+ metrics,
-calibrated judges) and a three-tier internal benchmark suite. This tour is the
-*other* half: one coherent, pluggable plane for running the **standard public
-model benchmarks** — MMLU, GPQA, GSM8K, HumanEval, IFEval, TruthfulQA, RULER, … —
-grouped by niche, scored by reusable metrics, and reported the same way for every
-model and every model version. It is in-process and offline-reproducible; it never
-becomes a hosted leaderboard.
+One pluggable plane for running the standard public model benchmarks (MMLU, GPQA,
+GSM8K, HumanEval, IFEval, RULER, …), grouped by niche, scored by reusable metrics,
+reported identically for every model. It is in-process and offline-reproducible.
 
-The organizing idea is the **provenance tier** on every number, an enforced
-contract, not a convention:
+The load-bearing idea is the **provenance tier** stamped on every number — an
+enforced contract, not a convention:
 
-  * **S — Static**   a small, bundled, *fabricated* fixture that exercises the
-                     adapter + metric end to end (reproducible, gates CI).
-  * **R — Recorded** a hash-pinned slice of the *real* dataset replayed against
-                     recorded model outputs (reproducible, gates CI).
-  * **L — Live**     the full public dataset against a live model (reported,
-                     never gated).
+  * **S — Static**   a bundled *fabricated* fixture exercising adapter + metric (gates CI).
+  * **R — Recorded** a hash-pinned real-dataset slice replayed vs recorded outputs (gates CI).
+  * **L — Live**     the full public dataset vs a live model (reported, never gated).
 
-The engine *refuses* to let a lower tier print a higher tier's label, so a
-fabricated fixture can never masquerade as a live score. Everything below runs
-fully offline on the bundled Tier-S fixtures.
-
-Sections:
-  1.  Run a niche and read the tiered results.
-  2.  The catalog — eleven niches behind one BenchmarkAdapter contract.
-  3.  Determinism — a Tier-S run is byte-identical.
-  4.  Tier integrity — a static fixture cannot be reported live.
-  5.  Long-context uplift — RULER is run twice, with and without the governor.
-  6.  Reporting — one run rendered to Markdown / HTML / JSON / CSV.
-  7.  Leaderboard & visualization — rank models, chart the breakdown.
-  8.  The run store — persist runs and diff a model version.
-  9.  Extend it — register your own benchmark without touching the core.
+The engine refuses to let a lower tier print a higher tier's label, so a fabricated
+fixture can never masquerade as a live score. Runs fully offline on the Tier-S fixtures.
 """
 
 from __future__ import annotations
@@ -61,73 +42,65 @@ def main() -> None:
     provider, model = example_provider()
     app = ContextApp(name="open_eval", provider=provider, model=model)
 
-    # 1. Run a niche and read the tiered results -----------------------------
-    print("1. Run the Knowledge niche (Tier-S, fully offline)")
+    # 1. Run a niche from the app. Every run carries its tier; a Tier-S run gates CI
+    #    ('static' = fabricated fixtures), so this is the number you can block a merge on.
     run = app.benchmark_suite("knowledge", tier="static")
-    print(f"   {len(run.runs)} benchmarks · overall primary {run.overall():.3f} "
+    print(f"1. Knowledge niche · {len(run.runs)} benchmarks · overall {run.overall():.3f} "
           f"· tier {run.tier.code} ({'gates CI' if run.gated else 'reported only'})")
     for r in sorted(run.runs, key=lambda r: r.benchmark_id):
-        print(f"     {r.benchmark_id:24s} {r.primary_metric:10s} {r.primary:.3f}  [tier {r.tier.code}]")
+        print(f"   {r.benchmark_id:22s} {r.primary_metric:10s} {r.primary:.3f}")
 
-    # 2. The catalog ---------------------------------------------------------
-    print("\n2. The catalog — eleven niches, one contract")
+    # 2. The catalog: every benchmark sits behind one BenchmarkAdapter contract, so
+    #    adding a niche never touches the harness. Group by niche to see the surface.
     registry = default_benchmark_registry()
+    print("\n2. Catalog — niches behind one adapter contract")
     for niche, specs in registry.niches().items():
         print(f"   {niche:14s} {', '.join(s.name for s in specs)}")
 
-    # 3. Determinism ---------------------------------------------------------
-    print("\n3. Determinism — a Tier-S run is byte-identical")
+    # 3. Determinism: a Tier-S run is byte-identical across processes (the digest is
+    #    the reproducibility receipt) — CI can assert the digest, not just the score.
     suite = BenchmarkSuite()
-    a = suite.run("all", tier="static")
-    b = suite.run("all", tier="static")
-    print(f"   digest A == digest B: {a.determinism_digest == b.determinism_digest} "
-          f"({a.determinism_digest})")
+    a, b = suite.run("all", tier="static"), suite.run("all", tier="static")
+    print(f"\n3. Determinism — digest stable: {a.determinism_digest == b.determinism_digest}")
 
-    # 4. Tier integrity ------------------------------------------------------
-    print("\n4. Tier integrity — a fabricated fixture cannot be reported live")
+    # 4. Tier integrity: asking a fabricated fixture to report as 'live' is refused —
+    #    this is the enforcement that keeps the tier labels honest.
     try:
         suite.run("knowledge.mmlu", tier="live")
     except TierViolationError as exc:
-        print(f"   refused: {str(exc).split('—')[0].strip()}")
+        print(f"4. Tier integrity — refused: {str(exc).split('—')[0].strip()}")
 
-    # 5. Long-context uplift -------------------------------------------------
-    print("\n5. Long-context uplift — RULER run twice (with & without the governor)")
+    # 5. Long-context uplift: RULER is run with and without the governor, so the
+    #    benchmark measures *Vincio's* contribution, not just the base model.
     ruler = suite.run("long_context.ruler", tier="static").runs[0]
-    assert ruler.governed is not None
-    print(f"   base {ruler.governed['base']:.3f} → governed {ruler.governed['governed']:.3f} "
-          f"(uplift {ruler.governed['uplift']:+.3f})")
+    g = ruler.governed
+    print(f"5. RULER uplift — base {g['base']:.3f} → governed {g['governed']:.3f} ({g['uplift']:+.3f})")
 
-    # 6. Reporting -----------------------------------------------------------
-    print("\n6. Reporting — one run, every format, every number tiered")
+    # 6. Reporting: one run renders to every format with the tier on every number.
     report = SuiteReport(a)
-    print("   markdown head:", report.to_markdown().splitlines()[0])
-    print("   csv header:   ", report.to_csv().splitlines()[0])
-    print("   json tier:    ", '"tier": "S"' in report.to_json())
+    tier_tagged = '"tier": "S"' in report.to_json()
+    print(f"6. Reporting — markdown/csv/json render; json carries the tier: {tier_tagged}")
 
-    # 7. Leaderboard & visualization -----------------------------------------
-    print("\n7. Leaderboard & visualization")
-    run_a = suite.run("knowledge", tier="static", model="model-A")
-    run_b = suite.run("knowledge", tier="static", model="model-B")
+    # 7. Leaderboard & charts: rank models and emit deterministic Vega-Lite (no
+    #    plotting dependency) so results drop straight into a report or the docs.
+    run_a = suite.run("knowledge", tier="static", model="A")
+    run_b = suite.run("knowledge", tier="static", model="B")
     board = Leaderboard.from_runs([run_a, run_b])
-    print(f"   ranked {len(board.rows)} models; #1 = {board.rows[0].model}")
-    chart = leaderboard_chart(board)
-    radar = radar_chart(run_a)
-    print(f"   {chart.kind} + {radar.kind} charts → deterministic Vega-Lite JSON "
-          f"({len(chart.to_json())} bytes)")
+    print(f"7. Leaderboard — ranked {len(board.rows)} models, #1={board.rows[0].model}; "
+          f"{leaderboard_chart(board).kind}+{radar_chart(run_a).kind} charts (Vega-Lite JSON)")
 
-    # 8. The run store -------------------------------------------------------
-    print("\n8. The run store — persist & diff a model version")
+    # 8. The run store persists runs so you can diff a model across versions —
+    #    the regression signal you actually gate releases on.
     with tempfile.TemporaryDirectory() as tmp:
         store = RunStore(Path(tmp) / "runs.db")
-        store.save(run_a, version="1.0")
-        store.save(suite.run(["knowledge", "reasoning"], tier="static", model="model-A"),
-                   version="2.0")
-        diff = store.model_version_diff("model-A")
-        print(f"   versions diffed: overall {diff['overall_from']:.3f} → {diff['overall_to']:.3f}")
+        store.save(suite.run("knowledge", tier="static", model="A"), version="1.0")
+        store.save(suite.run(["knowledge", "reasoning"], tier="static", model="A"), version="2.0")
+        diff = store.model_version_diff("A")
+        print(f"8. Run store — v1→v2 overall {diff['overall_from']:.3f} → {diff['overall_to']:.3f}")
         store.close()
 
-    # 9. Extend it -----------------------------------------------------------
-    print("\n9. Extend it — register your own benchmark, no core change")
+    # 9. Extend it: register your own benchmark (reusing a stock adapter/metric)
+    #    with no change to the core — the whole plane is open at the edges.
     register_benchmark(
         BenchmarkSpec(
             id="custom.house_style", niche="custom", title="House style",
@@ -139,11 +112,10 @@ def main() -> None:
         replace=True,
     )
     custom = BenchmarkSuite().run("custom.house_style", tier="static")
-    print(f"   custom.house_style scored {custom.runs[0].primary:.3f}")
+    print(f"9. Custom benchmark scored {custom.runs[0].primary:.3f}")
 
-    # The plane never touches a database or a network on the Tier-S path. Point
-    # a Recorded/Live run at a real dataset with BenchmarkDataset (and, for live,
-    # a real model via VINCIO_PROVIDER); see docs/guides/run-benchmark-suite.md.
+    # Point a Recorded/Live run at a real dataset with BenchmarkDataset (and, for
+    # live, VINCIO_PROVIDER); see docs/guides/run-benchmark-suite.md.
     _ = BenchmarkDataset, ProvenanceTier  # referenced for the reachability gate
     print("\nDone — every number above carried its provenance tier.")
 

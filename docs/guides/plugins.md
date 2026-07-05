@@ -95,6 +95,31 @@ When a distribution declares its targeted plugin-API major via the
 never half-loads against an older runtime, and vice-versa. A distribution that
 doesn't declare a version is treated as compatible.
 
+## Best practice
+
+- **Declare your targeted `api_version`.** A plugin that omits it is *assumed*
+  compatible, so a genuinely-incompatible one can half-load; declaring the
+  contract major lets Vincio fail loud on a mismatch instead.
+- **Let resolution trigger discovery.** You rarely call `load_plugins()`
+  yourself — `connect("acme")` and `load_pack("acme_support")` trigger discovery
+  for their group on a name miss, and providers/embedders/stores self-register at
+  their own first use. Reach for `load_plugins()` only to eagerly register
+  everything up front (e.g. at process start).
+- **Keep the factory import cheap.** Discovery lists installed plugins *without*
+  importing the target object, so a heavy import in your factory only costs at
+  load time, not at every `installed_plugins()` call.
+
+## Gotchas
+
+- **`installed_plugins()` proves a plugin is *installed*, not that it *works*.**
+  It deliberately does not import the object, so an import error only surfaces at
+  `load_plugins()` (reported as `error`, isolated so it never breaks the rest).
+- **`PLUGIN_API_VERSION` bumps only on a breaking shape change** to a group's
+  expected object — never for a package patch level. A plugin's own version and
+  the contract major are independent.
+- **`load_plugins()` is idempotent.** Calling it repeatedly re-registers safely;
+  a plugin that fails to import stays `error` and does not poison the registry.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

@@ -124,6 +124,25 @@ app.remember("prefers email over phone", user_id="u1")
 hits = app.recall("contact preference", user_id="u1")
 ```
 
+## Migration strategy & gotchas
+
+- **Migrate incrementally, don't rewrite.** The `from_*` adapters are duck-typed,
+  so you can wrap a LangChain tool / retriever / loader / embedder and keep it in
+  place, then swap to the native equivalent when a flow is ready — not all at once.
+- **`from_*` / `add_*` are import-free; `to_*` needs the extra.** Bringing assets
+  *into* Vincio requires no `langchain` import; handing components *back*
+  (`to_langchain_tool`, …) needs `pip install "vincio[langchain]"`.
+- **A wrapped retriever is read-only.** `from_langchain_retriever` gives an async
+  `.search()` source Vincio scores and budgets; it does not re-index. Use
+  `app.add_source(retrieval="hybrid")` when you want Vincio to own ingestion,
+  chunking, and the index.
+- **Prompts aren't strings here.** There's no LCEL template to port —
+  instructions, evidence, memory, tools, and policies compile into one scored
+  packet, so answer-only and citation enforcement move from prompt text into
+  `set_policy(...)`, enforced in code.
+- **Tracing has no account.** Replace LangSmith callbacks with the native trace:
+  every run writes JSONL/OTEL with `result.trace_id`, nothing to sign up for.
+
 ## What Vincio adds
 
 - **A context compiler, not string templates**: prompts, evidence, memory,

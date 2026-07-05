@@ -105,6 +105,27 @@ duality the MCP and A2A clients already use.
 - **It is yours.** The directory is a governed catalog you run on your own
   infrastructure, never a hosted control plane.
 
+## Gotchas
+
+- **Fail-closed means you must allow explicitly.** `default_allow` is `False`, so
+  an agent matching neither an allow nor a deny pattern is unreachable. An empty
+  allow-list denies everything — the safe default, but a silent one if you forgot
+  to list your agents.
+- **Deny wins.** Deny patterns evaluate before allow, so `deny=["evil*"]` blocks
+  `evil-researcher` even if `allow=["*"]`. Patterns are fnmatch globs over the
+  agent **name or URL** — pin the URL suffix (`*.trusted.example`) when the name
+  alone is spoofable.
+- **`resolve` raises; `try_resolve` returns a decision.** Use `try_resolve` on a
+  hot path where a denied agent is expected and you want the `AccessDecision`
+  reason without an exception.
+- **Discovery is not trust.** Registering a card (or importing an ACP/MCP
+  catalog) only makes an agent *findable*; it becomes *reachable* only after
+  `resolve` passes the gate — and every allow/deny lands on the audit chain, so
+  `audit.query(action="agent_resolve")` is the accountability record.
+- **Offline vs live is one switch.** Every client takes `catalog=` (in-process,
+  for tests and air-gapped runs) or `base_url=` (live HTTP) — the same duality
+  the MCP and A2A clients use, so a directory built in CI matches production.
+
 See the [API reference](../reference/api.md) (`vincio.registry`) and the runnable
 [`10_interop_and_protocols.py`](../../examples/10_interop_and_protocols.py) example.
 

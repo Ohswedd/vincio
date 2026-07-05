@@ -69,6 +69,16 @@ Tune how hard a party bargains with `concession` (the exponent of the concession
 curve: `< 1` tough/"boulware", `> 1` generous/"conceder") and `min_utility` (the
 hard floor below which the party will neither offer nor accept).
 
+### How termination is guaranteed
+
+Neither party searches an open space. Each holds a fixed `NegotiationPosition`
+and, round by round, interpolates its offer from *ideal* toward *reservation*
+along the concession curve, accepting the instant the opponent's standing offer
+beats the one it would make next. Two monotone sequences approaching fixed
+reservations either cross (a deal) or run out `max_rounds` (a clean
+`no_agreement`) — there is no configuration in which the loop fails to halt. A
+`Contract` is minted only on a crossing, and both sides sign the *same* terms.
+
 ## A typed, signed, verifiable contract
 
 On agreement a `Contract` is minted and **signed by both parties**. It verifies
@@ -167,6 +177,26 @@ result = app.negotiate("job", buyer=buyer, seller=remote_seller, buyer_id="acme"
 
 The remote party's identity is pinned to the directory-resolved member id, not a
 self-asserted one on the wire, so a reputation lookup cannot be spoofed.
+
+## Best practice & gotchas
+
+- **`max_rounds` guarantees; `deadline_s` escapes.** The bargain is bounded by
+  `max_rounds` no matter what; a `deadline_s` returns a *partial* result the
+  moment it hits, with `deadline_hit=True` and the full `offers` trace — inspect
+  it, don't treat a timeout as a bare failure.
+- **Set reservations honestly.** A deal exists only where the parties' acceptable
+  regions overlap; if you get `status="no_agreement"` where you expected a deal,
+  the reservations don't cross — tune those before reaching for `concession`.
+- **Reputation ranks, it never blacklists.** A regressing seller's offers are
+  weighted within `[floor, 1]`, so it can still close by conceding more (a risk
+  premium) and a reformed seller recovers; `select_offer` picks the
+  reputation-weighted winner among competing deals.
+- **Close the loop or reputation stays blank.** `enforce_contract` (or a
+  settlement) is what credits/debits the ledger. Without it, delivery never feeds
+  back and every negotiation starts from the same flat prior.
+- **Third-party verifiability needs an `Ed25519Signer`.** The default per-app
+  signer verifies within your process; pass an `Ed25519Signer` so a counterparty
+  holding the public half can verify the `Contract` without sharing a secret.
 
 ## What it is not
 

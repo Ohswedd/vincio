@@ -74,6 +74,38 @@ without ever seeing the documents.
 See the runnable tour in
 [`examples/17_compile_receipt.py`](../../examples/17_compile_receipt.py).
 
+## How it works
+
+The receipt is derived from the compile *decision*, not the content: which
+evidence scored in, which was excluded and why, the per-item scores, the token
+budget, the privacy posture, and the conflict winners. That record is hashed
+canonically into `receipt_hash`, and `to_export()` carries only ids, content
+hashes, and those decision fields — never the underlying prompt or evidence
+text. So the receipt is safe to paste into a public PR or an incident ticket,
+and `verify()` re-derives it from the bytes to prove it wasn't hand-edited.
+
+## When to reach for it
+
+- **On a surprising run** — a bad answer, stale memory, a privacy-scope
+  mismatch, budget trimming, a replay divergence — when you need to explain the
+  compile decision *without* exposing the documents.
+- **On a PR that touches retrieval, scoring, or budgeting** — attach
+  `diverges_from(baseline)` so the reviewer sees exactly what moved into and out
+  of the context, and why.
+
+## Gotchas
+
+- **`receipt_hash` is stable over the *decision*, not the output.** Two runs that
+  select the same items at the same scores and budget hash identically even if
+  the generated text differs — a hash match means "same compile", not "same
+  answer".
+- **The export is text-light by construction.** You cannot reconstruct the prompt
+  or the documents from `to_export()`; that is the point (it is shareable), not a
+  limitation to work around.
+- **`verify()` checks the receipt's invariants, not answer quality.** It proves
+  the receipt re-derives from its bytes — it says nothing about whether the
+  compile decision was the *right* one.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

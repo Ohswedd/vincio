@@ -16,13 +16,32 @@ drives all three — `vincio bench <track>` — and `python benchmarks/bench.py 
 is the equivalent script driver. The authoritative map is
 [`benchmarks/PROVENANCE.md`](../../benchmarks/PROVENANCE.md).
 
+## Live-first, honesty-gated
+
+The platform is **Live-first**: the number that matters is the one produced
+against a real model or a real competitor library on your hardware.
+`vincio bench feature` runs Vincio head-to-head against the *installed*
+competitor and grades both arms with the contest's own deterministic metric;
+`vincio bench model --tier live` scores a real provider over a real dataset.
+
+The Tier-S / mockup inputs are the **honesty rail, not a performance claim**.
+Every number carries a [provenance tier](../concepts/open-evaluation-plane.md) —
+`STATIC (S) < RECORDED (R) < LIVE (L)` — and only the *non-Live* tiers gate CI:
+they saturate by design to prove the mechanism runs end to end offline,
+deterministically, on every machine. A Tier-S score is never a real-world
+result, and the suite refuses to print a tier its inputs cannot support
+(raising `TierViolationError`), so a fabricated fixture can never masquerade as a
+live win, and a `feature` contest reports **Live only when every declared
+competitor actually executed** — an absent library leaves that contest at Tier-S,
+never faked.
+
 ## See the whole platform
 
 ```bash
 vincio bench list            # all three tracks' catalogs (--json for machine form)
 ```
 
-It prints the 29 model benchmarks across ten niches, the 4 uplift benchmarks, and
+It prints the 29 model benchmarks across ten niches, the 5 uplift benchmarks, and
 the 8 feature contests — the whole system at a glance.
 
 ## Run each track offline (Tier-S)
@@ -245,6 +264,22 @@ Track 1 is also the **open evaluation plane**: the same runs are available under
 `vincio eval suite run|leaderboard|report|compare` and as `app.benchmark_suite(...)`
 in-process. See the [CLI reference](../reference/cli.md) for every flag, and the
 [example](../../examples/16_open_evaluation_plane.py) for the full Track-1 tour.
+
+## Gotchas
+
+- **Never quote a Tier-S number as a benchmark result.** It gates CI precisely
+  because it saturates — it proves the plumbing, not the score. Cite a `[L]`
+  (Live) number, and say what produced it.
+- **Latency ratios are machine-specific.** A `feature` contest's quality metric
+  is deterministic and portable; its timing is real but tied to your hardware, so
+  rerun it where it matters and never compare timings across machines.
+- **A partial competitor install silently lowers the tier.** If `rank_bm25` is
+  present but `tiktoken` is not, `retrieval.bm25` reports `[L]` and
+  `tokenization.count` drops to `[S]` — skipped, not fabricated. Install the full
+  competitor set (`rank_bm25 tiktoken json-repair jinja2 pandas`) before reading
+  Track 3 as Live.
+- **Track-1 report bytes are a pure function of the run**, so a Tier-S report
+  diffs cleanly across machines; a Live report will not, by design.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

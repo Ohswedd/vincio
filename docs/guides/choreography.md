@@ -58,6 +58,17 @@ print(result.completed_steps)   # steps that ran forward
 print(result.compensated_steps) # steps unwound on a failure (reverse order)
 ```
 
+### How it works: forward, then reverse
+
+Steps run forward in declared order; each success is journaled with its output
+*before* the next dispatches. The first failure is terminal — no retry, no loop —
+and flips the engine into reverse: it compensates the completed steps in
+**reverse order**, handing each compensation the forward step's recorded output
+under `forward_output`, then stops. A step with no `compensation` is simply
+skipped on rollback. Because every transition is checkpointed to the metadata
+store first, the `SagaJournal` is a complete, replayable record of exactly how
+far the saga got and how it unwound.
+
 A later step can derive its payload from earlier steps' outputs with a `build`
 callable, which receives a `SagaContext` (the run `input` and each completed step's
 output):
@@ -253,6 +264,30 @@ result = coordinator_app.choreograph(saga, participants={"vendor": remote_vendor
 
 The same saga runs identically against a local or a remote participant; the engine
 drives both through the same `perform` / `compensate` protocol.
+
+## Best practice & gotchas
+
+- **Make compensations idempotent.** A saga interrupted mid-rollback finishes
+  compensating on *resume*, so a compensation can run after a restart — write it
+  to tolerate being invoked when the effect is already partly undone.
+- **Only `completed` / `compensated` are clean.** `failed` means a compensation
+  itself could not finish; the journal pinpoints the outstanding compensations
+  and the residue needs an operator. Set `raise_on_compensation_failure=True` on
+  the `Choreography` engine to surface a `CompensationError` instead of a quiet
+  `failed`.
+- **Resume rebuilds the saga in code.** Only the `SagaJournal` is persisted, so
+  `resume_choreography` needs the *same* `Saga` and participants reconstructed in
+  the process; completed steps keep their outputs and never re-run, and resume is
+  idempotent on a terminal saga.
+- **Declare `StepOutcome` when a step carries a contract.** Delivered cost /
+  latency / quality are checked against the agreed terms only if the participant
+  returns a `StepOutcome`; a bare return value skips the contract check, so a
+  breach passes unnoticed.
+- **A discovered step compensates where it *bound*.** With capability binding the
+  org is chosen at dispatch time and recorded on the journal; compensation and
+  settlement run against the org actually bound, and a resume re-binds only the
+  steps that had not yet run. A capability no allowed, reachable candidate
+  advertises raises `ChoreographyError` rather than failing silently.
 
 ## What it is not
 

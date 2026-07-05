@@ -60,6 +60,26 @@ org id to its *own* `ContextApp` — its catalog, its
 [semantic layer](semantic-layer-and-governed-metrics.md), its consent ledger and
 privacy accountant, its audit chain.
 
+### How the shape is bound and dispatched
+
+The query's `digest()` hashes its facts — the metrics, dimensions, filters, table,
+`columns_touched`, `residency`, `purpose`, `budget_usd`, and `min_members` — and
+its `scope()` renders the human-legible, digest-bound string the contract carries:
+
+```
+federated-metric:total_revenue@sales#<digest>
+```
+
+`negotiate` binds that scope into a signed `Contract` — the scope *is* part of the
+contract's content hash, so the agreed query shape is tamper-evident — defaulting
+the buyer/seller positions from the query's budget. `dispatch` then builds a
+contract-governed `Saga` with one step per approved member; each step's handler
+runs, **in that member's own app**, `member.app.query_metric(query.metric,
+table=member.table)` and returns only the `MetricResult` wire plus its source
+content hash — never a row. As each aggregate returns, the coordinator checks its
+`layer_hash` against the reference layer's digest and **refuses a mismatch**, so
+one metric means one thing federation-wide or the whole round fails.
+
 ## The raw rows never cross — only the aggregate does
 
 `dispatch` builds a contract-governed `Saga` with one step per org. Each step runs
@@ -81,7 +101,7 @@ Reconciliation is *exact* for the partition-decomposable aggregations — `SUM` 
 the true total, not an estimate.
 
 ```python
-fed.finding("total_revenue", region="NA").value   # the exact cross-org total
+narrative.finding("total_revenue", region="NA").value   # the exact cross-org total
 ```
 
 `AVG`, `COUNT_DISTINCT`, and ratio measures are *not* exactly decomposable across
@@ -110,6 +130,14 @@ its read on its own chain:
 - **The k-anonymity contributor floor** — a round with fewer than `min_members`
   eligible orgs is refused, so a single org's aggregate is never singled out.
 
+The rails run **before** the saga, in order — residency, then consent (only when
+the member configured a ledger), then the privacy charge (only when it has an
+accountant) — refusing and auditing a non-compliant member rather than dropping it
+silently. Only the surviving *approved* set is then checked against `min_members`.
+Each per-member decision lands on the coordinator's chain under
+`federated_query_governance`; the sealed engagement lands under
+`federated_data_engagement`.
+
 ## The narrative verifies offline and is data-bound
 
 `fed.seal()` mints a [`FederatedNarrative`](../../vincio/data/federated.py): an
@@ -131,6 +159,21 @@ caught; `FederatedDataEngagement.verify` additionally re-executes each member's
 aggregate against its live source and re-derives every reconciled finding, so a
 tamper to any org's source — or to the reconciliation — is caught even when the
 chain itself is intact.
+
+## Gotchas
+
+- Only `SUM` / `COUNT` / `MIN` / `MAX` federate **exactly**; `validate_against`
+  refuses an `AVG`, `COUNT_DISTINCT`, or ratio measure at negotiate time — federate
+  the decomposable components (a `SUM` and a `COUNT`) and combine the reconciled
+  values yourself.
+- Every member must define the metric by **identical** layer definitions; a
+  differing `layer_hash` fails the round (it is refused, never silently dropped).
+- An empty `residency` posture leaves egress **ungated** — the policy is enforced
+  only when `residency` names allowed regions; set them to actually gate a member's
+  region.
+- `verify(catalogs=...)` re-executes each member's aggregate against its **own**
+  catalog by default; pass `catalogs` keyed by org only to override the source a
+  member re-runs against.
 
 ## Held by the data-plane family
 

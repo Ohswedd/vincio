@@ -99,6 +99,34 @@ See [`examples/01_quickstart.py`](../../examples/01_quickstart.py) for a runnabl
 end-to-end version, and [agentic evaluation](agentic-eval.md) for the multi-turn
 metrics.
 
+## When to use the Assistant (and when not)
+
+- **Use it** when you are building a *chat product*: multi-turn threads, a memory
+  of the conversation, write tools behind a human approval, a transcript to
+  replay or evaluate.
+- **Skip it** when a call is a one-shot transformation — `app.run(...)` is the
+  stateless pipeline, and the Assistant is only the loop around it. Wrapping a
+  single stateless task in a session buys you nothing but a `session_id`.
+- **It is additive, not a fork.** Every turn is still a full `ContextApp` run, so
+  retrieval, rails, budgets, validation, tracing, and the audit chain are the
+  ones you already configured — there is no second, weaker path.
+
+## Gotchas
+
+- **Approval-required tools are denied by default, per turn.** A write tool
+  surfaces as a pending approval; you `chat.approve(name)` and then send again to
+  actually run it. A single message can never both request and execute a write.
+- **`memory_writeback=True` (the default) turns each turn into recalled context.**
+  That is what makes the thread coherent, but it means the summary of a turn
+  competes for budget on the next run. Pass `memory_writeback=False` to keep the
+  transcript in-process only.
+- **Session memory is scoped and decays; durable facts are not.** A fact you want
+  to survive across conversations must be written with
+  `app.remember(..., user_id=...)` *outside* the session — the session's
+  write-back is conversation-scoped and subject to the usual decay/hygiene.
+- **`reset()` starts a new session** (a fresh `session_id`), so traces, cost, and
+  recall no longer join the prior thread.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

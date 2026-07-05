@@ -1,27 +1,13 @@
-"""The model pricing & capability registry: an honest cost report by construction.
+"""The model pricing & capability registry — an honest cost report by construction.
 
-The data-driven `ModelRegistry` is the single source of truth the cost `PriceTable`,
-the capability guard, the cost/latency router, the model cascades, and the
-energy/carbon accounting all read from. This program walks 5.1 — the registry made
-*complete and held* — fully offline on the shipped catalog:
+The data-driven ``ModelRegistry`` is the single source of truth the cost
+``PriceTable``, the capability guard, the cost/latency router, model cascades, and
+energy/carbon accounting all read from. This tour teaches how the registry is kept
+*complete and held honest* by a gate, fully offline on the shipped catalog:
 
-  * the catalog ships as reviewable data (`vincio/providers/model_catalog.json`) and
-    prices the real current lineup of every provider Vincio supports, so a model the
-    providers branch on (OpenAI o-series / gpt-4.1, the openai_compat presets, …) no
-    longer resolves to nothing and silently bills $0;
-  * `priced_as_of` stamps each profile, and an `as_of`-deterministic freshness horizon
-    is evaluated against the catalog's *release* date — never the wall clock — so a
-    frozen release reports the same verdict forever and only a genuinely stale snapshot
-    fails the gate;
-  * `registry.coverage_report()` is a drift detector proving every provider default and
-    capability-heuristic family resolves to a non-sparse, priced profile, that no GA
-    billable model silently costs $0, and that the canonical router/cascade picks are
-    unchanged by a refresh;
-  * `vincio registry sync` is review-only: it diffs a provider's live model list into a
-    candidate overlay for a human to price and merge — it never mutates the catalog.
-
-Everything below is deterministic and offline; none of it touches a price feed or a
-network.
+  * the real lineup is priced, so no GA model silently bills $0;
+  * freshness is judged against the catalog's release date, never the wall clock;
+  * ``coverage_report()`` is a drift detector; and it *bites* when the catalog breaks.
 """
 
 from __future__ import annotations
@@ -37,108 +23,78 @@ from vincio.providers.registry import (
 )
 
 
-def banner(title: str) -> None:
-    print(f"\n{title}\n" + "-" * len(title))
-
-
-def section_priced_lineup() -> None:
-    banner("1. the real lineup is priced — no more silent $0")
+def main() -> None:
+    # 1. The real lineup is priced. Ask the PriceTable what 1M tokens costs across
+    #    providers: a model the providers branch on must resolve to a real price,
+    #    never silently to $0 (the failure mode this registry exists to kill).
     pt = default_price_table()
-    one_m_in = TokenUsage(input_tokens=1_000_000)
-    one_m_out = TokenUsage(output_tokens=1_000_000)
+    one_m_in, one_m_out = TokenUsage(input_tokens=1_000_000), TokenUsage(output_tokens=1_000_000)
+    print("1. Real lineup priced (cost of 1M tokens)")
     for model, usage, label in [
         ("o3", one_m_in, "input"),
         ("gpt-4.1", one_m_out, "output"),
-        ("text-embedding-3-small", one_m_in, "input"),
         ("claude-3-5-sonnet", one_m_in, "input"),
-        ("mistral-medium-latest", one_m_out, "output"),
         ("deepseek-chat", one_m_out, "output"),
         ("llama-3.3-70b-versatile", one_m_in, "input"),  # the groq preset's headline model
     ]:
-        cost = pt.cost(model, usage)
-        print(f"   {model:32s} ${cost:>7.4f} / 1M {label} tokens")
-    print("   (every openai_compat preset prices its headline model instead of $0)")
-    for name, preset in PRESETS.items():
-        if preset.default_model:
-            profile = default_model_registry().resolve(preset.default_model)
-            print(f"     {name:12s} → {preset.default_model:42s} "
-                  f"${profile.input_cost_per_mtok}/{profile.output_cost_per_mtok}")
+        print(f"   {model:28s} ${pt.cost(model, usage):>7.4f} / 1M {label}")
+    # Every openai_compat preset prices its headline model, not $0.
+    unpriced = [n for n, p in PRESETS.items()
+                if p.default_model and default_model_registry().resolve(p.default_model) is None]
+    print(f"   openai_compat presets with an UNpriced headline model: {unpriced or 'none'}")
 
-
-def section_freshness_is_deterministic() -> None:
-    banner("2. freshness is evaluated against the release date, not the clock")
+    # 2. Freshness is deterministic. The horizon is measured from the catalog's
+    #    *release* date, so a frozen release reports the same verdict forever — only
+    #    a genuinely newer snapshot (pass as_of=) can surface a stale price.
     reg = ModelRegistry()
-    print(f"   catalog released:   {CATALOG_RELEASED}")
-    print(f"   freshness horizon:  {FRESHNESS_HORIZON_DAYS} days")
-    at_release = reg.coverage_report()
-    print(f"   fresh at release:   no_stale_prices={at_release.no_stale_prices} "
-          f"(as_of={at_release.as_of})")
-    a_year_out = reg.coverage_report(as_of="2027-06-29")
-    print(f"   a year later:       no_stale_prices={a_year_out.no_stale_prices} "
-          f"({len(a_year_out.stale)} prices now past the horizon)")
-    print("   → a frozen release never rots; only a new snapshot can surface a stale price")
+    fresh = reg.coverage_report()
+    stale = reg.coverage_report(as_of="2027-06-29")
+    print(f"\n2. Freshness vs release date ({CATALOG_RELEASED}, horizon {FRESHNESS_HORIZON_DAYS}d)")
+    print(f"   at release: no_stale_prices={fresh.no_stale_prices}; "
+          f"a year on: {len(stale.stale)} prices now past the horizon")
 
-
-def section_coverage_report() -> None:
-    banner("3. coverage_report() — the drift detector")
+    # 3. coverage_report() is the drift detector: one call proves every default and
+    #    heuristic family resolves to a priced, GA profile and that no router/cascade
+    #    pick moved. Run it in CI to catch a catalog edit that quietly changed billing.
     report = default_model_registry().coverage_report()
-    print(f"   {report.model_count} models across {report.provider_count} providers")
+    print(f"\n3. coverage_report() — {report.model_count} models / {report.provider_count} providers")
     for label, passed in [
-        ("every provider default resolves, priced & GA", report.default_models_resolve),
-        ("every capability-heuristic family resolves", report.capability_families_resolve),
-        ("every openai_compat preset is priced", report.presets_priced),
-        ("no GA billable model silently bills $0", report.no_silent_zero),
-        ("no price drifted past the freshness horizon", report.no_stale_prices),
-        ("no routing/cascade/energy pick changed", report.no_routing_drift),
+        ("defaults resolve, priced & GA", report.default_models_resolve),
+        ("no GA billable model bills $0", report.no_silent_zero),
+        ("no price past freshness horizon", report.no_stale_prices),
+        ("no routing/cascade/energy drift", report.no_routing_drift),
     ]:
         print(f"   [{'PASS' if passed else 'FAIL'}] {label}")
-    print(f"   overall: {'OK' if report.ok else 'FAIL'}")
+    print(f"   overall ok={report.ok}")
 
-
-def section_gate_bites() -> None:
-    banner("4. the gates bite — a broken catalog fails coverage")
+    # 4. The gate bites. Plant a GA chat model at $0, or make the cheapest model
+    #    pricey, and the matching invariant flips to fail — the pinpointed reason
+    #    is in the report, so a bad catalog edit can't merge green.
     silent = ModelRegistry()
     silent.register(ModelProfile(name="ghost", provider="openai", model="ghost-pro"))
-    rep = silent.coverage_report()
-    print(f"   plant a GA chat model at $0 → no_silent_zero={rep.no_silent_zero}, "
-          f"unpriced={rep.unpriced}")
-
     drifted = ModelRegistry()
     nano = drifted.resolve("gpt-5.2-nano")
     drifted.register(nano.model_copy(update={"input_cost_per_mtok": 99.0}))
-    rep = drifted.coverage_report()
-    print(f"   make the cheapest model pricey → no_routing_drift={rep.no_routing_drift}")
-    print(f"     {rep.drift[0]}")
+    print("\n4. The gate bites")
+    print(f"   planted $0 GA model → no_silent_zero={silent.coverage_report().no_silent_zero}")
+    drift = drifted.coverage_report()
+    print(f"   made cheapest model pricey → no_routing_drift={drift.no_routing_drift} ({drift.drift[0]})")
 
-
-def section_review_only_sync() -> None:
-    banner("5. vincio registry sync — review-only candidate overlay")
+    # 5. `vincio registry sync` is review-only: it diffs a provider's live list into
+    #    a candidate overlay (new ids a human must price; dated snapshots fold in as
+    #    aliases) and never mutates the catalog — pricing stays a reviewed decision.
     reg = default_model_registry()
-
-    # A provider's live model list (here a deterministic stand-in) is diffed into a
-    # candidate overlay: genuinely new ids need a human-set price; dated snapshots of
-    # known models fold in as aliases. Nothing is registered — the catalog is unchanged.
     live = [
         ModelProfile(name="new", provider="acme", model="acme-llm-9b"),
         ModelProfile(name="snap", provider="openai", model="gpt-4o-2099-01-01"),
     ]
     candidates = [p.model for p in live if reg.resolve(p.model) is None]
-    folds_in = [p.model for p in live if reg.resolve(p.model) is not None]
-    print(f"   candidate (needs price + capabilities): {candidates}")
-    print(f"   folds in as alias of a known model:     "
-          f"{[(m, reg.resolve(m).model) for m in folds_in]}")
-    print(f"   catalog still unchanged:                acme-llm-9b resolves? "
-          f"{reg.resolve('acme-llm-9b') is not None}")
+    print("\n5. registry sync — review-only overlay")
+    print(f"   needs a human-set price: {candidates}; catalog unchanged "
+          f"(acme-llm-9b resolves? {reg.resolve('acme-llm-9b') is not None})")
 
-
-def main() -> None:
-    section_priced_lineup()
-    section_freshness_is_deterministic()
-    section_coverage_report()
-    section_gate_bites()
-    section_review_only_sync()
-    print("\nDone — the registry prices the real lineup and is held honest, fresh, "
-          "and routing-stable by a gate, fully offline.")
+    print("\nDone — the registry prices the real lineup and a gate keeps it honest, "
+          "fresh, and routing-stable, fully offline.")
 
 
 if __name__ == "__main__":

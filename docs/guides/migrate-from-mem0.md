@@ -101,6 +101,25 @@ Facts still pass the guarded write policy and land as *candidate* memories
 (with evidence provenance) until confirmed, they never bypass the same
 admission checks as a manual `remember`.
 
+## Migration strategy & gotchas
+
+- **No interop adapters — the migration is the native API.** Mem0 has no
+  documents or tools to wrap; point `remember` / `recall` at the *same* owner ids
+  you used in Mem0 and you're across.
+- **Scope is inferred from the most specific owner id.** `run_id` / `user_id` /
+  `agent_id` become `MemoryScope.SESSION` / `USER` / `AGENT`; pass the id and
+  `remember` picks the scope — don't set it by hand.
+- **`recall` is utility-scored, not a raw dump.** Where Mem0's `search` returns a
+  nearest-neighbour list, `recall` scores memories against the task and budgets
+  them into the packet, so results are ranked for *this* run.
+- **Writes pass a guarded policy.** Every `remember` clears credential/PII
+  screening, stability scoring, contradiction detection, and confidence
+  assignment; a volatile or unsafe "fact" is rejected, so don't assume every `add`
+  lands verbatim the way Mem0 does.
+- **Forgetting is first-class.** Decay/TTL and consolidation replace "store
+  forever" — use them instead of manual deletes, and reach for
+  `engine.export_owner_data(...)` for GDPR-style export and erasure.
+
 ## What Vincio adds
 
 - **Guarded write policy** on every memory: credential/PII screening,

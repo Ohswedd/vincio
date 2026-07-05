@@ -55,6 +55,42 @@ resolve_tier(ProvenanceTier.LIVE, dataset_ceiling=ProvenanceTier.STATIC, solver_
 # raises TierViolationError: a lower tier may not print a higher tier's label.
 ```
 
+### How the tier is computed
+
+The tier is not asserted — it is *derived* from the two things that actually
+bound how real a run is, and the run may claim no higher:
+
+```
+dataset_ceiling   = STATIC   (fabricated fixture)
+                  | RECORDED (hash-pinned real slice)
+                  | LIVE     (full real dataset)
+solver_ceiling    = LIVE if a live model ran else RECORDED   (a replay solver caps at R)
+
+achievable = min(dataset_ceiling, solver_ceiling)     # the weaker input wins
+```
+
+`resolve_tier(requested, dataset_ceiling=…, solver_live=…)` returns
+`achievable` when `requested` is `None`, honors any `requested` tier at or
+below it (claiming a *more conservative* tier is always allowed), and raises
+`TierViolationError` when `requested` exceeds it — with a reason that names the
+weaker input (`the dataset is fabricated/static` vs `the solver replays
+recorded outputs`). Because the ceiling is a `min` over both axes, a Live model
+run over a fabricated dataset is still Tier-S, and a replay of a real dataset is
+still Tier-R: you cannot borrow one axis's realness to launder the other. That
+is the whole honesty contract in one function.
+
+**Gotchas**
+
+- A fully green Tier-S suite proves the *mechanism*, not the model — a mockup
+  score *saturates by design*. Never quote a Tier-S number as a capability
+  result; look for the `S` and read it as a gate, not a benchmark.
+- Live is *reported, never gated*: it needs a real key (Model/Uplift) or a real
+  install (Feature), so it is not byte-reproducible and cannot fail CI. CI bites
+  on the Tier-S/R deterministic core underneath.
+- A Track-3 contest silently drops from Live to Static when a competitor
+  library is *not installed* — the head-to-head just didn't run. Check the
+  `skipped` competitors before reading a Feature contest as a real comparison.
+
 A **Tier-S / mockup** number *saturates by design* — it is a mechanism check, not a
 real-world claim. Real-world evidence is the **Live** tier: Track 1 or 2 with a
 model key, Track 3 with the competitor library actually installed.

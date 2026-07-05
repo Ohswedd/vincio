@@ -35,11 +35,9 @@ One cycle does five things:
    the decision is reproducible.
 3. **Evaluate**: the current prompt is the baseline, measured by the same
    metric objects used everywhere else.
-4. **Optimize**: the gated evolution loop searches prompt variants;
-   promotion is blocked on safety/schema regression, cost ceilings, and
-   your gates. Candidate evaluations are **memory-write-free**: an eval run
-   never pollutes user memory or hands later candidates different recall
-   state than earlier ones saw.
+4. **Optimize**: the gated evolution loop searches prompt variants; promotion is
+   blocked on safety/schema regression, cost ceilings, and your gates (the shared
+   promotion contract below).
 5. **Promote**: the winner is pushed to the `PromptRegistry`, tagged
    (`production` by default), linked to the eval report that justified it,
    applied to the live app, written to the hash-chained audit log
@@ -54,6 +52,20 @@ work across loop cycles. From the CLI:
 vincio loop run --app app.py --min-feedback 0.5 --gate groundedness=">= 0.8"
 vincio loop run --app app.py --dataset golden.jsonl --dry-run
 ```
+
+## The shared promotion contract
+
+Every optimizer below promotes through **one** gate — read it once here, and
+where a section says "gated" this is what it means. A candidate is adopted only
+when it **beats the baseline** on the metric under a significance test *and*
+clears the safety rails: no schema regression, no safety regression, the cost
+ceiling, and the growing golden non-regression suite. Every search is
+**deterministic under a seed** and **hard-bounded by an evaluation budget**;
+candidate evaluations are **memory-write-free** (an eval run never pollutes user
+memory or hands later candidates a different recall state than earlier ones saw);
+and every promotion lands on the hash-chained audit log and the event bus. This
+is why a guided or reflective search can never bypass the safety rules — the
+promotion path is the same one the plain loop uses.
 
 ## Auto-memory from runs
 
@@ -121,8 +133,8 @@ result.frontier.knee()            # best summed normalized goodness
 ```
 
 Screening still uses scalar fitness (cheap); the final pick comes from the
-frontier of full-dataset reports and goes through the same promotion safety
-rules, a frontier point that regresses safety or fails a gate never wins.
+frontier of full-dataset reports and goes through the shared gate — a frontier
+point that regresses safety or fails a gate never wins.
 
 ## Learned context budgeting
 
@@ -141,8 +153,8 @@ if learned:                                           # promoted through the gat
 
 The learner perturbs the baseline allocation in bounded steps (move a slice
 of budget from a donor block to a receiver, renormalize) and adopts a table
-only when it beats the baseline through the same safety gates as every
-other optimizer. Tasks without a learned table keep the fixed defaults.
+only when it clears the shared gate. Tasks without a learned table keep the
+fixed defaults.
 
 ## Context-aware offline search
 
@@ -158,11 +170,9 @@ result = await ContextOptimizer(evaluate_config).optimize(
 ```
 
 `hill_climb` mutates the best config one knob at a time; `anneal` walks with
-a cooling schedule (early batches explore, late batches exploit). Both are
-deterministic under a seed, hard-bounded by the evaluation budget, and feed
-the same gated promotion path, a guided search can never bypass the safety
-rules. `guided_search(space, evaluate, strategy=...)` exposes the primitive
-for custom spaces.
+a cooling schedule (early batches explore, late batches exploit). Both feed the
+shared gate. `guided_search(space, evaluate, strategy=...)` exposes the
+primitive for custom spaces.
 
 ## Reflective optimization (GEPA-style)
 
@@ -186,7 +196,7 @@ result.frontier.front     # the evolved Pareto frontier
 
 A child is screened on a minibatch and earns a full-dataset rollout *only* when
 it beats its parent, so the sample-efficiency win GEPA reports (beating RL with
-far fewer rollouts) holds under a hard budget, deterministic under a seed.
+far fewer rollouts) holds under a hard budget.
 `strategy="mipro"` switches to MIPROv2-style joint instruction+example proposal.
 The result is a drop-in `OptimizationResult`, so the improvement loop runs it
 unchanged:
@@ -433,14 +443,12 @@ result.gating_weight_before, result.gating_weight_after
 | Promoted student | runtime `ModelCascade` (cheap→strong) + `distill.promoted` event |
 | Adopted compressor | `ContextCompiler.compressor` + `compression.adopted` event (only when faithfulness-gated) |
 
-The VincioBench `loop` family measures all of it offline, promotion fires
-and is deterministic, gates block regressions, the registry is tagged and
-eval-linked, grounded facts are written (and ungrounded ones never are),
-retrieval tuning is gated, the frontier excludes dominated points, learned
-budgets promote, guided search respects its budget, the reflective optimizer
-beats the baseline within its rollout budget, distillation exports only grounded
-examples and gates the student on quality, and learned compression preserves the
-cited-fact set under a faithfulness gate, under CI-gated budgets.
+The VincioBench `loop` family measures all of it offline under CI-gated budgets:
+promotion fires deterministically, gates block regressions, the registry stays
+tagged and eval-linked, grounded facts are written (and ungrounded ones never
+are), retrieval tuning and learned compression stay gated, the frontier excludes
+dominated points, and every optimizer beats its baseline within its rollout
+budget.
 
 ## Closing the loop online
 
@@ -516,9 +524,9 @@ Two parts are first-class here rather than ad-hoc knobs:
   (scores nearest the decision midpoint) for human labels, the acquisition step
   before the next round.
 
-Every promotion still passes the **same** significance + safety + golden
-non-regression gates the loop always used. The canary-driven prompt/policy
-**promotion** is the serving surface:
+Every promotion still clears the shared promotion contract — significance,
+safety, and the growing golden non-regression suite. The canary-driven
+prompt/policy **promotion** is the serving surface:
 
 ```python
 result = app.deploy(candidate_spec, dataset=golden)  # offline canary-gated

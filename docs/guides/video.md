@@ -36,6 +36,16 @@ clip = EvidenceItem(
 clip.citation_ref   # "DEMO:t10-15", the time range, not just the document
 ```
 
+### How it works: one packet, not a new plane
+
+Video reuses the multimodal machinery whole. A `VideoRef` sits beside `ImageRef`
+/ `AudioRef` on an `EvidenceItem`, and the *scorable surrogate* — a transcript or
+caption in `text` — is what relevance, dedup, and ordering read, exactly as an
+image is scored by its caption. So a clip competes for the same token budget as a
+PDF page, and its `time_range` rides along as a temporal locator that never gets
+dropped. There is no separate video scoring path; it is one more modality on the
+packet the compiler already assembles.
+
 ## Understanding a clip
 
 Two deterministic, dependency-free primitives address a clip without decoding it:
@@ -104,6 +114,28 @@ verify_manifest(clip.manifest, clip.data + b"x") # False, a single altered byte 
 Editing (`app.edit_video` / `aedit_video`) marks the manifest synthetic-and-edited and
 records a `video_edit` audit event; generation records `video_generate`. Both land on
 the hash-chained audit log with the provenance binding.
+
+## Best practice & gotchas
+
+- **The transcript/caption *is* the retrieval signal.** Video competes for the
+  budget through its scorable surrogate (a `metadata["transcript"]` or the `text`
+  caption), not the pixels — a poor transcript means a relevant clip loses the
+  budget race. Invest in the caption, not just the frames.
+- **Preserve `time_range` to cite at the moment.** Retrieval chunking copies a
+  segment's `(start, end)` onto the chunk and its evidence, so a citation resolves
+  to `DEMO:t10-15` and the footnote renders `, t10–15s`. If you build evidence by
+  hand, set `time_range=` or you lose sub-clip grounding.
+- **The mock is deterministic; the extra is only for real decode.** The offline
+  path (`MockVideoAnalyzer` / `MockVideoProvider`) needs no dependency; install
+  `pip install "vincio[video]"` (PyAV + Pillow) only for the real
+  `ProviderVideoAnalyzer` frame-decode path.
+- **Provenance binds the exact bytes.** A generated clip's C2PA
+  `ProvenanceManifest` verifies against `clip.data` and fails on a single altered
+  byte — don't re-encode or strip metadata downstream, or `verify_manifest` will
+  (correctly) reject it.
+- **Video is metered like any generation.** Each clip is priced by `video_cost` /
+  `VideoPrice` and charged against the run `Budget`, so an unbounded generation
+  loop is capped by the same budget a text run is.
 
 ## See also
 

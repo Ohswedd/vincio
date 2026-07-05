@@ -67,6 +67,32 @@ growing without bound — group by a coarser key or raise the bound. The result 
 an ordinary [`Dataset`](tabular-evidence.md): encode it, profile it, or carry it
 as cited evidence (`agg.to_evidence_item()`).
 
+### How the bounded group-by works
+
+The working set is one dict entry per distinct group — a row `count` plus one
+accumulator per `(column, aggregation)`. Each accumulator carries a running
+`count`, `total`, `min`, `max`, and a separate `numeric_count`, folded in one row
+at a time:
+
+```
+rows ─┬▶ key=(region,) ─▶ groups[key][amount].add(v)      footprint ∝ #groups,
+      └▶ …                                                  never #rows
+                         └▶ sorted(keys) ─▶ Dataset[region, amount_sum, …, count]
+```
+
+- A **non-numeric** cell in a measure column still increments the group's row
+  `count`, but the numeric reducers skip it — so `sum` / `mean` / `min` / `max`
+  reflect only the numeric values, and a group with no numeric values reports
+  `None` for that measure rather than `0`.
+- `sum` and `mean` are rounded to 6 decimals so the result is byte-identical
+  across platforms; `min` / `max` are exact.
+- Groups are emitted in a deterministic key order (sorted by the string form of
+  the key tuple), and the columns are the group keys, then `<col>_<agg>` per
+  measure, then `count` — so two runs over the same input produce the same bytes.
+- A new group is allocated only *after* the cap is checked: the moment a distinct
+  key beyond `max_groups` would be created, the pass raises `StreamError`. The
+  footprint is bounded before it grows — never spilled to disk.
+
 ## Streaming compact encoding and compression
 
 `encode_stream` (and `RowStream.encode`) renders a stream to the compact,
@@ -139,6 +165,37 @@ result = await app.map_stream(stream, build, chunk_rows=512)
 result.succeeded      # one reconciled response per chunk
 result.cost_usd       # total, at the discounted batch rate
 ```
+
+## When to reach for a stream (and when not)
+
+Reach for a `RowStream` when the table — or even its *encoding* — is larger than
+memory, or when you want a single bounded pass whose footprint is fixed regardless
+of row count. When the data already fits, a plain [`Dataset`](tabular-evidence.md)
+is simpler: every operator (query, chart, analysis) works on it directly, and
+`stream.materialize()` is the escape hatch back from a stream to an in-memory
+dataset. And note that the streaming group-by is exact and offline but *not*
+cell-cited — for a governed, cell-level-cited group-by over a bounded table, use
+the governed query plane (`app.query_data`), not `stream_aggregate`.
+
+## Gotchas
+
+- A bare generator is single-use: the second pass raises `StreamError`. Pass a
+  list, a zero-argument callable, or a file path for a source read more than once
+  — `profile`, `fit`, `sample`, `aggregate`, and `encode` each open a fresh pass,
+  so one one-shot stream serves only one of them.
+- A group cardinality above `max_groups` (default one million) is **refused**, not
+  spilled — group by a coarser key or raise the bound.
+- The streaming encoding omits the row count from its header; only a decoder that
+  reads to end-of-input round-trips it (which the compact
+  [decoder](../../vincio/core/tabular.py) does).
+- Type inference requires an **exact** round-trip: a value is typed `INT` only
+  when `str(int(v)) == v`, so a leading-zero id or a thousands-separated number
+  stays text — and at read time a cell that fails to parse under the inferred type
+  falls back to its original text rather than raising, so one stray value never
+  derails an otherwise-numeric column.
+- Only `sum` / `mean` / `min` / `max` are available in the bounded pass; there is
+  no distinct-count or percentile (use a windowed or governed query for those).
+  `count` is always emitted per group even with no `measures`.
 
 ## Guarantees
 

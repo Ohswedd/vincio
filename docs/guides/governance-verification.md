@@ -161,6 +161,27 @@ report = GovernanceVerifier([my_invariant]).verify(record=False)
 Order each variable's `values` from benign (index 0) to adversarial so
 counterexample minimization produces the cleanest witness.
 
+## Best practice & gotchas
+
+- **Verify the app you actually ship.** `app.verify_governance()` reads *this
+  app's* posture (e.g. the residency invariant is built from your `deny_on_unknown`
+  setting), so a proof over a fresh default app tells you nothing about the one in
+  production. Run it against the configured instance, in CI, with
+  `raise_on_violation=True`.
+- **A custom `Invariant` is only as sound as its predicate binding.** The built-ins
+  call the *same* decision functions the runtime uses (`requires_authority`,
+  `ResidencyPolicy.check`, `within_budget`, `verify_erasure_proof`) — so verifying
+  them verifies the shipped machinery. A custom predicate that *re-implements* the
+  check proves your model, not your code; bind it to the real function.
+- **Order each variable benign (index 0) → adversarial** so counterexample
+  minimization relaxes toward the clean default and reports the simplest witness.
+- **`content_hash` excludes the timestamp**, so two passes over the same invariants
+  produce the same digest — use `record=False` for a pure, side-effect-free check
+  (e.g. in a test) and let the default record the verdict on the audit chain.
+- **A `held=True` verdict is bounded, not whole-program.** It proves the control
+  *as modeled* over its finite alphabet; it does not replace the runtime guards or
+  the adversarial ContainmentBench corpus (see below).
+
 ## What it does not do
 
 The verifier proves the **modeled** properties over their **bounded** domains. The

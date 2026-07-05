@@ -50,6 +50,22 @@ result.allowed          # False if a rail blocked the input or the rendered cont
 host's event loop); `arun` is the async form. Pass a plain string for the common
 case: `runtime.run("Summarize the renewal terms")`.
 
+### How it works: compile → score → rail → pack
+
+`run` executes the *same* four stages the server pipeline does, with the model,
+network, store, and event loop stripped away:
+
+```
+EdgeRequest ─▶ compile (chunk + assemble) ─▶ score (relevance/authority + MMR)
+            ─▶ rail (input + rendered-context screen) ─▶ pack (budget + slim)
+            ─▶ EdgeResult (prompt · packet · footprint · rail outcome)
+```
+
+There is no separate edge compiler: the `EdgeProfile` lowers to the
+`ContextCompilerOptions` the canonical `ContextCompiler` already reads, so the
+edge path *delegates* to the server's compiler rather than re-implementing it —
+which is exactly what `verify_edge_parity()` asserts byte-for-byte.
+
 From a configured app, `app.edge_runtime()` builds a runtime seeded with the
 app's rails, so the edge path enforces the same deterministic safety the server
 does.
@@ -140,6 +156,27 @@ env.runtime      # "pyodide" | "emscripten" | "wasi" | "cpython" | "unknown"
 env.is_wasm      # True under a browser/WASI build
 is_wasm_runtime()
 ```
+
+## Best practice & gotchas
+
+- **Pick the profile by host, not by guess.** `edge_environment()` reports the
+  runtime; use `EdgeProfile.browser()` under Pyodide/Emscripten (tight),
+  `.worker()` for an edge worker, and `.server_like()` only for parity testing.
+- **`within_profile=False` is a soft report; `strict=True` is a hard stop.** By
+  default an over-budget packet is slimmed and evicted until it fits, and
+  `within_profile` tells you whether it did; pass `strict=True` to raise
+  `EdgeError` instead when a packet cannot be held inside the bounds.
+- **Output rails screen the *rendered context*, not just the task.** A secret
+  that leaked from a retrieved document into the assembled prompt is only caught
+  if a rail runs with `direction="output"` — otherwise the leak ships.
+- **The footprint is held by construction.** Evidence text is referenced by hash,
+  not duplicated, and the lowest-utility evidence is evicted until the estimate
+  fits, so `result.resident_bytes <= profile.max_resident_bytes` holds even as the
+  candidate corpus grows.
+- **No provider, store, or tracer lives here.** `EdgeRuntime` is the offline
+  context core only; bring the portable packet/prompt back to a server (or call a
+  model from the host) to generate. NumPy is used only behind a pure-Python
+  fallback, so the shipped edge path stays dependency-free.
 
 ## What does *not* run at the edge
 

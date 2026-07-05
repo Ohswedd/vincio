@@ -92,6 +92,42 @@ A ratio measure compiles with a zero-safe denominator
 (`CAST(num AS REAL) / NULLIF(den, 0)`), so a division by zero yields `NULL` rather
 than crashing.
 
+### How a metric compiles to one canonical SELECT
+
+`SemanticLayer.compile(MetricQuery)` is the single source of truth — a pure,
+deterministic function from the metric spec to exactly one SQL string:
+
+- each **dimension** becomes `<dim-sql> AS "name"` (a plain dimension is the
+  double-quoted column; an expression dimension is its resolved SQL) and is
+  repeated verbatim in the `GROUP BY`;
+- each **measure** becomes `<fn>(<resolved-expr>) AS "name"` — `SUM` / `AVG` /
+  `MIN` / `MAX` / `COUNT` / `COUNT_DISTINCT`; a bare `COUNT` measure defaults its
+  expression to `*`;
+- a **derived column** referenced anywhere is substituted for its own
+  parenthesized SQL, *recursively* (so `revenue` expands to `(price * qty)` and
+  composes through other derived columns) — with single-quoted string literals
+  copied verbatim, so a literal that happens to equal a derived-column name is
+  never rewritten;
+- a measure's row `filters` fold into `CASE WHEN <preds> THEN <expr|1> ELSE NULL
+  END`, so the aggregate only sees matching rows;
+- `order_by` must name a selected metric or dimension, else `SemanticLayerError`;
+  with none given a grouped query orders by its first dimension.
+
+Grounding is just as deterministic: `resolve` lowercases the question to word
+tokens and tests a whitespace-bounded `" token "` match against each measure's and
+dimension's name, its underscore-to-space form, and its `synonyms`. A question
+that mentions no defined metric grounds to `None` — the layer refuses rather than
+guessing (the governed analogue of the offline `HeuristicQueryPlanner`). Because
+`compile` is pure and grounding never guesses, two phrasings of the same question
+ground to the same `MetricQuery` and therefore emit byte-identical SQL — the
+property `MetricResult.verify` leans on when it re-compiles the spec and compares
+it (whitespace-canonicalized) against the SQL that actually ran.
+
+The vocabulary can also be built imperatively with the chaining
+`add_derived` / `add_dimension` / `add_measure` builders, each of which
+re-validates the whole layer (unique names, acyclic derived graph, well-formed
+ratios) after the mutation.
+
 ## The result is provably the governed metric
 
 A [`MetricResult`](../../vincio/data/semantic.py) wraps the cell-cited
@@ -146,6 +182,23 @@ result.proof.removed_ids["datasets"]         # ['sales']
 So a metric's provenance and a subject's erasure both reach into the dataset plane,
 on the same mechanical, auditable machinery a document's lineage and erasure already
 ride.
+
+## Best practice and gotchas
+
+- Declare each fact **once** as a derived column and reference it from every
+  measure; inlining `price * qty` in two measures is exactly the drift the layer
+  exists to prevent.
+- Names share one namespace across derived columns, dimensions, and measures — a
+  clash, a derived-column cycle, or a ratio-measure cycle is refused at
+  construction with a `SemanticLayerError`, not at query time.
+- An `AVG` over already-aggregated rows is a classic trap; when you need a mean
+  that composes (or federates), prefer a `SUM` / `COUNT` pair and a **ratio**
+  measure over them.
+- Keep `validate=True` on `app.semantic_layer` (the default): every metric and
+  dimension is dry-run-grounded against the registered table, so a measure that
+  references an unknown column is caught at definition, not at query time.
+- `app.query_metric` grounds only *defined* metrics; a free-text question that
+  names none raises rather than silently running an ungoverned query.
 
 ## Guarantees
 

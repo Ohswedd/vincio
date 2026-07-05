@@ -13,12 +13,19 @@ and the checklist for adding a subsystem. For the product overview see
 
 ## What Vincio is
 
-Vincio (`vincio/`) is a context-engineering platform. It compiles prompts,
-memory, retrieval, tools, schemas, and policies into budgeted, validated, traced
-**context packets**, then validates and evaluates every output. The single entry
-point is `from vincio import ContextApp`; `app.run()` executes one coherent
-pipeline from raw input to traced result. It is a **library you run yourself** —
-there is no hosted service, control plane, or account.
+Vincio (`vincio/`) governs the **boundary between an application and a model**:
+what evidence is selected, how it is scored and budgeted, how the output is
+validated, and what it cost. It compiles prompts, memory, retrieval, tools,
+schemas, and policies into budgeted, validated, traced **context packets**, then
+checks, measures, and traces every output. The single entry point is
+`from vincio import ContextApp`; `app.run()` executes one coherent pipeline from
+raw input to traced result. It is a **library you run yourself** — there is no
+hosted service, control plane, or account.
+
+The public contract is `vincio.__all__` (**553 top-level symbols**), frozen under
+SemVer as `API_VERSION = "5.0"` — intentionally decoupled from the release version
+(`__version__`, currently `7.9.0`), so it bumps only when the surface working code
+depends on changes. Every release has been additive on that frozen surface.
 
 ## Mental model
 
@@ -102,8 +109,8 @@ vincio/_docmap.py     the connected-docs doc graph: binds every public app.* ver
 The examples are a three-tier on-ramp, all runnable fully offline on the mock:
 
 ```
-examples/00–18            complete, heavily-commented feature tours, one per subsystem
-                          (00 one-liners, 01 quickstart, … 18 ds4_local_inference); run under
+examples/00–21            focused, syntax-explainer feature tours, one per subsystem
+                          (00 one-liners, 01 quickstart, … 21 lager_reasoning_retrieval); run under
                           tests/test_examples.py, which globs examples/[0-9]*.py.
 examples/_shared.py       example_provider() (mock offline / real via VINCIO_PROVIDER), responders, sample docs.
 examples/notebooks/*.ipynb  Google Colab-ready notebooks (pip install + offline run); code cells are

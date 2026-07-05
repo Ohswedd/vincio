@@ -40,6 +40,26 @@ app itself):
 Serve it over HTTP behind the [FastAPI server](../reference/api.md), or
 in-process for tests.
 
+### How it works: the JSON-RPC task lifecycle
+
+A2A is a small state machine over JSON-RPC. `message/send` opens an `A2ATask` in
+`submitted`; it advances to `working` while the target runs, to `input-required`
+when the target needs a human answer, and terminates in `completed` or `failed`.
+Vincio's edge is that *your* side of the machine stays bounded and traced:
+
+- A served **crew** runs each member under its own budget and the crew's
+  termination guarantee, so an inbound task cannot spin forever; member output
+  returns as `A2AArtifact`s on `task.artifacts`.
+- A served **graph** checkpoints at every `interrupt()`. The pause surfaces as
+  `input-required`; the caller resumes by sending a second `message/send` that
+  carries the **same `taskId`** — a fresh id opens a new task and loses the
+  checkpointed thread.
+- `token_validator=` runs *before* any work, so an unauthenticated caller never
+  reaches the crew, and each inbound task writes one `a2a_serve` audit entry.
+
+The returned `A2ATask` carries `.status.state` (the terminal state),
+`.status.message` (the reply), and `.artifacts` (typed outputs).
+
 ## Reach a remote agent
 
 ```python
@@ -65,6 +85,26 @@ from vincio.agents import AgentRole
 pricing = RemoteA2AAgent(connect_a2a("https://pricing.example/rpc"), name="pricing")
 crew.add(AgentRole(name="pricing", goal="price the deal"), pricing)
 ```
+
+The remote call runs *inside* your crew's budget and round bounds: a slow or
+looping counterparty is cut off by the same termination guarantee that bounds a
+local member, so a foreign agent can never uncap your run.
+
+## Best practice & gotchas
+
+- **Resume with the original `taskId`.** An `input-required` task is only
+  resumable by a follow-up `message/send` carrying the same id; treat the id as
+  the handle to the checkpointed thread.
+- **A `RemoteA2AAgent` is a black box under your bounds.** You inherit its
+  answer, not its guarantees — keep it a *delegate* inside a crew (which caps its
+  budget and rounds) rather than the whole task, so an unbounded peer stays
+  bounded by you.
+- **Authenticate at the edge, not in the handler.** Pass `token_validator=` to
+  `serve_a2a`; validation happens before the crew runs, so a rejected caller
+  costs nothing.
+- **Agent Cards are advertisements, not guarantees.** A card lists advertised
+  skills; the actual budget, termination, and audit come from *your* served
+  crew/graph, not the peer's card.
 
 ## Testing offline
 

@@ -3,6 +3,18 @@
 This guide builds a support-triage system three ways, a crew, a durable
 graph, and a composed pipeline, all bounded, traced, and resumable.
 
+## How it works
+
+Every shape below runs on the same executor spine: a **bounded DAG** whose
+fan-out goes through `gather_bounded`, whose every node opens a trace span, and
+whose crew rounds, agent steps, and tool calls are hard-capped, so the system
+**terminates by construction**. A crew's manager plans and delegates over a
+shared blackboard; a graph checkpoints its state after each node into
+`app.store`; a `compose` pipeline threads all of it into one observable stream so
+`vincio trace view` shows the whole system. Point the app at SQLite/Postgres
+storage and a graph becomes resumable across a process restart — the
+durable-timer and `interrupt` machinery holds a pause without holding a worker.
+
 ## 1. A crew with roles and delegation
 
 ```python
@@ -146,6 +158,23 @@ TimerService(flow).deliver(thread_id, "approved")    # wake an event wait
 
 See [`examples/04_agents_and_tools.py`](../../examples/04_agents_and_tools.py)
 and the [agents concept guide](../concepts/agents.md#orchestrator--planner-depth).
+
+## Gotchas
+
+- **Offline, a hierarchical crew falls back to keyword routing.** With no
+  provider (or when the manager's plan fails to validate), delegation is
+  deterministic keyword routing — so the same code runs in CI, but a crew tested
+  only offline has never exercised its manager. Give each member `keywords=` so
+  the fallback still routes sensibly.
+- **Durable resume needs durable storage.** A graph is restart-safe only when
+  `app.store` is SQLite/Postgres; the in-memory default loses the thread on exit.
+  Recompile the *same* graph against the *same* store to `resume(thread_id)`.
+- **`interrupt` pauses the thread, it does not block a worker.** A human gate can
+  sit for days; wake it with `flow.resume(...)`, or `TimerService(flow).deliver`
+  for an event wait — the scheduler is free in the meantime.
+- **Bound every scheduler.** `SubgraphScheduler` takes a `Budget` and a
+  `deadline_s`; an unbounded fan-out over regions is exactly the anti-pattern the
+  bounded executor exists to prevent.
 
 ## Choosing a shape
 

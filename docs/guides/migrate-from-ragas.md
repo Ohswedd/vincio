@@ -87,6 +87,25 @@ Every case that fails a gate links back to a full trace (`result.trace_id`), so
 you can open `vincio trace view` and see the scored context packet that produced
 the low score, not just the number.
 
+## Migration strategy & gotchas
+
+- **Adopt case by case.** Vincio evaluates the app you actually ship, so keep
+  Ragas for ad-hoc analysis and move CI scoring/gating over one metric or one
+  dataset at a time.
+- **`faithfulness` → `groundedness`, checked against real evidence.** Vincio's
+  grounding metric checks claims against the *actual* retrieved context ids the
+  run produced; put ground truth in `expected` and the supporting sentences in
+  `rubric.facts` — that's what grounding scores against.
+- **Gates, not eyeballs.** `gates={...}` / `--gate` turn a metric into a
+  pass/fail contract that exits non-zero, so a regression blocks the merge instead
+  of landing in a dataframe you have to read.
+- **Two `Dataset`s, one word.** The eval dataset is `from vincio import Dataset`
+  (JSONL of `{id, input, expected, rubric, tags, difficulty}`); don't confuse it
+  with the tabular `from vincio.data import Dataset`.
+- **Every case links to a trace.** A failing gate carries `result.trace_id`; open
+  `vincio trace view` to see the scored context packet behind the low score, not
+  just the number.
+
 ## What Vincio adds
 
 - **CI gates, not just scores**: `gates={...}` and `--gate` turn metrics into a

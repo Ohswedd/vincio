@@ -114,6 +114,29 @@ Every spend (`privacy_spend`) and every refusal (`privacy_refused`) lands on the
 same hash-chained, verifiable audit log as consent grants and erasure proofs, so the
 guarantee is checkable offline.
 
+## Gotchas
+
+- **No accountant attached means no accounting.** This whole plane is opt-in and
+  additive: until `app.use_privacy_accountant(...)` runs, consolidation and
+  federated contributions are unaccounted exactly as before. Attaching it is what
+  turns the two learning paths into gated releases.
+- **A release with no subject is not charged.** The budget is *per-subject*, so
+  the `user_id=` on `memory.consolidate(...)` and the `member_id=` /
+  subject threading on `contribute_federated(...)` are what tie a release to a
+  ledger. An anonymous release spends nothing — which is correct, but means an
+  unlabeled path silently escapes the budget.
+- **`downweight` releases *more* privately, it does not drop the data.** On
+  breach, `on_breach="downweight"` clips the release's sensitivity to fit the
+  remaining budget (the federated Gaussian `ε` scales down, i.e. more noise
+  relative to sensitivity) so the recorded spend and the geometry actually
+  released agree. `on_breach="refuse"` raises `PrivacyBudgetError` instead.
+- **`noise_multiplier` is `σ/Δ` — larger is more private but noisier.** RDP
+  composition is why ten consolidations cost far less than ten times one; don't
+  hand-sum per-step `ε`, let the accountant compose and convert to `(ε, δ)` once.
+- **Budgets are isolated.** Spending one subject's budget never touches another's,
+  so a per-subject `set_privacy_budget(subject_id=..., epsilon=...)` genuinely
+  scopes a VIP's generous ceiling without loosening anyone else's.
+
 ## What ships
 
 | Symbol | Role |

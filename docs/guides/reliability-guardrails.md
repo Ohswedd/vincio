@@ -158,6 +158,42 @@ and file-descriptor limits (`max_cpu_seconds` / `max_memory_bytes` /
 `max_open_files`, conservative by default). This is OS-process isolation, not a
 kernel sandbox; for adversarial code, run tools in a container/VM.
 
+## Choosing a control
+
+The controls are layered on purpose — pick by *what you are enforcing*, not by
+preference:
+
+| You want to enforce… | Reach for | Cost |
+|---|---|---|
+| a topic/format/safety boundary | a **rail** (deterministic policy) | free, exact, explainable |
+| a machine-checkable business rule | a **semantic validator** | one pass, no model |
+| a well-formed output shape | native constrained decoding + schema | free on capable models |
+| recovery from occasionally-invalid output | **self-correction** | extra model calls |
+| stop paying for a doomed stream | **streaming validation** + abort | saves the rest of the generation |
+
+Rails and validators are deterministic and cheap, so put your hard requirements
+there; reserve self-correction for the residual case where a real model still
+mis-structures, because it is the only control that spends more tokens.
+
+## Gotchas
+
+- **A rail never asks the model.** Enforcement is plain code over plain data, so
+  it is exact and free — but it also can't reason. Nuanced content calls belong
+  in a validator or judge, not a `topic` rail.
+- **Input rails deny; output rails fail validation.** An input-rail block ends
+  the run before the model is called (audited as `decision=deny`); an output-rail
+  violation fails the validation pipeline like any other contract breach. Set
+  `direction` deliberately.
+- **`action="redact"` masks, it doesn't block.** A safety rail with
+  `action="redact"` ships a scrubbed answer; use the default blocking action when
+  the presence of the pattern must fail the run.
+- **Self-correction is bounded twice** — by `max_cycles` and `max_cost_usd`. It
+  will stop and return the last (still-invalid) output rather than loop; treat a
+  non-recovered outcome as a failure, not a retry forever.
+- **Verify a *persisted* audit log offline.** `app.audit.verify_chain()` checks
+  the in-memory log; on-disk tampering is only caught by `verify_audit_file(...)`
+  (or `vincio audit verify`) after a restart or on another machine.
+
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 
 ## Related

@@ -114,10 +114,65 @@ backend. Model and tool spans follow the **GenAI semantic conventions**,
 attribute set, so GenAI-aware backends (Jaeger, Datadog, Grafana, Honeycomb)
 render them natively.
 
-## Costs
+## Costs, attribution & budgets
 
-`CostTracker` prices model calls from a configurable price table; costs ride
-on model spans and aggregate per run (`result.cost_usd`) and per report.
+`CostTracker` prices model calls from a configurable `PriceTable`; costs ride
+on model spans and aggregate per run (`result.cost_usd`) and per report. That is
+the per-run view. The **FinOps** view is `CostLedger` — an append-only ledger
+of *attributed* cost events, each tagged by `tenant_id` / `user_id` / `feature`
+/ `run_id` / `model` / `provider`, persisted to a `cost_events` table when a
+metadata store is wired, so cost survives the process:
+
+```python
+app.cost_report(by="tenant")          # roll up spend by tenant / feature / user / model / provider
+```
+
+```bash
+vincio cost report --by feature       # the same rollup across processes
+```
+
+Budgets close the loop from *observing* spend to *bounding* it. A `CostBudget`
+caps spend for a scope over a period, and its `on_breach` decides the action —
+`"cap"` denies the run, `"degrade"` swaps in a cheaper `degrade_model`,
+`"queue_to_batch"` routes it off the interactive path — with an optional
+`anomaly_factor` that raises a `cost.anomaly` event on a spend spike:
+
+```python
+app.set_cost_budget(scope="tenant", id="acme", limit_usd=10.0, period="day")
+app.set_cost_budget(scope="feature", id="chat", limit_usd=5.0,
+                    on_breach="degrade", degrade_model="gpt-5.2-mini")
+```
+
+`app.use_energy_accounting(region=...)` extends the same ledger with a
+mechanical, deterministic energy (`result.energy_wh`) and carbon
+(`result.co2e_grams`) estimate — derived from the run's token accounting against
+a per-model intensity and a per-region grid factor, no external service — so
+`app.energy_report(by=...)` reads carbon on the same attributed surface as cost.
+
+## Served dashboard & alerts
+
+The static HTML export is for one-off shares; a dashboard you *keep watching*
+wants a store and a server. `IndexedTraceStore` is a SQLite-backed, indexed
+trace + cost store with pre-aggregated rollups (`RollupBucket`, `Percentiles`,
+`CostSlice`) so latency percentiles and cost slices are a query, not a full
+scan; `serve_viewer(store)` starts a self-hosted dashboard over the stdlib
+`http.server` (default `127.0.0.1:8043`, zero new dependency, returns the
+running server so you can `.shutdown()` it):
+
+```python
+from vincio.observability import IndexedTraceStore, serve_viewer
+
+store = IndexedTraceStore(".vincio/observability.db")
+server = serve_viewer(store)          # http://127.0.0.1:8043 — never leaves your infra
+```
+
+`AlertManager` evaluates `AlertRule`s over the metric stream — a `threshold`
+crossing, an `ewma` anomaly (deviation past `factor` standard deviations), or an
+SRE `burn_rate` on an error-budget SLO — and dispatches to best-effort
+`AlertSink`s (webhook / Slack / PagerDuty / Prometheus); wiring it to the event
+bus turns the existing `cost.anomaly` / `cost.budget_exceeded` events into
+alerts on the same sinks. A sink failure is logged, never raised — alerting
+cannot break a run.
 
 ## Causal record-replay
 
@@ -161,6 +216,20 @@ still served from the recording while only the affected suffix re-executes, so a
 fix is validated against the exact failing run. Recordings are content-addressed
 and verifiable (`recording.put(store)` / `Recording.from_store`,
 `recording.verify()`); `vincio trace verify-recording <file>` checks one offline.
+
+**Gotchas**
+
+- A divergence on a *deliberate* change is the design, not a failure: change the
+  prompt, model, or a tool's arguments and the edge key changes, so the recorded
+  value is a miss. To edit an edge on purpose and re-run only what depends on it,
+  use `branch` with a `BranchEdit`, not a blind replay.
+- Replay is faithful only to the edges that were captured. Changed code that
+  introduces a *new* outside-world read (a tool call the recording never made)
+  has no recorded edge to serve, so that too surfaces as a divergence.
+- Prompt/completion **content in traces is off by default** (`ContentCapturePolicy`,
+  `capture=False`) — metadata (tokens, cost, scores) is always kept, but turn on
+  capture (PII-redacted) if a trace needs the text. This is a separate privacy
+  gate from recordings, which capture edges regardless.
 
 <!-- BEGIN GENERATED: related (vincio._docmap) -->
 

@@ -224,6 +224,34 @@ OLS trend fit with exact rational arithmetic, no floating-point drift) behind
 `pip install "vincio[verify]"`. They are strictly opt-in: nothing on the offline
 path imports them.
 
+## Gotchas
+
+- **`inapplicable` is not a pass.** A kernel that finds no checkable claim of its
+  kind returns `inapplicable`, so `holds=True` means *nothing checkable was
+  refuted*, not *the whole answer is proven*. `verify_reasoning` certifies the
+  parts a deterministic kernel can see (arithmetic, units, dates, citations,
+  constraints, the statistical claims) — it is not a hallucination catch-all for
+  free prose.
+- **Ground the kernels or they stay inapplicable.** `CitationVerifier` needs
+  `evidence=`, `SchemaVerifier` needs `schema=`, `ConstraintVerifier` needs
+  `constraints=`, temporal cross-checks need `facts=`/`now=`. Omit the grounding
+  input and the corresponding kernel simply has nothing to check.
+- **A causal claim must earn its warrant.** Correlation stated as causation with
+  no declared randomized design or controls-*with*-series is **refused**, and a
+  controlled claim whose partial correlation collapses is **refuted** — passing a
+  bare `causal=True` will never verify.
+- **A cited statistic is bound to its cells.** Swap a `CitedSeries` value after it
+  was cited and the series is unbound, so the kernel refuses — a smuggled number
+  cannot pass. Build the series from the `QueryResult` with
+  `CitedSeries.from_cells(...)` rather than by hand.
+- **A refuted answer refuses to emit by default.** Pass `regenerate=` to drive the
+  bounded self-correction loop, or `raise_on_refute=True` to get
+  `CertificateRefutedError` — don't expect a refuted certificate to be returned as
+  a normal answer.
+- **SMT/CAS are strictly opt-in.** Nothing on the offline path imports Z3/SymPy;
+  reach for `vincio[verify]` only when you need consistency of a whole constraint
+  *system* or exact rational arithmetic.
+
 ## How it composes
 
 `verify_reasoning` is a deterministic, offline check that folds into self-correction
