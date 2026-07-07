@@ -1393,6 +1393,66 @@
       "rationale": "The reasoning controller scales effort with difficulty but holds a hard ceiling; without it a hard task could spend the whole run thinking."
     },
     {
+      "id": "universal_reasoning_adaptive_cost",
+      "category": "cost",
+      "statement": "A request classified as simple remains a single-pass run and saves at least half the model passes used by a deep request.",
+      "metric": "families.universal_reasoning.simple_pass_savings_vs_deep",
+      "direction": "gte",
+      "threshold": 0.5,
+      "enforced_by": "families.universal_reasoning.simple_pass_savings_vs_deep",
+      "rationale": "Universal reasoning must not tax formatting and other simple work with speculative deliberation."
+    },
+    {
+      "id": "universal_reasoning_provider_independent",
+      "category": "quality",
+      "statement": "A hard request activates bounded multi-pass reasoning on a model with no native reasoning capability.",
+      "metric": "families.universal_reasoning.nonnative_multi_pass",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.nonnative_multi_pass",
+      "rationale": "The universal layer is only universal if a non-reasoning model receives a real reasoning architecture rather than an ignored provider knob."
+    },
+    {
+      "id": "universal_reasoning_refutation_repair",
+      "category": "quality",
+      "statement": "A deterministically refuted arithmetic answer is corrected and re-verified within the configured pass ceiling.",
+      "metric": "families.universal_reasoning.kernel_refutation_corrected",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.kernel_refutation_corrected",
+      "rationale": "Self-correction is useful only when an independent checker can reject the original answer and the repair is bounded."
+    },
+    {
+      "id": "universal_reasoning_task_bound_verification",
+      "category": "quality",
+      "statement": "A numerically valid but task-wrong answer is blocked and replaced only with the numeric fact recomputed from the original request.",
+      "metric": "families.universal_reasoning.task_bound_wrong_answer_blocked",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.task_bound_wrong_answer_blocked",
+      "rationale": "Checking an answer in isolation can certify arithmetic for the wrong interpretation; verification must remain bound to the task."
+    },
+    {
+      "id": "universal_reasoning_model_native_multilingual",
+      "category": "quality",
+      "statement": "Non-English and unknown-language requests are semantically routed by the configured model without a finite language allow-list.",
+      "metric": "families.universal_reasoning.multilingual_semantic_routing",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.multilingual_semantic_routing",
+      "rationale": "Provider-independent reasoning is not universal when task and browser intent are recognized only through English keywords."
+    },
+    {
+      "id": "universal_reasoning_multilingual_capability_boundary",
+      "category": "security",
+      "statement": "A multilingual semantic route cannot name or execute a tool outside the registered allow-list.",
+      "metric": "families.universal_reasoning.multilingual_tool_allowlist",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.multilingual_tool_allowlist",
+      "rationale": "Model-native classification may interpret intent, but deterministic capability policy must remain authoritative in every language."
+    },
+    {
       "id": "long_horizon_footprint_bounded",
       "category": "performance",
       "statement": "At 10\u00d7 horizon, the governed resident context footprint stays within a bounded multiple (\u2264 2\u00d7) of the 1\u00d7 footprint, so a long run does not grow context without bound.",

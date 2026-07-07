@@ -312,7 +312,7 @@
       "gates_ci": true,
       "custom": "register_uplift_benchmark(UpliftBenchmark(...))",
       "catalog": {
-        "total": 5,
+        "total": 6,
         "benchmarks": [
           {
             "id": "long_context.recall",
@@ -331,6 +331,12 @@
             "title": "Grounded answering (RAG faithfulness)",
             "capability": "rag",
             "primary_metric": "faithfulness"
+          },
+          {
+            "id": "reasoning.universal",
+            "title": "Provider-independent reasoning accuracy",
+            "capability": "universal_reasoning",
+            "primary_metric": "accuracy"
           },
           {
             "id": "safety.injection",

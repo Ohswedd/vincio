@@ -4,6 +4,73 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.10.0] - 2026-07-07
+
+**Universal in-house reasoning for every model.** Native reasoning effort remains
+available, but is now one lever inside a complete provider-independent reasoning
+architecture rather than the only path. The new layer is additive, opt-in and
+experimental; `API_VERSION` remains `5.0`.
+
+- **Adaptive orchestration:** `app.use_reasoning_engine()` makes ordinary
+  `run`/`arun` assess task difficulty from the shared task taxonomy, supplied
+  modalities, constraints, mathematical/logical/causal/decision/temporal/spatial
+  structure and exact tool matches. Easy work remains exactly one pass; deep work
+  receives bounded candidates and correction. `app.reason()` / `areason()` return
+  the full typed receipt for one call.
+- **Model-native multilingual routing:** confidently identified English and
+  exact syntax retain the zero-token fast path; non-English or uncertain-language
+  requests receive a compact structured classification from the configured model
+  itself. Language coverage therefore follows model capability rather than a
+  finite Vincio locale list. The semantic route is traced, DLP-screened,
+  confidence-gated and fully included in token/cost/energy accounting; it cannot
+  bypass deterministic web policy, registered-tool allow-lists, permissions or
+  budgets. Unicode lexical terms, multilingual punctuation and character shingles
+  for scripts without whitespace extend evidence support beyond Latin text.
+- **Reasoning and browser as one system:** freshness and explicit fact-checking
+  deterministically trigger the existing governed browser when enabled. Pages
+  are reduced to query-relevant excerpts, injection-screened, content-hashed and
+  compiled as untrusted evidence. The receipt records whether live evidence was
+  actually verified; requested URLs bypass search, sources are host-diversified,
+  explicit no-web intent is honored, and unavailable evidence refutes an
+  unsupported current claim rather than allowing false freshness.
+- **Independent verification:** normal output validators run on every candidate,
+  followed by Vincio's offline arithmetic/unit/temporal/constraint/citation
+  kernels plus task-bound facts for direct arithmetic, percentage/split problems,
+  and explicit logical inconsistency. This rejects an internally valid equation
+  that answers the wrong interpretation. A refuted answer cannot win; refutation
+  or material candidate disagreement can trigger one bounded answer-only
+  correction and re-certification. Exhausted refutations are withheld, or replaced
+  by a minimal deterministic answer only when the local facts fully prove it.
+  Ambiguous multi-expression tasks and logical rules without a demonstrated
+  contradictory witness deliberately produce no deterministic fact, and text
+  fallbacks never replace a structured output contract.
+- **No chain-of-thought surface:** `ReasoningAssessment`, `ReasoningPlan` and
+  `ReasoningPass` expose operational decisions, validator verdicts, trace ids,
+  tokens and cost. Prompts require private analysis and final answers only; raw
+  scratch work is neither requested nor recorded. Multi-pass usage and cost are
+  aggregated honestly onto the returned `RunResult`.
+- **Native + non-native parity:** native-capable models receive adaptive effort
+  inside the same architecture; non-reasoning cloud, open-source and local models
+  receive real provider-neutral test-time passes instead of an ignored knob.
+- **Gates and evidence:** `UniversalReasoningBench` holds routing accuracy, simple
+  one-pass behavior, non-native activation, native-effort use, correction,
+  privacy, tool-match precision, web opt-out, unsupported-live-claim refusal,
+  deterministic-fact precision and pass ceilings under SLOs.
+  `reasoning_uplift_live.py` compares direct
+  vs reasoned arms across non-native/native OpenRouter models on math, logic,
+  contradiction, freshness, grounding, overclaiming, tokens and cost. Example 22
+  and the connected concept/guide document the full path.
+- **Dated live evidence (Tier-L, small reviewed samples):** on OpenRouter,
+  `meta-llama/llama-3.2-3b-instruct` moved from 0/4 exact direct answers to 3/4
+  through Vincio (3/3 stable math/logic/multi-step answers deterministically
+  verified); the fourth, current-fact arm verified two web snapshots and withheld
+  an unsupported final claim, reducing unsupported overclaims from one to zero
+  without counting refusal as correctness. The companion GPT-4.1 mini audit
+  correctly routed 5/5 Spanish, Japanese, Arabic, Swahili and Chinese cases.
+  `assets/benchmark-reasoning.svg` exposes these results with every sample size,
+  and `benchmarks/reference/live_snapshot.json` records their provenance and
+  reproduction commands.
+
 ## [7.9.0] - 2026-07-05
 
 **The LAGER dense signal reaches the coverage gate — the two honest residuals of

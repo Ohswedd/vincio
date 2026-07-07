@@ -128,7 +128,7 @@ vincio eval suite compare RUN_A RUN_B --store DSN [--json]
 
 vincio bench list [--json]
     List all three tracks' catalogs at a glance: the model track's benchmarks and
-    niches, the uplift benchmarks, and the feature contests.
+    niches, the six uplift benchmarks, and the feature contests.
 
 vincio bench model [BENCHMARK|NICHE|all]... [--app APP.py]
         [--tier static|recorded|live] [--sample N] [--concurrency N]

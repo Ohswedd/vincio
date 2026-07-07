@@ -71,6 +71,14 @@ from .timers import (
     sleep_until,
     wait_for_event,
 )
+from .universal_reasoning import (
+    ReasoningAssessment,
+    ReasoningPass,
+    ReasoningPlan,
+    UniversalReasoningEngine,
+    UniversalReasoningPolicy,
+    UniversalReasoningResult,
+)
 from .world_model import (
     CalibrationReport,
     ModelPredictivePlanner,
@@ -117,6 +125,12 @@ __all__ = [
     "ReasoningController",
     "ReasoningDecision",
     "ReasoningPolicy",
+    "ReasoningAssessment",
+    "ReasoningPlan",
+    "ReasoningPass",
+    "UniversalReasoningPolicy",
+    "UniversalReasoningResult",
+    "UniversalReasoningEngine",
     # world-model / simulation-based planning
     "WorldModel",
     "Transition",

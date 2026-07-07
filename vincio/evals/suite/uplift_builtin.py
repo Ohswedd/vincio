@@ -6,11 +6,10 @@ Each benchmark carries two recorded arms per task: ``recorded`` is the model's
 infrastructure. Both are scored by the identical adapter, so the delta is a
 measured mechanism-level uplift, not a claim.
 
-The built-ins cover the four uplifts that hold for *any* model because they are
-structural — grounding (RAG faithfulness), prompt-injection containment,
-long-context needle recall (with the context governor), and structured-output
-validity — the same contributions ``benchmarks/quality_uplift.py`` reports, now
-tiered and reportable like the model track.
+The built-ins cover structural uplift mechanisms — grounding, prompt-injection
+containment, long-context recall, structured-output validity, web freshness and
+provider-independent reasoning — the same contributions the live drivers report,
+now tiered and reportable like the model track.
 """
 
 from __future__ import annotations
@@ -74,6 +73,54 @@ class WebFreshnessAdapter(BenchmarkAdapter):
         return BenchmarkResult(
             task_id=task.id, success=hit, score=1.0 if hit else 0.0, output=output
         )
+
+
+class ReasoningAccuracyAdapter(WebFreshnessAdapter):
+    """Exact required-term accuracy for math, logic and contradiction answers."""
+
+    name = "universal_reasoning_accuracy"
+
+
+def _universal_reasoning() -> UpliftBenchmark:
+    return UpliftBenchmark(
+        id="reasoning.universal",
+        title="Provider-independent reasoning accuracy",
+        capability="universal_reasoning",
+        adapter=ReasoningAccuracyAdapter,
+        primary_metric="accuracy",
+        summary=(
+            "The same model is scored direct and through adaptive decomposition, "
+            "bounded candidate selection and deterministic verification. Static arms "
+            "are a mechanism illustration; benchmarks/reasoning_uplift_live.py runs "
+            "the real comparison across native and non-native OpenRouter models."
+        ),
+        tasks=[
+            {
+                "id": "ur1",
+                "prompt": "Calculate 17 * 23 and verify the equality.",
+                "gold": ["391"],
+                "recorded": "17 * 23 is 381.",
+                "recorded_vincio": "17 * 23 = 391.",
+            },
+            {
+                "id": "ur2",
+                "prompt": (
+                    "All red keys open A; no brass key opens A; K is red and brass. "
+                    "Are the premises consistent?"
+                ),
+                "gold": ["no", "contradict"],
+                "recorded": "Yes, the premises can all hold.",
+                "recorded_vincio": "No. K creates a contradiction about opening A.",
+            },
+            {
+                "id": "ur3",
+                "prompt": "Traffic 240/min rises 25%, then two workers split it evenly.",
+                "gold": ["150"],
+                "recorded": "Each worker handles 120 requests per minute.",
+                "recorded_vincio": "Each worker handles 150 requests per minute.",
+            },
+        ],
+    )
 
 
 def _web_freshness() -> UpliftBenchmark:
@@ -186,7 +233,14 @@ _ = agentic
 
 
 def builtin_uplift_benchmarks() -> list[UpliftBenchmark]:
-    return [_grounded_qa(), _injection(), _long_context(), _schema_valid(), _web_freshness()]
+    return [
+        _grounded_qa(),
+        _injection(),
+        _long_context(),
+        _schema_valid(),
+        _web_freshness(),
+        _universal_reasoning(),
+    ]
 
 
 def register_builtins(registry: UpliftRegistry) -> None:

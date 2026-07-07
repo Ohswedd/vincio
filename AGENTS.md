@@ -22,9 +22,9 @@ checks, measures, and traces every output. The single entry point is
 raw input to traced result. It is a **library you run yourself** — there is no
 hosted service, control plane, or account.
 
-The public contract is `vincio.__all__` (**553 top-level symbols**), frozen under
+The public contract is `vincio.__all__` (**559 top-level symbols**), frozen under
 SemVer as `API_VERSION = "5.0"` — intentionally decoupled from the release version
-(`__version__`, currently `7.9.0`), so it bumps only when the surface working code
+(`__version__`, currently `7.10.0`), so it bumps only when the surface working code
 depends on changes. Every release has been additive on that frozen surface.
 
 ## Mental model
@@ -109,7 +109,7 @@ vincio/_docmap.py     the connected-docs doc graph: binds every public app.* ver
 The examples are a three-tier on-ramp, all runnable fully offline on the mock:
 
 ```
-examples/00–21            focused, syntax-explainer feature tours, one per subsystem
+examples/00–22            focused, syntax-explainer feature tours, one per subsystem
                           (00 one-liners, 01 quickstart, … 21 lager_reasoning_retrieval); run under
                           tests/test_examples.py, which globs examples/[0-9]*.py.
 examples/_shared.py       example_provider() (mock offline / real via VINCIO_PROVIDER), responders, sample docs.

@@ -10,6 +10,7 @@ from vincio.context import (
     extractive_compress,
     lexical_similarity,
     shingle_similarity,
+    split_sentences,
     truncate_to_tokens,
 )
 from vincio.context.scoring import ContextCandidate, near_duplicate_score
@@ -28,6 +29,16 @@ class TestScoring:
     def test_lexical_similarity(self):
         assert lexical_similarity("refund policy for plans", "what is the refund policy") > 0.3
         assert lexical_similarity("refund policy", "quantum chromodynamics") == 0.0
+
+    def test_lexical_similarity_supports_scripts_without_spaces(self):
+        assert (
+            lexical_similarity(
+                "Pythonの最新安定版は3.14です",
+                "公式情報ではPythonの最新安定版は3.14です",
+            )
+            > 0.5
+        )
+        assert lexical_similarity("最新版本是3.14", "官方文档说明最新版本是3.14") > 0.5
 
     def test_near_duplicate_catches_filler_variants(self):
         a = "The contract renews automatically unless terminated 60 days before renewal."
@@ -84,6 +95,13 @@ class TestBudgeting:
 
 
 class TestCompression:
+    def test_multilingual_sentence_split_preserves_trailing_citations(self):
+        assert split_sentences("First fact. [E1]") == ["First fact. [E1]"]
+        assert split_sentences("最初の事実です。次の事実です。 [E2]") == [
+            "最初の事実です。",
+            "次の事実です。 [E2]",
+        ]
+
     def test_truncate_to_tokens(self):
         text = "First sentence here. Second sentence follows. Third one too. " * 20
         result = truncate_to_tokens(text, 30)

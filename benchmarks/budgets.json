@@ -2655,6 +2655,66 @@
     },
     "families.lager.explainable": {
       "eq": true
+    },
+    "families.universal_reasoning.routing_accuracy": {
+      "gte": 0.95
+    },
+    "families.universal_reasoning.simple_single_pass": {
+      "eq": true
+    },
+    "families.universal_reasoning.nonnative_multi_pass": {
+      "eq": true
+    },
+    "families.universal_reasoning.native_effort_used": {
+      "eq": true
+    },
+    "families.universal_reasoning.kernel_refutation_corrected": {
+      "eq": true
+    },
+    "families.universal_reasoning.pass_cap_holds": {
+      "eq": true
+    },
+    "families.universal_reasoning.task_bound_wrong_answer_blocked": {
+      "eq": true
+    },
+    "families.universal_reasoning.unsupported_live_claim_blocked": {
+      "eq": true
+    },
+    "families.universal_reasoning.user_web_opt_out_respected": {
+      "eq": true
+    },
+    "families.universal_reasoning.tool_match_precision": {
+      "eq": true
+    },
+    "families.universal_reasoning.deterministic_fact_precision": {
+      "eq": true
+    },
+    "families.universal_reasoning.reasoning_leak_blocked": {
+      "eq": true
+    },
+    "families.universal_reasoning.multilingual_semantic_routing": {
+      "eq": true
+    },
+    "families.universal_reasoning.unknown_language_corrected_by_model": {
+      "eq": true
+    },
+    "families.universal_reasoning.multilingual_web_opt_out": {
+      "eq": true
+    },
+    "families.universal_reasoning.multilingual_tool_allowlist": {
+      "eq": true
+    },
+    "families.universal_reasoning.semantic_routing_accounted": {
+      "eq": true
+    },
+    "families.universal_reasoning.private_reasoning_not_recorded": {
+      "eq": true
+    },
+    "families.universal_reasoning.search_decision_accuracy": {
+      "gte": 0.95
+    },
+    "families.universal_reasoning.simple_pass_savings_vs_deep": {
+      "gte": 0.5
     }
   }
 }

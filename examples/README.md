@@ -22,7 +22,7 @@ notebook-native analysis), each with an *Open in Colab* badge.
 
 ## 2. Feature tours — one program per subsystem
 
-Twenty-two focused programs (00–21), each a tight **syntax-explainer + best-practice** walkthrough of
+Twenty-three focused programs (00–22), each a tight **syntax-explainer + best-practice** walkthrough of
 one subsystem: a short module docstring states what it teaches, numbered inline comments explain *what
 each API does and when/why you'd reach for it* (with the gotchas), and one meaningful print shows the
 result that matters. Read them top to bottom, or jump to the one you need.
@@ -51,6 +51,7 @@ result that matters. Read them top to bottom, or jump to the one you need.
 | 19 | [`web_browser_search`](19_web_browser_search.py) | Universal web browsing & search: `app.use_web_search()` gives **any** model — native tool-calling or not — the same governed `web_search` / `web_read` tools, executed by Vincio against DuckDuckGo (offline here via an injected transport and the static backend). A page is read token-efficiently (only the passages relevant to the model's own query, ~74x cheaper than the full page), a local model without function calling runs the identical loop through the text protocol, private-host and denied-domain fetches are refused pre-egress, every search/read lands on the audit trail, and the whole session re-derives offline from its content-hashed snapshots. |
 | 20 | [`context_anchors`](20_context_anchors.py) | Context anchors — keep a PRD / spec / brand frame across a whole coding task: mark a source `anchor=True` and Vincio distills it **once** into a compact, constraint-first, content-hash-cached brief injected as **pinned** evidence into every call, so the global frame is always present (even on a query that never mentions it, and under a tiny token window) at a flat few-hundred-token cost — ~26x cheaper than re-pasting the corpus — while on-demand detail still flows through normal retrieval. |
 | 21 | [`lager_reasoning_retrieval`](21_lager_reasoning_retrieval.py) | LAGER — reasoning-driven retrieval: documents become byte-exact, offline-verifiable **Evidence Objects** in a typed knowledge graph, and retrieval runs as a **lazy** needs-driven loop (one round for an easy query, graph hops across a zero-lexical-overlap bridge for a why-question, honest abstention with uncovered needs named for an impossible one) instead of fixed top-k chunks; `app.use_lager()` swaps the loop into every run on the same screened, compiled, cited pipeline. |
+| 22 | [`universal_reasoning`](22_universal_reasoning.py) | The in-house universal reasoning engine: a zero-token deterministic fast path plus model-native semantic routing for every language understood by the configured model, a true one-pass path for simple English work, bounded candidate and correction passes for a non-reasoning model, offline kernel refutation and Unicode evidence support, honest cost aggregation, and an answer-only receipt that never stores chain-of-thought. |
 
 `_shared.py` holds the small offline helpers every example imports (`example_provider`,
 `json_responder`, `citing_responder`, `write_sample_docs`).

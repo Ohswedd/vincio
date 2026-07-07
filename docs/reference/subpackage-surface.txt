@@ -80,8 +80,11 @@ agents SUB Planner
 agents SUB PlanningMode
 agents TOP PredictedStep
 agents SUB RayBackend
+agents TOP ReasoningAssessment
 agents TOP ReasoningController
 agents TOP ReasoningDecision
+agents TOP ReasoningPass
+agents TOP ReasoningPlan
 agents TOP ReasoningPolicy
 agents SUB RedisGraphCoordinator
 agents SUB RepairAction
@@ -103,6 +106,9 @@ agents SUB TemporalBackend
 agents SUB TerminationReason
 agents TOP TimerService
 agents TOP Transition
+agents TOP UniversalReasoningEngine
+agents TOP UniversalReasoningPolicy
+agents TOP UniversalReasoningResult
 agents TOP WorkerPoolBackend
 agents TOP WorldModel
 agents SUB branch

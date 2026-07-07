@@ -318,8 +318,11 @@ QueryPlan
 QueryResult
 Rail
 RealtimeSession
+ReasoningAssessment
 ReasoningController
 ReasoningDecision
+ReasoningPass
+ReasoningPlan
 ReasoningPolicy
 ReasoningTrace
 ReasoningTraceCache
@@ -439,6 +442,9 @@ UIAction
 UIElement
 UnderReservedBreach
 UnitVerifier
+UniversalReasoningEngine
+UniversalReasoningPolicy
+UniversalReasoningResult
 UsageEvent
 UserInput
 VerifiableReward

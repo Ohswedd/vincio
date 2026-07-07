@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from html.parser import HTMLParser
 from typing import Literal
 
@@ -50,9 +51,9 @@ ExtractMode = Literal["excerpt", "section", "full", "auto"]
 #: Bumped whenever the extraction algorithm changes in a way that alters output.
 #: Recorded on every :class:`~vincio.web.WebEvidence` so a verify failure caused
 #: by an extractor upgrade is diagnosable (version mismatch) rather than silent.
-EXTRACTOR_VERSION = "2"
+EXTRACTOR_VERSION = "3"
 
-_WORD_RE = re.compile(r"[a-z0-9]+")
+_WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 # Subtrees that never contain readable content.
 _SKIP_TAGS = frozenset({"script", "style", "noscript", "template", "svg", "iframe", "head"})
@@ -65,8 +66,26 @@ _CHROME_HINTS = ("navbar", "sidebar", "cookie", "breadcrumb", "menu-", "-menu")
 _CONTAINER_TAGS = frozenset({"div", "section", "span", "ul", "ol", "li", "table"})
 # Tags that terminate the current text block.
 _BLOCK_TAGS = frozenset(
-    {"p", "div", "li", "td", "th", "tr", "ul", "ol", "table", "section", "article",
-     "blockquote", "dd", "dt", "figcaption", "main", "body", "br"}
+    {
+        "p",
+        "div",
+        "li",
+        "td",
+        "th",
+        "tr",
+        "ul",
+        "ol",
+        "table",
+        "section",
+        "article",
+        "blockquote",
+        "dd",
+        "dt",
+        "figcaption",
+        "main",
+        "body",
+        "br",
+    }
 )
 _HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 
@@ -83,7 +102,7 @@ _SECTION_BUDGET_MULTIPLIER = 3  # a whole section may cost a few excerpts' worth
 def _stem(token: str) -> str:
     """Tiny deterministic suffix stripper: 'released', 'releases', and
     'release' all normalize to 'releas'. Ranking-only, so light is right."""
-    if len(token) > 3:
+    if token.isascii() and len(token) > 3:
         for suffix in ("ing", "ed", "es", "s"):
             if token.endswith(suffix) and len(token) - len(suffix) >= 3:
                 token = token[: -len(suffix)]
@@ -94,7 +113,26 @@ def _stem(token: str) -> str:
 
 
 def _tokenize(text: str) -> list[str]:
-    return [_stem(token) for token in _WORD_RE.findall(text.lower())]
+    tokens: list[str] = []
+    for token in _WORD_RE.findall(text.lower()):
+        tokens.append(_stem(token))
+        scripts = {
+            unicodedata.name(char, "").split()[0]
+            for char in token
+            if char.isalpha() and unicodedata.name(char, "")
+        }
+        if scripts.intersection({"CJK", "HIRAGANA", "KATAKANA", "THAI", "LAO", "KHMER", "MYANMAR"}):
+            tokens.extend(token[index : index + 2] for index in range(len(token) - 1))
+    return tokens
+
+
+def _dense_script_text(text: str) -> bool:
+    return any(
+        (unicodedata.name(char, "").split() or [""])[0]
+        in {"CJK", "HIRAGANA", "KATAKANA", "THAI", "LAO", "KHMER", "MYANMAR"}
+        for char in text
+        if char.isalpha()
+    )
 
 
 class PageLink(BaseModel):
@@ -397,7 +435,10 @@ def _content_blocks(blocks: list[_Block]) -> list[_Block]:
         if block.kind == "code":
             if block.chars >= _MIN_CODE_CHARS:
                 kept.append(block)
-        elif block.chars >= _MIN_BLOCK_CHARS and (block.link_chars / block.chars) <= _MAX_LINK_DENSITY:
+        elif (
+            block.chars >= (8 if _dense_script_text(block.text) else _MIN_BLOCK_CHARS)
+            and (block.link_chars / block.chars) <= _MAX_LINK_DENSITY
+        ):
             kept.append(block)
     return kept
 
@@ -492,18 +533,53 @@ _HEADING_TERM_BONUS = 2.0  # per distinct query term appearing in a section head
 # Wall/paywall/login/404 markers only fire on a *short* page (a real article that
 # merely discusses cookies must not read as a cookie wall).
 _UNAVAILABLE_MARKERS = (
-    ("requires_javascript", ("enable javascript", "requires javascript",
-                             "javascript is disabled", "please enable js")),
-    ("cookie_wall", ("we value your privacy", "accept all cookies",
-                     "accept cookies to continue", "manage your cookie",
-                     "this site uses cookies", "cookie preferences")),
-    ("paywall", ("subscribe to continue", "subscribe to read", "subscribers only",
-                 "become a member to", "this article is for subscribers",
-                 "to continue reading")),
-    ("login_required", ("sign in to continue", "log in to continue",
-                        "please log in", "create an account to", "you must be logged in")),
-    ("not_found", ("page not found", "404 not found", "page you requested",
-                   "no longer available", "page doesn't exist", "page does not exist")),
+    (
+        "requires_javascript",
+        ("enable javascript", "requires javascript", "javascript is disabled", "please enable js"),
+    ),
+    (
+        "cookie_wall",
+        (
+            "we value your privacy",
+            "accept all cookies",
+            "accept cookies to continue",
+            "manage your cookie",
+            "this site uses cookies",
+            "cookie preferences",
+        ),
+    ),
+    (
+        "paywall",
+        (
+            "subscribe to continue",
+            "subscribe to read",
+            "subscribers only",
+            "become a member to",
+            "this article is for subscribers",
+            "to continue reading",
+        ),
+    ),
+    (
+        "login_required",
+        (
+            "sign in to continue",
+            "log in to continue",
+            "please log in",
+            "create an account to",
+            "you must be logged in",
+        ),
+    ),
+    (
+        "not_found",
+        (
+            "page not found",
+            "404 not found",
+            "page you requested",
+            "no longer available",
+            "page doesn't exist",
+            "page does not exist",
+        ),
+    ),
 )
 _WALL_MAX_BLOCKS = 4  # a wall is a short page; longer pages are treated as content
 
@@ -528,9 +604,7 @@ def _detect_availability(
     return True, ""
 
 
-def _best_section(
-    blocks: list[_Block], scores: list[float], query: str = ""
-) -> tuple[int, float]:
+def _best_section(blocks: list[_Block], scores: list[float], query: str = "") -> tuple[int, float]:
     """The section index with the highest score, and that score.
 
     A section's score is the sum of its blocks' BM25 scores plus a bonus for
@@ -628,7 +702,9 @@ def extract_page(
     elif resolved == "section":
         best_index, _ = _best_section(blocks, scores, query)
         section_blocks = [b for b in blocks if b.section_index == best_index]
-        section_scores = [s for b, s in zip(blocks, scores, strict=True) if b.section_index == best_index]
+        section_scores = [
+            s for b, s in zip(blocks, scores, strict=True) if b.section_index == best_index
+        ]
         section_budget = budget_tokens * _SECTION_BUDGET_MULTIPLIER
         excerpts, used, truncated = _pack_in_order(
             section_blocks, section_scores, section_budget, max_excerpts

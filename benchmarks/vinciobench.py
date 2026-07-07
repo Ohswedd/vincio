@@ -1233,8 +1233,18 @@ def _quality_rails_bench() -> dict[str, Any]:
     )
     rows = [{"id": i, "region": "NA", "amount": 10.0 + i, "note": "ok"} for i in range(20)]
     rows += [
-        {"id": "x", "region": "ZZ", "amount": -5.0, "note": "reach me at a@b.com"},  # type/allowed/range/pii
-        {"id": 999, "region": "EU", "amount": 9_000_000.0, "note": "fine"},  # range + numeric anomaly
+        {
+            "id": "x",
+            "region": "ZZ",
+            "amount": -5.0,
+            "note": "reach me at a@b.com",
+        },  # type/allowed/range/pii
+        {
+            "id": 999,
+            "region": "EU",
+            "amount": 9_000_000.0,
+            "note": "fine",
+        },  # range + numeric anomaly
     ]
     report = rails.check(Dataset.from_records(rows, name="orders"))
     rules = {v.rule for v in report.violations}
@@ -1285,7 +1295,9 @@ async def _streaming_bench() -> dict[str, Any]:
     n_rows = 200_000
     stream = RowStream.from_rows(gen(n_rows), schema, name="txns")
     start = time.perf_counter()
-    agg = stream_aggregate(stream, group_by="region", measures={"amount": ["sum", "mean", "min", "max"]})
+    agg = stream_aggregate(
+        stream, group_by="region", measures={"amount": ["sum", "mean", "min", "max"]}
+    )
     agg_seconds = max(time.perf_counter() - start, 1e-6)
     throughput_rows_per_s = n_rows / agg_seconds
 
@@ -1301,7 +1313,9 @@ async def _streaming_bench() -> dict[str, Any]:
     # set is one accumulator per group, never per row.
     def peak_bytes(n: int) -> int:
         tracemalloc.start()
-        stream_aggregate(RowStream.from_rows(gen(n), schema), group_by="region", measures={"amount": ["sum"]})
+        stream_aggregate(
+            RowStream.from_rows(gen(n), schema), group_by="region", measures={"amount": ["sum"]}
+        )
         _, peak = tracemalloc.get_traced_memory()
         tracemalloc.stop()
         return peak
@@ -1314,9 +1328,19 @@ async def _streaming_bench() -> dict[str, Any]:
     evidence: list[EvidenceItem] = []
     for i in range(10_000):
         if i % 1000 == 0:
-            evidence.append(EvidenceItem(id=f"e{i}", text=f"quarterly revenue grew in region {i}", source_id=f"s{i}"))
+            evidence.append(
+                EvidenceItem(
+                    id=f"e{i}", text=f"quarterly revenue grew in region {i}", source_id=f"s{i}"
+                )
+            )
         else:
-            evidence.append(EvidenceItem(id=f"e{i}", text=f"unrelated filler note {i} about the weather", source_id=f"s{i}"))
+            evidence.append(
+                EvidenceItem(
+                    id=f"e{i}",
+                    text=f"unrelated filler note {i} about the weather",
+                    source_id=f"s{i}",
+                )
+            )
     cap = 200
     compiler = ContextCompiler(ContextCompilerOptions(max_candidates=cap))
     compiled = await compiler.compile(
@@ -1398,7 +1422,9 @@ def _realtime_analytics_bench() -> dict[str, Any]:
 
     # Throughput — events per second through the windowed query pipeline.
     start = time.perf_counter()
-    processed = sum(wq.row_count for wq in win.query(RowStream.from_rows(gen(n), schema, name="events"), sql))
+    processed = sum(
+        wq.row_count for wq in win.query(RowStream.from_rows(gen(n), schema, name="events"), sql)
+    )
     elapsed = max(time.perf_counter() - start, 1e-6)
     events_per_s = n / elapsed
 
@@ -1674,7 +1700,8 @@ async def _text_to_query_bench() -> dict[str, Any]:
     execution_accuracy = round(sum(1 for r in all_results if r.success) / len(all_results), 4)
 
     catalog = DataCatalog.of(
-        Dataset.from_rows(db["orders"]["rows"], db["orders"]["columns"], name="orders"), name="orders"
+        Dataset.from_rows(db["orders"]["rows"], db["orders"]["columns"], name="orders"),
+        name="orders",
     )
     attacks = [
         "DROP TABLE orders",
@@ -1705,9 +1732,7 @@ async def _text_to_query_bench() -> dict[str, Any]:
     )
     na = next(i for i, row in enumerate(result.rows) if row[0] == "NA")
     cited_exact = set(result.cite_refs(na, "s")) == {"orders#r0!revenue", "orders#r2!revenue"}
-    provenance_verifiable = (
-        result.verify(catalog) and not result.verify(tampered) and cited_exact
-    )
+    provenance_verifiable = result.verify(catalog) and not result.verify(tampered) and cited_exact
 
     return {
         "execution_accuracy": execution_accuracy,
@@ -1739,7 +1764,9 @@ async def _data_analysis_bench() -> dict[str, Any]:
         catalog = DataCatalog()
         for name, spec in tables.items():
             catalog.add(
-                Dataset.from_rows([list(r) for r in spec["rows"]], list(spec["columns"]), name=name),
+                Dataset.from_rows(
+                    [list(r) for r in spec["rows"]], list(spec["columns"]), name=name
+                ),
                 name=name,
             )
         return catalog
@@ -4216,12 +4243,12 @@ async def bench_perf() -> dict[str, Any]:
         evidence=vsel_pool,
         budget=Budget(max_input_tokens=4000),
     )
-    vsel_on = await ContextCompiler(
-        ContextCompilerOptions(single_pass_selection=True)
-    ).compile(**vsel_kwargs)
-    vsel_off = await ContextCompiler(
-        ContextCompilerOptions(single_pass_selection=False)
-    ).compile(**vsel_kwargs)
+    vsel_on = await ContextCompiler(ContextCompilerOptions(single_pass_selection=True)).compile(
+        **vsel_kwargs
+    )
+    vsel_off = await ContextCompiler(ContextCompilerOptions(single_pass_selection=False)).compile(
+        **vsel_kwargs
+    )
     results["vectorized_selection"] = {
         "equivalent": bool(_selection_signature(vsel_on) == _selection_signature(vsel_off))
     }
@@ -4256,9 +4283,9 @@ async def bench_perf() -> dict[str, Any]:
     )
 
     async def _sp_compile(flag: bool) -> None:
-        await ContextCompiler(
-            ContextCompilerOptions(single_pass_selection=flag)
-        ).compile(**sp_kwargs)
+        await ContextCompiler(ContextCompilerOptions(single_pass_selection=flag)).compile(
+            **sp_kwargs
+        )
 
     await _sp_compile(True)  # warm imports/caches
     await _sp_compile(False)
@@ -6279,6 +6306,249 @@ async def bench_test_time_compute() -> dict[str, Any]:
         "reasoning_ceiling_adherence": reasoning_ceiling_adherence,
         "effort_monotone_in_difficulty": effort_monotone,
         "max_thinking_budget": max(budgets),
+    }
+
+
+async def bench_universal_reasoning() -> dict[str, Any]:
+    """UniversalReasoningBench: adaptive reasoning on every model.
+
+    This deterministic family gates mechanisms, not model intelligence: easy
+    prompts stay one-pass, hard prompts activate bounded provider-neutral
+    passes on a non-reasoning model, native thinking is used when present,
+    freshness/search decisions are conservative, and a refuted arithmetic
+    claim is corrected within the pass ceiling. Real quality uplift is measured
+    separately by ``reasoning_uplift_live.py`` on OpenRouter models.
+    """
+    from vincio import UniversalReasoningEngine, UniversalReasoningPolicy
+    from vincio.stability import VincioExperimentalWarning
+
+    routing_cases = [
+        ("Rewrite this title in uppercase", "direct", False),
+        ("Summarize the supplied paragraph", "direct", False),
+        ("Calculate 17 * 23 and verify the equality", "standard", False),
+        ("Prove this implication and find a logical counterexample", "deep", False),
+        ("Compare the trade-offs, then identify the root cause", "standard", False),
+        ("Search for the latest Python release and fact-check it", "standard", True),
+        ("Rewrite the current paragraph in uppercase", "direct", False),
+        ("Explain semantic version control", "direct", False),
+        ("Score this essay from 1 to 10", "direct", False),
+        ("Who is the CEO of OpenAI?", "standard", True),
+        ("Who is the current CEO? Do not browse the web", "standard", False),
+    ]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", VincioExperimentalWarning)
+        plain_provider = MockProvider(default_text="answer", reasoning=False)
+        plain_app = ContextApp(name="universal-reasoning", provider=plain_provider, model="mock-1")
+        engine = UniversalReasoningEngine(plain_app)
+        decisions = [engine.assess(text) for text, _depth, _web in routing_cases]
+        routing_accuracy = sum(
+            decision.depth == depth and decision.needs_search == web
+            for decision, (_text, depth, web) in zip(decisions, routing_cases, strict=True)
+        ) / len(routing_cases)
+
+        simple = await engine.arun(routing_cases[0][0])
+        deep = await engine.arun(routing_cases[3][0])
+
+        native_provider = MockProvider(default_text="answer", reasoning=True)
+        native_app = ContextApp(name="native-reasoning", provider=native_provider, model="mock-1")
+        native = await UniversalReasoningEngine(native_app).arun(routing_cases[3][0])
+
+        def responder(request: ModelRequest) -> str:
+            prompt = "\n".join(message.text for message in request.messages)
+            return "2 + 2 = 4." if "bounded answer correction" in prompt else "2 + 2 = 5."
+
+        repair_provider = MockProvider(responder=responder, reasoning=False)
+        repair_app = ContextApp(name="reasoning-repair", provider=repair_provider, model="mock-1")
+        policy = UniversalReasoningPolicy(max_passes=3)
+        repaired = await UniversalReasoningEngine(repair_app, policy).arun(
+            "Prove logically whether 2 + 2 = 5, calculate it, and detect the contradiction."
+        )
+        wrong_app = ContextApp(
+            name="reasoning-known-wrong",
+            provider=MockProvider(default_text="17 * 23 = 369."),
+            model="mock-1",
+        )
+        bounded_wrong = await UniversalReasoningEngine(wrong_app).arun(
+            "Calculate 17 * 23 and verify the equality."
+        )
+        leaked = await UniversalReasoningEngine(
+            ContextApp(
+                name="reasoning-leak",
+                provider=MockProvider(
+                    default_text="## Step 1: multiply privately.\n17 * 23 = 391."
+                ),
+                model="mock-1",
+            )
+        ).arun("Calculate 17 * 23 and verify the equality.")
+        unsupported_live = await UniversalReasoningEngine(
+            ContextApp(
+                name="reasoning-unsupported-live",
+                provider=MockProvider(default_text="The latest release is 99.0."),
+                model="mock-1",
+            )
+        ).arun("What is the latest stable release?")
+        web_opt_out = engine.assess("Who is the current CEO? Do not browse the web")
+
+        def create_ticket(title: str) -> str:
+            return title
+
+        plain_app.add_tool(create_ticket)
+        unrelated_tool = engine.assess("Run through the history of incident management")
+        explicit_tool = engine.assess("Use create_ticket to create an incident ticket")
+        consistent_logic = "All cats are mammals, and no dogs are cats. Are these consistent?"
+        consistent_plan = engine.plan(consistent_logic, engine.assess(consistent_logic))
+
+        def multilingual_responder(request: ModelRequest) -> str:
+            prompt = "\n".join(message.text for message in request.messages)
+            if "semantic request router" in prompt:
+                language = "es"
+                depth = "direct"
+                kinds = ["summarization"]
+                live = False
+                web_preference = "auto"
+                tools: list[str] = []
+                signals = ["simple_transformation"]
+                if "Linganisha" in prompt:
+                    language, depth = "sw", "standard"
+                    kinds, signals = ["decision_analysis"], ["decision"]
+                elif "ウェブ" in prompt:
+                    language, depth, live = "ja", "standard", True
+                    kinds = ["factual_verification"]
+                    web_preference, signals = (
+                        "forbidden",
+                        [
+                            "current_external_fact",
+                            "web_prohibited",
+                        ],
+                    )
+                elif "التذكرة" in prompt:
+                    language, depth = "ar", "standard"
+                    kinds, signals = ["tool_dependent"], ["tool_request"]
+                    tools = ["create_ticket", "unregistered_admin_tool"]
+                return json.dumps(
+                    {
+                        "language": language,
+                        "primary_task": "general",
+                        "depth": depth,
+                        "difficulty": {"direct": 0.1, "standard": 0.5}[depth],
+                        "task_kinds": kinds,
+                        "needs_live_external_information": live,
+                        "web_preference": web_preference,
+                        "tool_names": tools,
+                        "confidence": 0.95,
+                        "signals": signals,
+                    }
+                )
+            if "[UNVERIFIED]" in prompt:
+                return "[UNVERIFIED] ライブ情報を確認できません。"
+            return "Respuesta verificada."
+
+        multilingual_app = ContextApp(
+            name="reasoning-multilingual",
+            provider=MockProvider(responder=multilingual_responder),
+            model="mock-1",
+        )
+        multilingual_app.add_tool(create_ticket)
+        multilingual_engine = UniversalReasoningEngine(multilingual_app)
+        spanish = await multilingual_engine.arun(
+            "Resume brevemente este párrafo sin buscar en internet."
+        )
+        swahili = await multilingual_engine.arun(
+            "Linganisha chaguo hizi na uchague lenye uwiano bora."
+        )
+        japanese = await multilingual_engine.arun("ウェブを使わずに、現在のCEOを教えてください。")
+        arabic = await multilingual_engine.arun("استخدم أداة إنشاء التذكرة للحادث الجديد.")
+
+    return {
+        "routing_accuracy": round(routing_accuracy, 4),
+        "simple_single_pass": len(simple.passes) == 1,
+        "nonnative_multi_pass": len(deep.passes) > 1 and not deep.assessment.native_reasoning,
+        "native_effort_used": bool(
+            native.assessment.native_reasoning
+            and native_provider.requests
+            and all(request.reasoning_effort == "high" for request in native_provider.requests)
+        ),
+        "kernel_refutation_corrected": bool(
+            repaired.corrected
+            and repaired.result.raw_text == "2 + 2 = 4."
+            and repaired.passes[-1].verification == "verified"
+        ),
+        "pass_cap_holds": len(repaired.passes) <= policy.max_passes,
+        "task_bound_wrong_answer_blocked": bool(
+            bounded_wrong.deterministic_fallback
+            and "391" in bounded_wrong.result.raw_text
+            and "369" not in bounded_wrong.result.raw_text
+        ),
+        "unsupported_live_claim_blocked": bool(
+            unsupported_live.refused and unsupported_live.result.raw_text == ""
+        ),
+        "user_web_opt_out_respected": bool(
+            web_opt_out.needs_live_verification
+            and not web_opt_out.needs_search
+            and web_opt_out.search_decision == "user_declined"
+        ),
+        "tool_match_precision": bool(
+            not unrelated_tool.needs_tools and explicit_tool.matched_tools == ["create_ticket"]
+        ),
+        "deterministic_fact_precision": bool(
+            "expected_consistency" not in consistent_plan.verified_facts
+        ),
+        "reasoning_leak_blocked": bool(
+            leaked.deterministic_fallback and "Step" not in leaked.result.raw_text
+        ),
+        "multilingual_semantic_routing": bool(
+            all(
+                item.assessment.semantic_routing_succeeded
+                for item in (spanish, swahili, japanese, arabic)
+            )
+            and {
+                spanish.assessment.detected_language,
+                swahili.assessment.detected_language,
+                japanese.assessment.detected_language,
+                arabic.assessment.detected_language,
+            }
+            == {"es", "sw", "ja", "ar"}
+        ),
+        "unknown_language_corrected_by_model": bool(
+            swahili.assessment.detected_language == "sw"
+            and "decision_analysis" in swahili.assessment.task_kinds
+        ),
+        "multilingual_web_opt_out": bool(
+            japanese.assessment.search_decision == "user_declined"
+            and japanese.answer_verification == "verified"
+        ),
+        "multilingual_tool_allowlist": bool(
+            arabic.assessment.matched_tools == ["create_ticket"]
+            and arabic.plan.candidate_passes == 1
+        ),
+        "semantic_routing_accounted": bool(
+            spanish.result.metadata["universal_reasoning"]["semantic_routing_tokens"] > 0
+            and spanish.result.usage.total_tokens
+            > spanish.result.metadata["universal_reasoning"]["semantic_routing_tokens"]
+        ),
+        "private_reasoning_not_recorded": all(
+            set(item.model_dump())
+            <= {
+                "index",
+                "kind",
+                "run_id",
+                "trace_id",
+                "valid",
+                "verification",
+                "score",
+                "cost_usd",
+                "input_tokens",
+                "output_tokens",
+            }
+            for item in repaired.passes
+        ),
+        "search_decision_accuracy": sum(
+            decision.needs_search == expected[2]
+            for decision, expected in zip(decisions, routing_cases, strict=True)
+        )
+        / len(routing_cases),
+        "simple_pass_savings_vs_deep": round(1.0 - len(simple.passes) / len(deep.passes), 4),
     }
 
 
@@ -9395,9 +9665,7 @@ async def bench_reputation_portability() -> dict[str, Any]:
     # 17. A revocation is offline-verifiable, and a forged one cannot cancel a claim.
     forged_rev = revoke_attestation(revoked_att).sign(acme)
     forged_rev.signatures[0].signature = "deadbeef"
-    forged_rev_prior = combine_attestations(
-        [revoked_att], revocations=[forged_rev], verifier=acme
-    )
+    forged_rev_prior = combine_attestations([revoked_att], revocations=[forged_rev], verifier=acme)
     portability_forged_revocation_ignored = bool(
         revocation.verify(acme).valid
         and forged_rev_prior.standing("vendor") is not None
@@ -10762,9 +11030,7 @@ async def bench_data_analysis_conformance() -> dict[str, Any]:
         "cite",
     ]
     conformance_lifecycle_threads = bool(
-        narrative.stage_names == expected_stages
-        and result.row_count == 2
-        and metric.row_count == 2
+        narrative.stage_names == expected_stages and result.row_count == 2 and metric.row_count == 2
     )
 
     # The narrative is a content-bound, hash-linked chain that verifies offline.
@@ -11192,37 +11458,57 @@ async def bench_verified_reasoning() -> dict[str, Any]:
         return stat_cv.certify("answer", VerificationContext(statistical_claims=claims)).status
 
     rev = CitedSeries(name="rev", values=[1.0, 3.0, 5.0, 7.0, 9.0])  # y = 2x + 1
-    verifies_trend = _stat([
-        TrendClaim(series=rev, slope=2.0, intercept=1.0, r_squared=1.0, direction="increasing")
-    ]) == "verified"
+    verifies_trend = (
+        _stat(
+            [
+                TrendClaim(
+                    series=rev, slope=2.0, intercept=1.0, r_squared=1.0, direction="increasing"
+                )
+            ]
+        )
+        == "verified"
+    )
     refutes_bad_trend = _stat([TrendClaim(series=rev, slope=5.0)]) == "refuted"
     ci_vals = [10.0, 12.0, 11.0, 13.0, 9.0, 10.0, 14.0, 12.0]
     lo, hi = mean_confidence_interval(ci_vals, 0.95)
     ci_series = CitedSeries(name="m", values=ci_vals)
-    verifies_interval = _stat([
-        IntervalClaim(series=ci_series, lower=round(lo, 3), upper=round(hi, 3), kind="mean")
-    ]) == "verified"
-    refutes_tight_interval = _stat([
-        IntervalClaim(series=ci_series, lower=11.0, upper=11.5, kind="mean")
-    ]) == "refuted"
+    verifies_interval = (
+        _stat(
+            [IntervalClaim(series=ci_series, lower=round(lo, 3), upper=round(hi, 3), kind="mean")]
+        )
+        == "verified"
+    )
+    refutes_tight_interval = (
+        _stat([IntervalClaim(series=ci_series, lower=11.0, upper=11.5, kind="mean")]) == "refuted"
+    )
     f_series = CitedSeries(name="f", values=[10.0, 12.0, 14.0, 16.0, 18.0])
     drift = run_forecast("drift", f_series.ys(), horizon=3)
-    verifies_forecast = _stat([
-        ForecastClaim(series=f_series, model="drift", predictions=drift)
-    ]) == "verified"
-    refutes_bad_forecast = _stat([
-        ForecastClaim(series=f_series, model="drift", predictions=[20.0, 20.0, 20.0])
-    ]) == "refuted"
+    verifies_forecast = (
+        _stat([ForecastClaim(series=f_series, model="drift", predictions=drift)]) == "verified"
+    )
+    refutes_bad_forecast = (
+        _stat([ForecastClaim(series=f_series, model="drift", predictions=[20.0, 20.0, 20.0])])
+        == "refuted"
+    )
     # A value swapped after it was cited is refuted (the statistic is bound to cells).
     smuggled = CitedSeries(
-        name="s", values=[1.0, 2.0, 3.0],
-        citations=[CellRef(ref="t#r0!a", value=1.0), CellRef(ref="t#r1!a", value=9.0),
-                   CellRef(ref="t#r2!a", value=3.0)],
+        name="s",
+        values=[1.0, 2.0, 3.0],
+        citations=[
+            CellRef(ref="t#r0!a", value=1.0),
+            CellRef(ref="t#r1!a", value=9.0),
+            CellRef(ref="t#r2!a", value=3.0),
+        ],
     )
     refutes_unbound_series = _stat([TrendClaim(series=smuggled, slope=1.0)]) == "refuted"
     statistical_soundness = bool(
-        verifies_trend and refutes_bad_trend and verifies_interval and refutes_tight_interval
-        and verifies_forecast and refutes_bad_forecast and refutes_unbound_series
+        verifies_trend
+        and refutes_bad_trend
+        and verifies_interval
+        and refutes_tight_interval
+        and verifies_forecast
+        and refutes_bad_forecast
+        and refutes_unbound_series
     )
 
     # -- Refutes spurious causation ----------------------------------------
@@ -11238,29 +11524,45 @@ async def bench_verified_reasoning() -> dict[str, Any]:
     temp_s = CitedSeries(name="temp", values=[float(t) for t in temp])
     raw_r = round(pearson_r(ice, drown), 2)
     verifies_correlation = _stat([CorrelationClaim(x=ice_s, y=drown_s, r=raw_r)]) == "verified"
-    refutes_uncontrolled = _stat([
-        CorrelationClaim(x=ice_s, y=drown_s, r=raw_r, causal=True)
-    ]) == "refuted"
-    refutes_confounded = _stat([
-        CorrelationClaim(x=ice_s, y=drown_s, r=raw_r, causal=True,
-                         controls=["temperature"], control_series=[temp_s])
-    ]) == "refuted"
+    refutes_uncontrolled = (
+        _stat([CorrelationClaim(x=ice_s, y=drown_s, r=raw_r, causal=True)]) == "refuted"
+    )
+    refutes_confounded = (
+        _stat(
+            [
+                CorrelationClaim(
+                    x=ice_s,
+                    y=drown_s,
+                    r=raw_r,
+                    causal=True,
+                    controls=["temperature"],
+                    control_series=[temp_s],
+                )
+            ]
+        )
+        == "refuted"
+    )
     # A genuine controlled association survives partialling out the control.
     gx = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     gz = [2, 1, 4, 3, 6, 5, 8, 7, 10, 9]
     gy = [2.0 * xv + 0.1 * zv for xv, zv in zip(gx, gz, strict=True)]
-    survives_controls = _stat([
-        CorrelationClaim(
-            x=CitedSeries(name="x", values=[float(v) for v in gx]),
-            y=CitedSeries(name="y", values=gy),
-            r=round(pearson_r([float(v) for v in gx], gy), 2),
-            causal=True, controls=["z"],
-            control_series=[CitedSeries(name="z", values=[float(v) for v in gz])],
+    survives_controls = (
+        _stat(
+            [
+                CorrelationClaim(
+                    x=CitedSeries(name="x", values=[float(v) for v in gx]),
+                    y=CitedSeries(name="y", values=gy),
+                    r=round(pearson_r([float(v) for v in gx], gy), 2),
+                    causal=True,
+                    controls=["z"],
+                    control_series=[CitedSeries(name="z", values=[float(v) for v in gz])],
+                )
+            ]
         )
-    ]) == "verified"
+        == "verified"
+    )
     refutes_spurious_causation = bool(
-        verifies_correlation and refutes_uncontrolled
-        and refutes_confounded and survives_controls
+        verifies_correlation and refutes_uncontrolled and refutes_confounded and survives_controls
     )
 
     certificate_soundness = bool(
@@ -11684,9 +11986,17 @@ async def bench_registry_coverage() -> dict[str, Any]:
     catalog_from_json = bool(report.model_count >= 45 and report.provider_count >= 10)
     priced_as_of_present = all(
         reg.resolve(m).priced_as_of == CATALOG_RELEASED
-        for m in ("gpt-5.2", "o3", "gpt-4.1", "claude-3-5-sonnet", "mistral-medium-latest",
-                  "gemini-2.5-flash", "deepseek-chat")
+        for m in (
+            "gpt-5.2",
+            "o3",
+            "gpt-4.1",
+            "claude-3-5-sonnet",
+            "mistral-medium-latest",
+            "gemini-2.5-flash",
+            "deepseek-chat",
+        )
     )
+
     # Every openai_compat preset either prices its headline model or is a
     # self-hosted preset (DS4) that legitimately bills $0 with a self_hosted flag —
     # never a silent, unflagged $0.
@@ -11694,7 +12004,11 @@ async def bench_registry_coverage() -> dict[str, Any]:
         profile = reg.resolve(model_id)
         if profile is None:
             return False
-        return profile.input_cost_per_mtok > 0 if not profile.self_hosted else profile.input_cost_per_mtok == 0.0
+        return (
+            profile.input_cost_per_mtok > 0
+            if not profile.self_hosted
+            else profile.input_cost_per_mtok == 0.0
+        )
 
     presets_priced = all(
         _preset_headline_ok(p.default_model) for p in PRESETS.values() if p.default_model
@@ -11705,8 +12019,14 @@ async def bench_registry_coverage() -> dict[str, Any]:
     freshness_gate_fires = bool(stale_year_out.no_stale_prices is False and stale_year_out.stale)
 
     silent = ModelRegistry()
-    silent.register(ModelProfile(name="ghost", provider="openai", model="ghost-chat",
-                                 capabilities=ModelCapabilities(tool_calling=True)))
+    silent.register(
+        ModelProfile(
+            name="ghost",
+            provider="openai",
+            model="ghost-chat",
+            capabilities=ModelCapabilities(tool_calling=True),
+        )
+    )
     silent_zero_gate_fires = bool(
         silent.coverage_report().no_silent_zero is False
         and "ghost-chat" in silent.coverage_report().unpriced
@@ -11807,7 +12127,9 @@ async def bench_ergonomics() -> dict[str, Any]:
             evaluation(provider=_provider(), model="mock-1"),
         ]
         bot = chat(provider=_provider(), model="mock-1")
-        flow = Flow(provider=_provider(), model="mock-1").retrieve(documents=list(documents)).ground()
+        flow = (
+            Flow(provider=_provider(), model="mock-1").retrieve(documents=list(documents)).ground()
+        )
         conciseness_one_entry_point = bool(
             isinstance(facades[0], RagTask)
             and isinstance(facades[1], Extractor)
@@ -11947,7 +12269,9 @@ async def bench_docs_conformance() -> dict[str, Any]:
         and any(t.examples for t in [t for t in _docmap.TOPICS if t.concept == c])
         for c in concepts
     )
-    docs_every_concept_connected = bool(every_verb_mapped and every_verb_in_api and concept_connected)
+    docs_every_concept_connected = bool(
+        every_verb_mapped and every_verb_in_api and concept_connected
+    )
 
     # No orphans + llms.txt regenerated from vincio.__all__ and current.
     docs_no_orphans = bool(orphans.ok)
@@ -11959,9 +12283,7 @@ async def bench_docs_conformance() -> dict[str, Any]:
         source="docs/README.md", text="x", target="../nope/missing.md"
     )
     detects_broken_link = _docmap._resolve_link(broken_link) is not None
-    detects_unmapped_verb = (
-        _docmap.topic_for_verb("a_verb_that_does_not_exist_anywhere") is None
-    )
+    detects_unmapped_verb = _docmap.topic_for_verb("a_verb_that_does_not_exist_anywhere") is None
     sample = concepts[0]
     original = _docmap._read(sample)
     tampered = original.replace(_docmap._RELATED_END, "")  # break the managed block
@@ -12101,8 +12423,7 @@ async def bench_hygiene() -> dict[str, Any]:
         "dead surface" in p for p in _surface._module_problems("fake", ["Real", "Ghost"], fake)
     )
     detects_duplicate = any(
-        "more than once" in p
-        for p in _surface._module_problems("fake", ["Real", "Real"], fake)
+        "more than once" in p for p in _surface._module_problems("fake", ["Real", "Real"], fake)
     )
     detects_malformed = bool(_surface._module_problems("fake", "not-a-list", fake))
     surface_gate_detects_tamper = bool(detects_dead and detects_duplicate and detects_malformed)
@@ -12122,7 +12443,10 @@ async def bench_hygiene() -> dict[str, Any]:
     # and the detector provably bites on an injected public built-in raise.
     error_contract_app_verbs_clean = not _error_contract.app_verb_violations()
     error_contract_frozen = _error_contract.load_manifest() == _error_contract.render_manifest()
-    contract_detects_leak = ("Widget.build", "ValueError") in _error_contract.contract_raises_in_source(
+    contract_detects_leak = (
+        "Widget.build",
+        "ValueError",
+    ) in _error_contract.contract_raises_in_source(
         "class Widget:\n    def build(self):\n        raise ValueError('boom')\n"
     )
     contract_ignores_private = (
@@ -12192,9 +12516,7 @@ async def bench_hygiene() -> dict[str, Any]:
         )
     )
     wire_or_retire_gate_detects_tamper = bool(wor_detects_bad_reach and wor_detects_dead_symbol)
-    wire_or_retire_conformant = bool(
-        wire_or_retire_clean and wire_or_retire_gate_detects_tamper
-    )
+    wire_or_retire_conformant = bool(wire_or_retire_clean and wire_or_retire_gate_detects_tamper)
 
     # 6.4 — docstring / behaviour parity. The docs match the code: the budget
     # allocator advertises no reclaim it does not run, the compression tuner gates
@@ -12400,7 +12722,9 @@ async def bench_eval_suite() -> dict[str, Any]:
     for spec in reg.all():
         adapter = spec.build_adapter()
         dataset = BenchmarkDataset.from_spec(spec)
-        complete = complete and adapter is not None and bool(spec.primary_metric) and len(dataset) >= 1
+        complete = (
+            complete and adapter is not None and bool(spec.primary_metric) and len(dataset) >= 1
+        )
     eval_registry_completeness = bool(complete and len(reg.ids()) >= 25)
 
     # Determinism: two full Tier-S runs produce the same digest (byte-identical).
@@ -12598,8 +12922,7 @@ async def bench_compile_receipt() -> dict[str, Any]:
     # Raw text must never leak into the exportable receipt.
     blob = json.dumps(receipt_a.to_export())
     no_raw_text = all(
-        raw not in blob
-        for raw in ("Refunds are allowed", "Bananas", "potassium", "14 days")
+        raw not in blob for raw in ("Refunds are allowed", "Bananas", "potassium", "14 days")
     )
 
     # Overhead of building a receipt from an already-compiled context, amortized
@@ -12727,14 +13050,24 @@ async def bench_ds4_provider() -> dict[str, Any]:
         },
     }
     stream_lines = [
-        "data: " + _json.dumps({"model": "deepseek-v4-flash", "choices": [{"delta": {"content": "Bordeaux is in "}}]}),
-        "data: " + _json.dumps({"model": "deepseek-v4-flash", "choices": [{"delta": {"content": "France."}}]}),
+        "data: "
+        + _json.dumps(
+            {"model": "deepseek-v4-flash", "choices": [{"delta": {"content": "Bordeaux is in "}}]}
+        ),
+        "data: "
+        + _json.dumps(
+            {"model": "deepseek-v4-flash", "choices": [{"delta": {"content": "France."}}]}
+        ),
         "data: "
         + _json.dumps(
             {
                 "model": "deepseek-v4-flash",
                 "choices": [{"delta": {}, "finish_reason": "stop"}],
-                "usage": {"prompt_tokens": 1200, "completion_tokens": 3, "prompt_cache_hit_tokens": 1024},
+                "usage": {
+                    "prompt_tokens": 1200,
+                    "completion_tokens": 3,
+                    "prompt_cache_hit_tokens": 1024,
+                },
             }
         ),
         "data: [DONE]",
@@ -12802,12 +13135,21 @@ async def bench_ds4_provider() -> dict[str, Any]:
     # -- honest $0, self-hosted, coverage green --
     reg = ModelRegistry()
     report = reg.coverage_report()
-    ds4_profiles = [reg.resolve(m) for m in
-                    ("deepseek-v4-flash", "deepseek-v4-pro", "deepseek-v4-flash-q4", "deepseek-v4-pro-q4")]
+    ds4_profiles = [
+        reg.resolve(m)
+        for m in (
+            "deepseek-v4-flash",
+            "deepseek-v4-pro",
+            "deepseek-v4-flash-q4",
+            "deepseek-v4-pro-q4",
+        )
+    ]
     self_hosted_priced_zero = bool(
         report.ok
         and report.presets_priced
-        and all(p is not None and p.self_hosted and p.input_cost_per_mtok == 0.0 for p in ds4_profiles)
+        and all(
+            p is not None and p.self_hosted and p.input_cost_per_mtok == 0.0 for p in ds4_profiles
+        )
         and not any("deepseek-v4" in m for m in report.unpriced)
     )
 
@@ -12815,8 +13157,14 @@ async def bench_ds4_provider() -> dict[str, Any]:
     from vincio.core.types import ModelCapabilities, ModelProfile
 
     paid_zero = ModelRegistry()
-    paid_zero.register(ModelProfile(name="ghost", provider="openai", model="ghost-chat",
-                                    capabilities=ModelCapabilities(tool_calling=True)))
+    paid_zero.register(
+        ModelProfile(
+            name="ghost",
+            provider="openai",
+            model="ghost-chat",
+            capabilities=ModelCapabilities(tool_calling=True),
+        )
+    )
     silent_zero_gate_still_bites = bool(
         paid_zero.coverage_report().no_silent_zero is False
         and "ghost-chat" in paid_zero.coverage_report().unpriced
@@ -12824,12 +13172,11 @@ async def bench_ds4_provider() -> dict[str, Any]:
 
     # -- residency fail-closed on-prem --
     loopback_on_prem = infer_region_from_url("http://127.0.0.1:8000/v1") == "on_prem"
-    admitted = residency_violation(
-        provider="ds4", model="deepseek-v4-flash", allowed_regions=["on_prem"]
-    ) is None
-    refused = residency_violation(
-        provider="ds4", model="deepseek-v4-flash", allowed_regions=["eu"]
+    admitted = (
+        residency_violation(provider="ds4", model="deepseek-v4-flash", allowed_regions=["on_prem"])
+        is None
     )
+    refused = residency_violation(provider="ds4", model="deepseek-v4-flash", allowed_regions=["eu"])
     residency_on_prem_fail_closed = bool(
         loopback_on_prem and admitted and refused is not None and refused.severity == "block"
     )
@@ -12843,8 +13190,14 @@ async def bench_ds4_provider() -> dict[str, Any]:
         Message(role="system", content="You are a careful geography assistant. Cite sources."),
         Message(role="user", content="Context: France is a country in western Europe."),
     ]
-    render_a = _json.dumps(chat_provider._render_messages([*shared, Message(role="user", content="Where is Bordeaux?")]))
-    render_b = _json.dumps(chat_provider._render_messages([*shared, Message(role="user", content="Where is Lyon?")]))
+    render_a = _json.dumps(
+        chat_provider._render_messages(
+            [*shared, Message(role="user", content="Where is Bordeaux?")]
+        )
+    )
+    render_b = _json.dumps(
+        chat_provider._render_messages([*shared, Message(role="user", content="Where is Lyon?")])
+    )
     common = 0
     for ca, cb in zip(render_a, render_b, strict=False):
         if ca != cb:
@@ -13002,7 +13355,12 @@ async def bench_web_search() -> dict[str, Any]:
     native = MockProvider(
         script=[
             {"tool_call": {"name": "web_search", "arguments": {"query": "latest python release"}}},
-            {"tool_call": {"name": "web_read", "arguments": {"url": release_url, "query": "release date"}}},
+            {
+                "tool_call": {
+                    "name": "web_read",
+                    "arguments": {"url": release_url, "query": "release date"},
+                }
+            },
             script_answer,
         ]
     )
@@ -13047,7 +13405,9 @@ async def bench_web_search() -> dict[str, Any]:
         "<h2>Passing Parameters</h2><p>You often want to send query-string data.</p>"
         "<a href='https://requests.readthedocs.io/page2'>Next</a></body></html>"
     )
-    section = _extract(docs_page, query="make a request example code", mode="section", budget_tokens=300)
+    section = _extract(
+        docs_page, query="make a request example code", mode="section", budget_tokens=300
+    )
     code_block_preserved = any(
         e.kind == "code" and "requests.get" in e.text for e in section.excerpts
     )
@@ -13058,8 +13418,11 @@ async def bench_web_search() -> dict[str, Any]:
     ssrf_ip_literal_blocked = all(
         not ssrf_pol.allows_url(u)
         for u in (
-            "http://0x7f.0.0.1/", "http://127.1/", "http://2130706433/",
-            "http://127.0.0.1.nip.io/", "http://169.254.169.254/latest/meta-data/",
+            "http://0x7f.0.0.1/",
+            "http://127.1/",
+            "http://2130706433/",
+            "http://127.0.0.1.nip.io/",
+            "http://169.254.169.254/latest/meta-data/",
         )
     ) and ssrf_pol.allows_url("https://docs.python.org/3/")
 
@@ -13070,8 +13433,10 @@ async def bench_web_search() -> dict[str, Any]:
     )
     js_shell = _extract("<html><body><div id='root'></div><!--" + "x" * 25000 + "--></body></html>")
     availability_detected = (
-        not wall.available and wall.unavailable_reason == "cookie_wall"
-        and not js_shell.available and js_shell.unavailable_reason == "requires_javascript"
+        not wall.available
+        and wall.unavailable_reason == "cookie_wall"
+        and not js_shell.available
+        and js_shell.unavailable_reason == "requires_javascript"
     )
 
     # intent gating: a directive fetches, a discussed URL and a code fence do not
@@ -13092,7 +13457,9 @@ async def bench_web_search() -> dict[str, Any]:
         )
 
     crawl_pages = {
-        "/docs/": crawl_page("Index", [("/docs/a", "A"), ("/docs/b", "B"), ("/docs/p?page=1", "P1")]),
+        "/docs/": crawl_page(
+            "Index", [("/docs/a", "A"), ("/docs/b", "B"), ("/docs/p?page=1", "P1")]
+        ),
         "/docs/a": crawl_page("A", [("/docs/b", "B"), ("https://other.test/x", "Ext")]),
         "/docs/b": crawl_page("B", [("/docs/a", "A")]),
     }
@@ -13106,7 +13473,8 @@ async def bench_web_search() -> dict[str, Any]:
         body = crawl_pages.get(key) or crawl_pages.get(request.url.path)
         return (
             httpx.Response(200, text=body, headers={"content-type": "text/html"})
-            if body else httpx.Response(404)
+            if body
+            else httpx.Response(404)
         )
 
     async def run_crawl() -> Any:
@@ -13120,16 +13488,19 @@ async def bench_web_search() -> dict[str, Any]:
                 sleeper=nosleep,
             )
         )
-        return crawler, await crawler.crawl("https://site.test/docs/", scope="subtree", clock=lambda: 0.0)
+        return crawler, await crawler.crawl(
+            "https://site.test/docs/", scope="subtree", clock=lambda: 0.0
+        )
 
     crawler1, col1 = await run_crawl()
     _, col2 = await run_crawl()
     crawl_deterministic = [p.url for p in col1.pages] == [p.url for p in col2.pages]
     crawl_bounded = col1.pages_fetched <= 25 and not any("other.test" in p.url for p in col1.pages)
     crawl_verifies = col1.verify(crawler1.browser.snapshots)
-    dataset_roundtrip = len(col1.to_dataset().cells[0]) == col1.pages_fetched and len(
-        col1.to_documents()
-    ) == col1.pages_fetched
+    dataset_roundtrip = (
+        len(col1.to_dataset().cells[0]) == col1.pages_fetched
+        and len(col1.to_documents()) == col1.pages_fetched
+    )
 
     return {
         "extract_reduction": extract_reduction,
@@ -13189,19 +13560,30 @@ async def bench_rag_anchors() -> dict[str, Any]:
     filler = " ".join(
         f"Section {i}: this paragraph elaborates background, rationale, personas, "
         "and assorted considerations that inform the product but are not binding "
-        "rules a coding step must honor on every call." for i in range(40)
+        "rules a coding step must honor on every call."
+        for i in range(40)
     )
-    prd = Document(title="PRD", text=(
-        "Build a CLI code editor for vibe coders. It must support a plugin system. "
-        "Users should never lose unsaved work. The editor must start under 200ms. "
-        + filler))
-    brand = Document(title="Brand", text=(
-        "Voice is warm, concise, encouraging. Always address the user directly. "
-        "Never use jargon or corporate speak. Error messages must offer a next step. "
-        + filler))
-    arch = Document(title="Architecture", text=(
-        "The core is event-sourced. All state changes go through a command bus. "
-        "Rendering must be decoupled from the model layer. " + filler))
+    prd = Document(
+        title="PRD",
+        text=(
+            "Build a CLI code editor for vibe coders. It must support a plugin system. "
+            "Users should never lose unsaved work. The editor must start under 200ms. " + filler
+        ),
+    )
+    brand = Document(
+        title="Brand",
+        text=(
+            "Voice is warm, concise, encouraging. Always address the user directly. "
+            "Never use jargon or corporate speak. Error messages must offer a next step. " + filler
+        ),
+    )
+    arch = Document(
+        title="Architecture",
+        text=(
+            "The core is event-sourced. All state changes go through a command bus. "
+            "Rendering must be decoupled from the model layer. " + filler
+        ),
+    )
     corpus = [prd, brand, arch]
     corpus_tokens = sum(count_tokens(d.text) for d in corpus)
 
@@ -13209,16 +13591,23 @@ async def bench_rag_anchors() -> dict[str, Any]:
     brief_reduction = round(corpus_tokens / max(brief.tokens, 1), 2)
     frame = brief.as_evidence()
     detail = EvidenceItem(
-        id="d1", source_id="arch.md", relevance=0.9,
-        text="The login endpoint validates a bearer token and returns a session cookie.")
+        id="d1",
+        source_id="arch.md",
+        relevance=0.9,
+        text="The login endpoint validates a bearer token and returns a session cookie.",
+    )
 
-    async def compile_once(evidence, budget, *, task=TaskType.CODING, query="add a settings panel", **opt):
+    async def compile_once(
+        evidence, budget, *, task=TaskType.CODING, query="add a settings panel", **opt
+    ):
         compiler = ContextCompiler(ContextCompilerOptions(**opt))
         result = await compiler.compile(
             objective=Objective("build the app", task_type=task),
             user_input=UserInput(text=query),
             instructions=[Instruction("Answer from the sources")],
-            evidence=evidence, budget=budget)
+            evidence=evidence,
+            budget=budget,
+        )
         ids = [e.get("id") for e in result.packet.evidence_items]
         text = " ".join(e.get("text") or "" for e in result.packet.evidence_items)
         return result, ids, text
@@ -13227,28 +13616,43 @@ async def bench_rag_anchors() -> dict[str, Any]:
     _, ids_anchor, text_anchor = await compile_once([frame, detail], Budget(max_input_tokens=8000))
     frame_retained_on_mismatch = "Never use jargon" in text_anchor
     # pure RAG (no anchor): the same lexical-miss query loses the brand constraint
-    brand_chunk = EvidenceItem(id="b", source_id="brand.md",
-                               text="Never use jargon or corporate speak.", relevance=0.1)
-    _, _, text_pure = await compile_once([brand_chunk, detail], Budget(max_input_tokens=8000),
-                                         min_relevance=0.2)
+    brand_chunk = EvidenceItem(
+        id="b", source_id="brand.md", text="Never use jargon or corporate speak.", relevance=0.1
+    )
+    _, _, text_pure = await compile_once(
+        [brand_chunk, detail], Budget(max_input_tokens=8000), min_relevance=0.2
+    )
     pure_rag_loses_frame = "Never use jargon" not in text_pure
     # tier-2: a query that matches the detail keeps BOTH frame and detail
-    _, ids_both, _ = await compile_once([frame, detail], Budget(max_input_tokens=8000),
-                                        query="login endpoint bearer token")
+    _, ids_both, _ = await compile_once(
+        [frame, detail], Budget(max_input_tokens=8000), query="login endpoint bearer token"
+    )
     tier2_detail_survives = frame.id in ids_both and "d1" in ids_both
 
     # frame guaranteed at every hard drop point, always in budget
     scenarios = []
-    r1, i1, _ = await compile_once([frame, detail], Budget(max_input_tokens=1000, max_output_tokens=200))
+    r1, i1, _ = await compile_once(
+        [frame, detail], Budget(max_input_tokens=1000, max_output_tokens=200)
+    )
     scenarios.append((frame.id in i1, r1.token_count <= 1000))
-    r2, i2, _ = await compile_once([frame, detail], Budget(max_input_tokens=2000), task=TaskType.CLASSIFICATION)
+    r2, i2, _ = await compile_once(
+        [frame, detail], Budget(max_input_tokens=2000), task=TaskType.CLASSIFICATION
+    )
     scenarios.append((frame.id in i2, r2.token_count <= 2000))
-    r3, i3, _ = await compile_once([frame, detail], Budget(max_input_tokens=8000), max_resident_bytes=200)
+    r3, i3, _ = await compile_once(
+        [frame, detail], Budget(max_input_tokens=8000), max_resident_bytes=200
+    )
     scenarios.append((frame.id in i3, True))
-    contradiction = EvidenceItem(id="c1", source_id="old.md", authority=0.99, relevance=0.9,
-                                 text="The editor must start under 900ms, not 200ms.")
-    r4, i4, _ = await compile_once([frame, contradiction], Budget(max_input_tokens=8000),
-                                   query="editor startup time")
+    contradiction = EvidenceItem(
+        id="c1",
+        source_id="old.md",
+        authority=0.99,
+        relevance=0.9,
+        text="The editor must start under 900ms, not 200ms.",
+    )
+    r4, i4, _ = await compile_once(
+        [frame, contradiction], Budget(max_input_tokens=8000), query="editor startup time"
+    )
     scenarios.append((frame.id in i4, True))
     # overflow ladder: an oversized frame is fitted, never dropped, never over budget
     huge = build_anchor_brief(corpus, brief_tokens=4000).as_evidence()
@@ -13262,7 +13666,8 @@ async def bench_rag_anchors() -> dict[str, Any]:
     s = AnchorSet()
     s.add("spec", corpus, brief_tokens=160)
     brief_deterministic = (
-        b_a.text == brief.text and b_a.content_hash == brief.content_hash
+        b_a.text == brief.text
+        and b_a.content_hash == brief.content_hash
         and s.brief() is s.brief()  # cached
     )
 
@@ -13303,45 +13708,61 @@ def _lager_corpus():
         for i in range(12)
     )
     docs = [
-        Document(title="incident", text=(
-            "The checkout service suffered a full outage on 2025-11-03. "
-            "Customers could not complete purchases for three hours during the "
-            "checkout outage window.\n\n"
-            f"{impact_filler}\n\n"
-            f"{analysis_filler}\n\n"
-            "The incident review assigned the root cause to the payments gateway. "
-            "A permanent fix was scheduled for the following sprint."
-        )),
-        Document(title="gateway", text=(
-            "The payments gateway rejected all connections because its TLS "
-            "certificate had expired. Certificate management is owned by the "
-            "platform team.\n\n" + " ".join(
-                f"Gateway runbook item {i}: the connection pool is provisioned per "
-                f"region, health probes fire every interval {i}, and failover "
-                f"drains sessions to the standby cluster in tier {i}."
-                for i in range(12)
-            )
-        )),
-        Document(title="platform", text=(
-            "The platform team automates certificate management with a rotation "
-            "script. The rotation script had been disabled during the datacenter "
-            "migration because the migration froze all scheduled jobs.\n\n" + " ".join(
-                f"Platform procedure {i}: infrastructure changes require a change "
-                f"ticket, a rollback plan, and sign-off from the duty manager for "
-                f"window {i}."
-                for i in range(12)
-            )
-        )),
+        Document(
+            title="incident",
+            text=(
+                "The checkout service suffered a full outage on 2025-11-03. "
+                "Customers could not complete purchases for three hours during the "
+                "checkout outage window.\n\n"
+                f"{impact_filler}\n\n"
+                f"{analysis_filler}\n\n"
+                "The incident review assigned the root cause to the payments gateway. "
+                "A permanent fix was scheduled for the following sprint."
+            ),
+        ),
+        Document(
+            title="gateway",
+            text=(
+                "The payments gateway rejected all connections because its TLS "
+                "certificate had expired. Certificate management is owned by the "
+                "platform team.\n\n"
+                + " ".join(
+                    f"Gateway runbook item {i}: the connection pool is provisioned per "
+                    f"region, health probes fire every interval {i}, and failover "
+                    f"drains sessions to the standby cluster in tier {i}."
+                    for i in range(12)
+                )
+            ),
+        ),
+        Document(
+            title="platform",
+            text=(
+                "The platform team automates certificate management with a rotation "
+                "script. The rotation script had been disabled during the datacenter "
+                "migration because the migration froze all scheduled jobs.\n\n"
+                + " ".join(
+                    f"Platform procedure {i}: infrastructure changes require a change "
+                    f"ticket, a rollback plan, and sign-off from the duty manager for "
+                    f"window {i}."
+                    for i in range(12)
+                )
+            ),
+        ),
     ]
     for index in range(40):
-        docs.append(Document(title=f"distractor-{index}", text=(
-            f"Checkout report {index}: the checkout funnel was redesigned and "
-            f"checkout conversion improved by {index + 1} percent this quarter. "
-            f"The outage dashboard for checkout shows availability trends, and "
-            f"the checkout outage playbook was revised in review cycle {index}. "
-            f"Checkout latency stayed flat while the outage retro board tracked "
-            f"action items for the checkout team in sprint {index}."
-        )))
+        docs.append(
+            Document(
+                title=f"distractor-{index}",
+                text=(
+                    f"Checkout report {index}: the checkout funnel was redesigned and "
+                    f"checkout conversion improved by {index + 1} percent this quarter. "
+                    f"The outage dashboard for checkout shows availability trends, and "
+                    f"the checkout outage playbook was revised in review cycle {index}. "
+                    f"Checkout latency stayed flat while the outage retro board tracked "
+                    f"action items for the checkout team in sprint {index}."
+                ),
+            )
+        )
     bridge_marker = "root cause to the payments gateway"
     hard_query = "why did the checkout outage happen"
     easy_query = "who owns certificate management"
@@ -13419,17 +13840,18 @@ async def bench_lager() -> dict[str, Any]:
     engine.ingest(docs)
 
     # extraction fidelity on a messy fixture
-    messy = Document(title="messy", text=(
-        "Dr. Smith joined Acme Corp. in 2019. She now leads the platform team.\n"
-        "Steps:\n- Install the CLI\n- Run vincio init\n"
-        "| plan | price |\n| pro | $20 |\n"
-        "```\nprint('hello')\n```\n"
-        "The API returns JSON by default, but the legacy endpoint still returns XML."
-    ))
-    messy_objects = DeterministicClaimExtractor().extract(messy)
-    extraction_faithful = bool(messy_objects) and all(
-        o.verify(messy.text) for o in messy_objects
+    messy = Document(
+        title="messy",
+        text=(
+            "Dr. Smith joined Acme Corp. in 2019. She now leads the platform team.\n"
+            "Steps:\n- Install the CLI\n- Run vincio init\n"
+            "| plan | price |\n| pro | $20 |\n"
+            "```\nprint('hello')\n```\n"
+            "The API returns JSON by default, but the legacy endpoint still returns XML."
+        ),
     )
+    messy_objects = DeterministicClaimExtractor().extract(messy)
+    extraction_faithful = bool(messy_objects) and all(o.verify(messy.text) for o in messy_objects)
 
     # multi-hop: LAGER vs the same-budget BM25 top-k baseline
     hard_pack = engine.retrieve(hard_query)
@@ -13447,11 +13869,15 @@ async def bench_lager() -> dict[str, Any]:
     easy_pack = engine.retrieve(easy_query)
     easy_answer = "owned by the platform team"
     easy_topk_context = await _lager_baseline_evidence(docs, easy_query, 100_000)
-    both_answer = (easy_answer in " ".join(o.claim for o in easy_pack.objects)
-                   and easy_answer in easy_topk_context)
-    token_efficiency = round(
-        count_tokens(easy_topk_context) / max(easy_pack.token_cost, 1), 2
-    ) if both_answer else 0.0
+    both_answer = (
+        easy_answer in " ".join(o.claim for o in easy_pack.objects)
+        and easy_answer in easy_topk_context
+    )
+    token_efficiency = (
+        round(count_tokens(easy_topk_context) / max(easy_pack.token_cost, 1), 2)
+        if both_answer
+        else 0.0
+    )
 
     # laziness
     lazy_rounds_easy = easy_pack.rounds
@@ -13480,8 +13906,13 @@ async def bench_lager() -> dict[str, Any]:
     )
     payload = json.dumps({"docs": [{"t": d.title, "x": d.text} for d in docs], "q": hard_query})
     runs = [
-        subprocess.run([_sys.executable, "-c", probe], input=payload, text=True,
-                       capture_output=True, check=True).stdout.strip()
+        subprocess.run(
+            [_sys.executable, "-c", probe],
+            input=payload,
+            text=True,
+            capture_output=True,
+            check=True,
+        ).stdout.strip()
         for _ in range(2)
     ]
     deterministic_across_processes = runs[0] == runs[1] and bool(runs[0])
@@ -13489,24 +13920,33 @@ async def bench_lager() -> dict[str, Any]:
     # contradiction precision on hard negatives + recall on a true pair
     def _eo(text):
         return EvidenceObject.create(
-            claim=text, doc_key=document_key(text), span=(0, len(text)),
-            document_id="d", entities=normalize_entities(text),
+            claim=text,
+            doc_key=document_key(text),
+            span=(0, len(text)),
+            document_id="d",
+            entities=normalize_entities(text),
             observed_at=parse_observed_at(text),
         )
 
     hard_negatives = [
-        ("Acme raised prices for the Pro plan in March this year",
-         "Acme raised prices for the Team plan in June this year"),
-        ("Chen approved the operating budget for the first quarter",
-         "Chen did not approve the operating budget for the second quarter"),
-        ("The API returns JSON responses by default to clients",
-         "The API does not return XML responses to legacy clients"),
-        ("The premium tier includes advanced telemetry for enterprise accounts",
-         "The premium tier includes basic telemetry for individual accounts"),
+        (
+            "Acme raised prices for the Pro plan in March this year",
+            "Acme raised prices for the Team plan in June this year",
+        ),
+        (
+            "Chen approved the operating budget for the first quarter",
+            "Chen did not approve the operating budget for the second quarter",
+        ),
+        (
+            "The API returns JSON responses by default to clients",
+            "The API does not return XML responses to legacy clients",
+        ),
+        (
+            "The premium tier includes advanced telemetry for enterprise accounts",
+            "The premium tier includes basic telemetry for individual accounts",
+        ),
     ]
-    suppressed = sum(
-        1 for a, b in hard_negatives if claims_contradict(_eo(a), _eo(b)) is None
-    )
+    suppressed = sum(1 for a, b in hard_negatives if claims_contradict(_eo(a), _eo(b)) is None)
     contradiction_precision = round(suppressed / len(hard_negatives), 2)
     true_pair = claims_contradict(
         _eo("The rotation script was enabled during the datacenter migration window"),
@@ -13569,6 +14009,7 @@ FAMILIES = {
     "integrations": bench_integrations,
     "professionalism": bench_professionalism,
     "test_time_compute": bench_test_time_compute,
+    "universal_reasoning": bench_universal_reasoning,
     "long_horizon": bench_long_horizon,
     "world_model": bench_world_model,
     "record_replay": bench_record_replay,

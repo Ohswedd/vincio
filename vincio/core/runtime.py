@@ -614,8 +614,10 @@ class VincioRuntime:
                     # the caller is untenanted, keeping untenanted runs unchanged.
                     scope = (
                         routed.input.tenant_id
-                        if (app.config.security.tenant_isolation
-                            and routed.input.tenant_id is not None)
+                        if (
+                            app.config.security.tenant_isolation
+                            and routed.input.tenant_id is not None
+                        )
                         else None
                     )
                     screened_pack: list[EvidenceItem] = []
@@ -690,14 +692,28 @@ class VincioRuntime:
                 prefetch.cancel()
                 await prefetch.result()
         evidence: list[EvidenceItem] = list(app.pending_evidence)
+        # Universal reasoning may attach content-bound evidence gathered before
+        # the candidate pass. It rides RunConfig rather than mutable app state,
+        # so concurrent candidate runs cannot leak evidence into each other.
+        reasoning_evidence = run_config.metadata.get("_universal_reasoning_evidence", [])
+        for item in reasoning_evidence:
+            evidence.append(
+                item if isinstance(item, EvidenceItem) else EvidenceItem.model_validate(item)
+            )
         evidence.extend(ingested)
         evidence.extend(retrieved)
         # Agent Skills: inject the always-on index plus any task-relevant skill
         # bodies as scored evidence (progressive disclosure). The compiler
         # budgets and cites them like any other context.
         if app.skill_library is not None and len(app.skill_library):
+            excluded_skills = set(
+                run_config.metadata.get("_universal_reasoning_excluded_skills", [])
+            )
             evidence.extend(
-                app.skill_library.evidence_for(f"{routed.objective.text} {routed.input.text or ''}")
+                app.skill_library.evidence_for(
+                    f"{routed.objective.text} {routed.input.text or ''}",
+                    exclude=excluded_skills,
+                )
             )
 
         # Context anchors: inject the always-on task frame (PRD / spec / brand
@@ -716,7 +732,14 @@ class VincioRuntime:
         # scanned (never history/tool output), so fetched content cannot plant a
         # URL that auto-fetches next turn.
         browser = getattr(app, "web_browser", None)
-        if browser is not None and getattr(browser.policy, "auto_fetch", False):
+        skip_web_auto_fetch = bool(
+            run_config.metadata.get("_universal_reasoning_skip_web_auto_fetch")
+        )
+        if (
+            browser is not None
+            and getattr(browser.policy, "auto_fetch", False)
+            and not skip_web_auto_fetch
+        ):
             with app.tracer.span("web_auto_fetch", type="custom") as span:
                 fetched = await browser.evidence_for(routed.input.text or "")
                 screened_web: list[EvidenceItem] = []
@@ -732,7 +755,9 @@ class VincioRuntime:
                 evidence.extend(screened_web)
 
         # 9/12a. tool loop happens with the model below; collect tool specs.
-        tool_specs = app.tool_registry.specs(app.enabled_tools) if app.enabled_tools else []
+        excluded_tools = set(run_config.metadata.get("_universal_reasoning_excluded_tools", []))
+        enabled_tools = [name for name in app.enabled_tools if name not in excluded_tools]
+        tool_specs = app.tool_registry.specs(enabled_tools) if enabled_tools else []
 
         # 8+10. score, compress, compile Context IR + packet.
         with app.tracer.span("context_compile", type="context_compile") as span:

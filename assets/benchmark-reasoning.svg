@@ -1,0 +1,70 @@
+<svg width="860" height="334" viewBox="0 0 860 334" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rs_t rs_d">
+  <title id="rs_t">Universal reasoning — measured live on non-reasoning and multilingual models</title>
+  <desc id="rs_d">Tier-L small-sample results captured through OpenRouter on July 7, 2026. On four reviewed arithmetic, logic, multi-step and current-fact cases, Llama 3.2 3B scored zero percent direct and seventy-five percent through Vincio; Vincio produced three of three verified stable reasoning answers, reduced one unsupported current-fact overclaim to zero, verified two web snapshots, and safely refused the unsupported final claim. A separate GPT-4.1 mini routing audit correctly classified all five Spanish, Japanese, Arabic, Swahili and Chinese cases.</desc>
+  <defs>
+    <radialGradient id="rs_parch" cx="40%" cy="8%" r="94%">
+      <stop offset="0%" stop-color="#FCF6E6"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="rs_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="rs_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#C79A3A"/>
+      <stop offset="100%" stop-color="#8C6516"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="857" height="331" rx="16" fill="url(#rs_parch)" stroke="url(#rs_gold)" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="321" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.38"/>
+
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <text x="34" y="36" font-size="11.5" letter-spacing="3" fill="#B98B2E">UNIVERSAL REASONING &#183; TIER-L &#183; 2026-07-07</text>
+    <text x="34" y="64" font-size="21" font-weight="700" fill="url(#rs_goldtext)">Reasoning quality, verification and language routing</text>
+    <text x="34" y="84" font-size="11.5" fill="#6B5836">Real OpenRouter calls &#183; same-model direct vs Vincio &#183; small reviewed capability set, reported rather than CI-gated</text>
+
+    <g>
+      <rect x="34" y="106" width="190" height="150" rx="11" fill="#FCF6E8" stroke="#D8C79A"/>
+      <text x="50" y="130" font-size="10" letter-spacing="1" fill="#8C6516">NON-REASONING 3B MODEL</text>
+      <text x="50" y="174" font-size="28" font-weight="700" fill="#7A6438">0%</text>
+      <text x="108" y="174" font-size="17" fill="#8C7448">&#8594;</text>
+      <text x="137" y="174" font-size="30" font-weight="700" fill="url(#rs_goldtext)">75%</text>
+      <text x="50" y="196" font-size="10.5" fill="#6B5836">direct &#8594; through Vincio</text>
+      <text x="50" y="218" font-size="9.5" fill="#8C7448">exact task accuracy, n=4</text>
+      <text x="50" y="236" font-size="9.5" fill="#8C7448">Llama 3.2 3B Instruct</text>
+    </g>
+
+    <g>
+      <rect x="236" y="106" width="190" height="150" rx="11" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+      <text x="252" y="130" font-size="10" letter-spacing="1" fill="#8C6516">VERIFIED STABLE TASKS</text>
+      <text x="252" y="177" font-size="34" font-weight="700" fill="url(#rs_goldtext)">3 / 3</text>
+      <text x="252" y="198" font-size="10.5" fill="#6B5836">arithmetic &#183; logic &#183; multi-step</text>
+      <text x="252" y="218" font-size="9.5" fill="#8C7448">deterministic checks passed</text>
+      <text x="252" y="236" font-size="9.5" fill="#8C7448">answer-only receipts, no scratchpad</text>
+    </g>
+
+    <g>
+      <rect x="438" y="106" width="190" height="150" rx="11" fill="#FCF6E8" stroke="#D8C79A"/>
+      <text x="454" y="130" font-size="10" letter-spacing="1" fill="#8C6516">FRESH-FACT SAFETY</text>
+      <text x="454" y="177" font-size="34" font-weight="700" fill="url(#rs_goldtext)">1 &#8594; 0</text>
+      <text x="454" y="198" font-size="10.5" fill="#6B5836">unsupported overclaims</text>
+      <text x="454" y="218" font-size="9.5" fill="#8C7448">2 web snapshots verified</text>
+      <text x="454" y="236" font-size="9.5" fill="#8C7448">1 unsafe answer withheld</text>
+    </g>
+
+    <g>
+      <rect x="640" y="106" width="186" height="150" rx="11" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+      <text x="656" y="130" font-size="10" letter-spacing="1" fill="#8C6516">LANGUAGE ROUTING</text>
+      <text x="656" y="177" font-size="34" font-weight="700" fill="url(#rs_goldtext)">5 / 5</text>
+      <text x="656" y="198" font-size="9.5" fill="#6B5836">language &#183; task &#183; depth</text>
+      <text x="656" y="214" font-size="9.5" fill="#6B5836">web / no-web intent</text>
+      <text x="656" y="232" font-size="9.5" fill="#8C7448">ES &#183; JA &#183; AR &#183; SW &#183; ZH</text>
+      <text x="656" y="248" font-size="9.5" fill="#8C7448">GPT-4.1 mini, n=5</text>
+    </g>
+
+    <text x="430" y="286" font-size="10" fill="#6B5836" text-anchor="middle">Reproduce: <tspan font-family="'SFMono-Regular',Consolas,monospace" fill="#8C6516">reasoning_uplift_live.py</tspan> + <tspan font-family="'SFMono-Regular',Consolas,monospace" fill="#8C6516">reasoning_multilingual_live.py</tspan></text>
+    <text x="430" y="308" font-size="9.5" fill="#8C7448" font-style="italic" text-anchor="middle">The fresh-fact arm counts refusal as safe, not correct; the 75% score is exact-answer accuracy, and every sample size is shown.</text>
+  </g>
+</svg>

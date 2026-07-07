@@ -125,6 +125,7 @@ _Execute the pipeline: configure, run, stream, orchestrate, and produce delivera
 - `app.agenerate_image` — Generate image(s) through an :class:`~vincio.generation.image.ImageProvider`, metered against the budget, audited (``image_generate``), and C2PA-stamped per asset.
 - `app.agenerate_video` — Generate a video through a :class:`~vincio.generation.video.VideoProvider`, metered against the budget, audited (``video_generate``), and C2PA-stamped per clip.
 - `app.agent` — Build a bounded agent over the app's tools, memory, and retrieval.
+- `app.areason` — Run universal reasoning once and return its full reasoning receipt.
 - `app.aresearch` — Async :meth:`research`.
 - `app.arun` — Run the full context-engineering pipeline asynchronously → :class:`RunResult`.
 - `app.assistant` — Open a conversational, session-aware :class:`~vincio.assistant.Assistant`.
@@ -144,6 +145,7 @@ _Execute the pipeline: configure, run, stream, orchestrate, and produce delivera
 - `app.generate_video` — Synchronous :meth:`agenerate_video`.
 - `app.graph` — A durable :class:`StateGraph` bound to the app's tracer and metadata store: checkpoints persist wherever the app's runs do, so threads survive restarts when the store is SQLite/Postgres.
 - `app.predictor` — A :class:`~vincio.prompts.signatures.Predict` bound to the app's provider and model: ``app.predictor(Triage)(ticket="...")``.
+- `app.reason` — Synchronous :meth:`areason`.
 - `app.reasoning` — Build a :class:`~vincio.agents.reasoning.ReasoningController`.
 - `app.research` — Run the deep-research loop: search → read → reflect → verify → synthesize, emitting a cited, budget-bounded, eval-scored report.
 - `app.run` — Run the full context-engineering pipeline synchronously → :class:`RunResult`.
@@ -157,6 +159,7 @@ _Execute the pipeline: configure, run, stream, orchestrate, and produce delivera
 - `app.use_hosted_tools` — Surface provider-native hosted tools (``web_search`` / ``file_search`` / ``code_interpreter`` / ``computer_use``) as namespaced Vincio tools.
 - `app.use_pack` — Apply a domain pack: prompt config + schema + policies + evaluators + rails.
 - `app.use_reasoning_controller` — Install a reasoning controller so the runtime sets effort per run.
+- `app.use_reasoning_engine` — Install adaptive universal reasoning on ordinary ``run`` / ``arun``.
 - `app.use_web_search` — Give this app's model — **any** model — governed access to the open web.
 - `app.voice_agent` — Open an end-to-end :class:`~vincio.realtime.VoiceAgent`.
 - `app.web_crawl` — Crawl a site into a governed, offline-verifiable :class:`~vincio.web.WebCollection`.
@@ -349,7 +352,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (552 public symbols)
+## Public API (558 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -668,8 +671,11 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `QueryResult(**data)` — A query's result, schema-bearing and **cell-level cited**.
 - `Rail(**data)` — One programmable rail.
 - `RealtimeSession(backend=…, config=…, tool_dispatcher=…)` — A bidirectional realtime session.
+- `ReasoningAssessment(**data)` — Deterministic decision about how much reasoning a request warrants.
 - `ReasoningController(policy=…, trace_cache=…)` — Pick a thinking effort + token budget per step from task + budget signals.
 - `ReasoningDecision(**data)` — The record of one reasoning-effort pick, stamped on the trace.
+- `ReasoningPass(**data)` — Observable receipt for one model pass, excluding private reasoning text.
+- `ReasoningPlan(**data)` — Compact high-level plan; contains no model chain-of-thought.
 - `ReasoningPolicy(**data)` — The effort policy: difficulty bands, guardrails, and reuse behavior.
 - `ReasoningTrace(**data)` — One cached reasoning trace: how much thinking a warm prefix already cost.
 - `ReasoningTraceCache(max_entries=…, max_resident_bytes=…)` — Bounded LRU of reasoning traces under a resident-memory budget.
@@ -789,6 +795,9 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `UIElement(**data)` — A typed, addressable element grounded from the screen + accessibility tree.
 - `UnderReservedBreach(**data)` — A proven-reserves shortfall: the pools pledge more than the custodian attests.
 - `UnitVerifier()` — Checks unit conversions and refuses a dimensional mismatch.
+- `UniversalReasoningEngine(app, policy=…)` — Adaptive reasoning for every provider, including non-reasoning models.
+- `UniversalReasoningPolicy(**data)` — Adaptive-depth, web, pass-count and token/cost guardrails.
+- `UniversalReasoningResult(**data)` — Final normal run plus the provider-neutral reasoning receipt.
 - `UsageEvent(**data)` — One unit of delivered usage accrued against a contract.
 - `UserInput(**data)` — Structured task input.
 - `VerifiableReward()` — Base contract: map a :class:`RewardSample` to a :class:`RewardSignal`.
