@@ -520,6 +520,11 @@ class ContextApp(
         # budget (see ``use_reasoning_controller``). ``None`` keeps reasoning a
         # per-call knob, so behavior is unchanged by default.
         self.reasoning_controller: Any | None = None
+        # Opt-in provider-independent reasoning orchestration. Unlike the
+        # controller above (which tunes native thinking), this layer also gives
+        # non-reasoning models bounded decomposition, evidence and verification
+        # passes. Installed by ``use_reasoning_engine``.
+        self.reasoning_engine: Any | None = None
         # Opt-in long-horizon context governor. When set, a multi-session run can
         # feed each result's packet to the governor (``app.govern_packet``) and
         # the live context footprint stays bounded across the whole conversation

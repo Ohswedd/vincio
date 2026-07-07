@@ -27,6 +27,8 @@ OUT = _PREVIEW / "preview-benchmark-platform.svg"
 OUT_PLANE = _PREVIEW / "preview-benchmark-plane.svg"
 OUT_UPLIFT = _PREVIEW / "preview-benchmark-uplift.svg"
 OUT_H2H = _PREVIEW / "preview-benchmark-headtohead.svg"
+OUT_REASONING = _PREVIEW / "preview-benchmark-reasoning.svg"
+
 
 # Shared parchment/ink palette (id prefix per-asset to avoid gradient id clashes).
 def _palette(pfx: str) -> str:
@@ -51,8 +53,16 @@ def _palette(pfx: str) -> str:
 def render_uplift(snapshot: dict) -> str:
     """The Track-2 grounded-answer uplift bar chart, from the live snapshot."""
     up = snapshot["track2_uplift"]
-    rows = [(m["model"], round(m["direct"] * 100), round(m["via_vincio"] * 100)) for m in up["models"]]
-    rows.append(("AGGREGATE", round(up["aggregate"]["direct"] * 100), round(up["aggregate"]["via_vincio"] * 100)))
+    rows = [
+        (m["model"], round(m["direct"] * 100), round(m["via_vincio"] * 100)) for m in up["models"]
+    ]
+    rows.append(
+        (
+            "AGGREGATE",
+            round(up["aggregate"]["direct"] * 100),
+            round(up["aggregate"]["via_vincio"] * 100),
+        )
+    )
     W, H = 860, 384
     y0, y100 = 322.0, 140.0
     scale = (y0 - y100) / 100.0
@@ -76,7 +86,7 @@ def render_uplift(snapshot: dict) -> str:
         '    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">TRACK 2 &#183; ORCHESTRATOR UPLIFT</text>',
         '    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#up_goldtext)">Grounded-answer accuracy</text>',
         f'    <text x="40" y="102" font-size="13" fill="#6B5836">Same model, direct vs. routed through Vincio &#183; '
-        f'15 questions no model can know from pretraining &#183; {len(up["models"])} current SOTA models &#215; 2 runs (live)</text>',
+        f"15 questions no model can know from pretraining &#183; {len(up['models'])} current SOTA models &#215; 2 runs (live)</text>",
         '    <rect x="600" y="36" width="14" height="14" rx="2" fill="#B3A079"/>',
         '    <text x="620" y="47" font-size="13" fill="#5B4A2E">Direct</text>',
         '    <rect x="686" y="36" width="14" height="14" rx="2" fill="url(#up_gold)"/>',
@@ -92,7 +102,9 @@ def render_uplift(snapshot: dict) -> str:
         yy = y0 - pct * scale
         parts.append(f'      <text x="64" y="{yy + 3:.1f}">{pct}{"%" if pct == 100 else ""}</text>')
     parts.append("    </g>")
-    parts.append(f'    <line x1="72" y1="{y0}" x2="824" y2="{y0}" stroke="#3A2E1C" stroke-width="1.4" opacity="0.55"/>')
+    parts.append(
+        f'    <line x1="72" y1="{y0}" x2="824" y2="{y0}" stroke="#3A2E1C" stroke-width="1.4" opacity="0.55"/>'
+    )
     for i, (label, direct, via) in enumerate(rows):
         cx = 72 + step * (i + 0.5)
         dh, vh = direct * scale, via * scale
@@ -111,7 +123,7 @@ def render_uplift(snapshot: dict) -> str:
         ]
     parts += [
         '    <text x="40" y="368" font-size="10.5" fill="#8A7551">Direct = the model alone &#183; Through Vincio = '
-        'the same model with retrieval &amp; grounding &#183; every Vincio answer is cited &#183; 14&#8211;30&#215; cheaper per correct answer.</text>',
+        "the same model with retrieval &amp; grounding &#183; every Vincio answer is cited &#183; 14&#8211;30&#215; cheaper per correct answer.</text>",
         "  </g>",
         "</svg>",
     ]
@@ -146,7 +158,7 @@ def render_plane(manifest: dict) -> str:
         '    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">TRACK 1 &#183; MODEL &#183; PUBLIC BENCHMARKS</text>',
         '    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#pl_goldtext)">A model on the public benchmarks, tier-honest</text>',
         f'    <text x="40" y="102" font-size="13" fill="#6B5836">{total} benchmarks &#183; {n_niches} niches &#183; '
-        'in-process, offline-first, never a hosted leaderboard.</text>',
+        "in-process, offline-first, never a hosted leaderboard.</text>",
     ]
     ly = 122
     for i, (code, name, blurb) in enumerate(_TIERS[::-1]):  # S, R, L order for the model track
@@ -168,12 +180,15 @@ def render_plane(manifest: dict) -> str:
             f'    <text x="{x + cw // 2}" y="{y + 62}" font-size="13" font-weight="700" fill="#3A2E1C" text-anchor="middle">{escape(label)}</text>',
         ]
         for j, line in enumerate(_wrap(shown, 22)[:3]):
-            parts.append(f'    <text x="{x + cw // 2}" y="{y + 82 + j * 13}" font-size="9.5" '
-                         f'fill="#8A7551" text-anchor="middle">{escape(line)}</text>')
+            parts.append(
+                f'    <text x="{x + cw // 2}" y="{y + 82 + j * 13}" font-size="9.5" '
+                f'fill="#8A7551" text-anchor="middle">{escape(line)}</text>'
+            )
     parts += [
         f'    <text x="{W // 2}" y="{H - 22}" font-size="11.5" fill="#6B5836" text-anchor="middle">'
-        'One pluggable contract &#183; reusable metrics &#183; the engine refuses to print a higher tier than the inputs support.</text>',
-        "  </g>", "</svg>",
+        "One pluggable contract &#183; reusable metrics &#183; the engine refuses to print a higher tier than the inputs support.</text>",
+        "  </g>",
+        "</svg>",
     ]
     return "\n".join(parts) + "\n"
 
@@ -209,11 +224,80 @@ def render_headtohead(snapshot: dict) -> str:
     parts += ["  </g>", "</svg>"]
     return "\n".join(parts) + "\n"
 
+
+def render_reasoning(snapshot: dict) -> str:
+    """The universal-reasoning live capability plates, from the dated snapshot."""
+    live = snapshot["universal_reasoning_live"]
+    reasoning = live["reasoning"]
+    multilingual = live["multilingual_routing"]
+    direct = round(reasoning["direct_accuracy"] * 100)
+    via = round(reasoning["via_vincio_accuracy"] * 100)
+    cards = [
+        (
+            f"{direct}% -> {via}%",
+            "exact task accuracy",
+            f"n={reasoning['cases']} · {reasoning['model']}",
+        ),
+        (
+            f"{reasoning['stable_reasoning_via_vincio']} / {reasoning['stable_reasoning_cases']}",
+            "stable tasks verified",
+            "arithmetic · logic · multi-step",
+        ),
+        (
+            f"{reasoning['direct_current_fact_overclaims']} -> {reasoning['via_vincio_current_fact_overclaims']}",
+            "unsupported overclaims",
+            f"{reasoning['verified_web_snapshots']} snapshots · {reasoning['safe_refusals']} safe refusal",
+        ),
+        (
+            f"{multilingual['correct']} / {multilingual['cases']}",
+            "multilingual routes correct",
+            " · ".join(code.upper() for code in multilingual["languages"]),
+        ),
+    ]
+    desc = "Tier-L universal-reasoning capability sample: " + "; ".join(
+        f"{big} {line} ({sub})" for big, line, sub in cards
+    )
+    parts = [
+        '<svg width="860" height="310" viewBox="0 0 860 310" xmlns="http://www.w3.org/2000/svg" '
+        'role="img" aria-labelledby="rs_t rs_d">',
+        '  <title id="rs_t">Universal reasoning live capability sample</title>',
+        f'  <desc id="rs_d">{escape(desc)}</desc>',
+        _palette("rs"),
+        '  <rect x="1.5" y="1.5" width="857" height="307" rx="16" fill="url(#rs_parch)" '
+        'stroke="#C49A3A" stroke-width="1.5"/>',
+        "  <g font-family=\"Georgia, 'Times New Roman', serif\">",
+        '    <text x="40" y="44" font-size="12.5" letter-spacing="3" fill="#B98B2E">'
+        f"UNIVERSAL REASONING &#183; TIER-L &#183; {escape(live['captured'])}</text>",
+        '    <text x="40" y="76" font-size="25" font-weight="700" fill="url(#rs_goldtext)">'
+        "Reasoning quality, verification and language routing</text>",
+    ]
+    for index, (big, line, sub) in enumerate(cards):
+        x = 40 + index * 200
+        parts += [
+            f'    <rect x="{x}" y="104" width="180" height="130" rx="10" fill="#FCF6E8" '
+            'stroke="url(#rs_gold)"/>',
+            f'    <text x="{x + 90}" y="158" font-size="30" font-weight="700" '
+            f'fill="url(#rs_goldtext)" text-anchor="middle">{escape(big)}</text>',
+            f'    <text x="{x + 90}" y="184" font-size="12" fill="#3A2E1C" '
+            f'text-anchor="middle">{escape(line)}</text>',
+            f'    <text x="{x + 90}" y="207" font-size="9.5" fill="#8A7551" '
+            f'text-anchor="middle">{escape(sub)}</text>',
+        ]
+    parts += [
+        '    <text x="430" y="270" font-size="10.5" fill="#6B5836" text-anchor="middle">'
+        "Small reviewed sample; refusal is safe but not scored correct; reported, never CI-gated.</text>",
+        "  </g>",
+        "</svg>",
+    ]
+    return "\n".join(parts) + "\n"
+
+
 _TIERS = [
     ("L", "Live", "the real thing ran end to end"),
     ("R", "Recorded", "a hash-pinned replay"),
     ("S", "Static / Mockup", "offline, reproducible, gates CI"),
 ]
+
 
 # (track key, number, unit, one-liner, command)
 def _cards(tracks: dict) -> list[tuple[str, str, str, str, str, str]]:
@@ -229,8 +313,9 @@ def _cards(tracks: dict) -> list[tuple[str, str, str, str, str, str]]:
     for k in order:
         t = tracks[k]
         tiers = "·".join(t["tiers"])
-        out.append((labels[k], str(t["catalog"]["total"]), units[k], lines[k],
-                    f"vincio bench {k}", tiers))
+        out.append(
+            (labels[k], str(t["catalog"]["total"]), units[k], lines[k], f"vincio bench {k}", tiers)
+        )
     return out
 
 
@@ -269,12 +354,12 @@ def render(manifest: dict) -> str:
         'fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.4"/>',
         "  <g font-family=\"Georgia, 'Times New Roman', serif\">",
         '    <text x="40" y="46" font-size="12.5" letter-spacing="3" fill="#B98B2E">'
-        'THE VINCIO BENCHMARK PLATFORM &#183; TIER-HONEST</text>',
+        "THE VINCIO BENCHMARK PLATFORM &#183; TIER-HONEST</text>",
         '    <text x="40" y="78" font-size="26" font-weight="700" fill="url(#pf_goldtext)">'
-        'Three tracks, one honesty contract</text>',
+        "Three tracks, one honesty contract</text>",
         '    <text x="40" y="102" font-size="13" fill="#6B5836">'
-        'Every number carries a provenance tier &#183; each track runs live or as an offline mockup '
-        '&#183; nothing fabricated.</text>',
+        "Every number carries a provenance tier &#183; each track runs live or as an offline mockup "
+        "&#183; nothing fabricated.</text>",
     ]
 
     # Three track cards.
@@ -320,7 +405,7 @@ def render(manifest: dict) -> str:
     parts += [
         f'    <text x="{W // 2}" y="{H - 20}" font-size="11.5" fill="#6B5836" text-anchor="middle">'
         'One command &#183; <tspan font-family="ui-monospace, monospace">vincio bench model | uplift | '
-        'feature</tspan> &#183; the engine refuses to print a higher tier than the inputs support.</text>',
+        "feature</tspan> &#183; the engine refuses to print a higher tier than the inputs support.</text>",
         "  </g>",
         "</svg>",
     ]
@@ -334,10 +419,14 @@ def main() -> None:
     OUT_PLANE.write_text(render_plane(manifest), encoding="utf-8")
     OUT_UPLIFT.write_text(render_uplift(snapshot), encoding="utf-8")
     OUT_H2H.write_text(render_headtohead(snapshot), encoding="utf-8")
+    OUT_REASONING.write_text(render_reasoning(snapshot), encoding="utf-8")
     tracks = manifest["tracks"]
-    print(f"wrote {OUT.name}, {OUT_PLANE.name}, {OUT_UPLIFT.name}, {OUT_H2H.name} — 3 tracks "
-          f"(model {tracks['model']['catalog']['total']}, uplift {tracks['uplift']['catalog']['total']}, "
-          f"feature {tracks['feature']['catalog']['total']}); uplift snapshot {snapshot['captured']}")
+    print(
+        f"wrote {OUT.name}, {OUT_PLANE.name}, {OUT_UPLIFT.name}, {OUT_H2H.name}, "
+        f"{OUT_REASONING.name} — 3 tracks "
+        f"(model {tracks['model']['catalog']['total']}, uplift {tracks['uplift']['catalog']['total']}, "
+        f"feature {tracks['feature']['catalog']['total']}); uplift snapshot {snapshot['captured']}"
+    )
 
 
 if __name__ == "__main__":

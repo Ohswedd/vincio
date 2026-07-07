@@ -14,16 +14,18 @@ vincio migrate 8.0                  # dry-run the one-shot rename codemod for th
 ```
 
 If `vincio doctor` reports nothing, you are done — the tree is clean and every guarantee carries
-forward. Upgrading to **7.9** still requires zero source changes: `7.6` (universal web browsing &
+forward. Upgrading to **7.10** still requires zero source changes: `7.6` (universal web browsing &
 search), `7.7` (context anchors), `7.8` (LAGER), and `7.9` (the LAGER dense-signal tightening — new
 optional `LazyOptions` fields and an `EvidenceIndex.semantic_similarity` method, all defaulting to the
-byte-identical pure-stdlib path) are purely additive.
+byte-identical pure-stdlib path) are purely additive. `7.10` adds the opt-in experimental universal
+reasoning engine (`app.use_reasoning_engine()` / `app.reason()`); existing `run` behavior is unchanged
+until the engine is installed.
 
 ## The guarantee, and why it holds
 
 Two version numbers, decoupled on purpose:
 
-- **`vincio.__version__`** (`7.9.0`) — the release version, bumped every ship.
+- **`vincio.__version__`** (`7.10.0`) — the release version, bumped every ship.
 - **`vincio.API_VERSION`** (`"5.0"`) — the frozen public-API **contract** version. It bumps *only* when
   the surface working code depends on changes — so it stays stable across additive releases.
 

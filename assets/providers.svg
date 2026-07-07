@@ -1,6 +1,6 @@
 <svg width="860" height="256" viewBox="0 0 860 256" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="prov_t prov_d">
   <title id="prov_t">Providers and model operations</title>
-  <desc id="prov_d">One ModelProvider interface over OpenAI, Anthropic, Google Gemini, Mistral, local models, a self-hosted DS4 DeepSeek V4 box, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex and Azure OpenAI. The model-operations layer adds unified reasoning control, batch at about half cost, prompt caching, a circuit breaker with health-aware failover, a key pool, per-run cost tracking, and a priced ModelRegistry. The bundled deterministic mock runs the whole pipeline offline.</desc>
+  <desc id="prov_d">One ModelProvider interface over OpenAI, Anthropic, Google Gemini, Mistral, local models, a self-hosted DS4 DeepSeek V4 box, and any OpenAI-compatible gateway, plus enterprise auth for Amazon Bedrock, Google Vertex and Azure OpenAI. The model-operations layer adds adaptive universal reasoning, batch at about half cost, prompt caching, a circuit breaker with health-aware failover, a key pool, per-run cost tracking, and a priced ModelRegistry. The bundled deterministic mock runs the whole pipeline offline.</desc>
   <defs>
     <radialGradient id="prov_parch" cx="40%" cy="16%" r="92%">
       <stop offset="0%" stop-color="#FCF6E6"/>
@@ -61,7 +61,7 @@
         <rect x="586" y="170" width="96" height="30" rx="8" stroke="#D8C79A" stroke-width="1"/>
         <rect x="690" y="170" width="136" height="30" rx="8" stroke="#D8C79A" stroke-width="1"/>
       </g>
-      <text x="97"  y="189">reasoning control</text>
+      <text x="97"  y="189">adaptive reasoning</text>
       <text x="231" y="189">batch ~50% cost</text>
       <text x="361" y="189">prompt caching</text>
       <text x="503" y="189">breaker + failover</text>

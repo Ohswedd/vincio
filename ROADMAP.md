@@ -96,6 +96,14 @@ recalls a topic paraphrase of the cause (via an entity-neutralized topic probe t
 entity-sharing decoy rejected), and an opt-in bridge floor rejects an off-topic same-document decoy —
 with the pure-stdlib default left byte-identical (differentially verified) and new optional
 `LazyOptions` fields plus an `EvidenceIndex.semantic_similarity` method the only additions. There is
+now also a `v7.10` **universal in-house reasoning engine**: an opt-in adaptive layer above every
+provider that keeps simple work one-pass, selects decomposition/calculation/logic/tool/evidence-first
+strategies for hard work, proactively joins the governed browser to freshness-sensitive reasoning,
+and runs bounded candidate → deterministic verifier → correction loops on models with or without
+native thinking. Native effort is used when present; models without it receive provider-neutral
+test-time passes. Receipts expose decisions, grounding and cost but never model chain-of-thought, and
+the mechanism is held by a new offline VincioBench family plus a paid, non-CI OpenRouter uplift
+harness. The surface is experimental and additive; `API_VERSION` remains `5.0`. There is
 currently **no proposed capability** on the roadmap;
 the platform is feature-complete, and new capability is proposed from scratch when it meets a real need
 (see [Forward work](#forward-work)).
@@ -129,6 +137,7 @@ offline.
 |---|---|
 | **Tools** | A permissioned registry (RBAC and ABAC), schema derivation from type hints, a resource-limited sandbox, reliability scoring, and idempotent approval-gated writes. |
 | **Web browsing & search** | Governed `web_search` / `web_read` tools every model can call — DuckDuckGo or any pluggable engine, token-budgeted page reading (only the passages relevant to the model's own query), a built-in progressively-disclosed when-to-search skill, pre-egress policy (SSRF fail-closed, robots, domains, budgets), offline-verifiable content-hashed evidence, and a text protocol that grants native-grade tool use to models without function calling. |
+| **Universal reasoning** | Adaptive direct/standard/deep routing over task taxonomy, modalities, constraints, math, logic, causal/decision/temporal/spatial structure, exact tool matches and freshness; a bounded model-native semantic route extends this to every language understood by the selected model without a locale allow-list; evidence-first browser integration with multilingual no-web handling; Unicode evidence support, bounded candidates, deterministic verifier certificates and answer-only correction on native and non-reasoning models, with no stored chain-of-thought. |
 | **Computer-use action plane** | A grounded perceive, gate, act, verify, and undo loop over a pluggable screen backend (a deterministic mock offline; Playwright/CDP, an OS accessibility tree, or remote desktop behind an extra). Actions bind to stable role-and-name selectors, are pre-gated like a write tool, post-verified against an expected end state, and undone on divergence. |
 | **Agents** | Bounded DAG execution with planners (ReAct, plan-and-execute, hierarchical HTN), in-place plan repair, cost-aware action selection over live pricing and budget, a deep-research agent, and a self-editing memory OS. |
 | **Orchestration** | Multi-agent crews with a shared blackboard; durable graphs with checkpoint, resume, time-travel, and durable timers; deterministic workflows with retries, compensation, and resumable approval gates; and a distributed durable-execution backend over a worker pool. |

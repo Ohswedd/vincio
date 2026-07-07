@@ -41,7 +41,7 @@ never faked.
 vincio bench list            # all three tracks' catalogs (--json for machine form)
 ```
 
-It prints the 29 model benchmarks across ten niches, the 5 uplift benchmarks, and
+It prints the 29 model benchmarks across ten niches, the 6 uplift benchmarks, and
 the 8 feature contests — the whole system at a glance.
 
 ## Run each track offline (Tier-S)

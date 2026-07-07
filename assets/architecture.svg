@@ -1,6 +1,6 @@
 <svg width="860" height="484" viewBox="0 0 860 484" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="arch_t arch_d">
   <title id="arch_t">Vincio architecture</title>
-  <desc id="arch_d">One coherent pipeline. The input engine normalizes and scopes the request; memory, retrieval, tools and the prompt compiler all feed the central context compiler, which scores, deduplicates, resolves conflicts, compresses and budgets into a context packet. The packet runs through provider-neutral model execution; the output is then validated, evaluated, secured, traced and costed, and written back to memory. A governance layer wraps the whole run.</desc>
+  <desc id="arch_d">One coherent pipeline. The input engine normalizes and scopes the request; memory, retrieval, adaptive reasoning, governed tools and the prompt compiler all feed the central context compiler, which scores, deduplicates, resolves conflicts, compresses and budgets into a context packet. The packet runs through provider-neutral model execution; the output is then validated, evaluated, secured, traced and costed, and written back to memory. A governance layer wraps the whole run.</desc>
   <defs>
     <radialGradient id="arch_parch" cx="40%" cy="12%" r="94%">
       <stop offset="0%" stop-color="#FCF6E6"/>
@@ -42,8 +42,8 @@
       <text x="124" y="159" font-size="9.5" fill="#6B5836">layered · decaying</text>
       <text x="328" y="141" font-weight="700">Retrieval</text>
       <text x="328" y="159" font-size="9.5" fill="#6B5836">hybrid · GraphRAG · LAGER</text>
-      <text x="532" y="141" font-weight="700">Tools</text>
-      <text x="532" y="159" font-size="9.5" fill="#6B5836">permissioned · web · MCP</text>
+      <text x="532" y="141" font-weight="700">Reasoning + tools</text>
+      <text x="532" y="159" font-size="9.5" fill="#6B5836">adaptive · web · MCP</text>
       <text x="736" y="141" font-weight="700">Prompt compiler</text>
       <text x="736" y="159" font-size="9.5" fill="#6B5836">typed AST · cache-aware</text>
     </g>

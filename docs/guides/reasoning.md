@@ -1,9 +1,83 @@
-# Reasoning control & the Responses API
+# Universal reasoning, native thinking & the Responses API
 
-> One portable knob for thinking/reasoning across providers, with honest cost
-> accounting.
+> One adaptive reasoning architecture for every model, plus a portable native
+> thinking knob and honest cost accounting.
 
-Reasoning models expose a "think harder" control under different names — OpenAI
+## Universal reasoning for every model
+
+`reasoning_effort` only affects models that expose a native thinking control. To
+give the full task-understand → decompose → gather evidence → solve → verify →
+correct → synthesize flow to **every** model, install the universal engine:
+
+```python
+app.use_reasoning_engine(web=True)
+
+easy = app.run("Rewrite this title")       # direct, exactly one model pass
+hard = app.run("Compare the latest releases, verify the claims, and recommend one")
+receipt = hard.metadata["universal_reasoning"]
+print(receipt["depth"], receipt["strategy"], receipt["passes"], receipt["web_verified"])
+```
+
+Routing is hybrid. Exact syntax and confidently detected English use the
+token-free deterministic classifier. Non-English and uncertain-language input
+uses one compact structured call to the configured model, so every language the
+model understands receives native task, depth, web and tool classification
+without Vincio maintaining a locale allow-list. The classification call is
+traced, DLP-screened and included in returned token/cost totals. Its output can
+only select among registered capabilities; deterministic policy remains the
+authority.
+
+```python
+from vincio import UniversalReasoningPolicy
+
+app.use_reasoning_engine(
+    policy=UniversalReasoningPolicy(
+        semantic_routing="auto",  # auto | off | always
+        semantic_routing_confidence=0.55,
+    )
+)
+result = app.run("ウェブを使わずに、現在のCEOを教えてください。")
+receipt = result.metadata["universal_reasoning"]
+print(receipt["detected_language"], receipt["semantic_routing_succeeded"])
+```
+
+Low-confidence or malformed semantic routing falls back to standard depth and
+does not gain web or tool access. A one-step budget skips the routing probe so
+the actual answer always retains a model-call slot. Deep tasks use bounded
+independent candidates and correction only when verification or material
+disagreement justifies it.
+
+Browser need is a separate decision with four observable outcomes:
+`not_needed`, `search`, `disabled`, or `user_declined`. Explicit searches,
+requested URLs, unstable facts and high-stakes questions select governed web
+evidence. Local uses such as “current paragraph”, “version control”, and “score
+this essay” remain offline. A requested URL is read directly; search queries
+strip request mechanics, prefer source-domain diversity, and are never repeated
+inside candidate calls. `web_verified` proves the retrieved bytes still match
+their snapshots; `answer_verification` reports whether the chosen answer passed
+the reasoning/evidence checks.
+
+For supported numerical and logical shapes, a task-bound kernel recomputes the
+expected fact from the request itself and places it in `plan.verified_facts`.
+This closes a gap ordinary self-critique cannot: an equality can be internally
+valid yet answer the wrong interpretation. If all model attempts remain refuted,
+Vincio emits only a complete deterministic fallback when those facts prove one;
+otherwise it refuses the answer.
+Use `UniversalReasoningPolicy(web="required")` when unverifiable live claims
+must fail closed. With the default `auto`, missing or declined web access permits
+an explicit uncertainty response but refutes and withholds an unsupported
+current assertion. `web="off"` disables egress; it does not make unstable facts
+safe to assert.
+For unavailable multilingual live evidence, the candidate must prefix calibrated
+uncertainty with `[UNVERIFIED]`; this marker is language-independent and
+deterministically verified.
+
+Call `app.reason(...)` instead when you want the full `UniversalReasoningResult`
+for one request without changing later runs. Its plan and pass records contain
+operational decisions, validation status, tokens and cost—never model scratch
+work or chain-of-thought. See the [universal reasoning concept](../concepts/universal-reasoning.md).
+
+Native reasoning models expose a "think harder" control under different names — OpenAI
 calls it `reasoning_effort`, Anthropic a thinking `budget_tokens`, Gemini a
 `thinkingBudget`. Wire your app to one of them and you have coupled it to that
 provider. Vincio gives you **one** provider-neutral knob and lowers it to
@@ -128,8 +202,9 @@ paying the hard-step price.
 
 ## Gotchas
 
-- **Effort is ignored on non-reasoning models** — silently, by design. Gate on
-  `capabilities(model).reasoning` if you need to *know* it took effect.
+- **The native effort knob is ignored on non-reasoning models.** Use
+  `app.use_reasoning_engine()` when those models need actual provider-independent
+  decomposition, verification and correction rather than an ignored knob.
 - **`thinking_budget_tokens` overrides `reasoning_effort`.** Set one or the
   other; if you set both, the explicit budget wins.
 - **The controller only fills an *unset* effort.** A run that pins
@@ -160,6 +235,8 @@ See [`examples/11_advanced_context.py`](../../examples/11_advanced_context.py).
 
 ## Related
 
+- [Concept: Universal reasoning](../concepts/universal-reasoning.md)
+- [Example: 22_universal_reasoning.py](../../examples/22_universal_reasoning.py)
 - [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
 - [Concept: Prompt compiler](../concepts/prompt-compiler.md)
 - [Reference: capability map](../reference/capability-map.md)

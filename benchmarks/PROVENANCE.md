@@ -52,10 +52,26 @@ Add a custom benchmark with `register_benchmark(BenchmarkSpec(...))`.
 `vincio bench uplift` runs each benchmark **twice by the identical scorer** — the
 model's **direct** answer vs its **Vincio-routed** answer — and reports the
 per-benchmark delta (grounding, prompt-injection containment, long-context needle
-recall via the governor, structured-output validity). Tier-S replays two recorded
+recall via the governor, structured-output validity, web freshness, and universal
+reasoning). Tier-S replays two recorded
 arms (deterministic, gates CI); **Live** calls a real model plainly for the direct
 arm and through a governed app for the Vincio arm. Add a custom uplift with
 `register_uplift_benchmark(UpliftBenchmark(...))`.
+
+The dynamic reasoning driver is `python benchmarks/reasoning_uplift_live.py`.
+It compares native and non-native OpenRouter models on math, logic,
+contradiction, live-source verification, overclaiming, tokens and cost; it is
+Tier-L and never runs in CI.
+`python benchmarks/reasoning_multilingual_live.py` is the companion Tier-L
+router audit: Spanish, Japanese, Arabic, Swahili and Chinese prompts check that
+language, depth, task, web/no-web intent and semantic-route accounting follow
+the configured model rather than a finite local language list.
+The dated 2026-07-07 snapshot records the small-sample outcomes rather than
+generalizing them: Llama 3.2 3B moved from 0/4 exact direct answers to 3/4 via
+Vincio (3/3 stable tasks verified; the current-fact arm safely withheld), and
+GPT-4.1 mini routed 5/5 multilingual cases. The machine-readable source is
+`reference/live_snapshot.json`; the published art is
+`assets/benchmark-reasoning.svg`.
 
 ## Track 3 — Feature
 

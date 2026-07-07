@@ -1,6 +1,6 @@
 <svg width="860" height="548" viewBox="0 0 860 548" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="feat_t feat_d">
   <title id="feat_t">One platform, every layer</title>
-  <desc id="feat_d">Nine layers of one governed runtime, each a plate with a glyph: 1 Context and prompts — prompt plus context compiler, cache-aware, budgeted, provenance-aware. 2 Retrieval and memory — hybrid, sparse, GraphRAG and LAGER retrieval, layered decaying memory, context anchors. 3 Agents and orchestration — permissioned tools, web search, planners, crews, durable graphs. 4 Output and evaluation — typed contracts, thirty-plus metrics, judges, CI gates, benchmark tracks. 5 Data and analytics — tabular evidence, text-to-query, cited charts, a governed semantic layer. 6 The closed loop — trace, dataset, eval, optimize, gated promote. 7 Security and governance — PII and injection defense, hash-chained audit, model cards, AI-BOM, residency. 8 Protocols and interop — MCP client and server, A2A, Agent Skills, framework bridges. 9 Reach further — cross-org economy, edge and WASM, federated learning with differential privacy, energy accounting.</desc>
+  <desc id="feat_d">Nine layers of one governed runtime, each a plate with a glyph: 1 Context and prompts — prompt plus context compiler, cache-aware, budgeted, provenance-aware. 2 Retrieval and memory — hybrid, sparse, GraphRAG and LAGER retrieval, layered decaying memory, context anchors. 3 Agents and orchestration — adaptive universal reasoning, governed web search, permissioned tools, planners, crews and durable graphs. 4 Output and evaluation — typed contracts, thirty-plus metrics, judges, CI gates, benchmark tracks. 5 Data and analytics — tabular evidence, text-to-query, cited charts, a governed semantic layer. 6 The closed loop — trace, dataset, eval, optimize, gated promote. 7 Security and governance — PII and injection defense, hash-chained audit, model cards, AI-BOM, residency. 8 Protocols and interop — MCP client and server, A2A, Agent Skills, framework bridges. 9 Reach further — cross-org economy, edge and WASM, federated learning with differential privacy, energy accounting.</desc>
   <defs>
     <radialGradient id="feat_parch" cx="40%" cy="16%" r="92%">
       <stop offset="0%" stop-color="#FCF6E6"/>
@@ -62,8 +62,8 @@
         <line x1="788" y1="144" x2="780" y2="156"/><line x1="792" y1="144" x2="800" y2="156"/>
       </g>
       <text x="586" y="182" font-size="13.5" font-weight="700" fill="#3A2E1C">Agents &amp; orchestration</text>
-      <text x="586" y="204" font-size="10.5" fill="#6B5836">Permissioned tools, web search,</text>
-      <text x="586" y="220" font-size="10.5" fill="#6B5836">planners, crews, durable graphs,</text>
+      <text x="586" y="204" font-size="10.5" fill="#6B5836">Adaptive reasoning + governed web,</text>
+      <text x="586" y="220" font-size="10.5" fill="#6B5836">tools, planners, crews, durable graphs,</text>
       <text x="586" y="236" font-size="10.5" fill="#6B5836">hard budgets that can't run away.</text>
     </g>
 
@@ -147,6 +147,6 @@
       <text x="586" y="504" font-size="10.5" fill="#6B5836">accountant, energy accounting.</text>
     </g>
 
-    <text x="40" y="534" font-size="10.5" fill="#8C7448" font-style="italic">Use the high-level ContextApp, or reach for any engine directly — 553 public symbols, one frozen API contract.</text>
+    <text x="40" y="534" font-size="10.5" fill="#8C7448" font-style="italic">Use the high-level ContextApp, or reach for any engine directly — 559 public symbols, one frozen API contract.</text>
   </g>
 </svg>

@@ -196,5 +196,10 @@ if __name__ == "__main__":  # pragma: no cover - dev tool
     if "--freeze" in sys.argv[1:]:
         _freeze()
         print(f"froze {len(load_frozen_surface())} public symbols → {_SURFACE_FILE}")
+    elif "--write" in sys.argv[1:]:
+        target = os.path.join(os.path.dirname(_SURFACE_FILE), "api-generated.md")
+        with open(target, "w", encoding="utf-8") as fh:
+            fh.write(render_api_index())
+        print(f"rendered public API index → {target}")
     else:
         print(render_api_index())

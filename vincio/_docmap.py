@@ -176,6 +176,16 @@ TOPICS: tuple[Topic, ...] = (
                "predictor", "reasoning", "use_reasoning_controller"),
     ),
     Topic(
+        "universal_reasoning", "runs", "Universal reasoning",
+        "Adaptive task understanding, decomposition, tool and live-evidence planning, "
+        "bounded provider-independent passes, deterministic verification, and answer-only "
+        "correction for native and non-reasoning models.",
+        concept=_c("universal-reasoning"),
+        guides=(_g("reasoning"),),
+        examples=(_e("22_universal_reasoning"),),
+        verbs=("reason", "use_reasoning_engine"),
+    ),
+    Topic(
         "tools", "runs", "Tools & skills",
         "Register functions as permissioned, approval-gated tools, attach Agent Skills, "
         "and surface provider-native hosted tools.",

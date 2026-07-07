@@ -43,20 +43,41 @@ def normalize_text(text: str) -> str:
 # computed as stopword hits per token; the best-scoring language above a
 # floor wins, else "en" for Latin scripts and the script name otherwise.
 _LANG_STOPWORDS: dict[str, frozenset[str]] = {
-    "en": frozenset("the and of to in is you that it for on are with as was at be this have from or had by not but what all were when there can".split()),
-    "es": frozenset("el la de que y en un ser se no haber por con su para como estar tener le lo todo pero más hacer este ya o cuando".split()),
-    "fr": frozenset("le de un être et à il avoir ne je son que se qui ce dans en du elle au pour pas vous par sur faire plus".split()),
-    "de": frozenset("der die und in den von zu das mit sich des auf für ist im dem nicht ein eine als auch es an werden aus er".split()),
-    "it": frozenset("di e il la che è per un in non sono io ho lui ma si con come ci questo qui hanno del alla più o anche".split()),
-    "pt": frozenset("o de a e que do da em um para é com não uma os no se na por mais as dos como mas foi ao ele".split()),
-    "nl": frozenset("de het een en van ik te dat die in je niet zijn is was op aan met als voor had er maar om hem dan".split()),
+    "en": frozenset(
+        "the and of to in is you that it for on are with as was at be this have from or had by not but what all were when there can".split()
+    ),
+    "es": frozenset(
+        "el la de que y en un ser se no haber por con su para como estar tener le lo todo pero más hacer este ya o cuando".split()
+    ),
+    "fr": frozenset(
+        "le de un être et à il avoir ne je son que se qui ce dans en du elle au pour pas vous par sur faire plus".split()
+    ),
+    "de": frozenset(
+        "der die und in den von zu das mit sich des auf für ist im dem nicht ein eine als auch es an werden aus er".split()
+    ),
+    "it": frozenset(
+        "di e il la che è per un in non sono io ho lui ma si con come ci questo qui hanno del alla più o anche".split()
+    ),
+    "pt": frozenset(
+        "o de a e que do da em um para é com não uma os no se na por mais as dos como mas foi ao ele".split()
+    ),
+    "nl": frozenset(
+        "de het een en van ik te dat die in je niet zijn is was op aan met als voor had er maar om hem dan".split()
+    ),
 }
 
 
-def detect_language(text: str) -> str:
-    """Best-effort ISO 639-1 language code; falls back to script detection."""
+def _detect_language_profile(text: str) -> tuple[str, float]:
+    """Return the best language code and confidence of the offline signal.
+
+    This private profile powers adaptive callers that need to distinguish a
+    confident English detection from the legacy Latin-script fallback to
+    English. Unknown languages deliberately return ``("en", 0.0)`` so a
+    semantic model-native classifier can take over without shipping a finite
+    language allow-list.
+    """
     if not text:
-        return "en"
+        return "en", 0.0
     # Script-based shortcuts for non-Latin scripts.
     counts: dict[str, int] = {}
     for char in text[:2000]:
@@ -81,13 +102,18 @@ def detect_language(text: str) -> str:
             "GREEK": "el",
         }
         if dominant in script_map and counts[dominant] >= max(1, sum(counts.values()) // 3):
-            return script_map[dominant]
+            return script_map[dominant], counts[dominant] / max(1, sum(counts.values()))
     tokens = re.findall(r"[a-zà-ÿäöüß']+", text.lower())[:400]
     if not tokens:
-        return "en"
+        return "en", 0.0
     best_lang, best_score = "en", 0.0
     for lang, stopwords in _LANG_STOPWORDS.items():
         score = sum(1 for token in tokens if token in stopwords) / len(tokens)
         if score > best_score:
             best_lang, best_score = lang, score
-    return best_lang if best_score >= 0.05 else "en"
+    return (best_lang, best_score) if best_score >= 0.05 else ("en", 0.0)
+
+
+def detect_language(text: str) -> str:
+    """Best-effort ISO 639-1 language code; falls back to script detection."""
+    return _detect_language_profile(text)[0]

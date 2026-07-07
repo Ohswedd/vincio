@@ -19,8 +19,11 @@ from .agents import (
     MPCStep,
     PlanRepairer,
     PredictedStep,
+    ReasoningAssessment,
     ReasoningController,
     ReasoningDecision,
+    ReasoningPass,
+    ReasoningPlan,
     ReasoningPolicy,
     ResearchAgent,
     ResearchBudget,
@@ -32,6 +35,9 @@ from .agents import (
     SubgraphTask,
     TimerService,
     Transition,
+    UniversalReasoningEngine,
+    UniversalReasoningPolicy,
+    UniversalReasoningResult,
     WorkerPoolBackend,
     WorldModel,
     compose,
@@ -573,7 +579,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "7.9.0"
+__version__ = "7.10.0"
 
 __all__ = [
     "ContextApp",
@@ -677,6 +683,12 @@ __all__ = [
     "ReasoningController",
     "ReasoningDecision",
     "ReasoningPolicy",
+    "ReasoningAssessment",
+    "ReasoningPlan",
+    "ReasoningPass",
+    "UniversalReasoningPolicy",
+    "UniversalReasoningResult",
+    "UniversalReasoningEngine",
     "ReasoningTrace",
     "ReasoningTraceCache",
     # learned semantic cache & near-miss KV reuse

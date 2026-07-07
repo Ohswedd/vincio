@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**552** public symbols.
+**558** public symbols.
 
 ## Classes
 
@@ -1262,6 +1262,10 @@ One programmable rail.
 
 A bidirectional realtime session.
 
+### `ReasoningAssessment(**data)`
+
+Deterministic decision about how much reasoning a request warrants.
+
 ### `ReasoningController(policy=…, trace_cache=…)`
 
 Pick a thinking effort + token budget per step from task + budget signals.
@@ -1269,6 +1273,14 @@ Pick a thinking effort + token budget per step from task + budget signals.
 ### `ReasoningDecision(**data)`
 
 The record of one reasoning-effort pick, stamped on the trace.
+
+### `ReasoningPass(**data)`
+
+Observable receipt for one model pass, excluding private reasoning text.
+
+### `ReasoningPlan(**data)`
+
+Compact high-level plan; contains no model chain-of-thought.
 
 ### `ReasoningPolicy(**data)`
 
@@ -1745,6 +1757,18 @@ A proven-reserves shortfall: the pools pledge more than the custodian attests.
 ### `UnitVerifier()`
 
 Checks unit conversions and refuses a dimensional mismatch.
+
+### `UniversalReasoningEngine(app, policy=…)`
+
+Adaptive reasoning for every provider, including non-reasoning models.
+
+### `UniversalReasoningPolicy(**data)`
+
+Adaptive-depth, web, pass-count and token/cost guardrails.
+
+### `UniversalReasoningResult(**data)`
+
+Final normal run plus the provider-neutral reasoning receipt.
 
 ### `UsageEvent(**data)`
 

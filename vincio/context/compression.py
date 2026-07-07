@@ -31,7 +31,11 @@ __all__ = [
     "link_entailments",
 ]
 
-_SENTENCE_RE = re.compile(r"(?<=[.!?])\s+(?=[A-Z0-9\"'(])|\n{2,}")
+# Latin punctuation normally separates sentences at whitespace; CJK sentence
+# punctuation also separates adjacent sentences without whitespace.  A trailing
+# ``[citation]`` belongs to the preceding sentence and must not be detached,
+# because citation coverage and entailment are evaluated sentence by sentence.
+_SENTENCE_RE = re.compile(r"(?<=[.!?])(?!\s*\[)\s+|(?<=[。！？])(?!\s*\[)\s*|\n{2,}")
 
 
 class CompressionResult(BaseModel):
@@ -52,7 +56,9 @@ def split_sentences(text: str) -> list[str]:
     return sentences or ([text.strip()] if text.strip() else [])
 
 
-def truncate_to_tokens(text: str, max_tokens: int, *, model: str | None = None) -> CompressionResult:
+def truncate_to_tokens(
+    text: str, max_tokens: int, *, model: str | None = None
+) -> CompressionResult:
     original = count_tokens(text, model)
     if original <= max_tokens:
         return CompressionResult(
@@ -229,7 +235,9 @@ def link_entailments(
         entry.setdefault("supports", [])
         entry["contradicts"] = []
     numeric: dict[str, set[str]] = {
-        entry["id"]: {u for u in salient_units(entry.get("claim", "")) if _LEDGER_NUMERIC_RE.search(u)}
+        entry["id"]: {
+            u for u in salient_units(entry.get("claim", "")) if _LEDGER_NUMERIC_RE.search(u)
+        }
         for entry in ledger
     }
     for a in ledger:

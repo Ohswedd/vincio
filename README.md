@@ -155,7 +155,7 @@ pipeline with no key and no cost, then point the same code at a real model.
 
 ## Features
 
-One governed runtime, nine layers. Use the high-level `ContextApp`, or reach for any of **553 public
+One governed runtime, nine layers. Use the high-level `ContextApp`, or reach for any of **559 public
 symbols** directly under one frozen API contract.
 
 <p align="center">
@@ -184,7 +184,12 @@ bi-temporal recall, per-memory ACLs, and audited GDPR-style edit/forget/export.
 resource-limited sandbox, idempotent write guardrails with approval callbacks, and a grounded
 computer-use action plane. **Universal web browsing & search** (`app.use_web_search()`) gives *any*
 model — even one with no function calling — governed `web_search` / `web_read` tools with SSRF-hardened,
-content-hashed, offline-verifiable evidence. Planners (ReAct / plan-and-execute / hierarchical HTN) with
+content-hashed, offline-verifiable evidence. **Universal reasoning** (`app.use_reasoning_engine()`)
+gives every model adaptive task/depth/strategy selection, evidence-first search, bounded candidate and
+correction passes, model-native routing for every language the selected model understands, conservative
+tool matching, explicit no-web handling, Unicode evidence verification, and answer-only receipts without
+stored chain-of-thought.
+Planners (ReAct / plan-and-execute / hierarchical HTN) with
 in-place plan repair; multi-agent crews with a shared blackboard; durable stateful graphs
 (checkpoint / resume / time-travel / human-in-the-loop); and a distributed durable-execution backend.
 
@@ -244,6 +249,21 @@ abstains or hallucinates) into a cited, correct answer at a fraction of the cost
   <img src="assets/benchmark-uplift.svg" alt="Grounded-answer accuracy on 15 company-specific questions, the same model direct vs through Vincio, every routed answer cited: claude-opus-4.8 13 to 97 percent; gpt-5.4-mini 10 to 93; gemini-3.5-flash 27 to 97; llama-3.1-8b 3 to 93; aggregate 13 to 95 percent. Live over OpenRouter, 2026-07-01." width="820">
 </p>
 
+**Reasoning quality is measured separately from retrieval quality.** On a small, reviewed Tier-L set,
+the non-reasoning Llama 3.2 3B model moved from **0/4 direct to 3/4 through Vincio**: all three stable
+math/logic/multi-step answers passed deterministic verification; on the current-fact case Vincio verified
+two web snapshots but withheld the model's unsupported final claim instead of counting the refusal as
+correct. A companion model-native routing run classified **5/5** Spanish, Japanese, Arabic, Swahili and
+Chinese requests correctly for language, task/depth and web intent. Sample sizes are deliberately shown:
+
+<p align="center">
+  <img src="assets/benchmark-reasoning.svg" alt="Universal reasoning live capability run, OpenRouter, July 7 2026. Llama 3.2 3B exact task accuracy: 0 percent direct to 75 percent through Vincio over four reviewed cases; three of three stable reasoning answers deterministically verified; unsupported current-fact overclaims reduced from one direct to zero through Vincio, with two web snapshots verified and one unsafe final answer withheld. GPT-4.1 mini model-native routing correctly classified five of five Spanish, Japanese, Arabic, Swahili and Chinese cases." width="820">
+</p>
+
+Reproduce the two arms with [`benchmarks/reasoning_uplift_live.py`](benchmarks/reasoning_uplift_live.py)
+and [`benchmarks/reasoning_multilingual_live.py`](benchmarks/reasoning_multilingual_live.py). The dated,
+machine-readable summary is in [`benchmarks/reference/live_snapshot.json`](benchmarks/reference/live_snapshot.json).
+
 Two more dated live runs (reproduce with the script in each): **LAGER** reaches a multi-hop bridge that
 shares *zero words* with the query — **100%** vs classic top-k RAG's **75%** at **~8× fewer input
 tokens/call** (`benchmarks/lager_uplift_live.py`). **Context anchors** hold a globally-binding rule that
@@ -259,7 +279,7 @@ each number carries a **provenance tier** that says, structurally, how real it i
 print a higher tier's label — a Tier-S mechanism check can never masquerade as a Tier-L score.
 
 <p align="center">
-  <img src="assets/benchmark-platform.svg" alt="Three benchmark tracks under one provenance-tier contract: Model (29 public benchmarks across 10 niches), Uplift (5, same model routed vs direct), Feature (8 contests vs a real competitor library). Tiers: L Live (reported, never gated), R Recorded (hash-pinned replay, gates CI), S Static/Mockup (offline, reproducible, gates CI)." width="840">
+  <img src="assets/benchmark-platform.svg" alt="Three benchmark tracks under one provenance-tier contract: Model (29 public benchmarks across 10 niches), Uplift (6, same model routed vs direct), Feature (8 contests vs a real competitor library). Tiers: L Live (reported, never gated), R Recorded (hash-pinned replay, gates CI), S Static/Mockup (offline, reproducible, gates CI)." width="840">
 </p>
 
 ```bash

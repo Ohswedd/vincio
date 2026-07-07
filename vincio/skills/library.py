@@ -41,25 +41,42 @@ class SkillLibrary:
     def get(self, name: str) -> Skill | None:
         return self._skills.get(name)
 
-    def index_text(self) -> str:
-        lines = [s.summary_line() for s in self._skills.values()]
+    def index_text(self, *, exclude: set[str] | None = None) -> str:
+        excluded = exclude or set()
+        lines = [s.summary_line() for s in self._skills.values() if s.name not in excluded]
         return "Available skills (load the relevant one's steps):\n" + "\n".join(lines)
 
     def relevant(
-        self, query: str, *, threshold: float = 0.05, limit: int = 3
+        self,
+        query: str,
+        *,
+        threshold: float = 0.05,
+        limit: int = 3,
+        exclude: set[str] | None = None,
     ) -> list[tuple[Skill, float]]:
-        scored = [(s, s.match_score(query)) for s in self._skills.values()]
+        excluded = exclude or set()
+        scored = [
+            (s, s.match_score(query))
+            for s in self._skills.values()
+            if s.name not in excluded
+        ]
         hits = [(s, score) for s, score in scored if score >= threshold]
         hits.sort(key=lambda pair: pair[1], reverse=True)
         return hits[:limit]
 
     def evidence_for(
-        self, query: str, *, threshold: float = 0.05, limit: int = 3
+        self,
+        query: str,
+        *,
+        threshold: float = 0.05,
+        limit: int = 3,
+        exclude: set[str] | None = None,
     ) -> list[EvidenceItem]:
         """Index item (always) + relevant skill bodies (on match)."""
-        if not self._skills:
+        excluded = exclude or set()
+        if not any(skill.name not in excluded for skill in self._skills.values()):
             return []
-        index_text = self.index_text()
+        index_text = self.index_text(exclude=excluded)
         items = [
             EvidenceItem(
                 id="skill-index",
@@ -74,7 +91,9 @@ class SkillLibrary:
                 metadata={"origin": "skill:index", "kind": "skill_index"},
             )
         ]
-        for skill, score in self.relevant(query, threshold=threshold, limit=limit):
+        for skill, score in self.relevant(
+            query, threshold=threshold, limit=limit, exclude=excluded
+        ):
             body = f"# Skill: {skill.name}\n\n{skill.description}\n\n{skill.instructions}".strip()
             items.append(
                 EvidenceItem(

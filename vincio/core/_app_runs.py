@@ -32,6 +32,7 @@ from ..output.validators import SemanticValidator
 from ..prompts.signatures import Predict, Signature
 from ..prompts.templates import PromptSpec
 from ..providers.base import run_sync
+from ..stability import experimental
 from ..workflows.engine import Workflow
 from ._app_support import RunHandle, _AgentHandle
 from .errors import (
@@ -71,6 +72,7 @@ class _RunVerbs:
         output_contract: OutputContract
         prompt_spec: PromptSpec
         reasoning_controller: Any | None
+        reasoning_engine: Any | None
         schema_router: SchemaRouter | None
         self_correction: dict[str, Any] | None
         semantic_cache: Any | None
@@ -356,7 +358,12 @@ class _RunVerbs:
             session_id=session_id,
             feature=feature,
         )
-        result = await self._runtime.execute(user_input, config)
+        engine = getattr(self, "reasoning_engine", None)
+        internal = bool(config and config.metadata.get("_universal_reasoning_internal"))
+        if engine is not None and not internal:
+            result = (await engine.arun(user_input, config=config)).result
+        else:
+            result = await self._runtime.execute(user_input, config)
         if self.online_evaluators:
             self._spawn_online(result, user_input)
         return result
@@ -715,6 +722,98 @@ class _RunVerbs:
             controller = self.reasoning(controller, **kwargs)
         self.reasoning_controller = controller
         return self
+
+    @experimental(since="7.10")
+    def use_reasoning_engine(  # type: ignore[misc]
+        self: ContextApp,
+        engine: Any | None = None,
+        *,
+        policy: Any | None = None,
+        web: bool | dict[str, Any] = False,
+        **kwargs: Any,
+    ) -> ContextApp:
+        """Install adaptive universal reasoning on ordinary ``run`` / ``arun``.
+
+        Easy requests retain the normal single-pass path. Hard, mathematical,
+        logical, tool-dependent or freshness-sensitive requests receive a
+        provider-independent plan, bounded candidate/verification/correction
+        passes, and (when enabled) governed web evidence. Native reasoning is
+        used when available but is never required. Non-English and uncertain-
+        language requests are semantically classified by the configured model,
+        so routing follows model language support without a finite locale list;
+        deterministic policy remains authoritative. Pass ``web=True`` to enable
+        Vincio's universal web tools with their default policy, or a dict of
+        :meth:`use_web_search` options::
+
+            app.use_reasoning_engine(web=True)
+            result = app.run("Compare the latest two Python releases")
+            result.metadata["universal_reasoning"]
+
+        The engine records strategy and verifier receipts, never model scratch
+        work or hidden chain-of-thought. The API is experimental in 7.10.
+        """
+        from ..agents.universal_reasoning import (
+            UniversalReasoningEngine,
+            UniversalReasoningPolicy,
+        )
+
+        if web and getattr(self, "web_browser", None) is None:
+            options = web if isinstance(web, dict) else {}
+            self.use_web_search(**options)
+        if engine is None:
+            if policy is not None and kwargs:
+                raise InputError("pass either policy or policy keyword fields, not both")
+            if policy is None:
+                policy = UniversalReasoningPolicy(**kwargs)
+            engine = UniversalReasoningEngine(self, policy=policy)
+        elif kwargs or policy is not None:
+            raise InputError("policy/kwargs apply only when building the universal reasoning engine")
+        self.reasoning_engine = engine
+        return self
+
+    @experimental(since="7.10")
+    async def areason(  # type: ignore[misc]
+        self: ContextApp,
+        user_input: str | UserInput,
+        *,
+        config: RunConfig | None = None,
+        policy: Any | None = None,
+    ) -> Any:
+        """Run universal reasoning once and return its full reasoning receipt.
+
+        Unlike :meth:`use_reasoning_engine`, this explicit verb does not change
+        subsequent ``app.run`` calls. The returned
+        :class:`~vincio.agents.universal_reasoning.UniversalReasoningResult`
+        contains the normal validated :class:`RunResult` as ``.result`` plus the
+        adaptive assessment, plan, pass receipts and content-bound web evidence.
+        """
+        from ..agents.universal_reasoning import UniversalReasoningEngine
+
+        engine = UniversalReasoningEngine(self, policy=policy)
+        normalized = self._coerce_input(
+            user_input,
+            files=None,
+            tenant_id=None,
+            user_id=None,
+            session_id=None,
+            feature=None,
+        )
+        outcome = await engine.arun(normalized, config=config)
+        if self.online_evaluators:
+            self._spawn_online(outcome.result, normalized)
+        return outcome
+
+    @experimental(since="7.10")
+    def reason(self: ContextApp, user_input: str | UserInput, **kwargs: Any) -> Any:  # type: ignore[misc]
+        """Synchronous :meth:`areason`."""
+        return run_sync(self._reason_and_flush(user_input, **kwargs))
+
+    async def _reason_and_flush(  # type: ignore[misc]
+        self: ContextApp, user_input: str | UserInput, **kwargs: Any
+    ) -> Any:
+        outcome = await self.areason(user_input, **kwargs)
+        await self.aflush_online()
+        return outcome
 
     def use_context_governor(  # type: ignore[misc]
         self: ContextApp,

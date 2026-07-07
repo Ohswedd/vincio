@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import math
 import re
+import unicodedata
 from collections.abc import Callable
 from datetime import datetime
 from functools import lru_cache
@@ -50,7 +51,7 @@ CandidateType = Literal[
 # so batched scoring stays on the pure-Python reduction even when NumPy is present.
 _VECTOR_BATCH_MIN = 32
 
-_TOKEN_RE = re.compile(r"[a-z0-9]+")
+_TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 _STOPWORDS = frozenset(
     "a an the and or but if then else of to in on at for with by from as is are was were be been "
     "this that these those it its do does did not no can could should would will i you he she we "
@@ -73,11 +74,22 @@ def _stem(token: str) -> str:
 def _terms(text: str) -> frozenset[str]:
     """Stemmed content terms. Memoized: the O(n²) dedupe/conflict loops and
     incremental recompiles hit the same texts repeatedly."""
-    return frozenset(
-        _stem(t)
-        for t in _TOKEN_RE.findall(text.lower())
-        if t not in _STOPWORDS and (len(t) > 1 or t.isdigit())
-    )
+    terms: set[str] = set()
+    for token in _TOKEN_RE.findall(text.lower()):
+        if token in _STOPWORDS or (len(token) <= 1 and not token.isdigit()):
+            continue
+        terms.add(_stem(token))
+        # Languages without whitespace word boundaries (CJK, Thai, Lao,
+        # Khmer, Myanmar) need character shingles for lexical evidence
+        # support. This is script-based, not a finite language list.
+        scripts = {
+            unicodedata.name(char, "").split()[0]
+            for char in token
+            if char.isalpha() and unicodedata.name(char, "")
+        }
+        if scripts.intersection({"CJK", "HIRAGANA", "KATAKANA", "THAI", "LAO", "KHMER", "MYANMAR"}):
+            terms.update(token[index : index + 2] for index in range(len(token) - 1))
+    return frozenset(terms)
 
 
 def _lexical_from_terms(terms_a: frozenset[str], terms_b: frozenset[str]) -> float:
@@ -340,7 +352,9 @@ class ContextScorer:
     def duplication(self, candidate: ContextCandidate, selected: list[ContextCandidate]) -> float:
         if not selected:
             return 0.0
-        return max(self.diversity_similarity(candidate.content, other.content) for other in selected)
+        return max(
+            self.diversity_similarity(candidate.content, other.content) for other in selected
+        )
 
     def answerability(self, candidate: ContextCandidate, query: str) -> float:
         """Does this item plausibly contain an answer? Question terms covered + facts present."""
@@ -490,21 +504,42 @@ class ContextScorer:
             leakage = [c.leakage_risk for c in candidates]
             totals = weighted_totals(
                 [
-                    relevance, [1.0] * n, authority, freshness, provenance,
-                    answerability, memory_value, token_cost, [0.0] * n, leakage,
+                    relevance,
+                    [1.0] * n,
+                    authority,
+                    freshness,
+                    provenance,
+                    answerability,
+                    memory_value,
+                    token_cost,
+                    [0.0] * n,
+                    leakage,
                 ],
                 [
-                    w.relevance, w.novelty, w.authority, w.freshness, w.provenance,
-                    w.question_answerability, w.memory_value,
-                    -w.token_cost, -w.duplication, -w.leakage_risk,
+                    w.relevance,
+                    w.novelty,
+                    w.authority,
+                    w.freshness,
+                    w.provenance,
+                    w.question_answerability,
+                    w.memory_value,
+                    -w.token_cost,
+                    -w.duplication,
+                    -w.leakage_risk,
                 ],
             )
             for i, candidate in enumerate(candidates):
                 candidate.scores = construct(
-                    relevance=relevance[i], novelty=1.0, authority=authority[i],
-                    freshness=freshness[i], provenance=provenance[i],
-                    question_answerability=answerability[i], memory_value=memory_value[i],
-                    token_cost=token_cost[i], duplication=0.0, leakage_risk=leakage[i],
+                    relevance=relevance[i],
+                    novelty=1.0,
+                    authority=authority[i],
+                    freshness=freshness[i],
+                    provenance=provenance[i],
+                    question_answerability=answerability[i],
+                    memory_value=memory_value[i],
+                    token_cost=token_cost[i],
+                    duplication=0.0,
+                    leakage_risk=leakage[i],
                     total=totals[i],
                 )
             return
@@ -523,11 +558,25 @@ class ContextScorer:
             tok = self.normalized_token_cost(candidate)
             leak = candidate.leakage_risk
             candidate.scores = construct(
-                relevance=rel, novelty=1.0, authority=auth, freshness=fresh, provenance=prov,
-                question_answerability=ans, memory_value=mem, token_cost=tok,
-                duplication=0.0, leakage_risk=leak,
+                relevance=rel,
+                novelty=1.0,
+                authority=auth,
+                freshness=fresh,
+                provenance=prov,
+                question_answerability=ans,
+                memory_value=mem,
+                token_cost=tok,
+                duplication=0.0,
+                leakage_risk=leak,
                 total=(
-                    wr * rel + wn + wa * auth + wf * fresh + wp * prov + wq * ans + wm * mem
-                    - wt * tok - wk * leak
+                    wr * rel
+                    + wn
+                    + wa * auth
+                    + wf * fresh
+                    + wp * prov
+                    + wq * ans
+                    + wm * mem
+                    - wt * tok
+                    - wk * leak
                 ),
             )

@@ -8,7 +8,7 @@ do* and *where each capability is documented*, grouped by the six capability
 facades (`app.runs` / `app.knowledge` / `app.governance` / `app.optimization`
 / `app.serving` / `app.training`).
 
-It covers **213** public `ContextApp` methods. It is gated for coverage:
+It covers **216** public `ContextApp` methods. It is gated for coverage:
 every public `app.*` verb appears here, every link resolves, and every concept
 reaches a guide, an example, and a reference anchor. For the exhaustive
 docstring-driven symbol index see [api-generated.md](api-generated.md); for the
@@ -76,6 +76,18 @@ Concept: [Agents & orchestration](../concepts/agents.md) · Guides: [How-to: orc
 | `app.voice_agent` | Open an end-to-end :class:`~vincio.realtime.VoiceAgent`. |
 | `app.workflow` | Create a deterministic :class:`Workflow` builder bound to this app's tracer. |
 
+### Universal reasoning
+
+Adaptive task understanding, decomposition, tool and live-evidence planning, bounded provider-independent passes, deterministic verification, and answer-only correction for native and non-reasoning models.
+
+Concept: [Universal reasoning](../concepts/universal-reasoning.md) · Guides: [Universal reasoning, native thinking & the Responses API](../guides/reasoning.md) · Examples: [22_universal_reasoning.py](../../examples/22_universal_reasoning.py) · Reference: [Runs](api.md#runs)
+
+| Method | What it does |
+|---|---|
+| `app.areason` | Run universal reasoning once and return its full reasoning receipt. |
+| `app.reason` | Synchronous :meth:`areason`. |
+| `app.use_reasoning_engine` | Install adaptive universal reasoning on ordinary ``run`` / ``arun``. |
+
 ### Tools & skills
 
 Register functions as permissioned, approval-gated tools, attach Agent Skills, and surface provider-native hosted tools.
@@ -114,7 +126,7 @@ Guides: [structured output](../guides/structured-output.md) · Examples: [06_str
 
 Best-of-N, self-consistency, and beam search over the run pipeline for a harder answer at a controlled budget.
 
-Guides: [Reasoning control & the Responses API](../guides/reasoning.md) · Examples: [11_advanced_context.py](../../examples/11_advanced_context.py) · Reference: [Runs](api.md#runs)
+Guides: [Universal reasoning, native thinking & the Responses API](../guides/reasoning.md) · Examples: [11_advanced_context.py](../../examples/11_advanced_context.py) · Reference: [Runs](api.md#runs)
 
 | Method | What it does |
 |---|---|

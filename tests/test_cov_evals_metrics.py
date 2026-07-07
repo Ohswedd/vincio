@@ -98,7 +98,9 @@ def test_output_text_set_uses_json_default_str():
 
 
 def test_from_trace_carries_output_id_and_cost():
-    trace = Trace(id="t1", name="run", spans=[], attributes={"output": "hello world", "cost_usd": 0.5})
+    trace = Trace(
+        id="t1", name="run", spans=[], attributes={"output": "hello world", "cost_usd": 0.5}
+    )
     ro = RunOutput.from_trace(trace)
     assert ro.output == "hello world"
     assert ro.trace_id == "t1"
@@ -182,7 +184,9 @@ def test_classification_accuracy_string_is_stripped():
 
 
 def test_classification_accuracy_mismatch():
-    res = classification_accuracy(case(expected={"label": "positive"}), RunOutput(output="negative"))
+    res = classification_accuracy(
+        case(expected={"label": "positive"}), RunOutput(output="negative")
+    )
     assert res.value == 0.0
     assert res.passed is False
 
@@ -253,6 +257,16 @@ def test_groundedness_no_verifiable_claims_skipped():
     assert res.details["claims"] == 0
 
 
+def test_groundedness_detects_non_english_declarative_claims():
+    evidence = [ev("e1", "公式情報ではPythonの最新安定版は3.14です")]
+    run = RunOutput(output="Pythonの最新安定版は3.14です。", evidence=evidence)
+
+    res = groundedness(case(), run)
+
+    assert res.details == {"claims": 1, "supported": 1}
+    assert res.value == 1.0
+
+
 def test_groundedness_supported_and_unsupported_mix():
     evidence = [ev("e1", "The refund period is 30 days for all customers")]
     run = RunOutput(
@@ -312,7 +326,9 @@ def test_citation_recall_fallback_to_run_evidence():
 
 
 def test_citation_coverage_cited_claim():
-    evidence = [ev("D1", "The capital of France is Paris with population 2 million", citation_ref="C1")]
+    evidence = [
+        ev("D1", "The capital of France is Paris with population 2 million", citation_ref="C1")
+    ]
     run = RunOutput(
         output="The capital of France is Paris [D1] with population 2 million.", evidence=evidence
     )
@@ -469,7 +485,10 @@ def test_knowledge_retention_violation_when_reasking():
     c = case(
         context={
             "messages": [
-                {"role": "user", "content": [{"text": "My order number is 12345 and it shipped today"}]},
+                {
+                    "role": "user",
+                    "content": [{"text": "My order number is 12345 and it shipped today"}],
+                },
                 {"role": "assistant", "content": "ok"},
             ]
         }
@@ -615,9 +634,13 @@ def test_plan_adherence_skipped_without_plan():
 def test_plan_adherence_full_and_partial():
     steps = [TrajectoryStep(type="retrieve"), _tool("search"), TrajectoryStep(type="finalize")]
     traj = Trajectory(steps=steps)
-    full = plan_adherence(case(rubric={"plan": ["retrieve", "search", "finalize"]}), RunOutput(trajectory=traj))
+    full = plan_adherence(
+        case(rubric={"plan": ["retrieve", "search", "finalize"]}), RunOutput(trajectory=traj)
+    )
     assert full.value == 1.0
-    partial = plan_adherence(case(rubric={"plan": ["retrieve", "missing", "finalize"]}), RunOutput(trajectory=traj))
+    partial = plan_adherence(
+        case(rubric={"plan": ["retrieve", "missing", "finalize"]}), RunOutput(trajectory=traj)
+    )
     assert partial.value == 0.6667
 
 
@@ -674,8 +697,12 @@ def test_topic_adherence_on_topic_steps():
 
 
 def test_operational_metrics_exact_values():
-    assert METRICS["input_tokens"](case(), RunOutput(usage=TokenUsage(input_tokens=42))).value == 42.0
-    assert METRICS["output_tokens"](case(), RunOutput(usage=TokenUsage(output_tokens=7))).value == 7.0
+    assert (
+        METRICS["input_tokens"](case(), RunOutput(usage=TokenUsage(input_tokens=42))).value == 42.0
+    )
+    assert (
+        METRICS["output_tokens"](case(), RunOutput(usage=TokenUsage(output_tokens=7))).value == 7.0
+    )
     assert METRICS["retries"](case(), RunOutput(retries=3)).value == 3.0
     assert latency_metric(case(), RunOutput(latency_ms=250)).value == 250.0
 
@@ -775,7 +802,9 @@ def test_exact_match_expected_dict_serialized_then_matched():
 
 
 def test_classification_accuracy_dict_output_label():
-    res = classification_accuracy(case(expected="positive"), RunOutput(output={"label": "positive"}))
+    res = classification_accuracy(
+        case(expected="positive"), RunOutput(output={"label": "positive"})
+    )
     assert res.value == 1.0
 
 
@@ -822,7 +851,9 @@ def test_conversation_relevance_with_messages_content_blocks():
             ]
         }
     )
-    res = conversation_relevance(c, RunOutput(output="the paris climate today is mild and pleasant"))
+    res = conversation_relevance(
+        c, RunOutput(output="the paris climate today is mild and pleasant")
+    )
     assert res.details["turns"] == 1
     assert res.value > 0.0
 

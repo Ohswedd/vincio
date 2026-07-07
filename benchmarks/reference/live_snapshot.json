@@ -1,6 +1,7 @@
 {
   "_comment": "A DATED snapshot of the Live-tier benchmark numbers, captured against real models via OpenRouter and the real competitor libraries. Not reproducible offline (Track 1/2 need a model key). It is the traceable source for the README's Live figures and the generated assets (benchmarks/render_assets.py reads it). Regenerate with the commands in each section's `reproduce` field.",
   "captured": "2026-07-01",
+  "updated": "2026-07-07",
   "provider": "openrouter",
   "track2_uplift": {
     "reproduce": "VINCIO_PROVIDER=openrouter VINCIO_UPLIFT_MODELS=anthropic/claude-opus-4.8,openai/gpt-5.4-mini,google/gemini-3.5-flash,meta-llama/llama-3.1-8b-instruct VINCIO_UPLIFT_RUNS=2 OPENROUTER_API_KEY=... python benchmarks/quality_uplift.py",
@@ -30,5 +31,30 @@
       { "big": "~70%", "line": "fewer tokens, same table", "sub": "compact encoder vs json.dumps" },
       { "big": "~2x", "line": "faster token counting", "sub": "vs tiktoken (which stays exact)" }
     ]
+  },
+  "universal_reasoning_live": {
+    "captured": "2026-07-07",
+    "reproduce": "OPENROUTER_API_KEY=... python benchmarks/reasoning_uplift_live.py --models meta-llama/llama-3.2-3b-instruct --json && OPENROUTER_API_KEY=... python benchmarks/reasoning_multilingual_live.py --models openai/gpt-4.1-mini --json",
+    "setup": "Tier-L small-sample capability run: four reviewed arithmetic, logic, multi-step and current-fact cases on a non-reasoning 3B model; plus five model-native routing cases spanning Spanish, Japanese, Arabic, Swahili and Chinese. One run per case, reported rather than CI-gated.",
+    "reasoning": {
+      "model": "meta-llama/llama-3.2-3b-instruct",
+      "cases": 4,
+      "direct_accuracy": 0.0,
+      "via_vincio_accuracy": 0.75,
+      "stable_reasoning_direct": 0,
+      "stable_reasoning_via_vincio": 3,
+      "stable_reasoning_cases": 3,
+      "direct_current_fact_overclaims": 1,
+      "via_vincio_current_fact_overclaims": 0,
+      "verified_web_snapshots": 2,
+      "safe_refusals": 1
+    },
+    "multilingual_routing": {
+      "model": "openai/gpt-4.1-mini",
+      "languages": ["es", "ja", "ar", "sw", "zh"],
+      "correct": 5,
+      "cases": 5,
+      "semantic_success": 5
+    }
   }
 }
