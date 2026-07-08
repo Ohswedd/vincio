@@ -206,7 +206,9 @@ class GoogleProvider(HTTPProvider):
         candidates = data.get("candidates") or []
         if not candidates:
             raise ProviderResponseError(
-                f"no candidates in response: {json.dumps(data)[:500]}", provider=self.name
+                f"no candidates in response: {json.dumps(data)[:500]}",
+                provider=self.name,
+                retryable=True,
             )
         candidate = candidates[0]
         text_parts: list[str] = []

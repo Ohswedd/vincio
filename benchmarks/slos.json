@@ -1453,6 +1453,16 @@
       "rationale": "Fabricated grounding is worse than no grounding: a confident fake citation converts a guess into apparent verified fact."
     },
     {
+      "id": "universal_reasoning_zero_token_routing_fast",
+      "category": "performance",
+      "statement": "The deterministic reasoning assessment adds at most five milliseconds median overhead to a run, so adaptive routing never taxes the fast path.",
+      "metric": "families.universal_reasoning.assess_p50_ms",
+      "direction": "lte",
+      "threshold": 5,
+      "enforced_by": "families.universal_reasoning.assess_p50_ms",
+      "rationale": "The router earns its place by being free: if classification cost approached a model call's latency, adaptive depth would be a tax rather than an optimization."
+    },
+    {
       "id": "universal_reasoning_model_native_multilingual",
       "category": "quality",
       "statement": "Non-English and unknown-language requests are semantically routed by the configured model without a finite language allow-list.",

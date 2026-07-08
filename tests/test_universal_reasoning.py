@@ -891,3 +891,72 @@ def test_genuine_sources_and_request_urls_are_never_flagged(tmp_path):
     assert _fabricated_sources("According to fabricated-news.com it doubled.", evidence, "") == [
         "fabricated-news.com"
     ]
+
+
+def test_plan_validation_is_tolerant_of_wordy_small_models(tmp_path):
+    from vincio.agents.universal_reasoning import _InternalPlanDecision
+
+    decision = _InternalPlanDecision.model_validate(
+        {
+            "steps": [
+                {
+                    "goal": "Step goal " * 60,  # far past any bound: clipped, not rejected
+                    "kind": "Deep-Analysis",  # unknown kind: falls back to default
+                    "depends_on": [0, "x", 1.0],
+                    "check": "CONSTRAINT ",  # normalized
+                }
+            ]
+            + [{"goal": f"Extra step {i}", "kind": "analyze"} for i in range(15)],
+            "assumptions": ["  ", "One real assumption"] + [f"extra {i}" for i in range(9)],
+            "evidence_queries": 7,  # junk type: dropped, not rejected
+            "confidence": "0.9",
+        }
+    )
+
+    assert len(decision.steps) == 12
+    assert decision.steps[0].kind == "analyze"
+    assert decision.steps[0].check == "constraint"
+    assert decision.steps[0].depends_on == [0, 1]
+    assert len(decision.steps[0].goal) <= 400
+    assert decision.assumptions[0] == "One real assumption" and len(decision.assumptions) <= 4
+    assert decision.evidence_queries == []
+    assert decision.confidence == 0.9
+
+    app = _app(tmp_path, MockProvider(default_text="answer"))
+    engine = UniversalReasoningEngine(app)
+    request = "Compare the trade-offs, identify the root cause, and recommend a fix."
+    assessment = engine.assess(request)
+    merged = engine._merge_plan(engine.plan(request, assessment), assessment, decision)
+    assert merged.plan_mode_used
+    assert len(merged.steps) == engine.policy.plan_max_steps
+    assert all(len(step.goal) <= 160 for step in merged.steps)
+
+
+def test_concurrent_web_reads_preserve_rank_order(tmp_path):
+    urls = [f"https://site{i}.example.org/page" for i in range(3)]
+    backend = StaticSearchBackend(
+        default=[
+            SearchResult(rank=i + 1, title=f"Result {i}", url=url, snippet="release", source="static")
+            for i, url in enumerate(urls)
+        ]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            text=f"<html><title>{request.url.host}</title><body><main>"
+            f"Version 4.2 release notes hosted on {request.url.host}.</main></body></html>",
+        )
+
+    app = _app(tmp_path, MockProvider(default_text="Version 4.2 shipped. Source: " + urls[0]))
+    app.use_web_search(
+        backend=backend,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    outcome = app.reason("Search for the latest release version and fact-check it with sources.")
+
+    hosts = [item.metadata["url"] for item in outcome.web_evidence]
+    assert hosts == urls[: len(hosts)] and len(hosts) == 3

@@ -2725,6 +2725,18 @@
     "families.universal_reasoning.honest_source_not_flagged": {
       "eq": true
     },
+    "families.universal_reasoning.plan_validation_tolerant": {
+      "eq": true
+    },
+    "families.universal_reasoning.assess_p50_ms": {
+      "lte": 5
+    },
+    "families.reliability.empty_payload.retryable": {
+      "eq": true
+    },
+    "families.reliability.empty_payload.absorbed_by_retry": {
+      "eq": true
+    },
     "families.universal_reasoning.search_decision_accuracy": {
       "gte": 0.95
     },

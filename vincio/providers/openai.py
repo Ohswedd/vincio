@@ -187,7 +187,9 @@ class OpenAIProvider(HTTPProvider):
     def _parse_response(self, data: dict[str, Any], request: ModelRequest, latency_ms: int) -> ModelResponse:
         choices = data.get("choices") or []
         if not choices:
-            raise ProviderResponseError("no choices in response", provider=self.name)
+            raise ProviderResponseError(
+                "no choices in response", provider=self.name, retryable=True
+            )
         choice = choices[0]
         message = choice.get("message") or {}
         text = message.get("content") or ""

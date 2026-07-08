@@ -2476,6 +2476,38 @@ async def bench_reliability() -> dict[str, Any]:
         "classified": lifecycle_classified,
         "retired_failover_rotate_now": retired_rotate_now,
     }
+
+    # An HTTP 200 whose payload carries no completion is a transient upstream
+    # fault: the parse error must be retryable and the retry wrapper must
+    # absorb one occurrence without surfacing a failure.
+    from vincio.core.errors import ProviderResponseError
+    from vincio.providers import RetryingProvider
+    from vincio.providers.openai import OpenAIProvider
+
+    empty_request = ModelRequest(model="m", messages=[Message(role="user", content="x")])
+    try:
+        OpenAIProvider(api_key="k")._parse_response({"choices": []}, empty_request, latency_ms=1)
+        empty_payload_retryable = False
+    except ProviderResponseError as exc:
+        empty_payload_retryable = exc.retryable
+
+    class _EmptyOnce(MockProvider):
+        attempts = 0
+
+        async def generate(self, request: ModelRequest) -> ModelResponse:
+            type(self).attempts += 1
+            if type(self).attempts == 1:
+                raise ProviderResponseError(
+                    "no choices in response", provider="mock", retryable=True
+                )
+            return await super().generate(request)
+
+    retrying = RetryingProvider(_EmptyOnce(default_text="ok"), max_retries=2, base_delay_s=0.001)
+    absorbed = await retrying.generate(empty_request)
+    results["empty_payload"] = {
+        "retryable": empty_payload_retryable,
+        "absorbed_by_retry": bool(_EmptyOnce.attempts == 2 and absorbed.text == "ok"),
+    }
     return results
 
 
@@ -6342,6 +6374,13 @@ async def bench_universal_reasoning() -> dict[str, Any]:
         plain_provider = MockProvider(default_text="answer", reasoning=False)
         plain_app = ContextApp(name="universal-reasoning", provider=plain_provider, model="mock-1")
         engine = UniversalReasoningEngine(plain_app)
+        assess_samples: list[float] = []
+        for text, _depth, _web in routing_cases * 3:
+            started = time.perf_counter()
+            engine.assess(text)
+            assess_samples.append((time.perf_counter() - started) * 1000)
+        assess_samples.sort()
+        assess_p50_ms = round(assess_samples[len(assess_samples) // 2], 4)
         decisions = [engine.assess(text) for text, _depth, _web in routing_cases]
         routing_accuracy = sum(
             decision.depth == depth and decision.needs_search == web
@@ -6508,6 +6547,32 @@ async def bench_universal_reasoning() -> dict[str, Any]:
                 model="mock-1",
             )
         ).arun("What is the latest stable release?")
+        from vincio.agents.universal_reasoning import _InternalPlanDecision
+
+        wordy_decision = _InternalPlanDecision.model_validate(
+            {
+                "steps": [
+                    {
+                        "goal": "Step goal " * 60,
+                        "kind": "Deep-Analysis",
+                        "depends_on": [0, "x", 1.0],
+                        "check": "CONSTRAINT ",
+                    }
+                ]
+                + [{"goal": f"Extra step {i}", "kind": "analyze"} for i in range(15)],
+                "assumptions": [f"extra {i}" for i in range(9)],
+                "evidence_queries": 7,
+                "confidence": "0.9",
+            }
+        )
+        tolerant_request = "Compare the trade-offs, identify the root cause, and recommend a fix."
+        tolerant_assessment = engine.assess(tolerant_request)
+        tolerant_plan = engine._merge_plan(
+            engine.plan(tolerant_request, tolerant_assessment),
+            tolerant_assessment,
+            wordy_decision,
+        )
+
         honest_flags = _fabricated_sources(
             "According to python.org, 3.14 is current. See https://docs.python.org/3/whatsnew/.",
             [
@@ -6642,6 +6707,14 @@ async def bench_universal_reasoning() -> dict[str, Any]:
             in fabricated_offline.result.metadata["universal_reasoning"]["fabricated_sources"]
         ),
         "honest_source_not_flagged": honest_flags == [],
+        "assess_p50_ms": assess_p50_ms,
+        "plan_validation_tolerant": bool(
+            tolerant_plan.plan_mode_used
+            and len(wordy_decision.steps) == 12
+            and wordy_decision.steps[0].kind == "analyze"
+            and wordy_decision.steps[0].check == "constraint"
+            and all(len(step.goal) <= 160 for step in tolerant_plan.steps)
+        ),
         "search_decision_accuracy": sum(
             decision.needs_search == expected[2]
             for decision, expected in zip(decisions, routing_cases, strict=True)

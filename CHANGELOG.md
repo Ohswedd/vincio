@@ -50,6 +50,22 @@ All additive and experimental; `API_VERSION` remains `5.0`.
   caller set no seed (some providers reject seed values below 1 and the caller
   never asked for determinism); later passes still offset by index so peers
   differ.
+- **Transient-upstream resilience:** an HTTP 200 whose payload carries no
+  completion (empty `choices`/`content`/`candidates`/`output` — the signature
+  of a rate-limited or flapping upstream behind an aggregator) is now a
+  *retryable* `ProviderResponseError` across the OpenAI, OpenAI-Responses,
+  Anthropic and Google adapters, so the standard retry wrapper absorbs it
+  instead of failing the run; gated by two new ReliabilityBench pins.
+- **Tolerant plan validation:** a wordy small model no longer loses its whole
+  internal plan to a length bound — oversize goals are clipped, step/list
+  overflows truncated, unknown kinds/checks fall back to defaults, and
+  out-of-range confidence is clamped; the deterministic merge still re-clips
+  everything. Gated by `plan_validation_tolerant`.
+- **Faster evidence gathering:** the reasoning engine reads web pages
+  concurrently (bounded, order-preserving) instead of sequentially, cutting
+  live evidence latency to roughly the slowest page. A new
+  `assess_p50_ms` metric pins the zero-token router's overhead (≤5 ms budget;
+  measured ~0.06 ms) with a matching performance SLO.
 - **Gates and evidence:** `UniversalReasoningBench` adds
   `plan_mode_structures_deep_multistep`, `plan_mode_skips_simple_work`,
   `plan_call_accounted`, `fabricated_source_blocked` and

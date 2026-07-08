@@ -286,3 +286,41 @@ class TestStorage:
         blobs.put("a/b.txt", b"data")
         assert blobs.get("a/b.txt") == b"data"
         assert blobs.delete("a/b.txt")
+
+
+class TestEmptyPayloadRetryability:
+    """An HTTP 200 whose payload carries no completion is a transient upstream
+    fault: it must be retryable so RetryingProvider absorbs it."""
+
+    def test_openai_empty_choices_is_retryable(self):
+        from vincio.core.errors import ProviderResponseError
+        from vincio.core.types import Message, ModelRequest
+        from vincio.providers.openai import OpenAIProvider
+
+        provider = OpenAIProvider(api_key="k")
+        request = ModelRequest(model="m", messages=[Message(role="user", content="x")])
+        with pytest.raises(ProviderResponseError) as excinfo:
+            provider._parse_response({"choices": []}, request, latency_ms=1)
+        assert excinfo.value.retryable
+
+    @pytest.mark.asyncio
+    async def test_retrying_provider_absorbs_empty_payload(self):
+        from vincio.core.errors import ProviderResponseError
+
+        class EmptyOnce(MockProvider):
+            attempts = 0
+
+            async def generate(self, request):
+                type(self).attempts += 1
+                if type(self).attempts == 1:
+                    raise ProviderResponseError(
+                        "no choices in response", provider="mock", retryable=True
+                    )
+                return await super().generate(request)
+
+        provider = RetryingProvider(EmptyOnce(default_text="ok"), max_retries=2, base_delay_s=0.001)
+        response = await provider.generate(
+            ModelRequest(model="m", messages=[Message(role="user", content="x")])
+        )
+        assert EmptyOnce.attempts == 2
+        assert response.text == "ok"
