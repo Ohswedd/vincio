@@ -6379,8 +6379,7 @@ async def bench_universal_reasoning() -> dict[str, Any]:
             started = time.perf_counter()
             engine.assess(text)
             assess_samples.append((time.perf_counter() - started) * 1000)
-        assess_samples.sort()
-        assess_p50_ms = round(assess_samples[len(assess_samples) // 2], 4)
+        assess_p50_ms = round(statistics.median(assess_samples), 4)
         decisions = [engine.assess(text) for text, _depth, _web in routing_cases]
         routing_accuracy = sum(
             decision.depth == depth and decision.needs_search == web

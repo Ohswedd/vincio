@@ -1006,3 +1006,66 @@ def test_salvage_respects_policy_off_and_pass_ceiling(tmp_path):
     assert persistent.result.status.value == "failed"
     assert [item.kind for item in persistent.passes] == ["candidate", "salvage"]
     assert not persistent.result.metadata["universal_reasoning"]["corrected"]
+
+
+def test_attribution_prose_and_rates_never_flag_fabrication():
+    from vincio.agents.universal_reasoning import _cites_evidence_host, _fabricated_sources
+    from vincio.core.types import EvidenceItem, TrustLevel
+
+    evidence = [
+        EvidenceItem(
+            id="w",
+            source_id="https://nodejs.org/en/blog/release/v24.11.0",
+            source_type="web",
+            text="x",
+            trust_level=TrustLevel.UNTRUSTED_TOOL,
+            metadata={"url": "https://nodejs.org/en/blog/release/v24.11.0"},
+        )
+    ]
+    assert _fabricated_sources("According to Node.js documentation, the LTS is 24.", evidence, "") == []
+    assert _fabricated_sources("Throughput rose to 12 requests per 1.5 seconds.", [], "") == []
+    assert _fabricated_sources("Under U.S. law, according to U.S. code, X.", [], "") == []
+    assert _fabricated_sources("According to nytimes.com, X.", evidence, "") == ["nytimes.com"]
+    # An intervening article no longer defeats honest citation crediting.
+    assert _cites_evidence_host("As stated by the nodejs.org release schedule, v24 is LTS.", evidence)
+
+
+def test_number_entailment_is_version_shaped_only():
+    from vincio.core.types import EvidenceItem
+    from vincio.evals.metrics import _number_entailed, _supported_strict
+
+    assert _number_entailed("24", {"24.11.0"})
+    assert _number_entailed("3.14", {"3.14.2"})
+    assert not _number_entailed("4", {"4.99"})
+    assert not _number_entailed("90", {"90.5"})
+    evidence = [EvidenceItem(id="e", source_id="e", text="The premium plan costs 4.99 dollars per month.")]
+    assert not _supported_strict("The premium plan costs 4 dollars per month.", evidence)
+
+
+def test_salvage_skips_deterministic_failures_and_consumes_correction_slot(tmp_path):
+    from vincio.core.errors import ProviderAuthError
+
+    class AuthDead(MockProvider):
+        async def generate(self, request):
+            raise ProviderAuthError("authentication failed: bad key", provider="mock")
+
+    app = _app(tmp_path, AuthDead())
+    outcome = UniversalReasoningEngine(
+        app, UniversalReasoningPolicy(salvage_backoff_ms=0)
+    ).run("Calculate 17 * 23 and verify the equality.")
+    # A deterministic failure never earns a salvage pass.
+    assert outcome.result.status.value == "failed"
+    assert all(item.kind == "candidate" for item in outcome.passes)
+
+
+def test_plan_probe_is_skipped_when_routing_spent_the_step_budget(tmp_path):
+    from vincio.core.types import Budget
+
+    app = _app(tmp_path, MockProvider(default_text="answer"))
+    engine = UniversalReasoningEngine(app)
+    assessment = engine.assess(
+        "Compare the trade-offs, identify the root cause, and derive a logically consistent recommendation."
+    )
+    config = RunConfig(budget=Budget(max_steps=2))
+    assert engine._should_plan(assessment, config=config, spent_steps=0)
+    assert not engine._should_plan(assessment, config=config, spent_steps=1)

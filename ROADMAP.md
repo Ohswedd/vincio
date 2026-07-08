@@ -103,7 +103,12 @@ and runs bounded candidate → deterministic verifier → correction loops on mo
 native thinking. Native effort is used when present; models without it receive provider-neutral
 test-time passes. Receipts expose decisions, grounding and cost but never model chain-of-thought, and
 the mechanism is held by a new offline VincioBench family plus a paid, non-CI OpenRouter uplift
-harness. The surface is experimental and additive; `API_VERSION` remains `5.0`. There is
+harness. `v7.11` completes that engine into the **Big Brain** core: an internal plan mode
+(one bounded planning call whose typed, dependency-ordered steps structure every candidate pass),
+structural honesty (fabricated source attributions are refuted and withheld, honest evidence-host
+citations credited, every refutation carries its reason into a bounded repair pass), and
+transient-upstream resilience (retryable empty payloads plus one spaced, budget-capped salvage
+pass). The surface is experimental and additive; `API_VERSION` remains `5.0`. There is
 currently **no proposed capability** on the roadmap;
 the platform is feature-complete, and new capability is proposed from scratch when it meets a real need
 (see [Forward work](#forward-work)).

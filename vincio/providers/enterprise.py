@@ -23,6 +23,7 @@ from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote, urlsplit
 
+from ..core.errors import ProviderResponseError
 from ..core.types import (
     FinishReason,
     ModelEvent,
@@ -254,6 +255,10 @@ class BedrockProvider(HTTPProvider):
         self, data: dict[str, Any], request: ModelRequest, latency_ms: int
     ) -> ModelResponse:
         content = (data.get("output") or {}).get("message", {}).get("content", [])
+        if not content:
+            raise ProviderResponseError(
+                "no content in response", provider=self.name, retryable=True
+            )
         text = "".join(part.get("text", "") for part in content if isinstance(part, dict))
         usage_raw = data.get("usage") or {}
         usage = TokenUsage(

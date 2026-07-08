@@ -39,6 +39,7 @@ from ..core.errors import (
 )
 from ..core.tokens import count_tokens
 from ..core.types import (
+    Budget,
     EvidenceItem,
     Message,
     ModelRequest,
@@ -227,9 +228,18 @@ _PLANFUL_KINDS = frozenset(
 )
 _HTTP_URL_RE = re.compile(r"https?://[^\s<>\"')\]]+", re.IGNORECASE)
 _ATTRIBUTION_RE = re.compile(
-    r"\b(?:according to|per|sources?\s*:|as reported by|as stated (?:on|by)|cited (?:from|on))\s+"
+    r"\b(?:according to|sources?\s*:|as reported by|as stated (?:on|by)|cited (?:from|on))\s+"
+    r"(?:(?:the|an?|its|their|official)\s+){0,2}"
     r"(?:https?://)?(?:www\.)?(?P<host>[a-z0-9-]+(?:\.[a-z0-9-]+)+)",
     re.IGNORECASE,
+)
+# An attribution names a web source only when its final label is a plausible
+# public suffix; "Node.js", "U.S." and dotted numerals ("1.5 seconds") are
+# prose, never hosts.
+_PLAUSIBLE_TLDS = frozenset(
+    "com org net edu gov mil int io ai co dev app info biz news blog site online tech "
+    "us uk de fr it es nl se no fi dk pl ru cn jp kr in au nz ca br mx ar za ch at be "
+    "ie pt cz gr tr il sa ae sg hk tw th vn id my ph eu asia".split()
 )
 _UNCERTAINTY_RE = re.compile(
     r"\[UNVERIFIED\]|"
@@ -1028,12 +1038,18 @@ class UniversalReasoningEngine:
         assessment: ReasoningAssessment,
         *,
         config: RunConfig | None,
+        spent_steps: int = 0,
     ) -> bool:
-        """Spend one bounded planning call only where structure pays for itself."""
+        """Spend one bounded planning call only where structure pays for itself.
+
+        ``spent_steps`` counts internal calls already made (semantic routing),
+        so optional engine overhead never pushes a tight step budget past the
+        answer slot itself.
+        """
         if self.policy.plan_mode == "off":
             return False
         budget = config.budget if config and config.budget is not None else self.app.budget
-        if min(self.policy.max_passes, budget.max_steps) <= 1:
+        if min(self.policy.max_passes, budget.max_steps) - spent_steps <= 1:
             return False
         if self.policy.plan_mode == "always":
             return True
@@ -1137,26 +1153,24 @@ class UniversalReasoningEngine:
             goal = " ".join(step.goal.split())[:160]
             if not goal:
                 continue
-            index_map[original_index] = len(steps)
+            new_index = len(steps)
+            index_map[original_index] = new_index
             steps.append(
                 PlannedStep(
-                    index=len(steps),
+                    index=new_index,
                     goal=goal,
                     kind=step.kind,
-                    depends_on=[],
+                    # Only backward dependencies survive, so the map built so
+                    # far contains every valid target already.
+                    depends_on=sorted(
+                        {
+                            index_map[dep]
+                            for dep in step.depends_on
+                            if dep in index_map and index_map[dep] < new_index
+                        }
+                    ),
                     check=step.check,
                 )
-            )
-        for original_index, step in enumerate(decision.steps[: self.policy.plan_max_steps]):
-            if original_index not in index_map:
-                continue
-            new_index = index_map[original_index]
-            steps[new_index].depends_on = sorted(
-                {
-                    index_map[dep]
-                    for dep in step.depends_on
-                    if dep in index_map and index_map[dep] < new_index
-                }
             )
         if not steps:
             assessment.reasons.append(
@@ -1308,7 +1322,9 @@ class UniversalReasoningEngine:
             assessment = self._merge_semantic_route(assessment, semantic_decision)
         plan = self.plan(text, assessment)
         plan_call: _SemanticRouteCall | None = None
-        if self._should_plan(assessment, config=config):
+        if self._should_plan(
+            assessment, config=config, spent_steps=int(routing_call is not None)
+        ):
             plan_decision, plan_call = await self._deliberate_plan(
                 normalized, assessment, config=config
             )
@@ -1357,17 +1373,49 @@ class UniversalReasoningEngine:
                 evidence=[],
                 total_slots=1 + routing_steps,
             )
+            direct_receipts: list[ReasoningPass] = []
+            failed_direct: RunResult | None = None
+            if (
+                self.policy.salvage_transient_failures
+                and result.status != RunStatus.SUCCEEDED
+                and _transient_failure(result)
+                and 1 + routing_steps < min(self.policy.max_passes, run_budget.max_steps)
+            ):
+                verification = self._verify(result, [], plan, assessment, request_text=text)
+                direct_score = self._score_candidates([result], [verification])[0]
+                direct_receipts.append(
+                    self._pass_receipt(0, "direct", result, verification, direct_score)
+                )
+                failed_direct = result
+                await self._salvage_backoff(run_budget, started)
+                result = await self._execute(
+                    normalized,
+                    config,
+                    index=1,
+                    evidence=[],
+                    total_slots=2 + routing_steps,
+                )
             verification = self._verify(result, [], plan, assessment, request_text=text)
             direct_score = self._score_candidates([result], [verification])[0]
-            receipt = self._pass_receipt(0, "direct", result, verification, direct_score)
+            receipt = self._pass_receipt(
+                len(direct_receipts),
+                "salvage" if direct_receipts else "direct",
+                result,
+                verification,
+                direct_score,
+            )
             self._apply_routing_usage(result, routing_call)
             self._apply_routing_usage(result, plan_call)
-            self._enforce_outer_budget(result, normalized, config, steps=1 + routing_steps)
+            if failed_direct is not None:
+                self._aggregate_usage(result, [failed_direct, result])
+            self._enforce_outer_budget(
+                result, normalized, config, steps=1 + len(direct_receipts) + routing_steps
+            )
             outcome = self._finish(
                 result,
                 assessment,
                 plan,
-                [receipt],
+                [*direct_receipts, receipt],
                 web_evidence,
                 corrected=False,
                 refused=False,
@@ -1413,16 +1461,17 @@ class UniversalReasoningEngine:
         if (
             self.policy.salvage_transient_failures
             and all(candidate.status != RunStatus.SUCCEEDED for candidate in candidates)
+            and all(_transient_failure(candidate) for candidate in candidates)
             and plan.allow_correction
-            and len(receipts) < self.policy.max_passes
+            and len(receipts) < total_slots
         ):
-            # Every pass died before producing an answer (the signature of a
-            # flapping or rate-limited upstream, which in-provider retries
-            # back off over at most a few hundred milliseconds). Spend the
-            # reserved correction slot on one salvage attempt, spaced further
-            # out so a briefly exhausted upstream has time to recover.
-            if self.policy.salvage_backoff_ms:
-                await asyncio.sleep(self.policy.salvage_backoff_ms / 1000)
+            # Every pass died to a transient provider fault before producing
+            # an answer (in-provider retries back off over at most a few
+            # hundred milliseconds). Spend the reserved correction slot on one
+            # salvage attempt, spaced further out — within the caller's
+            # latency budget — so a briefly exhausted upstream can recover.
+            # Deterministic failures (auth, policy, contract) never salvage.
+            await self._salvage_backoff(run_budget, started)
             salvage_run = await self._execute(
                 candidate_inputs[0],
                 config,
@@ -1435,12 +1484,14 @@ class UniversalReasoningEngine:
             verifications.append(
                 self._verify(salvage_run, web_evidence, plan, assessment, request_text=text)
             )
-            scores = self._score_candidates(candidates, verifications)
+            scores.append(self._score_candidates([salvage_run], [verifications[-1]])[0])
             receipts.append(
                 self._pass_receipt(
                     len(receipts), "salvage", salvage_run, verifications[-1], scores[-1]
                 )
             )
+            # The salvage attempt consumed the reserved correction slot.
+            plan.allow_correction = False
 
         best_index = max(range(len(candidates)), key=lambda i: (scores[i], -i))
         chosen = candidates[best_index]
@@ -1614,6 +1665,15 @@ class UniversalReasoningEngine:
             cfg.reasoning_effort = effort_by_depth[assessment.depth]
         return await self.app._runtime.execute(user_input, cfg)
 
+    async def _salvage_backoff(self, budget: Budget, started: float) -> None:
+        """Sleep before a salvage pass, never past the caller's latency budget."""
+        if not self.policy.salvage_backoff_ms:
+            return
+        elapsed_ms = (time.monotonic() - started) * 1000
+        delay_ms = min(self.policy.salvage_backoff_ms, max(0.0, budget.max_latency_ms - elapsed_ms))
+        if delay_ms > 0:
+            await asyncio.sleep(delay_ms / 1000)
+
     def _reasoning_tools(self) -> list[str]:
         """Enabled tools whose execution is not already owned by this engine."""
         return [
@@ -1717,12 +1777,22 @@ class UniversalReasoningEngine:
                 note_suppressed("reasoning.web_read_failed")
                 return None
 
-        # Pages are independent; read them concurrently (bounded) instead of
-        # paying the slowest-page latency once per page. Order is preserved so
+        # Pages on distinct hosts are read concurrently (bounded), but each
+        # host keeps a sequential lane so the browser's per-host politeness
+        # pacing still spaces same-host fetches. Order is preserved so
         # requested URLs and higher-ranked hits keep evidence precedence.
-        extracts = await gather_bounded(
-            (_read(url) for url, _title, _rank in read_targets),
-            limit=min(3, max(1, len(read_targets))),
+        lanes: dict[str, list[int]] = {}
+        for position, (url, _title, _rank) in enumerate(read_targets):
+            lanes.setdefault((urlparse(url).hostname or url).casefold(), []).append(position)
+        extracts: list[Any] = [None] * len(read_targets)
+
+        async def _read_lane(positions: list[int]) -> None:
+            for position in positions:
+                extracts[position] = await _read(read_targets[position][0])
+
+        await gather_bounded(
+            (_read_lane(positions) for positions in lanes.values()),
+            limit=min(3, max(1, len(lanes))),
         )
         evidence: list[EvidenceItem] = []
         for (url, title, rank), extract in zip(read_targets, extracts, strict=True):
@@ -2181,9 +2251,30 @@ def _search_query(text: str) -> str:
     return query[:300]
 
 
+_TRANSIENT_ERROR_RE = re.compile(
+    r"no (?:choices|content|candidates|output) in response|rate limited|timeout|"
+    r"provider unavailable|temporarily|overloaded|connection|retries exhausted|"
+    r"provider error 5\d\d",
+    re.IGNORECASE,
+)
+
+
+def _transient_failure(result: RunResult) -> bool:
+    """True when a failed pass looks like a recoverable provider fault."""
+    return bool(result.error and _TRANSIENT_ERROR_RE.search(result.error))
+
+
+def _clean_url(url: str) -> str:
+    return url.rstrip(".,;:)\"'").rstrip("/")
+
+
 def _normalize_host(value: str) -> str:
     host = value.casefold().strip(".,;:)('\"")
     return host[4:] if host.startswith("www.") else host
+
+
+def _plausible_web_host(host: str) -> bool:
+    return host.rsplit(".", 1)[-1] in _PLAUSIBLE_TLDS and not host.replace(".", "").isdigit()
 
 
 def _related_host(host: str, allowed_hosts: set[str]) -> bool:
@@ -2198,10 +2289,24 @@ def _evidence_hosts(evidence: list[EvidenceItem]) -> set[str]:
     for item in evidence:
         for candidate in (item.source_id, str(item.metadata.get("url", ""))):
             if candidate.startswith(("http://", "https://")):
-                host = urlparse(candidate).hostname
+                host = urlparse(_clean_url(candidate)).hostname
                 if host:
                     hosts.add(_normalize_host(host))
     return hosts
+
+
+def _mentioned_hosts(text: str) -> list[str]:
+    """Hosts a text claims as sources: full URLs plus attribution phrases."""
+    mentioned = [
+        _normalize_host(urlparse(_clean_url(match.group(0))).hostname or "")
+        for match in _HTTP_URL_RE.finditer(text or "")
+    ]
+    mentioned.extend(
+        host
+        for match in _ATTRIBUTION_RE.finditer(text or "")
+        if _plausible_web_host(host := _normalize_host(match.group("host")))
+    )
+    return [host for host in mentioned if host]
 
 
 def _cites_evidence_host(answer: str, evidence: list[EvidenceItem]) -> bool:
@@ -2209,14 +2314,7 @@ def _cites_evidence_host(answer: str, evidence: list[EvidenceItem]) -> bool:
     hosts = _evidence_hosts(evidence)
     if not hosts:
         return False
-    mentioned = [
-        _normalize_host(urlparse(match.group(0).rstrip(".,;:)\"'")).hostname or "")
-        for match in _HTTP_URL_RE.finditer(answer or "")
-    ]
-    mentioned.extend(
-        _normalize_host(match.group("host")) for match in _ATTRIBUTION_RE.finditer(answer or "")
-    )
-    return any(host and _related_host(host, hosts) for host in mentioned)
+    return any(_related_host(host, hosts) for host in _mentioned_hosts(answer))
 
 
 def _fabricated_sources(
@@ -2225,39 +2323,38 @@ def _fabricated_sources(
     """Sources the answer attributes that exist in neither evidence nor request.
 
     Precision-first: only full ``http(s)`` URLs and explicit attribution
-    phrases naming a domain count as claimed sources; a bare product or
-    organization name never triggers. A flagged source means the answer
-    fabricated its grounding.
+    phrases naming a plausible web host count as claimed sources; a bare
+    product or organization name and dotted prose ("Node.js", "1.5 seconds")
+    never trigger. A flagged source means the answer fabricated its grounding.
     """
-    allowed_urls: set[str] = set()
-    allowed_hosts: set[str] = set()
-
-    def allow(url: str) -> None:
-        cleaned = url.rstrip(".,;:)\"'").rstrip("/")
-        allowed_urls.add(cleaned)
-        host = urlparse(cleaned).hostname
-        if host:
-            allowed_hosts.add(_normalize_host(host))
-
-    for item in evidence:
-        for candidate in (item.source_id, str(item.metadata.get("url", ""))):
-            if candidate.startswith(("http://", "https://")):
-                allow(candidate)
-    for match in _HTTP_URL_RE.finditer(request_text or ""):
-        allow(match.group(0))
-    for match in _ATTRIBUTION_RE.finditer(request_text or ""):
-        allowed_hosts.add(_normalize_host(match.group("host")))
+    allowed_urls = {
+        _clean_url(candidate)
+        for item in evidence
+        for candidate in (item.source_id, str(item.metadata.get("url", "")))
+        if candidate.startswith(("http://", "https://"))
+    }
+    allowed_urls.update(
+        _clean_url(match.group(0)) for match in _HTTP_URL_RE.finditer(request_text or "")
+    )
+    allowed_hosts = _evidence_hosts(evidence)
+    allowed_hosts.update(
+        _normalize_host(urlparse(url).hostname or "") for url in allowed_urls
+    )
+    allowed_hosts.update(_mentioned_hosts(request_text or ""))
+    allowed_hosts.discard("")
 
     fabricated: list[str] = []
     for match in _HTTP_URL_RE.finditer(answer or ""):
-        url = match.group(0).rstrip(".,;:)\"'").rstrip("/")
+        url = _clean_url(match.group(0))
         host = _normalize_host(urlparse(url).hostname or "")
         if url not in allowed_urls and not _related_host(host, allowed_hosts):
             fabricated.append(url)
-    for match in _ATTRIBUTION_RE.finditer(answer or ""):
-        host = _normalize_host(match.group("host"))
-        if host and not _related_host(host, allowed_hosts):
-            fabricated.append(host)
+    fabricated.extend(
+        host
+        for match in _ATTRIBUTION_RE.finditer(answer or "")
+        if _plausible_web_host(host := _normalize_host(match.group("host")))
+        and not _related_host(host, allowed_hosts)
+    )
     return list(dict.fromkeys(fabricated))
 
 

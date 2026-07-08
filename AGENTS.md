@@ -24,7 +24,7 @@ hosted service, control plane, or account.
 
 The public contract is `vincio.__all__` (**559 top-level symbols**), frozen under
 SemVer as `API_VERSION = "5.0"` — intentionally decoupled from the release version
-(`__version__`, currently `7.10.0`), so it bumps only when the surface working code
+(`__version__`, currently `7.11.0`), so it bumps only when the surface working code
 depends on changes. Every release has been additive on that frozen surface.
 
 ## Mental model

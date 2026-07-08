@@ -50,6 +50,24 @@ All additive and experimental; `API_VERSION` remains `5.0`.
   caller set no seed (some providers reject seed values below 1 and the caller
   never asked for determinism); later passes still offset by index so peers
   differ.
+- **Pre-merge adversarial review (8 independent angles, findings fixed):**
+  attribution parsing no longer mistakes dotted prose for source hosts
+  ("According to Node.js documentation", "per 1.5 seconds", "U.S. law" never
+  flag; a plausible-TLD gate anchors fabrication detection) and honest
+  citations survive intervening articles ("as stated by the nodejs.org …");
+  numeric entailment is version-shaped only ("24" ⊨ "24.11.0" but "4" ⊭
+  "4.99", multi-dot numerals kept whole) and the containment path applies
+  only to number-anchored claims, so recombined numberless claims cannot ride
+  it; salvage requires transient-looking failures, consumes the reserved
+  correction slot (never overrunning `budget.max_steps` or the per-pass
+  budget partition), caps its backoff by the caller's remaining
+  `max_latency_ms`, and now also covers the direct path; the plan probe
+  accounts for a routing call already spent so tight step budgets never fail
+  from engine overhead; concurrent evidence reads keep a sequential lane per
+  host so per-host politeness pacing is preserved; Gemini safety blocks
+  (`promptFeedback.blockReason`) fail fast instead of retrying, and the
+  Bedrock adapter raises on empty content instead of returning a silent empty
+  success.
 - **Transient-failure salvage:** when every reasoning pass dies to a provider
   fault before producing an answer, the engine spends its reserved correction
   slot on one salvage attempt spaced beyond the in-provider retry window
