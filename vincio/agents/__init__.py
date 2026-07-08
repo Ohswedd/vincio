@@ -72,6 +72,7 @@ from .timers import (
     wait_for_event,
 )
 from .universal_reasoning import (
+    PlannedStep,
     ReasoningAssessment,
     ReasoningPass,
     ReasoningPlan,
@@ -127,6 +128,7 @@ __all__ = [
     "ReasoningPolicy",
     "ReasoningAssessment",
     "ReasoningPlan",
+    "PlannedStep",
     "ReasoningPass",
     "UniversalReasoningPolicy",
     "UniversalReasoningResult",

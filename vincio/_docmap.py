@@ -186,6 +186,16 @@ TOPICS: tuple[Topic, ...] = (
         verbs=("reason", "use_reasoning_engine"),
     ),
     Topic(
+        "big_brain", "runs", "The Big Brain",
+        "The orchestration core every boosted run flows through: assessment, internal "
+        "plan mode with typed dependency-ordered steps, governed evidence gathering, "
+        "bounded passes, offline verification with fabricated-source refusal, and one "
+        "honest typed receipt — the same architecture for every model.",
+        concept=_c("big-brain"),
+        guides=(_g("reasoning"),),
+        examples=(_e("22_universal_reasoning"),),
+    ),
+    Topic(
         "tools", "runs", "Tools & skills",
         "Register functions as permissioned, approval-gated tools, attach Agent Skills, "
         "and surface provider-native hosted tools.",

@@ -352,7 +352,7 @@ _Teach it: trace capture, dataset export, distillation, on-policy learning, loca
 - `app.local_adaptation` — The continual on-device adaptation loop, as a streaming controller.
 - `app.use_local_adapter` — Apply (or remove) an on-device LoRA-class adapter on the base provider.
 
-## Public API (558 public symbols)
+## Public API (559 public symbols)
 
 Every introspectable name in `vincio.__all__` — the exact set Semantic Versioning applies to (the `__version__` value aside). Import every name from the top-level `vincio` package.
 
@@ -644,6 +644,7 @@ Every introspectable name in `vincio.__all__` — the exact set Semantic Version
 - `OutputSchema(name, json_schema, model=…)` — A named, provider-agnostic structured-output contract.
 - `Pack(**data)` — A domain bundle: prompt config + schema + policies + evaluators + evals.
 - `PlanRepairer(max_repairs=…, budget_shock_fraction=…)` — Repairs a running :class:`StepDAG` in place. Deterministic and offline.
+- `PlannedStep(**data)` — One bounded, dependency-ordered step of the internal plan.
 - `PluginInfo(**data)` — A discovered plugin entry point and its registration status.
 - `PoisoningDetector(threshold=…, min_authority=…, min_provenance=…, classifier=…, injection_detector=…)` — Flag likely-poisoned retrieved evidence from authority/provenance signals.
 - `PolicySet(**data)` — Deterministic per-run policies (policies).

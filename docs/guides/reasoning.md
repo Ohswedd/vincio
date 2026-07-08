@@ -47,6 +47,19 @@ the actual answer always retains a model-call slot. Deep tasks use bounded
 independent candidates and correction only when verification or material
 disagreement justifies it.
 
+A deep, genuinely multi-step request additionally triggers the internal plan
+mode (`plan_mode="auto"`, or `"off"`/`"always"`): one bounded planning call
+returns typed, dependency-ordered `PlannedStep`s — goal, kind, and the
+deterministic check each step's output should survive — that structure every
+candidate pass. The plan can shape prompts and evidence queries only; it can
+never open the web the deterministic policy declined, and an invalid or
+low-confidence plan falls back to the heuristic decomposition. Look for
+`plan_mode_used`, `plan_steps` and `plan_tokens` in the receipt. Verification
+also refuses fabricated grounding: a URL or "according to …" domain found in
+neither the attached evidence nor the request refutes the answer, the flagged
+sources land in `receipt["fabricated_sources"]`, and each refutation's reason
+is recorded in `receipt["refutation_notes"]`.
+
 Browser need is a separate decision with four observable outcomes:
 `not_needed`, `search`, `disabled`, or `user_declined`. Explicit searches,
 requested URLs, unstable facts and high-stakes questions select governed web
@@ -236,6 +249,7 @@ See [`examples/11_advanced_context.py`](../../examples/11_advanced_context.py).
 ## Related
 
 - [Concept: Universal reasoning](../concepts/universal-reasoning.md)
+- [Concept: The Big Brain](../concepts/big-brain.md)
 - [Example: 22_universal_reasoning.py](../../examples/22_universal_reasoning.py)
 - [Example: 11_advanced_context.py](../../examples/11_advanced_context.py)
 - [Concept: Prompt compiler](../concepts/prompt-compiler.md)

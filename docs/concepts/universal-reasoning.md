@@ -35,6 +35,24 @@ not chain-of-thought. Model prompts explicitly require private analysis and an
 answer-only response; pass records contain run ids, validation and verifier
 status, tokens and cost, never scratch work.
 
+## Internal plan mode
+
+A deep, genuinely multi-step request (comparison under constraints, root-cause
+work, planning, coding, coupled decisions) additionally earns one bounded
+internal planning call. The configured model returns a validated typed
+decomposition — up to `plan_max_steps` `PlannedStep`s, each with an imperative
+goal, a kind (`analyze`, `gather`, `compute`, `compare`, `decide`, `draft`,
+`verify`), dependency indices, and the deterministic check its output should
+survive — plus explicit assumptions and optional evidence queries. The merged
+plan structures every candidate pass. Governance is one-directional: evidence
+queries are honored only when the deterministic policy already selected search,
+step goals are length-clipped, dangling dependencies are dropped, and a
+low-confidence or invalid plan falls back to the heuristic decomposition. The
+planning call is traced, cost-accounted and visible in the receipt
+(`plan_mode_used`, `plan_steps`, `plan_tokens`). Set `plan_mode="off"` to
+disable it or `"always"` to plan every eligible request; simple work never pays
+for planning on `"auto"`.
+
 ## One reasoning and browsing system
 
 Freshness is decided before generation. Explicit search requests, requested
@@ -70,6 +88,13 @@ numeric expression, percentage-and-even-split problems, and explicit logical
 inconsistency with a demonstrated witness)
 before generation. Those verified facts become hard plan constraints, preventing
 an internally valid calculation for the wrong interpretation from passing.
+A fabricated-source check runs on every live-factual candidate: an answer that
+attributes a claim to a URL or "according to …" domain present in neither the
+attached evidence nor the request is refuted outright — even when the rest of
+the answer is hedged — and the flagged sources are recorded in the receipt
+(`fabricated_sources`). The check is precision-first: citing an attached
+source, a request-mentioned URL, or a subdomain of either never triggers it,
+and a bare product or organization name is never treated as a citation.
 A refuted answer cannot win candidate selection. When candidates disagree or a
 kernel refutes the best one, one bounded correction pass receives only the
 answers, verifier verdicts and governed evidence. Total passes, concurrency,

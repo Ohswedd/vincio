@@ -228,25 +228,25 @@ def render_headtohead(snapshot: dict) -> str:
 def render_reasoning(snapshot: dict) -> str:
     """The universal-reasoning live capability plates, from the dated snapshot."""
     live = snapshot["universal_reasoning_live"]
-    reasoning = live["reasoning"]
+    small = live["small_model"]
     multilingual = live["multilingual_routing"]
-    direct = round(reasoning["direct_accuracy"] * 100)
-    via = round(reasoning["via_vincio_accuracy"] * 100)
+    direct = round(small["direct_accuracy"] * 100)
+    via = round(small["via_vincio_accuracy"] * 100)
     cards = [
         (
             f"{direct}% -> {via}%",
             "exact task accuracy",
-            f"n={reasoning['cases']} · {reasoning['model']}",
+            f"n={small['cases']} · {small['model']}",
         ),
         (
-            f"{reasoning['stable_reasoning_via_vincio']} / {reasoning['stable_reasoning_cases']}",
-            "stable tasks verified",
-            "arithmetic · logic · multi-step",
+            f"{small['deterministically_verified_answers']} + {small['bounded_corrections_accepted']}",
+            "verified · repaired",
+            "deterministic offline kernels",
         ),
         (
-            f"{reasoning['direct_current_fact_overclaims']} -> {reasoning['via_vincio_current_fact_overclaims']}",
-            "unsupported overclaims",
-            f"{reasoning['verified_web_snapshots']} snapshots · {reasoning['safe_refusals']} safe refusal",
+            f"{small['fabricated_sources_delivered'] + small['current_fact_overclaims_delivered']}",
+            "fabrications or overclaims",
+            f"{small['web_verified_cases']} web-verified · {small['safe_refusals']} safe refusals",
         ),
         (
             f"{multilingual['correct']} / {multilingual['cases']}",

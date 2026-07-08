@@ -50,6 +50,7 @@ from vincio.core.types import (
     TaskType,
     TokenUsage,
     ToolCall,
+    TrustLevel,
     UserInput,
 )
 from vincio.memory import MemoryEngine
@@ -6449,6 +6450,79 @@ async def bench_universal_reasoning() -> dict[str, Any]:
             provider=MockProvider(responder=multilingual_responder),
             model="mock-1",
         )
+        plan_payload = json.dumps(
+            {
+                "steps": [
+                    {
+                        "goal": "List the material trade-offs",
+                        "kind": "analyze",
+                        "depends_on": [],
+                        "check": "none",
+                    },
+                    {
+                        "goal": "Compare the options against the constraints",
+                        "kind": "compare",
+                        "depends_on": [0],
+                        "check": "constraint",
+                    },
+                    {
+                        "goal": "Recommend one option with its rationale",
+                        "kind": "decide",
+                        "depends_on": [1],
+                        "check": "none",
+                    },
+                ],
+                "assumptions": [],
+                "evidence_queries": [],
+                "confidence": 0.9,
+            }
+        )
+
+        def plan_responder(request: ModelRequest) -> str:
+            prompt = "\n".join(message.text for message in request.messages)
+            if "internal task planner" in prompt:
+                return plan_payload
+            return "A concise, consistent recommendation."
+
+        plan_provider = MockProvider(responder=plan_responder, reasoning=False)
+        plan_app = ContextApp(name="reasoning-plan", provider=plan_provider, model="mock-1")
+        planned = await UniversalReasoningEngine(plan_app).arun(
+            "Compare the trade-offs, identify the root cause, and derive a logically "
+            "consistent recommendation."
+        )
+        plan_simple = await UniversalReasoningEngine(plan_app).arun(
+            "Rewrite this title in uppercase"
+        )
+
+        from vincio.agents.universal_reasoning import _fabricated_sources
+
+        fabricated_offline = await UniversalReasoningEngine(
+            ContextApp(
+                name="reasoning-fabricated",
+                provider=MockProvider(
+                    default_text=(
+                        "The latest release is 9.9. According to fabricated-news.com, "
+                        "see https://fake.example.net/story."
+                    )
+                ),
+                model="mock-1",
+            )
+        ).arun("What is the latest stable release?")
+        honest_flags = _fabricated_sources(
+            "According to python.org, 3.14 is current. See https://docs.python.org/3/whatsnew/.",
+            [
+                EvidenceItem(
+                    id="web:abc",
+                    source_id="https://docs.python.org/3/whatsnew/",
+                    source_type="web",
+                    text="evidence",
+                    trust_level=TrustLevel.UNTRUSTED_TOOL,
+                    metadata={"url": "https://docs.python.org/3/whatsnew/"},
+                )
+            ],
+            "",
+        )
+
         multilingual_app.add_tool(create_ticket)
         multilingual_engine = UniversalReasoningEngine(multilingual_app)
         spanish = await multilingual_engine.arun(
@@ -6543,6 +6617,31 @@ async def bench_universal_reasoning() -> dict[str, Any]:
             }
             for item in repaired.passes
         ),
+        "plan_mode_structures_deep_multistep": bool(
+            planned.plan.plan_mode_used
+            and [step.kind for step in planned.plan.steps] == ["analyze", "compare", "decide"]
+            and planned.plan.steps[1].depends_on == [0]
+            and planned.result.metadata["universal_reasoning"]["plan_steps"] == 3
+        ),
+        "plan_mode_skips_simple_work": bool(
+            not plan_simple.plan.plan_mode_used
+            and plan_simple.result.metadata["universal_reasoning"]["plan_steps"] == 0
+            and len(plan_simple.passes) == 1
+        ),
+        "plan_call_accounted": bool(
+            planned.result.metadata["universal_reasoning"]["plan_tokens"] > 0
+            and planned.result.usage.total_tokens
+            > planned.result.metadata["universal_reasoning"]["plan_tokens"]
+            and planned.result.metadata["universal_reasoning"]["model_calls"]
+            == len(planned.passes) + 1
+        ),
+        "fabricated_source_blocked": bool(
+            fabricated_offline.refused
+            and fabricated_offline.result.raw_text == ""
+            and "fabricated-news.com"
+            in fabricated_offline.result.metadata["universal_reasoning"]["fabricated_sources"]
+        ),
+        "honest_source_not_flagged": honest_flags == [],
         "search_decision_accuracy": sum(
             decision.needs_search == expected[2]
             for decision, expected in zip(decisions, routing_cases, strict=True)

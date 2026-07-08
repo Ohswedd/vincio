@@ -2710,6 +2710,21 @@
     "families.universal_reasoning.private_reasoning_not_recorded": {
       "eq": true
     },
+    "families.universal_reasoning.plan_mode_structures_deep_multistep": {
+      "eq": true
+    },
+    "families.universal_reasoning.plan_mode_skips_simple_work": {
+      "eq": true
+    },
+    "families.universal_reasoning.plan_call_accounted": {
+      "eq": true
+    },
+    "families.universal_reasoning.fabricated_source_blocked": {
+      "eq": true
+    },
+    "families.universal_reasoning.honest_source_not_flagged": {
+      "eq": true
+    },
     "families.universal_reasoning.search_decision_accuracy": {
       "gte": 0.95
     },

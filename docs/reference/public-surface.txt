@@ -291,6 +291,7 @@ OutputField
 OutputSchema
 Pack
 PlanRepairer
+PlannedStep
 PluginInfo
 PoisoningDetector
 PolicySet

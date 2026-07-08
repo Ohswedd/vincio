@@ -1433,6 +1433,26 @@
       "rationale": "Checking an answer in isolation can certify arithmetic for the wrong interpretation; verification must remain bound to the task."
     },
     {
+      "id": "universal_reasoning_internal_plan_mode",
+      "category": "quality",
+      "statement": "A deep multi-step request on a non-native model receives one bounded internal planning call whose typed, dependency-ordered steps structure every candidate pass, while simple work never pays for planning.",
+      "metric": "families.universal_reasoning.plan_mode_structures_deep_multistep",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.plan_mode_structures_deep_multistep",
+      "rationale": "Decomposition helps exactly where tasks have coupled steps; an unbounded or always-on planner would tax simple work and an unvalidated one could smuggle instructions."
+    },
+    {
+      "id": "universal_reasoning_no_fabricated_sources",
+      "category": "quality",
+      "statement": "An answer that attributes claims to a source present in neither the attached evidence nor the request is refuted and withheld rather than delivered.",
+      "metric": "families.universal_reasoning.fabricated_source_blocked",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.fabricated_source_blocked",
+      "rationale": "Fabricated grounding is worse than no grounding: a confident fake citation converts a guess into apparent verified fact."
+    },
+    {
       "id": "universal_reasoning_model_native_multilingual",
       "category": "quality",
       "statement": "Non-English and unknown-language requests are semantically routed by the configured model without a finite language allow-list.",

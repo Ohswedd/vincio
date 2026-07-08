@@ -17,6 +17,7 @@ from .agents import (
     ModelPredictivePlanner,
     MPCResult,
     MPCStep,
+    PlannedStep,
     PlanRepairer,
     PredictedStep,
     ReasoningAssessment,
@@ -579,7 +580,7 @@ from .verify import (
 )
 from .workflows.engine import Workflow
 
-__version__ = "7.10.0"
+__version__ = "7.11.0"
 
 __all__ = [
     "ContextApp",
@@ -685,6 +686,7 @@ __all__ = [
     "ReasoningPolicy",
     "ReasoningAssessment",
     "ReasoningPlan",
+    "PlannedStep",
     "ReasoningPass",
     "UniversalReasoningPolicy",
     "UniversalReasoningResult",

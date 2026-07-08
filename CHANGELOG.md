@@ -4,6 +4,62 @@ All notable changes to Vincio are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [7.11.0] - 2026-07-08
+
+**The Big Brain: internal plan mode and structural honesty.** The universal
+reasoning engine — the orchestration core every boosted run flows through — now
+plans deep work before generating and refuses fabricated grounding outright.
+All additive and experimental; `API_VERSION` remains `5.0`.
+
+- **Internal plan mode:** a deep, genuinely multi-step request (comparison
+  under constraints, root-cause, planning, coding, coupled decisions) earns one
+  bounded planning call. The configured model returns a validated typed
+  decomposition — up to `plan_max_steps` `PlannedStep`s with imperative goals,
+  kinds, dependency order, and the deterministic check each step's output
+  should survive — plus explicit assumptions. The merged plan structures every
+  candidate pass. Governance is one-directional: plan evidence queries are
+  honored only when deterministic policy already selected search, dangling
+  dependencies are dropped, goals are length-clipped, and a low-confidence or
+  invalid plan falls back to the heuristic decomposition. The call is traced,
+  DLP-screened, cost-accounted and visible in the receipt (`plan_mode_used`,
+  `plan_steps`, `plan_tokens`, `plan_trace_id`). `plan_mode` policy:
+  `auto` (default — simple work never pays for planning) / `off` / `always`.
+- **No fabricated sources:** an answer that attributes a claim to a URL or
+  "according to …" domain present in neither the attached evidence nor the
+  request is refuted and withheld — even when hedged as unverified — and the
+  flagged sources are recorded in the receipt (`fabricated_sources`).
+  Symmetrically, an honest prose attribution naming an attached evidence host
+  now counts as a citation for the live-claim citation gate, so a truthful
+  "according to nodejs.org" no longer loses to the same host semantics that
+  refute an invented one. Precision-first: attached sources, request-mentioned
+  URLs, subdomains of either, and bare product/organization names never
+  trigger.
+- **Verification that explains itself:** every refutation now records its
+  reason (`receipt["refutation_notes"]`), and the bounded correction pass is
+  shown exactly which deterministic checks each candidate failed plus an
+  explicit repair instruction (drop unsupported specifics, cite the attached
+  sources), so a refuted live answer is repaired instead of re-refuted. The
+  strict claim-support kernel behind the citation verifier and the
+  hallucination/faithfulness metrics gains two precision-first entailment
+  allowances: a short claim is checked by claim-term containment against a
+  long document (entailment, not near-duplication), and a dotted-version
+  prefix ("24" against evidence "24.11.0") counts as the same number; "30"
+  still never matches "130". Live effect on GPT-4.1 mini: the cite-a-source
+  case went from honestly-withheld to answered-with-verified-citation.
+- **Robustness fix:** candidate passes no longer synthesize `seed=0` when the
+  caller set no seed (some providers reject seed values below 1 and the caller
+  never asked for determinism); later passes still offset by index so peers
+  differ.
+- **Gates and evidence:** `UniversalReasoningBench` adds
+  `plan_mode_structures_deep_multistep`, `plan_mode_skips_simple_work`,
+  `plan_call_accounted`, `fabricated_source_blocked` and
+  `honest_source_not_flagged` (all budget-pinned; two new SLOs).
+  `reasoning_uplift_live.py` gains a plan-shaped decision case and a
+  cite-a-source honesty case plus per-model `plan_mode_used_on_plan_case` and
+  `fabricated_source_answers`. New `docs/concepts/big-brain.md` concept page,
+  `assets/big-brain.svg`, and a README section present the full architecture;
+  live snapshots refreshed in `benchmarks/reference/live_snapshot.json`.
+
 ## [7.10.0] - 2026-07-07
 
 **Universal in-house reasoning for every model.** Native reasoning effort remains

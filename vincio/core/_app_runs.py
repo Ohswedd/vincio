@@ -737,7 +737,13 @@ class _RunVerbs:
         Easy requests retain the normal single-pass path. Hard, mathematical,
         logical, tool-dependent or freshness-sensitive requests receive a
         provider-independent plan, bounded candidate/verification/correction
-        passes, and (when enabled) governed web evidence. Native reasoning is
+        passes, and (when enabled) governed web evidence. A deep, genuinely
+        multi-step request additionally earns one bounded internal planning
+        call whose validated, typed, dependency-ordered steps structure every
+        candidate pass (``plan_mode`` policy: auto/off/always). Verification
+        refutes fabricated grounding: an answer attributing claims to a source
+        in neither the attached evidence nor the request is withheld, and the
+        flagged sources appear in the receipt. Native reasoning is
         used when available but is never required. Non-English and uncertain-
         language requests are semantically classified by the configured model,
         so routing follows model language support without a finite locale list;

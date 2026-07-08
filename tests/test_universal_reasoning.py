@@ -96,7 +96,10 @@ def test_non_reasoning_model_gets_bounded_multi_pass_reasoning(tmp_path):
     )
 
     assert len(outcome.passes) == 3
-    assert provider.call_count == 3
+    # Deep multi-step work on a non-native model spends one extra bounded
+    # internal planning call before the candidate passes.
+    assert provider.call_count == 4
+    assert outcome.result.metadata["universal_reasoning"]["model_calls"] == 4
     assert outcome.assessment.native_reasoning is False
     assert outcome.result.metadata["universal_reasoning"]["strategy"] == "logic_check"
     assert all(not hasattr(item, "raw_text") for item in outcome.passes)
@@ -723,3 +726,169 @@ def test_multilingual_semantic_search_and_unicode_evidence_verification(tmp_path
     assert outcome.web_verified
     assert outcome.answer_verification == "verified"
     assert outcome.result.status.value == "succeeded"
+
+
+def _plan_payload(
+    steps: list[dict] | None = None,
+    *,
+    assumptions: list[str] | None = None,
+    evidence_queries: list[str] | None = None,
+    confidence: float = 0.9,
+) -> str:
+    return json.dumps(
+        {
+            "steps": steps
+            or [
+                {"goal": "List the material trade-offs", "kind": "analyze", "depends_on": [], "check": "none"},
+                {"goal": "Compare the options against the constraints", "kind": "compare", "depends_on": [0], "check": "constraint"},
+                {"goal": "Recommend one option with its rationale", "kind": "decide", "depends_on": [1], "check": "none"},
+            ],
+            "assumptions": assumptions or [],
+            "evidence_queries": evidence_queries or [],
+            "confidence": confidence,
+        }
+    )
+
+
+def test_plan_mode_produces_typed_steps_and_is_fully_accounted(tmp_path):
+    def responder(request):
+        prompt = "\n".join(message.text for message in request.messages)
+        if "internal task planner" in prompt:
+            return _plan_payload(assumptions=["Latency matters more than cost"])
+        return "A concise, consistent recommendation."
+
+    provider = MockProvider(responder=responder, reasoning=False)
+    app = _app(tmp_path, provider)
+    outcome = app.reason(
+        "Compare the trade-offs, identify the root cause, and derive a logically consistent recommendation."
+    )
+
+    from vincio import PlannedStep
+
+    receipt = outcome.result.metadata["universal_reasoning"]
+    assert outcome.plan.plan_mode_used
+    assert all(isinstance(step, PlannedStep) for step in outcome.plan.steps)
+    assert [step.kind for step in outcome.plan.steps] == ["analyze", "compare", "decide"]
+    assert outcome.plan.steps[1].depends_on == [0]
+    assert outcome.plan.subproblems == [step.goal for step in outcome.plan.steps]
+    assert receipt["plan_mode_used"] and receipt["plan_steps"] == 3
+    assert receipt["plan_tokens"] > 0 and receipt["plan_trace_id"]
+    assert receipt["model_calls"] == len(outcome.passes) + 1
+    candidate_prompts = [
+        "\n".join(message.text for message in request.messages)
+        for request in provider.requests
+        if "internal task planner" not in "\n".join(message.text for message in request.messages)
+    ]
+    assert candidate_prompts
+    assert all("Step 2 (compare; after step 1; check: constraint)" in p for p in candidate_prompts)
+    assert all("assumption" in p.lower() for p in candidate_prompts)
+
+
+def test_plan_mode_skips_simple_work_and_respects_off_policy(tmp_path):
+    prompts_seen: list[str] = []
+
+    def responder(request):
+        prompts_seen.append("\n".join(message.text for message in request.messages))
+        return "ANSWER"
+
+    app = _app(tmp_path, MockProvider(responder=responder, reasoning=False))
+    simple = app.reason("Rewrite this title in uppercase")
+    assert not simple.plan.plan_mode_used
+    assert simple.result.metadata["universal_reasoning"]["plan_steps"] == 0
+
+    engine = UniversalReasoningEngine(app, UniversalReasoningPolicy(plan_mode="off"))
+    deep = engine.run(
+        "Compare the trade-offs, identify the root cause, and derive a logically consistent recommendation."
+    )
+    assert not deep.plan.plan_mode_used
+    assert all("internal task planner" not in prompt for prompt in prompts_seen)
+
+
+def test_plan_mode_is_bounded_and_cannot_open_the_web(tmp_path):
+    from vincio.agents.universal_reasoning import _InternalPlanDecision
+
+    app = _app(tmp_path, MockProvider(default_text="answer"))
+    engine = UniversalReasoningEngine(app)
+    request = "Compare the trade-offs, identify the root cause, and recommend a fix."
+    assessment = engine.assess(request)
+    plan = engine.plan(request, assessment)
+    decision = _InternalPlanDecision.model_validate(
+        {
+            "steps": [
+                {"goal": f"Do bounded step {i}", "kind": "analyze", "depends_on": [i - 1] if i else [99], "check": "none"}
+                for i in range(9)
+            ],
+            "assumptions": [],
+            "evidence_queries": ["latest market prices", "current exchange rate"],
+            "confidence": 0.9,
+        }
+    )
+    merged = engine._merge_plan(plan, assessment, decision)
+
+    assert merged.plan_mode_used
+    assert len(merged.steps) == engine.policy.plan_max_steps
+    assert merged.steps[0].depends_on == []
+    # The deterministic policy declined search, so plan queries never open the web.
+    assert not assessment.needs_search
+    assert all("market prices" not in query for query in merged.search_queries)
+
+    low = engine.plan(request, assessment)
+    low_decision = decision.model_copy(update={"confidence": 0.2})
+    assert not engine._merge_plan(low, assessment, low_decision).plan_mode_used
+
+
+def test_fabricated_source_is_refuted_and_withheld(tmp_path):
+    url = "https://example.org/release"
+    backend = StaticSearchBackend(
+        default=[
+            SearchResult(rank=1, title="Release notes", url=url, snippet="Version 4.2 shipped.", source="static")
+        ]
+    )
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/html"},
+            text="<html><title>Release notes</title><body><main>Version 4.2 shipped today.</main></body></html>",
+        )
+
+    provider = MockProvider(
+        default_text="Version 9.9 shipped. According to nytimes.com, see https://fake.example.net/story."
+    )
+    app = _app(tmp_path, provider)
+    app.use_web_search(
+        backend=backend,
+        client=httpx.AsyncClient(transport=httpx.MockTransport(handler)),
+    )
+    outcome = app.reason("Search for the latest release version and fact-check it with sources.")
+
+    assert outcome.refused
+    assert outcome.result.raw_text == ""
+    fabricated = outcome.result.metadata["universal_reasoning"]["fabricated_sources"]
+    assert "nytimes.com" in fabricated and "https://fake.example.net/story" in fabricated
+
+
+def test_genuine_sources_and_request_urls_are_never_flagged(tmp_path):
+    from vincio.agents.universal_reasoning import _fabricated_sources
+
+    from vincio.core.types import EvidenceItem, TrustLevel
+
+    evidence = [
+        EvidenceItem(
+            id="web:abc",
+            source_id="https://docs.python.org/3/whatsnew/",
+            source_type="web",
+            text="evidence",
+            trust_level=TrustLevel.UNTRUSTED_TOOL,
+            metadata={"url": "https://docs.python.org/3/whatsnew/"},
+        )
+    ]
+    honest = "According to python.org, 3.14 is current. See https://docs.python.org/3/whatsnew/."
+    assert _fabricated_sources(honest, evidence, "") == []
+    assert _fabricated_sources("See https://internal.wiki/page.", [], "Summarize https://internal.wiki/page") == []
+    assert _fabricated_sources("The answer is 42, according to my analysis.", [], "") == []
+    assert _fabricated_sources("According to fabricated-news.com it doubled.", evidence, "") == [
+        "fabricated-news.com"
+    ]
