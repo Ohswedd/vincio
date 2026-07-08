@@ -76,6 +76,7 @@ agents SUB OpenAIAgentsBackend
 agents SUB PendingTimer
 agents SUB PlanRepair
 agents TOP PlanRepairer
+agents TOP PlannedStep
 agents SUB Planner
 agents SUB PlanningMode
 agents TOP PredictedStep

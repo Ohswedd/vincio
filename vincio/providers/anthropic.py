@@ -204,7 +204,9 @@ class AnthropicProvider(HTTPProvider):
     def _parse_response(self, data: dict[str, Any], request: ModelRequest, latency_ms: int) -> ModelResponse:
         content = data.get("content")
         if content is None:
-            raise ProviderResponseError("no content in response", provider=self.name)
+            raise ProviderResponseError(
+                "no content in response", provider=self.name, retryable=True
+            )
         text_parts: list[str] = []
         tool_calls: list[ToolCallRequest] = []
         structured: dict[str, Any] | None = None

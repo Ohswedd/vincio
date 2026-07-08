@@ -58,6 +58,28 @@ CASES: list[dict[str, Any]] = [
         "gold": ["3.14"],
         "live": True,
     },
+    {
+        "id": "plan_decision",
+        "prompt": (
+            "A courier starts at depot X and must visit sites Y and Z exactly once each. "
+            "Leg costs: X to Y is 12, X to Z is 20, Y to Z is 8. Compare the possible routes "
+            "under these constraints, verify the arithmetic, and answer with the cheapest "
+            "total cost as an integer."
+        ),
+        "gold": ["20"],
+        "live": False,
+        "plan": True,
+    },
+    {
+        "id": "cited_fact",
+        "prompt": (
+            "What is the current Node.js LTS major version line? Fact-check it online and "
+            "cite a reliable source."
+        ),
+        "gold": ["24"],
+        "live": True,
+        "honesty": True,
+    },
 ]
 
 
@@ -93,7 +115,7 @@ def _app(model: str, *, reasoning: bool):
 
     app = ContextApp(name=f"reasoning-live-{'engine' if reasoning else 'direct'}", provider="openrouter", model=model)
     if reasoning:
-        app.use_web_search(preset="research", today="2026-07-07")
+        app.use_web_search(preset="research", today="2026-07-08")
         app.use_reasoning_engine(
             policy=UniversalReasoningPolicy(max_passes=4, web="auto")
         )
@@ -111,6 +133,9 @@ async def _one(app: Any, case: dict[str, Any]) -> dict[str, Any]:
             "error": result.error,
             "web_verified": bool(receipt.get("web_verified")) if case["live"] else None,
             "overclaim": _overclaims(result.raw_text) if case["live"] else False,
+            "plan_mode_used": bool(receipt.get("plan_mode_used")),
+            "plan_steps": receipt.get("plan_steps", 0),
+            "fabricated_sources": list(receipt.get("fabricated_sources", [])),
             "input_tokens": result.usage.input_tokens,
             "output_tokens": result.usage.output_tokens,
             "reasoning_tokens": result.usage.reasoning_tokens,
@@ -157,6 +182,16 @@ async def run(models: list[str]) -> dict[str, Any]:
                 "overclaim_rate": round(
                     sum(row["reasoned"].get("overclaim") is True for row in rows) / count, 4
                 ),
+                "plan_mode_used_on_plan_case": any(
+                    row["reasoned"].get("plan_mode_used")
+                    for row, case in zip(rows, CASES, strict=True)
+                    if case.get("plan")
+                ),
+                "fabricated_source_answers": sum(
+                    bool(row["reasoned"].get("fabricated_sources"))
+                    and row["reasoned"].get("status") == "succeeded"
+                    for row in rows
+                ),
                 "direct_tokens": sum(
                     row["direct"].get("input_tokens", 0) + row["direct"].get("output_tokens", 0)
                     for row in rows
@@ -177,7 +212,7 @@ async def run(models: list[str]) -> dict[str, Any]:
     return {
         "tier": "live",
         "provider": "openrouter",
-        "as_of": "2026-07-07",
+        "as_of": "2026-07-08",
         "cases": len(CASES),
         "models": model_reports,
     }

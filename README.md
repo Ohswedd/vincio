@@ -184,11 +184,13 @@ bi-temporal recall, per-memory ACLs, and audited GDPR-style edit/forget/export.
 resource-limited sandbox, idempotent write guardrails with approval callbacks, and a grounded
 computer-use action plane. **Universal web browsing & search** (`app.use_web_search()`) gives *any*
 model — even one with no function calling — governed `web_search` / `web_read` tools with SSRF-hardened,
-content-hashed, offline-verifiable evidence. **Universal reasoning** (`app.use_reasoning_engine()`)
-gives every model adaptive task/depth/strategy selection, evidence-first search, bounded candidate and
-correction passes, model-native routing for every language the selected model understands, conservative
-tool matching, explicit no-web handling, Unicode evidence verification, and answer-only receipts without
-stored chain-of-thought.
+content-hashed, offline-verifiable evidence. **The Big Brain** (`app.use_reasoning_engine()`) is the
+orchestration core every boosted run flows through — adaptive task/depth/strategy selection, an internal
+plan mode that decomposes deep multi-step work into typed dependency-ordered steps from one bounded
+planning call, evidence-first search, bounded candidate and correction passes, model-native routing for
+every language the selected model understands, conservative tool matching, explicit no-web handling,
+Unicode evidence verification, fabricated-source refusal, and answer-only receipts without stored
+chain-of-thought. See [the Big Brain concept](docs/concepts/big-brain.md).
 Planners (ReAct / plan-and-execute / hierarchical HTN) with
 in-place plan repair; multi-agent crews with a shared blackboard; durable stateful graphs
 (checkpoint / resume / time-travel / human-in-the-loop); and a distributed durable-execution backend.
@@ -249,15 +251,34 @@ abstains or hallucinates) into a cited, correct answer at a fraction of the cost
   <img src="assets/benchmark-uplift.svg" alt="Grounded-answer accuracy on 15 company-specific questions, the same model direct vs through Vincio, every routed answer cited: claude-opus-4.8 13 to 97 percent; gpt-5.4-mini 10 to 93; gemini-3.5-flash 27 to 97; llama-3.1-8b 3 to 93; aggregate 13 to 95 percent. Live over OpenRouter, 2026-07-01." width="820">
 </p>
 
-**Reasoning quality is measured separately from retrieval quality.** On a small, reviewed Tier-L set,
-the non-reasoning Llama 3.2 3B model moved from **0/4 direct to 3/4 through Vincio**: all three stable
-math/logic/multi-step answers passed deterministic verification; on the current-fact case Vincio verified
-two web snapshots but withheld the model's unsupported final claim instead of counting the refusal as
-correct. A companion model-native routing run classified **5/5** Spanish, Japanese, Arabic, Swahili and
-Chinese requests correctly for language, task/depth and web intent. Sample sizes are deliberately shown:
+**Reasoning quality is measured separately from retrieval quality.** On a small, reviewed Tier-L set of
+six cases (arithmetic, logic, multi-step, current-fact, a plan-shaped constrained decision, and a
+cite-a-source honesty case), the non-reasoning Llama 3.2 3B model moved from **0/6 direct to 3/6 through
+Vincio** — all three answers deterministically verified, two after a bounded correction, with the internal
+plan mode structuring the multi-step case — while the two unverifiable current-fact answers were
+**withheld, not guessed**. The model's rate-limited upstream cost nothing this capture: empty-payload
+faults are retryable, and a spaced salvage pass stands in reserve for the case where every pass dies. A
+companion model-native routing run classified **5/5** Spanish, Japanese, Arabic, Swahili and Chinese
+requests correctly. Sample sizes are shown:
 
 <p align="center">
-  <img src="assets/benchmark-reasoning.svg" alt="Universal reasoning live capability run, OpenRouter, July 7 2026. Llama 3.2 3B exact task accuracy: 0 percent direct to 75 percent through Vincio over four reviewed cases; three of three stable reasoning answers deterministically verified; unsupported current-fact overclaims reduced from one direct to zero through Vincio, with two web snapshots verified and one unsafe final answer withheld. GPT-4.1 mini model-native routing correctly classified five of five Spanish, Japanese, Arabic, Swahili and Chinese cases." width="820">
+  <img src="assets/benchmark-reasoning.svg" alt="Universal reasoning live capability run, OpenRouter, July 8 2026. Llama 3.2 3B exact task accuracy: zero of six direct to three of six through Vincio; all three answers deterministically verified, two after a bounded correction, with the internal plan mode structuring the multi-step case; zero overclaims or invented sources delivered, two web snapshots verified, two unsafe answers withheld; retryable empty-payload handling absorbed the rate-limited upstream's transient faults with a spaced salvage pass in reserve. GPT-4.1 mini model-native routing correctly classified five of five Spanish, Japanese, Arabic, Swahili and Chinese cases on July 7." width="820">
+</p>
+
+**The Big Brain is the core that produces those receipts** — one orchestration layer
+(`app.use_reasoning_engine()`) that assesses every request, plans deep multi-step work with one bounded
+internal planning call, gathers governed web evidence, runs bounded answer-only passes, verifies with
+offline kernels, corrects once when refuted, and accounts for everything in a typed receipt. On the same
+dated run, GPT-4.1 mini moved from **4/6 direct to 5/6 through the Big Brain**; the internal plan mode
+activated on **both** plan-shaped cases (typed, dependency-ordered steps; exact answers deterministically
+verified), and **zero** fabricated source attributions or unsupported overclaims were delivered across
+every run — a fabricated "according to …" is refuted and withheld, never emitted. One honest miss is
+recorded too: a current-fact case was answered from a live source that lists a not-yet-released version
+line — cited and web-verified, but scored wrong against gold. See
+[the Big Brain concept](docs/concepts/big-brain.md):
+
+<p align="center">
+  <img src="assets/big-brain.svg" alt="The Big Brain: one cognitive core that boosts every model through seven governed stages — assess, plan, gather, generate, verify, correct, receipt. Live Tier-L proof, OpenRouter, July 8 2026: GPT-4.1 mini four of six direct to five of six through the Big Brain; internal plan mode activated on two of two plan-shaped cases with typed dependency-ordered steps and deterministically verified exact answers; zero fabricated sources or overclaims delivered across every run." width="820">
 </p>
 
 Reproduce the two arms with [`benchmarks/reasoning_uplift_live.py`](benchmarks/reasoning_uplift_live.py)

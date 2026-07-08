@@ -88,6 +88,12 @@ Concept: [Universal reasoning](../concepts/universal-reasoning.md) · Guides: [U
 | `app.reason` | Synchronous :meth:`areason`. |
 | `app.use_reasoning_engine` | Install adaptive universal reasoning on ordinary ``run`` / ``arun``. |
 
+### The Big Brain
+
+The orchestration core every boosted run flows through: assessment, internal plan mode with typed dependency-ordered steps, governed evidence gathering, bounded passes, offline verification with fabricated-source refusal, and one honest typed receipt — the same architecture for every model.
+
+Concept: [The Big Brain](../concepts/big-brain.md) · Guides: [Universal reasoning, native thinking & the Responses API](../guides/reasoning.md) · Examples: [22_universal_reasoning.py](../../examples/22_universal_reasoning.py) · Reference: [Runs](api.md#runs)
+
 ### Tools & skills
 
 Register functions as permissioned, approval-gated tools, attach Agent Skills, and surface provider-native hosted tools.

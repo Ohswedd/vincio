@@ -205,8 +205,18 @@ class GoogleProvider(HTTPProvider):
     def _parse_response(self, data: dict[str, Any], request: ModelRequest, latency_ms: int) -> ModelResponse:
         candidates = data.get("candidates") or []
         if not candidates:
+            block_reason = (data.get("promptFeedback") or {}).get("blockReason")
+            if block_reason:
+                # A safety block is deterministic: retrying the identical
+                # prompt burns the retry chain to reach the same refusal.
+                raise ProviderResponseError(
+                    f"prompt blocked by safety filter: {block_reason}",
+                    provider=self.name,
+                )
             raise ProviderResponseError(
-                f"no candidates in response: {json.dumps(data)[:500]}", provider=self.name
+                f"no candidates in response: {json.dumps(data)[:500]}",
+                provider=self.name,
+                retryable=True,
             )
         candidate = candidates[0]
         text_parts: list[str] = []

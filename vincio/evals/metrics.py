@@ -20,7 +20,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from ..context.compression import split_sentences
-from ..context.scoring import lexical_similarity
+from ..context.scoring import containment_similarity, lexical_similarity
 from ..core.types import EvidenceItem, TokenUsage
 from ..retrieval.embeddings import LocalHashEmbedder, cosine
 from .datasets import EvalCase
@@ -611,22 +611,53 @@ def answer_relevance(case: EvalCase, run: RunOutput) -> MetricResult:
     )
 
 
-_NUMBER_RE = re.compile(r"\d+(?:\.\d+)?%?")
+_NUMBER_RE = re.compile(r"\d+(?:\.\d+)*%?")
 _CITATION_MARKER_RE = re.compile(r"\[[^\]]{1,60}\]")
+
+
+def _number_entailed(number: str, evidence_numbers: set[str]) -> bool:
+    """Whole-token equality, or a version-shaped dotted-component prefix.
+
+    "24" is entailed by "24.11.0" and "3.14" by "3.14.2" (a shorter version
+    line is a true statement about a longer one), but the allowance is
+    version-shaped only: it requires the claim numeral to be dotted or the
+    evidence numeral to have three or more components, so a plain decimal
+    never entails its integer part — "4" is NOT entailed by "4.99", "30"
+    never matches "130", and components are compared whole, never substrings.
+    """
+    if number in evidence_numbers:
+        return True
+    parts = number.split(".")
+    return any(
+        candidate.split(".")[: len(parts)] == parts
+        for candidate in evidence_numbers
+        if "." in candidate and (len(parts) > 1 or candidate.count(".") >= 2)
+    )
 
 
 def _supported_strict(claim: str, evidence: list[EvidenceItem], threshold: float = 0.28) -> bool:
     """Lexical support that also requires every number in the claim to appear
     in the supporting evidence — catches numeric contradictions ("90 days"
     against evidence saying "30 days") that bag-of-words similarity misses.
-    Numbers are compared as whole tokens ("30" does not match "130").
-    Citation markers like ``[D1:C0]`` are stripped so their ids don't count
-    as numbers."""
+    A short numeric claim checked against a long document is entailment, not
+    near-duplication, so a claim that carries at least one number may also be
+    supported by strong claim-term containment — the checkable numeric token
+    anchors the match, so a numberless recombination of scattered evidence
+    terms never rides this path. Numbers are compared as whole tokens ("30"
+    does not match "130"), with one version-shaped entailment allowance ("24"
+    against "24.11.0"; never "4" against "4.99"). Citation markers like
+    ``[D1:C0]`` are stripped so their ids don't count as numbers."""
     claim = _CITATION_MARKER_RE.sub("", claim)
     numbers = _NUMBER_RE.findall(claim)
     return any(
-        lexical_similarity(claim, item.text) >= threshold
-        and set(numbers) <= set(_NUMBER_RE.findall(item.text))
+        (
+            lexical_similarity(claim, item.text) >= threshold
+            or (bool(numbers) and containment_similarity(claim, item.text) >= 0.55)
+        )
+        and all(
+            _number_entailed(number, set(_NUMBER_RE.findall(item.text)))
+            for number in set(numbers)
+        )
         for item in evidence
         if item.text
     )

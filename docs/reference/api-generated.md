@@ -6,7 +6,7 @@ with each symbol's signature and docstring summary. It is gated for
 docstring coverage: no public symbol ships undocumented. For the curated,
 grouped narrative see [api.md](api.md).
 
-**558** public symbols.
+**559** public symbols.
 
 ## Classes
 
@@ -1153,6 +1153,10 @@ A domain bundle: prompt config + schema + policies + evaluators + evals.
 ### `PlanRepairer(max_repairs=…, budget_shock_fraction=…)`
 
 Repairs a running :class:`StepDAG` in place. Deterministic and offline.
+
+### `PlannedStep(**data)`
+
+One bounded, dependency-ordered step of the internal plan.
 
 ### `PluginInfo(**data)`
 

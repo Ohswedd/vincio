@@ -50,6 +50,7 @@ from vincio.core.types import (
     TaskType,
     TokenUsage,
     ToolCall,
+    TrustLevel,
     UserInput,
 )
 from vincio.memory import MemoryEngine
@@ -2474,6 +2475,38 @@ async def bench_reliability() -> dict[str, Any]:
     results["lifecycle_errors"] = {
         "classified": lifecycle_classified,
         "retired_failover_rotate_now": retired_rotate_now,
+    }
+
+    # An HTTP 200 whose payload carries no completion is a transient upstream
+    # fault: the parse error must be retryable and the retry wrapper must
+    # absorb one occurrence without surfacing a failure.
+    from vincio.core.errors import ProviderResponseError
+    from vincio.providers import RetryingProvider
+    from vincio.providers.openai import OpenAIProvider
+
+    empty_request = ModelRequest(model="m", messages=[Message(role="user", content="x")])
+    try:
+        OpenAIProvider(api_key="k")._parse_response({"choices": []}, empty_request, latency_ms=1)
+        empty_payload_retryable = False
+    except ProviderResponseError as exc:
+        empty_payload_retryable = exc.retryable
+
+    class _EmptyOnce(MockProvider):
+        attempts = 0
+
+        async def generate(self, request: ModelRequest) -> ModelResponse:
+            type(self).attempts += 1
+            if type(self).attempts == 1:
+                raise ProviderResponseError(
+                    "no choices in response", provider="mock", retryable=True
+                )
+            return await super().generate(request)
+
+    retrying = RetryingProvider(_EmptyOnce(default_text="ok"), max_retries=2, base_delay_s=0.001)
+    absorbed = await retrying.generate(empty_request)
+    results["empty_payload"] = {
+        "retryable": empty_payload_retryable,
+        "absorbed_by_retry": bool(_EmptyOnce.attempts == 2 and absorbed.text == "ok"),
     }
     return results
 
@@ -6341,6 +6374,12 @@ async def bench_universal_reasoning() -> dict[str, Any]:
         plain_provider = MockProvider(default_text="answer", reasoning=False)
         plain_app = ContextApp(name="universal-reasoning", provider=plain_provider, model="mock-1")
         engine = UniversalReasoningEngine(plain_app)
+        assess_samples: list[float] = []
+        for text, _depth, _web in routing_cases * 3:
+            started = time.perf_counter()
+            engine.assess(text)
+            assess_samples.append((time.perf_counter() - started) * 1000)
+        assess_p50_ms = round(statistics.median(assess_samples), 4)
         decisions = [engine.assess(text) for text, _depth, _web in routing_cases]
         routing_accuracy = sum(
             decision.depth == depth and decision.needs_search == web
@@ -6449,6 +6488,125 @@ async def bench_universal_reasoning() -> dict[str, Any]:
             provider=MockProvider(responder=multilingual_responder),
             model="mock-1",
         )
+        plan_payload = json.dumps(
+            {
+                "steps": [
+                    {
+                        "goal": "List the material trade-offs",
+                        "kind": "analyze",
+                        "depends_on": [],
+                        "check": "none",
+                    },
+                    {
+                        "goal": "Compare the options against the constraints",
+                        "kind": "compare",
+                        "depends_on": [0],
+                        "check": "constraint",
+                    },
+                    {
+                        "goal": "Recommend one option with its rationale",
+                        "kind": "decide",
+                        "depends_on": [1],
+                        "check": "none",
+                    },
+                ],
+                "assumptions": [],
+                "evidence_queries": [],
+                "confidence": 0.9,
+            }
+        )
+
+        def plan_responder(request: ModelRequest) -> str:
+            prompt = "\n".join(message.text for message in request.messages)
+            if "internal task planner" in prompt:
+                return plan_payload
+            return "A concise, consistent recommendation."
+
+        plan_provider = MockProvider(responder=plan_responder, reasoning=False)
+        plan_app = ContextApp(name="reasoning-plan", provider=plan_provider, model="mock-1")
+        planned = await UniversalReasoningEngine(plan_app).arun(
+            "Compare the trade-offs, identify the root cause, and derive a logically "
+            "consistent recommendation."
+        )
+        plan_simple = await UniversalReasoningEngine(plan_app).arun(
+            "Rewrite this title in uppercase"
+        )
+
+        from vincio.agents.universal_reasoning import _fabricated_sources
+
+        fabricated_offline = await UniversalReasoningEngine(
+            ContextApp(
+                name="reasoning-fabricated",
+                provider=MockProvider(
+                    default_text=(
+                        "The latest release is 9.9. According to fabricated-news.com, "
+                        "see https://fake.example.net/story."
+                    )
+                ),
+                model="mock-1",
+            )
+        ).arun("What is the latest stable release?")
+        from vincio.core.errors import ProviderResponseError
+
+        flaky_calls = {"n": 0}
+
+        class _FlakyOnce(MockProvider):
+            async def generate(self, request: ModelRequest) -> ModelResponse:
+                flaky_calls["n"] += 1
+                if flaky_calls["n"] == 1:
+                    raise ProviderResponseError("no choices in response", provider="mock")
+                return await super().generate(request)
+
+        salvaged = await UniversalReasoningEngine(
+            ContextApp(
+                name="reasoning-salvage",
+                provider=_FlakyOnce(default_text="17 * 23 = 391."),
+                model="mock-1",
+            ),
+            UniversalReasoningPolicy(salvage_backoff_ms=0),
+        ).arun("Calculate 17 * 23 and verify the equality.")
+
+        from vincio.agents.universal_reasoning import _InternalPlanDecision
+
+        wordy_decision = _InternalPlanDecision.model_validate(
+            {
+                "steps": [
+                    {
+                        "goal": "Step goal " * 60,
+                        "kind": "Deep-Analysis",
+                        "depends_on": [0, "x", 1.0],
+                        "check": "CONSTRAINT ",
+                    }
+                ]
+                + [{"goal": f"Extra step {i}", "kind": "analyze"} for i in range(15)],
+                "assumptions": [f"extra {i}" for i in range(9)],
+                "evidence_queries": 7,
+                "confidence": "0.9",
+            }
+        )
+        tolerant_request = "Compare the trade-offs, identify the root cause, and recommend a fix."
+        tolerant_assessment = engine.assess(tolerant_request)
+        tolerant_plan = engine._merge_plan(
+            engine.plan(tolerant_request, tolerant_assessment),
+            tolerant_assessment,
+            wordy_decision,
+        )
+
+        honest_flags = _fabricated_sources(
+            "According to python.org, 3.14 is current. See https://docs.python.org/3/whatsnew/.",
+            [
+                EvidenceItem(
+                    id="web:abc",
+                    source_id="https://docs.python.org/3/whatsnew/",
+                    source_type="web",
+                    text="evidence",
+                    trust_level=TrustLevel.UNTRUSTED_TOOL,
+                    metadata={"url": "https://docs.python.org/3/whatsnew/"},
+                )
+            ],
+            "",
+        )
+
         multilingual_app.add_tool(create_ticket)
         multilingual_engine = UniversalReasoningEngine(multilingual_app)
         spanish = await multilingual_engine.arun(
@@ -6542,6 +6700,45 @@ async def bench_universal_reasoning() -> dict[str, Any]:
                 "output_tokens",
             }
             for item in repaired.passes
+        ),
+        "plan_mode_structures_deep_multistep": bool(
+            planned.plan.plan_mode_used
+            and [step.kind for step in planned.plan.steps] == ["analyze", "compare", "decide"]
+            and planned.plan.steps[1].depends_on == [0]
+            and planned.result.metadata["universal_reasoning"]["plan_steps"] == 3
+        ),
+        "plan_mode_skips_simple_work": bool(
+            not plan_simple.plan.plan_mode_used
+            and plan_simple.result.metadata["universal_reasoning"]["plan_steps"] == 0
+            and len(plan_simple.passes) == 1
+        ),
+        "plan_call_accounted": bool(
+            planned.result.metadata["universal_reasoning"]["plan_tokens"] > 0
+            and planned.result.usage.total_tokens
+            > planned.result.metadata["universal_reasoning"]["plan_tokens"]
+            and planned.result.metadata["universal_reasoning"]["model_calls"]
+            == len(planned.passes) + 1
+        ),
+        "fabricated_source_blocked": bool(
+            fabricated_offline.refused
+            and fabricated_offline.result.raw_text == ""
+            and "fabricated-news.com"
+            in fabricated_offline.result.metadata["universal_reasoning"]["fabricated_sources"]
+        ),
+        "honest_source_not_flagged": honest_flags == [],
+        "assess_p50_ms": assess_p50_ms,
+        "transient_failure_salvaged": bool(
+            salvaged.result.status.value == "succeeded"
+            and salvaged.result.metadata["universal_reasoning"]["salvaged"]
+            and [item.kind for item in salvaged.passes] == ["candidate", "salvage"]
+            and salvaged.answer_verification == "verified"
+        ),
+        "plan_validation_tolerant": bool(
+            tolerant_plan.plan_mode_used
+            and len(wordy_decision.steps) == 12
+            and wordy_decision.steps[0].kind == "analyze"
+            and wordy_decision.steps[0].check == "constraint"
+            and all(len(step.goal) <= 160 for step in tolerant_plan.steps)
         ),
         "search_decision_accuracy": sum(
             decision.needs_search == expected[2]

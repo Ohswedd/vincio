@@ -19,6 +19,34 @@ warnings.simplefilter("ignore", VincioExperimentalWarning)
 
 def responder(request):
     prompt = "\n".join(message.text for message in request.messages)
+    if "internal task planner" in prompt:
+        return json.dumps(
+            {
+                "steps": [
+                    {
+                        "goal": "List the material trade-offs of each option",
+                        "kind": "analyze",
+                        "depends_on": [],
+                        "check": "none",
+                    },
+                    {
+                        "goal": "Compare the options against the stated constraints",
+                        "kind": "compare",
+                        "depends_on": [0],
+                        "check": "constraint",
+                    },
+                    {
+                        "goal": "Recommend one option with its rationale",
+                        "kind": "decide",
+                        "depends_on": [1],
+                        "check": "none",
+                    },
+                ],
+                "assumptions": [],
+                "evidence_queries": [],
+                "confidence": 0.9,
+            }
+        )
     if "semantic request router" in prompt:
         return json.dumps(
             {
@@ -38,6 +66,8 @@ def responder(request):
         return "Resumen breve en español."
     if "bounded answer correction" in prompt:
         return "The checked equality is 2 + 2 = 4."
+    if "Step 2 (compare" in prompt:
+        return "Option B: it meets both constraints at the lower cost."
     if "universal reasoning control" in prompt:
         return "The proposed equality is 2 + 2 = 5."
     return "TITLE"
@@ -63,6 +93,25 @@ receipt = hard.metadata["universal_reasoning"]
 # does not need a language allow-list; deterministic policy remains in control.
 spanish = app.run("Resume este texto en una frase: Vincio verifica sus respuestas.")
 
+# A deep multi-step decision triggers the internal plan mode: one bounded call
+# returns typed, dependency-ordered steps that structure every candidate pass.
+planned = app.reason(
+    "Compare the trade-offs, identify the root cause, and derive a logically "
+    "consistent recommendation."
+)
+
+# An answer that cites a source found in neither the evidence nor the request
+# is fabricated grounding: the engine refutes and withholds it.
+fabricator = ContextApp(
+    name="fabrication-demo",
+    provider=MockProvider(
+        default_text="The latest release is 9.9, according to fabricated-news.com."
+    ),
+    model="mock-1",
+)
+fabricator.use_reasoning_engine()
+fabricated = fabricator.run("What is the latest stable release?")
+
 print(
     f"simple passes={simple.metadata['universal_reasoning']['passes']} | "
     f"hard passes={receipt['passes']} strategy={receipt['strategy']} "
@@ -72,4 +121,12 @@ print(
     f"language={spanish.metadata['universal_reasoning']['detected_language']} "
     f"semantic_route={spanish.metadata['universal_reasoning']['semantic_routing_succeeded']} "
     f"answer={spanish.raw_text!r}"
+)
+print(
+    f"plan_mode={planned.plan.plan_mode_used} steps="
+    + " -> ".join(f"{step.kind}:{step.goal[:28]}" for step in planned.plan.steps)
+)
+print(
+    f"fabricated answer withheld={fabricated.status.value == 'failed'} "
+    f"flagged={fabricated.metadata['universal_reasoning']['fabricated_sources']}"
 )

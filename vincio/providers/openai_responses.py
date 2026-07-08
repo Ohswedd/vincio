@@ -169,7 +169,9 @@ class OpenAIResponsesProvider(OpenAIProvider):
         # Responses exposes a convenience aggregate; prefer it when present.
         text = data.get("output_text") or "".join(text_parts)
         if not output and "output_text" not in data:
-            raise ProviderResponseError("no output in response", provider=self.name)
+            raise ProviderResponseError(
+                "no output in response", provider=self.name, retryable=True
+            )
         usage = self._parse_usage(data.get("usage"))
         structured: dict[str, Any] | None = None
         if request.output_schema is not None and text:

@@ -1,0 +1,105 @@
+<svg width="860" height="392" viewBox="0 0 860 392" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="bb_t bb_d">
+  <title id="bb_t">The Big Brain — one cognitive core that boosts every model</title>
+  <desc id="bb_d">Vincio's orchestration core runs every boosted request through seven governed stages: assess, plan, gather, generate, verify, correct, and receipt. Live Tier-L proof captured through OpenRouter on July 8, 2026: GPT-4.1 mini moved from four of six to five of six exact answers on reviewed cases; the internal plan mode activated on both plan-shaped cases and produced typed dependency-ordered steps with deterministically verified exact answers; zero fabricated source attributions and zero unsupported overclaims were delivered across every run, with unverifiable claims withheld instead.</desc>
+  <defs>
+    <radialGradient id="bb_parch" cx="40%" cy="8%" r="94%">
+      <stop offset="0%" stop-color="#FCF6E6"/>
+      <stop offset="62%" stop-color="#F3E8CC"/>
+      <stop offset="100%" stop-color="#E7D6AE"/>
+    </radialGradient>
+    <linearGradient id="bb_gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E6CC78"/>
+      <stop offset="52%" stop-color="#C49A3A"/>
+      <stop offset="100%" stop-color="#9A721C"/>
+    </linearGradient>
+    <linearGradient id="bb_goldtext" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#C79A3A"/>
+      <stop offset="100%" stop-color="#8C6516"/>
+    </linearGradient>
+  </defs>
+  <rect x="1.5" y="1.5" width="857" height="389" rx="16" fill="url(#bb_parch)" stroke="url(#bb_gold)" stroke-width="1.5"/>
+  <rect x="6.5" y="6.5" width="847" height="379" rx="12" fill="none" stroke="#B98B2E" stroke-width="1" opacity="0.38"/>
+
+  <g font-family="Georgia, 'Times New Roman', serif">
+    <text x="34" y="36" font-size="11.5" letter-spacing="3" fill="#B98B2E">THE BIG BRAIN &#183; UNIVERSAL BOOST CORE &#183; TIER-L &#183; 2026-07-08</text>
+    <text x="34" y="64" font-size="21" font-weight="700" fill="url(#bb_goldtext)">One cognitive core that boosts every model</text>
+    <text x="34" y="84" font-size="11.5" fill="#6B5836">Reasoning, internal planning, governed browsing, offline verification and honest refusal &#8212; the same architecture for a 3B local model and a frontier API</text>
+
+    <!-- seven-stage flow -->
+    <g font-size="10.5" font-weight="700">
+      <g>
+        <rect x="34" y="106" width="96" height="46" rx="9" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+        <text x="82" y="126" text-anchor="middle" fill="#8C6516">ASSESS</text>
+        <text x="82" y="141" text-anchor="middle" font-size="8.5" font-weight="400" fill="#8C7448">zero-token routing</text>
+      </g>
+      <text x="136" y="133" font-size="13" fill="#B98B2E">&#8594;</text>
+      <g>
+        <rect x="150" y="106" width="96" height="46" rx="9" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+        <text x="198" y="126" text-anchor="middle" fill="#8C6516">PLAN</text>
+        <text x="198" y="141" text-anchor="middle" font-size="8.5" font-weight="400" fill="#8C7448">typed ordered steps</text>
+      </g>
+      <text x="252" y="133" font-size="13" fill="#B98B2E">&#8594;</text>
+      <g>
+        <rect x="266" y="106" width="96" height="46" rx="9" fill="#FCF6E8" stroke="#D8C79A"/>
+        <text x="314" y="126" text-anchor="middle" fill="#8C6516">GATHER</text>
+        <text x="314" y="141" text-anchor="middle" font-size="8.5" font-weight="400" fill="#8C7448">governed evidence</text>
+      </g>
+      <text x="368" y="133" font-size="13" fill="#B98B2E">&#8594;</text>
+      <g>
+        <rect x="382" y="106" width="96" height="46" rx="9" fill="#FCF6E8" stroke="#D8C79A"/>
+        <text x="430" y="126" text-anchor="middle" fill="#8C6516">GENERATE</text>
+        <text x="430" y="141" text-anchor="middle" font-size="8.5" font-weight="400" fill="#8C7448">bounded passes</text>
+      </g>
+      <text x="484" y="133" font-size="13" fill="#B98B2E">&#8594;</text>
+      <g>
+        <rect x="498" y="106" width="96" height="46" rx="9" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+        <text x="546" y="126" text-anchor="middle" fill="#8C6516">VERIFY</text>
+        <text x="546" y="141" text-anchor="middle" font-size="8.5" font-weight="400" fill="#8C7448">offline kernels</text>
+      </g>
+      <text x="600" y="133" font-size="13" fill="#B98B2E">&#8594;</text>
+      <g>
+        <rect x="614" y="106" width="96" height="46" rx="9" fill="#FCF6E8" stroke="#D8C79A"/>
+        <text x="662" y="126" text-anchor="middle" fill="#8C6516">CORRECT</text>
+        <text x="662" y="141" text-anchor="middle" font-size="8.5" font-weight="400" fill="#8C7448">one repair pass</text>
+      </g>
+      <text x="716" y="133" font-size="13" fill="#B98B2E">&#8594;</text>
+      <g>
+        <rect x="730" y="106" width="96" height="46" rx="9" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+        <text x="778" y="126" text-anchor="middle" fill="#8C6516">RECEIPT</text>
+        <text x="778" y="141" text-anchor="middle" font-size="8.5" font-weight="400" fill="#8C7448">honest accounting</text>
+      </g>
+    </g>
+
+    <!-- proof cards -->
+    <g>
+      <rect x="34" y="176" width="254" height="138" rx="11" fill="#FCF6E8" stroke="#D8C79A"/>
+      <text x="50" y="200" font-size="10" letter-spacing="1" fill="#8C6516">EXACT ANSWERS, SAME MODEL</text>
+      <text x="50" y="244" font-size="28" font-weight="700" fill="#7A6438">4/6</text>
+      <text x="112" y="244" font-size="17" fill="#8C7448">&#8594;</text>
+      <text x="141" y="244" font-size="30" font-weight="700" fill="url(#bb_goldtext)">5/6</text>
+      <text x="50" y="268" font-size="10.5" fill="#6B5836">direct &#8594; through the Big Brain</text>
+      <text x="50" y="286" font-size="9.5" fill="#8C7448">GPT-4.1 mini, reviewed cases, n=6</text>
+    </g>
+
+    <g>
+      <rect x="302" y="176" width="254" height="138" rx="11" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
+      <text x="318" y="200" font-size="10" letter-spacing="1" fill="#8C6516">INTERNAL PLAN MODE, LIVE</text>
+      <text x="318" y="246" font-size="32" font-weight="700" fill="url(#bb_goldtext)">2 / 2</text>
+      <text x="318" y="268" font-size="10.5" fill="#6B5836">plan-shaped cases planned &#183; verified</text>
+      <text x="318" y="286" font-size="9.5" fill="#8C7448">typed dependency-ordered steps (4, 5)</text>
+      <text x="318" y="302" font-size="9.5" fill="#8C7448">exact answers passed deterministic checks</text>
+    </g>
+
+    <g>
+      <rect x="570" y="176" width="256" height="138" rx="11" fill="#FCF6E8" stroke="#D8C79A"/>
+      <text x="586" y="200" font-size="10" letter-spacing="1" fill="#8C6516">FABRICATION &amp; OVERCLAIMS</text>
+      <text x="586" y="246" font-size="32" font-weight="700" fill="url(#bb_goldtext)">0</text>
+      <text x="586" y="268" font-size="10.5" fill="#6B5836">invented sources or overclaims delivered</text>
+      <text x="586" y="286" font-size="9.5" fill="#8C7448">fabricated attribution &#8594; refuted &amp; withheld</text>
+      <text x="586" y="302" font-size="9.5" fill="#8C7448">across every run of the live suite</text>
+    </g>
+
+    <text x="430" y="344" font-size="10" fill="#6B5836" text-anchor="middle">Reproduce: <tspan font-family="'SFMono-Regular',Consolas,monospace" fill="#8C6516">benchmarks/reasoning_uplift_live.py</tspan> &#183; provenance in <tspan font-family="'SFMono-Regular',Consolas,monospace" fill="#8C6516">benchmarks/reference/live_snapshot.json</tspan></text>
+    <text x="430" y="366" font-size="9.5" fill="#8C7448" font-style="italic" text-anchor="middle">Small reviewed capability samples, reported rather than CI-gated; refusal of an unverifiable claim counts as safe, never as correct.</text>
+  </g>
+</svg>

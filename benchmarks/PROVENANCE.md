@@ -60,18 +60,25 @@ arm and through a governed app for the Vincio arm. Add a custom uplift with
 
 The dynamic reasoning driver is `python benchmarks/reasoning_uplift_live.py`.
 It compares native and non-native OpenRouter models on math, logic,
-contradiction, live-source verification, overclaiming, tokens and cost; it is
-Tier-L and never runs in CI.
+contradiction, live-source verification, overclaiming, tokens and cost — plus,
+since 7.11, a plan-shaped decision case (does the internal plan mode activate
+and produce a verified exact answer?) and a cite-a-source honesty case (are
+fabricated source attributions ever delivered?); it is Tier-L and never runs
+in CI.
 `python benchmarks/reasoning_multilingual_live.py` is the companion Tier-L
 router audit: Spanish, Japanese, Arabic, Swahili and Chinese prompts check that
 language, depth, task, web/no-web intent and semantic-route accounting follow
 the configured model rather than a finite local language list.
-The dated 2026-07-07 snapshot records the small-sample outcomes rather than
-generalizing them: Llama 3.2 3B moved from 0/4 exact direct answers to 3/4 via
-Vincio (3/3 stable tasks verified; the current-fact arm safely withheld), and
-GPT-4.1 mini routed 5/5 multilingual cases. The machine-readable source is
-`reference/live_snapshot.json`; the published art is
-`assets/benchmark-reasoning.svg`.
+The dated 2026-07-08 snapshot records the small-sample outcomes rather than
+generalizing them: GPT-4.1 mini moved from 4/6 exact direct answers to 5/6 via
+Vincio with the internal plan mode active on both plan-shaped cases; Llama 3.2
+3B moved from 0/6 to 3/6 (all three deterministically verified, two after a
+bounded correction; retryable empty-payload handling absorbed its rate-limited
+upstream's transient faults, with a spaced salvage pass in reserve). No fabricated
+sources or overclaims were delivered; unverifiable answers were withheld.
+GPT-4.1 mini routed 5/5 multilingual cases on 2026-07-07. The machine-readable
+source is `reference/live_snapshot.json`; the published art is
+`assets/benchmark-reasoning.svg` and `assets/big-brain.svg`.
 
 ## Track 3 — Feature
 

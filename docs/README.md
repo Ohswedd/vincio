@@ -120,6 +120,10 @@ between your input and the model's validated output.
 - **[Agents and workflows](concepts/agents.md)**: bounded DAG agents, crews,
   durable state graphs, planners, in-place plan repair, and deterministic
   workflows.
+- **[The Big Brain](concepts/big-brain.md)**: the orchestration core every
+  boosted run flows through — assessment, internal plan mode, governed evidence,
+  bounded passes, offline verification with fabricated-source refusal, and one
+  honest typed receipt for any model.
 - **[Universal web browsing & search](concepts/web-browsing.md)**: governed
   `web_search` / `web_read` tools every model can call — token-budgeted page
   reading, a built-in when-to-search skill, the text protocol for models
