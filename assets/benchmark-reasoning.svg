@@ -1,6 +1,6 @@
 <svg width="860" height="334" viewBox="0 0 860 334" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="rs_t rs_d">
   <title id="rs_t">Universal reasoning — measured live on non-reasoning and multilingual models</title>
-  <desc id="rs_d">Tier-L small-sample results captured through OpenRouter on July 8, 2026. On six reviewed arithmetic, logic, multi-step, current-fact, plan-decision and cite-a-source cases, Llama 3.2 3B scored zero of six direct and three of six through Vincio, with two answers deterministically verified and one repaired by a bounded correction; the model's upstream dropped one arithmetic call per arm, counted as wrong for both arms. Zero fabricated sources and zero unsupported overclaims were delivered; two unverifiable current-fact answers were safely withheld after two web snapshots verified. A separate GPT-4.1 mini routing audit from July 7 correctly classified all five Spanish, Japanese, Arabic, Swahili and Chinese cases.</desc>
+  <desc id="rs_d">Tier-L small-sample results captured through OpenRouter on July 8, 2026. On six reviewed arithmetic, logic, multi-step, current-fact, plan-decision and cite-a-source cases, Llama 3.2 3B scored zero of six direct and three of six through Vincio, with all three answers deterministically verified — two after a bounded correction — and the internal plan mode structuring the multi-step case. Zero fabricated sources and zero unsupported overclaims were delivered; two unverifiable current-fact answers were safely withheld after two web snapshots verified, and retryable empty-payload handling absorbed the rate-limited upstream's transient faults, with a spaced salvage pass held in reserve. A separate GPT-4.1 mini routing audit from July 7 correctly classified all five Spanish, Japanese, Arabic, Swahili and Chinese cases.</desc>
   <defs>
     <radialGradient id="rs_parch" cx="40%" cy="8%" r="94%">
       <stop offset="0%" stop-color="#FCF6E6"/>
@@ -39,9 +39,9 @@
     <g>
       <rect x="236" y="106" width="190" height="150" rx="11" fill="#FBEFC9" stroke="#C49A3A" stroke-width="1.2"/>
       <text x="252" y="130" font-size="10" letter-spacing="1" fill="#8C6516">VERIFIED &amp; REPAIRED</text>
-      <text x="252" y="177" font-size="34" font-weight="700" fill="url(#rs_goldtext)">2 + 1</text>
-      <text x="252" y="198" font-size="10.5" fill="#6B5836">verified &#183; bounded correction</text>
-      <text x="252" y="218" font-size="9.5" fill="#8C7448">logic and multi-step passed</text>
+      <text x="252" y="177" font-size="34" font-weight="700" fill="url(#rs_goldtext)">3 / 3</text>
+      <text x="252" y="198" font-size="10.5" fill="#6B5836">correct answers verified</text>
+      <text x="252" y="218" font-size="9.5" fill="#8C7448">2 repaired by bounded correction</text>
       <text x="252" y="236" font-size="9.5" fill="#8C7448">deterministic offline kernels</text>
     </g>
 
@@ -65,6 +65,6 @@
     </g>
 
     <text x="430" y="286" font-size="10" fill="#6B5836" text-anchor="middle">Reproduce: <tspan font-family="'SFMono-Regular',Consolas,monospace" fill="#8C6516">reasoning_uplift_live.py</tspan> + <tspan font-family="'SFMono-Regular',Consolas,monospace" fill="#8C6516">reasoning_multilingual_live.py</tspan></text>
-    <text x="430" y="308" font-size="9.5" fill="#8C7448" font-style="italic" text-anchor="middle">Refusal counts as safe, never correct; the 3B upstream dropped one arithmetic call per arm (counted wrong for both), and every sample size is shown.</text>
+    <text x="430" y="308" font-size="9.5" fill="#8C7448" font-style="italic" text-anchor="middle">Refusal counts as safe, never correct; retries absorbed the rate-limited upstream's faults (salvage held in reserve), and every sample size is shown.</text>
   </g>
 </svg>

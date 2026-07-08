@@ -95,6 +95,11 @@ the answer is hedged — and the flagged sources are recorded in the receipt
 (`fabricated_sources`). The check is precision-first: citing an attached
 source, a request-mentioned URL, or a subdomain of either never triggers it,
 and a bare product or organization name is never treated as a citation.
+When every pass dies to a transient provider fault before producing an answer
+(an empty upstream payload rather than a refusal), the engine spends its
+reserved correction slot on one spaced salvage attempt — recorded as a
+`salvage` pass — before giving up; a persistently unavailable upstream still
+fails the run honestly.
 A refuted answer cannot win candidate selection. When candidates disagree or a
 kernel refutes the best one, one bounded correction pass receives only the
 answers, verifier verdicts and governed evidence. Total passes, concurrency,

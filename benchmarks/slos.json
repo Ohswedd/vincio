@@ -1453,6 +1453,16 @@
       "rationale": "Fabricated grounding is worse than no grounding: a confident fake citation converts a guess into apparent verified fact."
     },
     {
+      "id": "universal_reasoning_transient_salvage",
+      "category": "reliability",
+      "statement": "When every reasoning pass dies to a transient provider fault before producing an answer, the engine spends its reserved correction slot on one spaced salvage attempt instead of surfacing the failure.",
+      "metric": "families.universal_reasoning.transient_failure_salvaged",
+      "direction": "eq",
+      "threshold": true,
+      "enforced_by": "families.universal_reasoning.transient_failure_salvaged",
+      "rationale": "In-provider retries back off over at most a few hundred milliseconds; a briefly exhausted upstream needs one attempt spaced further out, and the pass ceiling still bounds total spend."
+    },
+    {
       "id": "universal_reasoning_zero_token_routing_fast",
       "category": "performance",
       "statement": "The deterministic reasoning assessment adds at most five milliseconds median overhead to a run, so adaptive routing never taxes the fast path.",

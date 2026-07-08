@@ -254,13 +254,15 @@ abstains or hallucinates) into a cited, correct answer at a fraction of the cost
 **Reasoning quality is measured separately from retrieval quality.** On a small, reviewed Tier-L set of
 six cases (arithmetic, logic, multi-step, current-fact, a plan-shaped constrained decision, and a
 cite-a-source honesty case), the non-reasoning Llama 3.2 3B model moved from **0/6 direct to 3/6 through
-Vincio** — two answers deterministically verified and one repaired by a bounded correction — while the
-two unverifiable current-fact answers were **withheld, not guessed** (the model's upstream dropped one
-arithmetic call per arm, counted as wrong for both). A companion model-native routing run classified
-**5/5** Spanish, Japanese, Arabic, Swahili and Chinese requests correctly. Sample sizes are shown:
+Vincio** — all three answers deterministically verified, two after a bounded correction, with the internal
+plan mode structuring the multi-step case — while the two unverifiable current-fact answers were
+**withheld, not guessed**. The model's rate-limited upstream cost nothing this capture: empty-payload
+faults are retryable, and a spaced salvage pass stands in reserve for the case where every pass dies. A
+companion model-native routing run classified **5/5** Spanish, Japanese, Arabic, Swahili and Chinese
+requests correctly. Sample sizes are shown:
 
 <p align="center">
-  <img src="assets/benchmark-reasoning.svg" alt="Universal reasoning live capability run, OpenRouter, July 8 2026. Llama 3.2 3B exact task accuracy: zero of six direct to three of six through Vincio; two answers deterministically verified plus one repaired by a bounded correction; zero overclaims or invented sources delivered, two web snapshots verified, two unsafe answers withheld; the model's upstream dropped one arithmetic call per arm, counted wrong for both. GPT-4.1 mini model-native routing correctly classified five of five Spanish, Japanese, Arabic, Swahili and Chinese cases on July 7." width="820">
+  <img src="assets/benchmark-reasoning.svg" alt="Universal reasoning live capability run, OpenRouter, July 8 2026. Llama 3.2 3B exact task accuracy: zero of six direct to three of six through Vincio; all three answers deterministically verified, two after a bounded correction, with the internal plan mode structuring the multi-step case; zero overclaims or invented sources delivered, two web snapshots verified, two unsafe answers withheld; retryable empty-payload handling absorbed the rate-limited upstream's transient faults with a spaced salvage pass in reserve. GPT-4.1 mini model-native routing correctly classified five of five Spanish, Japanese, Arabic, Swahili and Chinese cases on July 7." width="820">
 </p>
 
 **The Big Brain is the core that produces those receipts** — one orchestration layer

@@ -2728,6 +2728,9 @@
     "families.universal_reasoning.plan_validation_tolerant": {
       "eq": true
     },
+    "families.universal_reasoning.transient_failure_salvaged": {
+      "eq": true
+    },
     "families.universal_reasoning.assess_p50_ms": {
       "lte": 5
     },

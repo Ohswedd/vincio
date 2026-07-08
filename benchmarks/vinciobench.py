@@ -6547,6 +6547,26 @@ async def bench_universal_reasoning() -> dict[str, Any]:
                 model="mock-1",
             )
         ).arun("What is the latest stable release?")
+        from vincio.core.errors import ProviderResponseError
+
+        flaky_calls = {"n": 0}
+
+        class _FlakyOnce(MockProvider):
+            async def generate(self, request: ModelRequest) -> ModelResponse:
+                flaky_calls["n"] += 1
+                if flaky_calls["n"] == 1:
+                    raise ProviderResponseError("no choices in response", provider="mock")
+                return await super().generate(request)
+
+        salvaged = await UniversalReasoningEngine(
+            ContextApp(
+                name="reasoning-salvage",
+                provider=_FlakyOnce(default_text="17 * 23 = 391."),
+                model="mock-1",
+            ),
+            UniversalReasoningPolicy(salvage_backoff_ms=0),
+        ).arun("Calculate 17 * 23 and verify the equality.")
+
         from vincio.agents.universal_reasoning import _InternalPlanDecision
 
         wordy_decision = _InternalPlanDecision.model_validate(
@@ -6708,6 +6728,12 @@ async def bench_universal_reasoning() -> dict[str, Any]:
         ),
         "honest_source_not_flagged": honest_flags == [],
         "assess_p50_ms": assess_p50_ms,
+        "transient_failure_salvaged": bool(
+            salvaged.result.status.value == "succeeded"
+            and salvaged.result.metadata["universal_reasoning"]["salvaged"]
+            and [item.kind for item in salvaged.passes] == ["candidate", "salvage"]
+            and salvaged.answer_verification == "verified"
+        ),
         "plan_validation_tolerant": bool(
             tolerant_plan.plan_mode_used
             and len(wordy_decision.steps) == 12

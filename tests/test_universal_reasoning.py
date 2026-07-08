@@ -960,3 +960,49 @@ def test_concurrent_web_reads_preserve_rank_order(tmp_path):
 
     hosts = [item.metadata["url"] for item in outcome.web_evidence]
     assert hosts == urls[: len(hosts)] and len(hosts) == 3
+
+
+def test_transient_provider_failure_is_salvaged_with_one_spaced_retry(tmp_path):
+    from vincio.core.errors import ProviderResponseError
+
+    calls = {"n": 0}
+
+    class FlakyProvider(MockProvider):
+        async def generate(self, request):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise ProviderResponseError("no choices in response", provider="mock")
+            return await super().generate(request)
+
+    app = _app(tmp_path, FlakyProvider(default_text="17 * 23 = 391."))
+    engine = UniversalReasoningEngine(app, UniversalReasoningPolicy(salvage_backoff_ms=0))
+    outcome = engine.run("Calculate 17 * 23 and verify the equality.")
+
+    assert outcome.result.status.value == "succeeded"
+    assert outcome.result.raw_text == "17 * 23 = 391."
+    assert [item.kind for item in outcome.passes] == ["candidate", "salvage"]
+    assert outcome.result.metadata["universal_reasoning"]["salvaged"]
+    assert outcome.answer_verification == "verified"
+
+
+def test_salvage_respects_policy_off_and_pass_ceiling(tmp_path):
+    from vincio.core.errors import ProviderResponseError
+
+    class DeadProvider(MockProvider):
+        async def generate(self, request):
+            raise ProviderResponseError("no choices in response", provider="mock")
+
+    app = _app(tmp_path, DeadProvider())
+    engine = UniversalReasoningEngine(
+        app, UniversalReasoningPolicy(salvage_transient_failures=False)
+    )
+    outcome = engine.run("Calculate 17 * 23 and verify the equality.")
+    assert outcome.result.status.value == "failed"
+    assert all(item.kind == "candidate" for item in outcome.passes)
+
+    persistent = UniversalReasoningEngine(
+        app, UniversalReasoningPolicy(salvage_backoff_ms=0)
+    ).run("Calculate 17 * 23 and verify the equality.")
+    assert persistent.result.status.value == "failed"
+    assert [item.kind for item in persistent.passes] == ["candidate", "salvage"]
+    assert not persistent.result.metadata["universal_reasoning"]["corrected"]

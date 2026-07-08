@@ -72,8 +72,9 @@ the configured model rather than a finite local language list.
 The dated 2026-07-08 snapshot records the small-sample outcomes rather than
 generalizing them: GPT-4.1 mini moved from 4/6 exact direct answers to 5/6 via
 Vincio with the internal plan mode active on both plan-shaped cases; Llama 3.2
-3B moved from 0/6 to 3/6 (two verified, one bounded correction; its upstream
-dropped one arithmetic call per arm, counted wrong for both). No fabricated
+3B moved from 0/6 to 3/6 (all three deterministically verified, two after a
+bounded correction; retryable empty-payload handling absorbed its rate-limited
+upstream's transient faults, with a spaced salvage pass in reserve). No fabricated
 sources or overclaims were delivered; unverifiable answers were withheld.
 GPT-4.1 mini routed 5/5 multilingual cases on 2026-07-07. The machine-readable
 source is `reference/live_snapshot.json`; the published art is

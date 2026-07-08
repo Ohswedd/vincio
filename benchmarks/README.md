@@ -63,8 +63,9 @@ six-case run, [`reasoning_uplift_live.py`](reasoning_uplift_live.py) moved
 GPT-4.1 mini from 4/6 exact direct answers to 5/6 through Vincio — the internal
 plan mode activated on both plan-shaped cases with typed dependency-ordered
 steps and deterministically verified exact answers — and moved Llama 3.2 3B
-from 0/6 to 3/6 (two verified, one repaired by a bounded correction; its
-upstream dropped one arithmetic call per arm, counted wrong for both arms).
+from 0/6 to 3/6 (all three deterministically verified, two repaired by a
+bounded correction; retryable empty-payload handling absorbed its rate-limited
+upstream's transient faults, with a spaced salvage pass in reserve).
 Zero fabricated source attributions and zero unsupported overclaims were
 delivered in any run; unverifiable current-fact answers were withheld.
 [`reasoning_multilingual_live.py`](reasoning_multilingual_live.py) correctly

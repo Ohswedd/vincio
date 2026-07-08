@@ -50,6 +50,13 @@ All additive and experimental; `API_VERSION` remains `5.0`.
   caller set no seed (some providers reject seed values below 1 and the caller
   never asked for determinism); later passes still offset by index so peers
   differ.
+- **Transient-failure salvage:** when every reasoning pass dies to a provider
+  fault before producing an answer, the engine spends its reserved correction
+  slot on one salvage attempt spaced beyond the in-provider retry window
+  (`salvage_transient_failures`, `salvage_backoff_ms`), recorded as a
+  `salvage` pass and `receipt["salvaged"]`; a persistently unavailable
+  upstream still fails honestly. Gated by `transient_failure_salvaged` with a
+  reliability SLO.
 - **Transient-upstream resilience:** an HTTP 200 whose payload carries no
   completion (empty `choices`/`content`/`candidates`/`output` — the signature
   of a rate-limited or flapping upstream behind an aggregator) is now a

@@ -112,14 +112,14 @@
    "cases": 6,
    "direct_accuracy": 0.0,
    "via_vincio_accuracy": 0.5,
-   "deterministically_verified_answers": 2,
-   "bounded_corrections_accepted": 1,
+   "deterministically_verified_answers": 3,
+   "bounded_corrections_accepted": 2,
    "safe_refusals": 2,
    "web_verified_cases": 2,
    "fabricated_sources_delivered": 0,
    "current_fact_overclaims_delivered": 0,
-   "plan_mode_note": "the 3B model's plan JSON failed validation, so the engine observably fell back to heuristic decomposition rather than trusting a malformed plan",
-   "upstream_note": "the model's OpenRouter upstream was rate-limited during capture; one arithmetic call per arm returned an empty response and is counted as wrong for both arms"
+   "plan_mode_note": "with tolerant plan validation the 3B model's plan mode activated on the multi-step case (6 typed steps, deterministically verified); a malformed plan still falls back to heuristic decomposition observably",
+   "upstream_note": "the model's OpenRouter upstream was rate-limited during the capture window; retryable empty-payload handling absorbed the transient faults and no run died to an upstream error in this capture, with the engine's spaced salvage pass in reserve (gated by transient_failure_salvaged) for the case where every pass dies"
   },
   "multilingual_routing": {
    "model": "openai/gpt-4.1-mini",

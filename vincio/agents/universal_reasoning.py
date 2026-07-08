@@ -310,7 +310,7 @@ class ReasoningPass(BaseModel):
     """Observable receipt for one model pass, excluding private reasoning text."""
 
     index: int
-    kind: Literal["direct", "candidate", "correction"] = "candidate"
+    kind: Literal["direct", "candidate", "salvage", "correction"] = "candidate"
     run_id: str = ""
     trace_id: str = ""
     valid: bool = False
@@ -337,6 +337,8 @@ class UniversalReasoningPolicy(BaseModel):
     web_excerpt_tokens: int = Field(default=700, ge=100, le=4000)
     candidate_concurrency: int = Field(default=2, ge=1, le=4)
     correct_on_disagreement: bool = True
+    salvage_transient_failures: bool = True
+    salvage_backoff_ms: int = Field(default=1500, ge=0, le=30_000)
     verify_with_kernels: bool = True
     respect_user_no_web: bool = True
     require_citations_for_live_claims: bool = True
@@ -1403,12 +1405,45 @@ class UniversalReasoningEngine:
             for candidate in candidates
         ]
         scores = self._score_candidates(candidates, verifications)
-        best_index = max(range(len(candidates)), key=lambda i: (scores[i], -i))
-        chosen = candidates[best_index]
         receipts = [
             self._pass_receipt(i, "candidate", candidate, verifications[i], scores[i])
             for i, candidate in enumerate(candidates)
         ]
+
+        if (
+            self.policy.salvage_transient_failures
+            and all(candidate.status != RunStatus.SUCCEEDED for candidate in candidates)
+            and plan.allow_correction
+            and len(receipts) < self.policy.max_passes
+        ):
+            # Every pass died before producing an answer (the signature of a
+            # flapping or rate-limited upstream, which in-provider retries
+            # back off over at most a few hundred milliseconds). Spend the
+            # reserved correction slot on one salvage attempt, spaced further
+            # out so a briefly exhausted upstream has time to recover.
+            if self.policy.salvage_backoff_ms:
+                await asyncio.sleep(self.policy.salvage_backoff_ms / 1000)
+            salvage_run = await self._execute(
+                candidate_inputs[0],
+                config,
+                index=len(receipts),
+                evidence=web_evidence,
+                assessment=assessment,
+                total_slots=total_slots + routing_steps,
+            )
+            candidates.append(salvage_run)
+            verifications.append(
+                self._verify(salvage_run, web_evidence, plan, assessment, request_text=text)
+            )
+            scores = self._score_candidates(candidates, verifications)
+            receipts.append(
+                self._pass_receipt(
+                    len(receipts), "salvage", salvage_run, verifications[-1], scores[-1]
+                )
+            )
+
+        best_index = max(range(len(candidates)), key=lambda i: (scores[i], -i))
+        chosen = candidates[best_index]
 
         disagreement = _material_disagreement(candidates)
         refuted = verifications[best_index] == "refuted"
@@ -1919,7 +1954,7 @@ class UniversalReasoningEngine:
     @staticmethod
     def _pass_receipt(
         index: int,
-        kind: Literal["direct", "candidate", "correction"],
+        kind: Literal["direct", "candidate", "salvage", "correction"],
         result: RunResult,
         verification: str,
         score: float,
@@ -2075,6 +2110,7 @@ class UniversalReasoningEngine:
             "answer_verification": answer_verification,
             "native_reasoning": assessment.native_reasoning,
             "passes": len(passes),
+            "salvaged": any(item.kind == "salvage" for item in passes),
             "corrected": corrected,
             "refused": refused,
             "deterministic_fallback": deterministic_fallback,
