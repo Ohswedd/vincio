@@ -872,7 +872,6 @@ def test_fabricated_source_is_refuted_and_withheld(tmp_path):
 
 def test_genuine_sources_and_request_urls_are_never_flagged(tmp_path):
     from vincio.agents.universal_reasoning import _fabricated_sources
-
     from vincio.core.types import EvidenceItem, TrustLevel
 
     evidence = [

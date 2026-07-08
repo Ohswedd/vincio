@@ -184,7 +184,7 @@ async def run(models: list[str]) -> dict[str, Any]:
                 ),
                 "plan_mode_used_on_plan_case": any(
                     row["reasoned"].get("plan_mode_used")
-                    for row, case in zip(rows, CASES)
+                    for row, case in zip(rows, CASES, strict=True)
                     if case.get("plan")
                 ),
                 "fabricated_source_answers": sum(

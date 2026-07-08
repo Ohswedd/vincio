@@ -1677,7 +1677,7 @@ class UniversalReasoningEngine:
         if plan.steps:
             lines = []
             for step in plan.steps:
-                qualifiers = [step.kind]
+                qualifiers: list[str] = [step.kind]
                 if step.depends_on:
                     qualifiers.append(
                         "after step " + ", ".join(str(dep + 1) for dep in step.depends_on)
